@@ -1,45 +1,62 @@
 import Icon from "./Icon";
 
 const NAV_ITEMS = [
-  { id: "home",         icon: "home",     label: "Home"     },
-  { id: "transactions", icon: "txn",      label: "Sales"    },
-  { id: "credit",       icon: "credit",   label: "Credit"   },
-  { id: "aso",          icon: "aso",      label: "Aso"      },
-  { id: "insights",     icon: "insights", label: "AI"       },
-  { id: "settings",     icon: "settings", label: "Settings" },
+  { id: "home",         icon: "home",     label: "Home"         },
+  { id: "transactions", icon: "txn",      label: "Transactions" },
+  { id: "credit",       icon: "credit",   label: "Credit"       },
+  { id: "aso",          icon: "aso",      label: "Aso"          },
+  { id: "insights",     icon: "insights", label: "Insights"     },
+  { id: "settings",     icon: "settings", label: "Settings"     },
 ];
 
 export default function BottomNav({ active, onNavigate }) {
   return (
-    <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white border-t border-gray-100 shadow-2xl z-40">
-      <div className="flex">
+    <nav
+      className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md z-40 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 shadow-float"
+      role="navigation" aria-label="Main navigation"
+    >
+      <div className="flex items-stretch h-[60px]">
         {NAV_ITEMS.map((n) => {
           const isActive = active === n.id;
           return (
             <button
               key={n.id}
               onClick={() => onNavigate(n.id)}
-              className={`flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 transition-colors ${
-                isActive ? "text-green-600" : "text-gray-400"
-              }`}
+              aria-label={n.label}
+              aria-current={isActive ? "page" : undefined}
+              className="flex-1 flex flex-col items-center justify-center gap-0.5 relative transition-colors duration-150 focus-visible:outline-none"
             >
-              <div className={`transition-transform ${isActive ? "scale-110" : "scale-100"}`}>
-                <Icon name={n.icon} size={isActive ? 22 : 20} />
+              {/* Active indicator dot at top */}
+              {isActive && (
+                <span className="absolute top-0 left-1/2 -translate-x-1/2 w-5 h-0.5 rounded-full bg-brand-600 dark:bg-brand-400" />
+              )}
+
+              {/* Icon */}
+              <div className={`transition-all duration-200 ${isActive ? "scale-110" : "scale-100"}`}>
+                <Icon
+                  name={n.icon}
+                  size={21}
+                  className={isActive
+                    ? "text-brand-600 dark:text-brand-400"
+                    : "text-slate-400 dark:text-slate-500"}
+                />
               </div>
-              <span
-                className={`text-[9px] font-extrabold uppercase tracking-wide ${
-                  isActive ? "text-green-600" : "text-gray-400"
-                }`}
-              >
+
+              {/* Label */}
+              <span className={`text-[9px] font-bold uppercase tracking-wide leading-none transition-colors duration-150 ${
+                isActive
+                  ? "text-brand-600 dark:text-brand-400"
+                  : "text-slate-400 dark:text-slate-500"
+              }`}>
                 {n.label}
               </span>
-              {isActive && (
-                <div className="w-1 h-1 rounded-full bg-green-600 mt-0.5" />
-              )}
             </button>
           );
         })}
       </div>
+
+      {/* Safe area spacer for iOS home indicator */}
+      <div className="h-safe-bottom bg-white dark:bg-slate-900" style={{ height: "env(safe-area-inset-bottom, 0px)" }} />
     </nav>
   );
 }
