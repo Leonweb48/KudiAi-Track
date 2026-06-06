@@ -102,7 +102,6 @@ export default function Home({ store, setTab, onQuickAction, onVoiceOpen }) {
   const totalCredit = credits.reduce((s, c) => s + c.outstanding, 0);
   const overdueCount= credits.filter((c) => c.status === "overdue").length;
   const totalAso    = asoClients.reduce((s, c) => s + c.current_balance, 0);
-  const initials    = profile.owner_name?.[0]?.toUpperCase() || "A";
 
   return (
     <div className="px-4 pt-5 pb-32 screen-enter space-y-5">
