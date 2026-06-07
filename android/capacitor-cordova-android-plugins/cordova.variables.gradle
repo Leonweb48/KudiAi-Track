@@ -1,0 +1,4 @@
+// Cordova variables for Android plugins
+ext {
+    cordovaVersion = '14.0.1'
+}
