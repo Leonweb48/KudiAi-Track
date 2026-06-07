@@ -1,5 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase, supabaseConfigured } from "../utils/supabase";
+import { Capacitor } from "@capacitor/core";
+import { App } from "@capacitor/app";
+import { Browser } from "@capacitor/browser";
 
 const CACHE_KEY = "kuditrack_plan";
 
@@ -78,7 +81,30 @@ export function useAuth() {
     supabase.auth.getSession().then(({ data }) => resolve(data.session));
     const { data: { subscription: listener } } =
       supabase.auth.onAuthStateChange((_e, s) => resolve(s));
-    return () => listener.unsubscribe();
+
+    let appUrlListener;
+    if (Capacitor.isNativePlatform()) {
+      App.addListener("appUrlOpen", async ({ url }) => {
+        if (url.startsWith("com.amayatechnologies.kuditrack://login-callback")) {
+          await Browser.close();
+          const hashStr = url.split("#")[1] || url.split("?")[1] || "";
+          const params = new URLSearchParams(hashStr);
+          const access_token = params.get("access_token");
+          const refresh_token = params.get("refresh_token");
+          if (access_token && refresh_token) {
+            await supabase.auth.setSession({ access_token, refresh_token });
+          }
+        } else if (url.startsWith("com.amayatechnologies.kuditrack://payment-callback")) {
+          await Browser.close();
+          window.dispatchEvent(new CustomEvent("paymentCallback", { detail: { url } }));
+        }
+      }).then((l) => { appUrlListener = l; });
+    }
+
+    return () => {
+      listener.unsubscribe();
+      appUrlListener?.remove();
+    };
   }, [resolve]);
 
   // Called right after a successful subscription save — skips any DB re-query

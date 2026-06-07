@@ -1,8 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { usePaystackPayment } from "react-paystack";
 import { supabase } from "../utils/supabase";
 import AppLogo from "../components/AppLogo";
 import { PLAN_ORDER } from "../utils/plans";
+import { Capacitor } from "@capacitor/core";
+import { Browser } from "@capacitor/browser";
+
+const isNative = Capacitor.isNativePlatform();
 
 const PLANS = [
   {
@@ -82,6 +86,8 @@ function XIcon() {
 // so it renders for any plan — callers decide whether to render it.
 function PaidButton({ plan, session, onSuccess, disabled }) {
   const [ref] = useState(`kt-${plan.id}-${Date.now()}`);
+  const [busy, setBusy] = useState(false);
+  const [nativeErr, setNativeErr] = useState("");
 
   const config = {
     reference: ref,
@@ -99,22 +105,61 @@ function PaidButton({ plan, session, onSuccess, disabled }) {
     ? "w-full py-2.5 rounded-xl font-semibold text-sm bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-50 transition-colors"
     : "w-full py-2.5 rounded-xl font-semibold text-sm bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 transition-colors";
 
+  const handleClick = async () => {
+    if (isNative) {
+      setBusy(true);
+      setNativeErr("");
+      try {
+        const { data, error: fnErr } = await supabase.functions.invoke(
+          "initialize-payment",
+          { body: { email: session.user.email, amount: plan.price * 100, reference: ref, planId: plan.id } }
+        );
+        if (fnErr || !data?.authorization_url) {
+          throw new Error(fnErr?.message || data?.error || "Could not start payment");
+        }
+        // Store so we can complete after the browser returns
+        localStorage.setItem(
+          "pendingPayment",
+          JSON.stringify({ planId: plan.id, reference: data.reference || ref })
+        );
+        await Browser.open({ url: data.authorization_url });
+      } catch (err) {
+        setNativeErr(err.message);
+      } finally {
+        setBusy(false);
+      }
+    } else {
+      initPayment({ onSuccess, onClose: () => {} });
+    }
+  };
+
   return (
-    <button
-      disabled={disabled}
-      onClick={() => initPayment({ onSuccess, onClose: () => {} })}
-      className={cls}
-    >
-      Subscribe — ₦{plan.price.toLocaleString()}/mo
-    </button>
+    <div className="space-y-1.5">
+      <button
+        disabled={disabled || busy}
+        onClick={handleClick}
+        className={cls}
+      >
+        {busy ? "Opening Paystack…" : `Subscribe — ₦${plan.price.toLocaleString()}/mo`}
+      </button>
+      {nativeErr && (
+        <p className="text-[10px] text-red-500 text-center">{nativeErr}</p>
+      )}
+    </div>
   );
 }
 
 export default function SubscriptionPlan({ session, onComplete, onClose, isUpgrade = false, currentPlan = "starter" }) {
   const [saving, setSaving] = useState(false);
   const [error,  setError]  = useState("");
+  // Shown when user returns from browser without the deep link firing
+  const [pendingPayment, setPendingPayment] = useState(
+    () => JSON.parse(localStorage.getItem("pendingPayment") || "null")
+  );
 
-  const saveSub = async (planId, reference) => {
+  const saveSubRef = useRef(null);
+
+  const saveSub = useCallback(async (planId, reference) => {
     setSaving(true);
     setError("");
     try {
@@ -148,12 +193,29 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
       }
 
       if (err) throw err;
-      onComplete(planId);   // pass the saved plan so caller can skip a DB re-query
+      setPendingPayment(null);
+      localStorage.removeItem("pendingPayment");
+      onComplete(planId);
     } catch (e) {
       setError(e.message || "Could not save plan. Please try again.");
       setSaving(false);
     }
-  };
+  }, [session, onComplete]);
+
+  saveSubRef.current = saveSub;
+
+  // Listen for deep-link callback from Paystack (dispatched by useAuth)
+  useEffect(() => {
+    const handler = () => {
+      const pending = JSON.parse(localStorage.getItem("pendingPayment") || "null");
+      if (!pending) return;
+      setPendingPayment(null);
+      localStorage.removeItem("pendingPayment");
+      saveSubRef.current(pending.planId, pending.reference);
+    };
+    window.addEventListener("paymentCallback", handler);
+    return () => window.removeEventListener("paymentCallback", handler);
+  }, []);
 
   const handleFree = () => saveSub("starter", null);
   const handlePaid = (planId) => (ref) => saveSub(planId, ref.reference);
@@ -182,6 +244,24 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
             {isUpgrade ? "Unlock more features for your business." : "Start free. Upgrade anytime. Cancel anytime."}
           </p>
         </div>
+
+        {pendingPayment && (
+          <div className="mb-4 max-w-sm mx-auto bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-center">
+            <p className="text-sm font-semibold text-green-800 mb-2">Payment completed?</p>
+            <button
+              onClick={() => {
+                const p = pendingPayment;
+                setPendingPayment(null);
+                localStorage.removeItem("pendingPayment");
+                saveSub(p.planId, p.reference);
+              }}
+              disabled={saving}
+              className="text-sm font-bold text-white bg-green-600 hover:bg-green-700 px-5 py-2 rounded-lg disabled:opacity-50"
+            >
+              Activate My Plan
+            </button>
+          </div>
+        )}
 
         {error && (
           <div className="mb-4 max-w-sm mx-auto text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-center">

@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { Capacitor } from "@capacitor/core";
 
 const LANG_CODES = { en: "en-NG", ha: "ha", ig: "ig", yo: "yo" };
 
@@ -121,7 +122,7 @@ export function useVoiceTx() {
   const recognitionRef = useRef(null);
   const finalRef       = useRef("");
 
-  const startRecording = () => {
+  const startRecording = async () => {
     const SpeechRecognition =
       window.SpeechRecognition || window.webkitSpeechRecognition;
 
@@ -129,6 +130,23 @@ export function useVoiceTx() {
       setError("Voice input requires Chrome browser. Please open the app in Chrome on Android or desktop.");
       setStatus("error");
       return;
+    }
+
+    // On Android WebView, SpeechRecognition fires "not-allowed" unless the
+    // WebView media permission layer has been explicitly granted first.
+    // Calling getUserMedia triggers onPermissionRequest (which MainActivity
+    // auto-grants), so the subsequent SpeechRecognition call succeeds.
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach((t) => t.stop());
+      } catch {
+        setError(
+          "Microphone access denied. Go to Settings → Apps → KudiAI Track → Permissions → Microphone → Allow, then try again."
+        );
+        setStatus("error");
+        return;
+      }
     }
 
     setStatus("recording");
