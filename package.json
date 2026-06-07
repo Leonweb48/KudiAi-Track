@@ -5,6 +5,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.107.0",
     "autoprefixer": "^10.4.0",
+    "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
     "nodemailer": "^8.0.10",
     "postcss": "^8.4.0",
