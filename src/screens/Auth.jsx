@@ -156,8 +156,24 @@ export default function Auth() {
         const access_token = params.get("access_token");
         const refresh_token = params.get("refresh_token");
         if (access_token && refresh_token) {
-          const { error: sessErr } = await supabase.auth.setSession({ access_token, refresh_token });
-          if (sessErr) setError(sessErr.message);
+          const { data: sessData, error: sessErr } = await supabase.auth.setSession({ access_token, refresh_token });
+          if (sessErr) {
+            setError(sessErr.message);
+          } else if (sessData?.user) {
+            const user = sessData.user;
+            const createdAt = new Date(user.created_at).getTime();
+            const isNewUser = Date.now() - createdAt < 120000;
+            if (isNewUser) {
+              fetch("/api/send-welcome-email", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  email: user.email,
+                  full_name: user.user_metadata?.full_name || user.user_metadata?.name || "",
+                }),
+              }).catch(() => {});
+            }
+          }
         } else {
           setError("Sign-in failed. Please try again.");
         }
