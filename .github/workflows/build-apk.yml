@@ -26,6 +26,20 @@ jobs:
       - name: Build React app
         run: npm run build
 
+      - name: Create Capacitor generated files
+        run: |
+          mkdir -p android/capacitor-cordova-android-plugins
+          printf 'ext { }\n' > android/capacitor-cordova-android-plugins/cordova.variables.gradle
+
+          mkdir -p android/app/src/main/assets
+          printf '{"appId":"com.amayatechnologies.kuditrack","appName":"KudiAI Track","webDir":"build","server":{"androidScheme":"https"},"android":{"allowMixedContent":true}}\n' \
+            > android/app/src/main/assets/capacitor.config.json
+          printf '[]\n' > android/app/src/main/assets/capacitor.plugins.json
+
+          mkdir -p android/app/src/main/res/xml
+          printf '<?xml version="1.0" encoding="utf-8"?>\n<widget id="com.amayatechnologies.kuditrack" version="1.0.0" xmlns="http://www.w3.org/ns/widgets">\n</widget>\n' \
+            > android/app/src/main/res/xml/config.xml
+
       - name: Copy web assets to Android
         run: |
           mkdir -p android/app/src/main/assets/public
