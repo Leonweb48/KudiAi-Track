@@ -4,18 +4,12 @@ const config: CapacitorConfig = {
   appId: 'com.amayatechnologies.kuditrack',
   appName: 'KudiTrack',
   webDir: 'build',
-  server: {
-    androidScheme: 'https',
-  },
   android: {
     allowMixedContent: true,
     captureInput: true,
     webContentsDebuggingEnabled: true,
   },
   plugins: {
-    CapacitorHttp: {
-      enabled: true,
-    },
     SplashScreen: {
       launchShowDuration: 1500,
       backgroundColor: '#059669',
