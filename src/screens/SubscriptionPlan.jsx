@@ -110,14 +110,33 @@ function PaidButton({ plan, session, onSuccess, disabled }) {
       setBusy(true);
       setNativeErr("");
       try {
-        const { data, error: fnErr } = await supabase.functions.invoke(
-          "initialize-payment",
-          { body: { email: session.user.email, amount: plan.price * 100, reference: ref, planId: plan.id } }
+        const supabaseUrl  = process.env.REACT_APP_SUPABASE_URL  || "";
+        const supabaseAnon = process.env.REACT_APP_SUPABASE_ANON_KEY || "";
+
+        const res = await fetch(
+          `${supabaseUrl}/functions/v1/initialize-payment`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${supabaseAnon}`,
+              "apikey": supabaseAnon,
+            },
+            body: JSON.stringify({
+              email: session.user.email,
+              amount: plan.price * 100,
+              reference: ref,
+              planId: plan.id,
+            }),
+          }
         );
-        if (fnErr || !data?.authorization_url) {
-          throw new Error(fnErr?.message || data?.error || "Could not start payment");
+
+        const data = await res.json();
+
+        if (!res.ok || !data.authorization_url) {
+          throw new Error(data.error || `Server error ${res.status}`);
         }
-        // Store so we can complete after the browser returns
+
         localStorage.setItem(
           "pendingPayment",
           JSON.stringify({ planId: plan.id, reference: data.reference || ref })
