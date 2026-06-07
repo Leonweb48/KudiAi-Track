@@ -132,60 +132,53 @@ export default function Auth() {
     clearMessages();
     setLoading(true);
     try {
-      const redirectTo = "com.amayatechnologies.kuditrack://login-callback";
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          redirectTo,
-          skipBrowserRedirect: true,
-          queryParams: { prompt: "select_account" },
-        },
-      });
-      if (error) throw error;
+      if (isNative()) {
+        // Native Android: open in Capacitor Browser, listen for deep link callback
+        const redirectTo = "com.amayatechnologies.kuditrack://login-callback";
+        const { data, error } = await supabase.auth.signInWithOAuth({
+          provider: "google",
+          options: { redirectTo, skipBrowserRedirect: true, queryParams: { prompt: "select_account" } },
+        });
+        if (error) throw error;
 
-      let handled = false;
+        let handled = false;
 
-      const urlListener = await App.addListener("appUrlOpen", async ({ url }) => {
-        handled = true;
-        urlListener.remove();
-        finishListener.remove();
-        await Browser.close();
-        // Implicit flow returns tokens in the hash fragment
-        const hash = url.includes("#") ? url.split("#")[1] : url.split("?")[1] || "";
-        const params = new URLSearchParams(hash);
-        const access_token = params.get("access_token");
-        const refresh_token = params.get("refresh_token");
-        if (access_token && refresh_token) {
-          const { data: sessData, error: sessErr } = await supabase.auth.setSession({ access_token, refresh_token });
-          if (sessErr) {
-            setError(sessErr.message);
-          } else if (sessData?.user) {
-            const user = sessData.user;
-            const createdAt = new Date(user.created_at).getTime();
-            const isNewUser = Date.now() - createdAt < 120000;
-            if (isNewUser) {
-              fetch("/api/send-welcome-email", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  email: user.email,
-                  full_name: user.user_metadata?.full_name || user.user_metadata?.name || "",
-                }),
-              }).catch(() => {});
-            }
+        const urlListener = await App.addListener("appUrlOpen", async ({ url }) => {
+          handled = true;
+          urlListener.remove();
+          finishListener.remove();
+          await Browser.close();
+          const hash = url.includes("#") ? url.split("#")[1] : url.split("?")[1] || "";
+          const params = new URLSearchParams(hash);
+          const access_token = params.get("access_token");
+          const refresh_token = params.get("refresh_token");
+          if (access_token && refresh_token) {
+            const { error: sessErr } = await supabase.auth.setSession({ access_token, refresh_token });
+            if (sessErr) setError(sessErr.message);
+          } else {
+            setError("Sign-in failed. Please try again.");
           }
-        } else {
-          setError("Sign-in failed. Please try again.");
-        }
-        setLoading(false);
-      });
+          setLoading(false);
+        });
 
-      const finishListener = await Browser.addListener("browserFinished", () => {
-        finishListener.remove();
-        if (!handled) setLoading(false);
-      });
+        const finishListener = await Browser.addListener("browserFinished", () => {
+          finishListener.remove();
+          if (!handled) setLoading(false);
+        });
 
-      await Browser.open({ url: data.url });
+        await Browser.open({ url: data.url });
+      } else {
+        // Web: standard OAuth redirect — Supabase handles the rest via detectSessionInUrl
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider: "google",
+          options: {
+            redirectTo: window.location.origin,
+            queryParams: { prompt: "select_account" },
+          },
+        });
+        if (error) throw error;
+        // Browser will redirect to Google then back — loading stays until page reloads
+      }
     } catch (err) {
       setError(err.message);
       setLoading(false);
