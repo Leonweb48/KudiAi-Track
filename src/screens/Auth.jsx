@@ -152,7 +152,8 @@ export default function Auth() {
         setInfo("Password reset link sent — check your email.");
       }
     } catch (err) {
-      setError(err.message);
+      const detail = isNative() ? " [native]" : " [web]";
+      setError((err.message || String(err)) + detail);
       resetCaptcha();
     } finally {
       setLoading(false);
@@ -211,7 +212,8 @@ export default function Auth() {
         // Browser will redirect to Google then back — loading stays until page reloads
       }
     } catch (err) {
-      setError(err.message);
+      const detail = isNative() ? " [native]" : " [web]";
+      setError((err.message || String(err)) + detail);
       setLoading(false);
     }
   };
