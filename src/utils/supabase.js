@@ -1,10 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
-import { Capacitor } from "@capacitor/core";
 
 const supabaseUrl  = process.env.REACT_APP_SUPABASE_URL;
 const supabaseAnon = process.env.REACT_APP_SUPABASE_ANON_KEY;
 
-const isNative = Capacitor.isNativePlatform();
+// window.Capacitor is injected by the native bridge at runtime
+const isNative = typeof window !== "undefined" && window.Capacitor?.isNativePlatform() === true;
 
 export const supabase =
   supabaseUrl && supabaseAnon

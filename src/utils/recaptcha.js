@@ -1,8 +1,7 @@
-import { Capacitor } from "@capacitor/core";
-
 export const RECAPTCHA_V2_KEY = process.env.REACT_APP_RECAPTCHA_V2_SITE_KEY || "";
 
-export const isNative = () => Capacitor.isNativePlatform();
+export const isNative = () =>
+  typeof window !== "undefined" && window.Capacitor?.isNativePlatform() === true;
 
 export async function verifyRecaptchaV2Token(token) {
   if (!token) return false;

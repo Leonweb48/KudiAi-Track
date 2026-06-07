@@ -15,11 +15,14 @@ export default async function handler(req, res) {
     });
     const data = await response.json();
 
-    if (data.success && data.score >= 0.5) {
-      return res.json({ success: true, score: data.score });
+    // v2 has no score; v3 has a score (0.0–1.0). Only check score for v3.
+    const scoreOk = data.score === undefined || data.score >= 0.5;
+
+    if (data.success && scoreOk) {
+      return res.json({ success: true });
     }
 
-    return res.status(400).json({ success: false, score: data.score, error: "Bot activity detected" });
+    return res.status(400).json({ success: false, error: "Bot activity detected" });
   } catch (err) {
     return res.status(500).json({ success: false, error: "Verification failed" });
   }
