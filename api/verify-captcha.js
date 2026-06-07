@@ -4,7 +4,7 @@ export default async function handler(req, res) {
   const { token } = req.body;
   if (!token) return res.status(400).json({ success: false, error: "No token provided" });
 
-  const secret = process.env.RECAPTCHA_SECRET_KEY;
+  const secret = process.env.RECAPTCHA_V2_SECRET_KEY || process.env.RECAPTCHA_SECRET_KEY;
   if (!secret) return res.status(500).json({ success: false, error: "Server misconfigured" });
 
   try {

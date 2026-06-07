@@ -1,23 +1,12 @@
 import { Capacitor } from "@capacitor/core";
 
-const SITE_KEY = process.env.REACT_APP_RECAPTCHA_SITE_KEY;
+export const RECAPTCHA_V2_KEY = process.env.REACT_APP_RECAPTCHA_V2_SITE_KEY || "";
 
-export async function verifyRecaptcha(action = "submit") {
-  // Skip on native mobile — reCAPTCHA is web-only
-  if (Capacitor.isNativePlatform() || !SITE_KEY) return true;
+export const isNative = () => Capacitor.isNativePlatform();
 
+export async function verifyRecaptchaV2Token(token) {
+  if (!token) return false;
   try {
-    const token = await new Promise((resolve, reject) => {
-      window.grecaptcha.ready(async () => {
-        try {
-          const t = await window.grecaptcha.execute(SITE_KEY, { action });
-          resolve(t);
-        } catch (e) {
-          reject(e);
-        }
-      });
-    });
-
     const res = await fetch("/api/verify-captcha", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -26,6 +15,6 @@ export async function verifyRecaptcha(action = "submit") {
     const data = await res.json();
     return data.success;
   } catch {
-    return true; // fail open — don't block users if service is down
+    return true; // fail open if service is down
   }
 }

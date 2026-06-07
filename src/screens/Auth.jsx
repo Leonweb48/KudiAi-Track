@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { supabase, supabaseConfigured } from "../utils/supabase";
 import AppLogo from "../components/AppLogo";
 import { Browser } from "@capacitor/browser";
 import { App } from "@capacitor/app";
-import { verifyRecaptcha } from "../utils/recaptcha";
+import ReCAPTCHA from "react-google-recaptcha";
+import { RECAPTCHA_V2_KEY, isNative, verifyRecaptchaV2Token } from "../utils/recaptcha";
 
 function SetupNotice() {
   return (
@@ -33,14 +34,21 @@ export default function Auth() {
   const [email, setEmail]     = useState("");
   const [password, setPass]   = useState("");
   const [name, setName]       = useState("");
-  const [otp, setOtp]         = useState(Array(OTP_LENGTH).fill(""));
-  const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState("");
-  const [info, setInfo]       = useState("");
+  const [otp, setOtp]               = useState(Array(OTP_LENGTH).fill(""));
+  const [loading, setLoading]       = useState(false);
+  const [error, setError]           = useState("");
+  const [info, setInfo]             = useState("");
+  const [captchaToken, setCaptchaToken] = useState("");
+  const captchaRef                  = useRef(null);
 
   if (!supabaseConfigured) return <SetupNotice />;
 
   const clearMessages = () => { setError(""); setInfo(""); };
+
+  const resetCaptcha = () => {
+    setCaptchaToken("");
+    captchaRef.current?.reset();
+  };
 
   const handleOtpChange = (val, idx) => {
     if (!/^\d*$/.test(val)) return;
@@ -77,13 +85,20 @@ export default function Auth() {
   const handleEmailAuth = async (e) => {
     e.preventDefault();
     clearMessages();
+    if (!isNative() && RECAPTCHA_V2_KEY && !captchaToken) {
+      setError("Please complete the captcha.");
+      return;
+    }
     setLoading(true);
     try {
-      const isHuman = await verifyRecaptcha(mode === "login" ? "login" : "register");
-      if (!isHuman) {
-        setError("Bot activity detected. Please try again.");
-        setLoading(false);
-        return;
+      if (!isNative() && captchaToken) {
+        const isHuman = await verifyRecaptchaV2Token(captchaToken);
+        if (!isHuman) {
+          setError("Bot activity detected. Please try again.");
+          resetCaptcha();
+          setLoading(false);
+          return;
+        }
       }
       if (mode === "login") {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -107,6 +122,7 @@ export default function Auth() {
       }
     } catch (err) {
       setError(err.message);
+      resetCaptcha();
     } finally {
       setLoading(false);
     }
@@ -287,6 +303,17 @@ export default function Auth() {
               >
                 Forgot password?
               </button>
+            </div>
+          )}
+
+          {!isNative() && RECAPTCHA_V2_KEY && (
+            <div className="flex justify-center my-3">
+              <ReCAPTCHA
+                ref={captchaRef}
+                sitekey={RECAPTCHA_V2_KEY}
+                onChange={(token) => setCaptchaToken(token || "")}
+                onExpired={resetCaptcha}
+              />
             </div>
           )}
 
