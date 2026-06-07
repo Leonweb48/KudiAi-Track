@@ -5,7 +5,27 @@ import Field  from "../components/shared/Field";
 import Badge  from "../components/shared/Badge";
 import { CreditReceipt } from "../components/shared/Receipt";
 import { ClientProfile }  from "../components/shared/ClientProfile";
+import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import { fmt } from "../utils/helpers";
+
+const BLANK = {
+  // Credit details
+  customer_name: "", total_amount: "", due_date: "", notes: "",
+  // Contact & identity
+  phone: "", email: "", nin: "",
+  // Address
+  address: "", state: "", lga: "", ward: "",
+  // Next of kin
+  next_of_kin: "", next_of_kin_phone: "", next_of_kin_email: "", next_of_kin_address: "",
+};
+
+function SectionLabel({ children }) {
+  return (
+    <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-5 mb-2 first:mt-1">
+      {children}
+    </p>
+  );
+}
 
 export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened, onUpgrade }) {
   const [showAdd,  setShowAdd]  = useState(false);
@@ -13,20 +33,28 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
   const [repayAmt, setRepayAmt] = useState("");
   const [receipt,  setReceipt]  = useState(null);
   const [profile_, setProfile_] = useState(null);
+
   const { credits, addCredit, repayCredit, updateCredit, profile } = store;
 
-  const [f, setF] = useState({
-    customer_name: "", phone: "", address: "",
-    total_amount: "", due_date: "", notes: "",
-  });
+  const [f, setF] = useState(BLANK);
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+
+  const lgas  = getLGAs(f.state);
+  const wards = getWards(f.state, f.lga);
 
   useEffect(() => {
     if (autoOpen) { setShowAdd(true); onAutoOpened?.(); }
   }, [autoOpen, onAutoOpened]);
 
-  const totalOut = credits.reduce((s, c) => s + c.outstanding, 0);
-  const overdue  = credits.filter(c => c.status === "overdue").length;
+  const totalOut    = credits.reduce((s, c) => s + c.outstanding, 0);
+  const overdue     = credits.filter(c => c.status === "overdue").length;
+
+  const handleAdd = () => {
+    if (!f.customer_name || !f.total_amount) return;
+    addCredit({ ...f, total_amount: parseFloat(f.total_amount) });
+    setShowAdd(false);
+    setF(BLANK);
+  };
 
   return (
     <div className="px-4 pt-5 pb-28 screen-enter">
@@ -92,7 +120,6 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                   <Badge status={c.status} />
                 </div>
 
-                {/* Amounts */}
                 <div className="flex gap-2 mb-3">
                   {[
                     { label: "Owed",  value: c.outstanding,  color: "text-red-500 dark:text-red-400" },
@@ -106,7 +133,6 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                   ))}
                 </div>
 
-                {/* Progress */}
                 <div className="mb-2">
                   <div className="flex justify-between text-[10px] font-medium text-slate-400 dark:text-slate-500 mb-1">
                     <span>Paid {Math.round(pct)}%</span>
@@ -121,20 +147,19 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                 <div className="flex gap-2 pt-2.5 border-t border-slate-50 dark:border-slate-700/60">
                   {c.outstanding > 0 && (
                     <button onClick={() => setRepaying(c)}
-                      className="flex-1 py-2 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 rounded-xl font-bold text-xs border border-green-200 dark:border-green-800 hover:bg-green-100 transition active:scale-[0.99]">
+                      className="flex-1 py-2 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 rounded-xl font-bold text-xs border border-green-200 dark:border-green-800 hover:bg-green-100 dark:hover:bg-green-900/30 transition active:scale-[0.99]">
                       Record Payment
                     </button>
                   )}
                   <button onClick={() => setProfile_(c)}
-                    className="py-2 px-3 bg-slate-50 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-xs border border-slate-200 dark:border-slate-600 hover:bg-slate-100 transition flex items-center gap-1.5 active:scale-[0.99]">
+                    className="py-2 px-3 bg-slate-50 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-xs border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 transition flex items-center gap-1.5 active:scale-[0.99]">
                     <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                       <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 11a4 4 0 100-8 4 4 0 000 8" />
                     </svg>
                     Profile
                   </button>
-                  <button
-                    onClick={() => setReceipt(c)}
-                    className="py-2 px-3 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 rounded-xl font-bold text-xs border border-amber-200 dark:border-amber-800 hover:bg-amber-100 transition flex items-center gap-1.5 active:scale-[0.99]">
+                  <button onClick={() => setReceipt(c)}
+                    className="py-2 px-3 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 rounded-xl font-bold text-xs border border-amber-200 dark:border-amber-800 hover:bg-amber-100 dark:hover:bg-amber-900/30 transition flex items-center gap-1.5 active:scale-[0.99]">
                     <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                       <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M16 13H8" />
                     </svg>
@@ -147,29 +172,73 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
         </div>
       )}
 
-      {/* Add credit modal */}
+      {/* ── Add Credit Modal (full profile at creation) ─────────────── */}
       {showAdd && (
-        <Modal title="Add Credit Record" onClose={() => setShowAdd(false)}>
-          <Field label="Customer Name" value={f.customer_name}
-            onChange={e => set("customer_name", e.target.value)} placeholder="e.g. Chidi Okeke" />
-          <Field label="Phone" type="tel" value={f.phone}
-            onChange={e => set("phone", e.target.value)} placeholder="0801 234 5678" />
-          <Field label="Address (optional)" value={f.address}
-            onChange={e => set("address", e.target.value)} placeholder="Optional" />
-          <Field label="Amount Owed (₦)" type="number" inputMode="decimal" value={f.total_amount}
-            onChange={e => set("total_amount", e.target.value)} placeholder="0.00" />
-          <Field label="Due Date" type="date" value={f.due_date}
-            onChange={e => set("due_date", e.target.value)} />
-          <Field label="Notes (optional)" as="textarea" value={f.notes}
-            onChange={e => set("notes", e.target.value)} placeholder="Optional notes…" />
-          <button
-            onClick={() => {
-              if (!f.customer_name || !f.total_amount) return;
-              addCredit({ ...f, total_amount: parseFloat(f.total_amount) });
-              setShowAdd(false);
-              setF({ customer_name: "", phone: "", address: "", total_amount: "", due_date: "", notes: "" });
-            }}
-            className="w-full py-3.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] shadow-sm">
+        <Modal title="New Credit Record" onClose={() => { setShowAdd(false); setF(BLANK); }}>
+
+          <SectionLabel>Credit Details</SectionLabel>
+          <Field label="Customer Name *" value={f.customer_name}
+            onChange={e => set("customer_name", e.target.value)} placeholder="Full name of debtor" />
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Amount Owed (₦) *" type="number" inputMode="decimal" value={f.total_amount}
+              onChange={e => set("total_amount", e.target.value)} placeholder="0.00" />
+            <Field label="Due Date" type="date" value={f.due_date}
+              onChange={e => set("due_date", e.target.value)} />
+          </div>
+
+          <SectionLabel>Contact & Identity</SectionLabel>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Phone" type="tel" value={f.phone}
+              onChange={e => set("phone", e.target.value)} placeholder="08012345678" />
+            <Field label="Email" type="email" value={f.email}
+              onChange={e => set("email", e.target.value)} placeholder="email@example.com" />
+          </div>
+          <Field label="NIN" inputMode="numeric" value={f.nin}
+            onChange={e => set("nin", e.target.value.replace(/\D/g, "").slice(0, 11))}
+            placeholder="11-digit National ID Number" />
+
+          <SectionLabel>Address</SectionLabel>
+          <Field label="Street Address" value={f.address}
+            onChange={e => set("address", e.target.value)} placeholder="12 Market Road, Onitsha" />
+          <Field label="State" as="select" value={f.state}
+            onChange={e => { set("state", e.target.value); set("lga", ""); set("ward", ""); }}>
+            <option value="">Select State…</option>
+            {STATES.map(s => <option key={s} value={s}>{s}</option>)}
+          </Field>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="LGA" as="select" value={f.lga}
+              disabled={!f.state}
+              onChange={e => { set("lga", e.target.value); set("ward", ""); }}>
+              <option value="">{f.state ? "Select LGA…" : "State first"}</option>
+              {lgas.map(l => <option key={l} value={l}>{l}</option>)}
+            </Field>
+            <Field label="Ward" as="select" value={f.ward}
+              disabled={!f.lga}
+              onChange={e => set("ward", e.target.value)}>
+              <option value="">{f.lga ? "Select Ward…" : "LGA first"}</option>
+              {wards.map(w => <option key={w} value={w}>{w}</option>)}
+            </Field>
+          </div>
+
+          <SectionLabel>Next of Kin</SectionLabel>
+          <Field label="Full Name" value={f.next_of_kin}
+            onChange={e => set("next_of_kin", e.target.value)} placeholder="Next of kin name" />
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Phone" type="tel" value={f.next_of_kin_phone}
+              onChange={e => set("next_of_kin_phone", e.target.value)} placeholder="08012345678" />
+            <Field label="Email" type="email" value={f.next_of_kin_email}
+              onChange={e => set("next_of_kin_email", e.target.value)} placeholder="email@example.com" />
+          </div>
+          <Field label="Address" value={f.next_of_kin_address}
+            onChange={e => set("next_of_kin_address", e.target.value)} placeholder="Next of kin address" />
+
+          <SectionLabel>Notes</SectionLabel>
+          <Field as="textarea" value={f.notes}
+            onChange={e => set("notes", e.target.value)} placeholder="Optional notes about this credit…" />
+
+          <button onClick={handleAdd}
+            disabled={!f.customer_name || !f.total_amount}
+            className="w-full py-3.5 mt-1 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] shadow-sm disabled:opacity-50">
             Save Credit Record
           </button>
         </Modal>
@@ -189,8 +258,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
             onClick={() => {
               if (!repayAmt) return;
               repayCredit(repaying.id, parseFloat(repayAmt));
-              setRepaying(null);
-              setRepayAmt("");
+              setRepaying(null); setRepayAmt("");
             }}
             className="w-full py-3.5 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] shadow-sm">
             Confirm Payment
@@ -199,20 +267,11 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
       )}
 
       {receipt && (
-        <CreditReceipt
-          credit={receipt}
-          profile={profile}
-          onClose={() => setReceipt(null)}
-        />
+        <CreditReceipt credit={receipt} profile={profile} onClose={() => setReceipt(null)} />
       )}
 
       {profile_ && (
-        <ClientProfile
-          record={profile_}
-          type="credit"
-          onSave={updateCredit}
-          onClose={() => setProfile_(null)}
-        />
+        <ClientProfile record={profile_} type="credit" onSave={updateCredit} onClose={() => setProfile_(null)} />
       )}
     </div>
   );

@@ -5,9 +5,29 @@ import Field  from "../components/shared/Field";
 import Badge  from "../components/shared/Badge";
 import { AsoReceipt }    from "../components/shared/Receipt";
 import { ClientProfile } from "../components/shared/ClientProfile";
-import { fmt, today } from "../utils/helpers";
-import { STATES, getLGAs } from "../utils/nigeriaData";
+import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import { canDo } from "../utils/plans";
+import { fmt, today } from "../utils/helpers";
+
+const BLANK = {
+  // Savings details
+  full_name: "", contribution_frequency: "daily", contribution_amount: "",
+  registration_charge: "", withdrawal_fee_percent: 5, notes: "",
+  // Contact & identity
+  phone: "", email: "", nin: "",
+  // Address
+  address: "", state: "", lga: "", ward: "",
+  // Next of kin
+  next_of_kin: "", next_of_kin_phone: "", next_of_kin_email: "", next_of_kin_address: "",
+};
+
+function SectionLabel({ children }) {
+  return (
+    <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-5 mb-2 first:mt-1">
+      {children}
+    </p>
+  );
+}
 
 export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, onUpgrade }) {
   const [showAdd,    setShowAdd]    = useState(false);
@@ -16,14 +36,14 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [amt,        setAmt]        = useState("");
   const [receipt,    setReceipt]    = useState(null);
   const [clientProf, setClientProf] = useState(null);
+
   const { asoClients, addAsoClient, asoContribute, asoWithdraw, updateAsoClient, profile } = store;
 
-  const [f, setF] = useState({
-    full_name: "", phone: "", address: "", state: "Lagos", lga: "",
-    contribution_frequency: "daily", contribution_amount: "",
-    registration_charge: "", withdrawal_fee_percent: 5, notes: "",
-  });
+  const [f, setF] = useState(BLANK);
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+
+  const lgas  = getLGAs(f.state);
+  const wards = getWards(f.state, f.lga);
 
   useEffect(() => {
     if (autoOpen && canDo(plan, "aso")) {
@@ -34,9 +54,22 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     }
   }, [autoOpen, onAutoOpened, plan]);
 
-  const lgas     = getLGAs(f.state);
-  const totalBal = asoClients.reduce((s, c) => s + c.current_balance, 0);
+  const totalBal   = asoClients.reduce((s, c) => s + c.current_balance, 0);
   const totalSaved = asoClients.reduce((s, c) => s + c.total_saved, 0);
+
+  const handleAdd = () => {
+    if (!f.full_name) return;
+    addAsoClient({
+      ...f,
+      contribution_amount:  parseFloat(f.contribution_amount  || 0),
+      registration_charge:  parseFloat(f.registration_charge  || 0),
+      withdrawal_fee_percent: parseFloat(f.withdrawal_fee_percent || 5),
+      status: "active",
+      next_contribution_date: today(),
+    });
+    setShowAdd(false);
+    setF(BLANK);
+  };
 
   if (!canDo(plan, "aso")) {
     return (
@@ -148,8 +181,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                   </svg>
                   Profile
                 </button>
-                <button
-                  onClick={() => setReceipt(c)}
+                <button onClick={() => setReceipt(c)}
                   className="py-2 px-2.5 bg-violet-50 dark:bg-violet-900/20 text-violet-600 dark:text-violet-400 rounded-xl font-bold text-xs border border-violet-200 dark:border-violet-800 active:scale-95 transition flex items-center gap-1">
                   <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                     <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M16 13H8" />
@@ -162,59 +194,80 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         </div>
       )}
 
-      {/* Add client modal */}
+      {/* ── Add Aso Client Modal (full profile at creation) ─────────── */}
       {showAdd && (
-        <Modal title="Add Aso Client" onClose={() => setShowAdd(false)}>
-          <Field label="Full Name / Group Name" value={f.full_name}
+        <Modal title="New Aso Client" onClose={() => { setShowAdd(false); setF(BLANK); }}>
+
+          <SectionLabel>Savings Settings</SectionLabel>
+          <Field label="Full Name / Group Name *" value={f.full_name}
             onChange={e => set("full_name", e.target.value)} placeholder="e.g. Mama Ngozi Cooperative" />
-          <Field label="Phone" type="tel" value={f.phone}
-            onChange={e => set("phone", e.target.value)} placeholder="0801 234 5678" />
-          <Field label="Address (optional)" value={f.address}
-            onChange={e => set("address", e.target.value)} placeholder="Optional" />
-
-          <div className="grid grid-cols-2 gap-2">
-            <Field label="State" as="select" value={f.state}
-              onChange={e => { set("state", e.target.value); set("lga", ""); }}>
-              {STATES.map(s => <option key={s} value={s}>{s}</option>)}
-            </Field>
-            <Field label="LGA" as="select" value={f.lga}
-              onChange={e => set("lga", e.target.value)}>
-              <option value="">— Select LGA —</option>
-              {lgas.map(l => <option key={l} value={l}>{l}</option>)}
-            </Field>
-          </div>
-
           <Field label="Contribution Frequency" as="select" value={f.contribution_frequency}
             onChange={e => set("contribution_frequency", e.target.value)}>
-            {["daily","weekly","monthly"].map(o => <option key={o} value={o}>{o}</option>)}
+            {["daily", "weekly", "monthly"].map(o => <option key={o} value={o}>{o.charAt(0).toUpperCase() + o.slice(1)}</option>)}
           </Field>
-
           <div className="grid grid-cols-2 gap-2">
             <Field label="Contribution (₦)" type="number" value={f.contribution_amount}
               onChange={e => set("contribution_amount", e.target.value)} placeholder="0.00" />
             <Field label="Reg. Fee (₦)" type="number" value={f.registration_charge}
               onChange={e => set("registration_charge", e.target.value)} placeholder="0.00" />
           </div>
-
           <Field label="Withdrawal Fee %" type="number" value={f.withdrawal_fee_percent}
-            onChange={e => set("withdrawal_fee_percent", parseFloat(e.target.value))} />
-          <Field label="Notes (optional)" as="textarea" value={f.notes}
-            onChange={e => set("notes", e.target.value)} placeholder="Optional notes…" />
+            onChange={e => set("withdrawal_fee_percent", e.target.value)} placeholder="5" />
 
-          <button
-            onClick={() => {
-              if (!f.full_name) return;
-              addAsoClient({
-                ...f,
-                contribution_amount: parseFloat(f.contribution_amount || 0),
-                registration_charge: parseFloat(f.registration_charge || 0),
-                status: "active",
-                next_contribution_date: today(),
-              });
-              setShowAdd(false);
-            }}
-            className="w-full py-3.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] shadow-sm">
-            Add Client
+          <SectionLabel>Contact & Identity</SectionLabel>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Phone" type="tel" value={f.phone}
+              onChange={e => set("phone", e.target.value)} placeholder="08012345678" />
+            <Field label="Email" type="email" value={f.email}
+              onChange={e => set("email", e.target.value)} placeholder="email@example.com" />
+          </div>
+          <Field label="NIN" inputMode="numeric" value={f.nin}
+            onChange={e => set("nin", e.target.value.replace(/\D/g, "").slice(0, 11))}
+            placeholder="11-digit National ID Number" />
+
+          <SectionLabel>Address</SectionLabel>
+          <Field label="Street Address" value={f.address}
+            onChange={e => set("address", e.target.value)} placeholder="12 Market Road, Onitsha" />
+          <Field label="State" as="select" value={f.state}
+            onChange={e => { set("state", e.target.value); set("lga", ""); set("ward", ""); }}>
+            <option value="">Select State…</option>
+            {STATES.map(s => <option key={s} value={s}>{s}</option>)}
+          </Field>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="LGA" as="select" value={f.lga}
+              disabled={!f.state}
+              onChange={e => { set("lga", e.target.value); set("ward", ""); }}>
+              <option value="">{f.state ? "Select LGA…" : "State first"}</option>
+              {lgas.map(l => <option key={l} value={l}>{l}</option>)}
+            </Field>
+            <Field label="Ward" as="select" value={f.ward}
+              disabled={!f.lga}
+              onChange={e => set("ward", e.target.value)}>
+              <option value="">{f.lga ? "Select Ward…" : "LGA first"}</option>
+              {wards.map(w => <option key={w} value={w}>{w}</option>)}
+            </Field>
+          </div>
+
+          <SectionLabel>Next of Kin</SectionLabel>
+          <Field label="Full Name" value={f.next_of_kin}
+            onChange={e => set("next_of_kin", e.target.value)} placeholder="Next of kin name" />
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Phone" type="tel" value={f.next_of_kin_phone}
+              onChange={e => set("next_of_kin_phone", e.target.value)} placeholder="08012345678" />
+            <Field label="Email" type="email" value={f.next_of_kin_email}
+              onChange={e => set("next_of_kin_email", e.target.value)} placeholder="email@example.com" />
+          </div>
+          <Field label="Address" value={f.next_of_kin_address}
+            onChange={e => set("next_of_kin_address", e.target.value)} placeholder="Next of kin address" />
+
+          <SectionLabel>Notes</SectionLabel>
+          <Field as="textarea" value={f.notes}
+            onChange={e => set("notes", e.target.value)} placeholder="Optional notes about this client…" />
+
+          <button onClick={handleAdd}
+            disabled={!f.full_name}
+            className="w-full py-3.5 mt-1 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] shadow-sm disabled:opacity-50">
+            Add Aso Client
           </button>
         </Modal>
       )}
@@ -252,20 +305,11 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       )}
 
       {receipt && (
-        <AsoReceipt
-          client={receipt}
-          profile={profile}
-          onClose={() => setReceipt(null)}
-        />
+        <AsoReceipt client={receipt} profile={profile} onClose={() => setReceipt(null)} />
       )}
 
       {clientProf && (
-        <ClientProfile
-          record={clientProf}
-          type="aso"
-          onSave={updateAsoClient}
-          onClose={() => setClientProf(null)}
-        />
+        <ClientProfile record={clientProf} type="aso" onSave={updateAsoClient} onClose={() => setClientProf(null)} />
       )}
     </div>
   );
