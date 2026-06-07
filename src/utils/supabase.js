@@ -5,9 +5,7 @@ const supabaseAnon = process.env.REACT_APP_SUPABASE_ANON_KEY;
 
 export const supabase =
   supabaseUrl && supabaseAnon
-    ? createClient(supabaseUrl, supabaseAnon, {
-        auth: { flowType: "implicit" },
-      })
+    ? createClient(supabaseUrl, supabaseAnon)
     : null;
 
 export const supabaseConfigured = Boolean(supabase);
