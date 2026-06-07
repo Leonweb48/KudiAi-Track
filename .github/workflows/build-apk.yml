@@ -20,21 +20,18 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-          cache: 'npm'
 
-      - name: Install Node dependencies
-        run: npm ci
+      - name: Install dependencies
+        run: npm install
 
-      - name: Write .env from GitHub Secrets
+      - name: Write .env from secrets
         run: |
-          cat > .env << 'ENVEOF'
-          REACT_APP_SUPABASE_URL=${{ secrets.REACT_APP_SUPABASE_URL }}
-          REACT_APP_SUPABASE_ANON_KEY=${{ secrets.REACT_APP_SUPABASE_ANON_KEY }}
-          REACT_APP_PAYSTACK_PUBLIC_KEY=${{ secrets.REACT_APP_PAYSTACK_PUBLIC_KEY }}
-          REACT_APP_OPENAI_API_KEY=${{ secrets.REACT_APP_OPENAI_API_KEY }}
-          REACT_APP_RECAPTCHA_V2_SITE_KEY=${{ secrets.REACT_APP_RECAPTCHA_V2_SITE_KEY }}
-          RECAPTCHA_V2_SECRET_KEY=${{ secrets.RECAPTCHA_V2_SECRET_KEY }}
-          ENVEOF
+          echo "REACT_APP_SUPABASE_URL=${{ secrets.REACT_APP_SUPABASE_URL }}"           > .env
+          echo "REACT_APP_SUPABASE_ANON_KEY=${{ secrets.REACT_APP_SUPABASE_ANON_KEY }}" >> .env
+          echo "REACT_APP_PAYSTACK_PUBLIC_KEY=${{ secrets.REACT_APP_PAYSTACK_PUBLIC_KEY }}" >> .env
+          echo "REACT_APP_OPENAI_API_KEY=${{ secrets.REACT_APP_OPENAI_API_KEY }}"       >> .env
+          echo "REACT_APP_RECAPTCHA_V2_SITE_KEY=${{ secrets.REACT_APP_RECAPTCHA_V2_SITE_KEY }}" >> .env
+          echo "RECAPTCHA_V2_SECRET_KEY=${{ secrets.RECAPTCHA_V2_SECRET_KEY }}"         >> .env
 
       - name: Build React app
         run: npm run build
@@ -45,63 +42,56 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Remove stale Android folder and scaffold fresh
+        run: |
+          rm -rf android
+          npx cap add android
 
-      - name: Scaffold fresh Android project
-        run: npx cap add android
+      - name: Write android/local.properties
+        run: echo "sdk.dir=$ANDROID_HOME" > android/local.properties
 
       - name: Set app name to KudiAI Track
         run: |
           sed -i \
-            's|<string name="app_name">KudiTrack</string>|<string name="app_name">KudiAI Track</string>|; \
-             s|<string name="title_activity_main">KudiTrack</string>|<string name="title_activity_main">KudiAI Track</string>|' \
+            -e 's|<string name="app_name">KudiTrack</string>|<string name="app_name">KudiAI Track</string>|' \
+            -e 's|<string name="title_activity_main">KudiTrack</string>|<string name="title_activity_main">KudiAI Track</string>|' \
             android/app/src/main/res/values/strings.xml
 
-      - name: Inject deep-link intent filter
+      - name: Add deep-link intent filter
         run: |
           python3 - << 'PYEOF'
-          import re, pathlib
-
+          import pathlib
           manifest = pathlib.Path("android/app/src/main/AndroidManifest.xml")
-          content  = manifest.read_text()
-
-          deeplink = """
-                  <intent-filter android:autoVerify="true">
-                      <action android:name="android.intent.action.VIEW" />
-                      <category android:name="android.intent.category.DEFAULT" />
-                      <category android:name="android.intent.category.BROWSABLE" />
-                      <data android:scheme="com.amayatechnologies.kuditrack" />
-                  </intent-filter>"""
-
-          # Insert after the first </intent-filter> (the MAIN/LAUNCHER one)
+          content = manifest.read_text()
+          deeplink = (
+              "\n            <intent-filter android:autoVerify=\"true\">\n"
+              "                <action android:name=\"android.intent.action.VIEW\" />\n"
+              "                <category android:name=\"android.intent.category.DEFAULT\" />\n"
+              "                <category android:name=\"android.intent.category.BROWSABLE\" />\n"
+              "                <data android:scheme=\"com.amayatechnologies.kuditrack\" />\n"
+              "            </intent-filter>"
+          )
           updated = content.replace("</intent-filter>", "</intent-filter>" + deeplink, 1)
           manifest.write_text(updated)
-          print("Deep link added")
+          print("Deep link injected")
           PYEOF
 
       - name: Install Pillow
-        run: pip install Pillow
+        run: pip install Pillow --quiet
 
       - name: Resize and copy app icon
         run: |
           python3 - << 'PYEOF'
           from PIL import Image
-          import os, pathlib
-
-          src  = "public/logo.png"
-          base = pathlib.Path("android/app/src/main/res")
-          sizes = {
-            "mipmap-mdpi": 48, "mipmap-hdpi": 72,
-            "mipmap-xhdpi": 96, "mipmap-xxhdpi": 144, "mipmap-xxxhdpi": 192,
-          }
-          img = Image.open(src).convert("RGBA")
+          import pathlib
+          sizes = {"mipmap-mdpi":48,"mipmap-hdpi":72,"mipmap-xhdpi":96,"mipmap-xxhdpi":144,"mipmap-xxxhdpi":192}
+          img = Image.open("public/logo.png").convert("RGBA")
           for folder, px in sizes.items():
-            dest = base / folder
-            dest.mkdir(parents=True, exist_ok=True)
-            resized = img.resize((px, px), Image.LANCZOS)
-            resized.save(dest / "ic_launcher.png")
-            resized.save(dest / "ic_launcher_round.png")
+              dest = pathlib.Path(f"android/app/src/main/res/{folder}")
+              dest.mkdir(parents=True, exist_ok=True)
+              r = img.resize((px, px), Image.LANCZOS)
+              r.save(dest / "ic_launcher.png")
+              r.save(dest / "ic_launcher_round.png")
           print("Icons written")
           PYEOF
 
@@ -109,9 +99,9 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tail -50
 
-      - name: Upload APK
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: KudiAI-Track-debug
