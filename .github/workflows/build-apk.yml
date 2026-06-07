@@ -1,4 +1,3 @@
-
 name: Build Android APK
 
 on:
@@ -28,17 +27,45 @@ jobs:
 
       - name: Create Capacitor generated files
         run: |
-          mkdir -p android/capacitor-cordova-android-plugins
-          printf 'ext { }\n' > android/capacitor-cordova-android-plugins/cordova.variables.gradle
-
+          mkdir -p android/capacitor-cordova-android-plugins/src/main/libs
+          mkdir -p android/capacitor-cordova-android-plugins/src/main/java
           mkdir -p android/app/src/main/assets
-          printf '{"appId":"com.amayatechnologies.kuditrack","appName":"KudiAI Track","webDir":"build","server":{"androidScheme":"https"},"android":{"allowMixedContent":true}}\n' \
-            > android/app/src/main/assets/capacitor.config.json
-          printf '[]\n' > android/app/src/main/assets/capacitor.plugins.json
-
           mkdir -p android/app/src/main/res/xml
-          printf '<?xml version="1.0" encoding="utf-8"?>\n<widget id="com.amayatechnologies.kuditrack" version="1.0.0" xmlns="http://www.w3.org/ns/widgets">\n</widget>\n' \
-            > android/app/src/main/res/xml/config.xml
+
+          {
+            echo "apply plugin: 'com.android.library'"
+            echo "android {"
+            echo "    namespace \"capacitor.cordova.android.plugins\""
+            echo "    compileSdk rootProject.ext.compileSdkVersion"
+            echo "    defaultConfig {"
+            echo "        minSdkVersion rootProject.ext.minSdkVersion"
+            echo "        targetSdkVersion rootProject.ext.targetSdkVersion"
+            echo "    }"
+            echo "}"
+            echo "repositories {"
+            echo "    mavenCentral()"
+            echo "    google()"
+            echo "    flatDir { dirs 'src/main/libs', '../app/libs' }"
+            echo "}"
+            echo "dependencies { }"
+          } > android/capacitor-cordova-android-plugins/build.gradle
+
+          echo 'ext { }' > android/capacitor-cordova-android-plugins/cordova.variables.gradle
+
+          {
+            echo '<?xml version="1.0" encoding="utf-8"?>'
+            echo '<manifest xmlns:android="http://schemas.android.com/apk/res/android">'
+            echo '</manifest>'
+          } > android/capacitor-cordova-android-plugins/src/main/AndroidManifest.xml
+
+          echo '{"appId":"com.amayatechnologies.kuditrack","appName":"KudiAI Track","webDir":"build","server":{"androidScheme":"https"},"android":{"allowMixedContent":true}}' > android/app/src/main/assets/capacitor.config.json
+          echo '[]' > android/app/src/main/assets/capacitor.plugins.json
+
+          {
+            echo '<?xml version="1.0" encoding="utf-8"?>'
+            echo '<widget id="com.amayatechnologies.kuditrack" version="1.0.0" xmlns="http://www.w3.org/ns/widgets">'
+            echo '</widget>'
+          } > android/app/src/main/res/xml/config.xml
 
       - name: Copy web assets to Android
         run: |
