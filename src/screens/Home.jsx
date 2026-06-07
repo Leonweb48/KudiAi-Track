@@ -1,5 +1,4 @@
 import { fmt, today } from "../utils/helpers";
-import AppLogo from "../components/AppLogo";
 
 function greeting() {
   const h = new Date().getHours();
@@ -107,8 +106,26 @@ export default function Home({ store, setTab, onQuickAction, onVoiceOpen }) {
     <div className="px-4 pt-5 pb-32 screen-enter space-y-5">
 
       {/* ── Top bar ──────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between -mx-4 px-4 py-3 bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700/60 shadow-sm sticky top-0 z-10 -mt-5 mb-1">
-        <AppLogo className="h-7 w-auto" />
+      <div className="flex items-center -mx-4 px-4 py-3 bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700/60 shadow-sm sticky top-0 z-10 -mt-5 mb-1">
+
+        {/* Left spacer — mirrors avatar width so wordmark stays centred */}
+        <div className="w-9 h-9 flex-shrink-0" />
+
+        {/* Centre — brand wordmark */}
+        <div className="flex-1 flex justify-center items-center gap-0.5 select-none">
+          <span className="text-[17px] font-black tracking-tight text-slate-800 dark:text-white leading-none">
+            KUDI
+          </span>
+          <span className="text-[17px] font-black tracking-tight leading-none"
+            style={{ background: "linear-gradient(135deg,#16a34a,#059669)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+            AI
+          </span>
+          <span className="text-[13px] font-semibold text-slate-400 dark:text-slate-500 tracking-widest uppercase leading-none ml-1.5 mt-0.5">
+            Track
+          </span>
+        </div>
+
+        {/* Right — profile avatar */}
         <button onClick={() => setTab("settings")} aria-label="Profile"
           className="w-9 h-9 rounded-full border-2 border-slate-100 dark:border-slate-700 shadow-sm flex-shrink-0 overflow-hidden active:scale-95 transition-transform">
           {profile.profile_image_url
