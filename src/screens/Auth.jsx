@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { supabase, supabaseConfigured } from "../utils/supabase";
 import AppLogo from "../components/AppLogo";
 import { Browser } from "@capacitor/browser";
@@ -40,6 +40,37 @@ export default function Auth() {
   const [info, setInfo]             = useState("");
   const [captchaToken, setCaptchaToken] = useState("");
   const captchaRef                  = useRef(null);
+
+  // On web: Google OAuth redirects back with tokens in the URL hash.
+  // detectSessionInUrl sometimes misses it, so we parse and set the session explicitly.
+  useEffect(() => {
+    if (isNative() || !supabase) return;
+    const hash = window.location.hash;
+    if (!hash) return;
+
+    const params = new URLSearchParams(hash.substring(1));
+    const errorCode = params.get("error");
+    const errorDesc = params.get("error_description");
+
+    if (errorCode) {
+      setError(errorDesc || errorCode);
+      window.history.replaceState(null, "", window.location.pathname);
+      return;
+    }
+
+    const access_token  = params.get("access_token");
+    const refresh_token = params.get("refresh_token");
+    if (access_token && refresh_token) {
+      setLoading(true);
+      supabase.auth
+        .setSession({ access_token, refresh_token })
+        .then(({ error }) => {
+          if (error) { setError(error.message); setLoading(false); }
+          window.history.replaceState(null, "", window.location.pathname);
+        });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (!supabaseConfigured) return <SetupNotice />;
 
