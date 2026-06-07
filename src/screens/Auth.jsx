@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { supabase, supabaseConfigured } from "../utils/supabase";
 import AppLogo from "../components/AppLogo";
+import { Browser } from "@capacitor/browser";
+import { App } from "@capacitor/app";
+import { verifyRecaptcha } from "../utils/recaptcha";
 
 function SetupNotice() {
   return (
@@ -23,11 +26,14 @@ function SetupNotice() {
   );
 }
 
+const OTP_LENGTH = 8;
+
 export default function Auth() {
-  const [mode, setMode]       = useState("login"); // "login" | "register" | "forgot"
+  const [mode, setMode]       = useState("login"); // "login" | "register" | "forgot" | "verify"
   const [email, setEmail]     = useState("");
   const [password, setPass]   = useState("");
   const [name, setName]       = useState("");
+  const [otp, setOtp]         = useState(Array(OTP_LENGTH).fill(""));
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState("");
   const [info, setInfo]       = useState("");
@@ -36,11 +42,49 @@ export default function Auth() {
 
   const clearMessages = () => { setError(""); setInfo(""); };
 
+  const handleOtpChange = (val, idx) => {
+    if (!/^\d*$/.test(val)) return;
+    const next = [...otp];
+    next[idx] = val.slice(-1);
+    setOtp(next);
+    if (val && idx < OTP_LENGTH - 1) {
+      document.getElementById(`otp-${idx + 1}`)?.focus();
+    }
+  };
+
+  const handleOtpKeyDown = (e, idx) => {
+    if (e.key === "Backspace" && !otp[idx] && idx > 0) {
+      document.getElementById(`otp-${idx - 1}`)?.focus();
+    }
+  };
+
+  const handleVerifyOtp = async (e) => {
+    e.preventDefault();
+    clearMessages();
+    const token = otp.join("");
+    if (token.length < OTP_LENGTH) { setError("Enter the full 8-digit code."); return; }
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.verifyOtp({ email, token, type: "signup" });
+      if (error) throw error;
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleEmailAuth = async (e) => {
     e.preventDefault();
     clearMessages();
     setLoading(true);
     try {
+      const isHuman = await verifyRecaptcha(mode === "login" ? "login" : "register");
+      if (!isHuman) {
+        setError("Bot activity detected. Please try again.");
+        setLoading(false);
+        return;
+      }
       if (mode === "login") {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
@@ -51,7 +95,9 @@ export default function Auth() {
           options: { data: { full_name: name } },
         });
         if (error) throw error;
-        setInfo("Check your email for a confirmation link.");
+        setOtp(Array(OTP_LENGTH).fill(""));
+        setMode("verify");
+        setInfo(`A ${OTP_LENGTH}-digit code was sent to ${email}`);
       } else {
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
           redirectTo: window.location.origin,
@@ -69,12 +115,102 @@ export default function Auth() {
   const handleGoogle = async () => {
     clearMessages();
     setLoading(true);
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: window.location.origin },
-    });
-    if (error) { setError(error.message); setLoading(false); }
+    try {
+      const redirectTo = "com.amayatechnologies.kuditrack://login-callback";
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo,
+          skipBrowserRedirect: true,
+          queryParams: { prompt: "select_account" },
+        },
+      });
+      if (error) throw error;
+
+      let handled = false;
+
+      const urlListener = await App.addListener("appUrlOpen", async ({ url }) => {
+        handled = true;
+        urlListener.remove();
+        finishListener.remove();
+        await Browser.close();
+        // Implicit flow returns tokens in the hash fragment
+        const hash = url.includes("#") ? url.split("#")[1] : url.split("?")[1] || "";
+        const params = new URLSearchParams(hash);
+        const access_token = params.get("access_token");
+        const refresh_token = params.get("refresh_token");
+        if (access_token && refresh_token) {
+          const { error: sessErr } = await supabase.auth.setSession({ access_token, refresh_token });
+          if (sessErr) setError(sessErr.message);
+        } else {
+          setError("Sign-in failed. Please try again.");
+        }
+        setLoading(false);
+      });
+
+      const finishListener = await Browser.addListener("browserFinished", () => {
+        finishListener.remove();
+        if (!handled) setLoading(false);
+      });
+
+      await Browser.open({ url: data.url });
+    } catch (err) {
+      setError(err.message);
+      setLoading(false);
+    }
   };
+
+  if (mode === "verify") {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 flex items-center justify-center px-4">
+        <div className="w-full max-w-sm bg-white rounded-2xl shadow-lg p-8">
+          <div className="text-center mb-8">
+            <AppLogo className="h-20 w-auto mx-auto mb-3" />
+            <h2 className="text-lg font-bold text-gray-800">Verify your email</h2>
+            <p className="text-sm text-gray-500 mt-1">{info}</p>
+          </div>
+
+          {error && (
+            <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              {error}
+            </div>
+          )}
+
+          <form onSubmit={handleVerifyOtp}>
+            <div className="flex justify-between gap-1 mb-6">
+              {otp.map((digit, idx) => (
+                <input
+                  key={idx}
+                  id={`otp-${idx}`}
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={1}
+                  value={digit}
+                  onChange={(e) => handleOtpChange(e.target.value, idx)}
+                  onKeyDown={(e) => handleOtpKeyDown(e, idx)}
+                  className="flex-1 min-w-0 h-11 text-center text-base font-bold border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                />
+              ))}
+            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white font-semibold rounded-lg py-2.5 text-sm transition-colors"
+            >
+              {loading ? "Verifying…" : "Verify"}
+            </button>
+          </form>
+
+          <p className="text-center text-xs text-gray-500 mt-6">
+            Wrong email?{" "}
+            <button onClick={() => { setMode("register"); clearMessages(); }} className="text-green-600 font-medium hover:underline">
+              Go back
+            </button>
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 flex items-center justify-center px-4">
