@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { useStore }       from "./hooks/useStore";
 import { useAuth }        from "./hooks/useAuth";
 import SyncBar            from "./components/SyncBar";
-import AppLogo            from "./components/AppLogo";
 import BottomNav          from "./components/BottomNav";
 import VoiceModal         from "./components/VoiceModal";
 import Home               from "./screens/Home";
@@ -114,10 +113,6 @@ export default function App() {
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex justify-center transition-colors duration-200">
         <div className="w-full max-w-md relative flex flex-col min-h-screen">
           <SyncBar isOnline={store.isOnline} pending={store.pendingSync} />
-
-          <header className="bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 px-5 py-2.5 flex items-center sticky top-0 z-10 shadow-sm">
-            <AppLogo className="h-8 w-auto" />
-          </header>
 
           <main className="flex-1 overflow-y-auto">
             {SCREENS[tab]}

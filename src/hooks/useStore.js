@@ -231,6 +231,22 @@ export function useStore(userId) {
     }
   };
 
+  // ── Update Credit record ───────────────────────────────────────
+  const updateCredit = async (id, updates) => {
+    setCredits(p => p.map(c => c.id === id ? { ...c, ...updates } : c));
+    const { error } = await supabase.from("credits").update(updates).eq("id", id);
+    if (error) { console.error("updateCredit:", error); loadData(); return { error }; }
+    return { error: null };
+  };
+
+  // ── Update Aso Client record ───────────────────────────────────
+  const updateAsoClient = async (id, updates) => {
+    setAsoClients(p => p.map(c => c.id === id ? { ...c, ...updates } : c));
+    const { error } = await supabase.from("aso_clients").update(updates).eq("id", id);
+    if (error) { console.error("updateAsoClient:", error); loadData(); return { error }; }
+    return { error: null };
+  };
+
   // ── Profile ────────────────────────────────────────────────────
   const setProfile = async (updater) => {
     const prev = profile;
@@ -277,7 +293,7 @@ export function useStore(userId) {
     setProfile, isOnline, loading, pendingSync: 0,
     dbError, clearDbError: () => setDbError(null), reloadData: loadData,
     addTransaction, deleteTransaction,
-    addCredit, repayCredit,
-    addAsoClient, asoContribute, asoWithdraw,
+    addCredit, repayCredit, updateCredit,
+    addAsoClient, asoContribute, asoWithdraw, updateAsoClient,
   };
 }
