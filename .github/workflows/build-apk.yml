@@ -1,0 +1,116 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Write .env from GitHub Secrets
+        run: |
+          cat > .env << 'ENVEOF'
+          REACT_APP_SUPABASE_URL=${{ secrets.REACT_APP_SUPABASE_URL }}
+          REACT_APP_SUPABASE_ANON_KEY=${{ secrets.REACT_APP_SUPABASE_ANON_KEY }}
+          REACT_APP_PAYSTACK_PUBLIC_KEY=${{ secrets.REACT_APP_PAYSTACK_PUBLIC_KEY }}
+          REACT_APP_OPENAI_API_KEY=${{ secrets.REACT_APP_OPENAI_API_KEY }}
+          REACT_APP_RECAPTCHA_V2_SITE_KEY=${{ secrets.REACT_APP_RECAPTCHA_V2_SITE_KEY }}
+          RECAPTCHA_V2_SECRET_KEY=${{ secrets.RECAPTCHA_V2_SECRET_KEY }}
+          ENVEOF
+
+      - name: Build React app
+        run: npm run build
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Scaffold fresh Android project
+        run: npx cap add android
+
+      - name: Set app name to KudiAI Track
+        run: |
+          sed -i \
+            's|<string name="app_name">KudiTrack</string>|<string name="app_name">KudiAI Track</string>|; \
+             s|<string name="title_activity_main">KudiTrack</string>|<string name="title_activity_main">KudiAI Track</string>|' \
+            android/app/src/main/res/values/strings.xml
+
+      - name: Inject deep-link intent filter
+        run: |
+          python3 - << 'PYEOF'
+          import re, pathlib
+
+          manifest = pathlib.Path("android/app/src/main/AndroidManifest.xml")
+          content  = manifest.read_text()
+
+          deeplink = """
+                  <intent-filter android:autoVerify="true">
+                      <action android:name="android.intent.action.VIEW" />
+                      <category android:name="android.intent.category.DEFAULT" />
+                      <category android:name="android.intent.category.BROWSABLE" />
+                      <data android:scheme="com.amayatechnologies.kuditrack" />
+                  </intent-filter>"""
+
+          # Insert after the first </intent-filter> (the MAIN/LAUNCHER one)
+          updated = content.replace("</intent-filter>", "</intent-filter>" + deeplink, 1)
+          manifest.write_text(updated)
+          print("Deep link added")
+          PYEOF
+
+      - name: Install Pillow
+        run: pip install Pillow
+
+      - name: Resize and copy app icon
+        run: |
+          python3 - << 'PYEOF'
+          from PIL import Image
+          import os, pathlib
+
+          src  = "public/logo.png"
+          base = pathlib.Path("android/app/src/main/res")
+          sizes = {
+            "mipmap-mdpi": 48, "mipmap-hdpi": 72,
+            "mipmap-xhdpi": 96, "mipmap-xxhdpi": 144, "mipmap-xxxhdpi": 192,
+          }
+          img = Image.open(src).convert("RGBA")
+          for folder, px in sizes.items():
+            dest = base / folder
+            dest.mkdir(parents=True, exist_ok=True)
+            resized = img.resize((px, px), Image.LANCZOS)
+            resized.save(dest / "ic_launcher.png")
+            resized.save(dest / "ic_launcher_round.png")
+          print("Icons written")
+          PYEOF
+
+      - name: Build debug APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: KudiAI-Track-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
