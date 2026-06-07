@@ -26,12 +26,12 @@ jobs:
 
       - name: Write .env from secrets
         run: |
-          echo "REACT_APP_SUPABASE_URL=${{ secrets.REACT_APP_SUPABASE_URL }}"           > .env
-          echo "REACT_APP_SUPABASE_ANON_KEY=${{ secrets.REACT_APP_SUPABASE_ANON_KEY }}" >> .env
-          echo "REACT_APP_PAYSTACK_PUBLIC_KEY=${{ secrets.REACT_APP_PAYSTACK_PUBLIC_KEY }}" >> .env
-          echo "REACT_APP_OPENAI_API_KEY=${{ secrets.REACT_APP_OPENAI_API_KEY }}"       >> .env
+          echo "REACT_APP_SUPABASE_URL=${{ secrets.REACT_APP_SUPABASE_URL }}"                     > .env
+          echo "REACT_APP_SUPABASE_ANON_KEY=${{ secrets.REACT_APP_SUPABASE_ANON_KEY }}"          >> .env
+          echo "REACT_APP_PAYSTACK_PUBLIC_KEY=${{ secrets.REACT_APP_PAYSTACK_PUBLIC_KEY }}"      >> .env
+          echo "REACT_APP_OPENAI_API_KEY=${{ secrets.REACT_APP_OPENAI_API_KEY }}"                >> .env
           echo "REACT_APP_RECAPTCHA_V2_SITE_KEY=${{ secrets.REACT_APP_RECAPTCHA_V2_SITE_KEY }}" >> .env
-          echo "RECAPTCHA_V2_SECRET_KEY=${{ secrets.RECAPTCHA_V2_SECRET_KEY }}"         >> .env
+          echo "RECAPTCHA_V2_SECRET_KEY=${{ secrets.RECAPTCHA_V2_SECRET_KEY }}"                  >> .env
 
       - name: Build React app
         run: npm run build
@@ -42,10 +42,23 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Remove stale Android folder and scaffold fresh
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          accept-android-sdk-licenses: true
+          packages: 'platforms;android-35 build-tools;35.0.0'
+
+      - name: Scaffold fresh Android project
         run: |
           rm -rf android
           npx cap add android
+
+      - name: Patch SDK versions to 35 (CI runner ships up to API 35)
+        run: |
+          sed -i 's/compileSdkVersion = 36/compileSdkVersion = 35/' android/variables.gradle
+          sed -i 's/targetSdkVersion   = 36/targetSdkVersion   = 35/' android/variables.gradle
+          sed -i 's/targetSdkVersion = 36/targetSdkVersion = 35/'     android/variables.gradle
+          grep -E 'compileSdkVersion|targetSdkVersion' android/variables.gradle
 
       - name: Write android/local.properties
         run: echo "sdk.dir=$ANDROID_HOME" > android/local.properties
@@ -63,17 +76,20 @@ jobs:
           import pathlib
           manifest = pathlib.Path("android/app/src/main/AndroidManifest.xml")
           content = manifest.read_text()
-          deeplink = (
-              "\n            <intent-filter android:autoVerify=\"true\">\n"
-              "                <action android:name=\"android.intent.action.VIEW\" />\n"
-              "                <category android:name=\"android.intent.category.DEFAULT\" />\n"
-              "                <category android:name=\"android.intent.category.BROWSABLE\" />\n"
-              "                <data android:scheme=\"com.amayatechnologies.kuditrack\" />\n"
-              "            </intent-filter>"
-          )
-          updated = content.replace("</intent-filter>", "</intent-filter>" + deeplink, 1)
-          manifest.write_text(updated)
-          print("Deep link injected")
+          if 'com.amayatechnologies.kuditrack' in content:
+              print("Deep link already present — skipping")
+          else:
+              deeplink = (
+                  "\n            <intent-filter android:autoVerify=\"true\">\n"
+                  "                <action android:name=\"android.intent.action.VIEW\" />\n"
+                  "                <category android:name=\"android.intent.category.DEFAULT\" />\n"
+                  "                <category android:name=\"android.intent.category.BROWSABLE\" />\n"
+                  "                <data android:scheme=\"com.amayatechnologies.kuditrack\" />\n"
+                  "            </intent-filter>"
+              )
+              updated = content.replace("</intent-filter>", "</intent-filter>" + deeplink, 1)
+              manifest.write_text(updated)
+              print("Deep link injected")
           PYEOF
 
       - name: Install Pillow
@@ -84,7 +100,13 @@ jobs:
           python3 - << 'PYEOF'
           from PIL import Image
           import pathlib
-          sizes = {"mipmap-mdpi":48,"mipmap-hdpi":72,"mipmap-xhdpi":96,"mipmap-xxhdpi":144,"mipmap-xxxhdpi":192}
+          sizes = {
+              "mipmap-mdpi":    48,
+              "mipmap-hdpi":    72,
+              "mipmap-xhdpi":   96,
+              "mipmap-xxhdpi":  144,
+              "mipmap-xxxhdpi": 192,
+          }
           img = Image.open("public/logo.png").convert("RGBA")
           for folder, px in sizes.items():
               dest = pathlib.Path(f"android/app/src/main/res/{folder}")
@@ -99,7 +121,7 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tail -50
+          ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tail -80
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
