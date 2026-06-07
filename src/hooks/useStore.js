@@ -148,8 +148,10 @@ export function useStore(userId) {
     if (error) {
       setCredits((p) => p.filter((cr) => cr.id !== tempId));
       setDbError(`Failed to save credit: ${error.message}`);
+      return { data: null, error };
     } else {
       setCredits((p) => p.map((cr) => cr.id === tempId ? data : cr));
+      return { data, error: null };
     }
   };
 
@@ -210,8 +212,10 @@ export function useStore(userId) {
     if (error) {
       setAsoClients((p) => p.filter((c) => c.id !== tempId));
       setDbError(`Failed to save client: ${error.message}`);
+      return { data: null, error };
     } else {
       setAsoClients((p) => p.map((c) => c.id === tempId ? data : c));
+      return { data, error: null };
     }
   };
 

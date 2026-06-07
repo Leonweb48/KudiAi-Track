@@ -6,36 +6,43 @@ import Badge  from "../components/shared/Badge";
 import { AsoReceipt }    from "../components/shared/Receipt";
 import { ClientProfile } from "../components/shared/ClientProfile";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
+import { supabase } from "../utils/supabase";
 import { canDo } from "../utils/plans";
 import { fmt, today } from "../utils/helpers";
 
 const BLANK = {
-  // Savings details
   full_name: "", contribution_frequency: "daily", contribution_amount: "",
   registration_charge: "", withdrawal_fee_percent: 5, notes: "",
-  // Contact & identity
   phone: "", email: "", nin: "",
-  // Address
   address: "", state: "", lga: "", ward: "",
-  // Next of kin
   next_of_kin: "", next_of_kin_phone: "", next_of_kin_email: "", next_of_kin_address: "",
 };
 
 function SectionLabel({ children }) {
   return (
-    <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-5 mb-2 first:mt-1">
+    <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-5 mb-2">
       {children}
     </p>
   );
 }
 
+async function uploadPhoto(file, id) {
+  const path = `clients/aso/${id}`;
+  await supabase.storage.from("avatars").upload(path, file, { upsert: true, contentType: file.type });
+  const { data } = supabase.storage.from("avatars").getPublicUrl(path);
+  return `${data.publicUrl}?v=${Date.now()}`;
+}
+
 export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, onUpgrade }) {
-  const [showAdd,    setShowAdd]    = useState(false);
-  const [selected,   setSelected]   = useState(null);
-  const [action,     setAction]     = useState(null);
-  const [amt,        setAmt]        = useState("");
-  const [receipt,    setReceipt]    = useState(null);
-  const [clientProf, setClientProf] = useState(null);
+  const [showAdd,      setShowAdd]      = useState(false);
+  const [selected,     setSelected]     = useState(null);
+  const [action,       setAction]       = useState(null);
+  const [amt,          setAmt]          = useState("");
+  const [receipt,      setReceipt]      = useState(null);
+  const [clientProf,   setClientProf]   = useState(null);
+  const [photoFile,    setPhotoFile]    = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(null);
+  const [adding,       setAdding]       = useState(false);
 
   const { asoClients, addAsoClient, asoContribute, asoWithdraw, updateAsoClient, profile } = store;
 
@@ -57,18 +64,39 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const totalBal   = asoClients.reduce((s, c) => s + c.current_balance, 0);
   const totalSaved = asoClients.reduce((s, c) => s + c.total_saved, 0);
 
-  const handleAdd = () => {
+  const handlePhotoChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
+  };
+
+  const resetAdd = () => {
+    setShowAdd(false); setF(BLANK);
+    setPhotoFile(null); setPhotoPreview(null);
+  };
+
+  const handleAdd = async () => {
     if (!f.full_name) return;
-    addAsoClient({
+    setAdding(true);
+    const { data, error } = await addAsoClient({
       ...f,
-      contribution_amount:  parseFloat(f.contribution_amount  || 0),
-      registration_charge:  parseFloat(f.registration_charge  || 0),
+      contribution_amount:    parseFloat(f.contribution_amount    || 0),
+      registration_charge:    parseFloat(f.registration_charge    || 0),
       withdrawal_fee_percent: parseFloat(f.withdrawal_fee_percent || 5),
-      status: "active",
+      status:                 "active",
       next_contribution_date: today(),
     });
-    setShowAdd(false);
-    setF(BLANK);
+    if (!error && data && photoFile) {
+      try {
+        const url = await uploadPhoto(photoFile, data.id);
+        await updateAsoClient(data.id, { profile_image_url: url });
+      } catch (err) {
+        console.error("Photo upload:", err);
+      }
+    }
+    setAdding(false);
+    resetAdd();
   };
 
   if (!canDo(plan, "aso")) {
@@ -104,7 +132,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         </button>
       </div>
 
-      {/* Summary hero */}
+      {/* Hero */}
       <div className="rounded-3xl px-6 py-5 mb-5 text-white relative overflow-hidden shadow-hero"
         style={{ background: "linear-gradient(135deg,#7c3aed 0%,#5b21b6 55%,#4c1d95 100%)" }}>
         <div className="absolute -top-10 -right-10 w-36 h-36 rounded-full bg-white/5 pointer-events-none" />
@@ -126,6 +154,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         </div>
       </div>
 
+      {/* List */}
       {asoClients.length === 0 ? (
         <div className="text-center py-14 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700/50">
           <div className="w-16 h-16 bg-violet-50 dark:bg-violet-900/20 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -138,72 +167,105 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         </div>
       ) : (
         <div className="space-y-3">
-          {asoClients.map(c => (
-            <div key={c.id} className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-4 shadow-card border border-slate-100 dark:border-slate-700/60">
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex-1 min-w-0 pr-2">
-                  <p className="font-bold text-slate-800 dark:text-slate-100">{c.full_name}</p>
-                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
-                    {c.phone} · {c.contribution_frequency} · {fmt(c.contribution_amount)}
-                  </p>
-                </div>
-                <Badge status={c.status} />
-              </div>
-
-              <div className="flex gap-2 mb-3">
-                {[
-                  { label: "Balance",   value: c.current_balance, color: "text-violet-700 dark:text-violet-400", bg: "bg-violet-50 dark:bg-violet-900/20" },
-                  { label: "Saved",     value: c.total_saved,     color: "text-green-700 dark:text-green-400",  bg: "bg-green-50 dark:bg-green-900/20"  },
-                  { label: "Withdrawn", value: c.total_withdrawn,  color: "text-red-600 dark:text-red-400",      bg: "bg-red-50 dark:bg-red-900/20"      },
-                ].map(({ label, value, color, bg }) => (
-                  <div key={label} className={`flex-1 ${bg} rounded-xl p-2.5`}>
-                    <p className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold mb-0.5">{label}</p>
-                    <p className={`text-sm font-extrabold tabular ${color}`}>{fmt(value)}</p>
+          {asoClients.map(c => {
+            const initials = (c.full_name || "?")[0].toUpperCase();
+            return (
+              <div key={c.id} className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-4 shadow-card border border-slate-100 dark:border-slate-700/60">
+                <div className="flex items-center gap-3 mb-3">
+                  {/* Avatar */}
+                  <div className="w-10 h-10 rounded-xl overflow-hidden flex-shrink-0">
+                    {c.profile_image_url
+                      ? <img src={c.profile_image_url} alt={c.full_name} className="w-full h-full object-cover" />
+                      : <div className="w-full h-full bg-gradient-to-br from-violet-500 to-violet-700 flex items-center justify-center text-white font-black text-base">{initials}</div>
+                    }
                   </div>
-                ))}
-              </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-slate-800 dark:text-slate-100 truncate">{c.full_name}</p>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5 truncate">
+                      {c.phone && <span>{c.phone} · </span>}{c.contribution_frequency} · {fmt(c.contribution_amount)}
+                    </p>
+                  </div>
+                  <Badge status={c.status} />
+                </div>
 
-              {c.notes && <p className="text-[11px] text-slate-400 dark:text-slate-500 italic mb-3">"{c.notes}"</p>}
+                <div className="flex gap-2 mb-3">
+                  {[
+                    { label: "Balance",   value: c.current_balance, color: "text-violet-700 dark:text-violet-400", bg: "bg-violet-50 dark:bg-violet-900/20" },
+                    { label: "Saved",     value: c.total_saved,     color: "text-green-700 dark:text-green-400",  bg: "bg-green-50 dark:bg-green-900/20"  },
+                    { label: "Withdrawn", value: c.total_withdrawn,  color: "text-red-600 dark:text-red-400",      bg: "bg-red-50 dark:bg-red-900/20"      },
+                  ].map(({ label, value, color, bg }) => (
+                    <div key={label} className={`flex-1 ${bg} rounded-xl p-2.5`}>
+                      <p className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold mb-0.5">{label}</p>
+                      <p className={`text-sm font-extrabold tabular ${color}`}>{fmt(value)}</p>
+                    </div>
+                  ))}
+                </div>
 
-              <div className="flex gap-1.5 pt-2.5 border-t border-slate-50 dark:border-slate-700/60 flex-wrap">
-                <button onClick={() => { setSelected(c); setAction("contribute"); }}
-                  className="flex-1 py-2 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 rounded-xl font-bold text-xs border border-green-200 dark:border-green-800 active:scale-95 transition min-w-[80px]">
-                  + Contribute
-                </button>
-                <button onClick={() => { setSelected(c); setAction("withdraw"); }}
-                  className="flex-1 py-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl font-bold text-xs border border-red-200 dark:border-red-800 active:scale-95 transition min-w-[70px]">
-                  Withdraw
-                </button>
-                <button onClick={() => setClientProf(c)}
-                  className="py-2 px-2.5 bg-slate-50 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-xs border border-slate-200 dark:border-slate-600 active:scale-95 transition flex items-center gap-1">
-                  <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-                    <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 11a4 4 0 100-8 4 4 0 000 8" />
-                  </svg>
-                  Profile
-                </button>
-                <button onClick={() => setReceipt(c)}
-                  className="py-2 px-2.5 bg-violet-50 dark:bg-violet-900/20 text-violet-600 dark:text-violet-400 rounded-xl font-bold text-xs border border-violet-200 dark:border-violet-800 active:scale-95 transition flex items-center gap-1">
-                  <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M16 13H8" />
-                  </svg>
-                  Statement
-                </button>
+                {c.notes && <p className="text-[11px] text-slate-400 dark:text-slate-500 italic mb-3">"{c.notes}"</p>}
+
+                <div className="flex gap-1.5 pt-2.5 border-t border-slate-50 dark:border-slate-700/60 flex-wrap">
+                  <button onClick={() => { setSelected(c); setAction("contribute"); }}
+                    className="flex-1 py-2 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 rounded-xl font-bold text-xs border border-green-200 dark:border-green-800 active:scale-95 transition min-w-[80px]">
+                    + Contribute
+                  </button>
+                  <button onClick={() => { setSelected(c); setAction("withdraw"); }}
+                    className="flex-1 py-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl font-bold text-xs border border-red-200 dark:border-red-800 active:scale-95 transition min-w-[70px]">
+                    Withdraw
+                  </button>
+                  <button onClick={() => setClientProf(c)}
+                    className="py-2 px-2.5 bg-slate-50 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-xs border border-slate-200 dark:border-slate-600 active:scale-95 transition flex items-center gap-1">
+                    <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                      <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 11a4 4 0 100-8 4 4 0 000 8" />
+                    </svg>
+                    Profile
+                  </button>
+                  <button onClick={() => setReceipt(c)}
+                    className="py-2 px-2.5 bg-violet-50 dark:bg-violet-900/20 text-violet-600 dark:text-violet-400 rounded-xl font-bold text-xs border border-violet-200 dark:border-violet-800 active:scale-95 transition flex items-center gap-1">
+                    <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M16 13H8" />
+                    </svg>
+                    Statement
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
-      {/* ── Add Aso Client Modal (full profile at creation) ─────────── */}
+      {/* ── Add Aso Client Modal ─────────────────────────────────────── */}
       {showAdd && (
-        <Modal title="New Aso Client" onClose={() => { setShowAdd(false); setF(BLANK); }}>
+        <Modal title="New Aso Client" onClose={resetAdd}>
+
+          {/* Photo picker */}
+          <div className="flex flex-col items-center mb-4 pt-1">
+            <div className="relative">
+              <div className="w-24 h-24 rounded-2xl overflow-hidden border-2 border-dashed border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 flex items-center justify-center shadow-sm">
+                {photoPreview
+                  ? <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
+                  : <svg viewBox="0 0 24 24" fill="none" className="w-9 h-9 text-slate-300 dark:text-slate-500" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round">
+                      <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 11a4 4 0 100-8 4 4 0 000 8" />
+                    </svg>
+                }
+              </div>
+              <label className="absolute -bottom-2 -right-2 w-8 h-8 bg-violet-600 hover:bg-violet-700 rounded-full flex items-center justify-center cursor-pointer shadow-md transition active:scale-95">
+                <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-white" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+                  <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" /><circle cx="12" cy="13" r="4" />
+                </svg>
+                <input type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />
+              </label>
+            </div>
+            <p className="text-xs text-slate-400 dark:text-slate-500 mt-3">Tap camera to add photo</p>
+          </div>
 
           <SectionLabel>Savings Settings</SectionLabel>
           <Field label="Full Name / Group Name *" value={f.full_name}
             onChange={e => set("full_name", e.target.value)} placeholder="e.g. Mama Ngozi Cooperative" />
           <Field label="Contribution Frequency" as="select" value={f.contribution_frequency}
             onChange={e => set("contribution_frequency", e.target.value)}>
-            {["daily", "weekly", "monthly"].map(o => <option key={o} value={o}>{o.charAt(0).toUpperCase() + o.slice(1)}</option>)}
+            {["daily", "weekly", "monthly"].map(o => (
+              <option key={o} value={o}>{o.charAt(0).toUpperCase() + o.slice(1)}</option>
+            ))}
           </Field>
           <div className="grid grid-cols-2 gap-2">
             <Field label="Contribution (₦)" type="number" value={f.contribution_amount}
@@ -234,14 +296,12 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             {STATES.map(s => <option key={s} value={s}>{s}</option>)}
           </Field>
           <div className="grid grid-cols-2 gap-2">
-            <Field label="LGA" as="select" value={f.lga}
-              disabled={!f.state}
+            <Field label="LGA" as="select" value={f.lga} disabled={!f.state}
               onChange={e => { set("lga", e.target.value); set("ward", ""); }}>
               <option value="">{f.state ? "Select LGA…" : "State first"}</option>
               {lgas.map(l => <option key={l} value={l}>{l}</option>)}
             </Field>
-            <Field label="Ward" as="select" value={f.ward}
-              disabled={!f.lga}
+            <Field label="Ward" as="select" value={f.ward} disabled={!f.lga}
               onChange={e => set("ward", e.target.value)}>
               <option value="">{f.lga ? "Select Ward…" : "LGA first"}</option>
               {wards.map(w => <option key={w} value={w}>{w}</option>)}
@@ -265,9 +325,9 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             onChange={e => set("notes", e.target.value)} placeholder="Optional notes about this client…" />
 
           <button onClick={handleAdd}
-            disabled={!f.full_name}
+            disabled={!f.full_name || adding}
             className="w-full py-3.5 mt-1 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] shadow-sm disabled:opacity-50">
-            Add Aso Client
+            {adding ? "Saving…" : "Add Aso Client"}
           </button>
         </Modal>
       )}
@@ -307,7 +367,6 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       {receipt && (
         <AsoReceipt client={receipt} profile={profile} onClose={() => setReceipt(null)} />
       )}
-
       {clientProf && (
         <ClientProfile record={clientProf} type="aso" onSave={updateAsoClient} onClose={() => setClientProf(null)} />
       )}
