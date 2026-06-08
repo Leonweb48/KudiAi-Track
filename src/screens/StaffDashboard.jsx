@@ -30,16 +30,6 @@ const NAV_LABEL = {
   profile:      "Profile",
 };
 
-function Avatar({ url, name, size = "md" }) {
-  const sz = size === "lg" ? "w-14 h-14 text-xl" : "w-9 h-9 text-sm";
-  const initials = (name || "?").split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
-  if (url) return <img src={url} alt={name} className={`${sz} rounded-full object-cover`} />;
-  return (
-    <div className={`${sz} rounded-full bg-green-100 text-green-700 font-bold flex items-center justify-center`}>
-      {initials}
-    </div>
-  );
-}
 
 function StaffProfile({ staff, ownerName, onSignOut, isDark, onToggleDark }) {
   const roleLabel = (staff.role || "").replace(/_/g, " ");
