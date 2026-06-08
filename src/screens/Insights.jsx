@@ -19,7 +19,7 @@ const COLOR_MAP = {
 
 const EMOJI = { insights: "📊", warnings: "⚠️", opportunities: "🚀", actions: "✅" };
 
-export default function Insights({ store, plan = "starter", onUpgrade, staffName }) {
+export default function Insights({ store, plan = "starter", onUpgrade, staffName, onReports }) {
   const { transactions, credits, asoClients } = store;
   const { loading, result, error, analyze }   = useAI();
   const [period, setPeriod] = useState("today");
@@ -40,6 +40,15 @@ export default function Insights({ store, plan = "starter", onUpgrade, staffName
           className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-2xl font-bold text-sm active:scale-95 transition-all shadow-md">
           Upgrade to Premium — ₦5,000/mo
         </button>
+        {onReports && (
+          <button onClick={onReports}
+            className="mt-3 flex items-center gap-2 px-5 py-2.5 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-400 rounded-2xl font-bold text-sm active:scale-95 transition-all">
+            <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>
+            </svg>
+            Generate Reports
+          </button>
+        )}
       </div>
     );
   }
@@ -71,13 +80,24 @@ export default function Insights({ store, plan = "starter", onUpgrade, staffName
     <div className="px-4 pt-5 pb-28 screen-enter">
 
       {/* Header */}
-      <div className="mb-1">
-        <h1 className="text-xl font-bold text-slate-800 dark:text-white">
-          {isStaffView ? "My Performance" : "AI Insights"}
-        </h1>
-        <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
-          {isStaffView ? `${staffName} · personal stats` : "Smart business analysis · No API key needed"}
-        </p>
+      <div className="flex items-start justify-between mb-1 gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-slate-800 dark:text-white">
+            {isStaffView ? "My Performance" : "AI Insights"}
+          </h1>
+          <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
+            {isStaffView ? `${staffName} · personal stats` : "Smart business analysis · No API key needed"}
+          </p>
+        </div>
+        {onReports && !isStaffView && (
+          <button onClick={onReports}
+            className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-400 rounded-xl font-bold text-xs active:scale-95 transition-all mt-0.5">
+            <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>
+            </svg>
+            Reports
+          </button>
+        )}
       </div>
 
       {/* Period selector */}

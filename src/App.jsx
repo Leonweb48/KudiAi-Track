@@ -19,6 +19,7 @@ import SubscriptionPlan      from "./screens/SubscriptionPlan";
 import StaffDashboard        from "./screens/StaffDashboard";
 import StaffFirstLogin       from "./screens/StaffFirstLogin";
 import BillPayments          from "./screens/BillPayments";
+import Reports               from "./screens/Reports";
 
 function Spinner() {
   return (
@@ -36,6 +37,7 @@ export default function App() {
   const [autoAdd,     setAutoAdd]     = useState(null);
   const [voiceOpen,   setVoiceOpen]   = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
+  const [showReports, setShowReports] = useState(false);
 
   const { status, session, plan, setReady, refetch, staff } = useAuth();
   const userId = session?.user?.id;
@@ -153,7 +155,8 @@ export default function App() {
     insights:     <Insights
                     store={store}
                     plan={plan}
-                    onUpgrade={openUpgrade} />,
+                    onUpgrade={openUpgrade}
+                    onReports={() => setShowReports(true)} />,
     settings:     <Settings
                     store={store}
                     session={session}
@@ -199,6 +202,9 @@ export default function App() {
 
       {/* Notification panel — full-screen overlay, z-50 */}
       <NotificationCenter notif={notif} />
+
+      {/* Report generator — full-screen overlay, z-60 */}
+      {showReports && <Reports store={store} onClose={() => setShowReports(false)} />}
     </div>
   );
 }
