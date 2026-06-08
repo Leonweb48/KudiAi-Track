@@ -229,7 +229,17 @@ export default function StaffManagement({ session, onBack }) {
       return data;
     }
 
-    // Edge Function not deployed — fall back to signUp for brand-new accounts only
+    // FunctionsHttpError = function ran but returned 4xx/5xx — extract real message from body
+    if (functionError.name === "FunctionsHttpError") {
+      let msg = functionError.message;
+      try {
+        const body = await functionError.context.json();
+        if (body?.error) msg = body.error;
+      } catch (_) {}
+      throw new Error(msg);
+    }
+
+    // FunctionsFetchError = function not reachable / not deployed — fall back to signUp
     const notDeployed =
       functionError.name === "FunctionsFetchError" ||
       (functionError.message || "").toLowerCase().includes("failed to send") ||
