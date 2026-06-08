@@ -14,7 +14,6 @@ import Auth               from "./screens/Auth";
 import Onboarding         from "./screens/Onboarding";
 import SubscriptionPlan   from "./screens/SubscriptionPlan";
 import StaffDashboard     from "./screens/StaffDashboard";
-import StaffFirstLogin    from "./screens/StaffFirstLogin";
 import BillPayments       from "./screens/BillPayments";
 
 function Spinner() {
@@ -57,7 +56,6 @@ export default function App() {
   if (status === "unauthenticated") return <Auth />;
   if (status === "onboarding")      return <Onboarding session={session} onComplete={refetch} />;
   if (status === "subscribing")     return <SubscriptionPlan session={session} onComplete={setReady} />;
-  if (status === "staff_setup")     return <StaffFirstLogin session={session} staff={staff} />;
   if (status === "staff")           return <StaffDashboard session={session} staff={staff} />;
 
   // Upgrade overlay — shown over the main app

@@ -61,8 +61,7 @@ export function useAuth() {
         }
         setStaff({ ...staffRow, user_id: uid });
         subVerified.current = true;
-        const mustChange = sess.user?.user_metadata?.must_change_password === true;
-        setStatus(mustChange ? "staff_setup" : "staff");
+        setStatus("staff");
         return;
       }
 
