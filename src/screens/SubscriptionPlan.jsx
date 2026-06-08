@@ -5,6 +5,7 @@ import AppLogo from "../components/AppLogo";
 import { PLAN_ORDER } from "../utils/plans";
 import { Capacitor } from "@capacitor/core";
 import { Browser } from "@capacitor/browser";
+import { App } from "@capacitor/app";
 
 const isNative = Capacitor.isNativePlatform();
 
@@ -225,18 +226,38 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
 
   saveSubRef.current = saveSub;
 
-  // Listen for deep-link callback from Paystack (dispatched by useAuth)
+  // Re-read localStorage whenever we need a fresh check
+  const recheckPending = useCallback(() => {
+    const pending = JSON.parse(localStorage.getItem("pendingPayment") || "null");
+    if (pending) setPendingPayment(pending);
+  }, []);
+
   useEffect(() => {
-    const handler = () => {
+    // Case 1: Paystack redirected via deep link (useAuth dispatches this event)
+    const handleDeepLink = () => {
       const pending = JSON.parse(localStorage.getItem("pendingPayment") || "null");
       if (!pending) return;
-      setPendingPayment(null);
       localStorage.removeItem("pendingPayment");
+      setPendingPayment(null);
       saveSubRef.current(pending.planId, pending.reference);
     };
-    window.addEventListener("paymentCallback", handler);
-    return () => window.removeEventListener("paymentCallback", handler);
-  }, []);
+    window.addEventListener("paymentCallback", handleDeepLink);
+
+    // Case 2: User paid and manually returned to the app (no deep link fired).
+    // When the app comes back to foreground, re-check localStorage so the
+    // "Activate My Plan" button appears without requiring a page reload.
+    let resumeListener;
+    if (isNative) {
+      App.addListener("appStateChange", ({ isActive }) => {
+        if (isActive) recheckPending();
+      }).then((l) => { resumeListener = l; });
+    }
+
+    return () => {
+      window.removeEventListener("paymentCallback", handleDeepLink);
+      resumeListener?.remove();
+    };
+  }, [recheckPending]);
 
   const handleFree = () => saveSub("starter", null);
   const handlePaid = (planId) => (ref) => saveSub(planId, ref.reference);
