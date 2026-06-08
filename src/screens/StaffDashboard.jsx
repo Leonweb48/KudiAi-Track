@@ -350,7 +350,7 @@ export default function StaffDashboard({ session, staff }) {
 
     switch (tab) {
       case "transactions":
-        return <Transactions store={store} plan="premium" autoOpen={autoAdd?.tab === "transactions"} autoType={autoAdd?.type} onAutoOpened={() => setAutoAdd(null)} onVoiceOpen={() => setVoiceOpen(true)} onUpgrade={() => {}} readOnly={noCreate} />;
+        return <Transactions store={store} plan="premium" autoOpen={autoAdd?.tab === "transactions"} autoType={autoAdd?.type} onAutoOpened={() => setAutoAdd(null)} onVoiceOpen={() => setVoiceOpen(true)} onUpgrade={() => {}} readOnly={noCreate} inventory={inventory} />;
       case "bills":
         return <BillPayments store={store} staffName={staffName} businessName={store.profile?.business_name || ""} readOnly={noCreate} />;
       case "credit":

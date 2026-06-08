@@ -143,7 +143,8 @@ export default function App() {
                     autoType={autoAdd?.type}
                     onAutoOpened={clearAutoAdd}
                     onVoiceOpen={() => setVoiceOpen(true)}
-                    onUpgrade={openUpgrade} />,
+                    onUpgrade={openUpgrade}
+                    inventory={inventory} />,
     credit:       <Credit
                     store={store}
                     plan={plan}

@@ -9,15 +9,76 @@ import { canDo, planLimits } from "../utils/plans";
 const CATEGORIES   = ["sale", "expense", "stock", "credit sale", "debt repayment", "other"];
 const PAYMENT_TYPES = ["cash", "transfer", "pos", "mobile money"];
 
-function AddTxnModal({ onAdd, onClose, defaultType = "in" }) {
+function AddTxnModal({ onAdd, onClose, defaultType = "in", inventory = null }) {
   const [f, setF] = useState({
-    type: defaultType, category: "sale", amount: "", item_name: "",
-    quantity: 1, customer_name: "", payment_type: "cash", note: "",
+    type:             defaultType,
+    category:         "sale",
+    amount:           "",
+    unit_price:       "",
+    item_name:        "",
+    quantity:         "1",
+    customer_name:    "",
+    payment_type:     "cash",
+    note:             "",
     transaction_date: today(),
   });
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
 
-  const canSave = f.amount && f.item_name;
+  const products = inventory?.products || [];
+
+  /* ── Auto-calculate amount ── */
+  const recalc = (up, qty) => {
+    const u = parseFloat(up); const q = parseInt(qty) || 1;
+    if (u > 0) set("amount", String(u * q));
+  };
+  const handleUnitPrice = (v) => { set("unit_price", v); recalc(v, f.quantity); };
+  const handleQty       = (v) => { set("quantity",   v); recalc(f.unit_price, v); };
+
+  /* ── Inventory lookup ── */
+  const matchedProduct = f.item_name
+    ? products.find(p => p.product_name.toLowerCase() === f.item_name.toLowerCase())
+    : null;
+
+  const suggestions = f.item_name && f.item_name.length >= 1 && !matchedProduct && showSuggestions
+    ? products.filter(p => p.product_name.toLowerCase().includes(f.item_name.toLowerCase())).slice(0, 5)
+    : [];
+
+  const requestedQty = parseInt(f.quantity) || 1;
+  const stockAfter   = matchedProduct && f.type === "in" ? matchedProduct.quantity - requestedQty : null;
+  const overStock    = f.type === "in" && matchedProduct && requestedQty > matchedProduct.quantity;
+
+  const selectSuggestion = (p) => {
+    const qty = parseInt(f.quantity) || 1;
+    setF(prev => ({
+      ...prev,
+      item_name:  p.product_name,
+      unit_price: String(p.selling_price || ""),
+      amount:     p.selling_price ? String(p.selling_price * qty) : prev.amount,
+    }));
+    setShowSuggestions(false);
+  };
+
+  const canSave = f.amount && f.item_name && !overStock;
+
+  const handleSubmit = () => {
+    if (!canSave) return;
+    const qty       = parseInt(f.quantity) || 1;
+    const unitPrice = parseFloat(f.unit_price) || (parseFloat(f.amount) / qty);
+    onAdd({ ...f, amount: parseFloat(f.amount), quantity: qty, unit_price: unitPrice });
+
+    /* Sync matched inventory product on sales */
+    if (matchedProduct && f.type === "in" && inventory?.recordMovement) {
+      inventory.recordMovement({
+        product_id: matchedProduct.id,
+        type:       "sale",
+        quantity:   qty,
+        unit_price: unitPrice,
+        notes:      f.customer_name ? `Sale to ${f.customer_name}` : "Auto-synced from transaction",
+      });
+    }
+    onClose();
+  };
 
   return (
     <Modal title="Record Transaction" onClose={onClose}>
@@ -27,12 +88,10 @@ function AddTxnModal({ onAdd, onClose, defaultType = "in" }) {
           <button key={t} onClick={() => set("type", t)}
             className={`flex-1 py-3 rounded-xl font-bold text-sm transition-colors ${
               f.type === t
-                ? t === "in"
-                  ? "bg-green-600 text-white shadow-sm"
-                  : "bg-red-500 text-white shadow-sm"
+                ? t === "in" ? "bg-green-600 text-white shadow-sm" : "bg-red-500 text-white shadow-sm"
                 : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
             }`}>
-            {t === "in" ? "Cash In" : "Cash Out"}
+            {t === "in" ? "Cash In (Sale)" : "Cash Out (Expense)"}
           </button>
         ))}
       </div>
@@ -41,15 +100,87 @@ function AddTxnModal({ onAdd, onClose, defaultType = "in" }) {
         {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
       </Field>
 
-      <Field label="Item / Description" placeholder="e.g. Ankara fabric" value={f.item_name}
-        onChange={e => set("item_name", e.target.value)} />
+      {/* Item name + autocomplete */}
+      <div className="relative">
+        <Field label="Item / Description" placeholder="e.g. Samsung Galaxy A15" value={f.item_name}
+          onChange={e => { set("item_name", e.target.value); setShowSuggestions(true); }} />
 
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Amount (₦)" type="number" inputMode="decimal" placeholder="0.00" value={f.amount}
-          onChange={e => set("amount", e.target.value)} />
-        <Field label="Qty" type="number" inputMode="numeric" value={f.quantity}
-          onChange={e => set("quantity", e.target.value)} />
+        {/* Autocomplete dropdown */}
+        {suggestions.length > 0 && (
+          <div className="absolute z-10 left-0 right-0 top-full mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg overflow-hidden">
+            {suggestions.map(p => (
+              <button key={p.id} onClick={() => selectSuggestion(p)}
+                className="w-full px-3.5 py-2.5 text-left flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors border-b border-slate-100 dark:border-slate-700 last:border-0">
+                <div>
+                  <p className="text-sm font-semibold text-slate-800 dark:text-white">{p.product_name}</p>
+                  {p.category && <p className="text-[10px] text-slate-400 dark:text-slate-500">{p.category}</p>}
+                </div>
+                <div className="text-right flex-shrink-0 ml-3">
+                  <p className="text-xs font-bold text-green-600">₦{(p.selling_price||0).toLocaleString()}</p>
+                  <p className={`text-[10px] font-bold ${p.quantity <= p.low_stock_threshold ? "text-amber-500" : "text-slate-400 dark:text-slate-500"}`}>
+                    {p.quantity} in stock
+                  </p>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
+
+      {/* Matched product stock banner */}
+      {matchedProduct && (
+        <div className={`rounded-xl px-3.5 py-2.5 flex items-center justify-between text-xs font-bold -mt-1 ${
+          overStock
+            ? "bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800"
+            : stockAfter !== null && stockAfter <= matchedProduct.low_stock_threshold
+            ? "bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800"
+            : "bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800"
+        }`}>
+          <span className={overStock ? "text-red-600 dark:text-red-400" : "text-slate-600 dark:text-slate-300"}>
+            📦 {matchedProduct.product_name}
+          </span>
+          <span className={overStock ? "text-red-600 dark:text-red-400" : stockAfter !== null && stockAfter <= matchedProduct.low_stock_threshold ? "text-amber-600 dark:text-amber-400" : "text-green-600 dark:text-green-400"}>
+            {f.type === "in"
+              ? overStock
+                ? `Only ${matchedProduct.quantity} available`
+                : stockAfter !== null
+                  ? `After sale: ${stockAfter} left`
+                  : `${matchedProduct.quantity} in stock`
+              : `${matchedProduct.quantity} in stock`
+            }
+          </span>
+        </div>
+      )}
+
+      {/* Over-stock error */}
+      {overStock && (
+        <p className="text-xs font-bold text-red-500 dark:text-red-400 -mt-1">
+          ✕ Cannot sell {requestedQty} — only {matchedProduct.quantity} unit{matchedProduct.quantity !== 1 ? "s" : ""} available in stock
+        </p>
+      )}
+
+      {/* Unit Price × Qty → Amount */}
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Unit Price (₦)" type="number" inputMode="decimal" placeholder="0.00"
+          value={f.unit_price} onChange={e => handleUnitPrice(e.target.value)} />
+        <Field label="Qty" type="number" inputMode="numeric" placeholder="1"
+          value={f.quantity} onChange={e => handleQty(e.target.value)} />
+      </div>
+
+      {/* Auto-calc display */}
+      {parseFloat(f.unit_price) > 0 && (
+        <div className="bg-slate-800 dark:bg-slate-700 rounded-xl px-4 py-2.5 flex items-center justify-between -mt-1">
+          <span className="text-xs text-slate-400">
+            ₦{parseFloat(f.unit_price).toLocaleString()} × {parseInt(f.quantity)||1}
+          </span>
+          <span className="text-sm font-extrabold text-white">
+            = ₦{(parseFloat(f.unit_price) * (parseInt(f.quantity)||1)).toLocaleString()}
+          </span>
+        </div>
+      )}
+
+      <Field label="Total Amount (₦)" type="number" inputMode="decimal" placeholder="0.00"
+        value={f.amount} onChange={e => set("amount", e.target.value)} />
 
       <Field label="Customer Name (optional)" placeholder="e.g. Chidi Okeke" value={f.customer_name}
         onChange={e => set("customer_name", e.target.value)} />
@@ -65,13 +196,7 @@ function AddTxnModal({ onAdd, onClose, defaultType = "in" }) {
       <Field label="Date" type="date" value={f.transaction_date}
         onChange={e => set("transaction_date", e.target.value)} />
 
-      <button
-        onClick={() => {
-          if (!canSave) return;
-          onAdd({ ...f, amount: parseFloat(f.amount) });
-          onClose();
-        }}
-        disabled={!canSave}
+      <button onClick={handleSubmit} disabled={!canSave}
         className="w-full py-3.5 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold text-sm shadow-sm transition disabled:opacity-50 active:scale-[0.99]">
         Save Transaction
       </button>
@@ -79,7 +204,7 @@ function AddTxnModal({ onAdd, onClose, defaultType = "in" }) {
   );
 }
 
-export default function Transactions({ store, plan = "starter", onVoiceOpen, autoOpen, autoType, onAutoOpened, onUpgrade, readOnly }) {
+export default function Transactions({ store, plan = "starter", onVoiceOpen, autoOpen, autoType, onAutoOpened, onUpgrade, readOnly, inventory = null }) {
   const [showAdd,    setShowAdd]    = useState(false);
   const [initType,   setInitType]   = useState("in");
   const [filter,     setFilter]     = useState("all");
@@ -237,6 +362,7 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
                     <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                       <span className="text-[10px] bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-full font-semibold">{t.category}</span>
                       <span className="text-[10px] bg-blue-50 dark:bg-blue-900/20 text-blue-500 dark:text-blue-400 px-2 py-0.5 rounded-full font-semibold">{t.payment_type}</span>
+                      {t.quantity > 1 && <span className="text-[10px] bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-full font-semibold">×{t.quantity}</span>}
                       {t.customer_name && <span className="text-[10px] text-slate-400 dark:text-slate-500">{t.customer_name}</span>}
                       {staffMap[t.staff_id] && (
                         <span className="text-[10px] bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 px-2 py-0.5 rounded-full font-semibold">
@@ -283,7 +409,7 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
       )}
 
       {showAdd && (
-        <AddTxnModal defaultType={initType} onAdd={addTransaction} onClose={() => setShowAdd(false)} />
+        <AddTxnModal defaultType={initType} onAdd={addTransaction} onClose={() => setShowAdd(false)} inventory={inventory} />
       )}
 
       {receipt && (
