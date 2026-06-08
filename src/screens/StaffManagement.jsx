@@ -708,7 +708,8 @@ export default function StaffManagement({ session, onBack }) {
       {/* ── Credentials Modal ──────────────────────────────────── */}
       {createdCredentials && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-5">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 w-full max-w-sm shadow-2xl">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-sm shadow-2xl max-h-[88vh] flex flex-col">
+          <div className="overflow-y-auto flex-1 p-6">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-11 h-11 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center flex-shrink-0">
                 <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-green-600" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
@@ -765,7 +766,7 @@ export default function StaffManagement({ session, onBack }) {
                       </p>
                     </div>
 
-                    <div className="flex gap-1.5">
+                    <div className="flex gap-1 justify-between">
                       {[0,1,2,3,4,5].map(i => (
                         <input
                           key={i}
@@ -783,7 +784,7 @@ export default function StaffManagement({ session, onBack }) {
                             setStaffOtpCode(v => (v.slice(0, i) + e.key + v.slice(i + 1)).slice(0, 6));
                             e.target.nextSibling?.focus();
                           }}
-                          className={`flex-1 h-10 text-center text-base font-extrabold rounded-xl border-2 bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none transition-colors ${
+                          className={`w-10 h-10 text-center text-sm font-extrabold rounded-lg border-2 bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none transition-colors ${
                             staffOtpCode[i] ? "border-green-500" : "border-slate-200 dark:border-slate-700"
                           }`}
                         />
@@ -820,6 +821,7 @@ export default function StaffManagement({ session, onBack }) {
             >
               {otpVerified ? "Done ✓" : "Done"}
             </button>
+          </div>
           </div>
         </div>
       )}
