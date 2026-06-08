@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { createClient } from "@supabase/supabase-js";
 import { supabase } from "../utils/supabase";
 
 const ROLES = [
@@ -176,60 +175,9 @@ export default function StaffManagement({ session, onBack }) {
       "manage-staff-account",
       { body: { staffId: staffRecord.id, password } },
     );
-    if (!functionError && !data?.error) return data;
-
-    // Fallback while the admin Edge Function has not yet been deployed.
-    // A separate non-persistent client avoids replacing the owner's session.
-    if (staffRecord.user_id) {
-      const { error: resetError } = await supabase.auth.resetPasswordForEmail(
-        staffRecord.email,
-        { redirectTo: window.location.origin },
-      );
-      if (resetError) throw resetError;
-      return { message: "Password reset email sent to the staff member" };
-    }
-
-    const accountClient = createClient(
-      process.env.REACT_APP_SUPABASE_URL,
-      process.env.REACT_APP_SUPABASE_ANON_KEY,
-      {
-        auth: {
-          persistSession: false,
-          autoRefreshToken: false,
-          detectSessionInUrl: false,
-        },
-      },
-    );
-    const { data: signUpData, error: signUpError } = await accountClient.auth.signUp({
-      email: staffRecord.email,
-      password,
-      options: {
-        data: {
-          full_name: staffRecord.full_name,
-          account_type: "staff",
-          staff_id: staffRecord.id,
-          owner_id: userId,
-          must_change_password: true,
-        },
-      },
-    });
-    if (signUpError) throw signUpError;
-    if (!signUpData.user?.id) {
-      throw new Error(data?.error || functionError?.message || "Could not create staff login");
-    }
-
-    const { error: linkError } = await supabase
-      .from("staff")
-      .update({ user_id: signUpData.user.id })
-      .eq("id", staffRecord.id)
-      .eq("owner_id", userId);
-    if (linkError) throw linkError;
-
-    return {
-      message: signUpData.session
-        ? "Staff login created"
-        : "Staff login created. Ask them to confirm the email before signing in.",
-    };
+    if (functionError) throw new Error(functionError.message || "Edge Function unreachable");
+    if (data?.error) throw new Error(data.error);
+    return data;
   };
 
   const handlePhoto = (e) => {
