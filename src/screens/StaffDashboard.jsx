@@ -305,8 +305,8 @@ export default function StaffDashboard({ session, staff }) {
 
   return (
     <div className={isDark ? "dark" : ""}>
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex justify-center">
-        <div className="w-full max-w-md relative flex flex-col min-h-screen">
+      <div className="h-screen bg-slate-50 dark:bg-slate-900 flex justify-center">
+        <div className="w-full max-w-md relative flex flex-col h-screen">
           <SyncBar isOnline={store.isOnline} pending={store.pendingSync} />
 
           {/* Staff Header */}

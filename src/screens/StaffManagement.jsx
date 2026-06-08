@@ -489,7 +489,7 @@ export default function StaffManagement({ session, onBack }) {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col">
+    <div className="h-full bg-slate-50 dark:bg-slate-900 flex flex-col">
 
       {/* Header */}
       <div className="bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 px-4 pt-12 pb-3 flex items-center gap-3">
@@ -1015,25 +1015,24 @@ export default function StaffManagement({ session, onBack }) {
         </div>
       )}
 
-      {/* ── Performance Report Modal ───────────────────────────── */}
+      {/* ── Performance Report Full Page ──────────────────────── */}
       {reportStaff && (
-        <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/50">
-          <div className="bg-white dark:bg-slate-900 rounded-t-3xl w-full max-w-md max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-slate-100 dark:border-slate-800">
-              <div>
-                <p className="text-base font-extrabold text-slate-800 dark:text-white">{reportStaff.full_name}</p>
-                <p className="text-xs text-slate-400 dark:text-slate-500 capitalize mt-0.5">{reportStaff.role?.replace(/_/g, " ")} · Performance Report</p>
-              </div>
-              <button onClick={() => { setReportStaff(null); setReportData(null); }}
-                className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
-                <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-500" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
-                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
+        <div className="fixed inset-0 z-[70] bg-slate-50 dark:bg-slate-900 flex flex-col">
+          <div className="bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 px-4 pt-12 pb-3 flex items-center gap-3">
+            <button onClick={() => { setReportStaff(null); setReportData(null); }}
+              className="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-700">
+              <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+                <path d="M19 12H5M12 5l-7 7 7 7" />
+              </svg>
+            </button>
+            <div className="flex-1 min-w-0">
+              <p className="text-lg font-bold text-slate-800 dark:text-white truncate">{reportStaff.full_name}</p>
+              <p className="text-xs text-slate-400 dark:text-slate-500 capitalize">{reportStaff.role?.replace(/_/g, " ")} · Performance Report</p>
             </div>
+          </div>
 
-            <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
-              {reportLoading ? (
+          <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+            {reportLoading ? (
                 <div className="flex justify-center py-12">
                   <div className="w-8 h-8 border-2 border-green-500 border-t-transparent rounded-full animate-spin" />
                 </div>
@@ -1094,7 +1093,6 @@ export default function StaffManagement({ session, onBack }) {
                   )}
                 </>
               ) : null}
-            </div>
           </div>
         </div>
       )}
