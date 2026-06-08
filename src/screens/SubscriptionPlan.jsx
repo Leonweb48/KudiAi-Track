@@ -110,17 +110,19 @@ function PaidButton({ plan, session, onSuccess, disabled }) {
       setBusy(true);
       setNativeErr("");
       try {
-        const supabaseUrl  = process.env.REACT_APP_SUPABASE_URL  || "";
-        const supabaseAnon = process.env.REACT_APP_SUPABASE_ANON_KEY || "";
+        // Use the URL/key already baked into the supabase client — avoids
+        // process.env being empty in the Capacitor WebView at runtime.
+        const baseUrl = supabase.supabaseUrl;
+        const anonKey = supabase.supabaseKey;
 
         const res = await fetch(
-          `${supabaseUrl}/functions/v1/initialize-payment`,
+          `${baseUrl}/functions/v1/initialize-payment`,
           {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              "Authorization": `Bearer ${supabaseAnon}`,
-              "apikey": supabaseAnon,
+              "Authorization": `Bearer ${anonKey}`,
+              "apikey": anonKey,
             },
             body: JSON.stringify({
               email: session.user.email,
