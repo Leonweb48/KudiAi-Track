@@ -68,7 +68,7 @@ function OtpInput({ value, onChange }) {
 }
 
 /* ── OTP verification screen ───────────────────────────────────────── */
-function OtpScreen({ email, onBack, onVerified }) {
+function OtpScreen({ email, onBack, onVerified, otpType = "signup" }) {
   const [otp, setOtp]         = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState("");
@@ -82,7 +82,7 @@ function OtpScreen({ email, onBack, onVerified }) {
       const { error } = await supabase.auth.verifyOtp({
         email,
         token: otp,
-        type: "signup",
+        type: otpType,
       });
       if (error) throw error;
       onVerified();
@@ -96,8 +96,18 @@ function OtpScreen({ email, onBack, onVerified }) {
   const handleResend = async () => {
     setError("");
     setResent(false);
-    const { error } = await supabase.auth.resend({ type: "signup", email });
-    if (error) setError(error.message);
+    let resendError;
+    if (otpType === "email") {
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: { shouldCreateUser: false },
+      });
+      resendError = error;
+    } else {
+      const { error } = await supabase.auth.resend({ type: "signup", email });
+      resendError = error;
+    }
+    if (resendError) setError(resendError.message);
     else setResent(true);
   };
 
@@ -154,13 +164,14 @@ function OtpScreen({ email, onBack, onVerified }) {
 
 /* ── Main Auth screen ──────────────────────────────────────────────── */
 export default function Auth() {
-  const [mode, setMode]       = useState("login"); // "login" | "register" | "forgot" | "otp"
-  const [email, setEmail]     = useState("");
-  const [password, setPass]   = useState("");
-  const [name, setName]       = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState("");
-  const [info, setInfo]       = useState("");
+  const [mode,        setMode]        = useState("login"); // "login" | "register" | "forgot" | "otp"
+  const [email,       setEmail]       = useState("");
+  const [password,    setPass]        = useState("");
+  const [name,        setName]        = useState("");
+  const [loading,     setLoading]     = useState(false);
+  const [error,       setError]       = useState("");
+  const [info,        setInfo]        = useState("");
+  const [staffConfirm, setStaffConfirm] = useState(false); // true when bypassing email confirmation
 
   if (!supabaseConfigured) return <SetupNotice />;
 
@@ -172,8 +183,24 @@ export default function Auth() {
     setLoading(true);
     try {
       if (mode === "login") {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
+        const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
+        if (signInErr) {
+          const msg = signInErr.message.toLowerCase();
+          if (msg.includes("not confirmed") || msg.includes("email not confirmed")) {
+            // Account exists but email unconfirmed (staff created without auto-confirm).
+            // Send OTP to confirm email and log them in at the same time.
+            const { error: otpErr } = await supabase.auth.signInWithOtp({
+              email,
+              options: { shouldCreateUser: false },
+            });
+            if (otpErr) throw otpErr;
+            setStaffConfirm(true);
+            setMode("otp");
+            setLoading(false);
+            return;
+          }
+          throw signInErr;
+        }
       } else if (mode === "register") {
         const { error } = await supabase.auth.signUp({
           email,
@@ -233,7 +260,12 @@ export default function Auth() {
       <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 flex items-center justify-center px-4">
         <OtpScreen
           email={email}
-          onBack={() => { setMode("register"); clearMessages(); }}
+          otpType={staffConfirm ? "email" : "signup"}
+          onBack={() => {
+            setMode(staffConfirm ? "login" : "register");
+            setStaffConfirm(false);
+            clearMessages();
+          }}
           onVerified={() => { /* useAuth picks up the session automatically */ }}
         />
       </div>
