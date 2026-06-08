@@ -223,9 +223,57 @@ export default function StaffManagement({ session, onBack }) {
       "manage-staff-account",
       { body: { staffId: staffRecord.id, password } },
     );
-    if (functionError) throw new Error(functionError.message || "Edge Function unreachable");
-    if (data?.error) throw new Error(data.error);
-    return data;
+
+    if (!functionError) {
+      if (data?.error) throw new Error(data.error);
+      return data;
+    }
+
+    // Edge Function not deployed — fall back to signUp for brand-new accounts only
+    const notDeployed =
+      functionError.name === "FunctionsFetchError" ||
+      (functionError.message || "").toLowerCase().includes("failed to send") ||
+      (functionError.message || "").toLowerCase().includes("unreachable");
+
+    if (!notDeployed) throw new Error(functionError.message || "Edge Function error");
+
+    if (staffRecord.user_id) {
+      throw new Error(
+        "Cannot reset staff password: Edge Function not deployed. " +
+        "Run: npx supabase functions deploy manage-staff-account --project-ref eztohcuzbxxxvnondxfz",
+      );
+    }
+
+    // New staff only — create via signUp (email confirmation handled at login via OTP)
+    const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
+      email: staffRecord.email,
+      password,
+      options: {
+        data: {
+          full_name:           staffRecord.full_name,
+          account_type:        "staff",
+          staff_id:            staffRecord.id,
+          owner_id:            staffRecord.owner_id || userId,
+          must_change_password: true,
+        },
+      },
+    });
+
+    if (signUpErr) {
+      if (signUpErr.message.toLowerCase().includes("already registered")) {
+        throw new Error(
+          "This email is already registered. Deploy the Edge Function to reset the password: " +
+          "npx supabase functions deploy manage-staff-account --project-ref eztohcuzbxxxvnondxfz",
+        );
+      }
+      throw signUpErr;
+    }
+
+    if (signUpData.user?.id) {
+      await supabase.from("staff").update({ user_id: signUpData.user.id }).eq("id", staffRecord.id);
+    }
+
+    return { success: true, created: true, userId: signUpData.user?.id };
   };
 
   const handlePhoto = (e) => {
