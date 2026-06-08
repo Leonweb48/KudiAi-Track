@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../utils/supabase";
 import { uid, today } from "../utils/helpers";
+import { logAudit } from "../utils/auditLog";
 
-export function useStore(userId) {
+export function useStore(userId, staffId = null, staffName = null) {
   const [transactions, setTransactions] = useState([]);
   const [credits,      setCredits]      = useState([]);
   const [asoClients,   setAsoClients]   = useState([]);
@@ -82,6 +83,7 @@ export function useStore(userId) {
     const tempId = "tmp-" + uid();
     const payload = {
       user_id:          userId,
+      staff_id:         staffId || null,
       type:             t.type,
       category:         t.category         || "sale",
       amount:           parseFloat(t.amount)   || 0,
@@ -104,6 +106,11 @@ export function useStore(userId) {
       setDbError(`Failed to save transaction: ${error.message}`);
     } else {
       setTransactions((p) => p.map((tx) => tx.id === tempId ? data : tx));
+      if (staffId) {
+        logAudit({ ownerId: userId, staffId, staffName: staffName || "Staff",
+          action: `Added ${t.type === "in" ? "income" : "expense"}: ${t.item_name}`,
+          module: "transactions", details: `₦${parseFloat(t.amount).toLocaleString()}` });
+      }
     }
   };
 

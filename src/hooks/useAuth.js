@@ -10,6 +10,7 @@ export function useAuth() {
   const [status,  setStatus]  = useState("loading");
   const [session, setSession] = useState(null);
   const [plan,    setPlan]    = useState(() => localStorage.getItem(CACHE_KEY) || "starter");
+  const [staff,   setStaff]   = useState(null); // non-null when logged in as a staff member
 
   // Tracks whether we've already confirmed a subscription this session.
   // A ref (not state) so reads inside async callbacks are always current.
@@ -19,13 +20,15 @@ export function useAuth() {
     if (!sess) {
       setSession(null);
       setStatus("unauthenticated");
+      setStaff(null);
       subVerified.current = false;
       localStorage.removeItem(CACHE_KEY);
       return;
     }
 
     setSession(sess);
-    const uid = sess.user.id;
+    const uid   = sess.user.id;
+    const email = sess.user.email;
 
     // ── Onboarding check ─────────────────────────────────────────
     const { data: profile } = await supabase
@@ -34,7 +37,29 @@ export function useAuth() {
       .eq("id", uid)
       .maybeSingle();
 
-    if (!profile) { setStatus("onboarding"); return; }
+    if (!profile) {
+      // No owner profile — check if they are a staff member
+      const { data: staffRow } = await supabase
+        .from("staff")
+        .select("*, staff_permissions(*)")
+        .eq("email", email)
+        .eq("status", "active")
+        .maybeSingle();
+
+      if (staffRow) {
+        // Link auth user_id to staff record on first login
+        if (!staffRow.user_id) {
+          await supabase.from("staff").update({ user_id: uid }).eq("id", staffRow.id);
+        }
+        setStaff({ ...staffRow, user_id: uid });
+        subVerified.current = true;
+        setStatus("staff");
+        return;
+      }
+
+      setStatus("onboarding");
+      return;
+    }
 
     // ── Subscription check ────────────────────────────────────────
     // If we already confirmed a subscription this session (via setReady or a
@@ -124,5 +149,5 @@ export function useAuth() {
     supabase.auth.getSession().then(({ data }) => resolve(data.session));
   }, [resolve]);
 
-  return { status, session, plan, setReady, refetch };
+  return { status, session, plan, setReady, refetch, staff, ownerId: staff?.owner_id ?? null };
 }
