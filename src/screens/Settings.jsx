@@ -102,7 +102,9 @@ const SunIcon = () => (
 
 const PersonIcon     = () => ic("M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2|M12 11a4 4 0 100-8 4 4 0 000 8");
 const CrownIcon      = () => ic("M2 4l3 12h14l3-12-6 5-4-7-4 7-6-5z|M5 16h14");
-const UsersIcon      = () => ic("M17 20h5v-2a4 4 0 00-4-4h-1|M9 20H4v-2a4 4 0 014-4h1m4 6v-2m0-4a4 4 0 100-8 4 4 0 000 8z");
+const UsersIcon      = ({ white } = {}) => white
+  ? <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-white" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">{["M17 20h5v-2a4 4 0 00-4-4h-1","M9 20H4v-2a4 4 0 014-4h1m4 6v-2m0-4a4 4 0 100-8 4 4 0 000 8z"].map((d,i)=><path key={i} d={d}/>)}</svg>
+  : ic("M17 20h5v-2a4 4 0 00-4-4h-1|M9 20H4v-2a4 4 0 014-4h1m4 6v-2m0-4a4 4 0 100-8 4 4 0 000 8z");
 const BellIcon       = () => ic("M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9|M13.73 21a2 2 0 01-3.46 0");
 const LockIcon       = () => ic("M3 11h18v11a2 2 0 01-2 2H5a2 2 0 01-2-2V11z|M7 11V7a5 5 0 0110 0v4");
 const ShieldIcon     = () => ic("M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z");
@@ -204,6 +206,23 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
   return (
     <div className="px-4 pt-6 pb-32 screen-enter">
       <h1 className="text-[26px] font-bold text-slate-900 dark:text-white mb-6 tracking-tight">Settings</h1>
+
+      {/* ── STAFF MANAGEMENT BANNER ────────────────────────────────── */}
+      <button
+        onClick={() => setStaffMgmt(true)}
+        className="w-full mb-5 bg-green-600 hover:bg-green-700 text-white rounded-2xl px-4 py-4 flex items-center gap-3 shadow-md transition-colors"
+      >
+        <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0">
+          <UsersIcon white />
+        </div>
+        <div className="flex-1 text-left">
+          <p className="font-bold text-sm">Staff Management</p>
+          <p className="text-xs text-green-100 mt-0.5">Add staff, assign roles &amp; permissions</p>
+        </div>
+        <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-white/70 flex-shrink-0" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+          <path d="M9 18l6-6-6-6" />
+        </svg>
+      </button>
 
       {/* ── APPEARANCE ─────────────────────────────────────────────── */}
       <SectionLabel>Appearance</SectionLabel>
