@@ -561,7 +561,7 @@ function ReportTemplate({ type, reportData, profile, from, to }) {
   const period = from===to ? fmtD(from) : `${fmtD(from)} — ${fmtD(to)}`;
 
   return (
-    <div style={S({width:"100%",maxWidth:794,background:"#ffffff",color:"#1e293b",margin:"0 auto"})}>
+    <div style={S({width:794,background:"#ffffff",color:"#1e293b",overflow:"hidden"})}>
 
       {/* LETTERHEAD */}
       <div style={{background:"linear-gradient(135deg,#064e3b 0%,#065f46 60%,#047857 100%)",padding:"28px 36px 22px",display:"flex",alignItems:"center",gap:16}}>
@@ -659,9 +659,14 @@ export default function Reports({ store, onClose }) {
     try {
       const el = reportRef.current;
       const canvas = await html2canvas(el, {
-        scale: 2, backgroundColor: "#ffffff",
-        useCORS: true, logging: false,
-        width: el.scrollWidth, height: el.scrollHeight,
+        scale: 2,
+        backgroundColor: "#ffffff",
+        useCORS: true,
+        logging: false,
+        width: 794,
+        windowWidth: 794,
+        scrollX: 0,
+        scrollY: 0,
       });
 
       const imgData = canvas.toDataURL("image/png");
@@ -722,17 +727,23 @@ export default function Reports({ store, onClose }) {
           </button>
         </div>
 
-        {/* Report preview (scrollable) */}
-        <div className="flex-1 overflow-y-auto">
-          <div className="min-h-full bg-slate-300 dark:bg-slate-700 p-4">
-            <div ref={reportRef} className="shadow-2xl mx-auto" style={{maxWidth:794}}>
-              <ReportTemplate
-                type={reportType}
-                reportData={reportData}
-                profile={profile}
-                from={from}
-                to={to}
-              />
+        {/* Report preview — always 794px wide, scaled to fit screen */}
+        <div className="flex-1 overflow-y-auto bg-slate-300 dark:bg-slate-700">
+          <div className="py-4 flex justify-center">
+            <div style={{
+              zoom: Math.min(1, (window.innerWidth - 16) / 794),
+              width: 794,
+              flexShrink: 0,
+            }}>
+              <div ref={reportRef} style={{width: 794, background:"#fff", boxShadow:"0 20px 60px rgba(0,0,0,.25)"}}>
+                <ReportTemplate
+                  type={reportType}
+                  reportData={reportData}
+                  profile={profile}
+                  from={from}
+                  to={to}
+                />
+              </div>
             </div>
           </div>
         </div>
