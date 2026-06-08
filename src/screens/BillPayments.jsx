@@ -311,7 +311,7 @@ function BillRow({ bill }) {
 
 /* ── Main component ──────────────────────────────────────────────── */
 
-export default function BillPayments({ store, staffName = null, businessName = null }) {
+export default function BillPayments({ store, staffName = null, businessName = null, readOnly = false }) {
   const { transactions, addTransaction } = store;
 
   const [selectedCat, setSelectedCat] = useState(null);
@@ -342,6 +342,7 @@ export default function BillPayments({ store, staffName = null, businessName = n
   const totalBills = bills.reduce((s,b) => s + b.amount, 0);
 
   const openSheet = (catId) => {
+    if (readOnly) return;
     setSelectedCat(catId);
     setForm(initForm(catId));
     setError("");
@@ -399,6 +400,11 @@ export default function BillPayments({ store, staffName = null, businessName = n
       <div className="px-4 pt-5 pb-4 bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 sticky top-0 z-10">
         <h1 className="text-xl font-extrabold text-slate-900 dark:text-white">Bill Payments</h1>
         <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Pay utilities, data, education &amp; more</p>
+        {readOnly && (
+          <p className="text-[11px] text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 mt-2">
+            View-only access. Ask your manager for permission to process bill payments.
+          </p>
+        )}
       </div>
 
       <div className="px-4 pt-4 space-y-5">
@@ -422,8 +428,8 @@ export default function BillPayments({ store, staffName = null, businessName = n
             {CATS.map(cat => {
               const count = transactions.filter(t => t.payment_type==="bill_payment" && t.category===cat.id).length;
               return (
-                <button key={cat.id} onClick={() => openSheet(cat.id)}
-                  className="rounded-2xl p-4 flex flex-col items-center gap-2 shadow-md active:scale-95 transition-all duration-150 text-white"
+                <button key={cat.id} onClick={() => openSheet(cat.id)} disabled={readOnly}
+                  className="rounded-2xl p-4 flex flex-col items-center gap-2 shadow-md active:scale-95 transition-all duration-150 text-white disabled:opacity-50 disabled:cursor-not-allowed"
                   style={{background:`linear-gradient(135deg,${cat.g1},${cat.g2})`}}>
                   <Ico d={CAT_ICONS[cat.id]} size={26} c="rgba(255,255,255,0.95)" />
                   <p className="text-[11px] font-bold">{cat.label}</p>
