@@ -41,22 +41,22 @@ function Avatar({ url, name, size = "md" }) {
   );
 }
 
-function StaffProfile({ staff, ownerName, onSignOut }) {
+function StaffProfile({ staff, ownerName, onSignOut, isDark, onToggleDark }) {
   const roleLabel = (staff.role || "").replace(/_/g, " ");
   const initials  = (staff.full_name || "?").split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
   const fields = [
-    { label: "Full Name",  value: staff.full_name },
-    { label: "Email",      value: staff.email },
-    { label: "Phone",      value: staff.phone },
-    { label: "Role",       value: roleLabel, cap: true },
-    { label: "Business",   value: ownerName },
-    { label: "Status",     value: staff.status, cap: true },
+    { label: "Full Name",    value: staff.full_name },
+    { label: "Email",        value: staff.email },
+    { label: "Phone",        value: staff.phone },
+    { label: "Role",         value: roleLabel, cap: true },
+    { label: "Business",     value: ownerName },
+    { label: "Status",       value: staff.status, cap: true },
     { label: "Member Since", value: staff.created_at ? new Date(staff.created_at).toLocaleDateString("en-NG", { day: "2-digit", month: "short", year: "numeric" }) : null },
   ].filter(f => f.value);
 
   return (
     <div className="px-4 pt-5 pb-28 space-y-4">
-      <div className="flex flex-col items-center py-6">
+      <div className="flex flex-col items-center py-5">
         <div className="w-20 h-20 rounded-full overflow-hidden mb-3 border-4 border-green-200 dark:border-green-800">
           {staff.profile_image_url
             ? <img src={staff.profile_image_url} alt={staff.full_name} className="w-full h-full object-cover" />
@@ -67,6 +67,7 @@ function StaffProfile({ staff, ownerName, onSignOut }) {
         <p className="text-xs text-slate-400 dark:text-slate-500 capitalize mt-0.5">{roleLabel}{ownerName ? ` · ${ownerName}` : ""}</p>
       </div>
 
+      {/* Profile details */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl divide-y divide-slate-100 dark:divide-slate-700 border border-slate-100 dark:border-slate-700">
         {fields.map(f => (
           <div key={f.label} className="flex items-start justify-between px-4 py-3 gap-4">
@@ -76,6 +77,7 @@ function StaffProfile({ staff, ownerName, onSignOut }) {
         ))}
       </div>
 
+      {/* Module access */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4">
         <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-3">Module Access</p>
         <div className="flex flex-wrap gap-2">
@@ -87,8 +89,39 @@ function StaffProfile({ staff, ownerName, onSignOut }) {
         </div>
       </div>
 
+      {/* Appearance */}
+      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3.5">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
+              {isDark ? (
+                <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                  <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-slate-600" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                  <circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" />
+                  <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+                  <line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" />
+                  <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+                </svg>
+              )}
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-slate-800 dark:text-white">Dark Mode</p>
+              <p className="text-xs text-slate-400 dark:text-slate-500">Switch between light and dark</p>
+            </div>
+          </div>
+          <button onClick={onToggleDark} role="switch" aria-checked={isDark}
+            className={`w-12 h-6 rounded-full transition-colors duration-200 relative flex-shrink-0 ${isDark ? "bg-green-500" : "bg-slate-200 dark:bg-slate-600"}`}>
+            <span className="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all duration-200"
+              style={{ left: isDark ? "calc(100% - 22px)" : "2px" }} />
+          </button>
+        </div>
+      </div>
+
       <button onClick={onSignOut}
-        className="w-full py-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/40 text-red-500 font-bold rounded-xl text-sm">
+        className="w-full py-3.5 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/40 text-red-500 font-bold rounded-xl text-sm">
         Sign Out
       </button>
     </div>
@@ -172,11 +205,17 @@ export default function StaffDashboard({ session, staff }) {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [changingPassword, setChangingPassword] = useState(false);
+  const [staffDark, setStaffDark] = useState(() => localStorage.getItem("kuditrack_staff_dark") === "1");
 
-  const isDark = store.profile?.dark_mode;
+  const toggleDark = () => {
+    const next = !staffDark;
+    setStaffDark(next);
+    localStorage.setItem("kuditrack_staff_dark", next ? "1" : "0");
+  };
+
   useEffect(() => {
-    document.documentElement.classList.toggle("dark", !!isDark);
-  }, [isDark]);
+    document.documentElement.classList.toggle("dark", staffDark);
+  }, [staffDark]);
 
   useEffect(() => {
     supabase.from("profiles").select("business_name, full_name").eq("id", ownerId).maybeSingle()
@@ -318,39 +357,46 @@ export default function StaffDashboard({ session, staff }) {
       case "insights":
         return <Insights store={store} plan="premium" onUpgrade={() => {}} staffName={staffName} />;
       case "profile":
-        return <StaffProfile staff={staff} ownerName={ownerName} onSignOut={handleSignOut} />;
+        return <StaffProfile staff={staff} ownerName={ownerName} onSignOut={handleSignOut} isDark={staffDark} onToggleDark={toggleDark} />;
       default:
         return null;
     }
   };
 
   return (
-    <div className={isDark ? "dark" : ""}>
+    <div className={staffDark ? "dark" : ""}>
       <div className="h-screen bg-slate-50 dark:bg-slate-900 flex justify-center">
         <div className="w-full max-w-md relative flex flex-col h-screen">
           <SyncBar isOnline={store.isOnline} pending={store.pendingSync} />
 
-          {/* Staff Header */}
-          <div className="bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 px-4 pt-12 pb-3 flex items-center gap-3">
-            {/* Left — logo */}
-            <img src="/logo.png" alt="KudiAI Track" className="w-9 h-9 object-contain rounded-xl bg-white flex-shrink-0" />
-
-            {/* Centre — wordmark */}
-            <div className="flex-1 flex justify-center items-center gap-0.5 select-none">
-              <span className="text-[17px] font-black tracking-tight text-slate-800 dark:text-white leading-none">KUDI</span>
-              <span className="text-[17px] font-black tracking-tight leading-none"
+          {/* Minimal Header */}
+          <div className="bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 pt-11 pb-2 flex items-center gap-2">
+            <img src="/logo.png" alt="KudiAI" className="w-7 h-7 object-contain rounded-lg bg-white flex-shrink-0" />
+            <div className="flex-1 flex items-center gap-0.5 select-none">
+              <span className="text-[15px] font-black tracking-tight text-slate-800 dark:text-white leading-none">KUDI</span>
+              <span className="text-[15px] font-black tracking-tight leading-none"
                 style={{ background: "linear-gradient(135deg,#16a34a,#059669)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
                 AI
               </span>
-              <span className="text-[13px] font-semibold text-slate-400 dark:text-slate-500 tracking-widest uppercase leading-none ml-1.5 mt-0.5">
+              <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 tracking-widest uppercase leading-none ml-1 mt-0.5">
                 Track
               </span>
             </div>
-
-            {/* Right — staff avatar */}
-            <div className="flex-shrink-0">
-              <Avatar url={staff.profile_image_url} name={staffName} />
-            </div>
+            <button onClick={toggleDark}
+              className="w-8 h-8 rounded-full flex items-center justify-center bg-slate-100 dark:bg-slate-800 transition-colors flex-shrink-0">
+              {staffDark ? (
+                <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-300" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                  <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-500" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                  <circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" />
+                  <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+                  <line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" />
+                  <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+                </svg>
+              )}
+            </button>
           </div>
 
           <main className="flex-1 overflow-y-auto">
