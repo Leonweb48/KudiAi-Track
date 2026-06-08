@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { createClient } from "@supabase/supabase-js";
 import { supabase } from "../utils/supabase";
 
 const ROLES = [
@@ -91,6 +92,11 @@ export default function StaffManagement({ session, onBack }) {
   const [showPassword, setShowPassword] = useState(false);
   const [accountMessage, setAccountMessage] = useState("");
   const [createdCredentials, setCreatedCredentials] = useState(null);
+  const [staffOtpData,      setStaffOtpData]      = useState(null); // { email, client }
+  const [staffOtpCode,      setStaffOtpCode]      = useState("");
+  const [otpVerifying,      setOtpVerifying]      = useState(false);
+  const [otpError,          setOtpError]          = useState("");
+  const [otpVerified,       setOtpVerified]       = useState(false);
 
   const loadStaff = async () => {
     setLoading(true);
@@ -170,6 +176,48 @@ export default function StaffManagement({ session, onBack }) {
     setShowPassword(true);
   };
 
+  // Send OTP to staff email using a non-persistent client so the owner's session is untouched
+  const sendStaffOtp = async (staffEmail) => {
+    const c = createClient(
+      process.env.REACT_APP_SUPABASE_URL,
+      process.env.REACT_APP_SUPABASE_ANON_KEY,
+      { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } },
+    );
+    const { error } = await c.auth.signInWithOtp({
+      email: staffEmail,
+      options: { shouldCreateUser: false },
+    });
+    if (error) throw error;
+    return c;
+  };
+
+  const verifyStaffEmail = async () => {
+    if (!staffOtpData || staffOtpCode.length < 6) return;
+    setOtpVerifying(true);
+    setOtpError("");
+    try {
+      const { error } = await staffOtpData.client.auth.verifyOtp({
+        email: staffOtpData.email,
+        token: staffOtpCode,
+        type: "email",
+      });
+      if (error) throw error;
+      setOtpVerified(true);
+    } catch (e) {
+      setOtpError(e.message || "Invalid or expired code");
+    } finally {
+      setOtpVerifying(false);
+    }
+  };
+
+  const closeCredentials = () => {
+    setCreatedCredentials(null);
+    setStaffOtpData(null);
+    setStaffOtpCode("");
+    setOtpError("");
+    setOtpVerified(false);
+  };
+
   const provisionLogin = async (staffRecord, password) => {
     const { data, error: functionError } = await supabase.functions.invoke(
       "manage-staff-account",
@@ -230,8 +278,13 @@ export default function StaffManagement({ session, onBack }) {
       const tempPwd = loginPassword;
       await provisionLogin(staffRow, tempPwd);
 
+      // Send OTP to confirm staff email — owner will enter code from staff
+      let otpClient = null;
+      try { otpClient = await sendStaffOtp(staffRow.email); } catch (_) {}
+
       setShowAdd(false);
       setCreatedCredentials({ name: form.full_name, email: form.email, password: tempPwd });
+      if (otpClient) setStaffOtpData({ email: staffRow.email, client: otpClient });
       await loadStaff();
     } catch (e) {
       if (staffRow?.id && !staffRow.user_id) {
@@ -310,7 +363,11 @@ export default function StaffManagement({ session, onBack }) {
       setAccountMessage(result?.message || "Login access updated");
       setLoginPassword("");
       setConfirmPassword("");
+      let otpClient = null;
+      try { otpClient = await sendStaffOtp(selected.email); } catch (_) {}
+
       setCreatedCredentials({ name: selected.full_name, email: selected.email, password: tempPwd });
+      if (otpClient) setStaffOtpData({ email: selected.email, client: otpClient });
       await loadStaff();
       const { data: refreshed } = await supabase
         .from("staff")
@@ -627,17 +684,83 @@ export default function StaffManagement({ session, onBack }) {
               </div>
             </div>
 
-            <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-xl px-4 py-3 mb-5">
-              <p className="text-[11px] text-amber-700 dark:text-amber-300 font-medium leading-relaxed">
-                Staff use this temporary password to log in. They'll verify their email via OTP and set a permanent password on first login.
-              </p>
-            </div>
+            {/* OTP verification section */}
+            {staffOtpData && (
+              <div className="border border-slate-200 dark:border-slate-700 rounded-2xl p-4 mb-4 space-y-3">
+                {otpVerified ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center flex-shrink-0">
+                      <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-green-600" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+                        <path d="M20 6L9 17l-5-5" />
+                      </svg>
+                    </div>
+                    <p className="text-xs font-semibold text-green-700 dark:text-green-400">
+                      Email verified — staff can log in directly
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <p className="text-sm font-bold text-slate-800 dark:text-white">Verify Staff Email</p>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                        Ask {createdCredentials.name.split(" ")[0]} for the 6-digit code just sent to their email, then enter it below.
+                      </p>
+                    </div>
+
+                    <div className="flex gap-1.5">
+                      {[0,1,2,3,4,5].map(i => (
+                        <input
+                          key={i}
+                          type="text"
+                          inputMode="numeric"
+                          maxLength={1}
+                          value={staffOtpCode[i] || ""}
+                          onChange={() => {}}
+                          onKeyDown={e => {
+                            if (e.key === "Backspace") {
+                              setStaffOtpCode(v => v.slice(0, Math.max(0, i)));
+                              return;
+                            }
+                            if (!/^\d$/.test(e.key)) return;
+                            setStaffOtpCode(v => (v.slice(0, i) + e.key + v.slice(i + 1)).slice(0, 6));
+                            e.target.nextSibling?.focus();
+                          }}
+                          className={`flex-1 h-10 text-center text-base font-extrabold rounded-xl border-2 bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none transition-colors ${
+                            staffOtpCode[i] ? "border-green-500" : "border-slate-200 dark:border-slate-700"
+                          }`}
+                        />
+                      ))}
+                    </div>
+
+                    {otpError && (
+                      <p className="text-[11px] text-red-500">{otpError}</p>
+                    )}
+
+                    <button
+                      onClick={verifyStaffEmail}
+                      disabled={otpVerifying || staffOtpCode.length < 6}
+                      className="w-full bg-slate-800 dark:bg-slate-100 hover:bg-slate-900 dark:hover:bg-white disabled:opacity-50 text-white dark:text-slate-900 font-bold rounded-xl py-2.5 text-sm transition-colors"
+                    >
+                      {otpVerifying ? "Verifying…" : "Verify Email →"}
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+
+            {!staffOtpData && (
+              <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-xl px-4 py-3 mb-4">
+                <p className="text-[11px] text-amber-700 dark:text-amber-300 font-medium leading-relaxed">
+                  Staff use this temporary password to log in. They'll set a permanent password on first login.
+                </p>
+              </div>
+            )}
 
             <button
-              onClick={() => setCreatedCredentials(null)}
+              onClick={closeCredentials}
               className="w-full bg-green-600 hover:bg-green-700 text-white font-bold rounded-2xl py-3.5 text-sm transition-colors"
             >
-              Done
+              {otpVerified ? "Done ✓" : "Done"}
             </button>
           </div>
         </div>
