@@ -12,7 +12,7 @@ async function uploadImg(file, bucket, path) {
   return supabase.storage.from(bucket).getPublicUrl(path).data.publicUrl;
 }
 
-function InputField({ label, required: req, children, hint, ...props }) {
+function Field({ label, required: req, hint, children, ...props }) {
   return (
     <div>
       <label className="block text-xs font-semibold text-gray-600 mb-1">
@@ -20,7 +20,8 @@ function InputField({ label, required: req, children, hint, ...props }) {
       </label>
       {children || (
         <input
-          className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+          className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm
+            focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
           {...props}
         />
       )}
@@ -29,7 +30,7 @@ function InputField({ label, required: req, children, hint, ...props }) {
   );
 }
 
-function SelectField({ label, required: req, value, onChange, disabled, placeholder, options }) {
+function Select({ label, required: req, value, onChange, disabled, placeholder, options }) {
   return (
     <div>
       <label className="block text-xs font-semibold text-gray-600 mb-1">
@@ -40,7 +41,9 @@ function SelectField({ label, required: req, value, onChange, disabled, placehol
         value={value}
         onChange={onChange}
         disabled={disabled}
-        className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white disabled:bg-gray-50 disabled:text-gray-400"
+        className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm
+          focus:outline-none focus:ring-2 focus:ring-green-500 bg-white
+          disabled:bg-gray-50 disabled:text-gray-400"
       >
         <option value="">{placeholder}</option>
         {options.map((o) => <option key={o} value={o}>{o}</option>)}
@@ -50,30 +53,31 @@ function SelectField({ label, required: req, value, onChange, disabled, placehol
 }
 
 export default function Onboarding({ session, onComplete }) {
-  const [step,             setStep]             = useState(1);
-  const [loading,          setLoading]          = useState(false);
-  const [error,            setError]            = useState("");
-  const [needsSignOut,     setNeedsSignOut]     = useState(false);
-  const [profileSaved,     setProfileSaved]     = useState(false); // saved but photo failed
+  const [step,         setStep]         = useState(1);
+  const [loading,      setLoading]      = useState(false);
+  const [error,        setError]        = useState("");
+  const [needsSignOut, setNeedsSignOut] = useState(false);
+  const [profileSaved, setProfileSaved] = useState(false);
 
   const email    = session?.user?.email || "";
   const fullName = session?.user?.user_metadata?.full_name || "";
 
-  // Step 1 — personal
-  const [gender,  setGender]  = useState("");
-  const [dob,     setDob]     = useState("");
-  const [nin,     setNin]     = useState("");
+  /* ── Step 1 — Personal / KYC ── */
+  const [phone,          setPhone]          = useState("");
+  const [homeAddress,    setHomeAddress]    = useState("");
+  const [gender,         setGender]         = useState("");
+  const [dob,            setDob]            = useState("");
+  const [state,          setState_]         = useState("");
+  const [lga,            setLga]            = useState("");
+  const [ward,           setWard]           = useState("");
+  const [nin,            setNin]            = useState("");
   const [profileFile,    setProfileFile]    = useState(null);
   const [profilePreview, setProfilePreview] = useState(null);
 
-  // Step 2 — business
-  const [bizName,  setBizName]  = useState("");
-  const [phone,    setPhone]    = useState("");
-  const [address,  setAddress]  = useState("");
-  const [state,    setState_]   = useState("");
-  const [lga,      setLga]      = useState("");
-  const [ward,     setWard]     = useState("");
-  const [currency, setCurrency] = useState(CURRENCIES[0]);
+  /* ── Step 2 — Business ── */
+  const [bizName,        setBizName]        = useState("");
+  const [bizAddress,     setBizAddress]     = useState("");
+  const [currency,       setCurrency]       = useState(CURRENCIES[0]);
 
   const lgas  = getLGAs(state);
   const wards = getWards(state, lga);
@@ -92,30 +96,27 @@ export default function Onboarding({ session, onComplete }) {
     e.preventDefault();
     setError("");
     if (!profileFile) { setError("Please upload a profile photo to continue."); return; }
+    if (!phone.trim()) { setError("Phone number is required."); return; }
     setStep(2);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!bizName.trim()) { setError("Business name is required."); return; }
-    if (!state)          { setError("Please select your state."); return; }
-    if (!lga)            { setError("Please select your LGA."); return; }
 
     setLoading(true);
     setError("");
     setNeedsSignOut(false);
     setProfileSaved(false);
+
     try {
-      // Re-verify the session is live before writing — catches stale JWTs
       const { data: { user: liveUser }, error: authErr } = await supabase.auth.getUser();
-      if (authErr || !liveUser) {
-        await supabase.auth.signOut();
-        return; // useAuth detects sign-out → shows Auth screen
-      }
+      if (authErr || !liveUser) { await supabase.auth.signOut(); return; }
 
       const uid = liveUser.id;
       let profileImageUrl = null;
       let photoFailed = false;
+
       if (profileFile) {
         try {
           profileImageUrl = await uploadImg(profileFile, "avatars", `${uid}/profile`);
@@ -128,15 +129,16 @@ export default function Onboarding({ session, onComplete }) {
         id:                uid,
         full_name:         fullName || email.split("@")[0],
         email:             liveUser.email || email,
+        phone,
         gender,
         date_of_birth:     dob || null,
         nin,
-        phone,
-        business_name:     bizName,
-        address,
+        address:           homeAddress,
         state,
         lga,
         ward,
+        business_name:     bizName,
+        business_address:  bizAddress,
         currency,
         profile_image_url: profileImageUrl,
         dark_mode:         false,
@@ -149,14 +151,22 @@ export default function Onboarding({ session, onComplete }) {
             "Database setup issue: the profiles table is missing required RLS policies. " +
             "Please run the SQL from the setup guide, then sign out and sign back in."
           );
+        } else if (dbErr.message?.includes("business_address")) {
+          // Column not yet added — save without it
+          const { error: retryErr } = await supabase.from("profiles").upsert({
+            id: uid, full_name: fullName || email.split("@")[0], email: liveUser.email || email,
+            phone, gender, date_of_birth: dob || null, nin, address: homeAddress,
+            state, lga, ward, business_name: bizName, currency,
+            profile_image_url: profileImageUrl, dark_mode: false,
+          }, { onConflict: "id" });
+          if (retryErr) throw retryErr;
         } else {
           throw dbErr;
         }
-        return;
+        if (needsSignOut) return;
       }
 
       if (photoFailed) {
-        // Profile saved — just the photo didn't upload. Let user acknowledge before continuing.
         setProfileSaved(true);
         setError(
           "Your profile was saved, but the photo could not be uploaded because the " +
@@ -175,6 +185,8 @@ export default function Onboarding({ session, onComplete }) {
     }
   };
 
+  const stepLabel = step === 1 ? "Personal & KYC Information" : "Business Information";
+
   return (
     <div className="min-h-screen bg-slate-50 flex justify-center">
       <div className="w-full max-w-md flex flex-col min-h-screen">
@@ -185,19 +197,18 @@ export default function Onboarding({ session, onComplete }) {
             <AppLogo className="h-9 w-auto" />
           </div>
           <h1 className="text-lg font-bold text-white mt-1">Set Up Your Profile</h1>
-          <p className="text-green-100 text-xs mt-1">Step {step} of 2 — {step === 1 ? "Personal Information" : "Business Information"}</p>
-          {/* Progress bar */}
+          <p className="text-green-100 text-xs mt-1">Step {step} of 2 — {stepLabel}</p>
           <div className="flex gap-1.5 mt-4 w-full max-w-xs">
             <div className="flex-1 h-1 rounded-full bg-white" />
             <div className={`flex-1 h-1 rounded-full transition-colors ${step === 2 ? "bg-white" : "bg-white/30"}`} />
           </div>
         </div>
 
-        {/* Step 1 — Personal */}
+        {/* ── Step 1 — Personal / KYC ─────────────────────────────── */}
         {step === 1 && (
           <form onSubmit={handleStep1} className="flex-1 overflow-y-auto px-5 py-5 space-y-4 pb-10 bg-white">
 
-            {/* Profile photo — required */}
+            {/* Profile photo */}
             <div className="flex flex-col items-center pb-2">
               <label className="relative cursor-pointer group">
                 <div className={`w-28 h-28 rounded-full overflow-hidden flex items-center justify-center transition-all
@@ -230,41 +241,63 @@ export default function Onboarding({ session, onComplete }) {
             </div>
 
             {/* Full Name — locked */}
-            <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">Full Name</label>
+            <Field label="Full Name">
               <input readOnly value={fullName || email.split("@")[0]}
                 className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-gray-50 text-gray-400 cursor-not-allowed" />
-            </div>
+            </Field>
+
+            {/* Phone — required */}
+            <Field label="Phone Number" required
+              type="tel" placeholder="08012345678" value={phone}
+              onChange={(e) => setPhone(e.target.value)} inputMode="tel" />
 
             {/* Email — locked */}
-            <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">Email Address</label>
+            <Field label="Email Address">
               <input readOnly value={email}
                 className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-gray-50 text-gray-400 cursor-not-allowed" />
-            </div>
+            </Field>
+
+            {/* Home Address */}
+            <Field label="Home Address"
+              placeholder="e.g. 12 Aba Road, Port Harcourt"
+              value={homeAddress} onChange={(e) => setHomeAddress(e.target.value)} />
 
             {/* Gender */}
-            <SelectField
-              label="Gender"
-              value={gender}
-              onChange={(e) => setGender(e.target.value)}
-              placeholder="Select gender…"
-              options={GENDERS}
-            />
+            <Select label="Gender"
+              value={gender} onChange={(e) => setGender(e.target.value)}
+              placeholder="Select gender…" options={GENDERS} />
 
             {/* Date of Birth */}
-            <InputField label="Date of Birth" type="date" value={dob} onChange={(e) => setDob(e.target.value)}
+            <Field label="Date of Birth" type="date" value={dob}
+              onChange={(e) => setDob(e.target.value)}
               max={new Date().toISOString().split("T")[0]} />
 
+            {/* State */}
+            <Select label="State"
+              value={state} onChange={(e) => handleStateChange(e.target.value)}
+              placeholder="Select State…" options={STATES} />
+
+            {/* LGA */}
+            <Select label="Local Government Area (LGA)"
+              value={lga} onChange={(e) => handleLgaChange(e.target.value)}
+              disabled={!state}
+              placeholder={state ? "Select LGA…" : "Select state first"}
+              options={lgas} />
+
+            {/* Ward */}
+            <Select label="Ward"
+              value={ward} onChange={(e) => setWard(e.target.value)}
+              disabled={!lga}
+              placeholder={lga ? "Select Ward…" : "Select LGA first"}
+              options={wards} />
+
             {/* NIN */}
-            <InputField
-              label="National Identity Number (NIN)"
+            <Field label="National Identity Number (NIN)"
               placeholder="Enter your 11-digit NIN"
               value={nin}
               onChange={(e) => setNin(e.target.value.replace(/\D/g, "").slice(0, 11))}
               inputMode="numeric"
-              hint="Your NIN is kept private and secure"
-            />
+              hint="Your NIN is kept private and secure" />
 
             {error && (
               <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">{error}</div>
@@ -277,7 +310,7 @@ export default function Onboarding({ session, onComplete }) {
           </form>
         )}
 
-        {/* Step 2 — Business */}
+        {/* ── Step 2 — Business ───────────────────────────────────── */}
         {step === 2 && (
           <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-5 py-5 space-y-4 pb-10 bg-white">
 
@@ -287,41 +320,17 @@ export default function Onboarding({ session, onComplete }) {
             </button>
 
             {/* Business Name */}
-            <InputField label="Business / Store Name" required
+            <Field label="Business / Store Name" required
               placeholder="e.g. Adaeze Fabrics & Co."
               value={bizName} onChange={(e) => setBizName(e.target.value)} />
 
-            {/* Phone */}
-            <InputField label="Phone Number" type="tel"
-              placeholder="08012345678"
-              value={phone} onChange={(e) => setPhone(e.target.value)} />
-
-            {/* Address */}
-            <InputField label="Business Address"
-              placeholder="e.g. 12 Market Road, Onitsha"
-              value={address} onChange={(e) => setAddress(e.target.value)} />
-
-            {/* State */}
-            <SelectField label="State" required
-              value={state} onChange={(e) => handleStateChange(e.target.value)}
-              placeholder="Select State…" options={STATES} />
-
-            {/* LGA */}
-            <SelectField label="Local Government Area (LGA)" required
-              value={lga} onChange={(e) => handleLgaChange(e.target.value)}
-              disabled={!state}
-              placeholder={state ? "Select LGA…" : "Select state first"}
-              options={lgas} />
-
-            {/* Ward */}
-            <SelectField label="Ward"
-              value={ward} onChange={(e) => setWard(e.target.value)}
-              disabled={!lga}
-              placeholder={lga ? "Select Ward…" : "Select LGA first"}
-              options={wards} />
+            {/* Business Address */}
+            <Field label="Business Address"
+              placeholder="e.g. Shop 4, Onitsha Main Market"
+              value={bizAddress} onChange={(e) => setBizAddress(e.target.value)} />
 
             {/* Currency */}
-            <SelectField label="Currency"
+            <Select label="Currency"
               value={currency} onChange={(e) => setCurrency(e.target.value)}
               placeholder="" options={CURRENCIES} />
 
@@ -330,21 +339,15 @@ export default function Onboarding({ session, onComplete }) {
             )}
 
             {needsSignOut && (
-              <button
-                type="button"
-                onClick={() => supabase.auth.signOut()}
-                className="w-full border-2 border-red-300 text-red-600 font-bold rounded-xl py-3 text-sm hover:bg-red-50 transition-colors"
-              >
+              <button type="button" onClick={() => supabase.auth.signOut()}
+                className="w-full border-2 border-red-300 text-red-600 font-bold rounded-xl py-3 text-sm hover:bg-red-50 transition-colors">
                 Sign Out &amp; Try Again
               </button>
             )}
 
             {profileSaved ? (
-              <button
-                type="button"
-                onClick={onComplete}
-                className="w-full bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl py-3.5 text-sm transition-colors"
-              >
+              <button type="button" onClick={onComplete}
+                className="w-full bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl py-3.5 text-sm transition-colors">
                 Continue to Plans →
               </button>
             ) : (
