@@ -3,6 +3,7 @@ import Modal           from "../components/shared/Modal";
 import Field           from "../components/shared/Field";
 import StaffManagement from "./StaffManagement";
 import { supabase } from "../utils/supabase";
+import { canDo } from "../utils/plans";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 
 const GENDERS = ["Male", "Female", "Prefer not to say"];
@@ -222,7 +223,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
       <SettingsCard>
         <Row icon={<PersonIcon />} label="Profile"          sub="Edit your profile and business info"    onClick={openEdit} />
         <Row icon={<CrownIcon />}  label="Premium"          sub="Upgrade for more features"              onClick={plan !== "premium" ? onUpgrade : undefined} />
-        {plan === "premium" && (
+        {canDo(plan, "staffManagement") && (
           <Row icon={<UsersIcon />} label="Staff Management" sub="Add staff, assign roles & permissions" onClick={() => setStaffMgmt(true)} />
         )}
         <Row icon={<BellIcon />}   label="Notifications"    sub="Manage alerts and reminders"            onClick={() => setInfoModal(INFO.notify)} />

@@ -15,16 +15,18 @@ export const PLAN_LIMITS = {
     aiInsights: false,
   },
   business: {
-    maxTxPerMonth: Infinity,
-    aso:        true,
-    pdfExport:  true,
-    aiInsights: false,
+    maxTxPerMonth:   Infinity,
+    aso:             true,
+    pdfExport:       true,
+    aiInsights:      false,
+    staffManagement: true,
   },
   premium: {
-    maxTxPerMonth: Infinity,
-    aso:        true,
-    pdfExport:  true,
-    aiInsights: true,
+    maxTxPerMonth:   Infinity,
+    aso:             true,
+    pdfExport:       true,
+    aiInsights:      true,
+    staffManagement: true,
   },
 };
 
