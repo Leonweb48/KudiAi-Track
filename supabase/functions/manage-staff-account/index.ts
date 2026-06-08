@@ -68,6 +68,7 @@ serve(async (req) => {
       account_type: "staff",
       staff_id: staff.id,
       owner_id: staff.owner_id,
+      must_change_password: true,
     };
 
     let authUserId = staff.user_id;

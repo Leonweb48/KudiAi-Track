@@ -557,9 +557,9 @@ export default function StaffManagement({ session, onBack }) {
               <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900/40 rounded-2xl p-4 space-y-3">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm font-bold text-green-800 dark:text-green-300">Staff Login Password</p>
+                    <p className="text-sm font-bold text-green-800 dark:text-green-300">Staff Login (Temporary Password)</p>
                     <p className="text-[11px] text-green-700/70 dark:text-green-400/70 mt-0.5">
-                      Staff will log in with their email and this password. Only you can change it.
+                      Staff use this to log in the first time, then set their own password via OTP.
                     </p>
                   </div>
                   <button type="button" onClick={generatePassword}
@@ -568,7 +568,7 @@ export default function StaffManagement({ session, onBack }) {
                   </button>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Login Password *</label>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Temporary Password *</label>
                   <div className="relative">
                     <input type={showPassword ? "text" : "password"} value={loginPassword}
                       onChange={e => setLoginPassword(e.target.value)}
@@ -584,11 +584,11 @@ export default function StaffManagement({ session, onBack }) {
                   <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Confirm Password *</label>
                   <input type={showPassword ? "text" : "password"} value={confirmPassword}
                     onChange={e => setConfirmPassword(e.target.value)}
-                    placeholder="Repeat login password"
+                    placeholder="Repeat temporary password"
                     className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500" />
                 </div>
                 <p className="text-[10px] text-slate-500 dark:text-slate-400">
-                  Staff use exactly this password to sign in — only you can reset it.
+                  On first login they'll verify via email OTP then set their own password.
                 </p>
               </div>
 
@@ -681,7 +681,7 @@ export default function StaffManagement({ session, onBack }) {
 
             <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-xl px-4 py-3 mb-5">
               <p className="text-[11px] text-amber-700 dark:text-amber-300 font-medium leading-relaxed">
-                Staff sign in with their email and this password. Only you (the owner) can change it from here.
+                Staff use this temporary password to log in. They'll verify their email via OTP and set a permanent password on first login.
               </p>
             </div>
 
@@ -803,7 +803,7 @@ export default function StaffManagement({ session, onBack }) {
                 <div className="relative">
                   <input type={showPassword ? "text" : "password"} value={loginPassword}
                     onChange={e => setLoginPassword(e.target.value)}
-                    placeholder={selected.user_id ? "New login password" : "Login password"}
+                    placeholder={selected.user_id ? "New temporary password" : "Temporary password"}
                     className="w-full border border-slate-200 dark:border-slate-700 rounded-xl pl-3 pr-14 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500" />
                   <button type="button" onClick={() => setShowPassword(v => !v)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-green-600">
@@ -812,7 +812,7 @@ export default function StaffManagement({ session, onBack }) {
                 </div>
                 <input type={showPassword ? "text" : "password"} value={confirmPassword}
                   onChange={e => setConfirmPassword(e.target.value)}
-                  placeholder="Confirm login password"
+                  placeholder="Confirm temporary password"
                   className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500" />
                 <button type="button" onClick={saveLoginAccess} disabled={saving || selected.status !== "active"}
                   className="w-full border-2 border-green-200 dark:border-green-800 text-green-700 dark:text-green-300 disabled:opacity-50 font-bold rounded-xl py-2.5 text-sm hover:bg-green-50 dark:hover:bg-green-950/20 transition-colors">
