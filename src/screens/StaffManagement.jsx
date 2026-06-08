@@ -11,17 +11,18 @@ const ROLES = [
 
 const MODULES = [
   { id: "transactions", label: "Transactions" },
+  { id: "bills",        label: "Bill Payments"},
   { id: "credit",       label: "Credit Sales" },
   { id: "aso",          label: "Aso Savings"  },
   { id: "insights",     label: "Insights"     },
 ];
 
 const ROLE_DEFAULTS = {
-  cashier:        ["transactions"],
-  sales_officer:  ["transactions", "credit"],
+  cashier:        ["transactions", "bills"],
+  sales_officer:  ["transactions", "bills", "credit"],
   credit_officer: ["credit"],
   aso_collector:  ["aso"],
-  manager:        ["transactions", "credit", "aso", "insights"],
+  manager:        ["transactions", "bills", "credit", "aso", "insights"],
 };
 
 const ROLE_COLORS = {
