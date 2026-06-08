@@ -8,6 +8,27 @@ import Insights           from "./Insights";
 import BillPayments       from "./BillPayments";
 import VoiceModal         from "../components/VoiceModal";
 import SyncBar            from "../components/SyncBar";
+import Icon               from "../components/Icon";
+
+const NAV_ICON = {
+  overview:     "home",
+  transactions: "txn",
+  bills:        "bills",
+  credit:       "credit",
+  aso:          "aso",
+  insights:     "insights",
+  profile:      "user",
+};
+
+const NAV_LABEL = {
+  overview:     "Home",
+  transactions: "Sales",
+  bills:        "Bills",
+  credit:       "Credit",
+  aso:          "Aso",
+  insights:     "Reports",
+  profile:      "Profile",
+};
 
 function Avatar({ url, name, size = "md" }) {
   const sz = size === "lg" ? "w-14 h-14 text-xl" : "w-9 h-9 text-sm";
@@ -239,7 +260,7 @@ export default function StaffDashboard({ session, staff }) {
         .reduce((sum, t) => sum + Number(t.amount || 0), 0);
 
       return (
-        <div className="p-4 pb-10 space-y-4">
+        <div className="p-4 pb-28 space-y-4">
           <div className="rounded-3xl bg-gradient-to-br from-green-600 to-emerald-700 text-white p-5 shadow-lg">
             <p className="text-xs text-green-100 font-semibold">Welcome back</p>
             <h2 className="text-xl font-extrabold mt-1">{staffName}</h2>
@@ -322,20 +343,36 @@ export default function StaffDashboard({ session, staff }) {
             </button>
           </div>
 
-          {/* Module Tabs */}
-          <div className="flex bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 overflow-x-auto">
-            {["overview", ...allowed, "profile"].map(m => (
-              <button key={m} onClick={() => setTab(m)}
-                className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold border-b-2 whitespace-nowrap transition-colors ${tab === m ? "border-green-500 text-green-600" : "border-transparent text-slate-400"}`}>
-                <span className={tab === m ? "text-green-600" : "text-slate-400"}>{MODULE_ICONS[m]}</span>
-                {MODULE_LABELS[m]}
-              </button>
-            ))}
-          </div>
-
           <main className="flex-1 overflow-y-auto">
             {renderTab()}
           </main>
+
+          {/* Bottom Navigation */}
+          <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md z-40 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 shadow-float">
+            <div className="flex items-stretch h-[60px]">
+              {["overview", ...allowed, "profile"].map(m => {
+                const isActive = tab === m;
+                return (
+                  <button key={m} onClick={() => setTab(m)}
+                    className="flex-1 flex flex-col items-center justify-center gap-0.5 relative transition-colors duration-150 focus-visible:outline-none">
+                    {isActive && (
+                      <span className="absolute top-0 left-1/2 -translate-x-1/2 w-5 h-0.5 rounded-full bg-green-600 dark:bg-green-400" />
+                    )}
+                    <div className={`transition-all duration-200 ${isActive ? "scale-110" : "scale-100"}`}>
+                      <Icon name={NAV_ICON[m]} size={21}
+                        className={isActive ? "text-green-600 dark:text-green-400" : "text-slate-400 dark:text-slate-500"} />
+                    </div>
+                    <span className={`text-[8px] font-bold uppercase tracking-wide leading-none transition-colors duration-150 ${
+                      isActive ? "text-green-600 dark:text-green-400" : "text-slate-400 dark:text-slate-500"
+                    }`}>
+                      {NAV_LABEL[m]}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ height: "env(safe-area-inset-bottom, 0px)" }} />
+          </nav>
 
           {voiceOpen && canCreate("transactions") && (
             <VoiceModal
