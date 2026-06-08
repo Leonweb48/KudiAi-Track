@@ -1,0 +1,103 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build React app
+        run: npm run build
+
+      - name: Create Capacitor generated files
+        run: |
+          mkdir -p android/capacitor-cordova-android-plugins/src/main/libs
+          mkdir -p android/capacitor-cordova-android-plugins/src/main/java
+          mkdir -p android/app/src/main/assets
+          mkdir -p android/app/src/main/res/xml
+
+          {
+            echo "apply plugin: 'com.android.library'"
+            echo "android {"
+            echo "    namespace \"capacitor.cordova.android.plugins\""
+            echo "    compileSdk rootProject.ext.compileSdkVersion"
+            echo "    defaultConfig {"
+            echo "        minSdkVersion rootProject.ext.minSdkVersion"
+            echo "        targetSdkVersion rootProject.ext.targetSdkVersion"
+            echo "    }"
+            echo "}"
+            echo "repositories {"
+            echo "    mavenCentral()"
+            echo "    google()"
+            echo "    flatDir { dirs 'src/main/libs', '../app/libs' }"
+            echo "}"
+            echo "dependencies { }"
+          } > android/capacitor-cordova-android-plugins/build.gradle
+
+          echo 'ext { }' > android/capacitor-cordova-android-plugins/cordova.variables.gradle
+
+          {
+            echo '<?xml version="1.0" encoding="utf-8"?>'
+            echo '<manifest xmlns:android="http://schemas.android.com/apk/res/android">'
+            echo '</manifest>'
+          } > android/capacitor-cordova-android-plugins/src/main/AndroidManifest.xml
+
+          echo '{"appId":"com.amayatechnologies.kuditrack","appName":"KudiAI Track","webDir":"build","server":{"androidScheme":"https"},"android":{"allowMixedContent":true}}' > android/app/src/main/assets/capacitor.config.json
+          echo '[]' > android/app/src/main/assets/capacitor.plugins.json
+
+          {
+            echo '<?xml version="1.0" encoding="utf-8"?>'
+            echo '<widget id="com.amayatechnologies.kuditrack" version="1.0.0" xmlns="http://www.w3.org/ns/widgets">'
+            echo '</widget>'
+          } > android/app/src/main/res/xml/config.xml
+
+      - name: Copy web assets to Android
+        run: |
+          mkdir -p android/app/src/main/assets/public
+          cp -r build/. android/app/src/main/assets/public/
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept Android SDK licenses
+        run: yes | sdkmanager --licenses || true
+
+      - name: Write local.properties
+        run: echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
+
+      - name: Make Gradle executable
+        run: chmod +x android/gradlew
+
+      - name: Build debug APK
+        run: |
+          cd android
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: KudiAI-Track-debug-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30

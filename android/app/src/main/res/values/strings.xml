@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">KudiAI Track</string>
+    <string name="title_activity_main">KudiAI Track</string>
+    <string name="package_name">com.amayatechnologies.kuditrack</string>
+    <string name="custom_url_scheme">com.amayatechnologies.kuditrack</string>
+</resources>

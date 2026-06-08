@@ -1,0 +1,387 @@
+import { useState, useEffect } from "react";
+import Modal           from "../components/shared/Modal";
+import Field           from "../components/shared/Field";
+import StaffManagement from "./StaffManagement";
+import { supabase } from "../utils/supabase";
+import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
+
+const GENDERS = ["Male", "Female", "Prefer not to say"];
+
+const INFO = {
+  notify: {
+    title: "Notifications",
+    body:  "Push notifications for payment reminders and overdue credits are coming in a future update. Stay tuned!",
+  },
+  privacy: {
+    title: "Privacy Policy",
+    body:  "KudiAI Track collects only the data you enter. Your business data is stored securely in Supabase and is never shared with third parties. You can request data deletion at any time by contacting support.",
+  },
+  terms: {
+    title: "Terms & Conditions",
+    body:  "By using KudiAI Track you agree to use the app for lawful business purposes only. We are not liable for financial decisions made based on app data. Subscription fees are non-refundable after the billing period starts.",
+  },
+  pin: {
+    title: "Change PIN",
+    body:  "PIN security is coming soon! You will be able to set a 4-digit PIN to protect your app data.",
+  },
+  biometric: {
+    title: "Biometric Lock",
+    body:  "Biometric authentication (fingerprint / face unlock) is coming soon to KudiAI Track.",
+  },
+};
+
+async function uploadProfileImg(file, userId) {
+  const path = `${userId}/profile`;
+  const { error } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
+  if (error) throw error;
+  const base = supabase.storage.from("avatars").getPublicUrl(path).data.publicUrl;
+  return `${base}?v=${Date.now()}`;
+}
+
+/* ── Sub-components ───────────────────────────────────────────────── */
+
+function SectionLabel({ children }) {
+  return (
+    <p className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1">
+      {children}
+    </p>
+  );
+}
+
+function SettingsCard({ children }) {
+  return (
+    <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-100 dark:border-slate-700 shadow-card divide-y divide-slate-100 dark:divide-slate-700/80 mb-5">
+      {children}
+    </div>
+  );
+}
+
+function Row({ icon, label, sub, onClick, right }) {
+  return (
+    <button
+      onClick={onClick}
+      className="w-full flex items-center gap-3.5 px-4 py-[14px] text-left hover:bg-slate-50 dark:hover:bg-slate-700/40 active:bg-slate-100 dark:active:bg-slate-700/60 transition-colors focus-visible:outline-none"
+      aria-label={label}
+    >
+      <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center flex-shrink-0">
+        {icon}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="font-semibold text-[15px] leading-snug text-slate-800 dark:text-slate-100">{label}</p>
+        {sub && <p className="text-[12px] text-slate-400 dark:text-slate-500 mt-0.5">{sub}</p>}
+      </div>
+      {right !== undefined ? right : (
+        <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-300 dark:text-slate-600 flex-shrink-0" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M9 18l6-6-6-6" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
+/* ── Inline icon helpers ──────────────────────────────────────────── */
+const ic = (d, extra = "") => (
+  <svg viewBox="0 0 24 24" fill="none" className={`w-5 h-5 text-slate-600 dark:text-slate-300 ${extra}`} stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    {d.split("|").map((seg, i) => <path key={i} d={seg} />)}
+  </svg>
+);
+
+const SunIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+    <circle cx="12" cy="12" r="5" />
+    <line x1="12" y1="1"     x2="12" y2="3"     />
+    <line x1="12" y1="21"    x2="12" y2="23"    />
+    <line x1="4.22" y1="4.22"  x2="5.64" y2="5.64"  />
+    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+    <line x1="1"  y1="12"    x2="3"  y2="12"    />
+    <line x1="21" y1="12"    x2="23" y2="12"    />
+    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+    <line x1="18.36" y1="5.64"  x2="19.78" y2="4.22"  />
+  </svg>
+);
+
+const PersonIcon     = () => ic("M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2|M12 11a4 4 0 100-8 4 4 0 000 8");
+const CrownIcon      = () => ic("M2 4l3 12h14l3-12-6 5-4-7-4 7-6-5z|M5 16h14");
+const UsersIcon      = ({ white } = {}) => white
+  ? <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-white" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">{["M17 20h5v-2a4 4 0 00-4-4h-1","M9 20H4v-2a4 4 0 014-4h1m4 6v-2m0-4a4 4 0 100-8 4 4 0 000 8z"].map((d,i)=><path key={i} d={d}/>)}</svg>
+  : ic("M17 20h5v-2a4 4 0 00-4-4h-1|M9 20H4v-2a4 4 0 014-4h1m4 6v-2m0-4a4 4 0 100-8 4 4 0 000 8z");
+const BellIcon       = () => ic("M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9|M13.73 21a2 2 0 01-3.46 0");
+const LockIcon       = () => ic("M3 11h18v11a2 2 0 01-2 2H5a2 2 0 01-2-2V11z|M7 11V7a5 5 0 0110 0v4");
+const ShieldIcon     = () => ic("M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z");
+const DocIcon        = () => ic("M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z|M14 2v6h6|M16 13H8|M16 17H8");
+const HelpIcon       = () => ic("M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z|M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3|M12 17h.01");
+const LogoutIconSvg  = () => (
+  <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-red-500 dark:text-red-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
+    <polyline points="16 17 21 12 16 7" />
+    <line x1="21" y1="12" x2="9" y2="12" />
+  </svg>
+);
+
+/* ── Main component ───────────────────────────────────────────────── */
+export default function Settings({ store, session, plan = "starter", onUpgrade, onStaffManagement }) {
+  const { profile, setProfile } = store;
+  const [staffMgmt,     setStaffMgmt]     = useState(false);
+  const [editProfile,   setEditProfile]   = useState(false);
+  const [fp,            setFp]            = useState({ ...profile });
+  const [photoFile,     setPhotoFile]     = useState(null);
+  const [photoPreview,  setPhotoPreview]  = useState(null);
+  const [saving,        setSaving]        = useState(false);
+  const [saveError,     setSaveError]     = useState("");
+  const [signingOut,    setSigningOut]    = useState(false);
+  const [infoModal,     setInfoModal]     = useState(null);
+
+  useEffect(() => {
+    if (!editProfile) setFp({ ...profile });
+  }, [profile]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const lgas  = getLGAs(fp.state  || "");
+  const wards = getWards(fp.state || "", fp.lga || "");
+
+  const openEdit = () => {
+    setFp({ ...profile });
+    setPhotoFile(null);
+    setPhotoPreview(null);
+    setSaveError("");
+    setEditProfile(true);
+  };
+
+  const handlePhotoChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
+  };
+
+  const handleStateChange = (s) => setFp(p => ({ ...p, state: s, lga: "", ward: "" }));
+  const handleLgaChange   = (l) => setFp(p => ({ ...p, lga: l, ward: "" }));
+
+  const handleSaveProfile = async () => {
+    setSaving(true);
+    setSaveError("");
+    let imageUrl = fp.profile_image_url;
+    if (photoFile && session?.user?.id) {
+      try {
+        imageUrl = await uploadProfileImg(photoFile, session.user.id);
+      } catch (err) {
+        setSaveError(`Photo upload failed: ${err.message}`);
+        setSaving(false);
+        return;
+      }
+    }
+    const { error } = await setProfile({ ...fp, profile_image_url: imageUrl });
+    setSaving(false);
+    if (error) { setSaveError(error.message || "Failed to save."); return; }
+    setEditProfile(false);
+  };
+
+  const handleSignOut = async () => {
+    setSigningOut(true);
+    await supabase?.auth.signOut();
+  };
+
+  const toggleDark = () => setProfile(p => ({ ...p, dark_mode: !p.dark_mode }));
+
+  const initials  = profile.owner_name?.[0]?.toUpperCase() || "A";
+  const avatarSrc = photoPreview || profile.profile_image_url;
+
+  const Toggle = (
+    <button
+      onClick={e => { e.stopPropagation(); toggleDark(); }}
+      role="switch"
+      aria-checked={!!profile.dark_mode}
+      className={`w-12 h-6 rounded-full transition-colors duration-200 relative focus-visible:outline-none flex-shrink-0 ${
+        profile.dark_mode ? "bg-brand-600" : "bg-slate-200 dark:bg-slate-600"
+      }`}
+    >
+      <span
+        className="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all duration-200"
+        style={{ left: profile.dark_mode ? "calc(100% - 22px)" : "2px" }}
+      />
+    </button>
+  );
+
+  const inputCls = "w-full border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white dark:bg-slate-700 dark:text-slate-100 disabled:opacity-50";
+
+  return (
+    <div className="px-4 pt-6 pb-32 screen-enter">
+      <h1 className="text-[26px] font-bold text-slate-900 dark:text-white mb-6 tracking-tight">Settings</h1>
+
+      {/* ── STAFF MANAGEMENT BANNER ────────────────────────────────── */}
+      <button
+        onClick={() => setStaffMgmt(true)}
+        className="w-full mb-5 bg-green-600 hover:bg-green-700 text-white rounded-2xl px-4 py-4 flex items-center gap-3 shadow-md transition-colors"
+      >
+        <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0">
+          <UsersIcon white />
+        </div>
+        <div className="flex-1 text-left">
+          <p className="font-bold text-sm">Staff Management</p>
+          <p className="text-xs text-green-100 mt-0.5">Add staff, assign roles &amp; permissions</p>
+        </div>
+        <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-white/70 flex-shrink-0" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+          <path d="M9 18l6-6-6-6" />
+        </svg>
+      </button>
+
+      {/* ── APPEARANCE ─────────────────────────────────────────────── */}
+      <SectionLabel>Appearance</SectionLabel>
+      <SettingsCard>
+        <Row
+          icon={<SunIcon />}
+          label="Dark Mode"
+          sub="Switch between light and dark themes"
+          onClick={toggleDark}
+          right={Toggle}
+        />
+      </SettingsCard>
+
+      {/* ── ACCOUNT ────────────────────────────────────────────────── */}
+      <SectionLabel>Account</SectionLabel>
+      <SettingsCard>
+        <Row icon={<PersonIcon />} label="Profile"          sub="Edit your profile and business info"    onClick={openEdit} />
+        <Row icon={<CrownIcon />}  label="Premium"          sub="Upgrade for more features"              onClick={plan !== "premium" ? onUpgrade : undefined} />
+        <Row icon={<UsersIcon />} label="Staff Management" sub="Add staff, assign roles & permissions" onClick={() => setStaffMgmt(true)} />
+        <Row icon={<BellIcon />}   label="Notifications"    sub="Manage alerts and reminders"            onClick={() => setInfoModal(INFO.notify)} />
+      </SettingsCard>
+
+      {/* ── SECURITY ───────────────────────────────────────────────── */}
+      <SectionLabel>Security</SectionLabel>
+      <SettingsCard>
+        <Row icon={<LockIcon />}   label="Change PIN"      sub="Set or update your security PIN"      onClick={() => setInfoModal(INFO.pin)} />
+        <Row icon={<ShieldIcon />} label="Biometric Lock"  sub="Use fingerprint or face unlock"       onClick={() => setInfoModal(INFO.biometric)} />
+      </SettingsCard>
+
+      {/* ── LEGAL ──────────────────────────────────────────────────── */}
+      <SectionLabel>Legal</SectionLabel>
+      <SettingsCard>
+        <Row icon={<DocIcon />}  label="Terms & Conditions" onClick={() => setInfoModal(INFO.terms)} />
+        <Row icon={<DocIcon />}  label="Privacy Policy"     onClick={() => setInfoModal(INFO.privacy)} />
+        <Row icon={<HelpIcon />} label="Help & Support"     onClick={() => window.open("https://wa.me/2348000000000?text=Hi%2C+I+need+help+with+KudiAI+Track", "_blank")} />
+      </SettingsCard>
+
+      {/* ── LOG OUT ────────────────────────────────────────────────── */}
+      <button
+        onClick={handleSignOut}
+        disabled={signingOut}
+        className="w-full py-[15px] bg-red-50 dark:bg-red-950/30 rounded-2xl font-bold text-sm border border-red-100 dark:border-red-900/40 hover:bg-red-100 dark:hover:bg-red-950/50 disabled:opacity-60 transition-colors flex items-center justify-center gap-2.5 text-red-500 dark:text-red-400 active:scale-[0.99]"
+      >
+        <LogoutIconSvg />
+        {signingOut ? "Signing out…" : "Log Out"}
+      </button>
+
+      <p className="text-center text-[11px] text-slate-300 dark:text-slate-600 mt-6 font-medium">
+        KudiAI Track v1.0 · Made with ♥ for Nigerian traders
+      </p>
+
+      {/* ── Info modal ─────────────────────────────────────────────── */}
+      {infoModal && (
+        <Modal title={infoModal.title} onClose={() => setInfoModal(null)}>
+          <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">{infoModal.body}</p>
+          <button onClick={() => setInfoModal(null)}
+            className="w-full mt-5 py-3 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-bold text-sm transition-colors">
+            Got it
+          </button>
+        </Modal>
+      )}
+
+      {/* ── Edit profile modal ─────────────────────────────────────── */}
+      {editProfile && (
+        <Modal title="Edit Profile" onClose={() => setEditProfile(false)}>
+          <div className="space-y-4 max-h-[72vh] overflow-y-auto pr-1">
+
+            {/* Photo */}
+            <div className="flex flex-col items-center pt-1 pb-2">
+              <label className="relative cursor-pointer">
+                <div className="w-24 h-24 rounded-full overflow-hidden flex items-center justify-center border-2 border-brand-200 dark:border-brand-800">
+                  {avatarSrc
+                    ? <img src={avatarSrc} alt="profile" className="w-full h-full object-cover" />
+                    : <div className="w-full h-full bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-white font-bold text-2xl">{initials}</div>
+                  }
+                </div>
+                <span className="absolute bottom-0 right-0 bg-brand-600 rounded-full p-1.5 shadow-md">
+                  <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+                  </svg>
+                </span>
+                <input type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />
+              </label>
+              <p className="text-xs text-slate-400 dark:text-slate-500 mt-2">Tap to change photo</p>
+            </div>
+
+            <Field label="Full Name" value={fp.owner_name || ""} placeholder="Your full name"
+              onChange={e => setFp(p => ({ ...p, owner_name: e.target.value }))} />
+
+            <Field label="Business Name" value={fp.business_name || ""} placeholder="Your business name"
+              onChange={e => setFp(p => ({ ...p, business_name: e.target.value }))} />
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">Gender</label>
+              <select value={fp.gender || ""} onChange={e => setFp(p => ({ ...p, gender: e.target.value }))} className={inputCls}>
+                <option value="">Select gender…</option>
+                {GENDERS.map(g => <option key={g} value={g}>{g}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">Date of Birth</label>
+              <input type="date" value={fp.date_of_birth || ""} max={new Date().toISOString().split("T")[0]}
+                onChange={e => setFp(p => ({ ...p, date_of_birth: e.target.value }))} className={inputCls} />
+            </div>
+
+            <Field label="NIN" type="text" inputMode="numeric" placeholder="11-digit NIN" value={fp.nin || ""}
+              onChange={e => setFp(p => ({ ...p, nin: e.target.value.replace(/\D/g, "").slice(0, 11) }))} />
+
+            <Field label="Phone Number" type="tel" value={fp.phone || ""}
+              onChange={e => setFp(p => ({ ...p, phone: e.target.value }))} placeholder="08012345678" />
+
+            <Field label="Business Address" value={fp.address || ""}
+              onChange={e => setFp(p => ({ ...p, address: e.target.value }))} placeholder="12 Market Road, Onitsha" />
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">State</label>
+              <select value={fp.state || ""} onChange={e => handleStateChange(e.target.value)} className={inputCls}>
+                <option value="">Select State…</option>
+                {STATES.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">LGA</label>
+              <select value={fp.lga || ""} onChange={e => handleLgaChange(e.target.value)} disabled={!fp.state} className={inputCls}>
+                <option value="">{fp.state ? "Select LGA…" : "Select state first"}</option>
+                {lgas.map(l => <option key={l} value={l}>{l}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">Ward</label>
+              <select value={fp.ward || ""} onChange={e => setFp(p => ({ ...p, ward: e.target.value }))} disabled={!fp.lga} className={inputCls}>
+                <option value="">{fp.lga ? "Select Ward…" : "Select LGA first"}</option>
+                {wards.map(w => <option key={w} value={w}>{w}</option>)}
+              </select>
+            </div>
+
+            {saveError && (
+              <div className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/40 rounded-xl px-3 py-2">
+                {saveError}
+              </div>
+            )}
+
+            <button onClick={handleSaveProfile} disabled={saving}
+              className="w-full py-3 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-bold text-sm disabled:opacity-60 transition-colors active:scale-[0.99]">
+              {saving ? "Saving…" : "Save Changes"}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Staff Management full-screen overlay ───────────────────── */}
+      {staffMgmt && (
+        <div className="fixed inset-0 z-40 bg-slate-50 dark:bg-slate-900">
+          <StaffManagement session={session} onBack={() => setStaffMgmt(false)} />
+        </div>
+      )}
+    </div>
+  );
+}
