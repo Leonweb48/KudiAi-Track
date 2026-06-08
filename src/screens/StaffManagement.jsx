@@ -766,30 +766,15 @@ export default function StaffManagement({ session, onBack }) {
                       </p>
                     </div>
 
-                    <div className="flex gap-1 justify-between">
-                      {[0,1,2,3,4,5].map(i => (
-                        <input
-                          key={i}
-                          type="text"
-                          inputMode="numeric"
-                          maxLength={1}
-                          value={staffOtpCode[i] || ""}
-                          onChange={() => {}}
-                          onKeyDown={e => {
-                            if (e.key === "Backspace") {
-                              setStaffOtpCode(v => v.slice(0, Math.max(0, i)));
-                              return;
-                            }
-                            if (!/^\d$/.test(e.key)) return;
-                            setStaffOtpCode(v => (v.slice(0, i) + e.key + v.slice(i + 1)).slice(0, 6));
-                            e.target.nextSibling?.focus();
-                          }}
-                          className={`w-10 h-10 text-center text-sm font-extrabold rounded-lg border-2 bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none transition-colors ${
-                            staffOtpCode[i] ? "border-green-500" : "border-slate-200 dark:border-slate-700"
-                          }`}
-                        />
-                      ))}
-                    </div>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={6}
+                      value={staffOtpCode}
+                      onChange={e => setStaffOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                      placeholder="6-digit code"
+                      className="w-full text-center text-xl font-bold tracking-[0.4em] border-2 rounded-xl py-3 bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:border-green-500 border-slate-200 dark:border-slate-700"
+                    />
 
                     {otpError && (
                       <p className="text-[11px] text-red-500">{otpError}</p>

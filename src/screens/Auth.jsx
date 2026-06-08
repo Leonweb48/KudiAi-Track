@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { supabase, supabaseConfigured } from "../utils/supabase";
 import AppLogo from "../components/AppLogo";
 import { Capacitor } from "@capacitor/core";
@@ -29,41 +29,18 @@ function SetupNotice() {
 
 /* ── 6-digit OTP input ─────────────────────────────────────────────── */
 function OtpInput({ value, onChange }) {
-  const inputs = useRef([]);
-  const digits = value.split("").concat(Array(6).fill("")).slice(0, 6);
-
-  const handleKey = (i, e) => {
-    if (e.key === "Backspace") {
-      const next = value.slice(0, i) + value.slice(i + 1);
-      onChange(next);
-      if (i > 0) inputs.current[i - 1]?.focus();
-      return;
-    }
-    if (!/^\d$/.test(e.key)) return;
-    const next = value.slice(0, i) + e.key + value.slice(i + 1);
-    onChange(next.slice(0, 6));
-    if (i < 5) inputs.current[i + 1]?.focus();
-  };
-
   return (
-    <div className="flex justify-center gap-2">
-      {digits.map((d, i) => (
-        <input
-          key={i}
-          ref={(el) => (inputs.current[i] = el)}
-          type="text"
-          inputMode="numeric"
-          maxLength={1}
-          value={d}
-          onChange={() => {}}
-          onKeyDown={(e) => handleKey(i, e)}
-          onFocus={(e) => e.target.select()}
-          className="w-11 h-12 text-center text-lg font-bold border-2 rounded-xl
-            border-gray-300 focus:border-green-500 focus:outline-none
-            bg-white text-gray-800 transition-colors"
-        />
-      ))}
-    </div>
+    <input
+      type="text"
+      inputMode="numeric"
+      maxLength={6}
+      value={value}
+      onChange={e => onChange(e.target.value.replace(/\D/g, "").slice(0, 6))}
+      placeholder="6-digit code"
+      className="w-full text-center text-2xl font-bold tracking-[0.5em] border-2 rounded-xl py-3
+        border-gray-300 focus:border-green-500 focus:outline-none
+        bg-white text-gray-800 transition-colors"
+    />
   );
 }
 
