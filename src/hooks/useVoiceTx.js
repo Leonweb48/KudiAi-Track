@@ -1,5 +1,7 @@
 import { useState, useRef } from "react";
-import { Capacitor } from "@capacitor/core";
+import { Capacitor, registerPlugin } from "@capacitor/core";
+
+const SpeechToText = registerPlugin("SpeechToText");
 
 const LANG_CODES = { en: "en-NG", ha: "ha", ig: "ig", yo: "yo" };
 
@@ -123,38 +125,56 @@ export function useVoiceTx() {
   const finalRef       = useRef("");
 
   const startRecording = async () => {
-    const SpeechRecognition =
-      window.SpeechRecognition || window.webkitSpeechRecognition;
-
-    if (!SpeechRecognition) {
-      setError("Voice input requires Chrome browser. Please open the app in Chrome on Android or desktop.");
-      setStatus("error");
-      return;
-    }
-
-    // On Android WebView, SpeechRecognition fires "not-allowed" unless the
-    // WebView media permission layer has been explicitly granted first.
-    // Calling getUserMedia triggers onPermissionRequest (which MainActivity
-    // auto-grants), so the subsequent SpeechRecognition call succeeds.
-    if (Capacitor.isNativePlatform()) {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        stream.getTracks().forEach((t) => t.stop());
-      } catch {
-        setError(
-          "Microphone access denied. Go to Settings → Apps → KudiAI Track → Permissions → Microphone → Allow, then try again."
-        );
-        setStatus("error");
-        return;
-      }
-    }
-
     setStatus("recording");
     setTranscript("");
     setInterim("");
     setParsed(null);
     setError(null);
     finalRef.current = "";
+
+    // ── Native path: use the custom SpeechToText Capacitor plugin ────────
+    // This fires Android's built-in speech recognizer dialog directly,
+    // bypassing all WebView permission layers that cause "not-allowed" errors.
+    if (Capacitor.isNativePlatform()) {
+      setIsRecording(true);
+      try {
+        const result = await SpeechToText.start({
+          language: LANG_CODES[lang] || "en-US",
+        });
+        const text = (result.transcript || "").trim();
+        setIsRecording(false);
+        if (!text) {
+          setError("No speech detected. Please try again and speak clearly.");
+          setStatus("error");
+          return;
+        }
+        setTranscript(text);
+        setStatus("parsing");
+        const txn = parseTransactionLocally(text);
+        setParsed(txn);
+        setStatus("done");
+      } catch (err) {
+        setIsRecording(false);
+        const msg = (err.message || "").toLowerCase();
+        if (msg.includes("cancel") || msg === "cancelled") {
+          setStatus("idle");
+        } else {
+          setError("Could not capture speech. Please try again.");
+          setStatus("error");
+        }
+      }
+      return;
+    }
+
+    // ── Web path: Web Speech API (Chrome desktop / PWA) ──────────────────
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      setError("Voice input requires Chrome browser.");
+      setStatus("error");
+      return;
+    }
 
     const rec = new SpeechRecognition();
     rec.lang            = LANG_CODES[lang] || "en-NG";
