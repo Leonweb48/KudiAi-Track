@@ -14,6 +14,7 @@ import Auth               from "./screens/Auth";
 import Onboarding         from "./screens/Onboarding";
 import SubscriptionPlan   from "./screens/SubscriptionPlan";
 import StaffDashboard     from "./screens/StaffDashboard";
+import BillPayments       from "./screens/BillPayments";
 
 function Spinner() {
   return (
@@ -99,6 +100,8 @@ export default function App() {
                     autoOpen={autoAdd?.tab === "aso"}
                     onAutoOpened={clearAutoAdd}
                     onUpgrade={openUpgrade} />,
+    bills:        <BillPayments
+                    store={store} />,
     insights:     <Insights
                     store={store}
                     plan={plan}

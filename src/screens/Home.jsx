@@ -30,6 +30,7 @@ const P = {
   out:    "M12 5v14|M19 12l-7 7-7-7",
   credit: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2|M9 11a4 4 0 100-8 4 4 0 000 8|M23 21v-2a4 4 0 00-3-3.87|M16 3.13a4 4 0 010 7.75",
   bank:   "M3 22h18|M6 18v-7|M10 18v-7|M14 18v-7|M18 18v-7|M12 2L2 7h20L12 2z",
+  bills:  "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2|M9 5a2 2 0 002 2h2a2 2 0 002-2|M9 5a2 2 0 012-2h2a2 2 0 012 2|M9 13h6|M9 17h4",
   report: "M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z|M14 2v6h6|M16 13H8|M16 17H8|M10 9H8",
   person: "M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2|M12 11a4 4 0 100-8 4 4 0 000 8",
 };
@@ -201,6 +202,7 @@ export default function Home({ store, setTab, onQuickAction, onVoiceOpen }) {
           <ActionBtn label="Voice Record" icon={P.mic}    bg="bg-gradient-to-br from-green-500 to-green-600"  iconColor="white" onClick={() => onVoiceOpen?.()} />
           <ActionBtn label="Cash In"      icon={P.in}     bg="bg-gradient-to-br from-green-500 to-emerald-600" iconColor="white" onClick={() => onQuickAction?.("transactions","in")} />
           <ActionBtn label="Cash Out"     icon={P.out}    bg="bg-gradient-to-br from-red-500 to-red-600"       iconColor="white" onClick={() => onQuickAction?.("transactions","out")} />
+          <ActionBtn label="Pay Bills"    icon={P.bills}  bg="bg-gradient-to-br from-cyan-500 to-teal-600"     iconColor="white" onClick={() => setTab("bills")} />
           <ActionBtn label="Credit Sale"  icon={P.credit} bg="bg-gradient-to-br from-amber-400 to-amber-500"   iconColor="white" onClick={() => onQuickAction?.("credit")} />
           <ActionBtn label="Aso Client"   icon={P.bank}   bg="bg-gradient-to-br from-blue-500 to-blue-600"     iconColor="white" onClick={() => onQuickAction?.("aso")} />
           <ActionBtn label="Reports"      icon={P.report} bg="bg-gradient-to-br from-purple-500 to-violet-600" iconColor="white" onClick={() => setTab("insights")} />

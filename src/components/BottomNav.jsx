@@ -1,12 +1,13 @@
 import Icon from "./Icon";
 
 const NAV_ITEMS = [
-  { id: "home",         icon: "home",     label: "Home"         },
-  { id: "transactions", icon: "txn",      label: "Transactions" },
-  { id: "credit",       icon: "credit",   label: "Credit"       },
-  { id: "aso",          icon: "aso",      label: "Aso"          },
-  { id: "insights",     icon: "insights", label: "Insights"     },
-  { id: "settings",     icon: "settings", label: "Settings"     },
+  { id: "home",         icon: "home",     label: "Home"    },
+  { id: "transactions", icon: "txn",      label: "Sales"   },
+  { id: "bills",        icon: "bills",    label: "Bills"   },
+  { id: "credit",       icon: "credit",   label: "Credit"  },
+  { id: "aso",          icon: "aso",      label: "Aso"     },
+  { id: "insights",     icon: "insights", label: "Reports" },
+  { id: "settings",     icon: "settings", label: "More"    },
 ];
 
 export default function BottomNav({ active, onNavigate }) {
@@ -43,7 +44,7 @@ export default function BottomNav({ active, onNavigate }) {
               </div>
 
               {/* Label */}
-              <span className={`text-[9px] font-bold uppercase tracking-wide leading-none transition-colors duration-150 ${
+              <span className={`text-[8px] font-bold uppercase tracking-wide leading-none transition-colors duration-150 ${
                 isActive
                   ? "text-brand-600 dark:text-brand-400"
                   : "text-slate-400 dark:text-slate-500"

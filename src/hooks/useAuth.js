@@ -39,12 +39,20 @@ export function useAuth() {
 
     if (!profile) {
       // No owner profile — check if they are a staff member
-      const { data: staffRow } = await supabase
+      let { data: staffRow } = await supabase
         .from("staff")
         .select("*, staff_permissions(*)")
-        .eq("email", email)
-        .eq("status", "active")
+        .eq("user_id", uid)
         .maybeSingle();
+
+      if (!staffRow) {
+        const { data: legacyStaff } = await supabase
+          .from("staff")
+          .select("*, staff_permissions(*)")
+          .eq("email", email)
+          .maybeSingle();
+        staffRow = legacyStaff;
+      }
 
       if (staffRow) {
         // Link auth user_id to staff record on first login
