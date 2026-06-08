@@ -266,12 +266,27 @@ export function useStore(userId, staffId = null, staffName = null) {
     let updated;
     setAsoClients((p) => p.map((c) => {
       if (c.id !== id) return c;
-      updated = { ...c, total_saved: c.total_saved + amount, current_balance: c.current_balance + amount };
+      const freqDays = { daily: 1, weekly: 7, monthly: 30 };
+      const days = freqDays[c.contribution_frequency] || 30;
+      const base = c.next_contribution_date || today();
+      const d = new Date(base);
+      d.setDate(d.getDate() + days);
+      const nextDate = d.toISOString().split("T")[0];
+      updated = {
+        ...c,
+        total_saved:            c.total_saved + amount,
+        current_balance:        c.current_balance + amount,
+        next_contribution_date: nextDate,
+      };
       return updated;
     }));
     if (updated) {
       const { error } = await supabase.from("aso_clients")
-        .update({ total_saved: updated.total_saved, current_balance: updated.current_balance })
+        .update({
+          total_saved:            updated.total_saved,
+          current_balance:        updated.current_balance,
+          next_contribution_date: updated.next_contribution_date,
+        })
         .eq("id", id);
       if (error) { console.error("asoContribute:", error); loadData(); }
     }
