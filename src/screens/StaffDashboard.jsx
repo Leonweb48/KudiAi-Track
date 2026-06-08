@@ -1,11 +1,13 @@
 import { useState, useEffect } from "react";
 import { useStore }       from "../hooks/useStore";
+import { useInventory }   from "../hooks/useInventory";
 import { supabase }       from "../utils/supabase";
 import Transactions       from "./Transactions";
 import Credit             from "./Credit";
 import Aso                from "./Aso";
 import Insights           from "./Insights";
 import BillPayments       from "./BillPayments";
+import Inventory          from "./Inventory";
 import VoiceModal         from "../components/VoiceModal";
 import SyncBar            from "../components/SyncBar";
 import Icon               from "../components/Icon";
@@ -13,6 +15,7 @@ import Icon               from "../components/Icon";
 const NAV_ICON = {
   overview:     "home",
   transactions: "txn",
+  inventory:    "inventory",
   bills:        "bills",
   credit:       "credit",
   aso:          "aso",
@@ -23,9 +26,10 @@ const NAV_ICON = {
 const NAV_LABEL = {
   overview:     "Home",
   transactions: "Sales",
+  inventory:    "Stock",
   bills:        "Bills",
   credit:       "Credit",
-  aso:          "Aso",
+  aso:          "Ajo",
   insights:     "Reports",
   profile:      "Profile",
 };
@@ -158,6 +162,13 @@ const MODULE_ICONS = {
       <line x1="6"  y1="20" x2="6"  y2="14" />
     </svg>
   ),
+  inventory: (
+    <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+      <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" />
+      <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+      <line x1="12" y1="22.08" x2="12" y2="12" />
+    </svg>
+  ),
   profile: (
     <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
       <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
@@ -169,10 +180,11 @@ const MODULE_ICONS = {
 const MODULE_LABELS = {
   overview:     "Overview",
   transactions: "Transactions",
+  inventory:    "Inventory",
   bills:        "Bills",
   credit:       "Credit Sales",
-  aso:          "Aso Savings",
-  insights:     "Insights",
+  aso:          "Ajo Savings",
+  insights:     "Reports",
   profile:      "My Profile",
 };
 
@@ -182,7 +194,8 @@ export default function StaffDashboard({ session, staff }) {
   const staffName = staff.full_name;
 
   // Staff uses owner's data scope
-  const store = useStore(ownerId, staffId, staffName);
+  const store     = useStore(ownerId, staffId, staffName);
+  const inventory = useInventory(ownerId, staffId);
 
   // Compute allowed modules from staff_permissions
   const allowed = (staff.staff_permissions || []).filter(p => p.can_view).map(p => p.module);
@@ -344,6 +357,8 @@ export default function StaffDashboard({ session, staff }) {
         return <Credit store={store} plan="premium" autoOpen={autoAdd?.tab === "credit"} onAutoOpened={() => setAutoAdd(null)} onUpgrade={() => {}} readOnly={noCreate} />;
       case "aso":
         return <Aso store={store} plan="premium" autoOpen={autoAdd?.tab === "aso"} onAutoOpened={() => setAutoAdd(null)} onUpgrade={() => {}} readOnly={noCreate} />;
+      case "inventory":
+        return <Inventory inventory={inventory} isOwner={false} plan="business" onUpgrade={() => {}} />;
       case "insights":
         return <Insights store={store} plan="premium" onUpgrade={() => {}} staffName={staffName} />;
       case "profile":

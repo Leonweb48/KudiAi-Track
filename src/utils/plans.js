@@ -20,6 +20,7 @@ export const PLAN_LIMITS = {
     pdfExport:       true,
     aiInsights:      false,
     staffManagement: true,
+    inventory:       true,
   },
   premium: {
     maxTxPerMonth:   Infinity,
@@ -27,6 +28,7 @@ export const PLAN_LIMITS = {
     pdfExport:       true,
     aiInsights:      true,
     staffManagement: true,
+    inventory:       true,
   },
 };
 

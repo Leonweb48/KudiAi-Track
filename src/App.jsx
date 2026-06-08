@@ -19,7 +19,9 @@ import SubscriptionPlan      from "./screens/SubscriptionPlan";
 import StaffDashboard        from "./screens/StaffDashboard";
 import StaffFirstLogin       from "./screens/StaffFirstLogin";
 import BillPayments          from "./screens/BillPayments";
+import Inventory             from "./screens/Inventory";
 import Reports               from "./screens/Reports";
+import { useInventory }      from "./hooks/useInventory";
 
 function Spinner() {
   return (
@@ -48,6 +50,9 @@ export default function App() {
 
   // Store — pass addNotification so it fires on key events
   const store = useStore(userId, null, null, addNotification);
+
+  // Inventory — separate hook; also fires low-stock notifications
+  const inventory = useInventory(userId, null, addNotification);
 
   const isDark = store.profile?.dark_mode;
   useEffect(() => {
@@ -150,6 +155,11 @@ export default function App() {
                     plan={plan}
                     autoOpen={autoAdd?.tab === "aso"}
                     onAutoOpened={clearAutoAdd}
+                    onUpgrade={openUpgrade} />,
+    inventory:    <Inventory
+                    inventory={inventory}
+                    isOwner={true}
+                    plan={plan}
                     onUpgrade={openUpgrade} />,
     bills:        <BillPayments store={store} />,
     insights:     <Insights

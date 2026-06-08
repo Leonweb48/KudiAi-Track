@@ -1,13 +1,13 @@
 import Icon from "./Icon";
 
 const NAV_ITEMS = [
-  { id: "home",         icon: "home",     label: "Home"    },
-  { id: "transactions", icon: "txn",      label: "Sales"   },
-  { id: "bills",        icon: "bills",    label: "Bills"   },
-  { id: "credit",       icon: "credit",   label: "Credit"  },
-  { id: "aso",          icon: "aso",      label: "Aso"     },
-  { id: "insights",     icon: "insights", label: "Reports" },
-  { id: "settings",     icon: "settings", label: "More"    },
+  { id: "home",         icon: "home",      label: "Home"      },
+  { id: "transactions", icon: "txn",       label: "Sales"     },
+  { id: "inventory",    icon: "inventory", label: "Stock"     },
+  { id: "credit",       icon: "credit",    label: "Credit"    },
+  { id: "aso",          icon: "aso",       label: "Ajo"       },
+  { id: "insights",     icon: "insights",  label: "Reports"   },
+  { id: "settings",     icon: "settings",  label: "More"      },
 ];
 
 export default function BottomNav({ active, onNavigate }) {
