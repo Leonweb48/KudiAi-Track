@@ -1,4 +1,5 @@
 import { fmt, today } from "../utils/helpers";
+import { NotificationBell } from "../components/NotificationCenter";
 
 function greeting() {
   const h = new Date().getHours();
@@ -92,7 +93,7 @@ function TxRow({ t }) {
 }
 
 /* ── Main ────────────────────────────────────────────────────────── */
-export default function Home({ store, setTab, onQuickAction, onVoiceOpen }) {
+export default function Home({ store, setTab, onQuickAction, onVoiceOpen, notif }) {
   const { transactions, credits, asoClients, profile, loading } = store;
 
   const todayTx    = transactions.filter(t => t.transaction_date === today());
@@ -126,16 +127,22 @@ export default function Home({ store, setTab, onQuickAction, onVoiceOpen }) {
           </span>
         </div>
 
-        {/* Right — profile avatar */}
-        <button onClick={() => setTab("settings")} aria-label="Profile"
-          className="w-9 h-9 rounded-full border-2 border-slate-100 dark:border-slate-700 shadow-sm flex-shrink-0 overflow-hidden active:scale-95 transition-transform">
-          {profile.profile_image_url
-            ? <img src={profile.profile_image_url} alt="Profile" className="w-full h-full object-cover" />
-            : <div className="w-full h-full bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center">
-                <Svg d={P.person} size={18} color="white" sw={2} />
-              </div>
-          }
-        </button>
+        {/* Right — bell + profile avatar */}
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <NotificationBell
+            unreadCount={notif?.unreadCount || 0}
+            onClick={() => notif?.setOpen(true)}
+          />
+          <button onClick={() => setTab("settings")} aria-label="Profile"
+            className="w-9 h-9 rounded-full border-2 border-slate-100 dark:border-slate-700 shadow-sm overflow-hidden active:scale-95 transition-transform">
+            {profile.profile_image_url
+              ? <img src={profile.profile_image_url} alt="Profile" className="w-full h-full object-cover" />
+              : <div className="w-full h-full bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center">
+                  <Svg d={P.person} size={18} color="white" sw={2} />
+                </div>
+            }
+          </button>
+        </div>
       </div>
 
       {/* ── Greeting ─────────────────────────────────────────────────── */}

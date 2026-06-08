@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../utils/supabase";
-import { uid, today } from "../utils/helpers";
+import { uid, today, fmt } from "../utils/helpers";
 import { logAudit } from "../utils/auditLog";
 
-export function useStore(userId, staffId = null, staffName = null) {
+export function useStore(userId, staffId = null, staffName = null, onNotify = null) {
   const [transactions, setTransactions] = useState([]);
   const [credits,      setCredits]      = useState([]);
   const [asoClients,   setAsoClients]   = useState([]);
@@ -124,6 +124,14 @@ export function useStore(userId, staffId = null, staffName = null) {
       setDbError(`Failed to save transaction: ${error.message}`);
     } else {
       setTransactions((p) => p.map((tx) => tx.id === tempId ? data : tx));
+      const label = t.item_name || t.category || "Transaction";
+      if (t.payment_type === "bill_payment") {
+        onNotify?.("bills", "Bill Payment", `${fmt(parseFloat(t.amount))} · ${label}`);
+      } else if (t.type === "in") {
+        onNotify?.("sales", "Sale Recorded", `${fmt(parseFloat(t.amount))} · ${label}`);
+      } else {
+        onNotify?.("sales", "Expense Recorded", `${fmt(parseFloat(t.amount))} · ${label}`);
+      }
       if (staffId) {
         const amt = `${t.type === "in" ? "+" : "-"}₦${parseFloat(t.amount).toLocaleString()}`;
         const extra = [t.customer_name, t.payment_type].filter(Boolean).join(" · ");
@@ -180,6 +188,7 @@ export function useStore(userId, staffId = null, staffName = null) {
       return { data: null, error };
     } else {
       setCredits((p) => p.map((cr) => cr.id === tempId ? data : cr));
+      onNotify?.("credits", "Credit Added", `${fmt(parseFloat(c.total_amount || 0))} · ${c.customer_name}`);
       if (staffId) {
         const due = c.due_date ? ` · due ${c.due_date}` : "";
         logAudit({ ownerId: userId, staffId, staffName: staffName || "Staff",
@@ -206,6 +215,7 @@ export function useStore(userId, staffId = null, staffName = null) {
         .update({ amount_paid: updated.amount_paid, outstanding: updated.outstanding, status: updated.status })
         .eq("id", id);
       if (error) { console.error("repayCredit:", error); loadData(); }
+      else { onNotify?.("payments", "Payment Received", `${fmt(amount)} from ${updated.customer_name}`); }
     }
   };
 
@@ -289,6 +299,7 @@ export function useStore(userId, staffId = null, staffName = null) {
         })
         .eq("id", id);
       if (error) { console.error("asoContribute:", error); loadData(); }
+      else { onNotify?.("aso", "Contribution Received", `${fmt(amount)} from ${updated.full_name}`); }
     }
   };
 

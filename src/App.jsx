@@ -1,21 +1,24 @@
-import { useState, useEffect } from "react";
-import { useStore }       from "./hooks/useStore";
-import { useAuth }        from "./hooks/useAuth";
-import SyncBar            from "./components/SyncBar";
-import BottomNav          from "./components/BottomNav";
-import VoiceModal         from "./components/VoiceModal";
-import Home               from "./screens/Home";
-import Transactions       from "./screens/Transactions";
-import Credit             from "./screens/Credit";
-import Aso                from "./screens/Aso";
-import Insights           from "./screens/Insights";
-import Settings           from "./screens/Settings";
-import Auth               from "./screens/Auth";
-import Onboarding         from "./screens/Onboarding";
-import SubscriptionPlan   from "./screens/SubscriptionPlan";
-import StaffDashboard     from "./screens/StaffDashboard";
-import StaffFirstLogin    from "./screens/StaffFirstLogin";
-import BillPayments       from "./screens/BillPayments";
+import { useState, useEffect, useRef } from "react";
+import { useStore }          from "./hooks/useStore";
+import { useAuth }           from "./hooks/useAuth";
+import { useNotifications }  from "./hooks/useNotifications";
+import { fmt }               from "./utils/helpers";
+import SyncBar               from "./components/SyncBar";
+import BottomNav             from "./components/BottomNav";
+import VoiceModal            from "./components/VoiceModal";
+import NotificationCenter    from "./components/NotificationCenter";
+import Home                  from "./screens/Home";
+import Transactions          from "./screens/Transactions";
+import Credit                from "./screens/Credit";
+import Aso                   from "./screens/Aso";
+import Insights              from "./screens/Insights";
+import Settings              from "./screens/Settings";
+import Auth                  from "./screens/Auth";
+import Onboarding            from "./screens/Onboarding";
+import SubscriptionPlan      from "./screens/SubscriptionPlan";
+import StaffDashboard        from "./screens/StaffDashboard";
+import StaffFirstLogin       from "./screens/StaffFirstLogin";
+import BillPayments          from "./screens/BillPayments";
 
 function Spinner() {
   return (
@@ -35,12 +38,57 @@ export default function App() {
   const [showUpgrade, setShowUpgrade] = useState(false);
 
   const { status, session, plan, setReady, refetch, staff } = useAuth();
-  const store = useStore(session?.user?.id, null, null);
+  const userId = session?.user?.id;
+
+  // Notification system — initialised before store so addNotification is stable
+  const notif = useNotifications(userId);
+  const { addNotification } = notif;
+
+  // Store — pass addNotification so it fires on key events
+  const store = useStore(userId, null, null, addNotification);
 
   const isDark = store.profile?.dark_mode;
   useEffect(() => {
     document.documentElement.classList.toggle("dark", !!isDark);
   }, [isDark]);
+
+  // ── Smart daily alerts (overdue credits + missed aso payments) ──
+  const alertFiredRef = useRef(false);
+  useEffect(() => {
+    if (!userId || store.loading || alertFiredRef.current) return;
+
+    const key     = `kt_daily_alerts_${userId}`;
+    const todayStr = new Date().toDateString();
+    if (sessionStorage.getItem(key) === todayStr) return;
+
+    alertFiredRef.current = true;
+    sessionStorage.setItem(key, todayStr);
+
+    // Overdue credits
+    const overdueCredits = store.credits.filter(c => c.status === "overdue");
+    if (overdueCredits.length > 0) {
+      const total = overdueCredits.reduce((s, c) => s + c.outstanding, 0);
+      addNotification(
+        "credits",
+        `${overdueCredits.length} Overdue Credit${overdueCredits.length > 1 ? "s" : ""}`,
+        `${fmt(total)} still outstanding`
+      );
+    }
+
+    // Missed aso contributions
+    const now = new Date(); now.setHours(0, 0, 0, 0);
+    const overdueAso = store.asoClients.filter(c => {
+      if (!c.next_contribution_date || c.status !== "active") return false;
+      return now > new Date(c.next_contribution_date);
+    });
+    if (overdueAso.length > 0) {
+      addNotification(
+        "aso",
+        `${overdueAso.length} Ajo Payment${overdueAso.length > 1 ? "s" : ""} Overdue`,
+        "Clients have missed their contribution dates"
+      );
+    }
+  }, [userId, store.loading, store.credits, store.asoClients, addNotification]);
 
   const triggerQuickAction = (targetTab, type = null) => {
     setTab(targetTab);
@@ -50,7 +98,6 @@ export default function App() {
 
   const openUpgrade   = () => setShowUpgrade(true);
   const closeUpgrade  = () => setShowUpgrade(false);
-  // planId comes from SubscriptionPlan — set it directly, no DB re-query needed
   const finishUpgrade = (planId) => { setReady(planId); setShowUpgrade(false); };
 
   if (status === "loading")         return <Spinner />;
@@ -60,7 +107,6 @@ export default function App() {
   if (status === "staff_setup")     return <StaffFirstLogin session={session} staff={staff} />;
   if (status === "staff")           return <StaffDashboard session={session} staff={staff} />;
 
-  // Upgrade overlay — shown over the main app
   if (showUpgrade) {
     return (
       <div className={isDark ? "dark" : ""}>
@@ -81,7 +127,8 @@ export default function App() {
                     plan={plan}
                     setTab={setTab}
                     onQuickAction={triggerQuickAction}
-                    onVoiceOpen={() => setVoiceOpen(true)} />,
+                    onVoiceOpen={() => setVoiceOpen(true)}
+                    notif={notif} />,
     transactions: <Transactions
                     store={store}
                     plan={plan}
@@ -102,8 +149,7 @@ export default function App() {
                     autoOpen={autoAdd?.tab === "aso"}
                     onAutoOpened={clearAutoAdd}
                     onUpgrade={openUpgrade} />,
-    bills:        <BillPayments
-                    store={store} />,
+    bills:        <BillPayments store={store} />,
     insights:     <Insights
                     store={store}
                     plan={plan}
@@ -150,6 +196,9 @@ export default function App() {
 
         </div>
       </div>
+
+      {/* Notification panel — full-screen overlay, z-50 */}
+      <NotificationCenter notif={notif} />
     </div>
   );
 }
