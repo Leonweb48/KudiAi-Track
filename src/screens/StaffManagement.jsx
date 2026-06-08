@@ -98,6 +98,11 @@ export default function StaffManagement({ session, onBack }) {
   const [otpError,          setOtpError]          = useState("");
   const [otpVerified,       setOtpVerified]       = useState(false);
 
+  // Performance report
+  const [reportStaff,       setReportStaff]       = useState(null);
+  const [reportData,        setReportData]        = useState(null);
+  const [reportLoading,     setReportLoading]     = useState(false);
+
   const loadStaff = async () => {
     setLoading(true);
     const { data } = await supabase
@@ -463,6 +468,26 @@ export default function StaffManagement({ session, onBack }) {
       " " + d.toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" });
   };
 
+  const openReport = async (s) => {
+    setReportStaff(s);
+    setReportData(null);
+    setReportLoading(true);
+    const [txRes, crRes, asoRes] = await Promise.all([
+      supabase.from("transactions").select("type,amount,item_name,transaction_date").eq("user_id", userId).eq("staff_id", s.id),
+      supabase.from("credits").select("customer_name,total_amount,outstanding,status").eq("user_id", userId).eq("staff_id", s.id),
+      supabase.from("aso_clients").select("full_name,current_balance,total_saved").eq("user_id", userId).eq("staff_id", s.id),
+    ]);
+    const tx  = txRes.data  || [];
+    const cr  = crRes.data  || [];
+    const aso = asoRes.data || [];
+    const totalIn  = tx.filter(t => t.type === "in").reduce((s, t) => s + Number(t.amount), 0);
+    const totalOut = tx.filter(t => t.type === "out").reduce((s, t) => s + Number(t.amount), 0);
+    const thisMonth = new Date().toISOString().slice(0, 7);
+    const txThisMonth = tx.filter(t => (t.transaction_date || "").startsWith(thisMonth));
+    setReportData({ tx, cr, aso, totalIn, totalOut, txThisMonth });
+    setReportLoading(false);
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col">
 
@@ -514,23 +539,31 @@ export default function StaffManagement({ session, onBack }) {
               <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Tap "Add Staff" to get started</p>
             </div>
           ) : staffList.map(s => (
-            <button key={s.id} onClick={() => openDetail(s)}
-              className="w-full bg-white dark:bg-slate-800 rounded-2xl p-4 flex items-center gap-3 shadow-sm border border-slate-100 dark:border-slate-700 text-left hover:border-green-200 transition-colors">
-              <Avatar url={s.profile_image_url} name={s.full_name} />
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-slate-800 dark:text-white text-sm truncate">{s.full_name}</p>
-                <p className="text-xs text-slate-400 dark:text-slate-500 truncate">{s.email}</p>
-                {s.phone && <p className="text-xs text-slate-400 dark:text-slate-500">{s.phone}</p>}
-              </div>
-              <div className="flex flex-col items-end gap-1.5">
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${roleColor(s.role)}`}>
-                  {roleLabel(s.role)}
-                </span>
-                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${s.status === "active" ? "bg-green-50 text-green-600" : "bg-red-50 text-red-500"}`}>
-                  {s.status === "active" ? "Active" : "Suspended"}
-                </span>
-              </div>
-            </button>
+            <div key={s.id} className="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-sm border border-slate-100 dark:border-slate-700">
+              <button onClick={() => openDetail(s)} className="w-full flex items-center gap-3 text-left">
+                <Avatar url={s.profile_image_url} name={s.full_name} />
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-slate-800 dark:text-white text-sm truncate">{s.full_name}</p>
+                  <p className="text-xs text-slate-400 dark:text-slate-500 truncate">{s.email}</p>
+                  {s.phone && <p className="text-xs text-slate-400 dark:text-slate-500">{s.phone}</p>}
+                </div>
+                <div className="flex flex-col items-end gap-1.5">
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${roleColor(s.role)}`}>
+                    {roleLabel(s.role)}
+                  </span>
+                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${s.status === "active" ? "bg-green-50 text-green-600" : "bg-red-50 text-red-500"}`}>
+                    {s.status === "active" ? "Active" : "Suspended"}
+                  </span>
+                </div>
+              </button>
+              <button onClick={() => openReport(s)}
+                className="mt-3 w-full py-2 rounded-xl bg-slate-50 dark:bg-slate-700/60 text-xs font-bold text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 flex items-center justify-center gap-1.5">
+                <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+                  <path d="M18 20V10M12 20V4M6 20v-6" />
+                </svg>
+                Performance Report
+              </button>
+            </div>
           ))}
         </div>
       )}
@@ -977,6 +1010,90 @@ export default function StaffManagement({ session, onBack }) {
                   Remove Staff Member
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Performance Report Modal ───────────────────────────── */}
+      {reportStaff && (
+        <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/50">
+          <div className="bg-white dark:bg-slate-900 rounded-t-3xl w-full max-w-md max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-slate-100 dark:border-slate-800">
+              <div>
+                <p className="text-base font-extrabold text-slate-800 dark:text-white">{reportStaff.full_name}</p>
+                <p className="text-xs text-slate-400 dark:text-slate-500 capitalize mt-0.5">{reportStaff.role?.replace(/_/g, " ")} · Performance Report</p>
+              </div>
+              <button onClick={() => { setReportStaff(null); setReportData(null); }}
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
+                <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-500" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+              {reportLoading ? (
+                <div className="flex justify-center py-12">
+                  <div className="w-8 h-8 border-2 border-green-500 border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : reportData ? (
+                <>
+                  {/* Transaction summary */}
+                  <div>
+                    <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">Transactions</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { label: "Total Sales",    value: `₦${reportData.totalIn.toLocaleString()}`,   color: "text-green-600 bg-green-50 dark:bg-green-900/20" },
+                        { label: "Total Expenses", value: `₦${reportData.totalOut.toLocaleString()}`,  color: "text-red-500 bg-red-50 dark:bg-red-900/20" },
+                        { label: "All Transactions", value: reportData.tx.length,                       color: "text-blue-600 bg-blue-50 dark:bg-blue-900/20" },
+                        { label: "This Month",     value: reportData.txThisMonth.length,                color: "text-purple-600 bg-purple-50 dark:bg-purple-900/20" },
+                      ].map(stat => (
+                        <div key={stat.label} className={`${stat.color} rounded-2xl p-3`}>
+                          <p className="text-[10px] font-bold opacity-70 uppercase">{stat.label}</p>
+                          <p className="text-lg font-extrabold mt-0.5">{stat.value}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Credit summary */}
+                  <div>
+                    <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">Credit Sales</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { label: "Clients",     value: reportData.cr.length },
+                        { label: "Outstanding", value: `₦${reportData.cr.reduce((s, c) => s + Number(c.outstanding || 0), 0).toLocaleString()}` },
+                      ].map(stat => (
+                        <div key={stat.label} className="bg-amber-50 dark:bg-amber-900/20 rounded-2xl p-3">
+                          <p className="text-[10px] font-bold text-amber-600 dark:text-amber-400 opacity-70 uppercase">{stat.label}</p>
+                          <p className="text-lg font-extrabold text-amber-700 dark:text-amber-300 mt-0.5">{stat.value}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Aso summary */}
+                  <div>
+                    <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">Aso Savings</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { label: "Clients",       value: reportData.aso.length },
+                        { label: "Total Saved",   value: `₦${reportData.aso.reduce((s, c) => s + Number(c.total_saved || 0), 0).toLocaleString()}` },
+                      ].map(stat => (
+                        <div key={stat.label} className="bg-violet-50 dark:bg-violet-900/20 rounded-2xl p-3">
+                          <p className="text-[10px] font-bold text-violet-600 dark:text-violet-400 opacity-70 uppercase">{stat.label}</p>
+                          <p className="text-lg font-extrabold text-violet-700 dark:text-violet-300 mt-0.5">{stat.value}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {reportData.tx.length === 0 && reportData.cr.length === 0 && reportData.aso.length === 0 && (
+                    <p className="text-center text-sm text-slate-400 dark:text-slate-500 py-8">No activity recorded yet for this staff member.</p>
+                  )}
+                </>
+              ) : null}
             </div>
           </div>
         </div>

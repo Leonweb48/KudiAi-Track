@@ -15,6 +15,7 @@ export function useStore(userId, staffId = null, staffName = null) {
     dark_mode: localStorage.getItem("kuditrack_dark") === "1",
     profile_image_url: null, store_image_url: null,
   });
+  const [staffMap,  setStaffMap]  = useState({}); // { staffId: staffName } — owner view only
   const [loading,  setLoading]  = useState(true);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [dbError,  setDbError]  = useState(null);
@@ -24,16 +25,33 @@ export function useStore(userId, staffId = null, staffName = null) {
     if (!userId) return;
     setLoading(true);
 
-    const [txRes, crRes, asoRes, profRes] = await Promise.all([
-      supabase.from("transactions").select("*").eq("user_id", userId).order("created_at", { ascending: false }),
-      supabase.from("credits").select("*").eq("user_id", userId).order("created_at", { ascending: false }),
-      supabase.from("aso_clients").select("*").eq("user_id", userId).order("created_at", { ascending: false }),
+    let txQ  = supabase.from("transactions").select("*").eq("user_id", userId);
+    let crQ  = supabase.from("credits").select("*").eq("user_id", userId);
+    let asoQ = supabase.from("aso_clients").select("*").eq("user_id", userId);
+    if (staffId) {
+      txQ  = txQ.eq("staff_id",  staffId);
+      crQ  = crQ.eq("staff_id",  staffId);
+      asoQ = asoQ.eq("staff_id", staffId);
+    }
+
+    const [txRes, crRes, asoRes, profRes, staffRes] = await Promise.all([
+      txQ.order("created_at",  { ascending: false }),
+      crQ.order("created_at",  { ascending: false }),
+      asoQ.order("created_at", { ascending: false }),
       supabase.from("profiles").select("*").eq("id", userId).maybeSingle(),
+      !staffId
+        ? supabase.from("staff").select("id, full_name").eq("owner_id", userId)
+        : Promise.resolve({ data: null }),
     ]);
 
     if (txRes.data)  setTransactions(txRes.data);
     if (crRes.data)  setCredits(crRes.data);
     if (asoRes.data) setAsoClients(asoRes.data);
+    if (staffRes.data) {
+      const map = {};
+      staffRes.data.forEach(s => { map[s.id] = s.full_name; });
+      setStaffMap(map);
+    }
 
     if (profRes.data) {
       const p = profRes.data;
@@ -65,7 +83,7 @@ export function useStore(userId, staffId = null, staffName = null) {
       });
     }
     setLoading(false);
-  }, [userId]);
+  }, [userId, staffId]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -107,9 +125,12 @@ export function useStore(userId, staffId = null, staffName = null) {
     } else {
       setTransactions((p) => p.map((tx) => tx.id === tempId ? data : tx));
       if (staffId) {
+        const amt = `${t.type === "in" ? "+" : "-"}₦${parseFloat(t.amount).toLocaleString()}`;
+        const extra = [t.customer_name, t.payment_type].filter(Boolean).join(" · ");
         logAudit({ ownerId: userId, staffId, staffName: staffName || "Staff",
-          action: `Added ${t.type === "in" ? "income" : "expense"}: ${t.item_name}`,
-          module: "transactions", details: `₦${parseFloat(t.amount).toLocaleString()}` });
+          action: `${t.type === "in" ? "Sale" : "Expense"}: ${t.item_name}`,
+          module: "transactions",
+          details: extra ? `${amt} · ${extra}` : amt });
       }
     }
   };
@@ -125,6 +146,7 @@ export function useStore(userId, staffId = null, staffName = null) {
     const tempId = "tmp-" + uid();
     const payload = {
       user_id:              userId,
+      staff_id:             staffId || null,
       customer_name:        c.customer_name,
       phone:                c.phone               || "",
       email:                c.email               || "",
@@ -158,6 +180,13 @@ export function useStore(userId, staffId = null, staffName = null) {
       return { data: null, error };
     } else {
       setCredits((p) => p.map((cr) => cr.id === tempId ? data : cr));
+      if (staffId) {
+        const due = c.due_date ? ` · due ${c.due_date}` : "";
+        logAudit({ ownerId: userId, staffId, staffName: staffName || "Staff",
+          action: `Credit client added: ${c.customer_name}`,
+          module: "credit",
+          details: `₦${parseFloat(c.total_amount || 0).toLocaleString()} outstanding${due}` });
+      }
       return { data, error: null };
     }
   };
@@ -185,6 +214,7 @@ export function useStore(userId, staffId = null, staffName = null) {
     const tempId = "tmp-" + uid();
     const payload = {
       user_id:                userId,
+      staff_id:               staffId || null,
       full_name:              cl.full_name,
       phone:                  cl.phone               || "",
       email:                  cl.email               || "",
@@ -222,6 +252,12 @@ export function useStore(userId, staffId = null, staffName = null) {
       return { data: null, error };
     } else {
       setAsoClients((p) => p.map((c) => c.id === tempId ? data : c));
+      if (staffId) {
+        logAudit({ ownerId: userId, staffId, staffName: staffName || "Staff",
+          action: `Aso client added: ${cl.full_name}`,
+          module: "aso",
+          details: `${cl.contribution_frequency || "daily"} · ₦${parseFloat(cl.contribution_amount || 0).toLocaleString()}/period` });
+      }
       return { data, error: null };
     }
   };
@@ -316,7 +352,7 @@ export function useStore(userId, staffId = null, staffName = null) {
   };
 
   return {
-    transactions, credits, asoClients, profile,
+    transactions, credits, asoClients, profile, staffMap,
     setProfile, isOnline, loading, pendingSync: 0,
     dbError, clearDbError: () => setDbError(null), reloadData: loadData,
     addTransaction, deleteTransaction,

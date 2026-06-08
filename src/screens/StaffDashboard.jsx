@@ -20,6 +20,60 @@ function Avatar({ url, name, size = "md" }) {
   );
 }
 
+function StaffProfile({ staff, ownerName, onSignOut }) {
+  const roleLabel = (staff.role || "").replace(/_/g, " ");
+  const initials  = (staff.full_name || "?").split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+  const fields = [
+    { label: "Full Name",  value: staff.full_name },
+    { label: "Email",      value: staff.email },
+    { label: "Phone",      value: staff.phone },
+    { label: "Role",       value: roleLabel, cap: true },
+    { label: "Business",   value: ownerName },
+    { label: "Status",     value: staff.status, cap: true },
+    { label: "Member Since", value: staff.created_at ? new Date(staff.created_at).toLocaleDateString("en-NG", { day: "2-digit", month: "short", year: "numeric" }) : null },
+  ].filter(f => f.value);
+
+  return (
+    <div className="px-4 pt-5 pb-28 space-y-4">
+      <div className="flex flex-col items-center py-6">
+        <div className="w-20 h-20 rounded-full overflow-hidden mb-3 border-4 border-green-200 dark:border-green-800">
+          {staff.profile_image_url
+            ? <img src={staff.profile_image_url} alt={staff.full_name} className="w-full h-full object-cover" />
+            : <div className="w-full h-full bg-green-100 dark:bg-green-900/40 flex items-center justify-center text-green-700 dark:text-green-300 font-black text-2xl">{initials}</div>
+          }
+        </div>
+        <h2 className="text-lg font-extrabold text-slate-800 dark:text-white">{staff.full_name}</h2>
+        <p className="text-xs text-slate-400 dark:text-slate-500 capitalize mt-0.5">{roleLabel}{ownerName ? ` · ${ownerName}` : ""}</p>
+      </div>
+
+      <div className="bg-white dark:bg-slate-800 rounded-2xl divide-y divide-slate-100 dark:divide-slate-700 border border-slate-100 dark:border-slate-700">
+        {fields.map(f => (
+          <div key={f.label} className="flex items-start justify-between px-4 py-3 gap-4">
+            <p className="text-xs text-slate-400 dark:text-slate-500 font-semibold shrink-0">{f.label}</p>
+            <p className={`text-sm font-semibold text-slate-700 dark:text-slate-200 text-right ${f.cap ? "capitalize" : ""}`}>{f.value}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4">
+        <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-3">Module Access</p>
+        <div className="flex flex-wrap gap-2">
+          {(staff.staff_permissions || []).filter(p => p.can_view).map(p => (
+            <span key={p.module} className="text-xs bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800 px-3 py-1 rounded-full font-semibold capitalize">
+              {p.module.replace(/_/g, " ")}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <button onClick={onSignOut}
+        className="w-full py-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/40 text-red-500 font-bold rounded-xl text-sm">
+        Sign Out
+      </button>
+    </div>
+  );
+}
+
 const MODULE_ICONS = {
   overview: (
     <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
@@ -60,6 +114,12 @@ const MODULE_ICONS = {
       <line x1="6"  y1="20" x2="6"  y2="14" />
     </svg>
   ),
+  profile: (
+    <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+      <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+      <circle cx="12" cy="7" r="4" />
+    </svg>
+  ),
 };
 
 const MODULE_LABELS = {
@@ -69,6 +129,7 @@ const MODULE_LABELS = {
   credit:       "Credit Sales",
   aso:          "Aso Savings",
   insights:     "Insights",
+  profile:      "My Profile",
 };
 
 export default function StaffDashboard({ session, staff }) {
@@ -234,7 +295,9 @@ export default function StaffDashboard({ session, staff }) {
       case "aso":
         return <Aso store={store} plan="premium" autoOpen={autoAdd?.tab === "aso"} onAutoOpened={() => setAutoAdd(null)} onUpgrade={() => {}} readOnly={noCreate} />;
       case "insights":
-        return <Insights store={store} plan="premium" onUpgrade={() => {}} />;
+        return <Insights store={store} plan="premium" onUpgrade={() => {}} staffName={staffName} />;
+      case "profile":
+        return <StaffProfile staff={staff} ownerName={ownerName} onSignOut={handleSignOut} />;
       default:
         return null;
     }
@@ -261,7 +324,7 @@ export default function StaffDashboard({ session, staff }) {
 
           {/* Module Tabs */}
           <div className="flex bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 overflow-x-auto">
-            {["overview", ...allowed].map(m => (
+            {["overview", ...allowed, "profile"].map(m => (
               <button key={m} onClick={() => setTab(m)}
                 className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold border-b-2 whitespace-nowrap transition-colors ${tab === m ? "border-green-500 text-green-600" : "border-transparent text-slate-400"}`}>
                 <span className={tab === m ? "text-green-600" : "text-slate-400"}>{MODULE_ICONS[m]}</span>

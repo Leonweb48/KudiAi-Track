@@ -44,7 +44,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [photoPreview, setPhotoPreview] = useState(null);
   const [adding,       setAdding]       = useState(false);
 
-  const { asoClients, addAsoClient, asoContribute, asoWithdraw, updateAsoClient, profile } = store;
+  const { asoClients, addAsoClient, asoContribute, asoWithdraw, updateAsoClient, profile, staffMap = {} } = store;
 
   const [f, setF] = useState(BLANK);
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
@@ -184,6 +184,11 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                     <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5 truncate">
                       {c.phone && <span>{c.phone} · </span>}{c.contribution_frequency} · {fmt(c.contribution_amount)}
                     </p>
+                    {staffMap[c.staff_id] && (
+                      <span className="inline-block text-[10px] bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 px-2 py-0.5 rounded-full font-semibold mt-1">
+                        {staffMap[c.staff_id]}
+                      </span>
+                    )}
                   </div>
                   <Badge status={c.status} />
                 </div>

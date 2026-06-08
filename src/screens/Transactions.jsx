@@ -79,13 +79,13 @@ function AddTxnModal({ onAdd, onClose, defaultType = "in" }) {
   );
 }
 
-export default function Transactions({ store, plan = "starter", onVoiceOpen, autoOpen, autoType, onAutoOpened, onUpgrade }) {
+export default function Transactions({ store, plan = "starter", onVoiceOpen, autoOpen, autoType, onAutoOpened, onUpgrade, readOnly }) {
   const [showAdd,    setShowAdd]    = useState(false);
   const [initType,   setInitType]   = useState("in");
   const [filter,     setFilter]     = useState("all");
   const [search,     setSearch]     = useState("");
   const [receipt,    setReceipt]    = useState(null); // txn to show receipt for
-  const { transactions, addTransaction, deleteTransaction, profile } = store;
+  const { transactions, addTransaction, deleteTransaction, profile, staffMap = {} } = store;
 
   const limits         = planLimits(plan);
   const now            = new Date();
@@ -238,6 +238,11 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
                       <span className="text-[10px] bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-full font-semibold">{t.category}</span>
                       <span className="text-[10px] bg-blue-50 dark:bg-blue-900/20 text-blue-500 dark:text-blue-400 px-2 py-0.5 rounded-full font-semibold">{t.payment_type}</span>
                       {t.customer_name && <span className="text-[10px] text-slate-400 dark:text-slate-500">{t.customer_name}</span>}
+                      {staffMap[t.staff_id] && (
+                        <span className="text-[10px] bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 px-2 py-0.5 rounded-full font-semibold">
+                          {staffMap[t.staff_id]}
+                        </span>
+                      )}
                       <span className="text-[10px] text-slate-300 dark:text-slate-600 ml-auto">{t.transaction_date}</span>
                     </div>
                     {t.note && <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1 italic">"{t.note}"</p>}

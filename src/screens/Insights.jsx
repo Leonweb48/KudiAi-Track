@@ -19,10 +19,11 @@ const COLOR_MAP = {
 
 const EMOJI = { insights: "📊", warnings: "⚠️", opportunities: "🚀", actions: "✅" };
 
-export default function Insights({ store, plan = "starter", onUpgrade }) {
+export default function Insights({ store, plan = "starter", onUpgrade, staffName }) {
   const { transactions, credits, asoClients } = store;
   const { loading, result, error, analyze }   = useAI();
   const [period, setPeriod] = useState("today");
+  const isStaffView = Boolean(staffName);
 
   if (!canDo(plan, "aiInsights")) {
     return (
@@ -71,8 +72,12 @@ export default function Insights({ store, plan = "starter", onUpgrade }) {
 
       {/* Header */}
       <div className="mb-1">
-        <h1 className="text-xl font-bold text-slate-800 dark:text-white">AI Insights</h1>
-        <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Smart business analysis · No API key needed</p>
+        <h1 className="text-xl font-bold text-slate-800 dark:text-white">
+          {isStaffView ? "My Performance" : "AI Insights"}
+        </h1>
+        <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
+          {isStaffView ? `${staffName} · personal stats` : "Smart business analysis · No API key needed"}
+        </p>
       </div>
 
       {/* Period selector */}
