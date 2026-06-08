@@ -109,8 +109,8 @@ export default function Home({ store, setTab, onQuickAction, onVoiceOpen }) {
       {/* ── Top bar ──────────────────────────────────────────────────── */}
       <div className="flex items-center -mx-4 px-4 py-3 bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700/60 shadow-sm sticky top-0 z-10 -mt-5 mb-1">
 
-        {/* Left spacer — mirrors avatar width so wordmark stays centred */}
-        <div className="w-9 h-9 flex-shrink-0" />
+        {/* Left — logo */}
+        <img src="/logo.png" alt="KudiAI Track" className="w-9 h-9 object-contain rounded-xl bg-white flex-shrink-0" />
 
         {/* Centre — brand wordmark */}
         <div className="flex-1 flex justify-center items-center gap-0.5 select-none">

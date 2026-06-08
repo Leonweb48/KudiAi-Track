@@ -332,15 +332,25 @@ export default function StaffDashboard({ session, staff }) {
 
           {/* Staff Header */}
           <div className="bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 px-4 pt-12 pb-3 flex items-center gap-3">
-            <Avatar url={staff.profile_image_url} name={staffName} />
-            <div className="flex-1 min-w-0">
-              <p className="font-bold text-sm text-slate-800 dark:text-white truncate">{staffName}</p>
-              <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">{ownerName && `${ownerName} · `}{staff.role?.replace(/_/g, " ")}</p>
+            {/* Left — logo */}
+            <img src="/logo.png" alt="KudiAI Track" className="w-9 h-9 object-contain rounded-xl bg-white flex-shrink-0" />
+
+            {/* Centre — wordmark */}
+            <div className="flex-1 flex justify-center items-center gap-0.5 select-none">
+              <span className="text-[17px] font-black tracking-tight text-slate-800 dark:text-white leading-none">KUDI</span>
+              <span className="text-[17px] font-black tracking-tight leading-none"
+                style={{ background: "linear-gradient(135deg,#16a34a,#059669)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+                AI
+              </span>
+              <span className="text-[13px] font-semibold text-slate-400 dark:text-slate-500 tracking-widest uppercase leading-none ml-1.5 mt-0.5">
+                Track
+              </span>
             </div>
-            <button onClick={handleSignOut}
-              className="text-xs text-red-500 font-semibold px-3 py-1.5 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-100 dark:border-red-900/40">
-              Sign Out
-            </button>
+
+            {/* Right — staff avatar */}
+            <div className="flex-shrink-0">
+              <Avatar url={staff.profile_image_url} name={staffName} />
+            </div>
           </div>
 
           <main className="flex-1 overflow-y-auto">
