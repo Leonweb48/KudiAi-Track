@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
-import Modal  from "../components/shared/Modal";
-import Field  from "../components/shared/Field";
+import Modal           from "../components/shared/Modal";
+import Field           from "../components/shared/Field";
+import StaffManagement from "./StaffManagement";
 import { supabase } from "../utils/supabase";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 
@@ -101,6 +102,7 @@ const SunIcon = () => (
 
 const PersonIcon     = () => ic("M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2|M12 11a4 4 0 100-8 4 4 0 000 8");
 const CrownIcon      = () => ic("M2 4l3 12h14l3-12-6 5-4-7-4 7-6-5z|M5 16h14");
+const UsersIcon      = () => ic("M17 20h5v-2a4 4 0 00-4-4h-1|M9 20H4v-2a4 4 0 014-4h1m4 6v-2m0-4a4 4 0 100-8 4 4 0 000 8z");
 const BellIcon       = () => ic("M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9|M13.73 21a2 2 0 01-3.46 0");
 const LockIcon       = () => ic("M3 11h18v11a2 2 0 01-2 2H5a2 2 0 01-2-2V11z|M7 11V7a5 5 0 0110 0v4");
 const ShieldIcon     = () => ic("M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z");
@@ -115,8 +117,9 @@ const LogoutIconSvg  = () => (
 );
 
 /* ── Main component ───────────────────────────────────────────────── */
-export default function Settings({ store, session, plan = "starter", onUpgrade }) {
+export default function Settings({ store, session, plan = "starter", onUpgrade, onStaffManagement }) {
   const { profile, setProfile } = store;
+  const [staffMgmt,     setStaffMgmt]     = useState(false);
   const [editProfile,   setEditProfile]   = useState(false);
   const [fp,            setFp]            = useState({ ...profile });
   const [photoFile,     setPhotoFile]     = useState(null);
@@ -217,9 +220,12 @@ export default function Settings({ store, session, plan = "starter", onUpgrade }
       {/* ── ACCOUNT ────────────────────────────────────────────────── */}
       <SectionLabel>Account</SectionLabel>
       <SettingsCard>
-        <Row icon={<PersonIcon />} label="Profile"       sub="Edit your profile and business info"  onClick={openEdit} />
-        <Row icon={<CrownIcon />}  label="Premium"       sub="Upgrade for more features"            onClick={plan !== "premium" ? onUpgrade : undefined} />
-        <Row icon={<BellIcon />}   label="Notifications" sub="Manage alerts and reminders"          onClick={() => setInfoModal(INFO.notify)} />
+        <Row icon={<PersonIcon />} label="Profile"          sub="Edit your profile and business info"    onClick={openEdit} />
+        <Row icon={<CrownIcon />}  label="Premium"          sub="Upgrade for more features"              onClick={plan !== "premium" ? onUpgrade : undefined} />
+        {plan === "premium" && (
+          <Row icon={<UsersIcon />} label="Staff Management" sub="Add staff, assign roles & permissions" onClick={() => setStaffMgmt(true)} />
+        )}
+        <Row icon={<BellIcon />}   label="Notifications"    sub="Manage alerts and reminders"            onClick={() => setInfoModal(INFO.notify)} />
       </SettingsCard>
 
       {/* ── SECURITY ───────────────────────────────────────────────── */}
@@ -351,6 +357,13 @@ export default function Settings({ store, session, plan = "starter", onUpgrade }
             </button>
           </div>
         </Modal>
+      )}
+
+      {/* ── Staff Management full-screen overlay ───────────────────── */}
+      {staffMgmt && (
+        <div className="fixed inset-0 z-40 bg-slate-50 dark:bg-slate-900">
+          <StaffManagement session={session} onBack={() => setStaffMgmt(false)} />
+        </div>
       )}
     </div>
   );

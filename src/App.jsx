@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useStore }       from "./hooks/useStore";
 import { useAuth }        from "./hooks/useAuth";
+import { usePermissions } from "./hooks/usePermissions";
 import SyncBar            from "./components/SyncBar";
 import BottomNav          from "./components/BottomNav";
 import VoiceModal         from "./components/VoiceModal";
@@ -13,6 +14,8 @@ import Settings           from "./screens/Settings";
 import Auth               from "./screens/Auth";
 import Onboarding         from "./screens/Onboarding";
 import SubscriptionPlan   from "./screens/SubscriptionPlan";
+import StaffDashboard     from "./screens/StaffDashboard";
+import StaffManagement    from "./screens/StaffManagement";
 
 function Spinner() {
   return (
@@ -31,8 +34,9 @@ export default function App() {
   const [voiceOpen,   setVoiceOpen]   = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
 
-  const { status, session, plan, setReady, refetch } = useAuth();
-  const store = useStore(session?.user?.id);
+  const { status, session, plan, setReady, refetch, staff, ownerId } = useAuth();
+  const store = useStore(session?.user?.id, null, null);
+  usePermissions();
 
   const isDark = store.profile?.dark_mode;
   useEffect(() => {
@@ -54,6 +58,7 @@ export default function App() {
   if (status === "unauthenticated") return <Auth />;
   if (status === "onboarding")      return <Onboarding session={session} onComplete={refetch} />;
   if (status === "subscribing")     return <SubscriptionPlan session={session} onComplete={setReady} />;
+  if (status === "staff")           return <StaffDashboard session={session} staff={staff} />;
 
   // Upgrade overlay — shown over the main app
   if (showUpgrade) {
