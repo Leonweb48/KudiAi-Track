@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { useStore }       from "./hooks/useStore";
 import { useAuth }        from "./hooks/useAuth";
-import { usePermissions } from "./hooks/usePermissions";
 import SyncBar            from "./components/SyncBar";
 import BottomNav          from "./components/BottomNav";
 import VoiceModal         from "./components/VoiceModal";
@@ -35,7 +34,6 @@ export default function App() {
 
   const { status, session, plan, setReady, refetch, staff } = useAuth();
   const store = useStore(session?.user?.id, null, null);
-  usePermissions();
 
   const isDark = store.profile?.dark_mode;
   useEffect(() => {
