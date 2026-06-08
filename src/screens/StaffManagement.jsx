@@ -91,6 +91,7 @@ export default function StaffManagement({ session, onBack }) {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [accountMessage, setAccountMessage] = useState("");
+  const [createdCredentials, setCreatedCredentials] = useState(null);
 
   const loadStaff = async () => {
     setLoading(true);
@@ -129,12 +130,16 @@ export default function StaffManagement({ session, onBack }) {
   };
 
   const openAdd = () => {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$";
+    const values = new Uint32Array(12);
+    crypto.getRandomValues(values);
+    const tempPwd = Array.from(values, n => chars[n % chars.length]).join("");
     setForm({ full_name: "", email: "", phone: "", role: "cashier", status: "active" });
     setPhotoFile(null);
     setPhotoPreview(null);
-    setLoginPassword("");
-    setConfirmPassword("");
-    setShowPassword(false);
+    setLoginPassword(tempPwd);
+    setConfirmPassword(tempPwd);
+    setShowPassword(true);
     setAccountMessage("");
     initPermsForRole("cashier");
     setError("");
@@ -274,9 +279,11 @@ export default function StaffManagement({ session, onBack }) {
       const { error: permError } = await supabase.from("staff_permissions").insert(permRows);
       if (permError) throw permError;
 
-      await provisionLogin(staffRow, loginPassword);
+      const tempPwd = loginPassword;
+      await provisionLogin(staffRow, tempPwd);
 
       setShowAdd(false);
+      setCreatedCredentials({ name: form.full_name, email: form.email, password: tempPwd });
       await loadStaff();
     } catch (e) {
       if (staffRow?.id && !staffRow.user_id) {
@@ -350,10 +357,12 @@ export default function StaffManagement({ session, onBack }) {
 
     setSaving(true);
     try {
-      const result = await provisionLogin(selected, loginPassword);
+      const tempPwd = loginPassword;
+      const result = await provisionLogin(selected, tempPwd);
       setAccountMessage(result?.message || "Login access updated");
       setLoginPassword("");
       setConfirmPassword("");
+      setCreatedCredentials({ name: selected.full_name, email: selected.email, password: tempPwd });
       await loadStaff();
       const { data: refreshed } = await supabase
         .from("staff")
@@ -629,6 +638,59 @@ export default function StaffManagement({ session, onBack }) {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Credentials Modal ──────────────────────────────────── */}
+      {createdCredentials && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-5">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 w-full max-w-sm shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-11 h-11 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center flex-shrink-0">
+                <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-green-600" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+                  <path d="M20 6L9 17l-5-5" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm font-extrabold text-slate-800 dark:text-white">Staff Account Created</p>
+                <p className="text-xs text-slate-400 dark:text-slate-500">Share these credentials with {createdCredentials.name.split(" ")[0]}</p>
+              </div>
+            </div>
+
+            <div className="space-y-3 mb-5">
+              <div className="bg-slate-50 dark:bg-slate-800 rounded-2xl px-4 py-3">
+                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">Email</p>
+                <p className="text-sm font-bold text-slate-800 dark:text-white">{createdCredentials.email}</p>
+              </div>
+              <div className="bg-slate-50 dark:bg-slate-800 rounded-2xl px-4 py-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">Temporary Password</p>
+                    <p className="text-sm font-bold text-slate-800 dark:text-white font-mono">{createdCredentials.password}</p>
+                  </div>
+                  <button
+                    onClick={() => navigator.clipboard?.writeText(createdCredentials.password)}
+                    className="ml-3 text-[11px] font-bold text-green-600 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 px-2.5 py-1.5 rounded-lg flex-shrink-0"
+                  >
+                    Copy
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-xl px-4 py-3 mb-5">
+              <p className="text-[11px] text-amber-700 dark:text-amber-300 font-medium leading-relaxed">
+                Staff will verify their email with a one-time code, then set a permanent password on first login.
+              </p>
+            </div>
+
+            <button
+              onClick={() => setCreatedCredentials(null)}
+              className="w-full bg-green-600 hover:bg-green-700 text-white font-bold rounded-2xl py-3.5 text-sm transition-colors"
+            >
+              Done
+            </button>
           </div>
         </div>
       )}
