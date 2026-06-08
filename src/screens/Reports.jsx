@@ -107,12 +107,12 @@ function S(style) { return { fontFamily:"'Segoe UI',Arial,sans-serif", ...style 
 
 function StatGrid({ stats }) {
   return (
-    <div style={{display:"grid",gridTemplateColumns:`repeat(${Math.min(stats.length,4)},1fr)`,gap:12,marginBottom:20}}>
+    <div style={{display:"grid",gridTemplateColumns:`repeat(${Math.min(stats.length,4)},1fr)`,gap:10,marginBottom:18}}>
       {stats.map((s,i)=>(
-        <div key={i} style={S({background:s.bg||"#f8fafc",border:`1px solid ${s.border||"#e2e8f0"}`,borderRadius:12,padding:"14px 16px"})}>
-          <p style={S({fontSize:9,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:1,margin:"0 0 6px"})}>{s.label}</p>
-          <p style={S({fontSize:18,fontWeight:900,color:s.color||"#1e293b",margin:0,letterSpacing:-0.5})}>{s.value}</p>
-          {s.sub && <p style={S({fontSize:10,color:"#94a3b8",margin:"3px 0 0"})}>{s.sub}</p>}
+        <div key={i} style={S({background:s.bg||"#f8fafc",border:`1px solid ${s.border||"#e2e8f0"}`,borderRadius:10,padding:"11px 12px",overflow:"hidden",minWidth:0})}>
+          <p style={S({fontSize:8,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:0.8,margin:"0 0 5px",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"})}>{s.label}</p>
+          <p style={S({fontSize:15,fontWeight:900,color:s.color||"#1e293b",margin:0,wordBreak:"break-word",overflowWrap:"break-word",lineHeight:1.2})}>{s.value}</p>
+          {s.sub && <p style={S({fontSize:9,color:"#94a3b8",margin:"3px 0 0",wordBreak:"break-word"})}>{s.sub}</p>}
         </div>
       ))}
     </div>
@@ -129,11 +129,14 @@ function SectionTitle({ children }) {
 
 function Table({ cols, rows, highlight }) {
   return (
-    <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,marginBottom:16}}>
+    <table style={{width:"100%",borderCollapse:"collapse",fontSize:9,tableLayout:"fixed",marginBottom:14}}>
+      <colgroup>
+        {cols.map((c,i)=><col key={i} style={{width: c.w || `${Math.floor(100/cols.length)}%`}}/>)}
+      </colgroup>
       <thead>
         <tr style={{background:"#f1f5f9"}}>
           {cols.map((c,i)=>(
-            <th key={i} style={S({padding:"8px 10px",textAlign:c.right?"right":"left",fontWeight:700,color:"#475569",fontSize:10,letterSpacing:0.5,textTransform:"uppercase",whiteSpace:"nowrap"})}>
+            <th key={i} style={S({padding:"6px 6px",textAlign:c.right?"right":"left",fontWeight:700,color:"#475569",fontSize:8,letterSpacing:0.3,textTransform:"uppercase",wordBreak:"break-word",overflow:"hidden"})}>
               {c.label}
             </th>
           ))}
@@ -143,14 +146,14 @@ function Table({ cols, rows, highlight }) {
         {rows.map((r,ri)=>(
           <tr key={ri} style={{background: highlight?.(r,ri) || (ri%2===0?"#ffffff":"#f8fafc"),borderBottom:"1px solid #f1f5f9"}}>
             {cols.map((c,ci)=>(
-              <td key={ci} style={S({padding:"7px 10px",textAlign:c.right?"right":"left",color:c.color?.(r)||"#334155",fontWeight:c.bold?"600":"400",whiteSpace:c.wrap?"normal":"nowrap",maxWidth:c.maxW||"auto"})}>
+              <td key={ci} style={S({padding:"5px 6px",textAlign:c.right?"right":"left",color:c.color?.(r)||"#334155",fontWeight:c.bold?"600":"400",wordBreak:"break-word",overflowWrap:"break-word",overflow:"hidden"})}>
                 {r[c.key]}
               </td>
             ))}
           </tr>
         ))}
         {rows.length === 0 && (
-          <tr><td colSpan={cols.length} style={S({padding:"16px 10px",textAlign:"center",color:"#94a3b8",fontStyle:"italic"})}>No data for this period</td></tr>
+          <tr><td colSpan={cols.length} style={S({padding:"14px 8px",textAlign:"center",color:"#94a3b8",fontStyle:"italic",fontSize:9})}>No data for this period</td></tr>
         )}
       </tbody>
     </table>
@@ -330,11 +333,24 @@ function SalesSection({ data }) {
       <BarChart bars={data.bars}/>
       <SectionTitle>Category Breakdown</SectionTitle>
       <Table
-        cols={[{key:"cat",label:"Category",bold:true},{key:"in_",label:"Income",right:true,color:()=>"#16a34a"},{key:"out_",label:"Expenses",right:true,color:()=>"#ef4444"},{key:"net",label:"Net",right:true},{key:"count",label:"Count",right:true}]}
+        cols={[
+          {key:"cat",  label:"Category", bold:true, w:"35%"},
+          {key:"in_",  label:"Income",   right:true, color:()=>"#16a34a", w:"18%"},
+          {key:"out_", label:"Expenses", right:true, color:()=>"#ef4444", w:"18%"},
+          {key:"net",  label:"Net",      right:true, w:"18%"},
+          {key:"count",label:"Count",    right:true, w:"11%"},
+        ]}
         rows={catRows}/>
       <SectionTitle>Transaction Log</SectionTitle>
       <Table
-        cols={[{key:"date",label:"Date"},{key:"item",label:"Item",bold:true,maxW:"120px",wrap:true},{key:"cat",label:"Category"},{key:"type",label:"Type",color:r=>r._type==="in"?"#16a34a":"#ef4444",bold:true},{key:"amount",label:"Amount",right:true,bold:true},{key:"pay",label:"Payment"}]}
+        cols={[
+          {key:"date",  label:"Date",     w:"13%"},
+          {key:"item",  label:"Item",     bold:true, w:"26%"},
+          {key:"cat",   label:"Category", w:"16%"},
+          {key:"type",  label:"Type",     color:r=>r._type==="in"?"#16a34a":"#ef4444", bold:true, w:"10%"},
+          {key:"amount",label:"Amount",   right:true, bold:true, w:"15%"},
+          {key:"pay",   label:"Payment",  w:"20%"},
+        ]}
         rows={txRows}
         highlight={(r)=>r._type==="out"?"#fff5f5":undefined}/>
       {data.tx.length > 50 && <p style={S({fontSize:10,color:"#94a3b8",fontStyle:"italic",marginTop:-8})}>Showing first 50 of {data.tx.length} transactions</p>}
@@ -366,19 +382,19 @@ function CreditSection({ data }) {
         { label:"Recovered",    value:fmt(data.totalPaid),    color:"#16a34a", bg:"#f0fdf4",   border:"#bbf7d0" },
         { label:"Overdue Accs", value:data.overdueCount,      color:"#dc2626", bg:"#fff1f2",   border:"#fecdd3" },
       ]}/>
-      <div style={{display:"flex",gap:24,alignItems:"flex-start",marginBottom:16}}>
-        <div style={{flex:1}}>
+      <div style={{display:"flex",gap:16,alignItems:"flex-start",marginBottom:14}}>
+        <div style={{width:190,flexShrink:0}}>
           <SectionTitle>Payment Status</SectionTitle>
-          <PieChart segments={pieData} size={160}/>
+          <PieChart segments={pieData} size={150}/>
           <ChartLegend items={pieData.map(p=>({color:p.color,label:p.label}))}/>
         </div>
-        <div style={{flex:2}}>
+        <div style={{flex:1,minWidth:0}}>
           <SectionTitle>Overdue Summary</SectionTitle>
           {data.overdueCount===0
-            ? <p style={S({color:"#16a34a",fontSize:12,fontStyle:"italic"})}>✓ No overdue accounts</p>
-            : <div style={S({background:"#fef2f2",border:"1px solid #fecaca",borderRadius:10,padding:"12px 16px"})}>
-                <p style={S({fontSize:13,fontWeight:700,color:"#dc2626",margin:0})}>⚠ {data.overdueCount} overdue account{data.overdueCount>1?"s":""}</p>
-                <p style={S({fontSize:12,color:"#ef4444",margin:"4px 0 0"})}>{fmt(data.overdueDue)} outstanding on overdue accounts</p>
+            ? <p style={S({color:"#16a34a",fontSize:11,fontStyle:"italic"})}>✓ No overdue accounts</p>
+            : <div style={S({background:"#fef2f2",border:"1px solid #fecaca",borderRadius:10,padding:"10px 14px"})}>
+                <p style={S({fontSize:12,fontWeight:700,color:"#dc2626",margin:0,wordBreak:"break-word"})}>⚠ {data.overdueCount} overdue account{data.overdueCount>1?"s":""}</p>
+                <p style={S({fontSize:11,color:"#ef4444",margin:"4px 0 0",wordBreak:"break-word"})}>{fmt(data.overdueDue)} outstanding on overdue accounts</p>
               </div>
           }
         </div>
@@ -386,14 +402,14 @@ function CreditSection({ data }) {
       <SectionTitle>Debtor Records</SectionTitle>
       <Table
         cols={[
-          {key:"name",label:"Customer",bold:true,maxW:"120px",wrap:true},
-          {key:"phone",label:"Phone"},
-          {key:"total",label:"Total Debt",right:true},
-          {key:"paid",label:"Paid",right:true,color:()=>"#16a34a"},
-          {key:"owed",label:"Outstanding",right:true,bold:true,color:r=>r._s==="overdue"?"#dc2626":"#ef4444"},
-          {key:"due",label:"Due Date"},
-          {key:"status",label:"Status",color:r=>r._s==="overdue"?"#dc2626":r._s==="paid"?"#16a34a":"#64748b",bold:true},
-          {key:"late",label:"Days Late",right:true,color:r=>r.late!=="—"?"#dc2626":"#94a3b8"},
+          {key:"name",  label:"Customer",    bold:true, w:"19%"},
+          {key:"phone", label:"Phone",                  w:"12%"},
+          {key:"total", label:"Total",       right:true, w:"11%"},
+          {key:"paid",  label:"Paid",        right:true, color:()=>"#16a34a", w:"11%"},
+          {key:"owed",  label:"Owed",        right:true, bold:true, color:r=>r._s==="overdue"?"#dc2626":"#ef4444", w:"12%"},
+          {key:"due",   label:"Due Date",               w:"13%"},
+          {key:"status",label:"Status",      color:r=>r._s==="overdue"?"#dc2626":r._s==="paid"?"#16a34a":"#64748b", bold:true, w:"14%"},
+          {key:"late",  label:"Late",        right:true, color:r=>r.late!=="—"?"#dc2626":"#94a3b8", w:"8%"},
         ]}
         rows={rows}
         highlight={r=>r._s==="overdue"?"#fff5f5":undefined}/>
@@ -430,15 +446,14 @@ function AsoSection({ data }) {
       <SectionTitle>Client Details</SectionTitle>
       <Table
         cols={[
-          {key:"name",label:"Name",bold:true,maxW:"110px",wrap:true},
-          {key:"freq",label:"Frequency"},
-          {key:"contrib",label:"Contrib. Amt",right:true},
-          {key:"saved",label:"Total Saved",right:true,color:()=>"#16a34a"},
-          {key:"balance",label:"Balance",right:true,bold:true,color:()=>"#7c3aed"},
-          {key:"made",label:"Paid",right:true},
-          {key:"missed",label:"Missed",right:true,color:r=>r._m>0?"#dc2626":"#94a3b8",bold:true},
-          {key:"next",label:"Next Due"},
-          {key:"status",label:"Status",color:r=>r.status==="active"?"#16a34a":"#94a3b8"},
+          {key:"name",   label:"Name",        bold:true, w:"20%"},
+          {key:"freq",   label:"Frequency",              w:"11%"},
+          {key:"contrib",label:"Contrib",     right:true, w:"13%"},
+          {key:"saved",  label:"Saved",       right:true, color:()=>"#16a34a", w:"13%"},
+          {key:"balance",label:"Balance",     right:true, bold:true, color:()=>"#7c3aed", w:"13%"},
+          {key:"made",   label:"Paid",        right:true, w:"8%"},
+          {key:"missed", label:"Missed",      right:true, color:r=>r._m>0?"#dc2626":"#94a3b8", bold:true, w:"8%"},
+          {key:"next",   label:"Next Due",               w:"14%"},
         ]}
         rows={rows}
         highlight={r=>r._m>0?"#fff5f5":undefined}/>
@@ -467,10 +482,23 @@ function BillsSection({ data }) {
         { label:"Categories",      value:Object.keys(data.byCat).length, color:"#7c3aed", bg:"#faf5ff", border:"#e9d5ff" },
       ]}/>
       <SectionTitle>By Category</SectionTitle>
-      <Table cols={[{key:"cat",label:"Category",bold:true},{key:"total",label:"Total Paid",right:true,bold:true,color:()=>"#dc2626"},{key:"count",label:"Count",right:true},{key:"avg",label:"Avg per Bill",right:true}]} rows={catRows}/>
+      <Table
+        cols={[
+          {key:"cat",  label:"Category",    bold:true, w:"42%"},
+          {key:"total",label:"Total Paid",  right:true, bold:true, color:()=>"#dc2626", w:"26%"},
+          {key:"count",label:"Count",       right:true, w:"14%"},
+          {key:"avg",  label:"Avg/Bill",    right:true, w:"18%"},
+        ]}
+        rows={catRows}/>
       <SectionTitle>Bill Transactions</SectionTitle>
       <Table
-        cols={[{key:"date",label:"Date"},{key:"item",label:"Item",bold:true,maxW:"130px",wrap:true},{key:"cat",label:"Category"},{key:"amount",label:"Amount",right:true,bold:true,color:()=>"#dc2626"},{key:"pay",label:"Payment"},{key:"note",label:"Note",maxW:"100px",wrap:true}]}
+        cols={[
+          {key:"date",  label:"Date",     w:"14%"},
+          {key:"item",  label:"Item",     bold:true, w:"30%"},
+          {key:"cat",   label:"Category", w:"20%"},
+          {key:"amount",label:"Amount",   right:true, bold:true, color:()=>"#dc2626", w:"18%"},
+          {key:"pay",   label:"Payment",  w:"18%"},
+        ]}
         rows={rows}/>
     </div>
   );
@@ -503,13 +531,13 @@ function StaffSection({ data }) {
       <SectionTitle>Performance Breakdown</SectionTitle>
       <Table
         cols={[
-          {key:"name",label:"Staff Member",bold:true},
-          {key:"txCount",label:"Transactions",right:true},
-          {key:"salesIn",label:"Sales",right:true,color:()=>"#16a34a",bold:true},
-          {key:"salesOut",label:"Expenses",right:true,color:()=>"#ef4444"},
-          {key:"net",label:"Net",right:true,bold:true,color:r=>r._net>=0?"#16a34a":"#ef4444"},
-          {key:"credits",label:"Credits Added",right:true,color:()=>"#d97706"},
-          {key:"aso",label:"Aso Clients",right:true,color:()=>"#7c3aed"},
+          {key:"name",    label:"Staff Member", bold:true, w:"22%"},
+          {key:"txCount", label:"Txns",         right:true, w:"10%"},
+          {key:"salesIn", label:"Sales",        right:true, color:()=>"#16a34a", bold:true, w:"15%"},
+          {key:"salesOut",label:"Expenses",     right:true, color:()=>"#ef4444", w:"15%"},
+          {key:"net",     label:"Net",          right:true, bold:true, color:r=>r._net>=0?"#16a34a":"#ef4444", w:"15%"},
+          {key:"credits", label:"Credits",      right:true, color:()=>"#d97706", w:"12%"},
+          {key:"aso",     label:"Ajo",          right:true, color:()=>"#7c3aed", w:"11%"},
         ]}
         rows={rows}/>
       {data.rows.length===0 && <p style={S({color:"#94a3b8",fontSize:12,fontStyle:"italic"})}>No staff transaction data found. Staff ID tracking must be enabled and active.</p>}
@@ -533,13 +561,13 @@ function StockSection({ data }) {
       <SectionTitle>Item Performance</SectionTitle>
       <Table
         cols={[
-          {key:"item",label:"Item",bold:true,maxW:"130px",wrap:true},
-          {key:"category",label:"Category"},
-          {key:"qtySold",label:"Qty Sold",right:true},
-          {key:"revenue",label:"Revenue",right:true,bold:true,color:()=>"#16a34a"},
-          {key:"qtyBought",label:"Qty Bought",right:true},
-          {key:"cost",label:"Cost",right:true,color:()=>"#ef4444"},
-          {key:"margin",label:"Margin",right:true,bold:true},
+          {key:"item",     label:"Item",      bold:true, w:"24%"},
+          {key:"category", label:"Category",            w:"15%"},
+          {key:"qtySold",  label:"Qty Sold",  right:true, w:"10%"},
+          {key:"revenue",  label:"Revenue",   right:true, bold:true, color:()=>"#16a34a", w:"15%"},
+          {key:"qtyBought",label:"Qty Bought",right:true, w:"11%"},
+          {key:"cost",     label:"Cost",      right:true, color:()=>"#ef4444", w:"13%"},
+          {key:"margin",   label:"Margin",    right:true, bold:true, w:"12%"},
         ]}
         rows={data.rows.map(r=>({...r,revenue:fmt(r.revenue),cost:fmt(r.cost),margin:fmt(r.revenue-r.cost)}))}/>
     </div>
@@ -574,8 +602,8 @@ function ReportTemplate({ type, reportData, profile, from, to }) {
             <span style={S({color:"#6ee7b7",fontSize:22,fontWeight:900,letterSpacing:-0.5})}>AI</span>
             <span style={S({color:"rgba(255,255,255,0.55)",fontSize:10,fontWeight:700,letterSpacing:3,textTransform:"uppercase",marginLeft:5})}>Track</span>
           </div>
-          <p style={S({color:"rgba(255,255,255,0.85)",margin:"4px 0 0",fontSize:14,fontWeight:600})}>{biz}</p>
-          {profile?.phone && <p style={S({color:"rgba(255,255,255,0.5)",margin:"2px 0 0",fontSize:11})}>{profile.phone}</p>}
+          <p style={S({color:"rgba(255,255,255,0.85)",margin:"4px 0 0",fontSize:13,fontWeight:600,wordBreak:"break-word",overflowWrap:"break-word"})}>{biz}</p>
+          {profile?.phone && <p style={S({color:"rgba(255,255,255,0.5)",margin:"2px 0 0",fontSize:10})}>{profile.phone}</p>}
         </div>
         <div style={{textAlign:"right"}}>
           <p style={S({color:"rgba(255,255,255,0.5)",fontSize:10,margin:0})}>Generated</p>
