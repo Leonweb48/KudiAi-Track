@@ -109,8 +109,8 @@ export default function StaffManagement({ session, onBack }) {
     setLogsLoading(false);
   };
 
-  useEffect(() => { loadStaff(); }, []);
-  useEffect(() => { if (activeTab === "logs") loadLogs(); }, [activeTab]);
+  useEffect(() => { loadStaff(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (activeTab === "logs") loadLogs(); }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const initPermsForRole = (roleId) => {
     const defaults = ROLE_DEFAULTS[roleId] || [];
@@ -234,11 +234,7 @@ export default function StaffManagement({ session, onBack }) {
     }
   };
 
-  const toggleStatus = async (s) => {
-    const newStatus = s.status === "active" ? "suspended" : "active";
-    await supabase.from("staff").update({ status: newStatus }).eq("id", s.id);
-    await loadStaff();
-  };
+
 
   const deleteStaff = async (id) => {
     if (!window.confirm("Remove this staff member? This cannot be undone.")) return;

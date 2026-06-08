@@ -15,7 +15,6 @@ import Auth               from "./screens/Auth";
 import Onboarding         from "./screens/Onboarding";
 import SubscriptionPlan   from "./screens/SubscriptionPlan";
 import StaffDashboard     from "./screens/StaffDashboard";
-import StaffManagement    from "./screens/StaffManagement";
 
 function Spinner() {
   return (
@@ -34,7 +33,7 @@ export default function App() {
   const [voiceOpen,   setVoiceOpen]   = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
 
-  const { status, session, plan, setReady, refetch, staff, ownerId } = useAuth();
+  const { status, session, plan, setReady, refetch, staff } = useAuth();
   const store = useStore(session?.user?.id, null, null);
   usePermissions();
 
