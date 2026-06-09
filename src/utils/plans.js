@@ -31,6 +31,7 @@ export const PLAN_LIMITS = {
     staffManagement: true,
     inventory:       true,
     loyalty:         true,
+    branches:        true,
   },
 };
 

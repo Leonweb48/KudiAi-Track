@@ -3,6 +3,7 @@ import { fmt, today } from "../utils/helpers";
 import { NotificationBell } from "../components/NotificationCenter";
 import { useT } from "../contexts/LanguageContext";
 import { getSalesPrediction } from "../utils/predictions";
+import { canDo } from "../utils/plans";
 
 function greetingKey() {
   const h = new Date().getHours();
@@ -29,14 +30,15 @@ function Svg({ d, size = 18, color = "currentColor", sw = 2 }) {
 }
 
 const P = {
-  mic:    "M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z|M19 10v2a7 7 0 01-14 0v-2|M12 19v4|M8 23h8",
-  in:     "M12 19V5|M5 12l7-7 7 7",
-  out:    "M12 5v14|M19 12l-7 7-7-7",
-  credit: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2|M9 11a4 4 0 100-8 4 4 0 000 8|M23 21v-2a4 4 0 00-3-3.87|M16 3.13a4 4 0 010 7.75",
-  bank:   "M3 22h18|M6 18v-7|M10 18v-7|M14 18v-7|M18 18v-7|M12 2L2 7h20L12 2z",
-  bills:  "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2|M9 5a2 2 0 002 2h2a2 2 0 002-2|M9 5a2 2 0 012-2h2a2 2 0 012 2|M9 13h6|M9 17h4",
-  report: "M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z|M14 2v6h6|M16 13H8|M16 17H8|M10 9H8",
-  person: "M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2|M12 11a4 4 0 100-8 4 4 0 000 8",
+  mic:     "M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z|M19 10v2a7 7 0 01-14 0v-2|M12 19v4|M8 23h8",
+  in:      "M12 19V5|M5 12l7-7 7 7",
+  out:     "M12 5v14|M19 12l-7 7-7-7",
+  credit:  "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2|M9 11a4 4 0 100-8 4 4 0 000 8|M23 21v-2a4 4 0 00-3-3.87|M16 3.13a4 4 0 010 7.75",
+  bank:    "M3 22h18|M6 18v-7|M10 18v-7|M14 18v-7|M18 18v-7|M12 2L2 7h20L12 2z",
+  bills:   "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2|M9 5a2 2 0 002 2h2a2 2 0 002-2|M9 5a2 2 0 012-2h2a2 2 0 012 2|M9 13h6|M9 17h4",
+  report:  "M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z|M14 2v6h6|M16 13H8|M16 17H8|M10 9H8",
+  person:  "M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2|M12 11a4 4 0 100-8 4 4 0 000 8",
+  branch:  "M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z|M9 22V12h6v10",
 };
 
 /* ── Stat card ───────────────────────────────────────────────────── */
@@ -132,7 +134,7 @@ function SalesForecastCard({ prediction, t }) {
 }
 
 /* ── Main ────────────────────────────────────────────────────────── */
-export default function Home({ store, setTab, onQuickAction, onVoiceOpen, notif }) {
+export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, onBranchesOpen, notif }) {
   const { transactions, credits, asoClients, profile, loading } = store;
   const t = useT();
 
@@ -254,6 +256,9 @@ export default function Home({ store, setTab, onQuickAction, onVoiceOpen, notif 
           <ActionBtn label={t("home.creditSale")}  icon={P.credit} bg="bg-gradient-to-br from-amber-400 to-amber-500"   iconColor="white" onClick={() => onQuickAction?.("credit")} />
           <ActionBtn label={t("home.asoClient")}   icon={P.bank}   bg="bg-gradient-to-br from-blue-500 to-blue-600"     iconColor="white" onClick={() => onQuickAction?.("aso")} />
           <ActionBtn label={t("home.reports")}     icon={P.report} bg="bg-gradient-to-br from-purple-500 to-violet-600" iconColor="white" onClick={() => setTab("insights")} />
+          {canDo(plan, "branches") && (
+            <ActionBtn label={t("home.branches")} icon={P.branch} bg="bg-gradient-to-br from-indigo-500 to-indigo-700" iconColor="white" onClick={() => onBranchesOpen?.()} />
+          )}
         </div>
       </div>
 

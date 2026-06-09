@@ -3,7 +3,7 @@ import { supabase } from "../utils/supabase";
 import { uid, today, fmt } from "../utils/helpers";
 import { logAudit } from "../utils/auditLog";
 
-export function useStore(userId, staffId = null, staffName = null, onNotify = null) {
+export function useStore(userId, staffId = null, staffName = null, onNotify = null, branchId = null) {
   const [transactions, setTransactions] = useState([]);
   const [credits,      setCredits]      = useState([]);
   const [asoClients,   setAsoClients]   = useState([]);
@@ -32,6 +32,11 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
       txQ  = txQ.eq("staff_id",  staffId);
       crQ  = crQ.eq("staff_id",  staffId);
       asoQ = asoQ.eq("staff_id", staffId);
+    }
+    if (branchId) {
+      txQ  = txQ.eq("branch_id", branchId);
+      crQ  = crQ.eq("branch_id", branchId);
+      asoQ = asoQ.eq("branch_id", branchId);
     }
 
     const [txRes, crRes, asoRes, profRes, staffRes] = await Promise.all([
@@ -83,7 +88,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
       });
     }
     setLoading(false);
-  }, [userId, staffId]);
+  }, [userId, staffId, branchId]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -101,7 +106,8 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
     const tempId = "tmp-" + uid();
     const payload = {
       user_id:          userId,
-      staff_id:         staffId || null,
+      staff_id:         staffId  || null,
+      branch_id:        branchId || null,
       type:             t.type,
       category:         t.category         || "sale",
       amount:           parseFloat(t.amount)   || 0,
@@ -154,7 +160,8 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
     const tempId = "tmp-" + uid();
     const payload = {
       user_id:              userId,
-      staff_id:             staffId || null,
+      staff_id:             staffId  || null,
+      branch_id:            branchId || null,
       customer_name:        c.customer_name,
       phone:                c.phone               || "",
       email:                c.email               || "",
@@ -224,7 +231,8 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
     const tempId = "tmp-" + uid();
     const payload = {
       user_id:                userId,
-      staff_id:               staffId || null,
+      staff_id:               staffId  || null,
+      branch_id:              branchId || null,
       full_name:              cl.full_name,
       phone:                  cl.phone               || "",
       email:                  cl.email               || "",

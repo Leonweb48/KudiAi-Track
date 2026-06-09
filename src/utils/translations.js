@@ -10,6 +10,7 @@ export const TRANSLATIONS = {
   "nav.reports":  { en:"Reports", pidgin:"Reports", ha:"Rahoto",  ig:"Akụkọ",   yo:"Akọọlẹ"  },
   "nav.more":     { en:"More",    pidgin:"More",    ha:"Ƙari",    ig:"Ọzọ",      yo:"Siwaju"  },
   "nav.loyalty":  { en:"Loyalty", pidgin:"Loyalty", ha:"Aminci",  ig:"Ntụkwasị", yo:"Ifarabalẹ" },
+  "nav.branches": { en:"Branches", pidgin:"Branches", ha:"Rassan",  ig:"Ngalaba",   yo:"Ẹka"       },
 
   /* Greetings */
   "greet.morning":   { en:"Good morning",   pidgin:"Good morning",   ha:"Ina kwana",      ig:"Ụtụtụ ọma",  yo:"Ẹ káàárọ̀"  },
@@ -32,6 +33,7 @@ export const TRANSLATIONS = {
   "home.asoClient":     { en:"Aso Client",        pidgin:"Aso Client",      ha:"Abokin Aso",         ig:"Onye Aso",         yo:"Onibara Aso"       },
   "home.payBills":      { en:"Pay Bills",         pidgin:"Pay Bills",       ha:"Biya Kuɗin",         ig:"Kwụọ Ụgwọ",       yo:"San Iwe-owo"       },
   "home.reports":       { en:"Reports",           pidgin:"Reports",         ha:"Rahoto",             ig:"Akụkọ",           yo:"Akọọlẹ"            },
+  "home.branches":      { en:"Branches",          pidgin:"Branches",        ha:"Rassan",             ig:"Ngalaba",         yo:"Ẹka"               },
   "home.recentTxns":    { en:"Recent Transactions", pidgin:"Recent Deals",  ha:"Ma'amalolin Kwanan Nan", ig:"Azụmaahịa Ọ Dị N'oge Ọzọ", yo:"Àwọn Ìdúnàádúrà Àìpẹ́" },
   "home.seeAll":        { en:"See all →",         pidgin:"See all →",       ha:"Duba duka →",        ig:"Hụ ha niile →",    yo:"Wo gbogbo →"       },
   "home.noTxns":        { en:"No transactions yet",     pidgin:"No deal yet",          ha:"Babu ma'amala tukuna", ig:"Ọ dịghị azụmaahịa ọ bụrụ ugbu a", yo:"Ko si ìdúnàádúrà sí bẹ̀yìn" },

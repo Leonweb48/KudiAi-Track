@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../utils/supabase";
 import { uid } from "../utils/helpers";
 
-export function useInventory(userId, staffId = null, onNotify = null) {
+export function useInventory(userId, staffId = null, onNotify = null, branchId = null) {
   const [products,  setProducts]  = useState([]);
   const [movements, setMovements] = useState([]);
   const [loading,   setLoading]   = useState(true);
@@ -13,15 +13,17 @@ export function useInventory(userId, staffId = null, onNotify = null) {
 
   const loadData = useCallback(async () => {
     if (!userId || !supabase) { setLoading(false); return; }
+    let pQ = supabase.from("products").select("*").eq("user_id", userId).order("product_name");
+    if (branchId) pQ = pQ.eq("branch_id", branchId);
     const [pRes, mRes] = await Promise.all([
-      supabase.from("products").select("*").eq("user_id", userId).order("product_name"),
+      pQ,
       supabase.from("stock_movements").select("*").eq("user_id", userId)
         .order("created_at", { ascending: false }).limit(500),
     ]);
     if (pRes.data)  setProducts(pRes.data);
     if (mRes.data)  setMovements(mRes.data);
     setLoading(false);
-  }, [userId]);
+  }, [userId, branchId]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -46,6 +48,7 @@ export function useInventory(userId, staffId = null, onNotify = null) {
     const prod = {
       id:                  uid(),
       user_id:             userId,
+      branch_id:           branchId || null,
       product_name:        String(data.product_name || "").trim(),
       sku:                 String(data.sku || "").trim(),
       category:            String(data.category || "").trim(),
@@ -58,7 +61,7 @@ export function useInventory(userId, staffId = null, onNotify = null) {
     if (error) { setDbError(error.message); return false; }
     setProducts(prev => [...prev, prod].sort((a, b) => a.product_name.localeCompare(b.product_name)));
     return true;
-  }, [userId]);
+  }, [userId, branchId]);
 
   const updateProduct = useCallback(async (id, data) => {
     if (!supabase) return false;
@@ -103,6 +106,7 @@ export function useInventory(userId, staffId = null, onNotify = null) {
     const mov = {
       id:         uid(),
       user_id:    userId,
+      branch_id:  branchId || null,
       product_id,
       type,
       quantity:   delta,
@@ -126,7 +130,7 @@ export function useInventory(userId, staffId = null, onNotify = null) {
       notifyRef.current?.("stock", `Low Stock: ${product.product_name}`, `Only ${newQty} unit${newQty !== 1 ? "s" : ""} remaining`);
     }
     return true;
-  }, [userId, staffId, products]);
+  }, [userId, staffId, branchId, products]);
 
   // Analytics — computed inline on every access
   const salesQty = {}, salesRev = {};

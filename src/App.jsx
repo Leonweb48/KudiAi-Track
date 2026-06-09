@@ -24,9 +24,12 @@ import Reports               from "./screens/Reports";
 import AIAssistant           from "./screens/AIAssistant";
 import LockScreen            from "./components/LockScreen";
 import Loyalty               from "./screens/Loyalty";
+import Branches              from "./screens/Branches";
+import BranchManagerDashboard from "./screens/BranchManagerDashboard";
 import { useInventory }      from "./hooks/useInventory";
 import { useBiometricLock }  from "./hooks/useBiometricLock";
 import { useLoyalty }        from "./hooks/useLoyalty";
+import { useBranches }       from "./hooks/useBranches";
 import { LanguageProvider }  from "./contexts/LanguageContext";
 
 function Spinner() {
@@ -45,9 +48,10 @@ export default function App() {
   const [autoAdd,     setAutoAdd]     = useState(null);
   const [voiceOpen,   setVoiceOpen]   = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
-  const [showReports, setShowReports] = useState(false);
-  const [showAI,      setShowAI]      = useState(false);
-  const [aiQuery,     setAiQuery]     = useState("");
+  const [showReports,  setShowReports]  = useState(false);
+  const [showAI,       setShowAI]       = useState(false);
+  const [showBranches, setShowBranches] = useState(false);
+  const [aiQuery,      setAiQuery]      = useState("");
 
   const { status, session, plan, setReady, refetch, staff } = useAuth();
   const userId = session?.user?.id;
@@ -67,6 +71,9 @@ export default function App() {
 
   // Loyalty program
   const loyalty = useLoyalty(userId);
+
+  // Branch management (premium only)
+  const branchesHook = useBranches(userId);
 
   const isDark = store.profile?.dark_mode;
   useEffect(() => {
@@ -134,6 +141,7 @@ export default function App() {
   if (status === "subscribing")     return <SubscriptionPlan session={session} onComplete={setReady} />;
   if (status === "staff_setup")     return <StaffFirstLogin session={session} staff={staff} />;
   if (status === "staff")           return <StaffDashboard session={session} staff={staff} />;
+  if (status === "branch_manager")  return <BranchManagerDashboard session={session} staff={staff} />;
 
   if (showUpgrade) {
     return (
@@ -156,6 +164,7 @@ export default function App() {
                     setTab={setTab}
                     onQuickAction={triggerQuickAction}
                     onVoiceOpen={() => setVoiceOpen(true)}
+                    onBranchesOpen={() => setShowBranches(true)}
                     notif={notif} />,
     transactions: <Transactions
                     store={{ ...store, addTransaction: addTransactionWithLoyalty }}
@@ -246,6 +255,15 @@ export default function App() {
 
       {/* Report generator — full-screen overlay, z-60 */}
       {showReports && <Reports store={store} onClose={() => setShowReports(false)} />}
+
+      {/* Branch management — full-screen overlay, z-60 */}
+      {showBranches && (
+        <Branches
+          store={{ ...store, ...branchesHook }}
+          userId={userId}
+          onClose={() => setShowBranches(false)}
+        />
+      )}
 
       {/* AI Business Assistant — full-screen overlay, z-50 */}
       {showAI && (
