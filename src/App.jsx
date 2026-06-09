@@ -51,6 +51,7 @@ export default function App() {
   const [showReports,  setShowReports]  = useState(false);
   const [showAI,       setShowAI]       = useState(false);
   const [showBranches, setShowBranches] = useState(false);
+  const [showLoyalty,  setShowLoyalty]  = useState(false);
   const [aiQuery,      setAiQuery]      = useState("");
 
   const { status, session, plan, setReady, refetch, staff } = useAuth();
@@ -160,11 +161,9 @@ export default function App() {
   const SCREENS = {
     home:         <Home
                     store={store}
-                    plan={plan}
                     setTab={setTab}
                     onQuickAction={triggerQuickAction}
                     onVoiceOpen={() => setVoiceOpen(true)}
-                    onBranchesOpen={() => setShowBranches(true)}
                     notif={notif} />,
     transactions: <Transactions
                     store={{ ...store, addTransaction: addTransactionWithLoyalty }}
@@ -210,7 +209,9 @@ export default function App() {
                     plan={plan}
                     onUpgrade={openUpgrade}
                     lock={lock}
-                    onNotifications={() => notif.setOpen(true)} />,
+                    onNotifications={() => notif.setOpen(true)}
+                    onLoyalty={() => setShowLoyalty(true)}
+                    onBranches={() => setShowBranches(true)} />,
   };
 
   return (
@@ -263,6 +264,18 @@ export default function App() {
           userId={userId}
           onClose={() => setShowBranches(false)}
         />
+      )}
+
+      {/* Loyalty program — full-screen overlay, z-60 */}
+      {showLoyalty && (
+        <div className="fixed inset-0 z-[60] overflow-y-auto bg-slate-50 dark:bg-slate-900 max-w-md mx-auto left-1/2 -translate-x-1/2">
+          <Loyalty
+            loyalty={loyalty}
+            plan={plan}
+            onUpgrade={openUpgrade}
+            onClose={() => setShowLoyalty(false)}
+          />
+        </div>
       )}
 
       {/* AI Business Assistant — full-screen overlay, z-50 */}

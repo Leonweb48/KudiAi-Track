@@ -264,7 +264,7 @@ function RedeemModal({ customer, onRedeem, onClose }) {
   );
 }
 
-export default function Loyalty({ loyalty, plan, onUpgrade }) {
+export default function Loyalty({ loyalty, plan, onUpgrade, onClose }) {
   const {
     customers, settings, loading: loyaltyLoading,
     addCustomer, awardPoints, redeemPoints,
@@ -319,7 +319,12 @@ export default function Loyalty({ loyalty, plan, onUpgrade }) {
   if (!canUseLoyalty) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col">
-        <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 py-4">
+        <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 py-4 flex items-center gap-3">
+          {onClose && (
+            <button onClick={onClose} className="p-2 -ml-1 rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
+              <Icon name="x" size={20} />
+            </button>
+          )}
           <h1 className="text-lg font-bold text-slate-800 dark:text-white">Loyalty Program</h1>
         </div>
         <div className="flex-1 flex items-center justify-center p-6">
@@ -474,9 +479,14 @@ export default function Loyalty({ loyalty, plan, onUpgrade }) {
 
   // ── LIST VIEW ──────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 pb-24">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 pb-6">
       <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 py-4">
         <div className="flex items-center gap-2">
+          {onClose && (
+            <button onClick={onClose} className="p-2 -ml-1 rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 flex-shrink-0">
+              <Icon name="x" size={20} />
+            </button>
+          )}
           <div className="flex-1 min-w-0">
             <h1 className="text-lg font-bold text-slate-800 dark:text-white leading-tight">Loyalty Program</h1>
             {!settings.is_active && (

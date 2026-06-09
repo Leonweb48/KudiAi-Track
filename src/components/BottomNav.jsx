@@ -8,7 +8,6 @@ const NAV_IDS = [
   { id: "credit",       icon: "credit",    tkey: "nav.credit"  },
   { id: "aso",          icon: "aso",       tkey: "nav.ajo"     },
   { id: "insights",     icon: "insights",  tkey: "nav.reports" },
-  { id: "loyalty",      icon: "gift",      tkey: "nav.loyalty" },
   { id: "settings",     icon: "settings",  tkey: "nav.more"    },
 ];
 

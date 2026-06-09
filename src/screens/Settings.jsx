@@ -2,7 +2,8 @@ import { useState, useEffect } from "react";
 import Modal           from "../components/shared/Modal";
 import Field           from "../components/shared/Field";
 import StaffManagement from "./StaffManagement";
-import { supabase } from "../utils/supabase";
+import { supabase }    from "../utils/supabase";
+import { canDo }       from "../utils/plans";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import { LANGUAGES, getLangMeta } from "../utils/i18n";
 import { useLanguage, useT } from "../contexts/LanguageContext";
@@ -190,6 +191,8 @@ const ShieldIcon     = () => ic("M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z");
 const DocIcon        = () => ic("M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z|M14 2v6h6|M16 13H8|M16 17H8");
 const HelpIcon       = () => ic("M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z|M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3|M12 17h.01");
 const GlobeIcon = () => ic("M12 2a10 10 0 100 20A10 10 0 0012 2z|M2 12h20|M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z");
+const GiftIcon   = () => ic("M20 12v10H4V12|M22 7H2v5h20V7z|M12 22V7|M12 7H7.5a2.5 2.5 0 010-5C11 2 12 7 12 7z|M12 7h4.5a2.5 2.5 0 000-5C13 2 12 7 12 7z");
+const BranchIcon = () => ic("M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z|M9 22V12h6v10");
 const LogoutIconSvg  = () => (
   <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-red-500 dark:text-red-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
     <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
@@ -239,7 +242,7 @@ function LanguageModal({ current, onClose }) {
 }
 
 /* ── Main component ───────────────────────────────────────────────── */
-export default function Settings({ store, session, plan = "starter", onUpgrade, onStaffManagement, lock, onNotifications }) {
+export default function Settings({ store, session, plan = "starter", onUpgrade, onStaffManagement, lock, onNotifications, onLoyalty, onBranches }) {
   const { profile, setProfile } = store;
   const { lang: langCode }      = useLanguage();
   const t                       = useT();
@@ -384,6 +387,23 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
         <Row icon={<CrownIcon />}  label={t("settings.premium")}   sub={t("settings.premiumSub")}  onClick={plan !== "premium" ? onUpgrade : undefined} />
         <Row icon={<UsersIcon />}  label={t("settings.staff")}     sub={t("settings.staffSub")}    onClick={() => setStaffMgmt(true)} />
         <Row icon={<BellIcon />}   label={t("settings.notif")}     sub={t("settings.notifSub")}    onClick={() => onNotifications?.()} />
+      </SettingsCard>
+
+      {/* ── FEATURES ───────────────────────────────────────────────── */}
+      <SectionLabel>Features</SectionLabel>
+      <SettingsCard>
+        <Row
+          icon={<GiftIcon />}
+          label="Loyalty Program"
+          sub={canDo(plan, "loyalty") ? "Points, cashback & referrals" : "Business & Premium plans"}
+          onClick={canDo(plan, "loyalty") ? onLoyalty : onUpgrade}
+        />
+        <Row
+          icon={<BranchIcon />}
+          label="Branch Management"
+          sub={canDo(plan, "branches") ? "Manage branches & staff" : "Premium plan only"}
+          onClick={canDo(plan, "branches") ? onBranches : onUpgrade}
+        />
       </SettingsCard>
 
       {/* ── SECURITY ───────────────────────────────────────────────── */}

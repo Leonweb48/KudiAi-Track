@@ -71,6 +71,7 @@ export default function StaffManagement({ session, onBack }) {
   const userId = session.user.id;
 
   const [staffList,   setStaffList]   = useState([]);
+  const [branches,    setBranches]    = useState([]);
   const [loading,     setLoading]     = useState(true);
   const [showAdd,     setShowAdd]     = useState(false);
   const [selected,    setSelected]    = useState(null); // staff being viewed/edited
@@ -115,6 +116,18 @@ export default function StaffManagement({ session, onBack }) {
     setLoading(false);
   };
 
+  const loadBranches = async () => {
+    const { data } = await supabase
+      .from("branches")
+      .select("id, name")
+      .eq("owner_id", userId)
+      .eq("is_active", true)
+      .order("name");
+    setBranches(data || []);
+  };
+
+  const branchName = (id) => branches.find(b => b.id === id)?.name || "";
+
   const loadLogs = async () => {
     setLogsLoading(true);
     const { data } = await supabase
@@ -127,7 +140,7 @@ export default function StaffManagement({ session, onBack }) {
     setLogsLoading(false);
   };
 
-  useEffect(() => { loadStaff(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { loadStaff(); loadBranches(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (activeTab === "logs") loadLogs(); }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const initPermsForRole = (roleId) => {
@@ -144,7 +157,7 @@ export default function StaffManagement({ session, onBack }) {
     const values = new Uint32Array(12);
     crypto.getRandomValues(values);
     const tempPwd = Array.from(values, n => chars[n % chars.length]).join("");
-    setForm({ full_name: "", email: "", phone: "", role: "cashier", status: "active" });
+    setForm({ full_name: "", email: "", phone: "", role: "cashier", status: "active", branch_id: "" });
     setPhotoFile(null);
     setPhotoPreview(null);
     setLoginPassword(tempPwd);
@@ -322,7 +335,7 @@ export default function StaffManagement({ session, onBack }) {
 
       const { data: createdStaff, error: staffErr } = await supabase
         .from("staff")
-        .insert({ owner_id: userId, ...form, profile_image_url })
+        .insert({ owner_id: userId, ...form, branch_id: form.branch_id || null, profile_image_url })
         .select().single();
 
       if (staffErr) throw staffErr;
@@ -388,6 +401,7 @@ export default function StaffManagement({ session, onBack }) {
         phone:             selected.phone,
         role:              selected.role,
         status:            selected.status,
+        branch_id:         selected.branch_id || null,
         profile_image_url: photo_url,
       }).eq("id", selected.id);
       if (updErr) throw updErr;
@@ -545,7 +559,9 @@ export default function StaffManagement({ session, onBack }) {
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-slate-800 dark:text-white text-sm truncate">{s.full_name}</p>
                   <p className="text-xs text-slate-400 dark:text-slate-500 truncate">{s.email}</p>
-                  {s.phone && <p className="text-xs text-slate-400 dark:text-slate-500">{s.phone}</p>}
+                  {s.branch_id && branchName(s.branch_id) && (
+                    <p className="text-xs text-violet-600 dark:text-violet-400 font-semibold mt-0.5 truncate">📍 {branchName(s.branch_id)}</p>
+                  )}
                 </div>
                 <div className="flex flex-col items-end gap-1.5">
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${roleColor(s.role)}`}>
@@ -700,6 +716,20 @@ export default function StaffManagement({ session, onBack }) {
                   ))}
                 </div>
               </div>
+
+              {/* Branch */}
+              {branches.length > 0 && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">
+                    Assign to Branch {form.role === "manager" && <span className="text-violet-600 font-bold">(Manager will get branch access)</span>}
+                  </label>
+                  <select value={form.branch_id || ""} onChange={e => setForm(p => ({ ...p, branch_id: e.target.value }))}
+                    className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500">
+                    <option value="">— No branch (Head Office) —</option>
+                    {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </select>
+                </div>
+              )}
 
               {/* Permissions */}
               <div>
@@ -910,6 +940,20 @@ export default function StaffManagement({ session, onBack }) {
                   ))}
                 </div>
               </div>
+
+              {/* Branch */}
+              {branches.length > 0 && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">
+                    Assign to Branch {selected.role === "manager" && <span className="text-violet-600 font-bold">(Gets branch manager access)</span>}
+                  </label>
+                  <select value={selected.branch_id || ""} onChange={e => setSelected(s => ({ ...s, branch_id: e.target.value || null }))}
+                    className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500">
+                    <option value="">— No branch (Head Office) —</option>
+                    {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </select>
+                </div>
+              )}
 
               {/* Status toggle */}
               <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-800 rounded-xl px-4 py-3">

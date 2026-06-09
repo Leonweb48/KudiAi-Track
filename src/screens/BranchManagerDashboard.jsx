@@ -196,7 +196,7 @@ export default function BranchManagerDashboard({ session, staff }) {
   const SCREENS = {
     overview:     <Overview     store={store} branchName={branchName} />,
     transactions: <Transactions store={store} plan="premium" inventory={inventory} />,
-    inventory:    <Inventory    inventory={inventory} isOwner={false} plan="premium" />,
+    inventory:    <Inventory    inventory={inventory} isOwner={true}  plan="premium" />,
     credit:       <Credit       store={store} plan="premium" />,
     aso:          <Aso          store={store} plan="premium" />,
     profile:      <ProfileTab   staff={staff} ownerName={ownerName} onSignOut={handleSignOut} />,

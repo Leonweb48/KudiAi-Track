@@ -3,7 +3,6 @@ import { fmt, today } from "../utils/helpers";
 import { NotificationBell } from "../components/NotificationCenter";
 import { useT } from "../contexts/LanguageContext";
 import { getSalesPrediction } from "../utils/predictions";
-import { canDo } from "../utils/plans";
 
 function greetingKey() {
   const h = new Date().getHours();
@@ -134,7 +133,7 @@ function SalesForecastCard({ prediction, t }) {
 }
 
 /* ── Main ────────────────────────────────────────────────────────── */
-export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, onBranchesOpen, notif }) {
+export default function Home({ store, setTab, onQuickAction, onVoiceOpen, notif }) {
   const { transactions, credits, asoClients, profile, loading } = store;
   const t = useT();
 
@@ -256,9 +255,6 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
           <ActionBtn label={t("home.creditSale")}  icon={P.credit} bg="bg-gradient-to-br from-amber-400 to-amber-500"   iconColor="white" onClick={() => onQuickAction?.("credit")} />
           <ActionBtn label={t("home.asoClient")}   icon={P.bank}   bg="bg-gradient-to-br from-blue-500 to-blue-600"     iconColor="white" onClick={() => onQuickAction?.("aso")} />
           <ActionBtn label={t("home.reports")}     icon={P.report} bg="bg-gradient-to-br from-purple-500 to-violet-600" iconColor="white" onClick={() => setTab("insights")} />
-          {canDo(plan, "branches") && (
-            <ActionBtn label={t("home.branches")} icon={P.branch} bg="bg-gradient-to-br from-indigo-500 to-indigo-700" iconColor="white" onClick={() => onBranchesOpen?.()} />
-          )}
         </div>
       </div>
 
