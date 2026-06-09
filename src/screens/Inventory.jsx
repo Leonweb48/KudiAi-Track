@@ -46,7 +46,7 @@ function Field({ label, type = "text", value, onChange, required, placeholder, m
 }
 
 /* ── Product Form ─────────────────────────────────────────────── */
-function ProductForm({ initial, onSave, onClose, saving }) {
+function ProductForm({ initial, onSave, onClose, saving, branches = [] }) {
   const isEdit = Boolean(initial?.id);
   const [form, setForm] = useState({
     product_name:        initial?.product_name        || "",
@@ -56,6 +56,7 @@ function ProductForm({ initial, onSave, onClose, saving }) {
     selling_price:       initial?.selling_price        ?? "",
     quantity:            initial?.quantity             ?? "",
     low_stock_threshold: initial?.low_stock_threshold  ?? 5,
+    branch_id:           initial?.branch_id            || "",
   });
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -88,6 +89,17 @@ function ProductForm({ initial, onSave, onClose, saving }) {
             {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
+
+        {branches.length > 0 && (
+          <div>
+            <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1.5">Branch</p>
+            <select value={form.branch_id} onChange={e => set("branch_id", e.target.value)}
+              className="w-full bg-slate-100 dark:bg-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500/40">
+              <option value="">No Branch (Main Inventory)</option>
+              {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-3">
           <Field label="Cost Price (₦)" type="number" value={form.cost_price} onChange={e => set("cost_price", e.target.value)} min="0" step="0.01" placeholder="0.00" />
@@ -506,7 +518,9 @@ function ProductCard({ product, onView, onSale, onRestock, isOwner, onEdit }) {
 }
 
 /* ── Main Screen ──────────────────────────────────────────────── */
-export default function Inventory({ inventory, isOwner = true, plan = "starter", onUpgrade }) {
+export default function Inventory({ inventory, isOwner = true, canAdd, plan = "starter", onUpgrade, branches = [] }) {
+  // canAdd allows staff to add new products without full owner privileges
+  const canAddStock = canAdd !== undefined ? canAdd : isOwner;
   const t = useT();
   const [search,      setSearch]      = useState("");
   const [catFilter,   setCatFilter]   = useState("all");
@@ -594,11 +608,11 @@ export default function Inventory({ inventory, isOwner = true, plan = "starter",
                 <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
               </svg>
             </button>
-            {isOwner && (
+            {canAddStock && (
               <button onClick={() => { setEditProd(null); setShowForm(true); }}
                 className="flex items-center gap-1.5 px-3.5 py-2 bg-green-600 text-white text-xs font-extrabold rounded-xl active:scale-95 transition shadow-sm">
                 <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
-                Add
+                Add Stock
               </button>
             )}
           </div>
@@ -682,11 +696,10 @@ export default function Inventory({ inventory, isOwner = true, plan = "starter",
               </svg>
             </div>
             <p className="text-slate-600 dark:text-slate-300 font-bold text-sm mb-1">No products yet</p>
-            {isOwner
-              ? <p className="text-xs text-slate-400 dark:text-slate-500 mb-5">Add your first product to start tracking stock</p>
-              : <p className="text-xs text-slate-400 dark:text-slate-500">Your manager hasn't added any products yet</p>
-            }
-            {isOwner && (
+            <p className="text-xs text-slate-400 dark:text-slate-500 mb-5">
+              {canAddStock ? "Add your first product to start tracking stock" : "No products have been added yet"}
+            </p>
+            {canAddStock && (
               <button onClick={() => setShowForm(true)}
                 className="px-5 py-2.5 bg-green-600 text-white font-bold text-sm rounded-xl active:scale-95 transition">
                 Add First Product
@@ -741,6 +754,7 @@ export default function Inventory({ inventory, isOwner = true, plan = "starter",
           onSave={handleSave}
           onClose={() => { setShowForm(false); setEditProd(null); }}
           saving={saving}
+          branches={isOwner ? branches : []}
         />
       )}
 

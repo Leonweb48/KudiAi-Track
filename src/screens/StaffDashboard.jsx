@@ -193,9 +193,10 @@ export default function StaffDashboard({ session, staff }) {
   const staffId  = staff.id;
   const staffName = staff.full_name;
 
-  // Staff uses owner's data scope
+  // Staff uses owner's data scope; scoped to their branch if assigned
+  const branchId  = staff?.branch_id || null;
   const store     = useStore(ownerId, staffId, staffName);
-  const inventory = useInventory(ownerId, staffId);
+  const inventory = useInventory(ownerId, staffId, null, branchId);
 
   // Compute allowed modules from staff_permissions
   const allowed = (staff.staff_permissions || []).filter(p => p.can_view).map(p => p.module);
@@ -358,7 +359,7 @@ export default function StaffDashboard({ session, staff }) {
       case "aso":
         return <Aso store={store} plan="premium" autoOpen={autoAdd?.tab === "aso"} onAutoOpened={() => setAutoAdd(null)} onUpgrade={() => {}} readOnly={noCreate} />;
       case "inventory":
-        return <Inventory inventory={inventory} isOwner={false} plan="business" onUpgrade={() => {}} />;
+        return <Inventory inventory={inventory} isOwner={false} canAdd={true} plan="business" onUpgrade={() => {}} />;
       case "insights":
         return <Insights store={store} plan="premium" onUpgrade={() => {}} staffName={staffName} />;
       case "profile":

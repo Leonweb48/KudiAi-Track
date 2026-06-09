@@ -199,7 +199,8 @@ export default function App() {
                     inventory={inventory}
                     isOwner={true}
                     plan={plan}
-                    onUpgrade={openUpgrade} />,
+                    onUpgrade={openUpgrade}
+                    branches={branchesHook.branches} />,
     bills:        <BillPayments store={store} />,
     insights:     <Insights
                     store={store}
