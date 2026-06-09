@@ -1,30 +1,50 @@
-/**
- * KudiTrack AI — Sync Manager
- * Detects online/offline state and pushes pending transactions to backend.
- */
+import { getPendingOps, markOpSynced } from "./offlineDb";
 
-import { getPendingTransactions, markTransactionSynced } from "./offlineDb";
+export async function syncPending(supabase, userId, onProgress) {
+  if (!supabase || !userId) return { synced: 0, failed: 0, total: 0 };
 
-/**
- * Attempt to sync all pending offline transactions to the backend.
- * Replace the fetch URL and logic with your real API endpoint.
- */
-export async function syncPendingTransactions(onProgress) {
-  const pending = await getPendingTransactions();
-  if (!pending.length) return 0;
+  const pending = await getPendingOps(userId);
+  if (!pending.length) return { synced: 0, failed: 0, total: 0 };
 
   let synced = 0;
-  for (const tx of pending) {
+  let failed = 0;
+  const total = pending.length;
+
+  for (const op of pending) {
     try {
-      // Replace with real API call, e.g.:
-      // await fetch("/api/transactions", { method: "POST", body: JSON.stringify(tx) });
-      await new Promise((r) => setTimeout(r, 200)); // simulated network delay
-      await markTransactionSynced(tx.local_id);
-      synced++;
-      if (onProgress) onProgress(synced, pending.length);
+      // Already has a supabase_id — just mark clean
+      if (op.supabase_id) {
+        await markOpSynced(op.local_id, op.supabase_id);
+        synced++;
+        onProgress?.({ synced, total, op });
+        continue;
+      }
+
+      const { data, error } = await supabase
+        .from(op.table)
+        .insert(op.data)
+        .select()
+        .single();
+
+      if (error) {
+        // Unique constraint → already inserted, mark clean
+        if (error.code === "23505") {
+          await markOpSynced(op.local_id, "dedup");
+          synced++;
+          onProgress?.({ synced, total, op });
+        } else {
+          throw error;
+        }
+      } else {
+        await markOpSynced(op.local_id, data.id);
+        synced++;
+        onProgress?.({ synced, total, data, op });
+      }
     } catch (err) {
-      console.warn("Sync failed for tx:", tx.local_id, err);
+      console.warn("[sync] failed:", op.local_id, err?.message);
+      failed++;
     }
   }
-  return synced;
+
+  return { synced, failed, total };
 }

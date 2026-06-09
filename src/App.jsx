@@ -219,7 +219,7 @@ export default function App() {
     <div className={isDark ? "dark" : ""}>
       <div className="h-screen bg-slate-50 dark:bg-slate-900 flex justify-center transition-colors duration-200">
         <div className="w-full max-w-md relative flex flex-col h-screen">
-          <SyncBar isOnline={store.isOnline} pending={store.pendingSync} />
+          <SyncBar isOnline={store.isOnline} pending={store.pendingSync} isSyncing={store.isSyncing} onSync={store.runSync} />
 
           <main className="flex-1 overflow-y-auto">
             {SCREENS[tab]}

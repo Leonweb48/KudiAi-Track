@@ -1,7 +1,17 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../utils/supabase";
 import { uid, today, fmt } from "../utils/helpers";
 import { logAudit } from "../utils/auditLog";
+import { savePendingOp, getPendingOps, getPendingCount } from "../utils/offlineDb";
+import { syncPending } from "../utils/syncManager";
+
+// ── localStorage cache ─────────────────────────────────────────────
+function saveCacheLS(key, data) {
+  try { localStorage.setItem(key, JSON.stringify(data)); } catch { /**/ }
+}
+function loadCacheLS(key) {
+  try { return JSON.parse(localStorage.getItem(key) || "null"); } catch { return null; }
+}
 
 export function useStore(userId, staffId = null, staffName = null, onNotify = null, branchId = null) {
   const [transactions, setTransactions] = useState([]);
@@ -15,16 +25,56 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
     dark_mode: localStorage.getItem("kuditrack_dark") === "1",
     profile_image_url: null, store_image_url: null,
   });
-  const [staffMap,  setStaffMap]  = useState({}); // { staffId: staffName } — owner view only
-  const [loading,  setLoading]  = useState(true);
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [dbError,  setDbError]  = useState(null);
+  const [staffMap,    setStaffMap]    = useState({});
+  const [loading,     setLoading]     = useState(true);
+  const [isOnline,    setIsOnline]    = useState(navigator.onLine);
+  const [dbError,     setDbError]     = useState(null);
+  const [pendingSync, setPendingSync] = useState(0);
+  const [isSyncing,   setIsSyncing]   = useState(false);
+
+  const syncRunning = useRef(false);
+  const hasMounted  = useRef(false);
 
   // ── Load all data ──────────────────────────────────────────────
   const loadData = useCallback(async () => {
     if (!userId) return;
     setLoading(true);
 
+    // ── Offline: serve from local cache ───────────────────────
+    if (!navigator.onLine) {
+      const cached = loadCacheLS(`kt_store_${userId}`);
+      if (cached) {
+        if (cached.transactions) setTransactions(cached.transactions);
+        if (cached.credits)      setCredits(cached.credits);
+        if (cached.asoClients)   setAsoClients(cached.asoClients);
+        if (cached.profile) {
+          const dk = cached.profile.dark_mode ?? (localStorage.getItem("kuditrack_dark") === "1");
+          setProfileState(prev => ({
+            ...prev,
+            business_name: cached.profile.business_name || prev.business_name,
+            dark_mode: dk,
+          }));
+        }
+      }
+      // Merge pending (unsaved) transactions into the list
+      try {
+        const ops = await getPendingOps(userId);
+        setPendingSync(ops.length);
+        const pendingTxns = ops
+          .filter(op => op.table === "transactions")
+          .map(op => ({ ...op.data, id: `tmp-${op.local_id}`, _pending: true }));
+        if (pendingTxns.length) {
+          setTransactions(prev => {
+            const ids = new Set(prev.map(t => t.id));
+            return [...pendingTxns.filter(t => !ids.has(t.id)), ...prev];
+          });
+        }
+      } catch { /**/ }
+      setLoading(false);
+      return;
+    }
+
+    // ── Online: fetch from Supabase ───────────────────────────
     let txQ  = supabase.from("transactions").select("*").eq("user_id", userId);
     let crQ  = supabase.from("credits").select("*").eq("user_id", userId);
     let asoQ = supabase.from("aso_clients").select("*").eq("user_id", userId);
@@ -60,7 +110,6 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
 
     if (profRes.data) {
       const p = profRes.data;
-      // Prefer DB value for dark_mode; fall back to localStorage if DB column is missing
       const darkFromDb = p.dark_mode != null ? p.dark_mode : (localStorage.getItem("kuditrack_dark") === "1");
       localStorage.setItem("kuditrack_dark", darkFromDb ? "1" : "0");
       setProfileState({
@@ -77,8 +126,6 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
         ward:              p.ward              || "",
         currency:          p.currency          || "Nigerian Naira (₦)",
         dark_mode:         darkFromDb,
-        // Strip any stale ?v= and add a fresh one so the browser always fetches
-        // the current image rather than a cached version from a previous session.
         profile_image_url: p.profile_image_url
           ? `${p.profile_image_url.split("?")[0]}?v=${Date.now()}`
           : null,
@@ -87,12 +134,28 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
           : null,
       });
     }
+
+    // Cache up to 300 transactions for offline access
+    saveCacheLS(`kt_store_${userId}`, {
+      transactions: (txRes.data || []).slice(0, 300),
+      credits:    crRes.data  || [],
+      asoClients: asoRes.data || [],
+      profile: profRes.data
+        ? { business_name: profRes.data.business_name, dark_mode: profRes.data.dark_mode }
+        : null,
+    });
+
+    try {
+      const count = await getPendingCount(userId);
+      setPendingSync(count);
+    } catch { /**/ }
+
     setLoading(false);
   }, [userId, staffId, branchId]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // ── Online / offline ───────────────────────────────────────────
+  // ── Online / offline detection ─────────────────────────────────
   useEffect(() => {
     const on  = () => setIsOnline(true);
     const off = () => setIsOnline(false);
@@ -101,9 +164,45 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
     return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
   }, []);
 
+  // ── Sync engine ────────────────────────────────────────────────
+  const runSync = useCallback(async () => {
+    if (syncRunning.current || !userId || !supabase) return;
+    const ops = await getPendingOps(userId).catch(() => []);
+    if (!ops.length) return;
+
+    syncRunning.current = true;
+    setIsSyncing(true);
+
+    await syncPending(supabase, userId, ({ synced, total, data, op }) => {
+      setPendingSync(Math.max(0, total - synced));
+      // Replace the temp item in state with the real Supabase record
+      if (op?.table === "transactions" && data) {
+        setTransactions(prev => prev.map(t => t.id === `tmp-${op.local_id}` ? data : t));
+      }
+    }).catch(console.error);
+
+    try {
+      const remaining = await getPendingCount(userId);
+      setPendingSync(remaining);
+    } catch { /**/ }
+
+    syncRunning.current = false;
+    setIsSyncing(false);
+  }, [userId]);
+
+  // Auto-sync when coming back online (skip initial mount)
+  useEffect(() => {
+    if (!hasMounted.current) { hasMounted.current = true; return; }
+    if (isOnline && userId) {
+      const t = setTimeout(() => runSync(), 800);
+      return () => clearTimeout(t);
+    }
+  }, [isOnline, userId, runSync]);
+
   // ── Transactions ───────────────────────────────────────────────
   const addTransaction = async (t) => {
-    const tempId = "tmp-" + uid();
+    const localId = uid();
+    const tempId  = `tmp-${localId}`;
     const payload = {
       user_id:          userId,
       staff_id:         staffId  || null,
@@ -119,17 +218,26 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
       transaction_date: t.transaction_date  || today(),
     };
 
-    setTransactions((p) => [{ ...payload, id: tempId }, ...p]);
+    setTransactions(p => [{ ...payload, id: tempId, _pending: true }, ...p]);
     setDbError(null);
+
+    // Offline: queue locally and show pending indicator
+    if (!navigator.onLine) {
+      await savePendingOp({ local_id: localId, table: "transactions", data: payload, user_id: userId });
+      setPendingSync(c => c + 1);
+      return;
+    }
 
     const { data, error } = await supabase
       .from("transactions").insert(payload).select().single();
 
     if (error) {
-      setTransactions((p) => p.filter((tx) => tx.id !== tempId));
-      setDbError(`Failed to save transaction: ${error.message}`);
+      // Online but request failed — queue for retry
+      await savePendingOp({ local_id: localId, table: "transactions", data: payload, user_id: userId });
+      setPendingSync(c => c + 1);
+      setDbError("Saved locally — will sync when connection improves");
     } else {
-      setTransactions((p) => p.map((tx) => tx.id === tempId ? data : tx));
+      setTransactions(p => p.map(tx => tx.id === tempId ? data : tx));
       const label = t.item_name || t.category || "Transaction";
       if (t.payment_type === "bill_payment") {
         onNotify?.("bills", "Bill Payment", `${fmt(parseFloat(t.amount))} · ${label}`);
@@ -139,18 +247,18 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
         onNotify?.("sales", "Expense Recorded", `${fmt(parseFloat(t.amount))} · ${label}`);
       }
       if (staffId) {
-        const amt = `${t.type === "in" ? "+" : "-"}₦${parseFloat(t.amount).toLocaleString()}`;
+        const amt   = `${t.type === "in" ? "+" : "-"}₦${parseFloat(t.amount).toLocaleString()}`;
         const extra = [t.customer_name, t.payment_type].filter(Boolean).join(" · ");
         logAudit({ ownerId: userId, staffId, staffName: staffName || "Staff",
-          action: `${t.type === "in" ? "Sale" : "Expense"}: ${t.item_name}`,
-          module: "transactions",
+          action:  `${t.type === "in" ? "Sale" : "Expense"}: ${t.item_name}`,
+          module:  "transactions",
           details: extra ? `${amt} · ${extra}` : amt });
       }
     }
   };
 
   const deleteTransaction = async (id) => {
-    setTransactions((p) => p.filter((tx) => tx.id !== id));
+    setTransactions(p => p.filter(tx => tx.id !== id));
     const { error } = await supabase.from("transactions").delete().eq("id", id);
     if (error) { console.error("deleteTransaction:", error); loadData(); }
   };
@@ -183,24 +291,24 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
       notes:                c.notes               || "",
     };
 
-    setCredits((p) => [{ ...payload, id: tempId }, ...p]);
+    setCredits(p => [{ ...payload, id: tempId }, ...p]);
     setDbError(null);
 
     const { data, error } = await supabase
       .from("credits").insert(payload).select().single();
 
     if (error) {
-      setCredits((p) => p.filter((cr) => cr.id !== tempId));
+      setCredits(p => p.filter(cr => cr.id !== tempId));
       setDbError(`Failed to save credit: ${error.message}`);
       return { data: null, error };
     } else {
-      setCredits((p) => p.map((cr) => cr.id === tempId ? data : cr));
+      setCredits(p => p.map(cr => cr.id === tempId ? data : cr));
       onNotify?.("credits", "Credit Added", `${fmt(parseFloat(c.total_amount || 0))} · ${c.customer_name}`);
       if (staffId) {
         const due = c.due_date ? ` · due ${c.due_date}` : "";
         logAudit({ ownerId: userId, staffId, staffName: staffName || "Staff",
-          action: `Credit client added: ${c.customer_name}`,
-          module: "credit",
+          action:  `Credit client added: ${c.customer_name}`,
+          module:  "credit",
           details: `₦${parseFloat(c.total_amount || 0).toLocaleString()} outstanding${due}` });
       }
       return { data, error: null };
@@ -209,7 +317,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
 
   const repayCredit = async (id, amount) => {
     let updated;
-    setCredits((p) => p.map((c) => {
+    setCredits(p => p.map(c => {
       if (c.id !== id) return c;
       const paid = c.amount_paid + amount;
       const out  = Math.max(0, c.total_amount - paid);
@@ -258,22 +366,22 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
       status:                 "active",
     };
 
-    setAsoClients((p) => [{ ...payload, id: tempId }, ...p]);
+    setAsoClients(p => [{ ...payload, id: tempId }, ...p]);
     setDbError(null);
 
     const { data, error } = await supabase
       .from("aso_clients").insert(payload).select().single();
 
     if (error) {
-      setAsoClients((p) => p.filter((c) => c.id !== tempId));
+      setAsoClients(p => p.filter(c => c.id !== tempId));
       setDbError(`Failed to save client: ${error.message}`);
       return { data: null, error };
     } else {
-      setAsoClients((p) => p.map((c) => c.id === tempId ? data : c));
+      setAsoClients(p => p.map(c => c.id === tempId ? data : c));
       if (staffId) {
         logAudit({ ownerId: userId, staffId, staffName: staffName || "Staff",
-          action: `Aso client added: ${cl.full_name}`,
-          module: "aso",
+          action:  `Aso client added: ${cl.full_name}`,
+          module:  "aso",
           details: `${cl.contribution_frequency || "daily"} · ₦${parseFloat(cl.contribution_amount || 0).toLocaleString()}/period` });
       }
       return { data, error: null };
@@ -282,29 +390,20 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
 
   const asoContribute = async (id, amount) => {
     let updated;
-    setAsoClients((p) => p.map((c) => {
+    setAsoClients(p => p.map(c => {
       if (c.id !== id) return c;
       const freqDays = { daily: 1, weekly: 7, monthly: 30 };
-      const days = freqDays[c.contribution_frequency] || 30;
-      const base = c.next_contribution_date || today();
-      const d = new Date(base);
+      const days  = freqDays[c.contribution_frequency] || 30;
+      const base  = c.next_contribution_date || today();
+      const d     = new Date(base);
       d.setDate(d.getDate() + days);
       const nextDate = d.toISOString().split("T")[0];
-      updated = {
-        ...c,
-        total_saved:            c.total_saved + amount,
-        current_balance:        c.current_balance + amount,
-        next_contribution_date: nextDate,
-      };
+      updated = { ...c, total_saved: c.total_saved + amount, current_balance: c.current_balance + amount, next_contribution_date: nextDate };
       return updated;
     }));
     if (updated) {
       const { error } = await supabase.from("aso_clients")
-        .update({
-          total_saved:            updated.total_saved,
-          current_balance:        updated.current_balance,
-          next_contribution_date: updated.next_contribution_date,
-        })
+        .update({ total_saved: updated.total_saved, current_balance: updated.current_balance, next_contribution_date: updated.next_contribution_date })
         .eq("id", id);
       if (error) { console.error("asoContribute:", error); loadData(); }
       else { onNotify?.("aso", "Contribution Received", `${fmt(amount)} from ${updated.full_name}`); }
@@ -313,7 +412,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
 
   const asoWithdraw = async (id, amount) => {
     let updated;
-    setAsoClients((p) => p.map((c) => {
+    setAsoClients(p => p.map(c => {
       if (c.id !== id) return c;
       const fee = amount * (c.withdrawal_fee_percent / 100);
       const net = amount - fee;
@@ -349,7 +448,6 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
     const prev = profile;
     const next = typeof updater === "function" ? updater(prev) : updater;
     setProfileState(next);
-    // Mirror dark_mode to localStorage so it's instant and works as a fallback
     if (typeof next.dark_mode === "boolean") {
       localStorage.setItem("kuditrack_dark", next.dark_mode ? "1" : "0");
     }
@@ -368,13 +466,8 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
       ward:              next.ward              || null,
       currency:          next.currency          || null,
       dark_mode:         next.dark_mode,
-      // Store the clean URL (no ?v= query param) so the DB value stays stable.
-      profile_image_url: next.profile_image_url
-        ? next.profile_image_url.split("?")[0]
-        : null,
-      store_image_url: next.store_image_url
-        ? next.store_image_url.split("?")[0]
-        : null,
+      profile_image_url: next.profile_image_url ? next.profile_image_url.split("?")[0] : null,
+      store_image_url:   next.store_image_url   ? next.store_image_url.split("?")[0]   : null,
     }).eq("id", userId);
 
     if (error) {
@@ -387,7 +480,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
 
   return {
     transactions, credits, asoClients, profile, staffMap,
-    setProfile, isOnline, loading, pendingSync: 0,
+    setProfile, isOnline, loading, pendingSync, isSyncing, runSync,
     dbError, clearDbError: () => setDbError(null), reloadData: loadData,
     addTransaction, deleteTransaction,
     addCredit, repayCredit, updateCredit,
