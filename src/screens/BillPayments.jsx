@@ -17,18 +17,18 @@ const NETWORKS = ["MTN", "Airtel", "Glo", "9mobile"];
 
 // Plan codes come directly from the Peyflex API response
 const ELEC_DISCOS = [
-  { code: "aba-electric",          name: "Aba"           },
-  { code: "portharcourt-electric", name: "Port Harcourt" },
-  { code: "kano-electric",         name: "Kano"          },
-  { code: "kaduna-electric",       name: "Kaduna"        },
-  { code: "jos-electric",          name: "Jos"           },
-  { code: "ikeja-electric",        name: "Ikeja"         },
-  { code: "ibadan-electric",       name: "Ibadan"        },
-  { code: "enugu-electric",        name: "Enugu"         },
-  { code: "eko-electric",          name: "Eko (Lagos)"   },
-  { code: "benin-electric",        name: "Benin"         },
-  { code: "yola-electric",         name: "Yola"          },
-  { code: "abuja-electric",        name: "Abuja"         },
+  { code: "aba-electric",  name: "Aba"           },
+  { code: "phed",          name: "Port Harcourt" },
+  { code: "kano-electric", name: "Kano"          },
+  { code: "kaedco",        name: "Kaduna"        },
+  { code: "jos-electric",  name: "Jos"           },
+  { code: "ikeja-electric",name: "Ikeja"         },
+  { code: "ibedc",         name: "Ibadan"        },
+  { code: "eedc",          name: "Enugu"         },
+  { code: "eko-electric",  name: "Eko (Lagos)"   },
+  { code: "bedc",          name: "Benin"         },
+  { code: "yedc",          name: "Yola"          },
+  { code: "aedc",          name: "Abuja"         },
 ];
 
 const CABLE_PROVIDERS = ["DSTV", "GOtv", "StarTimes"];
@@ -72,7 +72,7 @@ function initForm(catId) {
   switch (catId) {
     case "airtime":     return { network: "MTN", phone: "", amount: "" };
     case "data":        return { network: "MTN", phone: "", planId: "", planName: "", amount: "" };
-    case "electricity": return { disco: "eko-electric", discoName: "Eko (Lagos)", meterType: "prepaid", meter: "", phone: "", amount: "" };
+    case "electricity": return { disco: "ikeja-electric", discoName: "Ikeja", meterType: "prepaid", meter: "", phone: "", amount: "" };
     case "cable_tv":    return { provider: "DSTV", smartcard: "", planId: "", planName: "", amount: "", phone: "" };
     case "internet":    return { provider: "Spectranet", account: "", plan: "", amount: "" };
     case "education":   return { institution: "", student: "", regNo: "", feeType: "School Fees", amount: "" };
@@ -559,11 +559,11 @@ export default function BillPayments({ store, staffName = null, businessName = n
         if (selectedCat === "airtime") {
           res = await peyflex("airtime", { phone: form.phone, network: form.network, amount: form.amount });
         } else if (selectedCat === "data") {
-          res = await peyflex("data", { phone: form.phone, plan: form.planId, amount: form.amount });
+          res = await peyflex("data", { phone: form.phone, plan: form.planId, amount: form.amount, network: form.network });
         } else if (selectedCat === "electricity") {
           res = await peyflex("electricity", { meter: form.meter, plan: form.disco, amount: form.amount, type: form.meterType, phone: form.phone });
         } else if (selectedCat === "cable_tv") {
-          res = await peyflex("cabletv", { smartcard: form.smartcard, plan: form.planId, amount: form.amount, phone: form.phone });
+          res = await peyflex("cabletv", { smartcard: form.smartcard, plan: form.planId, amount: form.amount, phone: form.phone, provider: form.provider });
         }
 
         if (!res || res.status !== "SUCCESS") {

@@ -5,7 +5,7 @@ const CORS = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const BASE = "https://client.peyflex.com.ng";
+const BASE = "https://vtpass.com/api";
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -14,95 +14,164 @@ function json(data: unknown, status = 200) {
   });
 }
 
+function reqId() {
+  return "KDT-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8).toUpperCase();
+}
+
+function dataServiceId(network: string) {
+  const map: Record<string, string> = {
+    mtn: "mtn-data", airtel: "airtel-data", glo: "glo-data",
+    "9mobile": "etisalat-data", etisalat: "etisalat-data",
+  };
+  return map[network.toLowerCase().replace(/\s/g, "")] || "mtn-data";
+}
+
+function airtimeServiceId(network: string) {
+  const map: Record<string, string> = {
+    mtn: "mtn", airtel: "airtel", glo: "glo",
+    "9mobile": "etisalat", etisalat: "etisalat",
+  };
+  return map[network.toLowerCase().replace(/\s/g, "")] || "mtn";
+}
+
+function cableServiceId(provider: string) {
+  const map: Record<string, string> = { dstv: "dstv", gotv: "gotv", startimes: "startimes" };
+  return map[provider.toLowerCase().replace(/\s/g, "")] || "dstv";
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
   try {
     const { action, payload = {} } = await req.json();
 
-    // ── Public endpoints (no auth) ─────────────────────────────────────
+    const API_KEY    = Deno.env.get("VTPASS_API_KEY");
+    const SECRET_KEY = Deno.env.get("VTPASS_SECRET_KEY");
+    if (!API_KEY || !SECRET_KEY) return json({ error: "VTpass credentials not configured" }, 500);
 
-    if (action === "electricity-plans") {
-      const res = await fetch(`${BASE}/api/electricity/plans/?identifier=electricity`);
-      return json(await res.json());
-    }
+    const hdrs = { "api-key": API_KEY, "secret-key": SECRET_KEY, "Content-Type": "application/json" };
 
-    if (action === "electricity-verify") {
-      const { meter, plan, type } = payload as { meter: string; plan: string; type: string };
-      const url = `${BASE}/api/electricity/verify/?identifier=electricity&meter=${encodeURIComponent(meter)}&plan=${encodeURIComponent(plan)}&type=${encodeURIComponent(type)}`;
-      const res = await fetch(url);
-      return json(await res.json());
-    }
+    // ── Plan variations ────────────────────────────────────────────────
 
     if (action === "data-plans") {
       const { network } = payload as { network: string };
-      const net = network.toLowerCase().replace(/\s/g, "");
-      const res = await fetch(`${BASE}/api/data/plans/?identifier=data&network=${net}`);
-      const text = await res.text();
-      try { return json(JSON.parse(text)); } catch { return json({ plans: [] }); }
+      const serviceID = dataServiceId(network);
+      const res  = await fetch(`${BASE}/service-variations?serviceID=${serviceID}`, { headers: hdrs });
+      const data = await res.json();
+      const plans = (data?.content?.varations || []).map((v: Record<string, string>) => ({
+        plan_id:     v.variation_code,
+        plan_code:   v.variation_code,
+        plan_name:   v.name,
+        plan_amount: parseFloat(v.variation_amount) || 0,
+      }));
+      return json({ status: "SUCCESS", plans });
     }
 
     if (action === "cabletv-plans") {
       const { provider } = payload as { provider: string };
-      const p = provider.toLowerCase().replace(/\s/g, "");
-      const res = await fetch(`${BASE}/api/cabletv/plans/?identifier=cabletv&plan=${p}`);
-      const text = await res.text();
-      try { return json(JSON.parse(text)); } catch { return json({ plans: [] }); }
+      const serviceID = cableServiceId(provider);
+      const res  = await fetch(`${BASE}/service-variations?serviceID=${serviceID}`, { headers: hdrs });
+      const data = await res.json();
+      const plans = (data?.content?.varations || []).map((v: Record<string, string>) => ({
+        plan_id:     v.variation_code,
+        plan_code:   v.variation_code,
+        plan_name:   v.name,
+        plan_amount: parseFloat(v.variation_amount) || 0,
+      }));
+      return json({ status: "SUCCESS", plans });
     }
 
-    // ── Authenticated subscribe endpoints ─────────────────────────────
+    // ── Electricity meter verify ───────────────────────────────────────
 
-    const API_KEY = Deno.env.get("PEYFLEX_API_KEY");
-    if (!API_KEY) return json({ error: "PEYFLEX_API_KEY not configured" }, 500);
+    if (action === "electricity-verify") {
+      const { meter, plan, type } = payload as { meter: string; plan: string; type: string };
+      const res  = await fetch(`${BASE}/merchant-verify`, {
+        method: "POST", headers: hdrs,
+        body: JSON.stringify({ billersCode: meter, serviceID: plan, type }),
+      });
+      const data = await res.json();
+      if (data?.code === "000") {
+        return json({
+          status:        "SUCCESS",
+          customer_name: data?.content?.Customer_Name || data?.content?.name || "Verified",
+          address:       data?.content?.Address || "",
+        });
+      }
+      return json({ status: "FAILED", message: data?.response_description || "Verification failed" });
+    }
 
-    const authHeaders = {
-      "Authorization": `Token ${API_KEY}`,
-      "Content-Type": "application/json",
-    };
+    // ── Subscribe / Pay ────────────────────────────────────────────────
 
     if (action === "airtime") {
       const { phone, network, amount } = payload as { phone: string; network: string; amount: string };
-      const net = network.toLowerCase().replace(/\s/g, "");
-      const res = await fetch(`${BASE}/api/airtime/subscribe/`, {
-        method: "POST",
-        headers: authHeaders,
-        body: JSON.stringify({ identifier: "airtime", phone, plan: net, amount: String(amount) }),
+      const serviceID = airtimeServiceId(network);
+      const res  = await fetch(`${BASE}/pay`, {
+        method: "POST", headers: hdrs,
+        body: JSON.stringify({ request_id: reqId(), serviceID, amount: parseFloat(amount), phone }),
       });
-      return json(await res.json());
+      const data = await res.json();
+      const ok   = data?.code === "000";
+      return json({
+        status:    ok ? "SUCCESS" : "FAILED",
+        reference: data?.requestId,
+        amount:    data?.amount,
+        message:   data?.response_description,
+      });
     }
 
     if (action === "data") {
-      const { phone, plan, amount } = payload as { phone: string; plan: string; amount: string };
-      const res = await fetch(`${BASE}/api/data/subscribe/`, {
-        method: "POST",
-        headers: authHeaders,
-        body: JSON.stringify({ identifier: "data", phone, plan, amount: String(amount) }),
+      const { phone, plan, amount, network } = payload as { phone: string; plan: string; amount: string; network: string };
+      const serviceID = dataServiceId(network || "mtn");
+      const res  = await fetch(`${BASE}/pay`, {
+        method: "POST", headers: hdrs,
+        body: JSON.stringify({ request_id: reqId(), serviceID, billersCode: phone, variation_code: plan, amount: parseFloat(amount), phone }),
       });
-      return json(await res.json());
+      const data = await res.json();
+      const ok   = data?.code === "000";
+      return json({
+        status:    ok ? "SUCCESS" : "FAILED",
+        reference: data?.requestId,
+        amount:    data?.amount,
+        message:   data?.response_description,
+      });
     }
 
     if (action === "electricity") {
       const { meter, plan, amount, type, phone } = payload as {
         meter: string; plan: string; amount: string; type: string; phone: string;
       };
-      const res = await fetch(`${BASE}/api/electricity/subscribe/`, {
-        method: "POST",
-        headers: authHeaders,
-        body: JSON.stringify({ identifier: "electricity", meter, plan, amount: String(amount), type, phone }),
+      const res  = await fetch(`${BASE}/pay`, {
+        method: "POST", headers: hdrs,
+        body: JSON.stringify({ request_id: reqId(), serviceID: plan, billersCode: meter, variation_code: type, amount: parseFloat(amount), phone }),
       });
-      return json(await res.json());
+      const data = await res.json();
+      const ok   = data?.code === "000";
+      return json({
+        status:    ok ? "SUCCESS" : "FAILED",
+        reference: data?.requestId,
+        token:     data?.purchased_code || data?.content?.transactions?.token,
+        amount:    data?.amount,
+        message:   data?.response_description,
+      });
     }
 
     if (action === "cabletv") {
-      const { smartcard, plan, amount, phone } = payload as {
-        smartcard: string; plan: string; amount: string; phone: string;
+      const { smartcard, plan, amount, phone, provider } = payload as {
+        smartcard: string; plan: string; amount: string; phone: string; provider: string;
       };
-      const res = await fetch(`${BASE}/api/cabletv/subscribe/`, {
-        method: "POST",
-        headers: authHeaders,
-        body: JSON.stringify({ identifier: "cabletv", smartcard, plan, amount: String(amount), phone }),
+      const serviceID = cableServiceId(provider || plan.split("-")[0] || "dstv");
+      const res  = await fetch(`${BASE}/pay`, {
+        method: "POST", headers: hdrs,
+        body: JSON.stringify({ request_id: reqId(), serviceID, billersCode: smartcard, variation_code: plan, amount: parseFloat(amount), phone }),
       });
-      return json(await res.json());
+      const data = await res.json();
+      const ok   = data?.code === "000";
+      return json({
+        status:    ok ? "SUCCESS" : "FAILED",
+        reference: data?.requestId,
+        amount:    data?.amount,
+        message:   data?.response_description,
+      });
     }
 
     return json({ error: `Unknown action: ${action}` }, 400);
@@ -110,8 +179,7 @@ serve(async (req) => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Internal server error";
     return new Response(JSON.stringify({ error: msg }), {
-      status: 500,
-      headers: { ...CORS, "Content-Type": "application/json" },
+      status: 500, headers: { ...CORS, "Content-Type": "application/json" },
     });
   }
 });
