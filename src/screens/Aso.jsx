@@ -97,6 +97,8 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [adding,       setAdding]       = useState(false);
   const [reminderFor,  setReminderFor]  = useState(null);
   const [copied,       setCopied]       = useState(false);
+  const [showPins,     setShowPins]     = useState({});
+  const [portalCopied, setPortalCopied] = useState(null);
 
   // Filters
   const [search,         setSearch]         = useState("");
@@ -418,6 +420,28 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                         {staffMap[c.staff_id]}
                       </span>
                     )}
+                    {c.membership_number && (
+                      <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                        <span className="text-[10px] font-mono font-bold bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded-full">
+                          {c.membership_number}
+                        </span>
+                        {c.portal_pin && (
+                          <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                            PIN: {showPins[c.id] ? c.portal_pin : "••••"}
+                            <button
+                              onClick={() => setShowPins(p => ({ ...p, [c.id]: !p[c.id] }))}
+                              className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition">
+                              <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                                {showPins[c.id]
+                                  ? <><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" /></>
+                                  : <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></>
+                                }
+                              </svg>
+                            </button>
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex flex-col items-end gap-1 flex-shrink-0">
@@ -507,6 +531,29 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                     </svg>
                     Stmt
                   </button>
+                  {c.membership_number && (
+                    <button
+                      onClick={() => {
+                        const url = `https://kuditrack-kappa.vercel.app/?portal=1`;
+                        navigator.clipboard.writeText(`Membership: ${c.membership_number}\nPIN: ${c.portal_pin}\nPortal: ${url}`).then(() => {
+                          setPortalCopied(c.id);
+                          setTimeout(() => setPortalCopied(null), 2000);
+                        });
+                      }}
+                      className={`py-2 px-3 rounded-xl font-bold text-xs border transition flex items-center gap-1.5 active:scale-[0.99] ${
+                        portalCopied === c.id
+                          ? "bg-green-500 text-white border-green-500"
+                          : "bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800"
+                      }`}>
+                      <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                        {portalCopied === c.id
+                          ? <path d="M20 6L9 17l-5-5" />
+                          : <><rect x="5" y="2" width="14" height="20" rx="2" /><line x1="9" y1="7" x2="15" y2="7" /><line x1="9" y1="11" x2="15" y2="11" /><line x1="9" y1="15" x2="12" y2="15" /></>
+                        }
+                      </svg>
+                      {portalCopied === c.id ? "Copied!" : "Portal"}
+                    </button>
+                  )}
                 </div>
               </div>
             );

@@ -337,6 +337,10 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
   // ── Aso Clients ────────────────────────────────────────────────
   const addAsoClient = async (cl) => {
     const tempId = "tmp-" + uid();
+    const d = new Date();
+    const ym = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const membershipNumber = `AJO-${ym}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+    const portalPin = String(Math.floor(1000 + Math.random() * 9000));
     const payload = {
       user_id:                userId,
       staff_id:               staffId  || null,
@@ -364,6 +368,9 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
       registration_date:      today(),
       notes:                  cl.notes   || "",
       status:                 "active",
+      membership_number:      membershipNumber,
+      portal_pin:             portalPin,
+      portal_active:          true,
     };
 
     setAsoClients(p => [{ ...payload, id: tempId }, ...p]);
@@ -406,16 +413,25 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
         .update({ total_saved: updated.total_saved, current_balance: updated.current_balance, next_contribution_date: updated.next_contribution_date })
         .eq("id", id);
       if (error) { console.error("asoContribute:", error); loadData(); }
-      else { onNotify?.("aso", "Contribution Received", `${fmt(amount)} from ${updated.full_name}`); }
+      else {
+        supabase.from("ajo_contributions").insert({
+          aso_client_id: id, owner_id: userId, amount,
+          type: "contribution", payment_method: "cash", status: "completed",
+          recorded_by: staffId || null,
+        }).catch(console.error);
+        onNotify?.("aso", "Contribution Received", `${fmt(amount)} from ${updated.full_name}`);
+      }
     }
   };
 
   const asoWithdraw = async (id, amount) => {
     let updated;
+    let netAmount = amount;
     setAsoClients(p => p.map(c => {
       if (c.id !== id) return c;
       const fee = amount * (c.withdrawal_fee_percent / 100);
       const net = amount - fee;
+      netAmount = net;
       updated = { ...c, total_withdrawn: c.total_withdrawn + net, current_balance: c.current_balance - net };
       return updated;
     }));
@@ -424,6 +440,13 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
         .update({ total_withdrawn: updated.total_withdrawn, current_balance: updated.current_balance })
         .eq("id", id);
       if (error) { console.error("asoWithdraw:", error); loadData(); }
+      else {
+        supabase.from("ajo_contributions").insert({
+          aso_client_id: id, owner_id: userId, amount: netAmount,
+          type: "withdrawal", payment_method: "cash", status: "completed",
+          recorded_by: staffId || null,
+        }).catch(console.error);
+      }
     }
   };
 

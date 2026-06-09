@@ -26,6 +26,7 @@ import LockScreen            from "./components/LockScreen";
 import Loyalty               from "./screens/Loyalty";
 import Branches              from "./screens/Branches";
 import BranchManagerDashboard from "./screens/BranchManagerDashboard";
+import AjoClientPortal       from "./screens/AjoClientPortal";
 import { useInventory }      from "./hooks/useInventory";
 import { useBiometricLock }  from "./hooks/useBiometricLock";
 import { useLoyalty }        from "./hooks/useLoyalty";
@@ -53,6 +54,28 @@ export default function App() {
   const [showBranches, setShowBranches] = useState(false);
   const [showLoyalty,  setShowLoyalty]  = useState(false);
   const [aiQuery,      setAiQuery]      = useState("");
+
+  // Client portal session
+  const [portalSession, setPortalSession] = useState(() => {
+    try {
+      const s = JSON.parse(localStorage.getItem("kt_portal_session") || "null");
+      return s?.expires > Date.now() ? s : null;
+    } catch { return null; }
+  });
+  const [showPortalLogin, setShowPortalLogin] = useState(
+    () => new URLSearchParams(window.location.search).has("portal")
+  );
+
+  const handlePortalSession = (sess) => {
+    if (sess) {
+      localStorage.setItem("kt_portal_session", JSON.stringify(sess));
+      setPortalSession(sess);
+    } else {
+      localStorage.removeItem("kt_portal_session");
+      setPortalSession(null);
+      setShowPortalLogin(false);
+    }
+  };
 
   const { status, session, plan, setReady, refetch, staff } = useAuth();
   const userId = session?.user?.id;
@@ -137,7 +160,39 @@ export default function App() {
   const finishUpgrade = (planId) => { setReady(planId); setShowUpgrade(false); };
 
   if (status === "loading")         return <Spinner />;
-  if (status === "unauthenticated") return <Auth />;
+
+  // Active client portal session — skip business owner auth entirely
+  if (portalSession) {
+    return (
+      <AjoClientPortal
+        initialSession={portalSession}
+        onSessionChange={handlePortalSession}
+        onExit={() => handlePortalSession(null)}
+      />
+    );
+  }
+
+  if (status === "unauthenticated") {
+    return (
+      <>
+        <Auth />
+        <button
+          onClick={() => setShowPortalLogin(true)}
+          className="fixed bottom-8 left-1/2 -translate-x-1/2 z-10 bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm text-violet-600 dark:text-violet-400 border border-violet-200 dark:border-violet-700 text-xs font-bold px-4 py-2 rounded-full shadow-md whitespace-nowrap">
+          Ajo Client Portal →
+        </button>
+        {showPortalLogin && (
+          <div className="fixed inset-0 z-50">
+            <AjoClientPortal
+              onSessionChange={handlePortalSession}
+              onExit={() => setShowPortalLogin(false)}
+            />
+          </div>
+        )}
+      </>
+    );
+  }
+
   if (status === "onboarding")      return <Onboarding session={session} onComplete={refetch} />;
   if (status === "subscribing")     return <SubscriptionPlan session={session} onComplete={setReady} />;
   if (status === "staff_setup")     return <StaffFirstLogin session={session} staff={staff} />;
