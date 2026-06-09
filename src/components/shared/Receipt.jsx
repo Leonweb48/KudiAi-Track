@@ -1,10 +1,11 @@
 /**
- * Professional banking-style PNG receipts.
+ * Professional banking-style receipts.
  * Logo left · Transaction title + date right · Navy + green palette.
- * Captured via html2canvas → shared via Web Share API or downloaded.
+ * Captured via html2canvas → PDF download or shared as PNG via Web Share API.
  */
 import { useRef, useState } from "react";
 import html2canvas from "html2canvas";
+import { jsPDF }   from "jspdf";
 
 const fmt  = (n) => `₦${Number(n || 0).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
 const NAVY = "#1B2A5E";
@@ -12,19 +13,23 @@ const NAV2 = "#0F1D42";
 const GRN  = "#16a34a";
 const GRN2 = "#22c55e";
 const YEAR = new Date().getFullYear();
+const SUPPORT_EMAIL = "support@kudiaitrack.biz";
 
 const refNo = (id) =>
   id ? `KT-${id.toString().replace(/-/g, "").slice(0, 8).toUpperCase()}`
      : `KT-${Date.now().toString(36).toUpperCase().slice(-8)}`;
 
-/* ── PNG capture & share ─────────────────────────────────────────── */
-async function captureCard(ref) {
-  // Give any images time to paint before capture
+/* ── Canvas capture helper ───────────────────────────────────────── */
+async function captureCanvas(ref) {
   await new Promise((r) => setTimeout(r, 120));
-  const canvas = await html2canvas(ref.current, {
+  return html2canvas(ref.current, {
     scale: 2.5, useCORS: true, allowTaint: false,
     backgroundColor: "#ffffff", logging: false, imageTimeout: 10000,
   });
+}
+
+async function captureFile(ref) {
+  const canvas = await captureCanvas(ref);
   return new Promise((res) =>
     canvas.toBlob(
       (blob) => res(new File([blob], "kuditrack-receipt.png", { type: "image/png" })),
@@ -32,6 +37,18 @@ async function captureCard(ref) {
     )
   );
 }
+
+async function downloadPDF(ref, filename) {
+  const canvas  = await captureCanvas(ref);
+  const imgData = canvas.toDataURL("image/png");
+  // Size PDF to match the receipt card (px → mm at 96dpi)
+  const mmW = (canvas.width  / 2.5) * (25.4 / 96);
+  const mmH = (canvas.height / 2.5) * (25.4 / 96);
+  const pdf = new jsPDF({ orientation: "p", unit: "mm", format: [mmW, mmH] });
+  pdf.addImage(imgData, "PNG", 0, 0, mmW, mmH);
+  pdf.save(filename || "KudiAITrack_Receipt.pdf");
+}
+
 async function nativeShare(file) {
   if (navigator.share && navigator.canShare?.({ files: [file] })) {
     await navigator.share({ files: [file], title: "KudiAI Track Receipt" });
@@ -48,7 +65,7 @@ async function nativeShare(file) {
 ══════════════════════════════════════════════════════════════════ */
 
 /* ── Header: logo left, title + date right ── */
-function Header({ title, business, phone, date, id }) {
+function Header({ title, business, email, date, id }) {
   return (
     <>
       {/* Navy band */}
@@ -70,9 +87,9 @@ function Header({ title, business, phone, date, id }) {
           <p style={{ fontSize: 11, color: "rgba(255,255,255,0.65)", margin: "0 0 2px", fontWeight: 500 }}>
             {business}
           </p>
-          {phone && (
-            <p style={{ fontSize: 10, color: "rgba(255,255,255,0.45)", margin: "0 0 2px" }}>{phone}</p>
-          )}
+          <p style={{ fontSize: 10, color: "rgba(255,255,255,0.45)", margin: "0 0 2px" }}>
+            {email || SUPPORT_EMAIL}
+          </p>
           <p style={{ fontSize: 10, color: GRN2, fontWeight: 700, margin: 0 }}>{date}</p>
         </div>
       </div>
@@ -187,24 +204,18 @@ function Footer() {
 /* ══════════════════════════════════════════════════════════════════
    SHARE BUTTONS
 ══════════════════════════════════════════════════════════════════ */
-function ShareButtons({ cardRef }) {
+function ShareButtons({ cardRef, pdfName }) {
   const [busy, setBusy] = useState(false);
 
-  const capture = async () => {
+  const run = async (fn) => {
     setBusy(true);
-    try   { return await captureCard(cardRef); }
-    catch { return null; }
+    try   { await fn(); }
+    catch { /* silently ignore */ }
     finally { setBusy(false); }
   };
 
-  const onShare    = async () => { const f = await capture(); if (f) await nativeShare(f); };
-  const onDownload = async () => {
-    const f = await capture();
-    if (!f) return;
-    const url = URL.createObjectURL(f);
-    const a = document.createElement("a"); a.href = url; a.download = f.name; a.click();
-    URL.revokeObjectURL(url);
-  };
+  const onShare   = () => run(async () => { const f = await captureFile(cardRef); await nativeShare(f); });
+  const onSavePDF = () => run(() => downloadPDF(cardRef, pdfName));
 
   const Btn = ({ onClick, bg, children, title }) => (
     <button onClick={onClick} disabled={busy} title={title}
@@ -233,10 +244,13 @@ function ShareButtons({ cardRef }) {
         </svg>
       </Btn>
 
-      {/* Download PNG */}
-      <Btn onClick={onDownload} bg={GRN} title="Download PNG">
+      {/* Save PDF */}
+      <Btn onClick={onSavePDF} bg={GRN} title="Save as PDF">
         <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6 text-white" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
-          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="12" y1="18" x2="12" y2="12"/>
+          <line x1="9" y1="15" x2="15" y2="15"/>
         </svg>
       </Btn>
     </div>
@@ -246,7 +260,7 @@ function ShareButtons({ cardRef }) {
 /* ══════════════════════════════════════════════════════════════════
    FULL-SCREEN OVERLAY
 ══════════════════════════════════════════════════════════════════ */
-function Overlay({ onClose, children }) {
+function Overlay({ onClose, pdfName, children }) {
   const cardRef = useRef(null);
   return (
     <div className="fixed inset-0 z-50 flex flex-col items-center justify-start overflow-y-auto py-6 px-4"
@@ -263,7 +277,7 @@ function Overlay({ onClose, children }) {
         </button>
       </div>
 
-      {/* Card (captured as PNG) */}
+      {/* Card (captured for export) */}
       <div ref={cardRef} style={{
         width: "100%", maxWidth: 340,
         background: "white",
@@ -275,8 +289,8 @@ function Overlay({ onClose, children }) {
         {children}
       </div>
 
-      <ShareButtons cardRef={cardRef} />
-      <p className="text-white/20 text-xs mt-4 pb-4">WhatsApp · Share · Download PNG</p>
+      <ShareButtons cardRef={cardRef} pdfName={pdfName} />
+      <p className="text-white/20 text-xs mt-4 pb-4">WhatsApp · Share · Save PDF</p>
     </div>
   );
 }
@@ -291,11 +305,11 @@ export function TransactionReceipt({ txn, profile, onClose }) {
   const badgeColor = amtColor;
 
   return (
-    <Overlay onClose={onClose}>
+    <Overlay onClose={onClose} pdfName={`KudiAITrack_${isIn ? "CashIn" : "CashOut"}_Receipt_${txn.transaction_date || "today"}.pdf`}>
       <Header
         title={isIn ? "CASH IN RECEIPT" : "CASH OUT RECEIPT"}
         business={biz}
-        phone={profile.phone}
+        email={SUPPORT_EMAIL}
         date={txn.transaction_date}
         id={txn.id}
       />
@@ -331,11 +345,11 @@ export function CreditReceipt({ credit, profile, onClose }) {
   const statusColor = { paid: GRN, active: "#f59e0b", partially_paid: "#f59e0b", overdue: "#dc2626" }[credit.status] || "#f59e0b";
 
   return (
-    <Overlay onClose={onClose}>
+    <Overlay onClose={onClose} pdfName={`KudiAITrack_Credit_Statement_${credit.date_given || "today"}.pdf`}>
       <Header
         title="CREDIT STATEMENT"
         business={biz}
-        phone={profile.phone}
+        email={SUPPORT_EMAIL}
         date={credit.date_given || new Date().toISOString().slice(0, 10)}
         id={credit.id}
       />
@@ -369,17 +383,58 @@ export function CreditReceipt({ credit, profile, onClose }) {
 }
 
 /* ══════════════════════════════════════════════════════════════════
+   BILL PAYMENT RECEIPT
+══════════════════════════════════════════════════════════════════ */
+export function BillReceipt({ bill, onClose }) {
+  const dateStr = bill.created_at
+    ? new Date(bill.created_at).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })
+    : new Date().toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" });
+
+  return (
+    <Overlay onClose={onClose} pdfName={`KudiAITrack_Bill_Receipt_${dateStr}.pdf`}>
+      <Header
+        title="BILL PAYMENT RECEIPT"
+        business={bill.businessName || "My Business"}
+        email={SUPPORT_EMAIL}
+        date={dateStr}
+        id={bill.id}
+      />
+
+      <AmountHero
+        label="Amount Paid"
+        amount={fmt(bill.amount)}
+        color={GRN}
+        badge="SUCCESSFUL"
+        badgeColor={GRN}
+      />
+
+      <SectionHead label="Payment Details" />
+      <Row label="Service"     value={bill.service || bill.category} bold />
+      <Row label="Description" value={bill.item_name} />
+      <Row label="Beneficiary" value={bill.customer_name} />
+      {bill.token && <Row label="Token / Units" value={bill.token} color="#d97706" bold />}
+      <Row label="Receipt No"  value={bill.receiptId || bill.id?.toString().slice(0, 8).toUpperCase()} />
+      <Row label="Reference"   value={bill.apiRef} />
+      {bill.staffName && <Row label="Processed by" value={bill.staffName} />}
+      <Row label="Date"        value={dateStr} last />
+
+      <Footer />
+    </Overlay>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════
    ASO SAVINGS STATEMENT
 ══════════════════════════════════════════════════════════════════ */
 export function AsoReceipt({ client, profile, onClose }) {
   const biz = profile.business_name || profile.owner_name || "My Business";
 
   return (
-    <Overlay onClose={onClose}>
+    <Overlay onClose={onClose} pdfName={`KudiAITrack_Ajo_Statement_${client.full_name || "client"}.pdf`}>
       <Header
-        title="ASO SAVINGS STATEMENT"
+        title="AJO SAVINGS STATEMENT"
         business={biz}
-        phone={profile.phone}
+        email={SUPPORT_EMAIL}
         date={new Date().toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })}
         id={client.id}
       />

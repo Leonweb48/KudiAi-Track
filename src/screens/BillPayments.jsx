@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { fmt, today } from "../utils/helpers";
 import { peyflex } from "../utils/peyflex";
+import { BillReceipt } from "../components/shared/Receipt";
 
 /* ── Static data ─────────────────────────────────────────────────── */
 
@@ -324,55 +325,6 @@ function PaymentForm({ catId, form, setForm, verified, verifying, onVerifyMeter,
   return null;
 }
 
-/* ── Receipt modal ───────────────────────────────────────────────── */
-
-function ReceiptModal({ receipt, onClose }) {
-  const cat = catMeta(receipt.category);
-  return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/50">
-      <div className="bg-white dark:bg-slate-900 rounded-t-3xl w-full max-w-md px-6 pt-6 pb-10">
-        <div className="flex flex-col items-center mb-6">
-          <div className="w-16 h-16 rounded-full flex items-center justify-center mb-3"
-            style={{ background: `linear-gradient(135deg,${cat.g1},${cat.g2})` }}>
-            <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8 text-white" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
-              <path d="M20 6L9 17l-5-5" />
-            </svg>
-          </div>
-          <h2 className="text-lg font-extrabold text-slate-800 dark:text-white">Payment Successful</h2>
-          <p className="text-2xl font-black text-green-600 mt-1">{fmt(receipt.amount)}</p>
-        </div>
-
-        <div className="bg-slate-50 dark:bg-slate-800 rounded-2xl p-4 space-y-2.5 mb-5">
-          {[
-            ["Receipt No",   receipt.receiptId || receipt.id],
-            ["Reference",    receipt.apiRef],
-            ["Date & Time",  fmtDT(receipt.created_at || new Date().toISOString())],
-            ["Service",      cat.label],
-            ["Description",  receipt.item_name],
-            ["Beneficiary",  receipt.customer_name],
-            ...(receipt.token ? [["Token / Units", receipt.token]] : []),
-            ...(receipt.staffName ? [["Processed by", receipt.staffName]] : []),
-            ...(receipt.businessName ? [["Business", receipt.businessName]] : []),
-          ].filter(([, v]) => v).map(([k, v]) => (
-            <div key={k} className="flex items-start justify-between gap-3">
-              <span className="text-xs text-slate-400 dark:text-slate-500 flex-shrink-0">{k}</span>
-              <span className={`text-xs font-semibold text-slate-700 dark:text-slate-300 text-right break-all ${k === "Token / Units" ? "font-mono text-amber-600 dark:text-amber-400 text-sm" : ""}`}>{v}</span>
-            </div>
-          ))}
-          <div className="pt-2 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between">
-            <span className="text-xs text-slate-400">Status</span>
-            <span className="text-xs font-bold text-green-600 bg-green-50 dark:bg-green-900/30 px-2 py-0.5 rounded-full">✓ Successful</span>
-          </div>
-        </div>
-
-        <button onClick={onClose}
-          className="w-full bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl py-3.5 text-sm transition-colors">
-          Done
-        </button>
-      </div>
-    </div>
-  );
-}
 
 /* ── Bill history row ────────────────────────────────────────────── */
 
@@ -774,7 +726,7 @@ export default function BillPayments({ store, staffName = null, businessName = n
         </div>
       )}
 
-      {receipt && <ReceiptModal receipt={receipt} onClose={() => setReceipt(null)} />}
+      {receipt && <BillReceipt bill={receipt} onClose={() => setReceipt(null)} />}
     </div>
   );
 }

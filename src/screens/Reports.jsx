@@ -603,7 +603,7 @@ function ReportTemplate({ type, reportData, profile, from, to }) {
             <span style={S({color:"rgba(255,255,255,0.55)",fontSize:10,fontWeight:700,letterSpacing:3,textTransform:"uppercase",marginLeft:5})}>Track</span>
           </div>
           <p style={S({color:"rgba(255,255,255,0.85)",margin:"4px 0 0",fontSize:13,fontWeight:600,wordBreak:"break-word",overflowWrap:"break-word"})}>{biz}</p>
-          {profile?.phone && <p style={S({color:"rgba(255,255,255,0.5)",margin:"2px 0 0",fontSize:10})}>{profile.phone}</p>}
+          <p style={S({color:"rgba(255,255,255,0.5)",margin:"2px 0 0",fontSize:10})}>support@kudiaitrack.biz</p>
         </div>
         <div style={{textAlign:"right"}}>
           <p style={S({color:"rgba(255,255,255,0.5)",fontSize:10,margin:0})}>Generated</p>
