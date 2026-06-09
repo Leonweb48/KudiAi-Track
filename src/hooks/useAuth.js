@@ -7,10 +7,11 @@ import { Browser } from "@capacitor/browser";
 const CACHE_KEY = "kuditrack_plan";
 
 export function useAuth() {
-  const [status,  setStatus]  = useState("loading");
-  const [session, setSession] = useState(null);
-  const [plan,    setPlan]    = useState(() => localStorage.getItem(CACHE_KEY) || "starter");
-  const [staff,   setStaff]   = useState(null); // non-null when logged in as a staff member
+  const [status,    setStatus]    = useState("loading");
+  const [session,   setSession]   = useState(null);
+  const [plan,      setPlan]      = useState(() => localStorage.getItem(CACHE_KEY) || "starter");
+  const [staff,     setStaff]     = useState(null);
+  const [ajoClient, setAjoClient] = useState(null);
 
   // Tracks whether we've already confirmed a subscription this session.
   // A ref (not state) so reads inside async callbacks are always current.
@@ -21,6 +22,7 @@ export function useAuth() {
       setSession(null);
       setStatus("unauthenticated");
       setStaff(null);
+      setAjoClient(null);
       subVerified.current = false;
       localStorage.removeItem(CACHE_KEY);
       return;
@@ -69,6 +71,21 @@ export function useAuth() {
         } else {
           setStatus("staff");
         }
+        return;
+      }
+
+      // ── Ajo Client check ───────────────────────────────────────────
+      const { data: ajoClientRow } = await supabase
+        .from("aso_clients")
+        .select("id, full_name, user_id, client_user_id, profile_image_url, membership_number, email, current_balance, total_saved, next_contribution_date, contribution_amount, contribution_frequency, status")
+        .eq("client_user_id", uid)
+        .maybeSingle();
+
+      if (ajoClientRow) {
+        setAjoClient({ ...ajoClientRow, owner_id: ajoClientRow.user_id });
+        subVerified.current = true;
+        const mustChange = sess.user?.user_metadata?.must_change_password === true;
+        setStatus(mustChange ? "ajo_client_setup" : "ajo_client");
         return;
       }
 
@@ -164,5 +181,5 @@ export function useAuth() {
     supabase.auth.getSession().then(({ data }) => resolve(data.session));
   }, [resolve]);
 
-  return { status, session, plan, setReady, refetch, staff, ownerId: staff?.owner_id ?? null };
+  return { status, session, plan, setReady, refetch, staff, ajoClient, ownerId: staff?.owner_id ?? null };
 }

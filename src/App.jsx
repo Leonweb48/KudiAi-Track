@@ -55,29 +55,7 @@ export default function App() {
   const [showLoyalty,  setShowLoyalty]  = useState(false);
   const [aiQuery,      setAiQuery]      = useState("");
 
-  // Client portal session
-  const [portalSession, setPortalSession] = useState(() => {
-    try {
-      const s = JSON.parse(localStorage.getItem("kt_portal_session") || "null");
-      return s?.expires > Date.now() ? s : null;
-    } catch { return null; }
-  });
-  const [showPortalLogin, setShowPortalLogin] = useState(
-    () => new URLSearchParams(window.location.search).has("portal")
-  );
-
-  const handlePortalSession = (sess) => {
-    if (sess) {
-      localStorage.setItem("kt_portal_session", JSON.stringify(sess));
-      setPortalSession(sess);
-    } else {
-      localStorage.removeItem("kt_portal_session");
-      setPortalSession(null);
-      setShowPortalLogin(false);
-    }
-  };
-
-  const { status, session, plan, setReady, refetch, staff } = useAuth();
+  const { status, session, plan, setReady, refetch, staff, ajoClient } = useAuth();
   const userId = session?.user?.id;
 
   // Notification system — initialised before store so addNotification is stable
@@ -161,37 +139,12 @@ export default function App() {
 
   if (status === "loading")         return <Spinner />;
 
-  // Active client portal session — skip business owner auth entirely
-  if (portalSession) {
-    return (
-      <AjoClientPortal
-        initialSession={portalSession}
-        onSessionChange={handlePortalSession}
-        onExit={() => handlePortalSession(null)}
-      />
-    );
+  // Ajo client login — route to dedicated client portal
+  if (status === "ajo_client_setup" || status === "ajo_client") {
+    return <AjoClientPortal session={session} ajoClient={ajoClient} />;
   }
 
-  if (status === "unauthenticated") {
-    return (
-      <>
-        <Auth />
-        <button
-          onClick={() => setShowPortalLogin(true)}
-          className="fixed bottom-8 left-1/2 -translate-x-1/2 z-10 bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm text-violet-600 dark:text-violet-400 border border-violet-200 dark:border-violet-700 text-xs font-bold px-4 py-2 rounded-full shadow-md whitespace-nowrap">
-          Ajo Client Portal →
-        </button>
-        {showPortalLogin && (
-          <div className="fixed inset-0 z-50">
-            <AjoClientPortal
-              onSessionChange={handlePortalSession}
-              onExit={() => setShowPortalLogin(false)}
-            />
-          </div>
-        )}
-      </>
-    );
-  }
+  if (status === "unauthenticated") return <Auth />;
 
   if (status === "onboarding")      return <Onboarding session={session} onComplete={refetch} />;
   if (status === "subscribing")     return <SubscriptionPlan session={session} onComplete={setReady} />;

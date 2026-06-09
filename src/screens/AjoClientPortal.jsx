@@ -14,13 +14,6 @@ async function ajoFn(action, body = {}) {
   return data;
 }
 
-function savePortalSession(session) {
-  localStorage.setItem("kt_portal_session", JSON.stringify({
-    ...session,
-    expires: Date.now() + 7 * 24 * 60 * 60 * 1000,
-  }));
-}
-
 // ── Contribution calendar (last 90 days) ─────────────────────────────────
 function ContribCalendar({ contributions }) {
   const contribDates = new Set(
@@ -61,97 +54,160 @@ function ContribCalendar({ contributions }) {
   );
 }
 
-// ── Portal Login screen ───────────────────────────────────────────────────
-function PortalLogin({ onLogin, onExit }) {
-  const [membershipNo, setMembershipNo] = useState("");
-  const [pin, setPin]                   = useState("");
-  const [loading, setLoading]           = useState(false);
-  const [error, setError]               = useState("");
+// ── First-login force-password-change screen ─────────────────────────────
+function AjoClientFirstLogin({ ajoClient }) {
+  const [password, setPassword] = useState("");
+  const [confirm,  setConfirm]  = useState("");
+  const [showPwd,  setShowPwd]  = useState(false);
+  const [saving,   setSaving]   = useState(false);
+  const [error,    setError]    = useState("");
+  const [success,  setSuccess]  = useState(false);
 
-  const handleLogin = useCallback(async () => {
-    const mn = membershipNo.trim().toUpperCase();
-    const p  = pin.trim();
-    if (!mn || !p) { setError("Enter your membership number and PIN"); return; }
-    setLoading(true);
+  const score = [/.{8,}/, /[A-Z]/, /[0-9]/, /[^A-Za-z0-9]/].filter(r => r.test(password)).length;
+  const colors = ["", "bg-red-400", "bg-amber-400", "bg-blue-500", "bg-green-500"];
+
+  const submit = async () => {
+    if (password.length < 8) { setError("Minimum 8 characters"); return; }
+    if (password !== confirm) { setError("Passwords do not match"); return; }
+    setSaving(true);
     setError("");
-    try {
-      const { client } = await ajoFn("auth", { membership_number: mn, pin: p });
-      const session = {
-        client_id:         client.id,
-        owner_id:          client.owner_id,
-        membership_number: client.membership_number,
-        full_name:         client.full_name,
-        profile_image_url: client.profile_image_url,
-      };
-      savePortalSession(session);
-      onLogin(session, client);
-    } catch (err) {
-      setError(err.message || "Login failed. Check your details.");
-    } finally {
-      setLoading(false);
-    }
-  }, [membershipNo, pin, onLogin]);
+    const { error: err } = await supabase.auth.updateUser({
+      password,
+      data: { must_change_password: false },
+    });
+    if (err) { setError(err.message); setSaving(false); return; }
+    setSuccess(true);
+  };
+
+  if (success) return (
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center px-6">
+      <div className="text-center">
+        <div className="w-20 h-20 bg-violet-100 dark:bg-violet-900/30 rounded-full flex items-center justify-center mx-auto mb-5">
+          <svg viewBox="0 0 24 24" fill="none" className="w-10 h-10 text-violet-600" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+            <path d="M20 6L9 17l-5-5" />
+          </svg>
+        </div>
+        <h2 className="text-xl font-extrabold text-slate-800 dark:text-white mb-2">Password set!</h2>
+        <p className="text-sm text-slate-500 dark:text-slate-400">Taking you to your dashboard…</p>
+        <div className="mt-6 w-8 h-8 border-[3px] border-violet-500 border-t-transparent rounded-full animate-spin mx-auto" />
+      </div>
+    </div>
+  );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-violet-900 via-violet-800 to-indigo-900 flex items-center justify-center p-4">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center mx-auto mb-4 backdrop-blur">
-            <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8 text-white" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round">
-              <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" /><polyline points="9 22 9 12 15 12 15 22" />
-            </svg>
-          </div>
-          <h1 className="text-2xl font-black text-white">Ajo Client Portal</h1>
-          <p className="text-violet-300 text-sm mt-1">Access your savings account</p>
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col">
+      <div className="bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 px-5 pt-14 pb-5">
+        <div className="w-12 h-12 bg-violet-600 rounded-2xl flex items-center justify-center mb-4">
+          <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6 text-white" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+          </svg>
         </div>
+        <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white">Set Your Password</h1>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+          Hi {ajoClient?.full_name?.split(" ")[0] || "there"}! Choose a password you'll use every time you log in.
+        </p>
+      </div>
 
-        <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 shadow-2xl">
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 text-center">Sign In</p>
-
-          {error && (
-            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-3 py-2.5 mb-4">
-              <p className="text-xs text-red-600 dark:text-red-400 font-medium">{error}</p>
-            </div>
-          )}
-
-          <div className="space-y-3 mb-4">
-            <div>
-              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Membership Number</label>
-              <input
-                type="text"
-                value={membershipNo}
-                onChange={e => setMembershipNo(e.target.value.toUpperCase())}
-                onKeyDown={e => e.key === "Enter" && handleLogin()}
-                placeholder="AJO-202606-XXXXXX"
-                className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white font-mono text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 uppercase"
-              />
-            </div>
-            <div>
-              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">PIN (4 digits)</label>
-              <input
-                type="password"
-                value={pin}
-                onChange={e => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
-                onKeyDown={e => e.key === "Enter" && handleLogin()}
-                placeholder="••••"
-                inputMode="numeric"
-                maxLength={4}
-                className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-center text-xl tracking-widest focus:outline-none focus:ring-2 focus:ring-violet-400"
-              />
-            </div>
-          </div>
-
-          <button onClick={handleLogin} disabled={loading}
-            className="w-full py-3.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] shadow-sm disabled:opacity-50">
-            {loading ? "Signing in…" : "Sign In"}
-          </button>
-
-          {onExit && (
-            <button onClick={onExit} className="w-full mt-3 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition">
-              ← Back to Business Login
+      <div className="flex-1 px-5 pt-8 pb-10 space-y-5">
+        <div>
+          <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">New Password *</label>
+          <div className="relative">
+            <input type={showPwd ? "text" : "password"} value={password}
+              onChange={e => { setPassword(e.target.value); setError(""); }}
+              placeholder="Minimum 8 characters"
+              className="w-full border border-slate-200 dark:border-slate-700 rounded-xl pl-4 pr-14 py-3 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500" />
+            <button type="button" onClick={() => setShowPwd(v => !v)}
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-violet-600 dark:text-violet-400">
+              {showPwd ? "Hide" : "Show"}
             </button>
+          </div>
+          {password && (
+            <div className="mt-1.5">
+              <div className="flex gap-1 mb-1">
+                {[1, 2, 3, 4].map(n => (
+                  <div key={n} className={`h-1 flex-1 rounded-full transition-colors ${n <= score ? colors[score] : "bg-slate-200 dark:bg-slate-700"}`} />
+                ))}
+              </div>
+            </div>
           )}
         </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Confirm Password *</label>
+          <input type={showPwd ? "text" : "password"} value={confirm}
+            onChange={e => { setConfirm(e.target.value); setError(""); }}
+            placeholder="Repeat your password"
+            className={`w-full border rounded-xl px-4 py-3 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500 ${confirm && confirm !== password ? "border-red-400 dark:border-red-600" : "border-slate-200 dark:border-slate-700"}`}
+          />
+          {confirm && confirm !== password && <p className="text-[10px] text-red-500 mt-1 font-medium">Passwords don't match</p>}
+        </div>
+
+        {error && <p className="text-xs text-red-500 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/40 rounded-xl px-4 py-2.5">{error}</p>}
+
+        <button onClick={submit} disabled={saving || password.length < 8 || password !== confirm}
+          className="w-full bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white font-bold rounded-2xl py-4 text-sm transition-colors">
+          {saving ? "Saving…" : "Set Password & Enter Dashboard →"}
+        </button>
+
+        <button onClick={() => supabase.auth.signOut()} className="w-full text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition text-center">
+          Sign out
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Change Password modal ─────────────────────────────────────────────────
+function ChangePasswordModal({ onClose }) {
+  const [pwd,     setPwd]     = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [showPwd, setShowPwd] = useState(false);
+  const [saving,  setSaving]  = useState(false);
+  const [error,   setError]   = useState("");
+  const [success, setSuccess] = useState(false);
+
+  const handleChange = async () => {
+    if (pwd.length < 8) { setError("Minimum 8 characters"); return; }
+    if (pwd !== confirm) { setError("Passwords do not match"); return; }
+    setSaving(true);
+    const { error: err } = await supabase.auth.updateUser({
+      password: pwd,
+      data: { must_change_password: false },
+    });
+    if (err) { setError(err.message); setSaving(false); return; }
+    setSuccess(true);
+    setTimeout(onClose, 2000);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-end justify-center" onClick={onClose}>
+      <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-t-3xl px-5 py-6 shadow-2xl"
+        onClick={e => e.stopPropagation()}>
+        <div className="w-10 h-1 bg-slate-300 dark:bg-slate-600 rounded-full mx-auto mb-5" />
+        <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-4">Change Password</h3>
+
+        {success ? (
+          <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl px-4 py-3 text-green-700 dark:text-green-400 font-semibold text-sm text-center">
+            Password updated successfully!
+          </div>
+        ) : (
+          <>
+            {error && <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-3 py-2.5 mb-3"><p className="text-xs text-red-600 dark:text-red-400">{error}</p></div>}
+            <div className="space-y-3 mb-4">
+              <div className="relative">
+                <input type={showPwd ? "text" : "password"} value={pwd} onChange={e => setPwd(e.target.value)} placeholder="New password (min. 8 chars)"
+                  className="w-full px-3 pr-14 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" />
+                <button type="button" onClick={() => setShowPwd(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-violet-600">{showPwd ? "Hide" : "Show"}</button>
+              </div>
+              <input type={showPwd ? "text" : "password"} value={confirm} onChange={e => setConfirm(e.target.value)} placeholder="Confirm new password"
+                className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" />
+            </div>
+            <button onClick={handleChange} disabled={saving || pwd.length < 8 || pwd !== confirm}
+              className="w-full py-3.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-bold text-sm transition disabled:opacity-50">
+              {saving ? "Updating…" : "Update Password"}
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
@@ -408,74 +464,6 @@ function ClientBills() {
   );
 }
 
-// ── Change PIN modal ──────────────────────────────────────────────────────
-function ChangePinModal({ clientId, onClose }) {
-  const [f, setF] = useState({ old: "", new1: "", new2: "" });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState(false);
-
-  const handleChange = async () => {
-    if (!/^\d{4}$/.test(f.new1)) { setError("New PIN must be exactly 4 digits"); return; }
-    if (f.new1 !== f.new2) { setError("New PINs do not match"); return; }
-    setLoading(true);
-    setError("");
-    try {
-      await ajoFn("change-pin", { client_id: clientId, old_pin: f.old, new_pin: f.new1 });
-      setSuccess(true);
-      setTimeout(onClose, 2000);
-    } catch (err) {
-      setError(err.message || "Failed to change PIN");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const inputCls = "w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-center text-xl tracking-widest focus:outline-none focus:ring-2 focus:ring-violet-400";
-
-  return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-end justify-center" onClick={onClose}>
-      <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-t-3xl px-5 py-6 shadow-2xl"
-        onClick={e => e.stopPropagation()}>
-        <div className="w-10 h-1 bg-slate-300 dark:bg-slate-600 rounded-full mx-auto mb-5" />
-        <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-4">Change PIN</h3>
-
-        {success ? (
-          <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl px-4 py-3 text-green-700 dark:text-green-400 font-semibold text-sm text-center">
-            PIN changed successfully!
-          </div>
-        ) : (
-          <>
-            {error && (
-              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-3 py-2.5 mb-3">
-                <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
-              </div>
-            )}
-            <div className="space-y-3 mb-4">
-              <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Current PIN</label>
-                <input type="password" value={f.old} onChange={e => setF(p => ({ ...p, old: e.target.value.replace(/\D/g, "").slice(0, 4) }))} maxLength={4} inputMode="numeric" className={inputCls} placeholder="••••" />
-              </div>
-              <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">New PIN</label>
-                <input type="password" value={f.new1} onChange={e => setF(p => ({ ...p, new1: e.target.value.replace(/\D/g, "").slice(0, 4) }))} maxLength={4} inputMode="numeric" className={inputCls} placeholder="••••" />
-              </div>
-              <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Confirm New PIN</label>
-                <input type="password" value={f.new2} onChange={e => setF(p => ({ ...p, new2: e.target.value.replace(/\D/g, "").slice(0, 4) }))} maxLength={4} inputMode="numeric" className={inputCls} placeholder="••••" />
-              </div>
-            </div>
-            <button onClick={handleChange} disabled={loading}
-              className="w-full py-3.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-bold text-sm transition disabled:opacity-50">
-              {loading ? "Updating…" : "Update PIN"}
-            </button>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ── Dashboard Overview ────────────────────────────────────────────────────
 function OverviewTab({ client, contributions, onPayClick }) {
   const recent = contributions.slice(0, 10);
@@ -629,7 +617,7 @@ function HistoryTab({ contributions }) {
 }
 
 // ── Profile tab ───────────────────────────────────────────────────────────
-function ProfileTab({ client, ownerInfo, session, onChangePinClick, onLogout }) {
+function ProfileTab({ client, ownerInfo, onChangePwdClick, onLogout }) {
   const initials = (client.full_name || "?").split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
 
   return (
@@ -696,24 +684,9 @@ function ProfileTab({ client, ownerInfo, session, onChangePinClick, onLogout }) 
         </div>
       )}
 
-      {/* QR code for client to share */}
-      {session?.membership_number && (
-        <div>
-          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2">Portal QR Code</p>
-          <div className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-4 border border-slate-100 dark:border-slate-700 flex flex-col items-center gap-2">
-            <img
-              src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(`https://kuditrack-kappa.vercel.app/?portal=1`)}`}
-              alt="Portal QR"
-              className="w-32 h-32 rounded-xl"
-            />
-            <p className="text-[10px] text-slate-400 text-center">Scan to access portal · Share with care</p>
-          </div>
-        </div>
-      )}
-
-      <button onClick={onChangePinClick}
+      <button onClick={onChangePwdClick}
         className="w-full py-3 bg-violet-50 dark:bg-violet-900/20 text-violet-600 dark:text-violet-400 rounded-2xl font-bold text-sm border border-violet-100 dark:border-violet-800">
-        Change PIN
+        Change Password
       </button>
 
       <button onClick={onLogout}
@@ -725,40 +698,26 @@ function ProfileTab({ client, ownerInfo, session, onChangePinClick, onLogout }) 
 }
 
 // ── Main portal component ─────────────────────────────────────────────────
-export default function AjoClientPortal({ initialSession, onSessionChange, onExit }) {
-  const [session,       setSession]       = useState(initialSession || null);
-  const [client,        setClient]        = useState(null);
+export default function AjoClientPortal({ session, ajoClient }) {
+  const [client,        setClient]        = useState(ajoClient || null);
   const [contributions, setContributions] = useState([]);
   const [ownerInfo,     setOwnerInfo]     = useState(null);
   const [loadingData,   setLoadingData]   = useState(false);
   const [tab,           setTab]           = useState("overview");
   const [showPay,       setShowPay]       = useState(false);
-  const [showPinModal,  setShowPinModal]  = useState(false);
+  const [showPwdModal,  setShowPwdModal]  = useState(false);
 
-  const handleLogin = useCallback((sess, clientData) => {
-    setSession(sess);
-    setClient(clientData);
-    onSessionChange?.(sess);
-  }, [onSessionChange]);
+  const mustChange = session?.user?.user_metadata?.must_change_password === true;
 
-  const handleLogout = useCallback(() => {
-    localStorage.removeItem("kt_portal_session");
-    setSession(null);
-    setClient(null);
-    setContributions([]);
-    setOwnerInfo(null);
-    onSessionChange?.(null);
-  }, [onSessionChange]);
+  const handleLogout = useCallback(() => supabase.auth.signOut(), []);
 
-  // Load fresh client data + history on mount / session change
   useEffect(() => {
-    if (!session?.client_id) return;
+    if (mustChange || !ajoClient?.id) return;
     setLoadingData(true);
-
     Promise.all([
-      ajoFn("get-client", { client_id: session.client_id, owner_id: session.owner_id }),
-      ajoFn("get-contributions", { client_id: session.client_id, owner_id: session.owner_id }),
-      ajoFn("get-owner-info", { owner_id: session.owner_id, client_id: session.client_id }),
+      ajoFn("get-client", { client_id: ajoClient.id, owner_id: ajoClient.owner_id }),
+      ajoFn("get-contributions", { client_id: ajoClient.id, owner_id: ajoClient.owner_id }),
+      ajoFn("get-owner-info", { owner_id: ajoClient.owner_id, client_id: ajoClient.id }),
     ])
       .then(([clientRes, contribRes, ownerRes]) => {
         if (clientRes?.client)         setClient(clientRes.client);
@@ -767,22 +726,20 @@ export default function AjoClientPortal({ initialSession, onSessionChange, onExi
       })
       .catch(console.error)
       .finally(() => setLoadingData(false));
-  }, [session?.client_id, session?.owner_id]);
+  }, [mustChange, ajoClient?.id, ajoClient?.owner_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleContribSuccess = useCallback((updatedClient) => {
     setClient(updatedClient);
     setShowPay(false);
-    // Reload history
-    if (session?.client_id) {
-      ajoFn("get-contributions", { client_id: session.client_id, owner_id: session.owner_id })
+    if (ajoClient?.id) {
+      ajoFn("get-contributions", { client_id: ajoClient.id, owner_id: ajoClient.owner_id })
         .then(r => { if (r?.contributions) setContributions(r.contributions); })
         .catch(console.error);
     }
-  }, [session?.client_id, session?.owner_id]);
+  }, [ajoClient?.id, ajoClient?.owner_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!session) {
-    return <PortalLogin onLogin={handleLogin} onExit={onExit} />;
-  }
+  // Early return AFTER hooks
+  if (mustChange) return <AjoClientFirstLogin ajoClient={ajoClient} />;
 
   const NAV = [
     { id: "overview", icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6", label: "Overview" },
@@ -791,7 +748,7 @@ export default function AjoClientPortal({ initialSession, onSessionChange, onExi
     { id: "profile",  icon: "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7",                                                                           label: "Profile"  },
   ];
 
-  const initials = ((client || session).full_name || "?").split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+  const initials = (client?.full_name || ajoClient?.full_name || "?").split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
 
   return (
     <div className="h-screen bg-slate-50 dark:bg-slate-900 flex justify-center">
@@ -800,22 +757,22 @@ export default function AjoClientPortal({ initialSession, onSessionChange, onExi
         {/* Header */}
         <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 py-3 flex items-center gap-2.5">
           <div className="w-9 h-9 rounded-full overflow-hidden flex-shrink-0">
-            {(client?.profile_image_url || session.profile_image_url)
-              ? <img src={client?.profile_image_url || session.profile_image_url} alt="" className="w-full h-full object-cover" />
+            {(client?.profile_image_url || ajoClient?.profile_image_url)
+              ? <img src={client?.profile_image_url || ajoClient?.profile_image_url} alt="" className="w-full h-full object-cover" />
               : <div className="w-full h-full bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center text-violet-700 dark:text-violet-300 font-black text-sm">{initials}</div>
             }
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">Ajo Client Portal</p>
             <p className="text-sm font-bold text-slate-800 dark:text-white truncate">
-              {(client || session).full_name}
+              {client?.full_name || ajoClient?.full_name}
             </p>
           </div>
           {loadingData && (
             <div className="w-4 h-4 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />
           )}
           <span className="text-[10px] bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 font-mono font-bold px-2 py-1 rounded-full flex-shrink-0">
-            {session.membership_number}
+            {ajoClient?.membership_number}
           </span>
         </div>
 
@@ -834,8 +791,7 @@ export default function AjoClientPortal({ initialSession, onSessionChange, onExi
             <ProfileTab
               client={client}
               ownerInfo={ownerInfo}
-              session={session}
-              onChangePinClick={() => setShowPinModal(true)}
+              onChangePwdClick={() => setShowPwdModal(true)}
               onLogout={handleLogout}
             />
           )}
@@ -870,11 +826,8 @@ export default function AjoClientPortal({ initialSession, onSessionChange, onExi
         />
       )}
 
-      {showPinModal && client && (
-        <ChangePinModal
-          clientId={client.id}
-          onClose={() => setShowPinModal(false)}
-        />
+      {showPwdModal && (
+        <ChangePasswordModal onClose={() => setShowPwdModal(false)} />
       )}
     </div>
   );

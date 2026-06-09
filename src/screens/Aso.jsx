@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { createClient } from "@supabase/supabase-js";
 import Icon   from "../components/Icon";
 import Modal  from "../components/shared/Modal";
 import Field  from "../components/shared/Field";
@@ -102,6 +103,17 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [createdClient, setCreatedClient] = useState(null);
   const [copiedField,   setCopiedField]   = useState(null);
 
+  // Registration — password + OTP state
+  const [clientPassword, setClientPassword] = useState("");
+  const [confirmPwd,     setConfirmPwd]     = useState("");
+  const [showClientPwd,  setShowClientPwd]  = useState(false);
+  const [addError,       setAddError]       = useState("");
+  const [clientOtpData,  setClientOtpData]  = useState(null);
+  const [clientOtpCode,  setClientOtpCode]  = useState("");
+  const [otpVerifying,   setOtpVerifying]   = useState(false);
+  const [otpError,       setOtpError]       = useState("");
+  const [otpVerified,    setOtpVerified]    = useState(false);
+
   // Filters
   const [search,         setSearch]         = useState("");
   const [filter,         setFilter]         = useState("all");
@@ -163,13 +175,115 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     setPhotoPreview(URL.createObjectURL(file));
   };
 
+  const generateClientPassword = () => {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$";
+    const vals  = new Uint32Array(12);
+    crypto.getRandomValues(vals);
+    const pwd = Array.from(vals, n => chars[n % chars.length]).join("");
+    setClientPassword(pwd);
+    setConfirmPwd(pwd);
+    setShowClientPwd(true);
+  };
+
+  const sendClientOtp = async (email) => {
+    const c = createClient(
+      process.env.REACT_APP_SUPABASE_URL,
+      process.env.REACT_APP_SUPABASE_ANON_KEY,
+      { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } },
+    );
+    const { error } = await c.auth.signInWithOtp({
+      email,
+      options: { shouldCreateUser: false },
+    });
+    if (error) throw error;
+    return c;
+  };
+
+  const verifyClientEmail = async () => {
+    if (!clientOtpData || clientOtpCode.length < 6) return;
+    setOtpVerifying(true);
+    setOtpError("");
+    try {
+      const { error } = await clientOtpData.client.auth.verifyOtp({
+        email: clientOtpData.email,
+        token: clientOtpCode,
+        type:  "email",
+      });
+      if (error) throw error;
+      setOtpVerified(true);
+    } catch (e) {
+      setOtpError(e.message || "Invalid or expired code");
+    } finally {
+      setOtpVerifying(false);
+    }
+  };
+
+  const provisionClientLogin = async (clientRecord, password) => {
+    const { data, error: fnError } = await supabase.functions.invoke(
+      "manage-ajo-client-account",
+      { body: { clientId: clientRecord.id, password } },
+    );
+    if (!fnError) {
+      if (data?.error) throw new Error(data.error);
+      return data;
+    }
+    const notDeployed =
+      fnError.name === "FunctionsFetchError" ||
+      (fnError.message || "").toLowerCase().includes("failed to send") ||
+      (fnError.message || "").toLowerCase().includes("unreachable");
+    if (!notDeployed) {
+      let msg = fnError.message;
+      try {
+        if (fnError.name === "FunctionsHttpError") {
+          const body = await fnError.context.json();
+          if (body?.error) msg = body.error;
+        }
+      } catch (_) {}
+      throw new Error(msg);
+    }
+    // Fallback: signUp if edge function not yet deployed
+    const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
+      email: clientRecord.email,
+      password,
+      options: {
+        data: {
+          full_name:            clientRecord.full_name,
+          account_type:         "ajo_client",
+          aso_client_id:        clientRecord.id,
+          owner_id:             clientRecord.user_id,
+          must_change_password: true,
+        },
+      },
+    });
+    if (signUpErr) throw signUpErr;
+    if (signUpData.user?.id) {
+      await supabase.from("aso_clients").update({ client_user_id: signUpData.user.id }).eq("id", clientRecord.id);
+    }
+    return { success: true, created: true };
+  };
+
+  const closeClientCredentials = () => {
+    setCreatedClient(null);
+    setClientOtpData(null);
+    setClientOtpCode("");
+    setOtpError("");
+    setOtpVerified(false);
+    setCopiedField(null);
+  };
+
   const resetAdd = () => {
     setShowAdd(false); setF(BLANK);
     setPhotoFile(null); setPhotoPreview(null);
+    setClientPassword(""); setConfirmPwd(""); setShowClientPwd(false);
+    setAddError("");
   };
 
   const handleAdd = async () => {
-    if (!f.full_name) return;
+    if (!f.full_name) { setAddError("Full name is required"); return; }
+    if (!f.email)     { setAddError("Email is required for portal access"); return; }
+    if (clientPassword.length < 8) { setAddError("Temporary password must be at least 8 characters"); return; }
+    if (clientPassword !== confirmPwd) { setAddError("Passwords do not match"); return; }
+    setAddError("");
     setAdding(true);
     const { data, error } = await addAsoClient({
       ...f,
@@ -187,13 +301,22 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         console.error("Photo upload:", err);
       }
     }
-    setAdding(false);
     if (!error && data) {
+      const tempPwd = clientPassword;
       resetAdd();
-      setCreatedClient(data);
+      let otpClient = null;
+      try {
+        await provisionClientLogin(data, tempPwd);
+        try { otpClient = await sendClientOtp(data.email); } catch (_) {}
+      } catch (provErr) {
+        console.error("Account provision:", provErr);
+      }
+      setCreatedClient({ ...data, _password: tempPwd });
+      if (otpClient) setClientOtpData({ email: data.email, client: otpClient });
     } else {
       resetAdd();
     }
+    setAdding(false);
   };
 
   const copyField = (text, key) => {
@@ -242,7 +365,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-xl font-extrabold text-slate-800 dark:text-white tracking-tight">{t("aso.title")}</h1>
-        <button onClick={() => setShowAdd(true)}
+        <button onClick={() => { setShowAdd(true); generateClientPassword(); }}
           className="w-9 h-9 bg-violet-600 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform">
           <Icon name="plus" size={18} className="text-white" />
         </button>
@@ -621,8 +744,44 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           <div className="grid grid-cols-2 gap-2">
             <Field label="Phone" type="tel" value={f.phone}
               onChange={e => set("phone", e.target.value)} placeholder="08012345678" />
-            <Field label="Email" type="email" value={f.email}
-              onChange={e => set("email", e.target.value)} placeholder="email@example.com" />
+            <Field label="Email *" type="email" value={f.email}
+              onChange={e => set("email", e.target.value)} placeholder="client@email.com" />
+          </div>
+
+          {/* Portal login password — like staff registration */}
+          <div className="bg-violet-50 dark:bg-violet-950/20 border border-violet-200 dark:border-violet-900/40 rounded-2xl p-4 space-y-3 mt-1">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-bold text-violet-800 dark:text-violet-300">Portal Login Password</p>
+                <p className="text-[11px] text-violet-700/70 dark:text-violet-400/70 mt-0.5">
+                  Client uses this to log in the first time, then sets their own password.
+                </p>
+              </div>
+              <button type="button" onClick={generateClientPassword}
+                className="shrink-0 text-[11px] font-bold text-violet-700 dark:text-violet-300 bg-white dark:bg-slate-800 border border-violet-200 dark:border-violet-800 px-2.5 py-1.5 rounded-lg">
+                Generate
+              </button>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Temporary Password *</label>
+              <div className="relative">
+                <input type={showClientPwd ? "text" : "password"} value={clientPassword}
+                  onChange={e => setClientPassword(e.target.value)}
+                  placeholder="Minimum 8 characters"
+                  className="w-full border border-slate-200 dark:border-slate-700 rounded-xl pl-3 pr-14 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500" />
+                <button type="button" onClick={() => setShowClientPwd(v => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-violet-600">
+                  {showClientPwd ? "Hide" : "Show"}
+                </button>
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Confirm Password *</label>
+              <input type={showClientPwd ? "text" : "password"} value={confirmPwd}
+                onChange={e => setConfirmPwd(e.target.value)}
+                placeholder="Repeat temporary password"
+                className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500" />
+            </div>
           </div>
           <Field label="NIN" inputMode="numeric" value={f.nin}
             onChange={e => set("nin", e.target.value.replace(/\D/g, "").slice(0, 11))}
@@ -665,10 +824,14 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           <Field as="textarea" value={f.notes}
             onChange={e => set("notes", e.target.value)} placeholder="Optional notes about this client…" />
 
+          {addError && (
+            <p className="text-xs text-red-500 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/40 rounded-xl px-3 py-2">{addError}</p>
+          )}
+
           <button onClick={handleAdd}
             disabled={!f.full_name || adding}
             className="w-full py-3.5 mt-1 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] shadow-sm disabled:opacity-50">
-            {adding ? "Saving…" : "Add Aso Client"}
+            {adding ? "Creating account…" : "Add Ajo Client"}
           </button>
         </Modal>
       )}
@@ -818,87 +981,84 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                   </svg>
                 </div>
                 <div>
-                  <p className="text-sm font-extrabold text-slate-800 dark:text-white">Ajo Client Account Created</p>
-                  <p className="text-xs text-slate-400 dark:text-slate-500">Share these credentials with {createdClient.full_name.split(" ")[0]}</p>
+                  <p className="text-sm font-extrabold text-slate-800 dark:text-white">Client Account Created</p>
+                  <p className="text-xs text-slate-400 dark:text-slate-500">Share these login details with {createdClient.full_name.split(" ")[0]}</p>
                 </div>
               </div>
 
               {/* Credential cards */}
               <div className="space-y-3 mb-5">
-
-                {/* Client name */}
                 <div className="bg-slate-50 dark:bg-slate-800 rounded-2xl px-4 py-3">
-                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">Client Name</p>
-                  <p className="text-sm font-bold text-slate-800 dark:text-white">{createdClient.full_name}</p>
+                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">Email (Login)</p>
+                  <p className="text-sm font-bold text-slate-800 dark:text-white">{createdClient.email}</p>
                 </div>
-
-                {/* Membership Number */}
                 <div className="bg-slate-50 dark:bg-slate-800 rounded-2xl px-4 py-3">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">Membership Number</p>
-                      <p className="text-sm font-bold text-slate-800 dark:text-white font-mono tracking-wider">{createdClient.membership_number}</p>
+                      <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">Temporary Password</p>
+                      <p className="text-sm font-bold text-slate-800 dark:text-white font-mono">{createdClient._password}</p>
                     </div>
-                    <button
-                      onClick={() => copyField(createdClient.membership_number, "membership")}
+                    <button onClick={() => copyField(createdClient._password, "password")}
                       className="ml-3 text-[11px] font-bold text-violet-600 bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 px-2.5 py-1.5 rounded-lg flex-shrink-0">
-                      {copiedField === "membership" ? "Copied!" : "Copy"}
+                      {copiedField === "password" ? "Copied!" : "Copy"}
                     </button>
                   </div>
                 </div>
-
-                {/* Portal PIN */}
                 <div className="bg-slate-50 dark:bg-slate-800 rounded-2xl px-4 py-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">Portal PIN</p>
-                      <p className="text-2xl font-black tracking-[0.3em] text-violet-600 dark:text-violet-400">{createdClient.portal_pin}</p>
+                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">Membership No.</p>
+                  <p className="text-sm font-bold text-slate-800 dark:text-white font-mono">{createdClient.membership_number}</p>
+                </div>
+              </div>
+
+              {/* OTP verification */}
+              {clientOtpData && (
+                <div className="border border-slate-200 dark:border-slate-700 rounded-2xl p-4 mb-4 space-y-3">
+                  {otpVerified ? (
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center flex-shrink-0">
+                        <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-green-600" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+                          <path d="M20 6L9 17l-5-5" />
+                        </svg>
+                      </div>
+                      <p className="text-xs font-semibold text-green-700 dark:text-green-400">Email verified — client can log in directly</p>
                     </div>
-                    <button
-                      onClick={() => copyField(createdClient.portal_pin, "pin")}
-                      className="ml-3 text-[11px] font-bold text-violet-600 bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 px-2.5 py-1.5 rounded-lg flex-shrink-0">
-                      {copiedField === "pin" ? "Copied!" : "Copy"}
-                    </button>
-                  </div>
+                  ) : (
+                    <>
+                      <div>
+                        <p className="text-sm font-bold text-slate-800 dark:text-white">Verify Client Email</p>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                          Ask {createdClient.full_name.split(" ")[0]} for the 6-digit code just sent to their email.
+                        </p>
+                      </div>
+                      <input
+                        type="text" inputMode="numeric" maxLength={6}
+                        value={clientOtpCode}
+                        onChange={e => setClientOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                        placeholder="6-digit code"
+                        className="w-full text-center text-xl font-bold tracking-[0.4em] border-2 rounded-xl py-3 bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:border-violet-500 border-slate-200 dark:border-slate-700"
+                      />
+                      {otpError && <p className="text-[11px] text-red-500">{otpError}</p>}
+                      <button onClick={verifyClientEmail}
+                        disabled={otpVerifying || clientOtpCode.length < 6}
+                        className="w-full bg-slate-800 dark:bg-slate-100 hover:bg-slate-900 dark:hover:bg-white disabled:opacity-50 text-white dark:text-slate-900 font-bold rounded-xl py-2.5 text-sm transition">
+                        {otpVerifying ? "Verifying…" : "Verify Email →"}
+                      </button>
+                    </>
+                  )}
                 </div>
+              )}
 
-                {/* Portal URL */}
-                <div className="bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800/40 rounded-2xl px-4 py-3">
-                  <p className="text-[10px] font-semibold text-violet-500 uppercase tracking-wide mb-0.5">Portal Login URL</p>
-                  <p className="text-xs font-bold text-violet-700 dark:text-violet-300 break-all">kuditrack-kappa.vercel.app/?portal=1</p>
+              {!clientOtpData && (
+                <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-xl px-4 py-3 mb-4">
+                  <p className="text-[11px] text-amber-700 dark:text-amber-300 font-medium leading-relaxed">
+                    Client logs in at kuditrack-kappa.vercel.app with their email and this password. They'll set a permanent password on first login.
+                  </p>
                 </div>
-              </div>
+              )}
 
-              {/* Copy all */}
-              <button
-                onClick={() => copyField(
-                  `Ajo Client Portal Credentials\n\nName: ${createdClient.full_name}\nMembership: ${createdClient.membership_number}\nPIN: ${createdClient.portal_pin}\nPortal: https://kuditrack-kappa.vercel.app/?portal=1`,
-                  "all"
-                )}
-                className={`w-full py-3 rounded-xl font-bold text-sm mb-3 transition flex items-center justify-center gap-2 active:scale-[0.99] border ${
-                  copiedField === "all"
-                    ? "bg-green-500 text-white border-green-500"
-                    : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700"
-                }`}>
-                <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-                  {copiedField === "all"
-                    ? <path d="M20 6L9 17l-5-5" />
-                    : <><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></>
-                  }
-                </svg>
-                {copiedField === "all" ? "Copied!" : "Copy All Credentials"}
-              </button>
-
-              <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-xl px-4 py-3 mb-4">
-                <p className="text-[11px] text-amber-700 dark:text-amber-300 font-medium leading-relaxed">
-                  Client uses their Membership Number + PIN to log into the portal. They can change their PIN after first login.
-                </p>
-              </div>
-
-              <button
-                onClick={() => { setCreatedClient(null); setCopiedField(null); }}
+              <button onClick={closeClientCredentials}
                 className="w-full bg-violet-600 hover:bg-violet-700 text-white font-bold rounded-2xl py-3.5 text-sm transition">
-                Done
+                {otpVerified ? "Done ✓" : "Done"}
               </button>
             </div>
           </div>
