@@ -21,6 +21,7 @@ import StaffFirstLogin       from "./screens/StaffFirstLogin";
 import BillPayments          from "./screens/BillPayments";
 import Inventory             from "./screens/Inventory";
 import Reports               from "./screens/Reports";
+import AIAssistant           from "./screens/AIAssistant";
 import LockScreen            from "./components/LockScreen";
 import { useInventory }      from "./hooks/useInventory";
 import { useBiometricLock }  from "./hooks/useBiometricLock";
@@ -42,6 +43,8 @@ export default function App() {
   const [voiceOpen,   setVoiceOpen]   = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [showReports, setShowReports] = useState(false);
+  const [showAI,      setShowAI]      = useState(false);
+  const [aiQuery,     setAiQuery]     = useState("");
 
   const { status, session, plan, setReady, refetch, staff } = useAuth();
   const userId = session?.user?.id;
@@ -172,7 +175,8 @@ export default function App() {
                     store={store}
                     plan={plan}
                     onUpgrade={openUpgrade}
-                    onReports={() => setShowReports(true)} />,
+                    onReports={() => setShowReports(true)}
+                    onAIOpen={q => { setAiQuery(q || ""); setShowAI(true); }} />,
     settings:     <Settings
                     store={store}
                     session={session}
@@ -223,6 +227,16 @@ export default function App() {
 
       {/* Report generator — full-screen overlay, z-60 */}
       {showReports && <Reports store={store} onClose={() => setShowReports(false)} />}
+
+      {/* AI Business Assistant — full-screen overlay, z-50 */}
+      {showAI && (
+        <AIAssistant
+          store={store}
+          inventory={inventory}
+          initialQuery={aiQuery}
+          onClose={() => setShowAI(false)}
+        />
+      )}
 
       {/* Biometric / PIN lock screen — z-[100], covers everything */}
       {lock.locked && lock.enabled && (

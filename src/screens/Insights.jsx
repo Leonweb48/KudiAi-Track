@@ -19,7 +19,15 @@ const COLOR_MAP = {
 
 const EMOJI = { insights: "📊", warnings: "⚠️", opportunities: "🚀", actions: "✅" };
 
-export default function Insights({ store, plan = "starter", onUpgrade, staffName, onReports }) {
+const AI_QUICK = [
+  { label: "Today's Sales",      q: "How were today's sales?"    },
+  { label: "Total Profit",       q: "What is my total profit?"   },
+  { label: "Outstanding Credit", q: "Show my outstanding credit" },
+  { label: "Top Customers",      q: "Who are my top customers?"  },
+  { label: "Stock Status",       q: "What is my stock status?"   },
+];
+
+export default function Insights({ store, plan = "starter", onUpgrade, staffName, onReports, onAIOpen }) {
   const { transactions, credits, asoClients } = store;
   const { loading, result, error, analyze }   = useAI();
   const [period, setPeriod] = useState("today");
@@ -99,6 +107,41 @@ export default function Insights({ store, plan = "starter", onUpgrade, staffName
           </button>
         )}
       </div>
+
+      {/* ── AI Assistant card ── */}
+      {onAIOpen && !isStaffView && (
+        <div className="rounded-3xl overflow-hidden shadow-md mb-5"
+          style={{ background: "linear-gradient(135deg,#1e293b 0%,#0f172a 100%)" }}>
+
+          {/* Card header */}
+          <div className="flex items-center justify-between px-4 pt-4 pb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center flex-shrink-0">
+                <span className="text-base leading-none">🤖</span>
+              </div>
+              <div>
+                <p className="text-sm font-bold text-white leading-tight">AI Business Assistant</p>
+                <p className="text-[10px] text-white/50 leading-tight">Powered by your real business data</p>
+              </div>
+            </div>
+            <button
+              onClick={() => onAIOpen("")}
+              className="bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold px-3.5 py-1.5 rounded-xl active:scale-95 transition-all flex-shrink-0">
+              Open Chat
+            </button>
+          </div>
+
+          {/* Quick-tap questions */}
+          <div className="px-4 pb-4 flex gap-2 overflow-x-auto no-scrollbar">
+            {AI_QUICK.map(({ label, q }) => (
+              <button key={label} onClick={() => onAIOpen(q)}
+                className="flex-shrink-0 text-[11px] font-semibold bg-white/10 hover:bg-white/20 text-white/80 px-3 py-1.5 rounded-full whitespace-nowrap transition-colors active:scale-95">
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Period selector */}
       <div className="flex gap-2 my-5">
