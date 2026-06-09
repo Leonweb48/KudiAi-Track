@@ -97,8 +97,10 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [adding,       setAdding]       = useState(false);
   const [reminderFor,  setReminderFor]  = useState(null);
   const [copied,       setCopied]       = useState(false);
-  const [showPins,     setShowPins]     = useState({});
-  const [portalCopied, setPortalCopied] = useState(null);
+  const [showPins,      setShowPins]      = useState({});
+  const [portalCopied,  setPortalCopied]  = useState(null);
+  const [createdClient, setCreatedClient] = useState(null);
+  const [copiedField,   setCopiedField]   = useState(null);
 
   // Filters
   const [search,         setSearch]         = useState("");
@@ -186,7 +188,19 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       }
     }
     setAdding(false);
-    resetAdd();
+    if (!error && data) {
+      resetAdd();
+      setCreatedClient(data);
+    } else {
+      resetAdd();
+    }
+  };
+
+  const copyField = (text, key) => {
+    navigator.clipboard?.writeText(text).then(() => {
+      setCopiedField(key);
+      setTimeout(() => setCopiedField(null), 2000);
+    });
   };
 
   const handleCopy = (msg) => {
@@ -788,6 +802,107 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       )}
       {clientProf && (
         <ClientProfile record={clientProf} type="aso" onSave={updateAsoClient} onClose={() => setClientProf(null)} />
+      )}
+
+      {/* ── Client Account Created Modal ─────────────────────────── */}
+      {createdClient && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-5">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-sm shadow-2xl max-h-[90vh] flex flex-col">
+            <div className="overflow-y-auto flex-1 p-6">
+
+              {/* Header */}
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-11 h-11 bg-violet-100 dark:bg-violet-900/30 rounded-full flex items-center justify-center flex-shrink-0">
+                  <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-violet-600" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+                    <path d="M20 6L9 17l-5-5" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-sm font-extrabold text-slate-800 dark:text-white">Ajo Client Account Created</p>
+                  <p className="text-xs text-slate-400 dark:text-slate-500">Share these credentials with {createdClient.full_name.split(" ")[0]}</p>
+                </div>
+              </div>
+
+              {/* Credential cards */}
+              <div className="space-y-3 mb-5">
+
+                {/* Client name */}
+                <div className="bg-slate-50 dark:bg-slate-800 rounded-2xl px-4 py-3">
+                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">Client Name</p>
+                  <p className="text-sm font-bold text-slate-800 dark:text-white">{createdClient.full_name}</p>
+                </div>
+
+                {/* Membership Number */}
+                <div className="bg-slate-50 dark:bg-slate-800 rounded-2xl px-4 py-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">Membership Number</p>
+                      <p className="text-sm font-bold text-slate-800 dark:text-white font-mono tracking-wider">{createdClient.membership_number}</p>
+                    </div>
+                    <button
+                      onClick={() => copyField(createdClient.membership_number, "membership")}
+                      className="ml-3 text-[11px] font-bold text-violet-600 bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 px-2.5 py-1.5 rounded-lg flex-shrink-0">
+                      {copiedField === "membership" ? "Copied!" : "Copy"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Portal PIN */}
+                <div className="bg-slate-50 dark:bg-slate-800 rounded-2xl px-4 py-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">Portal PIN</p>
+                      <p className="text-2xl font-black tracking-[0.3em] text-violet-600 dark:text-violet-400">{createdClient.portal_pin}</p>
+                    </div>
+                    <button
+                      onClick={() => copyField(createdClient.portal_pin, "pin")}
+                      className="ml-3 text-[11px] font-bold text-violet-600 bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 px-2.5 py-1.5 rounded-lg flex-shrink-0">
+                      {copiedField === "pin" ? "Copied!" : "Copy"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Portal URL */}
+                <div className="bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800/40 rounded-2xl px-4 py-3">
+                  <p className="text-[10px] font-semibold text-violet-500 uppercase tracking-wide mb-0.5">Portal Login URL</p>
+                  <p className="text-xs font-bold text-violet-700 dark:text-violet-300 break-all">kuditrack-kappa.vercel.app/?portal=1</p>
+                </div>
+              </div>
+
+              {/* Copy all */}
+              <button
+                onClick={() => copyField(
+                  `Ajo Client Portal Credentials\n\nName: ${createdClient.full_name}\nMembership: ${createdClient.membership_number}\nPIN: ${createdClient.portal_pin}\nPortal: https://kuditrack-kappa.vercel.app/?portal=1`,
+                  "all"
+                )}
+                className={`w-full py-3 rounded-xl font-bold text-sm mb-3 transition flex items-center justify-center gap-2 active:scale-[0.99] border ${
+                  copiedField === "all"
+                    ? "bg-green-500 text-white border-green-500"
+                    : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700"
+                }`}>
+                <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                  {copiedField === "all"
+                    ? <path d="M20 6L9 17l-5-5" />
+                    : <><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></>
+                  }
+                </svg>
+                {copiedField === "all" ? "Copied!" : "Copy All Credentials"}
+              </button>
+
+              <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-xl px-4 py-3 mb-4">
+                <p className="text-[11px] text-amber-700 dark:text-amber-300 font-medium leading-relaxed">
+                  Client uses their Membership Number + PIN to log into the portal. They can change their PIN after first login.
+                </p>
+              </div>
+
+              <button
+                onClick={() => { setCreatedClient(null); setCopiedField(null); }}
+                className="w-full bg-violet-600 hover:bg-violet-700 text-white font-bold rounded-2xl py-3.5 text-sm transition">
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
