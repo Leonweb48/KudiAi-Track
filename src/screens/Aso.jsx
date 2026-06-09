@@ -9,6 +9,7 @@ import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import { supabase } from "../utils/supabase";
 import { canDo } from "../utils/plans";
 import { fmt, today } from "../utils/helpers";
+import { useT } from "../contexts/LanguageContext";
 
 const BLANK = {
   full_name: "", contribution_frequency: "daily", contribution_amount: "",
@@ -84,6 +85,7 @@ function isGroupAccount(c) {
 }
 
 export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, onUpgrade }) {
+  const t = useT();
   const [showAdd,      setShowAdd]      = useState(false);
   const [selected,     setSelected]     = useState(null);
   const [action,       setAction]       = useState(null);
@@ -223,7 +225,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-xl font-extrabold text-slate-800 dark:text-white tracking-tight">Aso Savings</h1>
+        <h1 className="text-xl font-extrabold text-slate-800 dark:text-white tracking-tight">{t("aso.title")}</h1>
         <button onClick={() => setShowAdd(true)}
           className="w-9 h-9 bg-violet-600 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform">
           <Icon name="plus" size={18} className="text-white" />

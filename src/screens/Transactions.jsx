@@ -5,6 +5,7 @@ import Field  from "../components/shared/Field";
 import { TransactionReceipt } from "../components/shared/Receipt";
 import { fmt, today } from "../utils/helpers";
 import { canDo, planLimits } from "../utils/plans";
+import { useT } from "../contexts/LanguageContext";
 
 const CATEGORIES   = ["sale", "expense", "stock", "credit sale", "debt repayment", "other"];
 const PAYMENT_TYPES = ["cash", "transfer", "pos", "mobile money"];
@@ -205,6 +206,7 @@ function AddTxnModal({ onAdd, onClose, defaultType = "in", inventory = null }) {
 }
 
 export default function Transactions({ store, plan = "starter", onVoiceOpen, autoOpen, autoType, onAutoOpened, onUpgrade, readOnly, inventory = null }) {
+  const t = useT();
   const [showAdd,    setShowAdd]    = useState(false);
   const [initType,   setInitType]   = useState("in");
   const [filter,     setFilter]     = useState("all");
@@ -269,7 +271,7 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
 
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-xl font-extrabold text-slate-800 dark:text-white tracking-tight">Transactions</h1>
+        <h1 className="text-xl font-extrabold text-slate-800 dark:text-white tracking-tight">{t("txn.title")}</h1>
         <div className="flex gap-2">
           {onVoiceOpen && !txLimitReached && (
             <button onClick={onVoiceOpen}
@@ -300,11 +302,11 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
       <div className="flex gap-2 mb-4">
         <button onClick={() => openAdd("in")}
           className="flex-1 py-2.5 bg-green-600 text-white rounded-xl font-bold text-xs active:scale-95 transition-transform shadow-sm">
-          + Cash In
+          + {t("txn.cashIn")}
         </button>
         <button onClick={() => openAdd("out")}
           className="flex-1 py-2.5 bg-red-500 text-white rounded-xl font-bold text-xs active:scale-95 transition-transform shadow-sm">
-          + Cash Out
+          + {t("txn.cashOut")}
         </button>
       </div>
 
@@ -317,7 +319,7 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
                 ? "bg-slate-800 dark:bg-white text-white dark:text-slate-900"
                 : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
             }`}>
-            {f === "all" ? "All" : f === "in" ? "Cash In" : "Cash Out"}
+            {f === "all" ? t("txn.all") : f === "in" ? t("txn.cashIn") : t("txn.cashOut")}
           </button>
         ))}
       </div>

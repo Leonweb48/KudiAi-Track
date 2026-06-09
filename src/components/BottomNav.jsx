@@ -1,29 +1,32 @@
 import Icon from "./Icon";
+import { useT } from "../contexts/LanguageContext";
 
-const NAV_ITEMS = [
-  { id: "home",         icon: "home",      label: "Home"      },
-  { id: "transactions", icon: "txn",       label: "Sales"     },
-  { id: "inventory",    icon: "inventory", label: "Stock"     },
-  { id: "credit",       icon: "credit",    label: "Credit"    },
-  { id: "aso",          icon: "aso",       label: "Ajo"       },
-  { id: "insights",     icon: "insights",  label: "Reports"   },
-  { id: "settings",     icon: "settings",  label: "More"      },
+const NAV_IDS = [
+  { id: "home",         icon: "home",      tkey: "nav.home"    },
+  { id: "transactions", icon: "txn",       tkey: "nav.sales"   },
+  { id: "inventory",    icon: "inventory", tkey: "nav.stock"   },
+  { id: "credit",       icon: "credit",    tkey: "nav.credit"  },
+  { id: "aso",          icon: "aso",       tkey: "nav.ajo"     },
+  { id: "insights",     icon: "insights",  tkey: "nav.reports" },
+  { id: "settings",     icon: "settings",  tkey: "nav.more"    },
 ];
 
 export default function BottomNav({ active, onNavigate }) {
+  const t = useT();
   return (
     <nav
       className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md z-40 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 shadow-float"
       role="navigation" aria-label="Main navigation"
     >
       <div className="flex items-stretch h-[60px]">
-        {NAV_ITEMS.map((n) => {
+        {NAV_IDS.map((n) => {
           const isActive = active === n.id;
+          const label = t(n.tkey);
           return (
             <button
               key={n.id}
               onClick={() => onNavigate(n.id)}
-              aria-label={n.label}
+              aria-label={label}
               aria-current={isActive ? "page" : undefined}
               className="flex-1 flex flex-col items-center justify-center gap-0.5 relative transition-colors duration-150 focus-visible:outline-none"
             >
@@ -49,7 +52,7 @@ export default function BottomNav({ active, onNavigate }) {
                   ? "text-brand-600 dark:text-brand-400"
                   : "text-slate-400 dark:text-slate-500"
               }`}>
-                {n.label}
+                {label}
               </span>
             </button>
           );

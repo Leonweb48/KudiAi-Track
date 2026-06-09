@@ -1,11 +1,12 @@
 import { fmt, today } from "../utils/helpers";
 import { NotificationBell } from "../components/NotificationCenter";
+import { useT } from "../contexts/LanguageContext";
 
-function greeting() {
+function greetingKey() {
   const h = new Date().getHours();
-  if (h < 12) return "Good morning";
-  if (h < 17) return "Good afternoon";
-  return "Good evening";
+  if (h < 12) return "greet.morning";
+  if (h < 17) return "greet.afternoon";
+  return "greet.evening";
 }
 
 function fmtDate() {
@@ -95,6 +96,7 @@ function TxRow({ t }) {
 /* ── Main ────────────────────────────────────────────────────────── */
 export default function Home({ store, setTab, onQuickAction, onVoiceOpen, notif }) {
   const { transactions, credits, asoClients, profile, loading } = store;
+  const t = useT();
 
   const todayTx    = transactions.filter(t => t.transaction_date === today());
   const cashIn     = todayTx.filter(t => t.type === "in" ).reduce((s, t) => s + t.amount, 0);
@@ -147,7 +149,7 @@ export default function Home({ store, setTab, onQuickAction, onVoiceOpen, notif 
 
       {/* ── Greeting ─────────────────────────────────────────────────── */}
       <div className="pt-4">
-        <p className="text-sm text-slate-400 dark:text-slate-500 font-medium">{greeting()} 👋</p>
+        <p className="text-sm text-slate-400 dark:text-slate-500 font-medium">{t(greetingKey())} 👋</p>
         <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white leading-tight mt-0.5 truncate">
           {profile.business_name || profile.owner_name || "Welcome"}
         </h1>
@@ -163,7 +165,7 @@ export default function Home({ store, setTab, onQuickAction, onVoiceOpen, notif 
         <div className="absolute top-6 right-24  w-14 h-14 rounded-full bg-white/5 pointer-events-none" />
 
         <div className="relative">
-          <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest">Today's Profit</p>
+          <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest">{t("home.todayProfit")}</p>
 
           {loading ? (
             <div className="h-12 w-44 bg-white/20 rounded-xl animate-pulse mt-2 mb-5" />
@@ -175,17 +177,17 @@ export default function Home({ store, setTab, onQuickAction, onVoiceOpen, notif 
 
           <div className="flex gap-5">
             <div>
-              <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">Cash In</p>
+              <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">{t("home.cashIn")}</p>
               <p className="text-base font-bold tabular">{loading ? "—" : fmt(cashIn)}</p>
             </div>
             <div className="w-px bg-white/20 self-stretch" />
             <div>
-              <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">Cash Out</p>
+              <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">{t("home.cashOut")}</p>
               <p className="text-base font-bold tabular">{loading ? "—" : fmt(cashOut)}</p>
             </div>
             <div className="w-px bg-white/20 self-stretch" />
             <div>
-              <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">Txns</p>
+              <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">{t("home.txns")}</p>
               <p className="text-base font-bold tabular">{loading ? "—" : todayTx.length}</p>
             </div>
           </div>
@@ -194,35 +196,35 @@ export default function Home({ store, setTab, onQuickAction, onVoiceOpen, notif 
 
       {/* ── 4 stat cards ─────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-3">
-        <StatCard label="Cash In"       value={fmt(cashIn)}      icon={P.in}     iconBg="bg-green-100 dark:bg-green-900/40" iconColor="#16a34a" loading={loading} onClick={() => setTab("transactions")} />
-        <StatCard label="Cash Out"      value={fmt(cashOut)}     icon={P.out}    iconBg="bg-red-100 dark:bg-red-900/40"   iconColor="#ef4444" loading={loading} onClick={() => setTab("transactions")} />
-        <StatCard label="Pending Credit" value={fmt(totalCredit)} icon={P.credit} iconBg="bg-amber-100 dark:bg-amber-900/40" iconColor="#d97706"
-          sub={overdueCount > 0 ? `⚠ ${overdueCount} overdue` : `${credits.length} records`} loading={loading} onClick={() => setTab("credit")} />
-        <StatCard label="Aso Balance"   value={fmt(totalAso)}    icon={P.bank}   iconBg="bg-blue-100 dark:bg-blue-900/40" iconColor="#2563eb"
-          sub={`${asoClients.length} clients`} loading={loading} onClick={() => setTab("aso")} />
+        <StatCard label={t("home.cashIn")}       value={fmt(cashIn)}      icon={P.in}     iconBg="bg-green-100 dark:bg-green-900/40" iconColor="#16a34a" loading={loading} onClick={() => setTab("transactions")} />
+        <StatCard label={t("home.cashOut")}      value={fmt(cashOut)}     icon={P.out}    iconBg="bg-red-100 dark:bg-red-900/40"   iconColor="#ef4444" loading={loading} onClick={() => setTab("transactions")} />
+        <StatCard label={t("home.pendingCredit")} value={fmt(totalCredit)} icon={P.credit} iconBg="bg-amber-100 dark:bg-amber-900/40" iconColor="#d97706"
+          sub={overdueCount > 0 ? `⚠ ${overdueCount} ${t("home.overdueLabel")}` : `${credits.length} ${t("home.recordsLabel")}`} loading={loading} onClick={() => setTab("credit")} />
+        <StatCard label={t("home.asoBalance")}   value={fmt(totalAso)}    icon={P.bank}   iconBg="bg-blue-100 dark:bg-blue-900/40" iconColor="#2563eb"
+          sub={`${asoClients.length} ${t("home.clientsLabel")}`} loading={loading} onClick={() => setTab("aso")} />
       </div>
 
       {/* ── Quick Actions ────────────────────────────────────────────── */}
       <div>
-        <h2 className="text-[13px] font-bold text-slate-700 dark:text-slate-300 mb-3 tracking-wide">Quick Actions</h2>
+        <h2 className="text-[13px] font-bold text-slate-700 dark:text-slate-300 mb-3 tracking-wide">{t("home.quickActions")}</h2>
         <div className="grid grid-cols-3 gap-y-4 gap-x-2">
-          <ActionBtn label="Voice Record" icon={P.mic}    bg="bg-gradient-to-br from-green-500 to-green-600"  iconColor="white" onClick={() => onVoiceOpen?.()} />
-          <ActionBtn label="Cash In"      icon={P.in}     bg="bg-gradient-to-br from-green-500 to-emerald-600" iconColor="white" onClick={() => onQuickAction?.("transactions","in")} />
-          <ActionBtn label="Cash Out"     icon={P.out}    bg="bg-gradient-to-br from-red-500 to-red-600"       iconColor="white" onClick={() => onQuickAction?.("transactions","out")} />
-          <ActionBtn label="Pay Bills"    icon={P.bills}  bg="bg-gradient-to-br from-cyan-500 to-teal-600"     iconColor="white" onClick={() => setTab("bills")} />
-          <ActionBtn label="Credit Sale"  icon={P.credit} bg="bg-gradient-to-br from-amber-400 to-amber-500"   iconColor="white" onClick={() => onQuickAction?.("credit")} />
-          <ActionBtn label="Aso Client"   icon={P.bank}   bg="bg-gradient-to-br from-blue-500 to-blue-600"     iconColor="white" onClick={() => onQuickAction?.("aso")} />
-          <ActionBtn label="Reports"      icon={P.report} bg="bg-gradient-to-br from-purple-500 to-violet-600" iconColor="white" onClick={() => setTab("insights")} />
+          <ActionBtn label={t("home.voiceRecord")} icon={P.mic}    bg="bg-gradient-to-br from-green-500 to-green-600"  iconColor="white" onClick={() => onVoiceOpen?.()} />
+          <ActionBtn label={t("home.cashIn")}      icon={P.in}     bg="bg-gradient-to-br from-green-500 to-emerald-600" iconColor="white" onClick={() => onQuickAction?.("transactions","in")} />
+          <ActionBtn label={t("home.cashOut")}     icon={P.out}    bg="bg-gradient-to-br from-red-500 to-red-600"       iconColor="white" onClick={() => onQuickAction?.("transactions","out")} />
+          <ActionBtn label={t("home.payBills")}    icon={P.bills}  bg="bg-gradient-to-br from-cyan-500 to-teal-600"     iconColor="white" onClick={() => setTab("bills")} />
+          <ActionBtn label={t("home.creditSale")}  icon={P.credit} bg="bg-gradient-to-br from-amber-400 to-amber-500"   iconColor="white" onClick={() => onQuickAction?.("credit")} />
+          <ActionBtn label={t("home.asoClient")}   icon={P.bank}   bg="bg-gradient-to-br from-blue-500 to-blue-600"     iconColor="white" onClick={() => onQuickAction?.("aso")} />
+          <ActionBtn label={t("home.reports")}     icon={P.report} bg="bg-gradient-to-br from-purple-500 to-violet-600" iconColor="white" onClick={() => setTab("insights")} />
         </div>
       </div>
 
       {/* ── Recent Transactions ──────────────────────────────────────── */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-[13px] font-bold text-slate-700 dark:text-slate-300 tracking-wide">Recent Transactions</h2>
+          <h2 className="text-[13px] font-bold text-slate-700 dark:text-slate-300 tracking-wide">{t("home.recentTxns")}</h2>
           <button onClick={() => setTab("transactions")}
             className="text-xs text-brand-600 dark:text-brand-400 font-bold tracking-wide">
-            See all →
+            {t("home.seeAll")}
           </button>
         </div>
 
@@ -237,8 +239,8 @@ export default function Home({ store, setTab, onQuickAction, onVoiceOpen, notif 
             <div className="w-14 h-14 bg-slate-100 dark:bg-slate-700 rounded-full flex items-center justify-center mx-auto mb-3">
               <Svg d={P.report} size={22} color="#94a3b8" sw={1.5} />
             </div>
-            <p className="text-slate-500 dark:text-slate-400 text-sm font-semibold">No transactions yet</p>
-            <p className="text-slate-400 dark:text-slate-500 text-xs mt-1">Tap "Cash In" or Voice Record to start</p>
+            <p className="text-slate-500 dark:text-slate-400 text-sm font-semibold">{t("home.noTxns")}</p>
+            <p className="text-slate-400 dark:text-slate-500 text-xs mt-1">{t("home.startRecord")}</p>
           </div>
         ) : (
           <div className="space-y-2">

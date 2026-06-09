@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useAI } from "../hooks/useAI";
 import { filterByPeriod } from "../utils/helpers";
 import { canDo } from "../utils/plans";
+import { useT } from "../contexts/LanguageContext";
 
 const SECTIONS = [
   { key: "insights",      label: "Key Insights",   color: "blue"   },
@@ -32,6 +33,7 @@ export default function Insights({ store, plan = "starter", onUpgrade, staffName
   const { loading, result, error, analyze }   = useAI();
   const [period, setPeriod] = useState("today");
   const isStaffView = Boolean(staffName);
+  const t = useT();
 
   if (!canDo(plan, "aiInsights")) {
     return (
@@ -39,14 +41,14 @@ export default function Insights({ store, plan = "starter", onUpgrade, staffName
         <div className="w-24 h-24 bg-amber-50 dark:bg-amber-900/20 rounded-full flex items-center justify-center mb-5">
           <span className="text-5xl">✨</span>
         </div>
-        <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-2">Premium Plan Required</h2>
+        <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-2">{t("insights.premiumReq")}</h2>
         <p className="text-sm text-slate-500 dark:text-slate-400 mb-2 max-w-xs leading-relaxed">
-          AI-powered business insights are exclusive to the Premium plan.
+          {t("premium.aiDesc")}
         </p>
-        <p className="text-xs text-slate-400 dark:text-slate-500 mb-6">Get smart recommendations, warnings & growth opportunities.</p>
+        <p className="text-xs text-slate-400 dark:text-slate-500 mb-6">{t("premium.subLine")}</p>
         <button onClick={onUpgrade}
           className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-2xl font-bold text-sm active:scale-95 transition-all shadow-md">
-          Upgrade to Premium — ₦5,000/mo
+          {t("insights.upgradeBtn")}
         </button>
         {onReports && (
           <button onClick={onReports}
@@ -91,7 +93,7 @@ export default function Insights({ store, plan = "starter", onUpgrade, staffName
       <div className="flex items-start justify-between mb-1 gap-3">
         <div>
           <h1 className="text-xl font-bold text-slate-800 dark:text-white">
-            {isStaffView ? "My Performance" : "AI Insights"}
+            {isStaffView ? t("insights.myPerf") : t("insights.title")}
           </h1>
           <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
             {isStaffView ? `${staffName} · personal stats` : "Smart business analysis · No API key needed"}
@@ -152,7 +154,7 @@ export default function Insights({ store, plan = "starter", onUpgrade, staffName
                 ? "bg-slate-800 dark:bg-white text-white dark:text-slate-900"
                 : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
             }`}>
-            {p === "today" ? "Today" : p === "week" ? "This Week" : "This Month"}
+            {p === "today" ? t("insights.today") : p === "week" ? t("insights.week") : t("insights.month")}
           </button>
         ))}
       </div>
@@ -167,10 +169,10 @@ export default function Insights({ store, plan = "starter", onUpgrade, staffName
         {loading ? (
           <span className="flex items-center justify-center gap-2">
             <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full spinner inline-block" />
-            Analyzing your business…
+            {t("insights.analyzing")}
           </span>
         ) : (
-          "✨ Generate Insights"
+          t("insights.generate")
         )}
       </button>
 
@@ -205,9 +207,9 @@ export default function Insights({ store, plan = "starter", onUpgrade, staffName
           <div className="w-20 h-20 bg-amber-50 dark:bg-amber-900/20 rounded-full flex items-center justify-center mx-auto mb-5">
             <span className="text-4xl">✨</span>
           </div>
-          <p className="text-slate-600 dark:text-slate-300 font-semibold text-sm">No analysis yet</p>
+          <p className="text-slate-600 dark:text-slate-300 font-semibold text-sm">{t("insights.noResult")}</p>
           <p className="text-slate-400 dark:text-slate-500 text-xs mt-1 max-w-[220px] mx-auto">
-            Tap "Generate Insights" to get personalized business advice based on your transactions
+            {t("insights.tapGenerate")}
           </p>
         </div>
       )}

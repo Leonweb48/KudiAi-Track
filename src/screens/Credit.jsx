@@ -8,6 +8,7 @@ import { ClientProfile }  from "../components/shared/ClientProfile";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import { supabase } from "../utils/supabase";
 import { fmt } from "../utils/helpers";
+import { useT } from "../contexts/LanguageContext";
 
 const BLANK = {
   customer_name: "", total_amount: "", due_date: "", notes: "",
@@ -47,6 +48,7 @@ function buildReminderMessage(c, businessName) {
 }
 
 export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened, onUpgrade }) {
+  const t = useT();
   const [showAdd,      setShowAdd]      = useState(false);
   const [repaying,     setRepaying]     = useState(null);
   const [repayAmt,     setRepayAmt]     = useState("");
@@ -150,7 +152,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
 
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-xl font-extrabold text-slate-800 dark:text-white tracking-tight">Credit Tracker</h1>
+        <h1 className="text-xl font-extrabold text-slate-800 dark:text-white tracking-tight">{t("credit.title")}</h1>
         <button onClick={() => setShowAdd(true)}
           className="w-9 h-9 bg-amber-500 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform">
           <Icon name="plus" size={18} className="text-white" />
@@ -299,8 +301,8 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
               <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
             </svg>
           </div>
-          <p className="text-slate-500 dark:text-slate-400 text-sm font-semibold">No credit records yet</p>
-          <p className="text-slate-400 dark:text-slate-500 text-xs mt-1">Tap + to add a debtor</p>
+          <p className="text-slate-500 dark:text-slate-400 text-sm font-semibold">{t("credit.noCredit")}</p>
+          <p className="text-slate-400 dark:text-slate-500 text-xs mt-1">{t("credit.addDebtor")}</p>
         </div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-10 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700/50">

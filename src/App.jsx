@@ -25,6 +25,7 @@ import AIAssistant           from "./screens/AIAssistant";
 import LockScreen            from "./components/LockScreen";
 import { useInventory }      from "./hooks/useInventory";
 import { useBiometricLock }  from "./hooks/useBiometricLock";
+import { LanguageProvider }  from "./contexts/LanguageContext";
 
 function Spinner() {
   return (
@@ -187,6 +188,7 @@ export default function App() {
   };
 
   return (
+    <LanguageProvider>
     <div className={isDark ? "dark" : ""}>
       <div className="h-screen bg-slate-50 dark:bg-slate-900 flex justify-center transition-colors duration-200">
         <div className="w-full max-w-md relative flex flex-col h-screen">
@@ -243,5 +245,6 @@ export default function App() {
         <LockScreen lock={lock} businessName={store.profile?.business_name || store.profile?.owner_name} />
       )}
     </div>
+    </LanguageProvider>
   );
 }

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { fmt } from "../utils/helpers";
 import { canDo } from "../utils/plans";
+import { useT } from "../contexts/LanguageContext";
 
 const CATEGORIES = [
   "Electronics", "Clothing", "Food & Beverages", "Cosmetics",
@@ -506,6 +507,7 @@ function ProductCard({ product, onView, onSale, onRestock, isOwner, onEdit }) {
 
 /* ── Main Screen ──────────────────────────────────────────────── */
 export default function Inventory({ inventory, isOwner = true, plan = "starter", onUpgrade }) {
+  const t = useT();
   const [search,      setSearch]      = useState("");
   const [catFilter,   setCatFilter]   = useState("all");
   const [showForm,    setShowForm]    = useState(false);
@@ -582,7 +584,7 @@ export default function Inventory({ inventory, isOwner = true, plan = "starter",
       <div className="sticky top-0 z-20 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 pt-4 pb-3">
         <div className="flex items-center justify-between gap-3 mb-3">
           <div>
-            <h1 className="text-xl font-black text-slate-800 dark:text-white">Inventory</h1>
+            <h1 className="text-xl font-black text-slate-800 dark:text-white">{t("inv.title")}</h1>
             <p className="text-xs text-slate-400 dark:text-slate-500">{products.length} product{products.length !== 1 ? "s" : ""}</p>
           </div>
           <div className="flex items-center gap-2">

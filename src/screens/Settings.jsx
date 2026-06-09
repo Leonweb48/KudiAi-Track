@@ -4,7 +4,8 @@ import Field           from "../components/shared/Field";
 import StaffManagement from "./StaffManagement";
 import { supabase } from "../utils/supabase";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
-import { LANGUAGES, getLang, setLang, getLangMeta } from "../utils/i18n";
+import { LANGUAGES, getLangMeta } from "../utils/i18n";
+import { useLanguage, useT } from "../contexts/LanguageContext";
 
 /* ── PIN Setup Modal ──────────────────────────────────────────────── */
 function PinSetupModal({ onDone, onClose }) {
@@ -198,7 +199,8 @@ const LogoutIconSvg  = () => (
 );
 
 /* ── Language picker modal ────────────────────────────────────────── */
-function LanguageModal({ current, onSelect, onClose }) {
+function LanguageModal({ current, onClose }) {
+  const { changeLang } = useLanguage();
   return (
     <Modal title="Choose Language" onClose={onClose}>
       <p className="text-xs text-slate-400 dark:text-slate-500 mb-4">
@@ -208,7 +210,7 @@ function LanguageModal({ current, onSelect, onClose }) {
         {LANGUAGES.map(lang => (
           <button
             key={lang.code}
-            onClick={() => { setLang(lang.code); onSelect(lang.code); onClose(); }}
+            onClick={() => { changeLang(lang.code); onClose(); }}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border transition-colors active:scale-[0.98] ${
               current === lang.code
                 ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20"
@@ -239,6 +241,8 @@ function LanguageModal({ current, onSelect, onClose }) {
 /* ── Main component ───────────────────────────────────────────────── */
 export default function Settings({ store, session, plan = "starter", onUpgrade, onStaffManagement, lock, onNotifications }) {
   const { profile, setProfile } = store;
+  const { lang: langCode }      = useLanguage();
+  const t                       = useT();
   const [staffMgmt,     setStaffMgmt]     = useState(false);
   const [editProfile,   setEditProfile]   = useState(false);
   const [fp,            setFp]            = useState({ ...profile });
@@ -250,7 +254,6 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
   const [infoModal,     setInfoModal]     = useState(null);
   const [showPinSetup,  setShowPinSetup]  = useState(false);
   const [lockBusy,      setLockBusy]      = useState(false);
-  const [langCode,      setLangCode]      = useState(getLang);
   const [showLangPick,  setShowLangPick]  = useState(false);
 
   const lockEnabled    = lock?.enabled    ?? false;
@@ -332,7 +335,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
 
   return (
     <div className="px-4 pt-6 pb-32 screen-enter">
-      <h1 className="text-[26px] font-bold text-slate-900 dark:text-white mb-6 tracking-tight">Settings</h1>
+      <h1 className="text-[26px] font-bold text-slate-900 dark:text-white mb-6 tracking-tight">{t("settings.title")}</h1>
 
       {/* ── STAFF MANAGEMENT BANNER ────────────────────────────────── */}
       <button
@@ -343,8 +346,8 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
           <UsersIcon white />
         </div>
         <div className="flex-1 text-left">
-          <p className="font-bold text-sm">Staff Management</p>
-          <p className="text-xs text-green-100 mt-0.5">Add staff, assign roles &amp; permissions</p>
+          <p className="font-bold text-sm">{t("settings.staffMgmtBanner")}</p>
+          <p className="text-xs text-green-100 mt-0.5">{t("settings.staffMgmtSub")}</p>
         </div>
         <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-white/70 flex-shrink-0" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
           <path d="M9 18l6-6-6-6" />
@@ -352,44 +355,44 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
       </button>
 
       {/* ── APPEARANCE ─────────────────────────────────────────────── */}
-      <SectionLabel>Appearance</SectionLabel>
+      <SectionLabel>{t("settings.appearance")}</SectionLabel>
       <SettingsCard>
         <Row
           icon={<SunIcon />}
-          label="Dark Mode"
-          sub="Switch between light and dark themes"
+          label={t("settings.darkMode")}
+          sub={t("settings.darkModeSub")}
           onClick={toggleDark}
           right={Toggle}
         />
       </SettingsCard>
 
       {/* ── LANGUAGE ───────────────────────────────────────────────── */}
-      <SectionLabel>Language</SectionLabel>
+      <SectionLabel>{t("settings.language")}</SectionLabel>
       <SettingsCard>
         <Row
           icon={<GlobeIcon />}
-          label="App Language"
+          label={t("settings.appLang")}
           sub={(() => { const m = getLangMeta(langCode); return `${m.flag} ${m.name}${m.native !== m.name ? ` · ${m.native}` : ""}`; })()}
           onClick={() => setShowLangPick(true)}
         />
       </SettingsCard>
 
       {/* ── ACCOUNT ────────────────────────────────────────────────── */}
-      <SectionLabel>Account</SectionLabel>
+      <SectionLabel>{t("settings.account")}</SectionLabel>
       <SettingsCard>
-        <Row icon={<PersonIcon />} label="Profile"          sub="Edit your profile and business info"    onClick={openEdit} />
-        <Row icon={<CrownIcon />}  label="Premium"          sub="Upgrade for more features"              onClick={plan !== "premium" ? onUpgrade : undefined} />
-        <Row icon={<UsersIcon />} label="Staff Management" sub="Add staff, assign roles & permissions" onClick={() => setStaffMgmt(true)} />
-        <Row icon={<BellIcon />}   label="Notifications"    sub="Manage alerts and reminders"            onClick={() => onNotifications?.()} />
+        <Row icon={<PersonIcon />} label={t("settings.profile")}   sub={t("settings.profileSub")}  onClick={openEdit} />
+        <Row icon={<CrownIcon />}  label={t("settings.premium")}   sub={t("settings.premiumSub")}  onClick={plan !== "premium" ? onUpgrade : undefined} />
+        <Row icon={<UsersIcon />}  label={t("settings.staff")}     sub={t("settings.staffSub")}    onClick={() => setStaffMgmt(true)} />
+        <Row icon={<BellIcon />}   label={t("settings.notif")}     sub={t("settings.notifSub")}    onClick={() => onNotifications?.()} />
       </SettingsCard>
 
       {/* ── SECURITY ───────────────────────────────────────────────── */}
-      <SectionLabel>Security</SectionLabel>
+      <SectionLabel>{t("settings.security")}</SectionLabel>
       <SettingsCard>
         {/* App Lock toggle */}
         <Row
           icon={<LockIcon />}
-          label="App Lock"
+          label={t("settings.appLock")}
           sub={
             lockEnabled
               ? lockHasBio
@@ -446,7 +449,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
         {/* Change / Set PIN */}
         <Row
           icon={<ShieldIcon />}
-          label={lockHasPIN ? "Change PIN" : "Set PIN"}
+          label={lockHasPIN ? t("settings.changePin") : t("settings.setPin")}
           sub={
             lockHasPIN
               ? lockBioAvail && lockHasBio
@@ -459,11 +462,11 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
       </SettingsCard>
 
       {/* ── LEGAL ──────────────────────────────────────────────────── */}
-      <SectionLabel>Legal</SectionLabel>
+      <SectionLabel>{t("settings.legal")}</SectionLabel>
       <SettingsCard>
-        <Row icon={<DocIcon />}  label="Terms & Conditions" onClick={() => setInfoModal(INFO.terms)} />
-        <Row icon={<DocIcon />}  label="Privacy Policy"     onClick={() => setInfoModal(INFO.privacy)} />
-        <Row icon={<HelpIcon />} label="Help & Support"     onClick={() => window.open("https://wa.me/2348000000000?text=Hi%2C+I+need+help+with+KudiAI+Track", "_blank")} />
+        <Row icon={<DocIcon />}  label={t("settings.terms")}   onClick={() => setInfoModal(INFO.terms)} />
+        <Row icon={<DocIcon />}  label={t("settings.privacy")} onClick={() => setInfoModal(INFO.privacy)} />
+        <Row icon={<HelpIcon />} label={t("settings.help")}    onClick={() => window.open("https://wa.me/2348000000000?text=Hi%2C+I+need+help+with+KudiAI+Track", "_blank")} />
       </SettingsCard>
 
       {/* ── LOG OUT ────────────────────────────────────────────────── */}
@@ -473,18 +476,17 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
         className="w-full py-[15px] bg-red-50 dark:bg-red-950/30 rounded-2xl font-bold text-sm border border-red-100 dark:border-red-900/40 hover:bg-red-100 dark:hover:bg-red-950/50 disabled:opacity-60 transition-colors flex items-center justify-center gap-2.5 text-red-500 dark:text-red-400 active:scale-[0.99]"
       >
         <LogoutIconSvg />
-        {signingOut ? "Signing out…" : "Log Out"}
+        {signingOut ? t("settings.signingOut") : t("settings.logOut")}
       </button>
 
       <p className="text-center text-[11px] text-slate-300 dark:text-slate-600 mt-6 font-medium">
-        KudiAI Track v1.0 · Made with ♥ for Nigerian traders
+        {t("settings.version")}
       </p>
 
       {/* ── Language picker modal ──────────────────────────────────── */}
       {showLangPick && (
         <LanguageModal
           current={langCode}
-          onSelect={setLangCode}
           onClose={() => setShowLangPick(false)}
         />
       )}
