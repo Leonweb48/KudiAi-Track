@@ -330,15 +330,22 @@ const DISCOS        = [
 ];
 const CABLE_PROVIDERS = ["dstv", "gotv", "startimes"];
 
+const BILL_SERVICES = [
+  { id: "airtime",     label: "Airtime",     emoji: "📱", desc: "Buy airtime instantly",      gradient: "from-green-400 to-emerald-500"   },
+  { id: "data",        label: "Data",        emoji: "📡", desc: "Internet data bundles",      gradient: "from-blue-400 to-cyan-500"        },
+  { id: "electricity", label: "Electricity", emoji: "⚡", desc: "Pay electricity bills",      gradient: "from-amber-400 to-yellow-500"     },
+  { id: "cable",       label: "Cable TV",    emoji: "📺", desc: "DSTV, GOtv, Startimes",      gradient: "from-red-400 to-rose-500"         },
+];
+
 function ClientBills() {
-  const [billTab, setBillTab] = useState("airtime");
-  const [form, setForm]       = useState({
+  const [active,  setActive]  = useState(null);
+  const [form,    setForm]    = useState({
     phone: "", network: "mtn", amount: "",
     disco: "ikeja-electric", meter: "", meterType: "prepaid",
     provider: "dstv", smartcard: "", plan: "",
   });
   const [loading, setLoading] = useState(false);
-  const [result, setResult]   = useState(null);
+  const [result,  setResult]  = useState(null);
 
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
@@ -347,13 +354,13 @@ function ClientBills() {
     setResult(null);
     try {
       let res;
-      if (billTab === "airtime") {
+      if (active === "airtime") {
         if (!form.phone || !form.amount) throw new Error("Enter phone and amount");
         res = await peyflex("airtime", { phone: form.phone, amount: form.amount, network: form.network });
-      } else if (billTab === "data") {
+      } else if (active === "data") {
         if (!form.phone || !form.plan) throw new Error("Enter phone and plan ID");
         res = await peyflex("data", { phone: form.phone, plan: form.plan, amount: form.amount, network: form.network });
-      } else if (billTab === "electricity") {
+      } else if (active === "electricity") {
         if (!form.meter || !form.amount) throw new Error("Enter meter number and amount");
         res = await peyflex("electricity", { meter: form.meter, disco: form.disco, meterType: form.meterType, amount: form.amount, phone: form.phone });
       } else {
@@ -371,98 +378,140 @@ function ClientBills() {
   const inputCls = "w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-400";
 
   return (
-    <div className="px-4 pt-4 pb-8 space-y-4">
-      <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
-        {["airtime", "data", "electricity", "cable"].map(bt => (
-          <button key={bt} onClick={() => { setBillTab(bt === "cable" ? "cable_tv" : bt); setResult(null); }}
-            className={`flex-1 py-1.5 rounded-lg text-[11px] font-bold transition ${(billTab === bt || (billTab === "cable_tv" && bt === "cable")) ? "bg-white dark:bg-slate-700 text-violet-600 dark:text-violet-400 shadow-sm" : "text-slate-500 dark:text-slate-400"}`}>
-            {bt.charAt(0).toUpperCase() + bt.slice(1)}
+    <div className="px-4 pt-5 pb-28 space-y-5">
+      {/* Header */}
+      <div>
+        <p className="text-base font-extrabold text-slate-800 dark:text-white">Bill Payments</p>
+        <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Powered by VTpass · Pay instantly</p>
+      </div>
+
+      {/* Service board grid */}
+      <div className="grid grid-cols-2 gap-3">
+        {BILL_SERVICES.map(s => (
+          <button key={s.id}
+            onClick={() => { setActive(active === s.id ? null : s.id); setResult(null); }}
+            className={`relative rounded-2xl p-4 text-left transition-all active:scale-[0.97] overflow-hidden border shadow-sm ${
+              active === s.id
+                ? "border-violet-400 dark:border-violet-500 bg-violet-50 dark:bg-violet-900/20"
+                : "border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800"
+            }`}>
+            <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${s.gradient} flex items-center justify-center text-2xl mb-3 shadow-sm`}>
+              {s.emoji}
+            </div>
+            <p className="text-sm font-extrabold text-slate-800 dark:text-white">{s.label}</p>
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 leading-relaxed">{s.desc}</p>
+            {active === s.id && (
+              <div className="absolute top-2.5 right-2.5 w-5 h-5 bg-violet-600 rounded-full flex items-center justify-center">
+                <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3 text-white" stroke="currentColor" strokeWidth={3}>
+                  <path d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+            )}
           </button>
         ))}
       </div>
 
-      {result && (
-        <div className={`rounded-xl px-4 py-3 border text-sm font-semibold ${result.ok ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-700 dark:text-green-400" : "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-600 dark:text-red-400"}`}>
-          {result.message}
-          {result.token && <p className="text-xs mt-1 font-mono break-all">Token: {result.token}</p>}
+      {/* Expanded form */}
+      {active && (
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4 space-y-3 shadow-sm">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-lg">{BILL_SERVICES.find(s => s.id === active)?.emoji}</span>
+            <p className="text-sm font-extrabold text-slate-800 dark:text-white">
+              {BILL_SERVICES.find(s => s.id === active)?.label}
+            </p>
+          </div>
+
+          {result && (
+            <div className={`rounded-xl px-4 py-3 border text-sm font-semibold ${result.ok ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-700 dark:text-green-400" : "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-600 dark:text-red-400"}`}>
+              {result.message}
+              {result.token && <p className="text-xs mt-1 font-mono break-all">Token: {result.token}</p>}
+            </div>
+          )}
+
+          {active === "airtime" && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-4 gap-1.5">
+                {NETWORKS.map(n => (
+                  <button key={n} onClick={() => set("network", n)}
+                    className={`py-2 rounded-xl text-xs font-bold border transition ${form.network === n ? "bg-violet-600 text-white border-violet-600" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600"}`}>
+                    {n.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+              <input type="tel" value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="Phone number" className={inputCls} />
+              <input type="number" value={form.amount} onChange={e => set("amount", e.target.value)} placeholder="Amount (₦)" className={inputCls} />
+            </div>
+          )}
+
+          {active === "data" && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-4 gap-1.5">
+                {NETWORKS.map(n => (
+                  <button key={n} onClick={() => set("network", n)}
+                    className={`py-2 rounded-xl text-xs font-bold border transition ${form.network === n ? "bg-violet-600 text-white border-violet-600" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600"}`}>
+                    {n.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+              <input type="tel" value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="Phone number" className={inputCls} />
+              <input value={form.plan} onChange={e => set("plan", e.target.value)} placeholder="Plan ID (e.g. 1000)" className={inputCls} />
+              <input type="number" value={form.amount} onChange={e => set("amount", e.target.value)} placeholder="Amount (₦)" className={inputCls} />
+            </div>
+          )}
+
+          {active === "electricity" && (
+            <div className="space-y-3">
+              <select value={form.disco} onChange={e => set("disco", e.target.value)} className={inputCls}>
+                {DISCOS.map(d => <option key={d.code} value={d.code}>{d.name} Electric</option>)}
+              </select>
+              <div className="grid grid-cols-2 gap-2">
+                <select value={form.meterType} onChange={e => set("meterType", e.target.value)} className={inputCls}>
+                  <option value="prepaid">Prepaid</option>
+                  <option value="postpaid">Postpaid</option>
+                </select>
+                <input type="number" value={form.amount} onChange={e => set("amount", e.target.value)} placeholder="Amount (₦)" className={inputCls} />
+              </div>
+              <input value={form.meter} onChange={e => set("meter", e.target.value)} placeholder="Meter number" className={inputCls} />
+              <input type="tel" value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="Phone (for receipt)" className={inputCls} />
+            </div>
+          )}
+
+          {active === "cable" && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-3 gap-1.5">
+                {CABLE_PROVIDERS.map(p => (
+                  <button key={p} onClick={() => set("provider", p)}
+                    className={`py-2 rounded-xl text-xs font-bold border transition ${form.provider === p ? "bg-violet-600 text-white border-violet-600" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600"}`}>
+                    {p.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+              <input value={form.smartcard} onChange={e => set("smartcard", e.target.value)} placeholder="Smartcard / IUC number" className={inputCls} />
+              <input value={form.plan} onChange={e => set("plan", e.target.value)} placeholder="Package code (e.g. dstv-padi)" className={inputCls} />
+              <div className="grid grid-cols-2 gap-2">
+                <input type="number" value={form.amount} onChange={e => set("amount", e.target.value)} placeholder="Amount (₦)" className={inputCls} />
+                <input type="tel" value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="Phone" className={inputCls} />
+              </div>
+            </div>
+          )}
+
+          <button onClick={handlePay} disabled={loading}
+            className="w-full py-3.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] disabled:opacity-50 shadow-sm">
+            {loading ? "Processing…" : "Pay Now"}
+          </button>
+          <p className="text-[10px] text-center text-slate-400">Powered by VTpass · Live via KudiTrack</p>
         </div>
       )}
 
-      {billTab === "airtime" && (
-        <div className="space-y-3">
-          <div className="grid grid-cols-4 gap-1.5">
-            {NETWORKS.map(n => (
-              <button key={n} onClick={() => set("network", n)}
-                className={`py-2 rounded-xl text-xs font-bold border transition ${form.network === n ? "bg-violet-600 text-white border-violet-600" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600"}`}>
-                {n.toUpperCase()}
-              </button>
-            ))}
-          </div>
-          <input type="tel" value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="Phone number" className={inputCls} />
-          <input type="number" value={form.amount} onChange={e => set("amount", e.target.value)} placeholder="Amount (₦)" className={inputCls} />
+      {!active && (
+        <div className="text-center py-4">
+          <p className="text-xs text-slate-400 dark:text-slate-500">Select a service above to get started</p>
         </div>
       )}
-
-      {billTab === "data" && (
-        <div className="space-y-3">
-          <div className="grid grid-cols-4 gap-1.5">
-            {NETWORKS.map(n => (
-              <button key={n} onClick={() => set("network", n)}
-                className={`py-2 rounded-xl text-xs font-bold border transition ${form.network === n ? "bg-violet-600 text-white border-violet-600" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600"}`}>
-                {n.toUpperCase()}
-              </button>
-            ))}
-          </div>
-          <input type="tel" value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="Phone number" className={inputCls} />
-          <input value={form.plan} onChange={e => set("plan", e.target.value)} placeholder="Plan ID (e.g. 1000)" className={inputCls} />
-          <input type="number" value={form.amount} onChange={e => set("amount", e.target.value)} placeholder="Amount (₦)" className={inputCls} />
-        </div>
-      )}
-
-      {billTab === "electricity" && (
-        <div className="space-y-3">
-          <select value={form.disco} onChange={e => set("disco", e.target.value)} className={inputCls}>
-            {DISCOS.map(d => <option key={d.code} value={d.code}>{d.name} Electric</option>)}
-          </select>
-          <div className="grid grid-cols-2 gap-2">
-            <select value={form.meterType} onChange={e => set("meterType", e.target.value)} className={inputCls}>
-              <option value="prepaid">Prepaid</option>
-              <option value="postpaid">Postpaid</option>
-            </select>
-            <input type="number" value={form.amount} onChange={e => set("amount", e.target.value)} placeholder="Amount (₦)" className={inputCls} />
-          </div>
-          <input value={form.meter} onChange={e => set("meter", e.target.value)} placeholder="Meter number" className={inputCls} />
-          <input type="tel" value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="Phone (for receipt)" className={inputCls} />
-        </div>
-      )}
-
-      {billTab === "cable_tv" && (
-        <div className="space-y-3">
-          <div className="grid grid-cols-3 gap-1.5">
-            {CABLE_PROVIDERS.map(p => (
-              <button key={p} onClick={() => set("provider", p)}
-                className={`py-2 rounded-xl text-xs font-bold border transition ${form.provider === p ? "bg-violet-600 text-white border-violet-600" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600"}`}>
-                {p.toUpperCase()}
-              </button>
-            ))}
-          </div>
-          <input value={form.smartcard} onChange={e => set("smartcard", e.target.value)} placeholder="Smartcard / IUC number" className={inputCls} />
-          <input value={form.plan} onChange={e => set("plan", e.target.value)} placeholder="Package code (e.g. dstv-padi)" className={inputCls} />
-          <div className="grid grid-cols-2 gap-2">
-            <input type="number" value={form.amount} onChange={e => set("amount", e.target.value)} placeholder="Amount (₦)" className={inputCls} />
-            <input type="tel" value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="Phone" className={inputCls} />
-          </div>
-        </div>
-      )}
-
-      <button onClick={handlePay} disabled={loading}
-        className="w-full py-3.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] disabled:opacity-50 shadow-sm">
-        {loading ? "Processing…" : "Pay Now"}
-      </button>
-      <p className="text-[10px] text-center text-slate-400">Powered by VTpass · Live via KudiTrack</p>
     </div>
   );
 }
+
 
 // ── Dashboard Overview ────────────────────────────────────────────────────
 function OverviewTab({ client, contributions, onPayClick }) {

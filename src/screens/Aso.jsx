@@ -18,6 +18,7 @@ const BLANK = {
   phone: "", email: "", nin: "",
   address: "", state: "", lga: "", ward: "",
   next_of_kin: "", next_of_kin_phone: "", next_of_kin_email: "", next_of_kin_address: "",
+  staff_id: "",
 };
 
 const FREQ_DAYS = { daily: 1, weekly: 7, monthly: 30 };
@@ -99,7 +100,6 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [reminderFor,  setReminderFor]  = useState(null);
   const [copied,       setCopied]       = useState(false);
   const [showPins,      setShowPins]      = useState({});
-  const [portalCopied,  setPortalCopied]  = useState(null);
   const [createdClient, setCreatedClient] = useState(null);
   const [copiedField,   setCopiedField]   = useState(null);
 
@@ -121,6 +121,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [dueBefore,      setDueBefore]      = useState("");
 
   const { asoClients, addAsoClient, asoContribute, asoWithdraw, updateAsoClient, profile, staffMap = {} } = store;
+  const staffOptions = Object.entries(staffMap).map(([id, name]) => ({ id, name }));
 
   const [f, setF] = useState(BLANK);
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
@@ -331,6 +332,21 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
+  };
+
+  const handleResetPwd = async (clientRecord) => {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$";
+    const vals  = new Uint32Array(12);
+    crypto.getRandomValues(vals);
+    const newPwd = Array.from(vals, n => chars[n % chars.length]).join("");
+    try {
+      await provisionClientLogin(clientRecord, newPwd);
+      setClientProf(null);
+      setCreatedClient({ ...clientRecord, _password: newPwd, _isReset: true });
+      return {};
+    } catch (err) {
+      return { error: err.message || "Failed to reset password" };
+    }
   };
 
   const reminderMsg = reminderFor ? buildReminderMsg(reminderFor, profile?.business_name) : "";
@@ -668,29 +684,13 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                     </svg>
                     Stmt
                   </button>
-                  {c.membership_number && (
-                    <button
-                      onClick={() => {
-                        const url = `https://kuditrack-kappa.vercel.app/?portal=1`;
-                        navigator.clipboard.writeText(`Membership: ${c.membership_number}\nPIN: ${c.portal_pin}\nPortal: ${url}`).then(() => {
-                          setPortalCopied(c.id);
-                          setTimeout(() => setPortalCopied(null), 2000);
-                        });
-                      }}
-                      className={`py-2 px-3 rounded-xl font-bold text-xs border transition flex items-center gap-1.5 active:scale-[0.99] ${
-                        portalCopied === c.id
-                          ? "bg-green-500 text-white border-green-500"
-                          : "bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800"
-                      }`}>
-                      <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-                        {portalCopied === c.id
-                          ? <path d="M20 6L9 17l-5-5" />
-                          : <><rect x="5" y="2" width="14" height="20" rx="2" /><line x1="9" y1="7" x2="15" y2="7" /><line x1="9" y1="11" x2="15" y2="11" /><line x1="9" y1="15" x2="12" y2="15" /></>
-                        }
-                      </svg>
-                      {portalCopied === c.id ? "Copied!" : "Portal"}
-                    </button>
-                  )}
+                  <button onClick={() => setClientProf(c)}
+                    className="py-2 px-3 bg-slate-50 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-xs border border-slate-200 dark:border-slate-600 active:scale-[0.99] transition flex items-center gap-1.5">
+                    <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                      <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+                    </svg>
+                    Edit
+                  </button>
                 </div>
               </div>
             );
@@ -819,6 +819,17 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           </div>
           <Field label="Address" value={f.next_of_kin_address}
             onChange={e => set("next_of_kin_address", e.target.value)} placeholder="Next of kin address" />
+
+          {staffOptions.length > 0 && (
+            <>
+              <SectionLabel>Staff Assignment</SectionLabel>
+              <Field label="Assign Staff" as="select" value={f.staff_id}
+                onChange={e => set("staff_id", e.target.value)}>
+                <option value="">No staff assigned</option>
+                {staffOptions.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </Field>
+            </>
+          )}
 
           <SectionLabel>Notes</SectionLabel>
           <Field as="textarea" value={f.notes}
@@ -964,7 +975,14 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         <AsoReceipt client={receipt} profile={profile} onClose={() => setReceipt(null)} />
       )}
       {clientProf && (
-        <ClientProfile record={clientProf} type="aso" onSave={updateAsoClient} onClose={() => setClientProf(null)} />
+        <ClientProfile
+          record={clientProf}
+          type="aso"
+          onSave={updateAsoClient}
+          onClose={() => setClientProf(null)}
+          staffList={staffOptions}
+          onResetPwd={handleResetPwd}
+        />
       )}
 
       {/* ── Client Account Created Modal ─────────────────────────── */}
@@ -981,8 +999,12 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                   </svg>
                 </div>
                 <div>
-                  <p className="text-sm font-extrabold text-slate-800 dark:text-white">Client Account Created</p>
-                  <p className="text-xs text-slate-400 dark:text-slate-500">Share these login details with {createdClient.full_name.split(" ")[0]}</p>
+                  <p className="text-sm font-extrabold text-slate-800 dark:text-white">
+                  {createdClient._isReset ? "Password Reset" : "Client Account Created"}
+                </p>
+                  <p className="text-xs text-slate-400 dark:text-slate-500">
+                    {createdClient._isReset ? `New credentials for ${createdClient.full_name.split(" ")[0]}` : `Share these login details with ${createdClient.full_name.split(" ")[0]}`}
+                  </p>
                 </div>
               </div>
 

@@ -72,13 +72,15 @@ function StatusBadge({ status }) {
 }
 
 /* ── Main component ───────────────────────────────────────────────── */
-export function ClientProfile({ record, type, onSave, onClose }) {
+export function ClientProfile({ record, type, onSave, onClose, staffList = [], onResetPwd }) {
   const [editing,      setEditing]      = useState(false);
   const [form,         setForm]         = useState({ ...record });
   const [photoFile,    setPhotoFile]    = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
   const [saving,       setSaving]       = useState(false);
   const [saveErr,      setSaveErr]      = useState("");
+  const [resetting,    setResetting]    = useState(false);
+  const [resetErr,     setResetErr]     = useState("");
 
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
@@ -99,6 +101,14 @@ export function ClientProfile({ record, type, onSave, onClose }) {
 
   const handleStateChange = (s) => setForm(p => ({ ...p, state: s, lga: "", ward: "" }));
   const handleLgaChange   = (l) => setForm(p => ({ ...p, lga: l, ward: "" }));
+
+  const doReset = async () => {
+    setResetting(true);
+    setResetErr("");
+    const res = await onResetPwd(record);
+    setResetting(false);
+    if (res?.error) setResetErr(res.error);
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -263,6 +273,40 @@ export function ClientProfile({ record, type, onSave, onClose }) {
                 </div>
               </div>
 
+              {/* Savings settings — Aso only */}
+              {!isCredit && (
+                <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-100 dark:border-slate-700 shadow-card">
+                  <div className="px-4 pt-4 pb-2"><SectionHead title="Savings Settings" icon="💰" /></div>
+                  <div className="px-4 pb-4 space-y-3.5">
+                    <div className="grid grid-cols-2 gap-3">
+                      <FormField label="Frequency">
+                        <select value={form.contribution_frequency || "monthly"} onChange={e => set("contribution_frequency", e.target.value)} className={inputCls}>
+                          {["daily","weekly","monthly"].map(fr => <option key={fr} value={fr}>{fr.charAt(0).toUpperCase()+fr.slice(1)}</option>)}
+                        </select>
+                      </FormField>
+                      <FormField label="Contribution (₦)">
+                        <input type="number" value={form.contribution_amount || ""} onChange={e => set("contribution_amount", parseFloat(e.target.value)||0)} className={inputCls} placeholder="0.00" />
+                      </FormField>
+                    </div>
+                    <FormField label="Next Due Date">
+                      <input type="date" value={form.next_contribution_date || ""} onChange={e => set("next_contribution_date", e.target.value)} className={inputCls} />
+                    </FormField>
+                    {staffList.length > 0 && (
+                      <FormField label="Assigned Staff">
+                        <select value={form.staff_id || ""} onChange={e => set("staff_id", e.target.value)} className={inputCls}>
+                          <option value="">No staff assigned</option>
+                          {staffList.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                        </select>
+                      </FormField>
+                    )}
+                    <FormField label="Notes">
+                      <textarea value={form.notes || ""} onChange={e => set("notes", e.target.value)} rows={2}
+                        placeholder="Optional notes…" className={inputCls + " resize-none"} />
+                    </FormField>
+                  </div>
+                </div>
+              )}
+
               {/* Address */}
               <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-100 dark:border-slate-700 shadow-card">
                 <div className="px-4 pt-4 pb-2"><SectionHead title="Address" icon="📍" /></div>
@@ -390,6 +434,21 @@ export function ClientProfile({ record, type, onSave, onClose }) {
                     <InfoRow label="Registered"   value={record.registration_date} />
                     <InfoRow label="Notes"        value={record.notes} />
                   </div>
+                </div>
+              )}
+
+              {/* Reset portal password — Aso only */}
+              {!isCredit && onResetPwd && (
+                <div className="space-y-2">
+                  {resetErr && (
+                    <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/40 text-red-600 dark:text-red-400 text-xs rounded-xl px-4 py-3">
+                      {resetErr}
+                    </div>
+                  )}
+                  <button onClick={doReset} disabled={resetting}
+                    className="w-full py-3 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 rounded-2xl font-bold text-sm border border-amber-200 dark:border-amber-800 active:scale-[0.99] transition disabled:opacity-60">
+                    {resetting ? "Resetting password…" : "Reset Portal Password"}
+                  </button>
                 </div>
               )}
 
