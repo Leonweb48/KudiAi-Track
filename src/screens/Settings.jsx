@@ -5,6 +5,95 @@ import StaffManagement from "./StaffManagement";
 import { supabase } from "../utils/supabase";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 
+/* ── PIN Setup Modal ──────────────────────────────────────────────── */
+function PinSetupModal({ onDone, onClose }) {
+  const [step, setStep]   = useState(1);
+  const [pin1, setPin1]   = useState("");
+  const [pin2, setPin2]   = useState("");
+  const [error, setError] = useState("");
+
+  const active    = step === 1 ? pin1 : pin2;
+  const setActive = step === 1 ? setPin1 : setPin2;
+
+  const handleDigit = (d) => {
+    if (active.length >= 4) return;
+    const next = active + d;
+    setActive(next);
+    setError("");
+    if (next.length === 4) {
+      if (step === 1) {
+        setTimeout(() => setStep(2), 250);
+      } else {
+        if (pin1 === next) {
+          onDone(pin1);
+        } else {
+          setError("PINs don't match. Try again.");
+          setPin2("");
+          setPin1("");
+          setTimeout(() => setStep(1), 800);
+        }
+      }
+    }
+  };
+
+  const handleDelete = () => {
+    setActive(v => v.slice(0, -1));
+    setError("");
+  };
+
+  return (
+    <Modal title={step === 1 ? "Set App PIN" : "Confirm PIN"} onClose={onClose}>
+      <div className="flex flex-col items-center gap-6 py-2">
+        <p className="text-sm text-slate-500 dark:text-slate-400 text-center">
+          {step === 1
+            ? "Choose a 4-digit PIN to protect your app"
+            : "Enter your PIN again to confirm"}
+        </p>
+
+        {/* dots */}
+        <div className="flex gap-4">
+          {[0, 1, 2, 3].map(i => (
+            <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all ${
+              active.length > i
+                ? "bg-brand-500 border-brand-500 scale-110"
+                : "border-slate-300 dark:border-slate-600"
+            }`} />
+          ))}
+        </div>
+
+        {error && <p className="text-xs text-red-500 font-semibold -mt-2">{error}</p>}
+
+        {/* numpad */}
+        <div className="grid grid-cols-3 gap-3 w-full max-w-[240px]">
+          {[1,2,3,4,5,6,7,8,9].map(n => (
+            <button key={n} onClick={() => handleDigit(String(n))}
+              className="h-14 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-800 dark:text-white text-lg font-bold transition active:scale-95">
+              {n}
+            </button>
+          ))}
+          <div />
+          <button onClick={() => handleDigit("0")}
+            className="h-14 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-800 dark:text-white text-lg font-bold transition active:scale-95">
+            0
+          </button>
+          <button onClick={handleDelete}
+            className="h-14 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 flex items-center justify-center transition active:scale-95">
+            <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+              <path d="M21 4H8l-7 8 7 8h13a2 2 0 002-2V6a2 2 0 00-2-2z" />
+              <line x1="18" y1="9" x2="13" y2="14" />
+              <line x1="13" y1="9" x2="18" y2="14" />
+            </svg>
+          </button>
+        </div>
+
+        <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center px-4">
+          Your PIN is stored securely on this device only
+        </p>
+      </div>
+    </Modal>
+  );
+}
+
 const GENDERS = ["Male", "Female", "Prefer not to say"];
 
 const INFO = {
@@ -19,14 +108,6 @@ const INFO = {
   terms: {
     title: "Terms & Conditions",
     body:  "By using KudiAI Track you agree to use the app for lawful business purposes only. We are not liable for financial decisions made based on app data. Subscription fees are non-refundable after the billing period starts.",
-  },
-  pin: {
-    title: "Change PIN",
-    body:  "PIN security is coming soon! You will be able to set a 4-digit PIN to protect your app data.",
-  },
-  biometric: {
-    title: "Biometric Lock",
-    body:  "Biometric authentication (fingerprint / face unlock) is coming soon to KudiAI Track.",
   },
 };
 
@@ -119,7 +200,7 @@ const LogoutIconSvg  = () => (
 );
 
 /* ── Main component ───────────────────────────────────────────────── */
-export default function Settings({ store, session, plan = "starter", onUpgrade, onStaffManagement }) {
+export default function Settings({ store, session, plan = "starter", onUpgrade, onStaffManagement, lock }) {
   const { profile, setProfile } = store;
   const [staffMgmt,     setStaffMgmt]     = useState(false);
   const [editProfile,   setEditProfile]   = useState(false);
@@ -130,6 +211,13 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
   const [saveError,     setSaveError]     = useState("");
   const [signingOut,    setSigningOut]    = useState(false);
   const [infoModal,     setInfoModal]     = useState(null);
+  const [showPinSetup,  setShowPinSetup]  = useState(false);
+  const [lockBusy,      setLockBusy]      = useState(false);
+
+  const lockEnabled    = lock?.enabled    ?? false;
+  const lockHasPIN     = lock?.hasPIN     ?? false;
+  const lockHasBio     = lock?.hasBiometric ?? false;
+  const lockBioAvail   = lock?.bioAvailable ?? false;
 
   useEffect(() => {
     if (!editProfile) setFp({ ...profile });
@@ -248,8 +336,76 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
       {/* ── SECURITY ───────────────────────────────────────────────── */}
       <SectionLabel>Security</SectionLabel>
       <SettingsCard>
-        <Row icon={<LockIcon />}   label="Change PIN"      sub="Set or update your security PIN"      onClick={() => setInfoModal(INFO.pin)} />
-        <Row icon={<ShieldIcon />} label="Biometric Lock"  sub="Use fingerprint or face unlock"       onClick={() => setInfoModal(INFO.biometric)} />
+        {/* App Lock toggle */}
+        <Row
+          icon={<LockIcon />}
+          label="App Lock"
+          sub={
+            lockEnabled
+              ? lockHasBio
+                ? "Locked · Fingerprint / Face + PIN"
+                : "Locked · PIN only"
+              : lockHasPIN
+                ? "PIN set but lock is off"
+                : "Protect app when you leave"
+          }
+          onClick={async () => {
+            if (!lock) return;
+            if (lockEnabled) {
+              lock.disableLock();
+            } else if (lockHasPIN) {
+              setLockBusy(true);
+              await lock.enableLock();
+              setLockBusy(false);
+            } else {
+              setShowPinSetup(true);
+            }
+          }}
+          right={
+            <button
+              onClick={async (e) => {
+                e.stopPropagation();
+                if (!lock) return;
+                if (lockEnabled) {
+                  lock.disableLock();
+                } else if (lockHasPIN) {
+                  setLockBusy(true);
+                  await lock.enableLock();
+                  setLockBusy(false);
+                } else {
+                  setShowPinSetup(true);
+                }
+              }}
+              className={`w-12 h-6 rounded-full transition-colors duration-200 relative focus-visible:outline-none flex-shrink-0 ${
+                lockEnabled ? "bg-brand-600" : "bg-slate-200 dark:bg-slate-600"
+              }`}
+            >
+              {lockBusy
+                ? <span className="absolute inset-0 flex items-center justify-center">
+                    <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  </span>
+                : <span
+                    className="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all duration-200"
+                    style={{ left: lockEnabled ? "calc(100% - 22px)" : "2px" }}
+                  />
+              }
+            </button>
+          }
+        />
+
+        {/* Change / Set PIN */}
+        <Row
+          icon={<ShieldIcon />}
+          label={lockHasPIN ? "Change PIN" : "Set PIN"}
+          sub={
+            lockHasPIN
+              ? lockBioAvail && lockHasBio
+                ? "Biometric registered · tap to change PIN"
+                : "Change your 4-digit unlock PIN"
+              : "Set a 4-digit PIN to enable App Lock"
+          }
+          onClick={() => setShowPinSetup(true)}
+        />
       </SettingsCard>
 
       {/* ── LEGAL ──────────────────────────────────────────────────── */}
@@ -273,6 +429,21 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
       <p className="text-center text-[11px] text-slate-300 dark:text-slate-600 mt-6 font-medium">
         KudiAI Track v1.0 · Made with ♥ for Nigerian traders
       </p>
+
+      {/* ── PIN setup modal ────────────────────────────────────────── */}
+      {showPinSetup && (
+        <PinSetupModal
+          onClose={() => setShowPinSetup(false)}
+          onDone={async (pin) => {
+            setShowPinSetup(false);
+            if (!lock) return;
+            await lock.setupPIN(pin);
+            setLockBusy(true);
+            await lock.enableLock();
+            setLockBusy(false);
+          }}
+        />
+      )}
 
       {/* ── Info modal ─────────────────────────────────────────────── */}
       {infoModal && (

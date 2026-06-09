@@ -21,7 +21,9 @@ import StaffFirstLogin       from "./screens/StaffFirstLogin";
 import BillPayments          from "./screens/BillPayments";
 import Inventory             from "./screens/Inventory";
 import Reports               from "./screens/Reports";
+import LockScreen            from "./components/LockScreen";
 import { useInventory }      from "./hooks/useInventory";
+import { useBiometricLock }  from "./hooks/useBiometricLock";
 
 function Spinner() {
   return (
@@ -53,6 +55,9 @@ export default function App() {
 
   // Inventory — separate hook; also fires low-stock notifications
   const inventory = useInventory(userId, null, addNotification);
+
+  // Biometric / PIN lock
+  const lock = useBiometricLock(userId);
 
   const isDark = store.profile?.dark_mode;
   useEffect(() => {
@@ -172,7 +177,8 @@ export default function App() {
                     store={store}
                     session={session}
                     plan={plan}
-                    onUpgrade={openUpgrade} />,
+                    onUpgrade={openUpgrade}
+                    lock={lock} />,
   };
 
   return (
@@ -216,6 +222,11 @@ export default function App() {
 
       {/* Report generator — full-screen overlay, z-60 */}
       {showReports && <Reports store={store} onClose={() => setShowReports(false)} />}
+
+      {/* Biometric / PIN lock screen — z-[100], covers everything */}
+      {lock.locked && lock.enabled && (
+        <LockScreen lock={lock} businessName={store.profile?.business_name || store.profile?.owner_name} />
+      )}
     </div>
   );
 }
