@@ -178,7 +178,8 @@ export default function App() {
                     session={session}
                     plan={plan}
                     onUpgrade={openUpgrade}
-                    lock={lock} />,
+                    lock={lock}
+                    onNotifications={() => notif.setOpen(true)} />,
   };
 
   return (

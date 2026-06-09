@@ -97,10 +97,6 @@ function PinSetupModal({ onDone, onClose }) {
 const GENDERS = ["Male", "Female", "Prefer not to say"];
 
 const INFO = {
-  notify: {
-    title: "Notifications",
-    body:  "Push notifications for payment reminders and overdue credits are coming in a future update. Stay tuned!",
-  },
   privacy: {
     title: "Privacy Policy",
     body:  "KudiAI Track collects only the data you enter. Your business data is stored securely in Supabase and is never shared with third parties. You can request data deletion at any time by contacting support.",
@@ -200,7 +196,7 @@ const LogoutIconSvg  = () => (
 );
 
 /* ── Main component ───────────────────────────────────────────────── */
-export default function Settings({ store, session, plan = "starter", onUpgrade, onStaffManagement, lock }) {
+export default function Settings({ store, session, plan = "starter", onUpgrade, onStaffManagement, lock, onNotifications }) {
   const { profile, setProfile } = store;
   const [staffMgmt,     setStaffMgmt]     = useState(false);
   const [editProfile,   setEditProfile]   = useState(false);
@@ -330,7 +326,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
         <Row icon={<PersonIcon />} label="Profile"          sub="Edit your profile and business info"    onClick={openEdit} />
         <Row icon={<CrownIcon />}  label="Premium"          sub="Upgrade for more features"              onClick={plan !== "premium" ? onUpgrade : undefined} />
         <Row icon={<UsersIcon />} label="Staff Management" sub="Add staff, assign roles & permissions" onClick={() => setStaffMgmt(true)} />
-        <Row icon={<BellIcon />}   label="Notifications"    sub="Manage alerts and reminders"            onClick={() => setInfoModal(INFO.notify)} />
+        <Row icon={<BellIcon />}   label="Notifications"    sub="Manage alerts and reminders"            onClick={() => onNotifications?.()} />
       </SettingsCard>
 
       {/* ── SECURITY ───────────────────────────────────────────────── */}
