@@ -489,7 +489,7 @@ function BranchDetail({ branch, transactions, credits, asoClients, allProducts, 
   const managerName = branch.manager_id ? (staffMap[branch.manager_id] || null) : null;
 
   return (
-    <div className="fixed inset-0 z-[70] bg-slate-50 dark:bg-slate-900 flex flex-col max-w-md mx-auto left-1/2 -translate-x-1/2">
+    <div className="fixed inset-0 z-[70] bg-slate-50 dark:bg-slate-900 flex flex-col">
       {/* Header */}
       <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 py-3 flex items-center gap-3 flex-shrink-0">
         <button onClick={onClose} className="p-2 -ml-1 rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
@@ -644,7 +644,7 @@ export default function Branches({ store, onClose, userId, inventory = {}, onRep
   }
 
   return (
-    <div className="fixed inset-0 z-[60] bg-slate-50 dark:bg-slate-900 flex flex-col max-w-md mx-auto left-1/2 -translate-x-1/2">
+    <div className="fixed inset-0 z-[60] bg-slate-50 dark:bg-slate-900 flex flex-col">
       {/* Header */}
       <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 py-4 flex items-center gap-3 flex-shrink-0">
         <button onClick={onClose} className="p-2 -ml-1 rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
