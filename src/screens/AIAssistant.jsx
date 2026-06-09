@@ -1,23 +1,19 @@
 import { useState, useRef, useEffect } from "react";
 import { today } from "../utils/helpers";
+import { detectLanguage, getLang, respond } from "../utils/i18n";
 
 /* ── Quick-access questions ──────────────────────────────────────── */
 const QUICK = [
-  { label: "Today's Sales",        q: "How were today's sales?"             },
-  { label: "Total Profit",         q: "What is my total profit?"            },
-  { label: "Outstanding Credit",   q: "Show my outstanding credit"          },
-  { label: "Top Customers",        q: "Who are my top customers?"           },
-  { label: "Stock Status",         q: "What is my stock status?"            },
-  { label: "This Month",           q: "How are my monthly sales?"           },
-  { label: "Best Sellers",         q: "What are my best selling items?"     },
-  { label: "Expenses",             q: "Show my expenses breakdown"          },
-  { label: "Overdue Payments",     q: "Any overdue payments?"               },
+  { label: "Today's Sales",      q: "How were today's sales?"         },
+  { label: "Total Profit",       q: "What is my total profit?"        },
+  { label: "Outstanding Credit", q: "Show my outstanding credit"      },
+  { label: "Top Customers",      q: "Who are my top customers?"       },
+  { label: "Stock Status",       q: "What is my stock status?"        },
+  { label: "This Month",         q: "How are my monthly sales?"       },
+  { label: "Best Sellers",       q: "What are my best selling items?" },
+  { label: "Expenses",           q: "Show my expenses breakdown"      },
+  { label: "Overdue Payments",   q: "Any overdue payments?"           },
 ];
-
-/* ── Helpers ─────────────────────────────────────────────────────── */
-function fmtN(n) {
-  return "₦" + Math.round(n || 0).toLocaleString();
-}
 
 function recentDate(transactions) {
   const sorted = [...transactions].sort((a, b) =>
@@ -26,11 +22,14 @@ function recentDate(transactions) {
   return sorted[0]?.transaction_date || "—";
 }
 
-/* ── Core analysis engine ────────────────────────────────────────── */
+/* ── Core analysis engine — detects intent, delegates translation ── */
 function analyzeQuery(query, { transactions = [], credits = [], asoClients = [], products = [] }) {
   const q = query.toLowerCase().trim();
   const todayStr = today();
   const now = new Date();
+
+  // Detect language from user's text; fall back to stored preference
+  const lang = detectLanguage(q) || getLang();
 
   const monthOf = (t) => {
     const d = new Date(t.transaction_date);
@@ -48,36 +47,27 @@ function analyzeQuery(query, { transactions = [], credits = [], asoClients = [],
 
   /* ── TODAY'S SALES ── */
   if (
-    q.includes("today") ||
-    (q.includes("how were") && (q.includes("sale") || q.includes("day")))
+    q.includes("today") || q.includes("yau") || q.includes("oni") ||
+    q.includes("taa ") || q.includes("oge") ||
+    (q.includes("how were") && (q.includes("sale") || q.includes("day"))) ||
+    q.includes("today sales") || q.includes("sales today")
   ) {
-    const sales = transactions.filter(t => t.transaction_date === todayStr && t.type === "in");
-    const outs  = transactions.filter(t => t.transaction_date === todayStr && t.type === "out");
-    const revenue  = sales.reduce((s, t) => s + t.amount, 0);
-    const expenses = outs.reduce((s, t) => s + t.amount, 0);
-
-    if (sales.length === 0 && outs.length === 0) {
-      const last = recentDate(transactions);
-      return `No activity recorded today yet.\n\nYour last recorded transaction was on ${last}. Tap Cash In to start logging today's sales.`;
-    }
-    const top = [...sales].sort((a, b) => b.amount - a.amount).slice(0, 3);
-    return (
-      `Today's business summary:\n\n` +
-      `• Revenue: **${fmtN(revenue)}** from ${sales.length} sale${sales.length !== 1 ? "s" : ""}\n` +
-      `• Expenses: **${fmtN(expenses)}**\n` +
-      `• Net profit: **${fmtN(revenue - expenses)}**` +
-      (top.length > 0
-        ? `\n\nTop sales today:\n${top.map(t => `• ${t.item_name}: ${fmtN(t.amount)}`).join("\n")}`
-        : "")
-    );
+    const sales   = transactions.filter(t => t.transaction_date === todayStr && t.type === "in");
+    const outs    = transactions.filter(t => t.transaction_date === todayStr && t.type === "out");
+    const revenue = sales.reduce((s, t) => s + t.amount, 0);
+    const expense = outs.reduce((s, t) => s + t.amount, 0);
+    const top     = [...sales].sort((a, b) => b.amount - a.amount).slice(0, 3);
+    return respond("todaySales", lang, {
+      revenue, expense, profit: revenue - expense, sales, outs, top,
+      lastDate: recentDate(transactions),
+    });
   }
 
   /* ── TOTAL PROFIT ── */
   if (
-    q.includes("profit") ||
-    q.includes("overall") ||
-    q.includes("total earn") ||
-    q.includes("total profit")
+    q.includes("profit") || q.includes("riba") || q.includes("uru") ||
+    q.includes("ere ") || q.includes("overall") ||
+    q.includes("total earn") || q.includes("total profit")
   ) {
     const allIn  = transactions.filter(t => t.type === "in").reduce((s, t) => s + t.amount, 0);
     const allOut = transactions.filter(t => t.type === "out").reduce((s, t) => s + t.amount, 0);
@@ -85,56 +75,27 @@ function analyzeQuery(query, { transactions = [], credits = [], asoClients = [],
     const mOut   = thisMonthTx.filter(t => t.type === "out").reduce((s, t) => s + t.amount, 0);
     const lmIn   = lastMonthTx.filter(t => t.type === "in").reduce((s, t) => s + t.amount, 0);
     const pct    = lmIn > 0 ? Math.round(((mIn - lmIn) / lmIn) * 100) : null;
-
-    return (
-      `Total profit across all records:\n\n` +
-      `• **${fmtN(allIn - allOut)}** net profit\n` +
-      `• ${fmtN(allIn)} total revenue\n` +
-      `• ${fmtN(allOut)} total expenses\n\n` +
-      `This month:\n` +
-      `• Revenue: **${fmtN(mIn)}**\n` +
-      `• Expenses: **${fmtN(mOut)}**\n` +
-      `• Profit: **${fmtN(mIn - mOut)}**` +
-      (pct !== null
-        ? `\n\n${pct >= 0 ? "📈 Up" : "📉 Down"} ${Math.abs(pct)}% vs last month (${fmtN(lmIn)})`
-        : "")
-    );
+    return respond("totalProfit", lang, { allIn, allOut, mIn, mOut, lmIn, pct });
   }
 
   /* ── OUTSTANDING CREDIT ── */
   if (
-    q.includes("credit") ||
-    q.includes("outstanding") ||
-    q.includes("owe") ||
-    q.includes("debt")
+    q.includes("credit") || q.includes("outstanding") || q.includes("owe") ||
+    q.includes("debt") || q.includes("bashi") || q.includes("gbese") ||
+    q.includes("ugwo") || q.includes("bin ku")
   ) {
-    const unpaid  = credits.filter(c => c.status !== "paid");
-    const overdue = credits.filter(c => c.status === "overdue");
+    const unpaid    = credits.filter(c => c.status !== "paid");
+    const overdue   = credits.filter(c => c.status === "overdue");
     const totalOwed = unpaid.reduce((s, c) => s + (c.outstanding || 0), 0);
-
-    if (unpaid.length === 0) {
-      return `Great news! No outstanding credit balances. All your customers are fully paid up. 🎉`;
-    }
-    const top3 = [...unpaid]
-      .sort((a, b) => (b.outstanding || 0) - (a.outstanding || 0))
-      .slice(0, 3);
-
-    return (
-      `Outstanding credit summary:\n\n` +
-      `• Total owed: **${fmtN(totalOwed)}**\n` +
-      `• ${unpaid.length} customer${unpaid.length !== 1 ? "s" : ""} with unpaid balances` +
-      (overdue.length > 0 ? `\n• ⚠️ ${overdue.length} overdue — follow up immediately!` : "") +
-      `\n\nHighest balances:\n` +
-      top3.map(c => `• ${c.customer_name}: ${fmtN(c.outstanding)}`).join("\n")
-    );
+    const top3      = [...unpaid].sort((a, b) => (b.outstanding || 0) - (a.outstanding || 0)).slice(0, 3);
+    return respond("credit", lang, { unpaid, overdue, totalOwed, top3 });
   }
 
   /* ── TOP CUSTOMERS ── */
   if (
-    q.includes("customer") ||
-    q.includes("top customer") ||
-    q.includes("best customer") ||
-    q.includes("loyal")
+    q.includes("customer") || q.includes("abokin") || q.includes("ndị ahịa") ||
+    q.includes("onibara") || q.includes("loyal") || q.includes("best customer") ||
+    q.includes("top customer")
   ) {
     const map = {};
     transactions
@@ -147,98 +108,56 @@ function analyzeQuery(query, { transactions = [], credits = [], asoClients = [],
     const sorted = Object.entries(map)
       .sort(([, a], [, b]) => b.total - a.total)
       .slice(0, 5);
-
-    if (sorted.length === 0) {
-      return `No customer records found yet.\n\nTip: Add customer names when recording transactions to track your top buyers.`;
-    }
-    return (
-      `Your top ${sorted.length} customer${sorted.length !== 1 ? "s" : ""} by total spend:\n\n` +
-      sorted
-        .map(([name, d], i) =>
-          `${i + 1}. **${name}**\n   ${fmtN(d.total)} · ${d.count} purchase${d.count !== 1 ? "s" : ""}`
-        )
-        .join("\n\n")
-    );
+    return respond("topCustomers", lang, { sorted });
   }
 
   /* ── STOCK STATUS ── */
   if (
-    q.includes("stock") ||
-    q.includes("inventory") ||
-    q.includes("product")
+    q.includes("stock") || q.includes("inventory") || q.includes("product") ||
+    q.includes("kaya") || q.includes("ngwaahia") || q.includes("ile-oja") ||
+    q.includes("kayan ajiya")
   ) {
-    if (products.length === 0) {
-      return `Your inventory is empty.\n\nGo to the Stock tab to add products and start tracking your items.`;
-    }
-    const out  = products.filter(p => p.quantity === 0);
-    const low  = products.filter(p => p.quantity > 0 && p.quantity <= (p.low_stock_threshold || 5));
-    const good = products.filter(p => p.quantity > (p.low_stock_threshold || 5));
+    const out      = products.filter(p => p.quantity === 0);
+    const low      = products.filter(p => p.quantity > 0 && p.quantity <= (p.low_stock_threshold || 5));
+    const good     = products.filter(p => p.quantity > (p.low_stock_threshold || 5));
     const costVal   = products.reduce((s, p) => s + (p.cost_price || 0) * p.quantity, 0);
     const retailVal = products.reduce((s, p) => s + (p.selling_price || 0) * p.quantity, 0);
-
-    return (
-      `Stock overview for ${products.length} product${products.length !== 1 ? "s" : ""}:\n\n` +
-      (out.length  > 0 ? `⛔ Out of stock (${out.length}): ${out.slice(0, 3).map(p => p.product_name).join(", ")}${out.length > 3 ? ` +${out.length - 3} more` : ""}\n` : "") +
-      (low.length  > 0 ? `⚠️ Running low (${low.length}): ${low.slice(0, 3).map(p => `${p.product_name} (${p.quantity} left)`).join(", ")}\n` : "") +
-      (good.length > 0 ? `✅ Well stocked: ${good.length} item${good.length !== 1 ? "s" : ""}\n` : "") +
-      `\n• Stock cost value: **${fmtN(costVal)}**\n• Retail value: **${fmtN(retailVal)}**`
-    );
+    return respond("stock", lang, { products, out, low, good, costVal, retailVal });
   }
 
   /* ── MONTHLY SALES ── */
   if (
-    q.includes("month") ||
-    q.includes("monthly") ||
-    q.includes("this month")
+    q.includes("month") || q.includes("monthly") || q.includes("this month") ||
+    q.includes("wata") || q.includes("ọnwa") || q.includes("osu yi")
   ) {
     const mSales = thisMonthTx.filter(t => t.type === "in");
     const mExp   = thisMonthTx.filter(t => t.type === "out").reduce((s, t) => s + t.amount, 0);
     const mRev   = mSales.reduce((s, t) => s + t.amount, 0);
     const lmRev  = lastMonthTx.filter(t => t.type === "in").reduce((s, t) => s + t.amount, 0);
     const pct    = lmRev > 0 ? Math.round(((mRev - lmRev) / lmRev) * 100) : null;
-
-    return (
-      `This month's performance:\n\n` +
-      `• ${mSales.length} sale${mSales.length !== 1 ? "s" : ""} recorded\n` +
-      `• Revenue: **${fmtN(mRev)}**\n` +
-      `• Expenses: **${fmtN(mExp)}**\n` +
-      `• Net profit: **${fmtN(mRev - mExp)}**` +
-      (pct !== null
-        ? `\n\n${pct >= 0 ? "📈 Up" : "📉 Down"} ${Math.abs(pct)}% vs last month (${fmtN(lmRev)})`
-        : "")
-    );
+    return respond("monthly", lang, { mSales, mRev, mExp, lmRev, pct });
   }
 
   /* ── EXPENSES ── */
   if (
-    q.includes("expense") ||
-    q.includes("spending") ||
-    q.includes("cash out")
+    q.includes("expense") || q.includes("spending") || q.includes("cash out") ||
+    q.includes("kashe") || q.includes("inawo") || q.includes("ejiri ego") ||
+    q.includes("money comot")
   ) {
-    const all   = transactions.filter(t => t.type === "out");
-    const total = all.reduce((s, t) => s + t.amount, 0);
+    const all    = transactions.filter(t => t.type === "out");
+    const total  = all.reduce((s, t) => s + t.amount, 0);
     const mTotal = thisMonthTx.filter(t => t.type === "out").reduce((s, t) => s + t.amount, 0);
     const catMap = {};
     all.forEach(t => { catMap[t.category] = (catMap[t.category] || 0) + t.amount; });
     const topCats = Object.entries(catMap).sort(([, a], [, b]) => b - a).slice(0, 4);
-
-    return (
-      `Expenses breakdown:\n\n` +
-      `• All-time total: **${fmtN(total)}**\n` +
-      `• This month: **${fmtN(mTotal)}**` +
-      (topCats.length > 0
-        ? `\n\nTop categories:\n${topCats.map(([cat, amt]) => `• ${cat}: ${fmtN(amt)}`).join("\n")}`
-        : "")
-    );
+    return respond("expenses", lang, { total, mTotal, topCats });
   }
 
   /* ── BEST SELLERS ── */
   if (
-    q.includes("best sell") ||
-    q.includes("top item") ||
-    q.includes("top sell") ||
-    q.includes("popular") ||
-    q.includes("most sold")
+    q.includes("best sell") || q.includes("top item") || q.includes("top sell") ||
+    q.includes("popular") || q.includes("most sold") || q.includes("dey sell pass") ||
+    q.includes("ire kachasị") || q.includes("tita julo")
   ) {
     const itemMap = {};
     transactions
@@ -251,77 +170,37 @@ function analyzeQuery(query, { transactions = [], credits = [], asoClients = [],
     const sorted = Object.entries(itemMap)
       .sort(([, a], [, b]) => b.total - a.total)
       .slice(0, 5);
-
-    if (sorted.length === 0) return `No sales data yet. Record transactions to see your best-selling items.`;
-    return (
-      `Your top-selling items:\n\n` +
-      sorted
-        .map(([name, d], i) =>
-          `${i + 1}. **${name}**\n   ${fmtN(d.total)} · sold ${d.count} time${d.count !== 1 ? "s" : ""}`
-        )
-        .join("\n\n")
-    );
+    return respond("bestSellers", lang, { sorted });
   }
 
   /* ── OVERDUE ── */
-  if (q.includes("overdue") || q.includes("late") || q.includes("missed")) {
+  if (
+    q.includes("overdue") || q.includes("late") || q.includes("missed") ||
+    q.includes("wuce lokaci") || q.includes("agafeela oge") || q.includes("koja akoko")
+  ) {
     const odCredits = credits.filter(c => c.status === "overdue");
     const odAso     = asoClients.filter(
       c => c.next_contribution_date && new Date() > new Date(c.next_contribution_date)
     );
-    if (odCredits.length === 0 && odAso.length === 0) {
-      return `No overdue payments — everything is up to date. 🎉`;
-    }
-    let msg = "";
-    if (odCredits.length > 0) {
-      const t = odCredits.reduce((s, c) => s + (c.outstanding || 0), 0);
-      msg += `Overdue credits (${odCredits.length}):\n${odCredits.slice(0, 3).map(c => `• ${c.customer_name}: ${fmtN(c.outstanding)}`).join("\n")}\nTotal: **${fmtN(t)}**`;
-    }
-    if (odAso.length > 0) {
-      if (msg) msg += "\n\n";
-      msg += `Overdue Ajo contributions (${odAso.length}):\n${odAso.slice(0, 3).map(c => `• ${c.client_name}`).join("\n")}`;
-    }
-    return msg;
+    return respond("overdue", lang, { odCredits, odAso });
   }
 
   /* ── AJO / ASO ── */
   if (
-    q.includes("ajo") ||
-    q.includes("aso") ||
-    q.includes("savings") ||
-    q.includes("contribution")
+    q.includes("ajo") || q.includes("aso") || q.includes("savings") ||
+    q.includes("contribution") || q.includes("ajiya") || q.includes("ifowopamo")
   ) {
-    if (asoClients.length === 0) return `No Ajo clients on record yet. Add clients from the Ajo tab.`;
-    const active = asoClients.filter(c => c.status === "active");
+    const active      = asoClients.filter(c => c.status === "active");
     const totalBal    = asoClients.reduce((s, c) => s + (c.current_balance || 0), 0);
     const totalTarget = asoClients.reduce((s, c) => s + (c.target_amount || 0), 0);
-    const overdue = asoClients.filter(
+    const overdue     = asoClients.filter(
       c => c.next_contribution_date && new Date() > new Date(c.next_contribution_date)
     );
-    return (
-      `Ajo savings group:\n\n` +
-      `• ${asoClients.length} client${asoClients.length !== 1 ? "s" : ""} (${active.length} active)\n` +
-      `• Total saved: **${fmtN(totalBal)}**\n` +
-      `• Target: **${fmtN(totalTarget)}**` +
-      (overdue.length > 0
-        ? `\n\n⚠️ ${overdue.length} client${overdue.length > 1 ? "s" : ""} overdue for contributions`
-        : "\n\n✅ All contributions up to date")
-    );
+    return respond("ajo", lang, { clients: asoClients, active, totalBal, totalTarget, overdue });
   }
 
   /* ── DEFAULT / HELP ── */
-  return (
-    `I can help you understand your business data. Try asking:\n\n` +
-    `• **"How were today's sales?"**\n` +
-    `• **"What is my total profit?"**\n` +
-    `• **"Show outstanding credit"**\n` +
-    `• **"Who are my top customers?"**\n` +
-    `• **"What is my stock status?"**\n` +
-    `• "How are my monthly sales?"\n` +
-    `• "What are my best selling items?"\n` +
-    `• "Show my expenses breakdown"\n` +
-    `• "Any overdue payments?"`
-  );
+  return respond("help", lang, {});
 }
 
 /* ── Renders **bold** and line-breaks ────────────────────────────── */
@@ -357,24 +236,30 @@ function TypingDots() {
   );
 }
 
+/* ── Greeting based on stored language ──────────────────────────── */
+const GREETINGS = {
+  en:     "Hello! I'm your AI Business Assistant. I analyse your real business data — sales, credit, stock, and customers — and give you clear answers in plain language.\n\nTap a quick question or type your own below.",
+  pidgin: "Hello! I be your AI Business Assistant. I dey use your real business data — sales, credit, stock, and customers — give you clear answer for your language.\n\nTap any question or type wetin you want ask.",
+  ha:     "Sannu! Ni ne mataimakiyar kasuwancin AI. Ina amfani da bayanan kasuwancin ku na ainihi — tallace-tallace, bashi, kaya, da abokan ciniki — don ba ku amsa a cikin harshan ku.\n\nDanna tambaya ko rubuta naku.",
+  ig:     "Nnọọ! Abụ m onye inyeaka azụmaahịa AI gị. A na-eji data azụmaahịa gị n'ezie — ahịa, ugwọ, ngwaahịa, na ndị ahịa — na-aza gị n'asụsụ gị.\n\nPị ajụjụ ma ọ bụ dee nke gị.",
+  yo:     "Ẹ káàbọ̀! Èmi ni olùrànlọ́wọ́ isọwọ AI rẹ. Mo n lo data isowo gidi rẹ — tita, gbese, ile-oja, ati onibara — lati fun ọ ni awọn idahun to kedere ninu ede rẹ.\n\nTẹ ibeere tabi tẹ tirẹ silẹ.",
+};
+
 /* ── Main screen ─────────────────────────────────────────────────── */
 export default function AIAssistant({ store, inventory, onClose, initialQuery = "" }) {
-  const [messages, setMessages] = useState([{
-    role: "assistant",
-    text: "Hello! I'm your AI Business Assistant. I analyse your real business data — sales, credit, stock, and customers — and give you clear answers in plain language.\n\nTap a quick question or type your own below.",
-  }]);
-  const [input,   setInput]   = useState("");
+  const greeting = GREETINGS[getLang()] || GREETINGS.en;
+
+  const [messages, setMessages] = useState([{ role: "assistant", text: greeting }]);
+  const [input,    setInput]    = useState("");
   const [thinking, setThinking] = useState(false);
   const listRef  = useRef(null);
   const inputRef = useRef(null);
   const askedRef = useRef(false);
 
-  // Auto-scroll to bottom on new messages
   useEffect(() => {
     if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
   }, [messages, thinking]);
 
-  // Auto-ask initialQuery once on mount
   useEffect(() => {
     if (initialQuery && !askedRef.current) {
       askedRef.current = true;
@@ -407,7 +292,7 @@ export default function AIAssistant({ store, inventory, onClose, initialQuery = 
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-bold text-slate-800 dark:text-white leading-tight">AI Business Assistant</p>
-          <p className="text-[10px] text-slate-400 dark:text-slate-500">Powered by your business data</p>
+          <p className="text-[10px] text-slate-400 dark:text-slate-500">Powered by your business data · replies in your language</p>
         </div>
         <button onClick={onClose}
           className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-500 dark:text-slate-400 active:scale-95 transition-transform flex-shrink-0">
@@ -445,7 +330,6 @@ export default function AIAssistant({ store, inventory, onClose, initialQuery = 
             </div>
           </div>
         ))}
-
         {thinking && <TypingDots />}
         <div className="h-2" />
       </div>
@@ -459,7 +343,7 @@ export default function AIAssistant({ store, inventory, onClose, initialQuery = 
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => e.key === "Enter" && !e.shiftKey && ask(input)}
-            placeholder="Ask about your sales, stock, customers…"
+            placeholder="Ask in English, Pidgin, Hausa, Igbo or Yoruba…"
             className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/60 text-sm text-slate-700 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white dark:focus:bg-slate-700"
           />
           <button

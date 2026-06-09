@@ -4,6 +4,7 @@ import Field           from "../components/shared/Field";
 import StaffManagement from "./StaffManagement";
 import { supabase } from "../utils/supabase";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
+import { LANGUAGES, getLang, setLang, getLangMeta } from "../utils/i18n";
 
 /* ── PIN Setup Modal ──────────────────────────────────────────────── */
 function PinSetupModal({ onDone, onClose }) {
@@ -187,6 +188,7 @@ const LockIcon       = () => ic("M3 11h18v11a2 2 0 01-2 2H5a2 2 0 01-2-2V11z|M7 
 const ShieldIcon     = () => ic("M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z");
 const DocIcon        = () => ic("M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z|M14 2v6h6|M16 13H8|M16 17H8");
 const HelpIcon       = () => ic("M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z|M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3|M12 17h.01");
+const GlobeIcon = () => ic("M12 2a10 10 0 100 20A10 10 0 0012 2z|M2 12h20|M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z");
 const LogoutIconSvg  = () => (
   <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-red-500 dark:text-red-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
     <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
@@ -194,6 +196,45 @@ const LogoutIconSvg  = () => (
     <line x1="21" y1="12" x2="9" y2="12" />
   </svg>
 );
+
+/* ── Language picker modal ────────────────────────────────────────── */
+function LanguageModal({ current, onSelect, onClose }) {
+  return (
+    <Modal title="Choose Language" onClose={onClose}>
+      <p className="text-xs text-slate-400 dark:text-slate-500 mb-4">
+        The AI Assistant will reply in the language you type — this sets the default.
+      </p>
+      <div className="space-y-2">
+        {LANGUAGES.map(lang => (
+          <button
+            key={lang.code}
+            onClick={() => { setLang(lang.code); onSelect(lang.code); onClose(); }}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border transition-colors active:scale-[0.98] ${
+              current === lang.code
+                ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20"
+                : "border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/50"
+            }`}
+          >
+            <span className="text-2xl leading-none flex-shrink-0">{lang.flag}</span>
+            <div className="flex-1 text-left">
+              <p className={`font-semibold text-sm ${current === lang.code ? "text-brand-700 dark:text-brand-400" : "text-slate-800 dark:text-slate-100"}`}>
+                {lang.name}
+              </p>
+              {lang.native !== lang.name && (
+                <p className="text-xs text-slate-400 dark:text-slate-500">{lang.native}</p>
+              )}
+            </div>
+            {current === lang.code && (
+              <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-brand-600 dark:text-brand-400 flex-shrink-0" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 6L9 17l-5-5" />
+              </svg>
+            )}
+          </button>
+        ))}
+      </div>
+    </Modal>
+  );
+}
 
 /* ── Main component ───────────────────────────────────────────────── */
 export default function Settings({ store, session, plan = "starter", onUpgrade, onStaffManagement, lock, onNotifications }) {
@@ -209,6 +250,8 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
   const [infoModal,     setInfoModal]     = useState(null);
   const [showPinSetup,  setShowPinSetup]  = useState(false);
   const [lockBusy,      setLockBusy]      = useState(false);
+  const [langCode,      setLangCode]      = useState(getLang);
+  const [showLangPick,  setShowLangPick]  = useState(false);
 
   const lockEnabled    = lock?.enabled    ?? false;
   const lockHasPIN     = lock?.hasPIN     ?? false;
@@ -320,6 +363,17 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
         />
       </SettingsCard>
 
+      {/* ── LANGUAGE ───────────────────────────────────────────────── */}
+      <SectionLabel>Language</SectionLabel>
+      <SettingsCard>
+        <Row
+          icon={<GlobeIcon />}
+          label="App Language"
+          sub={(() => { const m = getLangMeta(langCode); return `${m.flag} ${m.name}${m.native !== m.name ? ` · ${m.native}` : ""}`; })()}
+          onClick={() => setShowLangPick(true)}
+        />
+      </SettingsCard>
+
       {/* ── ACCOUNT ────────────────────────────────────────────────── */}
       <SectionLabel>Account</SectionLabel>
       <SettingsCard>
@@ -425,6 +479,15 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
       <p className="text-center text-[11px] text-slate-300 dark:text-slate-600 mt-6 font-medium">
         KudiAI Track v1.0 · Made with ♥ for Nigerian traders
       </p>
+
+      {/* ── Language picker modal ──────────────────────────────────── */}
+      {showLangPick && (
+        <LanguageModal
+          current={langCode}
+          onSelect={setLangCode}
+          onClose={() => setShowLangPick(false)}
+        />
+      )}
 
       {/* ── PIN setup modal ────────────────────────────────────────── */}
       {showPinSetup && (
