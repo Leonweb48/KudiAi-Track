@@ -20,16 +20,35 @@ const refNo = (id) =>
      : `KT-${Date.now().toString(36).toUpperCase().slice(-8)}`;
 
 /* ── Canvas capture helper ───────────────────────────────────────── */
-async function captureCanvas(ref) {
-  await new Promise((r) => setTimeout(r, 120));
-  return html2canvas(ref.current, {
-    scale: 2.5, useCORS: true, allowTaint: false,
-    backgroundColor: "#ffffff", logging: false, imageTimeout: 10000,
+async function captureCanvas(el) {
+  // Clone into a fixed off-screen container so viewport clipping never truncates tall receipts
+  const clone = el.cloneNode(true);
+  const wrap  = document.createElement("div");
+  Object.assign(wrap.style, {
+    position: "fixed", top: "-9999px", left: "-9999px",
+    width: `${el.offsetWidth}px`, background: "#ffffff", zIndex: "-1",
   });
+  wrap.appendChild(clone);
+  document.body.appendChild(wrap);
+  await new Promise((r) => setTimeout(r, 150));
+
+  try {
+    return await html2canvas(clone, {
+      scale: 2.5, useCORS: true, allowTaint: false,
+      backgroundColor: "#ffffff", logging: false, imageTimeout: 10000,
+      width:        clone.scrollWidth,
+      height:       clone.scrollHeight,
+      windowWidth:  clone.scrollWidth,
+      windowHeight: clone.scrollHeight,
+      scrollX: 0, scrollY: 0,
+    });
+  } finally {
+    document.body.removeChild(wrap);
+  }
 }
 
 async function captureFile(ref) {
-  const canvas = await captureCanvas(ref);
+  const canvas = await captureCanvas(ref.current);
   return new Promise((res) =>
     canvas.toBlob(
       (blob) => res(new File([blob], "kuditrack-receipt.png", { type: "image/png" })),
@@ -39,9 +58,9 @@ async function captureFile(ref) {
 }
 
 async function downloadPDF(ref, filename) {
-  const canvas  = await captureCanvas(ref);
+  const canvas  = await captureCanvas(ref.current);
   const imgData = canvas.toDataURL("image/png");
-  // Size PDF to match the receipt card (px → mm at 96dpi)
+  // Size PDF exactly to the receipt content (px → mm at 96dpi)
   const mmW = (canvas.width  / 2.5) * (25.4 / 96);
   const mmH = (canvas.height / 2.5) * (25.4 / 96);
   const pdf = new jsPDF({ orientation: "p", unit: "mm", format: [mmW, mmH] });
