@@ -37,15 +37,17 @@ serve(async (req) => {
     if (action === "data-plans") {
       const { network } = payload as { network: string };
       const net = network.toLowerCase().replace(/\s/g, "");
-      const res = await fetch(`${BASE}/api/data/plans/?identifier=data&plan=${net}`);
-      return json(await res.json());
+      const res = await fetch(`${BASE}/api/data/plans/?identifier=data&network=${net}`);
+      const text = await res.text();
+      try { return json(JSON.parse(text)); } catch { return json({ plans: [] }); }
     }
 
     if (action === "cabletv-plans") {
       const { provider } = payload as { provider: string };
       const p = provider.toLowerCase().replace(/\s/g, "");
       const res = await fetch(`${BASE}/api/cabletv/plans/?identifier=cabletv&plan=${p}`);
-      return json(await res.json());
+      const text = await res.text();
+      try { return json(JSON.parse(text)); } catch { return json({ plans: [] }); }
     }
 
     // ── Authenticated subscribe endpoints ─────────────────────────────

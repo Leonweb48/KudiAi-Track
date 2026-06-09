@@ -177,7 +177,13 @@ function PaymentForm({ catId, form, setForm, verified, verifying, onVerifyMeter,
             })}
           </div>
         ) : (
-          <p className="text-xs text-slate-400 text-center py-4">No plans loaded — check network connection</p>
+          <div className="space-y-1.5">
+            <input type="text" value={form.planName || ""}
+              onChange={e => { s("planId", e.target.value); s("planName", e.target.value); }}
+              placeholder="Enter plan name, e.g. 1GB Daily"
+              className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500" />
+            <p className="text-[11px] text-slate-400">Plans unavailable from API — enter plan name manually</p>
+          </div>
         )}
       </div>
       <FInput label="Amount (₦)" value={form.amount} onChange={e => s("amount", e.target.value)} type="number" req />
@@ -275,7 +281,13 @@ function PaymentForm({ catId, form, setForm, verified, verifying, onVerifyMeter,
             })}
           </div>
         ) : (
-          <p className="text-xs text-slate-400 text-center py-4">No packages loaded — check connection</p>
+          <div className="space-y-1.5">
+            <input type="text" value={form.planName || ""}
+              onChange={e => { s("planId", e.target.value); s("planName", e.target.value); }}
+              placeholder="Enter package, e.g. DStv Compact"
+              className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500" />
+            <p className="text-[11px] text-slate-400">Packages unavailable from API — enter package name manually</p>
+          </div>
         )}
       </div>
 
