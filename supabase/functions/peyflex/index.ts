@@ -5,7 +5,7 @@ const CORS = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const BASE = "https://vtpass.com/api";
+const BASE = "https://sandbox.vtpass.com/api";
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {

@@ -567,7 +567,7 @@ export default function BillPayments({ store, staffName = null, businessName = n
         }
 
         if (!res || res.status !== "SUCCESS") {
-          throw new Error(res?.message || "Payment failed. Check your Peyflex wallet balance.");
+          throw new Error(res?.message || "Payment failed. Check your VTpass wallet balance.");
         }
         apiRef = res.reference || null;
         elecToken = res.token || null;
@@ -730,7 +730,7 @@ export default function BillPayments({ store, staffName = null, businessName = n
                 <div>
                   <h2 className="text-base font-bold text-slate-800 dark:text-white">Pay {catMeta(selectedCat).label}</h2>
                   {catMeta(selectedCat).live && (
-                    <p className="text-[10px] text-green-600 font-semibold">Live via Peyflex</p>
+                    <p className="text-[10px] text-green-600 font-semibold">Live via VTpass</p>
                   )}
                 </div>
               </div>
