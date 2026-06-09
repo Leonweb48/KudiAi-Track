@@ -656,41 +656,63 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
                 {c.notes && <p className="text-[11px] text-slate-400 dark:text-slate-500 italic mb-3">"{c.notes}"</p>}
 
-                {/* Actions */}
-                <div className="flex gap-2 pt-2.5 border-t border-slate-50 dark:border-slate-700/60">
+                {/* Actions — icon grid */}
+                <div className="flex gap-1.5 pt-3 border-t border-slate-100 dark:border-slate-700/60">
+
+                  {/* Contribute */}
                   <button onClick={() => { setSelected(c); setAction("contribute"); }}
-                    className="flex-1 py-2 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 rounded-xl font-bold text-xs border border-green-200 dark:border-green-800 active:scale-95 transition">
-                    + Contribute
+                    className="flex-1 flex flex-col items-center gap-1 py-2.5 bg-green-50 dark:bg-green-900/20 rounded-xl border border-green-200 dark:border-green-800 active:scale-95 transition"
+                    title="Contribute">
+                    <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-green-600 dark:text-green-400" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
+                    </svg>
+                    <span className="text-[9px] font-black text-green-700 dark:text-green-400 uppercase tracking-wide leading-none">Fund</span>
                   </button>
+
+                  {/* Withdraw */}
                   <button onClick={() => { setSelected(c); setAction("withdraw"); }}
-                    className="flex-1 py-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl font-bold text-xs border border-red-200 dark:border-red-800 active:scale-95 transition">
-                    Withdraw
+                    className="flex-1 flex flex-col items-center gap-1 py-2.5 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-800 active:scale-95 transition"
+                    title="Withdraw">
+                    <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-red-600 dark:text-red-400" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="9"/><line x1="8" y1="12" x2="16" y2="12"/>
+                    </svg>
+                    <span className="text-[9px] font-black text-red-600 dark:text-red-400 uppercase tracking-wide leading-none">Pay</span>
                   </button>
+
+                  {/* Reminder */}
                   <button onClick={() => { setReminderFor(c); setCopied(false); }}
-                    className={`py-2 px-3 rounded-xl font-bold text-xs border transition flex items-center gap-1.5 active:scale-[0.99] ${
+                    className={`flex-1 flex flex-col items-center gap-1 py-2.5 rounded-xl border active:scale-95 transition ${
                       overdue || missed > 0
-                        ? "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800"
-                        : "bg-violet-50 dark:bg-violet-900/20 text-violet-600 dark:text-violet-400 border-violet-200 dark:border-violet-800"
-                    }`}>
-                    <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-                      <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0" />
+                        ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
+                        : "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800"
+                    }`}
+                    title="Send Reminder">
+                    <svg viewBox="0 0 24 24" fill="none" className={`w-5 h-5 ${overdue || missed > 0 ? "text-red-500 dark:text-red-400" : "text-amber-500 dark:text-amber-400"}`} stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0"/>
                     </svg>
-                    Remind
+                    <span className={`text-[9px] font-black uppercase tracking-wide leading-none ${overdue || missed > 0 ? "text-red-500 dark:text-red-400" : "text-amber-600 dark:text-amber-400"}`}>Alert</span>
                   </button>
+
+                  {/* Statement */}
                   <button onClick={() => setReceipt(c)}
-                    className="py-2 px-3 bg-violet-50 dark:bg-violet-900/20 text-violet-600 dark:text-violet-400 rounded-xl font-bold text-xs border border-violet-200 dark:border-violet-800 active:scale-[0.99] transition flex items-center gap-1.5">
-                    <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-                      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M16 13H8" />
+                    className="flex-1 flex flex-col items-center gap-1 py-2.5 bg-violet-50 dark:bg-violet-900/20 rounded-xl border border-violet-200 dark:border-violet-800 active:scale-95 transition"
+                    title="View Statement">
+                    <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-violet-600 dark:text-violet-400" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
                     </svg>
-                    Stmt
+                    <span className="text-[9px] font-black text-violet-600 dark:text-violet-400 uppercase tracking-wide leading-none">Stmt</span>
                   </button>
+
+                  {/* Edit */}
                   <button onClick={() => setClientProf(c)}
-                    className="py-2 px-3 bg-slate-50 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-xs border border-slate-200 dark:border-slate-600 active:scale-[0.99] transition flex items-center gap-1.5">
-                    <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-                      <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+                    className="flex-1 flex flex-col items-center gap-1 py-2.5 bg-slate-50 dark:bg-slate-700/60 rounded-xl border border-slate-200 dark:border-slate-600 active:scale-95 transition"
+                    title="Edit Profile">
+                    <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
                     </svg>
-                    Edit
+                    <span className="text-[9px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wide leading-none">Edit</span>
                   </button>
+
                 </div>
               </div>
             );

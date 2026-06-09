@@ -3,7 +3,7 @@
  * Logo left · Transaction title + date right · Navy + green palette.
  * Captured via html2canvas → PDF download or shared as PNG via Web Share API.
  */
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import html2canvas from "html2canvas";
 import { jsPDF }   from "jspdf";
 
@@ -21,12 +21,12 @@ const refNo = (id) =>
 
 /* ── Canvas capture helper ───────────────────────────────────────── */
 async function captureCanvas(el) {
-  // Clone into a fixed off-screen container so viewport clipping never truncates tall receipts
+  // Clone off-screen so viewport clipping never truncates tall receipts
   const clone = el.cloneNode(true);
   const wrap  = document.createElement("div");
   Object.assign(wrap.style, {
-    position: "fixed", top: "-9999px", left: "-9999px",
-    width: `${el.offsetWidth}px`, background: "#ffffff", zIndex: "-1",
+    position: "absolute", top: "0", left: "-9999px",
+    width: `${el.offsetWidth}px`, background: "#ffffff",
   });
   wrap.appendChild(clone);
   document.body.appendChild(wrap);
@@ -60,7 +60,6 @@ async function captureFile(ref) {
 async function downloadPDF(ref, filename) {
   const canvas  = await captureCanvas(ref.current);
   const imgData = canvas.toDataURL("image/png");
-  // Size PDF exactly to the receipt content (px → mm at 96dpi)
   const mmW = (canvas.width  / 2.5) * (25.4 / 96);
   const mmH = (canvas.height / 2.5) * (25.4 / 96);
   const pdf = new jsPDF({ orientation: "p", unit: "mm", format: [mmW, mmH] });
@@ -69,14 +68,21 @@ async function downloadPDF(ref, filename) {
 }
 
 async function nativeShare(file) {
-  if (navigator.share && navigator.canShare?.({ files: [file] })) {
-    await navigator.share({ files: [file], title: "KudiAI Track Receipt" });
-  } else {
-    const url = URL.createObjectURL(file);
-    const a   = document.createElement("a");
-    a.href = url; a.download = file.name; a.click();
-    URL.revokeObjectURL(url);
+  // Try Web Share API (opens share sheet including WhatsApp on mobile)
+  if (navigator.share) {
+    try {
+      await navigator.share({ files: [file], title: "KudiAI Track Receipt" });
+      return;
+    } catch (err) {
+      // AbortError = user dismissed share sheet — that's fine, don't fallback to download
+      if (err?.name === "AbortError") return;
+    }
   }
+  // Fallback: download the PNG
+  const url = URL.createObjectURL(file);
+  const a   = document.createElement("a");
+  a.href = url; a.download = file.name; a.click();
+  URL.revokeObjectURL(url);
 }
 
 /* ══════════════════════════════════════════════════════════════════
@@ -223,24 +229,33 @@ function Footer() {
 /* ══════════════════════════════════════════════════════════════════
    SHARE BUTTONS
 ══════════════════════════════════════════════════════════════════ */
-function ShareButtons({ cardRef, pdfName }) {
-  const [busy, setBusy] = useState(false);
+function ShareButtons({ cardRef, pdfName, cachedPng }) {
+  const [busy,    setBusy]    = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
 
-  const run = async (fn) => {
+  // Use pre-captured PNG when available so navigator.share is called
+  // immediately within the user gesture (no async gap → share sheet opens reliably)
+  const getFile = () => cachedPng ? Promise.resolve(cachedPng) : captureFile(cardRef);
+
+  const onShare = async () => {
     setBusy(true);
-    try   { await fn(); }
-    catch { /* silently ignore */ }
+    try   { const f = await getFile(); await nativeShare(f); }
+    catch { /* ignore */ }
     finally { setBusy(false); }
   };
 
-  const onShare   = () => run(async () => { const f = await captureFile(cardRef); await nativeShare(f); });
-  const onSavePDF = () => run(() => downloadPDF(cardRef, pdfName));
+  const onSavePDF = async () => {
+    setPdfBusy(true);
+    try   { await downloadPDF(cardRef, pdfName); }
+    catch { /* ignore */ }
+    finally { setPdfBusy(false); }
+  };
 
-  const Btn = ({ onClick, bg, children, title }) => (
-    <button onClick={onClick} disabled={busy} title={title}
+  const Btn = ({ onClick, busy: isBusy, bg, children, title }) => (
+    <button onClick={onClick} disabled={busy || pdfBusy} title={title}
       className="flex-1 py-4 rounded-2xl flex items-center justify-center active:scale-95 transition-transform disabled:opacity-60 shadow-lg"
       style={{ background: bg }}>
-      {busy
+      {isBusy
         ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
         : children
       }
@@ -249,22 +264,22 @@ function ShareButtons({ cardRef, pdfName }) {
 
   return (
     <div className="flex gap-3 mt-6 w-full max-w-[340px] mx-auto">
-      {/* WhatsApp */}
-      <Btn onClick={onShare} bg="#25D366" title="Share to WhatsApp">
+      {/* WhatsApp — opens native share sheet (pick WhatsApp from list) */}
+      <Btn onClick={onShare} busy={busy} bg="#25D366" title="Share via WhatsApp">
         <svg viewBox="0 0 24 24" fill="white" className="w-6 h-6">
           <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
         </svg>
       </Btn>
 
-      {/* Native share */}
-      <Btn onClick={onShare} bg={NAVY} title="Share">
+      {/* Native share sheet */}
+      <Btn onClick={onShare} busy={busy} bg={NAVY} title="Share">
         <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6 text-white" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
           <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13"/>
         </svg>
       </Btn>
 
       {/* Save PDF */}
-      <Btn onClick={onSavePDF} bg={GRN} title="Save as PDF">
+      <Btn onClick={onSavePDF} busy={pdfBusy} bg={GRN} title="Save as PDF">
         <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6 text-white" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
           <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
           <polyline points="14 2 14 8 20 8"/>
@@ -280,7 +295,23 @@ function ShareButtons({ cardRef, pdfName }) {
    FULL-SCREEN OVERLAY
 ══════════════════════════════════════════════════════════════════ */
 function Overlay({ onClose, pdfName, children }) {
-  const cardRef = useRef(null);
+  const cardRef   = useRef(null);
+  const [cachedPng, setCachedPng] = useState(null);
+
+  // Pre-capture PNG in the background when overlay mounts so tapping
+  // WhatsApp/Share calls navigator.share immediately (no async gap = gesture preserved)
+  useEffect(() => {
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      if (!cardRef.current || cancelled) return;
+      try {
+        const f = await captureFile(cardRef);
+        if (!cancelled) setCachedPng(f);
+      } catch { /* ignore */ }
+    }, 400);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, []);
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col items-center justify-start overflow-y-auto py-6 px-4"
       style={{ background: "rgba(8,12,30,0.94)", backdropFilter: "blur(12px)" }}>
@@ -289,8 +320,8 @@ function Overlay({ onClose, pdfName, children }) {
       <div className="flex items-center justify-between w-full max-w-[340px] mb-5">
         <span className="text-white/40 text-[10px] font-bold tracking-[3px] uppercase">Receipt Preview</span>
         <button onClick={onClose}
-          className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition active:scale-95">
-          <svg viewBox="0 0 24 24" fill="none" className="w-4.5 h-4.5 text-white" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+          className="w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 active:bg-white/40 flex items-center justify-center transition active:scale-90 border border-white/25">
+          <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-white" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
         </button>
@@ -308,8 +339,15 @@ function Overlay({ onClose, pdfName, children }) {
         {children}
       </div>
 
-      <ShareButtons cardRef={cardRef} pdfName={pdfName} />
-      <p className="text-white/20 text-xs mt-4 pb-4">WhatsApp · Share · Save PDF</p>
+      <ShareButtons cardRef={cardRef} pdfName={pdfName} cachedPng={cachedPng} />
+
+      {/* Ready indicator */}
+      <p className="text-white/20 text-xs mt-4 pb-4 flex items-center gap-1.5">
+        {cachedPng
+          ? <><span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block"/>Ready to share</>
+          : <><span className="w-1.5 h-1.5 rounded-full bg-white/30 inline-block animate-pulse"/>Preparing…</>
+        }
+      </p>
     </div>
   );
 }
