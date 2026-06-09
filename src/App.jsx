@@ -23,8 +23,10 @@ import Inventory             from "./screens/Inventory";
 import Reports               from "./screens/Reports";
 import AIAssistant           from "./screens/AIAssistant";
 import LockScreen            from "./components/LockScreen";
+import Loyalty               from "./screens/Loyalty";
 import { useInventory }      from "./hooks/useInventory";
 import { useBiometricLock }  from "./hooks/useBiometricLock";
+import { useLoyalty }        from "./hooks/useLoyalty";
 import { LanguageProvider }  from "./contexts/LanguageContext";
 
 function Spinner() {
@@ -62,6 +64,9 @@ export default function App() {
 
   // Biometric / PIN lock
   const lock = useBiometricLock(userId);
+
+  // Loyalty program
+  const loyalty = useLoyalty(userId);
 
   const isDark = store.profile?.dark_mode;
   useEffect(() => {
@@ -106,6 +111,13 @@ export default function App() {
     }
   }, [userId, store.loading, store.credits, store.asoClients, addNotification]);
 
+  const addTransactionWithLoyalty = async (txnData) => {
+    await store.addTransaction(txnData);
+    if (txnData.type === "in" && txnData.customer_name) {
+      loyalty.awardByName(txnData.customer_name, parseFloat(txnData.amount) || 0);
+    }
+  };
+
   const triggerQuickAction = (targetTab, type = null) => {
     setTab(targetTab);
     setAutoAdd({ tab: targetTab, type });
@@ -146,7 +158,7 @@ export default function App() {
                     onVoiceOpen={() => setVoiceOpen(true)}
                     notif={notif} />,
     transactions: <Transactions
-                    store={store}
+                    store={{ ...store, addTransaction: addTransactionWithLoyalty }}
                     plan={plan}
                     autoOpen={autoAdd?.tab === "transactions"}
                     autoType={autoAdd?.type}
@@ -179,6 +191,10 @@ export default function App() {
                     onUpgrade={openUpgrade}
                     onReports={() => setShowReports(true)}
                     onAIOpen={q => { setAiQuery(q || ""); setShowAI(true); }} />,
+    loyalty:      <Loyalty
+                    loyalty={loyalty}
+                    plan={plan}
+                    onUpgrade={openUpgrade} />,
     settings:     <Settings
                     store={store}
                     session={session}
@@ -204,7 +220,7 @@ export default function App() {
           {voiceOpen && (
             <VoiceModal
               onClose={() => setVoiceOpen(false)}
-              onSave={txn => { store.addTransaction(txn); setVoiceOpen(false); }}
+              onSave={txn => { addTransactionWithLoyalty(txn); setVoiceOpen(false); }}
             />
           )}
 

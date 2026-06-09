@@ -9,6 +9,7 @@ export const TRANSLATIONS = {
   "nav.ajo":      { en:"Ajo",     pidgin:"Ajo",     ha:"Ajo",     ig:"Ajo",      yo:"Ajo"     },
   "nav.reports":  { en:"Reports", pidgin:"Reports", ha:"Rahoto",  ig:"Akụkọ",   yo:"Akọọlẹ"  },
   "nav.more":     { en:"More",    pidgin:"More",    ha:"Ƙari",    ig:"Ọzọ",      yo:"Siwaju"  },
+  "nav.loyalty":  { en:"Loyalty", pidgin:"Loyalty", ha:"Aminci",  ig:"Ntụkwasị", yo:"Ifarabalẹ" },
 
   /* Greetings */
   "greet.morning":   { en:"Good morning",   pidgin:"Good morning",   ha:"Ina kwana",      ig:"Ụtụtụ ọma",  yo:"Ẹ káàárọ̀"  },
