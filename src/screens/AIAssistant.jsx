@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from "react";
-import { today } from "../utils/helpers";
+import { today, fmt } from "../utils/helpers";
 import { detectLanguage, getLang, respond } from "../utils/i18n";
 import { APP_PAT, BIZ_PAT, APP_FAQ, BIZ_KB } from "../utils/aiKnowledge";
+import { getSalesPrediction } from "../utils/predictions";
 
 /* ── Speech language codes ──────────────────────────────────────── */
 const SPEECH_LANG = { en: "en-NG", pidgin: "en-NG", ha: "ha", ig: "ig", yo: "yo" };
@@ -9,6 +10,7 @@ const SPEECH_LANG = { en: "en-NG", pidgin: "en-NG", ha: "ha", ig: "ig", yo: "yo"
 /* ── Quick-access questions ──────────────────────────────────────── */
 const QUICK = [
   { label: "Today's Sales",    q: "How were today's sales?"                           },
+  { label: "Sales Forecast",   q: "Show my sales forecast and predictions"            },
   { label: "Total Profit",     q: "What is my total profit?"                          },
   { label: "Outstanding Credit", q: "Show my outstanding credit"                     },
   { label: "App Features",     q: "What can this app do for my business?"             },
@@ -16,7 +18,6 @@ const QUICK = [
   { label: "Pricing Tips",     q: "What is a good pricing strategy for my business?"  },
   { label: "Best Sellers",     q: "What are my best selling items?"                   },
   { label: "Grow Business",    q: "How can I grow my business?"                       },
-  { label: "Overdue Payments", q: "Any overdue payments?"                             },
 ];
 
 function recentDate(transactions) {
@@ -77,6 +78,28 @@ function analyzeQuery(query, { transactions = [], credits = [], asoClients = [],
       revenue, expense, profit: revenue - expense, sales, outs, top,
       lastDate: recentDate(transactions),
     });
+  }
+
+  /* ── SALES PREDICTION ── */
+  if (
+    q.includes("predict") || q.includes("forecast") || q.includes("expected sales") ||
+    q.includes("next week") || q.includes("next month") || q.includes("how much will") ||
+    q.includes("revenue forecast") || q.includes("sales prediction") ||
+    q.includes("hasashen") || q.includes("amụmạ ahịa") || q.includes("asọtẹlẹ")
+  ) {
+    const pred = getSalesPrediction(transactions);
+    if (!pred) return respond("help", lang, {});
+    const fN = (n) => fmt(Math.round(n));
+    const arrow = pred.trend === "up" ? "↑" : pred.trend === "down" ? "↓" : "→";
+    const pctStr = pred.trendPct !== null ? ` ${arrow} ${Math.abs(pred.trendPct)}%` : "";
+    const R = {
+      en:     `**Sales Forecast** (28-day average: ${fN(pred.avgDaily)}/day)\n\n📅 **This Week:** ${fN(pred.thisWeekActual)} so far → **${fN(pred.projectedWeek)} projected**\n📆 **This Month:** ${fN(pred.thisMonthActual)} so far → **${fN(pred.projectedMonth)} projected**\n\nTrend: ${pred.trend === "up" ? "📈 Growing" : pred.trend === "down" ? "📉 Declining" : "📊 Stable"}${pctStr} vs last 2 weeks\n\n💡 Record transactions daily for better predictions.`,
+      pidgin: `**Sales Forecast** (28-day average: ${fN(pred.avgDaily)}/day)\n\n📅 **This Week:** ${fN(pred.thisWeekActual)} so far → **${fN(pred.projectedWeek)} projected**\n📆 **This Month:** ${fN(pred.thisMonthActual)} so far → **${fN(pred.projectedMonth)} projected**\n\nTrend: ${pred.trend === "up" ? "📈 E dey grow" : pred.trend === "down" ? "📉 E dey fall" : "📊 E dey steady"}${pctStr} vs last 2 weeks\n\n💡 Record transactions every day for better predictions.`,
+      ha:     `**Hasashen Siyarwa** (matsakaici: ${fN(pred.avgDaily)}/rana)\n\n📅 **Wannan Mako:** ${fN(pred.thisWeekActual)} → hasashe **${fN(pred.projectedWeek)}**\n📆 **Wannan Wata:** ${fN(pred.thisMonthActual)} → hasashe **${fN(pred.projectedMonth)}**\n\nTrend: ${pred.trend === "up" ? "📈 Yana girma" : pred.trend === "down" ? "📉 Yana raguwa" : "📊 Yana daidai"}${pctStr}`,
+      ig:     `**Amụmạ Ahịa** (nkezi: ${fN(pred.avgDaily)}/ụbọchị)\n\n📅 **Izu a:** ${fN(pred.thisWeekActual)} → amụmạ **${fN(pred.projectedWeek)}**\n📆 **Ọnwa a:** ${fN(pred.thisMonthActual)} → amụmạ **${fN(pred.projectedMonth)}**\n\nTrend: ${pred.trend === "up" ? "📈 Na-eto" : pred.trend === "down" ? "📉 Na-ada" : "📊 Kwụsịrị"}${pctStr}`,
+      yo:     `**Asọtẹlẹ Tita** (apapọ: ${fN(pred.avgDaily)}/ọjọ)\n\n📅 **Ọsẹ Yii:** ${fN(pred.thisWeekActual)} → a sọ asọ **${fN(pred.projectedWeek)}**\n📆 **Oṣù Yii:** ${fN(pred.thisMonthActual)} → a sọ asọ **${fN(pred.projectedMonth)}**\n\nTrend: ${pred.trend === "up" ? "📈 N dagba" : pred.trend === "down" ? "📉 N dinku" : "📊 Dúró niwọn"}${pctStr}`,
+    };
+    return R[lang] || R.en;
   }
 
   /* ── TOTAL PROFIT ── */

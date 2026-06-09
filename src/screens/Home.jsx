@@ -1,6 +1,8 @@
+import { useMemo } from "react";
 import { fmt, today } from "../utils/helpers";
 import { NotificationBell } from "../components/NotificationCenter";
 import { useT } from "../contexts/LanguageContext";
+import { getSalesPrediction } from "../utils/predictions";
 
 function greetingKey() {
   const h = new Date().getHours();
@@ -93,6 +95,42 @@ function TxRow({ t }) {
   );
 }
 
+/* ── Sales forecast card ─────────────────────────────────────────── */
+function SalesForecastCard({ prediction, t }) {
+  const { projectedWeek, projectedMonth, thisWeekActual, thisMonthActual, trend, trendPct } = prediction;
+
+  const trendColor = trend === "up" ? "text-green-500" : trend === "down" ? "text-red-400" : "text-slate-400 dark:text-slate-500";
+  const trendIcon  = trend === "up" ? "↑" : trend === "down" ? "↓" : "→";
+  const trendLabel = trendPct !== null
+    ? `${trendIcon} ${Math.abs(trendPct)}% ${t("pred.vsLastWeeks")}`
+    : `${trendIcon} ${t("pred.stable")}`;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-[13px] font-bold text-slate-700 dark:text-slate-300 tracking-wide">
+          📈 {t("pred.title")}
+        </h2>
+        <span className={`text-[11px] font-bold ${trendColor}`}>{trendLabel}</span>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-card border border-slate-100 dark:border-slate-700/50">
+          <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1">{t("pred.thisWeek")}</p>
+          <p className="text-lg font-extrabold text-slate-800 dark:text-slate-100 tabular leading-tight">{fmt(projectedWeek)}</p>
+          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{t("pred.projected")}</p>
+          <p className="text-[11px] text-brand-600 dark:text-brand-400 font-semibold mt-1">{fmt(thisWeekActual)} {t("pred.actualSoFar")}</p>
+        </div>
+        <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-card border border-slate-100 dark:border-slate-700/50">
+          <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1">{t("pred.thisMonth")}</p>
+          <p className="text-lg font-extrabold text-slate-800 dark:text-slate-100 tabular leading-tight">{fmt(projectedMonth)}</p>
+          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{t("pred.projected")}</p>
+          <p className="text-[11px] text-brand-600 dark:text-brand-400 font-semibold mt-1">{fmt(thisMonthActual)} {t("pred.actualSoFar")}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Main ────────────────────────────────────────────────────────── */
 export default function Home({ store, setTab, onQuickAction, onVoiceOpen, notif }) {
   const { transactions, credits, asoClients, profile, loading } = store;
@@ -102,9 +140,10 @@ export default function Home({ store, setTab, onQuickAction, onVoiceOpen, notif 
   const cashIn     = todayTx.filter(t => t.type === "in" ).reduce((s, t) => s + t.amount, 0);
   const cashOut    = todayTx.filter(t => t.type === "out").reduce((s, t) => s + t.amount, 0);
   const profit     = cashIn - cashOut;
-  const totalCredit= credits.reduce((s, c) => s + c.outstanding, 0);
-  const overdueCount= credits.filter(c => c.status === "overdue").length;
-  const totalAso   = asoClients.reduce((s, c) => s + c.current_balance, 0);
+  const totalCredit  = credits.reduce((s, c) => s + c.outstanding, 0);
+  const overdueCount = credits.filter(c => c.status === "overdue").length;
+  const totalAso     = asoClients.reduce((s, c) => s + c.current_balance, 0);
+  const forecast     = useMemo(() => getSalesPrediction(transactions), [transactions]);
 
   return (
     <div className="px-4 pt-5 pb-32 screen-enter space-y-5">
@@ -217,6 +256,9 @@ export default function Home({ store, setTab, onQuickAction, onVoiceOpen, notif 
           <ActionBtn label={t("home.reports")}     icon={P.report} bg="bg-gradient-to-br from-purple-500 to-violet-600" iconColor="white" onClick={() => setTab("insights")} />
         </div>
       </div>
+
+      {/* ── Sales Forecast ───────────────────────────────────────────── */}
+      {!loading && forecast && <SalesForecastCard prediction={forecast} t={t} />}
 
       {/* ── Recent Transactions ──────────────────────────────────────── */}
       <div>

@@ -174,6 +174,7 @@ export default function App() {
     bills:        <BillPayments store={store} />,
     insights:     <Insights
                     store={store}
+                    inventory={inventory}
                     plan={plan}
                     onUpgrade={openUpgrade}
                     onReports={() => setShowReports(true)}
