@@ -48,12 +48,13 @@ export default function App() {
   const [tab,         setTab]         = useState("home");
   const [autoAdd,     setAutoAdd]     = useState(null);
   const [voiceOpen,   setVoiceOpen]   = useState(false);
-  const [showUpgrade, setShowUpgrade] = useState(false);
+  const [showUpgrade,  setShowUpgrade]  = useState(false);
   const [showReports,  setShowReports]  = useState(false);
   const [showAI,       setShowAI]       = useState(false);
   const [showBranches, setShowBranches] = useState(false);
   const [showLoyalty,  setShowLoyalty]  = useState(false);
   const [aiQuery,      setAiQuery]      = useState("");
+  const [branchReport, setBranchReport] = useState(null);
 
   const { status, session, plan, setReady, refetch, staff, ajoClient } = useAuth();
   const userId = session?.user?.id;
@@ -265,11 +266,20 @@ export default function App() {
       {/* Report generator — full-screen overlay, z-60 */}
       {showReports && <Reports store={store} onClose={() => setShowReports(false)} />}
 
+      {/* Branch report — wrapped at z-[80] so it appears above BranchDetail (z-70) */}
+      {branchReport && (
+        <div className="fixed inset-0 z-[80]">
+          <Reports store={branchReport} onClose={() => setBranchReport(null)} />
+        </div>
+      )}
+
       {/* Branch management — full-screen overlay, z-60 */}
       {showBranches && (
         <Branches
           store={{ ...store, ...branchesHook }}
           userId={userId}
+          inventory={inventory}
+          onReport={(filteredStore) => setBranchReport(filteredStore)}
           onClose={() => setShowBranches(false)}
         />
       )}
