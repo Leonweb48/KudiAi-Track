@@ -31,10 +31,49 @@ export function useAuth() {
     }
 
     setSession(sess);
-    const uid   = sess.user.id;
-    const email = sess.user.email;
+    const uid         = sess.user.id;
+    const email       = sess.user.email;
+    const accountType = sess.user.user_metadata?.account_type;
+    const mustChange  = sess.user.user_metadata?.must_change_password === true;
 
-    // ── Onboarding check ─────────────────────────────────────────
+    // ── Org Member early routing ──────────────────────────────────────
+    // Bypass the profile check entirely so a member who accidentally ended
+    // up with a profiles row is still routed to their member portal.
+    if (accountType === "org_member") {
+      const { data: orgMemberRow } = await supabase
+        .from("org_members")
+        .select("id, org_id, membership_id, full_name, email, phone, role, status, profile_image_url, savings_balance, joined_date, privacy_balance, privacy_contributions, privacy_activities, organizations(id, name, type, reg_number, wallet_balance, total_savings, total_loans_out, member_count, logo_url, address, phone, email)")
+        .eq("user_id", uid)
+        .eq("status", "active")
+        .maybeSingle();
+      if (orgMemberRow) {
+        setOrgMember({ ...orgMemberRow, org: orgMemberRow.organizations });
+        subVerified.current = true;
+        setStatus(mustChange ? "org_member_setup" : "org_member");
+        return;
+      }
+      setStatus("onboarding");
+      return;
+    }
+
+    // ── Ajo Client early routing ──────────────────────────────────────
+    if (accountType === "ajo_client") {
+      const { data: ajoClientRow } = await supabase
+        .from("aso_clients")
+        .select("id, full_name, user_id, client_user_id, profile_image_url, membership_number, email, current_balance, total_saved, next_contribution_date, contribution_amount, contribution_frequency, status")
+        .eq("client_user_id", uid)
+        .maybeSingle();
+      if (ajoClientRow) {
+        setAjoClient({ ...ajoClientRow, owner_id: ajoClientRow.user_id });
+        subVerified.current = true;
+        setStatus(mustChange ? "ajo_client_setup" : "ajo_client");
+        return;
+      }
+      setStatus("unauthenticated");
+      return;
+    }
+
+    // ── Onboarding check (business owners) ───────────────────────────
     const { data: profile } = await supabase
       .from("profiles")
       .select("id")
@@ -84,7 +123,6 @@ export function useAuth() {
         }
         setStaff({ ...staffRow, user_id: uid });
         subVerified.current = true;
-        const mustChange = sess.user?.user_metadata?.must_change_password === true;
         if (mustChange) {
           setStatus("staff_setup");
         } else if (staffRow.role === "manager" && staffRow.branch_id) {
@@ -105,7 +143,6 @@ export function useAuth() {
       if (ajoClientRow) {
         setAjoClient({ ...ajoClientRow, owner_id: ajoClientRow.user_id });
         subVerified.current = true;
-        const mustChange = sess.user?.user_metadata?.must_change_password === true;
         setStatus(mustChange ? "ajo_client_setup" : "ajo_client");
         return;
       }
@@ -121,7 +158,6 @@ export function useAuth() {
       if (orgMemberRow) {
         setOrgMember({ ...orgMemberRow, org: orgMemberRow.organizations });
         subVerified.current = true;
-        const mustChange = sess.user?.user_metadata?.must_change_password === true;
         setStatus(mustChange ? "org_member_setup" : "org_member");
         return;
       }
