@@ -1,9 +1,16 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../utils/supabase";
 
-const coopFn = (action, body = {}) =>
-  supabase.functions.invoke("coop-portal", { body: { action, ...body } })
-    .then(r => { if (r.error) throw r.error; return r.data; });
+const coopFn = async (action, body = {}) => {
+  const r = await supabase.functions.invoke("coop-portal", { body: { action, ...body } });
+  if (r.error) {
+    // r.data still contains the parsed JSON body even on non-2xx responses
+    const msg = r.data?.error || r.error.message;
+    throw new Error(msg);
+  }
+  if (r.data?.error) throw new Error(r.data.error);
+  return r.data;
+};
 
 const fmt     = n => "₦" + Number(n || 0).toLocaleString("en-NG", { minimumFractionDigits: 0 });
 const fmtDate = d => d ? new Date(d).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" }) : "—";
