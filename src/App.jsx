@@ -60,7 +60,6 @@ export default function App() {
   const [showCoop,     setShowCoop]     = useState(false);
   const [coopOrg,      setCoopOrg]      = useState(null);
   const [coopToken,    setCoopToken]    = useState(() => new URLSearchParams(window.location.search).get("coop_token") || "");
-  const [coopQR,       setCoopQR]       = useState(() => new URLSearchParams(window.location.search).get("coop_qr") || "");
   const [aiQuery,      setAiQuery]      = useState("");
   const [branchReport, setBranchReport] = useState(null);
 

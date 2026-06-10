@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../utils/supabase";
 
 const coopFn = (action, body = {}) =>
@@ -571,7 +571,6 @@ function MeetingsTab({ org, members }) {
   const [loading,     setLoading]     = useState(true);
   const [showCreate,  setShowCreate]  = useState(false);
   const [selected,    setSelected]    = useState(null);
-  const [attendance,  setAttendance]  = useState([]);
   const [present,     setPresent]     = useState(new Set());
   const [saving,      setSaving]      = useState(false);
   const [form,        setForm]        = useState({ title: "", description: "", meeting_type: "general", scheduled_at: "", location: "" });
@@ -597,7 +596,6 @@ function MeetingsTab({ org, members }) {
   const openMeeting = async (meeting) => {
     setSelected(meeting);
     const { attendance: att } = await coopFn("get-attendance", { meeting_id: meeting.id });
-    setAttendance(att || []);
     const presentSet = new Set((att || []).filter(a => a.status === "present").map(a => a.member_id));
     // Pre-mark all active members as absent; check present ones
     const allActive = members.filter(m => m.status === "active").map(m => m.id);
@@ -823,12 +821,13 @@ export default function CoopDashboard({ org: initialOrg, onBack }) {
   const [loading,  setLoading]  = useState(true);
 
   const loadAll = useCallback(() => {
+    const orgId = org.id;
     Promise.all([
-      coopFn("get-org",     { org_id: org.id }),
-      coopFn("get-members", { org_id: org.id }),
-      coopFn("get-wallet",  { org_id: org.id }),
+      coopFn("get-org",     { org_id: orgId }),
+      coopFn("get-members", { org_id: orgId }),
+      coopFn("get-wallet",  { org_id: orgId }),
     ]).then(([orgR, memR, walR]) => {
-      setOrg(orgR.org || org);
+      setOrg(prev => orgR.org || prev);
       setMembers(memR.members || []);
       setWallet(walR);
     }).catch(console.error).finally(() => setLoading(false));
