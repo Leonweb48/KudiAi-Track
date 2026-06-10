@@ -174,6 +174,27 @@ serve(async (req) => {
       });
     }
 
+    if (action === "betting") {
+      const { account, provider, amount } = payload as { account: string; provider: string; amount: string };
+      const bettingMap: Record<string, string> = {
+        bet9ja: "bet9ja", sportybet: "sportybet", nairabet: "nairabet",
+        betking: "betking", merrybet: "merrybet", paripesa: "paripesa",
+      };
+      const serviceID = bettingMap[provider.toLowerCase().replace(/\s/g, "")] || provider.toLowerCase();
+      const res  = await fetch(`${BASE}/pay`, {
+        method: "POST", headers: hdrs,
+        body: JSON.stringify({ request_id: reqId(), serviceID, billersCode: account, variation_code: "directly", amount: parseFloat(amount), phone: account }),
+      });
+      const data = await res.json();
+      const ok   = data?.code === "000";
+      return json({
+        status:    ok ? "SUCCESS" : "FAILED",
+        reference: data?.requestId,
+        amount:    data?.amount,
+        message:   data?.response_description,
+      });
+    }
+
     return json({ error: `Unknown action: ${action}` }, 400);
 
   } catch (err) {
