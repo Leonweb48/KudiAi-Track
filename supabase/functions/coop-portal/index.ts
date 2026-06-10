@@ -155,7 +155,7 @@ serve(async (req) => {
       if (error) return json({ error: error.message }, 400);
       await sb.from("organizations").update({ member_count: (count || 0) + 1 }).eq("id", b.org_id);
 
-      // Create Supabase Auth account (same pattern as staff/ajo)
+      // Create Supabase Auth account — email unconfirmed until OTP verified
       const temp_password = genTempPassword();
       const { data: authData, error: authErr } = await sb.auth.admin.createUser({
         email: b.email,
@@ -167,17 +167,59 @@ serve(async (req) => {
           must_change_password: true,
           full_name: b.full_name,
         },
-        email_confirm: true,
+        email_confirm: false,
       });
       if (authErr) {
-        // Don't fail the whole operation — member record created, just no login yet
         return json({ member, temp_password: null, auth_error: authErr.message });
       }
       if (authData?.user) {
         await sb.from("org_members").update({ user_id: authData.user.id }).eq("id", member.id);
         (member as Record<string, unknown>).user_id = authData.user.id;
+        // Send 6-digit OTP to member's email for verification
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const anonKey    = Deno.env.get("SUPABASE_ANON_KEY")!;
+        await fetch(`${supabaseUrl}/auth/v1/otp`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "apikey": anonKey, "Authorization": `Bearer ${anonKey}` },
+          body: JSON.stringify({ email: b.email, create_user: false }),
+        });
       }
       return json({ member, temp_password });
+    }
+
+    if (action === "verify-member-email") {
+      const b = body as { email: string; otp: string };
+      if (!b.email || !b.otp) return json({ error: "email and otp required" }, 400);
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const anonKey    = Deno.env.get("SUPABASE_ANON_KEY")!;
+      const res = await fetch(`${supabaseUrl}/auth/v1/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "apikey": anonKey, "Authorization": `Bearer ${anonKey}` },
+        body: JSON.stringify({ type: "email", email: b.email, token: b.otp }),
+      });
+      if (!res.ok) {
+        let msg = "Invalid or expired code";
+        try { const e = await res.json(); msg = e.error_description || e.msg || e.message || msg; } catch { /**/ }
+        return json({ error: msg }, 400);
+      }
+      return json({ success: true });
+    }
+
+    if (action === "resend-member-otp") {
+      const b = body as { email: string };
+      if (!b.email) return json({ error: "email required" }, 400);
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const anonKey    = Deno.env.get("SUPABASE_ANON_KEY")!;
+      const res = await fetch(`${supabaseUrl}/auth/v1/otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "apikey": anonKey, "Authorization": `Bearer ${anonKey}` },
+        body: JSON.stringify({ email: b.email, create_user: false }),
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        return json({ error: (e as Record<string,string>).message || "Failed to resend" }, 400);
+      }
+      return json({ success: true });
     }
 
     if (action === "get-members") {
