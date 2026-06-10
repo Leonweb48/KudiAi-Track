@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { supabase } from "../supabaseClient";
+import { supabase } from "../utils/supabase";
 import { usePaystackPayment } from "react-paystack";
 
 const coopFn = (action, body = {}) =>

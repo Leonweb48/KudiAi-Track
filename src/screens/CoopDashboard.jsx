@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { supabase } from "../supabaseClient";
-import AppLogo from "../components/AppLogo";
+import { supabase } from "../utils/supabase";
 
 const coopFn = (action, body = {}) =>
   supabase.functions.invoke("coop-portal", { body: { action, ...body } })
