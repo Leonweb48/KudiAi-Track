@@ -38,28 +38,19 @@ function BgLayout({ children, center = false }) {
         className="absolute inset-0 w-full h-full object-cover object-top"
         draggable={false}
       />
-      {/* Gradient: subtle at top, dark at bottom for card readability */}
-      <div className="absolute inset-0 bg-gradient-to-b from-black/25 via-black/5 to-black/80" />
+      {/* Gradient: stronger overlay so all text is clearly readable */}
+      <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/20 to-black/90" />
 
-      {/* KudiTrack brand — top, safe area aware */}
+      {/* KudiAI Track brand — top, safe area aware */}
       <div className="relative z-10 flex-shrink-0 px-5 pb-2 flex items-center gap-3"
         style={{ paddingTop: "max(40px, env(safe-area-inset-top, 40px))" }}>
-        <div className="w-10 h-10 rounded-xl bg-white/15 backdrop-blur-sm flex items-center justify-center border border-white/20 shadow">
-          <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none">
-            <path d="M12 2L3 7v5c0 5.25 3.75 10.15 9 11.35C17.25 22.15 21 17.25 21 12V7L12 2z"
-              fill="url(#lg1)" />
-            <path d="M9 12l2 2 4-4" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            <defs>
-              <linearGradient id="lg1" x1="3" y1="2" x2="21" y2="23" gradientUnits="userSpaceOnUse">
-                <stop stopColor="#10b981"/>
-                <stop offset="1" stopColor="#064e3b"/>
-              </linearGradient>
-            </defs>
-          </svg>
+        {/* Actual KudiAI Track logo */}
+        <div className="bg-white/90 rounded-xl p-1.5 shadow-lg flex-shrink-0">
+          <AppLogo className="h-9 w-auto" />
         </div>
         <div>
-          <p className="text-white font-bold text-lg leading-tight tracking-wide">KudiTrack</p>
-          <p className="text-white/55 text-[11px] leading-tight">Business · Savings · Bills</p>
+          <p className="text-white font-extrabold text-lg leading-tight tracking-wide drop-shadow-lg">KudiAI Track</p>
+          <p className="text-white/80 text-[11px] leading-tight font-medium">Business · Savings · Bills</p>
         </div>
       </div>
 
@@ -74,10 +65,13 @@ function BgLayout({ children, center = false }) {
         <>
           {/* Hero tagline — takes available space, pinned to bottom of its area */}
           <div className="relative z-10 flex-1 min-h-0 flex flex-col justify-end px-6 pb-4">
-            <p className="text-white font-bold text-2xl leading-snug drop-shadow mb-1">
+            <p className="text-white font-extrabold text-2xl leading-snug mb-1"
+              style={{ textShadow: "0 2px 12px rgba(0,0,0,0.8)" }}>
               Track your business.<br />Grow your savings.
             </p>
-            <p className="text-white/55 text-sm">Designed for Nigerian entrepreneurs.</p>
+            <p className="text-white/90 text-sm font-medium" style={{ textShadow: "0 1px 6px rgba(0,0,0,0.7)" }}>
+              Designed for Nigerian entrepreneurs.
+            </p>
           </div>
 
           {/* Bottom sheet — fixed height cap, scrolls internally if form is long */}
