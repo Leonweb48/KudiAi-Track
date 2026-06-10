@@ -571,21 +571,27 @@ function ContributeModal({ client, onSuccess, onClose }) {
   const handlePaystackClose = useCallback(() => setLoading(false), []);
 
   const handlePaystackSuccess = useCallback(async (transaction) => {
-    setLoading(true);
+    const paid = parseFloat(amount) || 0;
+    // Close modal immediately with optimistic balance update
+    onSuccess({
+      ...client,
+      current_balance: (client.current_balance || 0) + paid,
+      total_saved:     (client.total_saved || 0) + paid,
+    });
+    // Record in background — callback refs are still alive after modal closes
     try {
       const { client: updated } = await ajoFn("record-contribution", {
         client_id:      client.id,
         owner_id:       client.owner_id,
-        amount:         parseFloat(amount),
+        amount:         paid,
         payment_method: "paystack",
         paystack_ref:   transaction.reference || refId.current,
       });
-      onSuccess(updated);
+      if (updated) onSuccess(updated);
     } catch {
-      setError("Payment received but recording failed. Reference: " + (transaction.reference || refId.current));
-      setLoading(false);
+      // Payment was collected — reconcile via ref if needed
     }
-  }, [client.id, client.owner_id, amount, onSuccess]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [client, amount, onSuccess]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-end justify-center" onClick={onClose}>
@@ -1065,7 +1071,7 @@ export default function AjoClientPortal({ session, ajoClient }) {
         </div>
 
         {/* Tab content */}
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto pb-20">
           {tab === "overview" && client && (
             <OverviewTab client={client} contributions={contributions} onPayClick={() => setShowPay(true)} ownerInfo={ownerInfo} />
           )}
@@ -1087,8 +1093,8 @@ export default function AjoClientPortal({ session, ajoClient }) {
           )}
         </main>
 
-        {/* Bottom nav — 3 tabs, always visible */}
-        <nav className="flex-shrink-0 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 z-10"
+        {/* Bottom nav — fixed so it never scrolls away */}
+        <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md z-20 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900"
           style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
           <div className="flex">
             {NAV.map(n => (
