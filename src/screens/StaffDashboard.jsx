@@ -357,7 +357,7 @@ export default function StaffDashboard({ session, staff }) {
       case "credit":
         return <Credit store={store} plan="premium" autoOpen={autoAdd?.tab === "credit"} onAutoOpened={() => setAutoAdd(null)} onUpgrade={() => {}} readOnly={noCreate} />;
       case "aso":
-        return <Aso store={store} plan="premium" autoOpen={autoAdd?.tab === "aso"} onAutoOpened={() => setAutoAdd(null)} onUpgrade={() => {}} readOnly={noCreate} />;
+        return <Aso store={store} plan="premium" autoOpen={autoAdd?.tab === "aso"} onAutoOpened={() => setAutoAdd(null)} onUpgrade={() => {}} readOnly={noCreate} staffId={staffId} />;
       case "inventory":
         return <Inventory inventory={inventory} isOwner={false} canAdd={true} plan="business" onUpgrade={() => {}} />;
       case "insights":

@@ -86,7 +86,7 @@ function isGroupAccount(c) {
   return keywords.some(k => name.includes(k));
 }
 
-export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, onUpgrade }) {
+export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, onUpgrade, staffId = null }) {
   const t = useT();
   const [showAdd,      setShowAdd]      = useState(false);
   const [selected,     setSelected]     = useState(null);
@@ -304,18 +304,24 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     }
     if (!error && data) {
       const tempPwd = clientPassword;
-      resetAdd();
-      let otpClient = null;
       try {
         await provisionClientLogin(data, tempPwd);
-        try { otpClient = await sendClientOtp(data.email); } catch (_) {}
+        // Provision succeeded — show credentials modal
+        resetAdd();
+        let otpClient = null;
+        if (!staffId) {
+          // Only send OTP for owner-side registration (staff registers in-person)
+          try { otpClient = await sendClientOtp(data.email); } catch (_) {}
+        }
+        setCreatedClient({ ...data, _password: tempPwd });
+        if (otpClient) setClientOtpData({ email: data.email, client: otpClient });
       } catch (provErr) {
-        console.error("Account provision:", provErr);
+        // Provision failed — remove the orphaned client record and surface the error
+        await supabase.from("aso_clients").delete().eq("id", data.id);
+        setAddError(provErr.message || "Failed to create client login account. Please try again.");
       }
-      setCreatedClient({ ...data, _password: tempPwd });
-      if (otpClient) setClientOtpData({ email: data.email, client: otpClient });
     } else {
-      resetAdd();
+      setAddError(error?.message || "Failed to add client. Please try again.");
     }
     setAdding(false);
   };

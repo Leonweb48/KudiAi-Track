@@ -49,16 +49,28 @@ serve(async (req) => {
       return json({ error: "Password must be at least 8 characters" }, 400);
     }
 
-    // Verify the caller owns this ajo client
+    // Load the ajo client, then verify caller is the owner or active staff for the owner
     const { data: client, error: clientError } = await adminClient
       .from("aso_clients")
       .select("id, user_id, client_user_id, email, full_name")
       .eq("id", clientId)
-      .eq("user_id", userData.user.id)
       .maybeSingle();
 
     if (clientError) throw clientError;
     if (!client) return json({ error: "Ajo client not found" }, 404);
+
+    const callerId = userData.user.id;
+    if (client.user_id !== callerId) {
+      // Not the owner — check if caller is active staff for this owner
+      const { data: staffRow } = await adminClient
+        .from("staff")
+        .select("id")
+        .eq("user_id", callerId)
+        .eq("owner_id", client.user_id)
+        .eq("status", "active")
+        .maybeSingle();
+      if (!staffRow) return json({ error: "Ajo client not found" }, 404);
+    }
     if (!client.email) return json({ error: "Client email is required to create a login account" }, 400);
 
     const userMetadata = {
@@ -100,7 +112,7 @@ serve(async (req) => {
         .from("aso_clients")
         .update({ client_user_id: authUserId })
         .eq("id", client.id)
-        .eq("user_id", userData.user.id);
+        .eq("user_id", client.user_id);
 
       if (linkError) {
         await adminClient.auth.admin.deleteUser(authUserId);
