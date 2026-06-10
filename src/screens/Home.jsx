@@ -153,9 +153,15 @@ export default function Home({ store, setTab, onQuickAction, onVoiceOpen, notif 
       {/* ── Top bar ──────────────────────────────────────────────────── */}
       <div className="flex items-center -mx-4 px-4 py-3 bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700/60 shadow-sm sticky top-0 z-10 -mt-5 mb-1">
 
-        {/* Centre — KudiAI Track logo */}
-        <div className="flex-1 flex justify-center">
-          <AppLogo className="h-9 w-auto" />
+        {/* Left — actual KudiAI Track logo */}
+        <AppLogo className="h-8 w-auto flex-shrink-0" />
+
+        {/* Centre — stylish brand name */}
+        <div className="flex-1 flex justify-center items-baseline gap-0.5 select-none">
+          <span className="text-[18px] font-black tracking-tight text-slate-800 dark:text-white leading-none">Kudi</span>
+          <span className="text-[18px] font-black tracking-tight leading-none"
+            style={{ background: "linear-gradient(135deg,#16a34a,#059669)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>AI</span>
+          <span className="text-[12px] font-bold text-slate-400 dark:text-slate-500 tracking-widest uppercase leading-none ml-1">Track</span>
         </div>
 
         {/* Right — bell + profile avatar */}

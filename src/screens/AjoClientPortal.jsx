@@ -625,7 +625,7 @@ function ContributeModal({ client, onSuccess, onClose }) {
 }
 
 // ── Overview tab ──────────────────────────────────────────────────────────
-function OverviewTab({ client, contributions, onPayClick }) {
+function OverviewTab({ client, contributions, onPayClick, ownerInfo }) {
   const totalThisMonth = contributions
     .filter(c => c.type === "contribution" && (c.created_at || "").startsWith(new Date().toISOString().slice(0, 7)))
     .reduce((s, c) => s + (c.amount || 0), 0);
@@ -695,6 +695,26 @@ function OverviewTab({ client, contributions, onPayClick }) {
             className="flex-shrink-0 px-3 py-1.5 bg-violet-600 text-white rounded-xl text-xs font-bold active:scale-95 transition">
             Pay
           </button>
+        </div>
+      )}
+
+      {/* Assigned savings officer */}
+      {ownerInfo?.staff && (
+        <div className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3 border border-slate-100 dark:border-slate-700 flex items-center gap-3 shadow-sm">
+          <div className="w-11 h-11 rounded-xl bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center flex-shrink-0 overflow-hidden border border-violet-100 dark:border-violet-800">
+            {ownerInfo.staff.profile_image_url
+              ? <img src={ownerInfo.staff.profile_image_url} alt="" className="w-full h-full object-cover" />
+              : <span className="text-violet-600 dark:text-violet-400 font-black text-lg">{(ownerInfo.staff.full_name || "?")[0].toUpperCase()}</span>
+            }
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider leading-none mb-0.5">Your Savings Officer</p>
+            <p className="text-sm font-extrabold text-slate-800 dark:text-white truncate leading-tight">{ownerInfo.staff.full_name}</p>
+            {ownerInfo.staff.phone && <p className="text-[11px] text-slate-400 mt-0.5">{ownerInfo.staff.phone}</p>}
+          </div>
+          <span className="text-[9px] bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 font-bold px-2 py-1 rounded-full capitalize flex-shrink-0">
+            {ownerInfo.staff.role || "staff"}
+          </span>
         </div>
       )}
 
@@ -804,21 +824,15 @@ function ProfileTab({ client, ownerInfo, onChangePwdClick, onLogout, isDark, onT
         style={{ background: "linear-gradient(135deg,#7c3aed 0%,#4c1d95 100%)" }}>
         <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full bg-white/5 pointer-events-none" />
         <div className="absolute -bottom-10 -left-6 w-40 h-40 rounded-full bg-white/5 pointer-events-none" />
-        <div className="relative flex items-start gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-white/15 flex items-center justify-center flex-shrink-0">
-            <svg viewBox="0 0 24 24" fill="none" className="w-7 h-7 text-white" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-            </svg>
+        <div className="relative flex items-center gap-4">
+          {/* Actual KudiAI Track logo on white pill */}
+          <div className="bg-white/90 rounded-2xl p-2 flex-shrink-0 shadow-lg">
+            <AppLogo className="h-10 w-auto" />
           </div>
           <div>
-            <div className="flex items-baseline gap-1">
-              <span className="text-2xl font-black text-white tracking-tight leading-none">KUDI</span>
-              <span className="text-2xl font-black tracking-tight leading-none"
-                style={{ background: "linear-gradient(135deg,#fbbf24,#f59e0b)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>AI</span>
-              <span className="text-sm font-semibold text-white/50 tracking-widest ml-1">TRACK</span>
-            </div>
-            <p className="text-[11px] text-white/70 mt-1">Smart Savings Intelligence Platform</p>
-            <p className="text-[10px] text-white/50 mt-0.5">Empowering your financial journey.</p>
+            <p className="text-white font-extrabold text-lg leading-tight tracking-wide">KudiAI Track</p>
+            <p className="text-white/70 text-[11px] mt-1">Smart Savings Intelligence Platform</p>
+            <p className="text-white/50 text-[10px] mt-0.5">Empowering your financial journey.</p>
           </div>
         </div>
       </div>
@@ -1022,8 +1036,8 @@ export default function AjoClientPortal({ session, ajoClient }) {
   ];
 
   return (
-    <div className="h-screen bg-slate-50 dark:bg-slate-900 flex justify-center">
-      <div className="w-full max-w-md relative flex flex-col h-screen">
+    <div className="h-screen overflow-hidden bg-slate-50 dark:bg-slate-900 flex justify-center">
+      <div className="w-full max-w-md relative flex flex-col h-screen overflow-hidden">
 
         {/* Header */}
         <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 py-3 flex items-center gap-2">
@@ -1053,7 +1067,7 @@ export default function AjoClientPortal({ session, ajoClient }) {
         {/* Tab content */}
         <main className="flex-1 overflow-y-auto">
           {tab === "overview" && client && (
-            <OverviewTab client={client} contributions={contributions} onPayClick={() => setShowPay(true)} />
+            <OverviewTab client={client} contributions={contributions} onPayClick={() => setShowPay(true)} ownerInfo={ownerInfo} />
           )}
           {tab === "history" && <HistoryTab contributions={contributions} />}
           {tab === "profile" && client && (
@@ -1073,8 +1087,9 @@ export default function AjoClientPortal({ session, ajoClient }) {
           )}
         </main>
 
-        {/* Bottom nav — 3 tabs */}
-        <nav className="border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 z-10">
+        {/* Bottom nav — 3 tabs, always visible */}
+        <nav className="flex-shrink-0 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 z-10"
+          style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
           <div className="flex">
             {NAV.map(n => (
               <button key={n.id} onClick={() => setTab(n.id)}
