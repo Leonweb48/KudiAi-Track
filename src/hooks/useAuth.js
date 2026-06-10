@@ -12,6 +12,7 @@ export function useAuth() {
   const [plan,      setPlan]      = useState(() => localStorage.getItem(CACHE_KEY) || "starter");
   const [staff,     setStaff]     = useState(null);
   const [ajoClient, setAjoClient] = useState(null);
+  const [orgMember, setOrgMember] = useState(null);
 
   // Tracks whether we've already confirmed a subscription this session.
   // A ref (not state) so reads inside async callbacks are always current.
@@ -23,6 +24,7 @@ export function useAuth() {
       setStatus("unauthenticated");
       setStaff(null);
       setAjoClient(null);
+      setOrgMember(null);
       subVerified.current = false;
       localStorage.removeItem(CACHE_KEY);
       return;
@@ -43,12 +45,13 @@ export function useAuth() {
       // Block OAuth logins for staff / ajo_client emails — they must use email+password
       const isOAuth = !!(sess.user.app_metadata?.provider && sess.user.app_metadata.provider !== "email");
       if (isOAuth && email) {
-        const [{ data: staffByEmail }, { data: ajoByEmail }] = await Promise.all([
+        const [{ data: staffByEmail }, { data: ajoByEmail }, { data: orgMemberByEmail }] = await Promise.all([
           supabase.from("staff").select("id").eq("email", email).maybeSingle(),
           supabase.from("aso_clients").select("id").eq("email", email).maybeSingle(),
+          supabase.from("org_members").select("id").eq("email", email).maybeSingle(),
         ]);
-        if (staffByEmail || ajoByEmail) {
-          const role = staffByEmail ? "staff member" : "savings client";
+        if (staffByEmail || ajoByEmail || orgMemberByEmail) {
+          const role = staffByEmail ? "staff member" : ajoByEmail ? "savings client" : "organisation member";
           sessionStorage.setItem(
             "auth_block_reason",
             `This email is registered as a ${role} account. Google login is not available for ${role}s — please sign in with your email and password instead.`,
@@ -104,6 +107,22 @@ export function useAuth() {
         subVerified.current = true;
         const mustChange = sess.user?.user_metadata?.must_change_password === true;
         setStatus(mustChange ? "ajo_client_setup" : "ajo_client");
+        return;
+      }
+
+      // ── Org Member check ──────────────────────────────────────────
+      const { data: orgMemberRow } = await supabase
+        .from("org_members")
+        .select("id, org_id, membership_id, full_name, email, phone, role, status, profile_image_url, savings_balance, joined_date, privacy_balance, privacy_contributions, privacy_activities, organizations(id, name, type, reg_number, wallet_balance, total_savings, total_loans_out, member_count, logo_url, address, phone, email)")
+        .eq("user_id", uid)
+        .eq("status", "active")
+        .maybeSingle();
+
+      if (orgMemberRow) {
+        setOrgMember({ ...orgMemberRow, org: orgMemberRow.organizations });
+        subVerified.current = true;
+        const mustChange = sess.user?.user_metadata?.must_change_password === true;
+        setStatus(mustChange ? "org_member_setup" : "org_member");
         return;
       }
 
@@ -199,5 +218,5 @@ export function useAuth() {
     supabase.auth.getSession().then(({ data }) => resolve(data.session));
   }, [resolve]);
 
-  return { status, session, plan, setReady, refetch, staff, ajoClient, ownerId: staff?.owner_id ?? null };
+  return { status, session, plan, setReady, refetch, staff, ajoClient, orgMember, ownerId: staff?.owner_id ?? null };
 }

@@ -16,9 +16,16 @@ const ORG_SELECT = `id, owner_id, name, type, reg_number, description, purpose, 
 
 const MEMBER_SELECT = `id, org_id, membership_id, full_name, email, phone, role, status,
   profile_image_url, address, occupation, gender, date_of_birth, joined_date,
-  next_of_kin, next_of_kin_phone,
-  privacy_balance, privacy_contributions, privacy_activities, must_change_pin,
-  suspended_at, suspension_reason, portal_token, savings_balance, created_at`;
+  next_of_kin, next_of_kin_phone, user_id,
+  privacy_balance, privacy_contributions, privacy_activities,
+  suspended_at, suspension_reason, savings_balance, created_at`;
+
+function genTempPassword(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+  const values = new Uint8Array(12);
+  crypto.getRandomValues(values);
+  return Array.from(values, n => chars[n % chars.length]).join("");
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -130,26 +137,47 @@ serve(async (req) => {
 
     if (action === "add-member") {
       const b = body as Record<string, string>;
-      if (!b.org_id || !b.full_name) return json({ error: "org_id and full_name required" }, 400);
+      if (!b.org_id || !b.full_name || !b.email) return json({ error: "org_id, full_name and email required" }, 400);
       const { count } = await sb.from("org_members").select("id", { count: "exact", head: true })
         .eq("org_id", b.org_id).neq("status", "removed");
       const seq = String((count || 0) + 1).padStart(4, "0");
       const { data: orgRow } = await sb.from("organizations").select("name,reg_number").eq("id", b.org_id).single();
       const prefix = (orgRow?.reg_number || "ORG").split("-")[0];
       const membership_id = `${prefix}-${seq}`;
-      const default_pin = String(Math.floor(1000 + Math.random() * 9000));
       const { data: member, error } = await sb.from("org_members")
         .insert({ org_id: b.org_id, membership_id, full_name: b.full_name,
-          email: b.email || null, phone: b.phone || null, role: b.role || "member",
+          email: b.email, phone: b.phone || null, role: b.role || "member",
           address: b.address || null, occupation: b.occupation || null,
           gender: b.gender || null, next_of_kin: b.next_of_kin || null,
           next_of_kin_phone: b.next_of_kin_phone || null,
-          portal_pin: default_pin, must_change_pin: true,
         })
         .select(MEMBER_SELECT).single();
       if (error) return json({ error: error.message }, 400);
       await sb.from("organizations").update({ member_count: (count || 0) + 1 }).eq("id", b.org_id);
-      return json({ member, default_pin });
+
+      // Create Supabase Auth account (same pattern as staff/ajo)
+      const temp_password = genTempPassword();
+      const { data: authData, error: authErr } = await sb.auth.admin.createUser({
+        email: b.email,
+        password: temp_password,
+        user_metadata: {
+          account_type: "org_member",
+          org_member_id: member.id,
+          org_id: b.org_id,
+          must_change_password: true,
+          full_name: b.full_name,
+        },
+        email_confirm: true,
+      });
+      if (authErr) {
+        // Don't fail the whole operation — member record created, just no login yet
+        return json({ member, temp_password: null, auth_error: authErr.message });
+      }
+      if (authData?.user) {
+        await sb.from("org_members").update({ user_id: authData.user.id }).eq("id", member.id);
+        (member as Record<string, unknown>).user_id = authData.user.id;
+      }
+      return json({ member, temp_password });
     }
 
     if (action === "get-members") {
@@ -193,9 +221,24 @@ serve(async (req) => {
       if (!member_id || !org_id) return json({ error: "member_id and org_id required" }, 400);
       const new_pin = String(Math.floor(1000 + Math.random() * 9000));
       await sb.from("org_members")
-        .update({ portal_pin: new_pin, must_change_pin: true })
+        .update({ portal_pin: new_pin })
         .eq("id", member_id).eq("org_id", org_id);
       return json({ new_pin });
+    }
+
+    if (action === "reset-member-password") {
+      const { member_id, org_id } = body as { member_id: string; org_id: string };
+      if (!member_id || !org_id) return json({ error: "member_id and org_id required" }, 400);
+      const { data: m } = await sb.from("org_members")
+        .select("user_id, email, full_name").eq("id", member_id).eq("org_id", org_id).single();
+      if (!m?.user_id) return json({ error: "This member has no login account" }, 400);
+      const temp_password = genTempPassword();
+      const { error } = await sb.auth.admin.updateUserById(m.user_id as string, {
+        password: temp_password,
+        user_metadata: { must_change_password: true },
+      });
+      if (error) return json({ error: error.message }, 400);
+      return json({ temp_password, email: m.email });
     }
 
     if (action === "delete-member") {

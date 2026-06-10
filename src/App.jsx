@@ -30,7 +30,7 @@ import BranchManagerDashboard from "./screens/BranchManagerDashboard";
 import AjoClientPortal       from "./screens/AjoClientPortal";
 import CoopList              from "./screens/CoopList";
 import CoopDashboard         from "./screens/CoopDashboard";
-import CoopMemberPortal      from "./screens/CoopMemberPortal";
+import CoopMemberPortal, { CoopMemberFirstLogin } from "./screens/CoopMemberPortal";
 import { useInventory }      from "./hooks/useInventory";
 import { useBiometricLock }  from "./hooks/useBiometricLock";
 import { useLoyalty }        from "./hooks/useLoyalty";
@@ -59,11 +59,10 @@ export default function App() {
   const [showLoyalty,  setShowLoyalty]  = useState(false);
   const [showCoop,     setShowCoop]     = useState(false);
   const [coopOrg,      setCoopOrg]      = useState(null);
-  const [coopToken,    setCoopToken]    = useState(() => new URLSearchParams(window.location.search).get("coop_token") || "");
   const [aiQuery,      setAiQuery]      = useState("");
   const [branchReport, setBranchReport] = useState(null);
 
-  const { status, session, plan, setReady, refetch, staff, ajoClient } = useAuth();
+  const { status, session, plan, setReady, refetch, staff, ajoClient, orgMember } = useAuth();
   const userId = session?.user?.id;
 
   // Notification system — initialised before store so addNotification is stable
@@ -147,15 +146,9 @@ export default function App() {
 
   if (status === "loading")         return <Spinner />;
 
-  // Coop member portal — token in URL (no auth required)
-  if (coopToken) {
-    return (
-      <CoopMemberPortal
-        token={coopToken}
-        onBack={() => { setCoopToken(""); window.history.replaceState({}, "", window.location.pathname); }}
-      />
-    );
-  }
+  // Org member — same auth pattern as staff/ajo (email + password, no Google)
+  if (status === "org_member_setup") return <CoopMemberFirstLogin member={orgMember} />;
+  if (status === "org_member")       return <CoopMemberPortal member={orgMember} />;
 
   // Ajo client login — route to dedicated client portal
   if (status === "ajo_client_setup" || status === "ajo_client") {

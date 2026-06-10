@@ -147,12 +147,13 @@ function MembersTab({ org, members, onRefresh }) {
 
   const handleAdd = async () => {
     if (!form.full_name.trim()) { setError("Full name required"); return; }
+    if (!form.email.trim()) { setError("Email address required"); return; }
     setLoading(true); setError("");
     try {
       const result = await coopFn("add-member", { org_id: org.id, ...form });
       setShowAdd(false);
       setForm({ full_name: "", email: "", phone: "", role: "member", address: "", occupation: "", gender: "", next_of_kin: "", next_of_kin_phone: "" });
-      setCreds({ membership_id: result.member.membership_id, pin: result.default_pin, name: result.member.full_name });
+      setCreds({ email: result.member.email, temp_password: result.temp_password, name: result.member.full_name });
       onRefresh();
     } catch (e) { setError(e.message || "Failed"); }
     finally { setLoading(false); }
@@ -176,12 +177,12 @@ function MembersTab({ org, members, onRefresh }) {
     finally { setSaving(false); }
   };
 
-  const handleResetPin = async (member) => {
+  const handleResetPassword = async (member) => {
     setSaving(true);
     try {
-      const { new_pin } = await coopFn("reset-member-pin", { member_id: member.id, org_id: org.id });
+      const result = await coopFn("reset-member-password", { member_id: member.id, org_id: org.id });
       setSelected(null);
-      setCreds({ membership_id: member.membership_id, pin: new_pin, name: member.full_name, isReset: true });
+      setCreds({ email: result.email, temp_password: result.temp_password, name: member.full_name, isReset: true });
       onRefresh();
     } catch (e) { alert(e.message); }
     finally { setSaving(false); }
@@ -243,11 +244,11 @@ function MembersTab({ org, members, onRefresh }) {
       {showAdd && (
         <ModalWrap onClose={() => { setShowAdd(false); setError(""); }}>
           <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">Add Member</h3>
-          <p className="text-xs text-slate-400 mb-4">A PIN will be auto-generated for first login</p>
+          <p className="text-xs text-slate-400 mb-4">A temporary password will be generated for first login</p>
           {error && <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-3 text-xs text-red-600">{error}</div>}
           <div className="flex flex-col gap-3">
-            {[["Full Name *","full_name","text","John Adeyemi"],["Phone","phone","tel","08012345678"],
-              ["Email","email","email","john@email.com"],["Address","address","text","Street address"],
+            {[["Full Name *","full_name","text","John Adeyemi"],["Email *","email","email","john@email.com"],
+              ["Phone","phone","tel","08012345678"],["Address","address","text","Street address"],
               ["Occupation","occupation","text","Trader"],["Next of Kin","next_of_kin","text","Mary Adeyemi"],
               ["Next of Kin Phone","next_of_kin_phone","tel","08098765432"]].map(([label, key, type, ph]) => (
               <div key={key}>
@@ -286,23 +287,23 @@ function MembersTab({ org, members, onRefresh }) {
           <div className="text-center">
             <div className="w-16 h-16 bg-green-100 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-3">🎉</div>
             <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">
-              {creds.isReset ? "PIN Reset Successfully" : "Member Added!"}
+              {creds.isReset ? "Password Reset Successfully" : "Member Added!"}
             </h3>
             <p className="text-xs text-slate-400 mb-5">Share these login credentials with {creds.name}</p>
             <div className="bg-violet-50 dark:bg-violet-900/20 rounded-2xl p-4 mb-4 text-left">
               <div className="flex justify-between items-center mb-2">
-                <span className="text-xs text-slate-400">Membership ID</span>
-                <span className="text-sm font-extrabold text-slate-800 dark:text-white font-mono">{creds.membership_id}</span>
+                <span className="text-xs text-slate-400">Email</span>
+                <span className="text-sm font-extrabold text-slate-800 dark:text-white">{creds.email}</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-xs text-slate-400">{creds.isReset ? "New PIN" : "Default PIN"}</span>
-                <span className="text-2xl font-extrabold text-violet-600 font-mono tracking-widest">{creds.pin}</span>
+                <span className="text-xs text-slate-400">{creds.isReset ? "New Password" : "Temp Password"}</span>
+                <span className="text-lg font-extrabold text-violet-600 font-mono tracking-wider">{creds.temp_password}</span>
               </div>
             </div>
             <p className="text-[10px] text-amber-600 bg-amber-50 rounded-xl px-3 py-2 mb-4">
-              ⚠️ Member will be asked to change this PIN on first login
+              ⚠️ Member will be asked to set a new password on first login
             </p>
-            <button onClick={() => navigator.clipboard?.writeText(`Membership ID: ${creds.membership_id}\nPIN: ${creds.pin}`)}
+            <button onClick={() => navigator.clipboard?.writeText(`Email: ${creds.email}\nPassword: ${creds.temp_password}`)}
               className="w-full py-2.5 border border-violet-200 text-violet-600 rounded-xl font-bold text-sm mb-2">Copy Credentials</button>
             <button onClick={() => setCreds(null)} className="w-full py-2.5 bg-violet-600 text-white rounded-xl font-bold text-sm">Done</button>
           </div>
@@ -327,16 +328,10 @@ function MembersTab({ org, members, onRefresh }) {
               <div key={k}><p className="text-[10px] text-slate-400">{k}</p><p className="text-xs font-bold text-slate-800 dark:text-white capitalize">{v}</p></div>
             ))}
           </div>
-          <div className="bg-violet-50 dark:bg-violet-900/20 rounded-xl p-3 mb-4">
-            <p className="text-[11px] font-bold text-violet-600 mb-1">Member Portal Link</p>
-            <p className="text-[10px] text-slate-500 break-all">{window.location.origin}/?coop_token={selected.portal_token}</p>
-            <button onClick={() => navigator.clipboard?.writeText(`${window.location.origin}/?coop_token=${selected.portal_token}`)}
-              className="mt-2 text-[10px] font-bold text-violet-600 bg-violet-100 px-2 py-1 rounded-lg">Copy Link</button>
-          </div>
           <div className="flex flex-col gap-2">
             <button onClick={() => openEdit(selected)} className="w-full py-2.5 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl font-bold text-sm">Edit Member</button>
-            <button onClick={() => { if (window.confirm(`Reset PIN for ${selected.full_name}?`)) handleResetPin(selected); }}
-              disabled={saving} className="w-full py-2.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-xl font-bold text-sm">Reset PIN</button>
+            <button onClick={() => { if (window.confirm(`Reset password for ${selected.full_name}?`)) handleResetPassword(selected); }}
+              disabled={saving} className="w-full py-2.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-xl font-bold text-sm">Reset Password</button>
             {selected.status !== "suspended" && selected.status !== "removed" && (
               <button onClick={() => { const r = prompt("Reason for suspension?"); if (r !== null) handleStatus(selected, "suspended", r); }}
                 disabled={saving} className="w-full py-2.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-xl font-bold text-sm">Suspend</button>

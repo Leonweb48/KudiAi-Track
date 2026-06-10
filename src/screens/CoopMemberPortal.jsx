@@ -9,8 +9,6 @@ const fmt     = n => "₦" + Number(n || 0).toLocaleString("en-NG", { minimumFra
 const fmtDate = d => d ? new Date(d).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" }) : "—";
 const fmtDT   = d => d ? new Date(d).toLocaleString("en-NG", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
 
-const inp = "w-full px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-violet-400";
-
 const ANN_COLORS = {
   announcement: "bg-blue-50 text-blue-700 border-blue-200",
   notice:       "bg-amber-50 text-amber-700 border-amber-200",
@@ -22,99 +20,95 @@ const FREQ_LABELS = { daily:"Daily", weekly:"Weekly", monthly:"Monthly", quarter
 const ORG_TYPE_ICONS = { cooperative:"🤝", market_association:"🏪", church:"⛪", ngo:"🌍", youth_group:"👥", savings_group:"💰", community_group:"🏘️", professional_association:"💼", savings_club:"🏦" };
 
 // ═══════════════════════════════════════════════════
-//  CHANGE-PIN SCREEN
+//  FIRST LOGIN — set password (same pattern as staff/ajo)
 // ═══════════════════════════════════════════════════
-function ChangePinScreen({ member, onDone }) {
-  const [current, setCurrent]   = useState("");
-  const [next,    setNext]      = useState("");
-  const [confirm, setConfirm]   = useState("");
-  const [loading, setLoading]   = useState(false);
-  const [error,   setError]     = useState("");
+export function CoopMemberFirstLogin({ member }) {
+  const [password, setPassword] = useState("");
+  const [confirm,  setConfirm]  = useState("");
+  const [showPwd,  setShowPwd]  = useState(false);
+  const [saving,   setSaving]   = useState(false);
+  const [error,    setError]    = useState("");
+  const [success,  setSuccess]  = useState(false);
 
-  const handleSubmit = async () => {
-    if (next.length !== 4 || !/^\d{4}$/.test(next)) { setError("New PIN must be exactly 4 digits"); return; }
-    if (next !== confirm) { setError("PINs do not match"); return; }
-    setLoading(true); setError("");
-    try {
-      await coopFn("change-member-pin", { member_id: member.id, current_pin: current, new_pin: next });
-      onDone();
-    } catch (e) { setError(e.message || "Failed to change PIN"); }
-    finally { setLoading(false); }
+  const score = [/.{8,}/, /[A-Z]/, /[0-9]/, /[^A-Za-z0-9]/].filter(r => r.test(password)).length;
+  const colors = ["", "bg-red-400", "bg-amber-400", "bg-blue-500", "bg-green-500"];
+
+  const submit = async () => {
+    if (password.length < 8) { setError("Minimum 8 characters"); return; }
+    if (password !== confirm) { setError("Passwords do not match"); return; }
+    setSaving(true); setError("");
+    const { error: err } = await supabase.auth.updateUser({ password, data: { must_change_password: false } });
+    if (err) { setError(err.message); setSaving(false); return; }
+    setSuccess(true);
+    // onAuthStateChange fires → must_change_password: false → org_member status → CoopMemberPortal
   };
 
-  return (
-    <div className="fixed inset-0 z-[80] bg-slate-900 flex flex-col items-center justify-center px-6">
-      <div className="w-16 h-16 bg-amber-100 rounded-3xl flex items-center justify-center text-3xl mb-5">🔐</div>
-      <h2 className="text-xl font-extrabold text-white mb-1">Change Your PIN</h2>
-      <p className="text-sm text-slate-400 text-center mb-8">For your security, please set a new 4-digit PIN before you continue.</p>
-      {error && <div className="w-full max-w-xs bg-red-900/40 border border-red-500/40 rounded-2xl px-4 py-3 mb-4 text-sm text-red-300 text-center">{error}</div>}
-      <div className="w-full max-w-xs flex flex-col gap-4 mb-8">
-        <div>
-          <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">Current PIN</label>
-          <input className={inp} type="password" inputMode="numeric" pattern="\d*" maxLength={4}
-            value={current} onChange={e => setCurrent(e.target.value.replace(/\D/g, ""))} placeholder="• • • •" />
+  if (success) return (
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center px-6">
+      <div className="text-center">
+        <div className="w-20 h-20 bg-violet-100 dark:bg-violet-900/30 rounded-full flex items-center justify-center mx-auto mb-5">
+          <svg viewBox="0 0 24 24" fill="none" className="w-10 h-10 text-violet-600" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+            <path d="M20 6L9 17l-5-5" />
+          </svg>
         </div>
-        <div>
-          <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">New PIN (4 digits)</label>
-          <input className={inp} type="password" inputMode="numeric" pattern="\d*" maxLength={4}
-            value={next} onChange={e => setNext(e.target.value.replace(/\D/g, ""))} placeholder="• • • •" />
-        </div>
-        <div>
-          <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">Confirm New PIN</label>
-          <input className={inp} type="password" inputMode="numeric" pattern="\d*" maxLength={4}
-            value={confirm} onChange={e => setConfirm(e.target.value.replace(/\D/g, ""))} placeholder="• • • •" />
-        </div>
+        <h2 className="text-xl font-extrabold text-slate-800 dark:text-white mb-2">Password set!</h2>
+        <p className="text-sm text-slate-500 dark:text-slate-400">Taking you to your portal…</p>
+        <div className="mt-6 w-8 h-8 border-[3px] border-violet-500 border-t-transparent rounded-full animate-spin mx-auto" />
       </div>
-      <button onClick={handleSubmit} disabled={loading}
-        className="w-full max-w-xs py-4 bg-violet-600 text-white rounded-2xl font-extrabold text-base disabled:opacity-50">
-        {loading ? "Saving…" : "Set New PIN"}
-      </button>
     </div>
   );
-}
-
-// ═══════════════════════════════════════════════════
-//  LOGIN SCREEN
-// ═══════════════════════════════════════════════════
-function LoginScreen({ onLogin }) {
-  const [membershipId, setMembershipId] = useState("");
-  const [pin,          setPin]          = useState("");
-  const [loading,      setLoading]      = useState(false);
-  const [error,        setError]        = useState("");
-
-  const handleLogin = async () => {
-    if (!membershipId.trim() || !pin.trim()) { setError("Enter your membership ID and PIN"); return; }
-    setLoading(true); setError("");
-    try {
-      const result = await coopFn("member-auth", { membership_id: membershipId.trim().toUpperCase(), pin });
-      onLogin(result.member, result.org);
-    } catch (e) { setError(e.message || "Invalid credentials"); }
-    finally { setLoading(false); }
-  };
 
   return (
-    <div className="fixed inset-0 z-[70] bg-slate-900 flex flex-col items-center justify-center px-6">
-      <div className="text-6xl mb-6">🏛️</div>
-      <h2 className="text-2xl font-extrabold text-white mb-1">Member Portal</h2>
-      <p className="text-sm text-slate-400 mb-10">Sign in with your membership credentials</p>
-      {error && <div className="w-full max-w-xs bg-red-900/40 border border-red-500/40 rounded-2xl px-4 py-3 mb-5 text-sm text-red-300 text-center">{error}</div>}
-      <div className="w-full max-w-xs flex flex-col gap-4 mb-6">
-        <div>
-          <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">Membership ID</label>
-          <input className={inp} type="text" value={membershipId} onChange={e => setMembershipId(e.target.value)}
-            placeholder="e.g. COOP-0001" autoCapitalize="characters" autoComplete="username" />
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col">
+      <div className="bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 px-5 pt-14 pb-5">
+        <div className="w-12 h-12 bg-violet-600 rounded-2xl flex items-center justify-center mb-4">
+          <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6 text-white" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+          </svg>
         </div>
-        <div>
-          <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">PIN</label>
-          <input className={inp} type="password" inputMode="numeric" pattern="\d*" maxLength={4}
-            value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, ""))} placeholder="• • • •" autoComplete="current-password" />
-        </div>
+        <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white">Set Your Password</h1>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+          Hi {member?.full_name?.split(" ")[0] || "there"}! Choose a password for your member portal access.
+        </p>
       </div>
-      <button onClick={handleLogin} disabled={loading}
-        className="w-full max-w-xs py-4 bg-violet-600 text-white rounded-2xl font-extrabold text-base mb-4 disabled:opacity-50">
-        {loading ? "Signing in…" : "Sign In"}
-      </button>
-      <p className="text-xs text-slate-500 text-center max-w-xs">Lost your PIN or ID? Contact your organisation administrator to reset your access.</p>
+      <div className="flex-1 px-5 pt-8 pb-10 space-y-5">
+        <div>
+          <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">New Password *</label>
+          <div className="relative">
+            <input type={showPwd ? "text" : "password"} value={password}
+              onChange={e => { setPassword(e.target.value); setError(""); }}
+              placeholder="Minimum 8 characters"
+              className="w-full border border-slate-200 dark:border-slate-700 rounded-xl pl-4 pr-14 py-3 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500" />
+            <button type="button" onClick={() => setShowPwd(v => !v)}
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-violet-600 dark:text-violet-400">
+              {showPwd ? "Hide" : "Show"}
+            </button>
+          </div>
+          {password && (
+            <div className="flex gap-1 mt-1.5">
+              {[1,2,3,4].map(n => (
+                <div key={n} className={`h-1 flex-1 rounded-full transition-colors ${n <= score ? colors[score] : "bg-slate-200 dark:bg-slate-700"}`} />
+              ))}
+            </div>
+          )}
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Confirm Password *</label>
+          <input type={showPwd ? "text" : "password"} value={confirm}
+            onChange={e => { setConfirm(e.target.value); setError(""); }}
+            placeholder="Repeat your password"
+            className={`w-full border rounded-xl px-4 py-3 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500 ${confirm && confirm !== password ? "border-red-400 dark:border-red-600" : "border-slate-200 dark:border-slate-700"}`} />
+          {confirm && confirm !== password && <p className="text-[10px] text-red-500 mt-1 font-medium">Passwords don't match</p>}
+        </div>
+        {error && <p className="text-xs text-red-500 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/40 rounded-xl px-4 py-2.5">{error}</p>}
+        <button onClick={submit} disabled={saving || password.length < 8 || password !== confirm}
+          className="w-full bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white font-bold rounded-2xl py-4 text-sm transition">
+          {saving ? "Saving…" : "Set Password & Enter Portal →"}
+        </button>
+        <button onClick={() => supabase.auth.signOut()} className="w-full text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition text-center">
+          Sign out
+        </button>
+      </div>
     </div>
   );
 }
@@ -122,7 +116,7 @@ function LoginScreen({ onLogin }) {
 // ═══════════════════════════════════════════════════
 //  HOME TAB
 // ═══════════════════════════════════════════════════
-function HomeTab({ member, org, announcements, onSignOut }) {
+function HomeTab({ member, org, announcements }) {
   return (
     <div className="p-4 pb-28 flex flex-col gap-4">
       <div className="bg-gradient-to-br from-violet-600 to-violet-800 rounded-3xl p-5 text-white">
@@ -188,7 +182,7 @@ function HomeTab({ member, org, announcements, onSignOut }) {
         </div>
       )}
 
-      <button onClick={onSignOut} className="w-full py-3 border border-red-200 text-red-500 rounded-2xl font-bold text-sm mt-2">Sign Out</button>
+      <button onClick={() => supabase.auth.signOut()} className="w-full py-3 border border-red-200 text-red-500 rounded-2xl font-bold text-sm mt-2">Sign Out</button>
     </div>
   );
 }
@@ -386,8 +380,8 @@ function MeetingsTab({ member, org }) {
               <div className="text-right flex-shrink-0">
                 <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full capitalize ${FORMAT_BADGE[m.format] || FORMAT_BADGE.physical}`}>{m.format}</span>
                 {m.my_attendance && (
-                  <p className={`text-[10px] font-bold mt-1 ${m.my_attendance.status === "present" ? "text-green-600" : "text-red-500"}`}>
-                    {m.my_attendance.status === "present" ? "✓ Present" : "✗ Absent"}
+                  <p className={`text-[10px] font-bold mt-1 ${m.my_attendance === "present" ? "text-green-600" : "text-red-500"}`}>
+                    {m.my_attendance === "present" ? "✓ Present" : "✗ Absent"}
                   </p>
                 )}
               </div>
@@ -409,7 +403,7 @@ function MeetingsTab({ member, org }) {
             )}
             <div className="flex gap-1.5">
               {RSVP_OPTIONS.map(opt => {
-                const isActive = m.my_rsvp?.status === opt.status;
+                const isActive = m.my_rsvp === opt.status;
                 return (
                   <button key={opt.status} onClick={() => handleRsvp(m.id, opt.status)} disabled={rsvping === m.id}
                     className={`flex-1 py-1.5 rounded-xl text-[10px] font-bold border transition disabled:opacity-50 ${isActive ? opt.color + " border-transparent" : "border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400 bg-transparent"}`}>
@@ -433,9 +427,9 @@ function DirectoryTab({ member: selfMember, org }) {
   const [loading,   setLoading]   = useState(true);
   const [search,    setSearch]    = useState("");
   const [privacy,   setPrivacy]   = useState({
-    privacy_balance:      selfMember.privacy_balance,
+    privacy_balance:       selfMember.privacy_balance,
     privacy_contributions: selfMember.privacy_contributions,
-    privacy_activities:   selfMember.privacy_activities,
+    privacy_activities:    selfMember.privacy_activities,
   });
   const [savingP, setSavingP] = useState(false);
 
@@ -583,62 +577,23 @@ const PORTAL_TABS = [
   { id: "messages",      label: "Messages", icon: "M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" },
 ];
 
-export default function CoopMemberPortal({ coopToken }) {
-  const [member,        setMember]        = useState(null);
-  const [org,           setOrg]           = useState(null);
-  const [announcements, setAnnouncements] = useState([]);
+export default function CoopMemberPortal({ member }) {
   const [tab,           setTab]           = useState("home");
-  const [initializing,  setInitializing]  = useState(true);
-  const [changingPin,   setChangingPin]   = useState(false);
+  const [announcements, setAnnouncements] = useState([]);
+
+  const org = member?.org || member?.organizations || {};
 
   useEffect(() => {
-    if (!coopToken) { setInitializing(false); return; }
-    coopFn("member-by-token", { portal_token: coopToken })
-      .then(r => {
-        if (r?.member) {
-          setMember(r.member);
-          setOrg(r.org);
-          if (r.member.must_change_pin) { setChangingPin(true); }
-          return coopFn("member-get-announcements", { member_id: r.member.id, org_id: r.org.id });
-        }
-        return null;
-      })
-      .then(r => { if (r) setAnnouncements(r.announcements || []); })
-      .catch(console.error)
-      .finally(() => setInitializing(false));
-  }, [coopToken]);
-
-  const handleLogin = (m, o) => {
-    setMember(m);
-    setOrg(o);
-    if (m.must_change_pin) { setChangingPin(true); return; }
-    coopFn("member-get-announcements", { member_id: m.id, org_id: o.id })
-      .then(r => setAnnouncements(r.announcements || [])).catch(console.error);
-  };
-
-  const handleSignOut = () => { setMember(null); setOrg(null); setAnnouncements([]); setTab("home"); };
-
-  const handlePinChanged = () => {
-    setChangingPin(false);
-    setMember(prev => ({ ...prev, must_change_pin: false }));
-    if (org && member) {
+    if (member?.id && org?.id) {
       coopFn("member-get-announcements", { member_id: member.id, org_id: org.id })
         .then(r => setAnnouncements(r.announcements || [])).catch(console.error);
     }
-  };
+  }, [member?.id, org?.id]);
 
-  if (initializing) return (
-    <div className="fixed inset-0 z-[70] bg-slate-900 flex flex-col items-center justify-center">
-      <div className="w-12 h-12 border-4 border-violet-500 border-t-transparent rounded-full animate-spin mb-4" />
-      <p className="text-slate-400 text-sm">Loading portal…</p>
-    </div>
-  );
-
-  if (!member) return <LoginScreen onLogin={handleLogin} />;
-  if (changingPin) return <ChangePinScreen member={member} onDone={handlePinChanged} />;
+  if (!member) return null;
 
   const tabContent = {
-    home:          <HomeTab member={member} org={org} announcements={announcements} onSignOut={handleSignOut} />,
+    home:          <HomeTab member={member} org={org} announcements={announcements} />,
     contributions: <ContributionsTab member={member} org={org} />,
     loans:         <LoansTab member={member} org={org} />,
     meetings:      <MeetingsTab member={member} org={org} />,
