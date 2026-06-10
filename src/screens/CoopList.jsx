@@ -6,12 +6,15 @@ const coopFn = (action, body = {}) =>
     .then(r => { if (r.error) throw r.error; return r.data; });
 
 const ORG_TYPES = [
-  { value: "cooperative",         label: "Cooperative",          icon: "🤝" },
-  { value: "market_association",  label: "Market Association",    icon: "🏪" },
-  { value: "church",              label: "Church",                icon: "⛪" },
-  { value: "ngo",                 label: "NGO",                   icon: "🌍" },
-  { value: "youth_group",         label: "Youth Group",           icon: "👥" },
-  { value: "savings_group",       label: "Savings Group",         icon: "💰" },
+  { value: "cooperative",            label: "Cooperative",            icon: "🤝" },
+  { value: "market_association",     label: "Market Association",     icon: "🏪" },
+  { value: "church",                 label: "Church",                 icon: "⛪" },
+  { value: "ngo",                    label: "NGO",                    icon: "🌍" },
+  { value: "youth_group",            label: "Youth Group",            icon: "👥" },
+  { value: "savings_group",          label: "Savings Group",          icon: "💰" },
+  { value: "community_group",        label: "Community Group",        icon: "🏘️" },
+  { value: "professional_association", label: "Professional Assoc.",  icon: "💼" },
+  { value: "savings_club",           label: "Savings Club",           icon: "🏦" },
 ];
 
 const TYPE_COLORS = {
@@ -20,7 +23,10 @@ const TYPE_COLORS = {
   church:             "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
   ngo:                "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
   youth_group:        "bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400",
-  savings_group:      "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400",
+  savings_group:            "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400",
+  community_group:          "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
+  professional_association: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400",
+  savings_club:             "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400",
 };
 
 const fmt = n => "₦" + Number(n || 0).toLocaleString("en-NG", { minimumFractionDigits: 0 });
@@ -30,16 +36,17 @@ function RegisterModal({ onClose, onCreated, userId }) {
   const [step,    setStep]    = useState(1);
   const [type,    setType]    = useState("");
   const [form,    setForm]    = useState({ name: "", description: "", address: "", state_name: "", lga: "", phone: "", email: "" });
+  const [profile, setProfile] = useState({ purpose: "", vision: "", mission: "", website: "", social_instagram: "", social_facebook: "", social_twitter: "", date_established: "" });
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState("");
 
-  const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
+  const set  = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
+  const setP = k => e => setProfile(p => ({ ...p, [k]: e.target.value }));
 
   const handleCreate = async () => {
-    if (!form.name.trim()) { setError("Organization name is required"); return; }
     setLoading(true); setError("");
     try {
-      const { org } = await coopFn("create-org", { owner_id: userId, type, ...form });
+      const { org } = await coopFn("create-org", { owner_id: userId, type, ...form, ...profile });
       onCreated(org);
     } catch (e) { setError(e.message || "Failed to create"); }
     finally { setLoading(false); }
@@ -47,12 +54,25 @@ function RegisterModal({ onClose, onCreated, userId }) {
 
   const input = "w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-violet-400";
 
+  const selectedType = ORG_TYPES.find(t => t.value === type);
+
   return (
     <div className="fixed inset-0 z-[70] bg-black/60 flex items-end justify-center" onClick={onClose}>
       <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-t-3xl px-5 py-6 max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="w-10 h-1 bg-slate-200 dark:bg-slate-600 rounded-full mx-auto mb-5" />
-        <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">Register Organisation</h3>
-        <p className="text-xs text-slate-400 mb-5">Set up your cooperative, association or group</p>
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="text-base font-extrabold text-slate-800 dark:text-white">Register Organisation</h3>
+          <div className="flex gap-1">
+            {[1, 2, 3].map(s => (
+              <div key={s} className={`w-5 h-1.5 rounded-full transition-colors ${s <= step ? "bg-violet-500" : "bg-slate-200 dark:bg-slate-600"}`} />
+            ))}
+          </div>
+        </div>
+        <p className="text-xs text-slate-400 mb-5">
+          {step === 1 && "Step 1: Choose organisation type"}
+          {step === 2 && "Step 2: Basic information"}
+          {step === 3 && "Step 3: Profile details (optional)"}
+        </p>
 
         {error && <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 rounded-xl px-3 py-2 mb-3 text-xs text-red-600 dark:text-red-400">{error}</div>}
 
@@ -76,8 +96,8 @@ function RegisterModal({ onClose, onCreated, userId }) {
         {step === 2 && (
           <>
             <div className="flex items-center gap-2 mb-4">
-              <span className="text-2xl">{ORG_TYPES.find(t => t.value === type)?.icon}</span>
-              <span className="text-sm font-bold text-violet-600">{ORG_TYPES.find(t => t.value === type)?.label}</span>
+              <span className="text-2xl">{selectedType?.icon}</span>
+              <span className="text-sm font-bold text-violet-600">{selectedType?.label}</span>
             </div>
             <div className="flex flex-col gap-3">
               <div>
@@ -115,6 +135,51 @@ function RegisterModal({ onClose, onCreated, userId }) {
             </div>
             <div className="flex gap-2 mt-5">
               <button onClick={() => setStep(1)} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">← Back</button>
+              <button onClick={() => { if (!form.name.trim()) { setError("Organisation name is required"); return; } setError(""); setStep(3); }}
+                className="flex-1 py-3 bg-violet-600 text-white rounded-xl font-bold text-sm">Continue →</button>
+            </div>
+          </>
+        )}
+
+        {step === 3 && (
+          <>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-xl">{selectedType?.icon}</span>
+              <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{form.name}</span>
+            </div>
+            <p className="text-xs text-slate-400 mb-4">All fields are optional — you can fill these in later from Settings.</p>
+            <div className="flex flex-col gap-3">
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Purpose</label>
+                <textarea className={input} rows={2} value={profile.purpose} onChange={setP("purpose")} placeholder="What does this organisation do?" />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Vision Statement</label>
+                <input className={input} value={profile.vision} onChange={setP("vision")} placeholder="Our vision is…" />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Mission Statement</label>
+                <input className={input} value={profile.mission} onChange={setP("mission")} placeholder="Our mission is…" />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Date Established</label>
+                <input className={input} type="date" value={profile.date_established} onChange={setP("date_established")} />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Website</label>
+                <input className={input} type="url" value={profile.website} onChange={setP("website")} placeholder="https://…" />
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {[["Instagram","social_instagram","@handle"],["Facebook","social_facebook","Page"],["Twitter","social_twitter","@handle"]].map(([label,key,ph]) => (
+                  <div key={key}>
+                    <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{label}</label>
+                    <input className={input} value={profile[key]} onChange={setP(key)} placeholder={ph} />
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="flex gap-2 mt-5">
+              <button onClick={() => setStep(2)} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">← Back</button>
               <button onClick={handleCreate} disabled={loading}
                 className="flex-1 py-3 bg-violet-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">
                 {loading ? "Creating…" : "Create Organisation"}
@@ -179,7 +244,7 @@ export default function CoopList({ userId, onOpen, onClose }) {
             <div className="flex flex-col items-center justify-center py-20 text-center px-6">
               <div className="w-16 h-16 bg-violet-100 dark:bg-violet-900/30 rounded-2xl flex items-center justify-center text-3xl mb-4">🤝</div>
               <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-2">No Organisations Yet</h3>
-              <p className="text-sm text-slate-400 mb-6 leading-relaxed">Register a cooperative, market association, church, NGO, youth group, or savings group to get started.</p>
+              <p className="text-sm text-slate-400 mb-6 leading-relaxed">Register a cooperative, church, market association, NGO, savings group, community group, or any other organisation to get started.</p>
               <button onClick={() => setShowCreate(true)}
                 className="px-6 py-3 bg-violet-600 text-white rounded-xl font-bold text-sm">Register Organisation</button>
             </div>
