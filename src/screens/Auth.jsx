@@ -101,7 +101,7 @@ function OtpInput({ value, onChange }) {
       placeholder="6-digit code"
       className="w-full text-center text-2xl font-bold tracking-[0.5em] border-2 rounded-xl py-3
         border-gray-200 focus:border-emerald-500 focus:outline-none
-        bg-gray-50 text-gray-800 transition-colors"
+        bg-gray-50 text-gray-900 transition-colors"
     />
   );
 }
@@ -366,7 +366,7 @@ export default function Auth() {
               type="text" required value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Adaeze Okonkwo"
-              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
             />
           </div>
         )}
@@ -377,7 +377,7 @@ export default function Auth() {
             type="email" required value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="you@example.com"
-            className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+            className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
           />
         </div>
 
@@ -388,7 +388,7 @@ export default function Auth() {
               type="password" required value={password}
               onChange={(e) => setPass(e.target.value)}
               placeholder="••••••••"
-              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
             />
           </div>
         )}

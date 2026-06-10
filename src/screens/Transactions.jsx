@@ -270,7 +270,7 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
       )}
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 -mx-4 px-4 py-3 mb-4 border-b border-slate-100 dark:border-slate-700/60 flex items-center justify-between">
         <h1 className="text-xl font-extrabold text-slate-800 dark:text-white tracking-tight">{t("txn.title")}</h1>
         <div className="flex gap-2">
           {onVoiceOpen && !txLimitReached && (

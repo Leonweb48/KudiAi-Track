@@ -385,7 +385,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     <div className="px-4 pt-5 pb-28 screen-enter">
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 -mx-4 px-4 py-3 mb-4 border-b border-slate-100 dark:border-slate-700/60 flex items-center justify-between">
         <h1 className="text-xl font-extrabold text-slate-800 dark:text-white tracking-tight">{t("aso.title")}</h1>
         <button onClick={() => { setShowAdd(true); generateClientPassword(); }}
           className="w-9 h-9 bg-violet-600 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform">

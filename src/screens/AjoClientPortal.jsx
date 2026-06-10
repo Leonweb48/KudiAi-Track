@@ -3,6 +3,7 @@ import { usePaystackPayment } from "react-paystack";
 import { supabase } from "../utils/supabase";
 import { peyflex } from "../utils/peyflex";
 import { fmt } from "../utils/helpers";
+import AppLogo from "../components/AppLogo";
 
 async function ajoFn(action, body = {}) {
   const { data, error } = await supabase.functions.invoke("ajo-portal", {
@@ -1026,18 +1027,8 @@ export default function AjoClientPortal({ session, ajoClient }) {
 
         {/* Header */}
         <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 py-3 flex items-center gap-2">
-          {/* KudiAI logo */}
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
-            style={{ background: "linear-gradient(135deg,#7c3aed,#4c1d95)" }}>
-            <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-white" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-            </svg>
-          </div>
-          <div className="flex items-baseline gap-0.5 flex-shrink-0">
-            <span className="text-sm font-black tracking-tight text-slate-800 dark:text-white">KUDI</span>
-            <span className="text-sm font-black tracking-tight"
-              style={{ background: "linear-gradient(135deg,#7c3aed,#6d28d9)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>AI</span>
-          </div>
+          {/* KudiAI Track logo */}
+          <AppLogo className="h-7 w-auto flex-shrink-0" />
           <div className="h-4 w-px bg-slate-200 dark:bg-slate-700 mx-1 flex-shrink-0" />
           <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold truncate flex-1 min-w-0">
             {client?.full_name || ajoClient?.full_name}

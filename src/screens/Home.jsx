@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { fmt, today } from "../utils/helpers";
 import { NotificationBell } from "../components/NotificationCenter";
 import { useT } from "../contexts/LanguageContext";
+import AppLogo from "../components/AppLogo";
 import { getSalesPrediction } from "../utils/predictions";
 
 function greetingKey() {
@@ -152,21 +153,9 @@ export default function Home({ store, setTab, onQuickAction, onVoiceOpen, notif 
       {/* ── Top bar ──────────────────────────────────────────────────── */}
       <div className="flex items-center -mx-4 px-4 py-3 bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700/60 shadow-sm sticky top-0 z-10 -mt-5 mb-1">
 
-        {/* Left — logo */}
-        <img src="/logo.png" alt="KudiAI Track" className="w-9 h-9 object-contain rounded-xl bg-white flex-shrink-0" />
-
-        {/* Centre — brand wordmark */}
-        <div className="flex-1 flex justify-center items-center gap-0.5 select-none">
-          <span className="text-[17px] font-black tracking-tight text-slate-800 dark:text-white leading-none">
-            KUDI
-          </span>
-          <span className="text-[17px] font-black tracking-tight leading-none"
-            style={{ background: "linear-gradient(135deg,#16a34a,#059669)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
-            AI
-          </span>
-          <span className="text-[13px] font-semibold text-slate-400 dark:text-slate-500 tracking-widest uppercase leading-none ml-1.5 mt-0.5">
-            Track
-          </span>
+        {/* Centre — KudiAI Track logo */}
+        <div className="flex-1 flex justify-center">
+          <AppLogo className="h-9 w-auto" />
         </div>
 
         {/* Right — bell + profile avatar */}

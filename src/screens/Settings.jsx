@@ -337,8 +337,11 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
   const inputCls = "w-full border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white dark:bg-slate-700 dark:text-slate-100 disabled:opacity-50";
 
   return (
-    <div className="px-4 pt-6 pb-32 screen-enter">
-      <h1 className="text-[26px] font-bold text-slate-900 dark:text-white mb-6 tracking-tight">{t("settings.title")}</h1>
+    <div className="pb-32 screen-enter">
+      <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700/60 px-4 py-3 mb-6">
+        <h1 className="text-[26px] font-bold text-slate-900 dark:text-white tracking-tight">{t("settings.title")}</h1>
+      </div>
+      <div className="px-4">
 
       {/* ── STAFF MANAGEMENT BANNER ────────────────────────────────── */}
       <button
@@ -634,6 +637,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
           <StaffManagement session={session} onBack={() => setStaffMgmt(false)} />
         </div>
       )}
+      </div>{/* /px-4 */}
     </div>
   );
 }

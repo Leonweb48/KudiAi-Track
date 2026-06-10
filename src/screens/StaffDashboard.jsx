@@ -11,6 +11,7 @@ import Inventory          from "./Inventory";
 import VoiceModal         from "../components/VoiceModal";
 import SyncBar            from "../components/SyncBar";
 import Icon               from "../components/Icon";
+import AppLogo            from "../components/AppLogo";
 
 const NAV_ICON = {
   overview:     "home",
@@ -376,17 +377,9 @@ export default function StaffDashboard({ session, staff }) {
           <SyncBar isOnline={store.isOnline} pending={store.pendingSync} />
 
           {/* Minimal Header */}
-          <div className="bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 pt-11 pb-2 flex items-center gap-2">
-            <img src="/logo.png" alt="KudiAI" className="w-7 h-7 object-contain rounded-lg bg-white flex-shrink-0" />
-            <div className="flex-1 flex items-center gap-0.5 select-none">
-              <span className="text-[15px] font-black tracking-tight text-slate-800 dark:text-white leading-none">KUDI</span>
-              <span className="text-[15px] font-black tracking-tight leading-none"
-                style={{ background: "linear-gradient(135deg,#16a34a,#059669)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
-                AI
-              </span>
-              <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 tracking-widest uppercase leading-none ml-1 mt-0.5">
-                Track
-              </span>
+          <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 pt-11 pb-2 flex items-center gap-2">
+            <div className="flex-1">
+              <AppLogo className="h-8 w-auto" />
             </div>
             <button onClick={toggleDark}
               className="w-8 h-8 rounded-full flex items-center justify-center bg-slate-100 dark:bg-slate-800 transition-colors flex-shrink-0">
