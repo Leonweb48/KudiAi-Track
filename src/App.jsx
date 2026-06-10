@@ -7,6 +7,7 @@ import SyncBar               from "./components/SyncBar";
 import BottomNav             from "./components/BottomNav";
 import VoiceModal            from "./components/VoiceModal";
 import NotificationCenter    from "./components/NotificationCenter";
+import DailyVoice            from "./components/DailyVoice";
 import Home                  from "./screens/Home";
 import Transactions          from "./screens/Transactions";
 import Credit                from "./screens/Credit";
@@ -243,6 +244,15 @@ export default function App() {
               onSave={txn => { addTransactionWithLoyalty(txn); setVoiceOpen(false); }}
             />
           )}
+
+          <DailyVoice
+            userId={userId}
+            profile={store.profile}
+            credits={store.credits}
+            asoClients={store.asoClients}
+            lowStock={inventory.lowStock}
+            loading={store.loading}
+          />
 
           {store.dbError && (
             <div className="fixed bottom-24 left-4 right-4 max-w-md mx-auto z-50 bg-red-600 text-white rounded-2xl px-4 py-3 shadow-lg flex items-start gap-3 fade-in" role="alert">
