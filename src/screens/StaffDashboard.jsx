@@ -199,6 +199,14 @@ export default function StaffDashboard({ session, staff }) {
   const store     = useStore(ownerId, staffId, staffName);
   const inventory = useInventory(ownerId, staffId, null, branchId);
 
+  const [staffBranch, setStaffBranch] = useState(null);
+  useEffect(() => {
+    if (branchId && supabase) {
+      supabase.from("branches").select("id, name").eq("id", branchId).maybeSingle()
+        .then(({ data }) => { if (data) setStaffBranch(data); });
+    }
+  }, [branchId]);
+
   // Compute allowed modules from staff_permissions
   const allowed = (staff.staff_permissions || []).filter(p => p.can_view).map(p => p.module);
 
@@ -360,7 +368,7 @@ export default function StaffDashboard({ session, staff }) {
       case "aso":
         return <Aso store={store} plan="premium" autoOpen={autoAdd?.tab === "aso"} onAutoOpened={() => setAutoAdd(null)} onUpgrade={() => {}} readOnly={noCreate} staffId={staffId} />;
       case "inventory":
-        return <Inventory inventory={inventory} isOwner={false} canAdd={true} plan="business" onUpgrade={() => {}} />;
+        return <Inventory inventory={inventory} isOwner={false} canAdd={true} plan="business" onUpgrade={() => {}} branches={staffBranch ? [staffBranch] : []} staffBranchId={branchId} />;
       case "insights":
         return <Insights store={store} plan="premium" onUpgrade={() => {}} staffName={staffName} />;
       case "profile":

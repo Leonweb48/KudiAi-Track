@@ -46,7 +46,7 @@ function Field({ label, type = "text", value, onChange, required, placeholder, m
 }
 
 /* ── Product Form ─────────────────────────────────────────────── */
-function ProductForm({ initial, onSave, onClose, saving, branches = [] }) {
+function ProductForm({ initial, onSave, onClose, saving, branches = [], staffBranchId = null }) {
   const isEdit = Boolean(initial?.id);
   const [form, setForm] = useState({
     product_name:        initial?.product_name        || "",
@@ -56,7 +56,7 @@ function ProductForm({ initial, onSave, onClose, saving, branches = [] }) {
     selling_price:       initial?.selling_price        ?? "",
     quantity:            initial?.quantity             ?? "",
     low_stock_threshold: initial?.low_stock_threshold  ?? 5,
-    branch_id:           initial?.branch_id            || "",
+    branch_id:           initial?.branch_id            || staffBranchId || "",
   });
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -92,10 +92,13 @@ function ProductForm({ initial, onSave, onClose, saving, branches = [] }) {
 
         {branches.length > 0 && (
           <div>
-            <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1.5">Branch</p>
+            <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1.5">
+              Branch{staffBranchId ? " (Your Branch)" : ""}
+            </p>
             <select value={form.branch_id} onChange={e => set("branch_id", e.target.value)}
-              className="w-full bg-slate-100 dark:bg-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500/40">
-              <option value="">No Branch (Main Inventory)</option>
+              disabled={!!staffBranchId}
+              className="w-full bg-slate-100 dark:bg-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500/40 disabled:opacity-70">
+              {!staffBranchId && <option value="">No Branch (Main Inventory)</option>}
               {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           </div>
@@ -518,7 +521,7 @@ function ProductCard({ product, onView, onSale, onRestock, isOwner, onEdit }) {
 }
 
 /* ── Main Screen ──────────────────────────────────────────────── */
-export default function Inventory({ inventory, isOwner = true, canAdd, plan = "starter", onUpgrade, branches = [] }) {
+export default function Inventory({ inventory, isOwner = true, canAdd, plan = "starter", onUpgrade, branches = [], staffBranchId = null }) {
   // canAdd allows staff to add new products without full owner privileges
   const canAddStock = canAdd !== undefined ? canAdd : isOwner;
   const t = useT();
@@ -754,7 +757,8 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
           onSave={handleSave}
           onClose={() => { setShowForm(false); setEditProd(null); }}
           saving={saving}
-          branches={isOwner ? branches : []}
+          branches={branches}
+          staffBranchId={staffBranchId}
         />
       )}
 

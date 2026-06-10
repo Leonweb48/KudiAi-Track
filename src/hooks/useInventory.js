@@ -45,9 +45,9 @@ export function useInventory(userId, staffId = null, onNotify = null, branchId =
 
   const addProduct = useCallback(async (data) => {
     if (!supabase) return false;
-    // data.branch_id (from form picker) takes precedence over hook-level branchId
-    const effectiveBranch = data.branch_id !== undefined
-      ? (data.branch_id || null)
+    // Explicit non-empty branch_id from form takes precedence; otherwise fall back to hook-level branchId
+    const effectiveBranch = (data.branch_id != null && data.branch_id !== "")
+      ? data.branch_id
       : (branchId || null);
     const prod = {
       id:                  uid(),
