@@ -563,35 +563,15 @@ function PaystackPayBtn({ amount, email, referenceId, onSuccess, onClose, disabl
 
 // ── Contribute modal ──────────────────────────────────────────────────────
 function ContributeModal({ client, onSuccess, onClose }) {
-  const [amount,  setAmount]  = useState(String(client.contribution_amount || ""));
-  const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState("");
+  const [amount, setAmount] = useState(String(client.contribution_amount || ""));
   const refId = useRef(`KDT-AJO-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`);
 
-  const handlePaystackClose = useCallback(() => setLoading(false), []);
+  // Pass amount + ref up immediately; parent owns recording + state update
+  const handlePaystackSuccess = useCallback((transaction) => {
+    onSuccess(parseFloat(amount) || 0, transaction?.reference || refId.current);
+  }, [amount, onSuccess]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handlePaystackSuccess = useCallback(async (transaction) => {
-    const paid = parseFloat(amount) || 0;
-    // Close modal immediately with optimistic balance update
-    onSuccess({
-      ...client,
-      current_balance: (client.current_balance || 0) + paid,
-      total_saved:     (client.total_saved || 0) + paid,
-    });
-    // Record in background — callback refs are still alive after modal closes
-    try {
-      const { client: updated } = await ajoFn("record-contribution", {
-        client_id:      client.id,
-        owner_id:       client.owner_id,
-        amount:         paid,
-        payment_method: "paystack",
-        paystack_ref:   transaction.reference || refId.current,
-      });
-      if (updated) onSuccess(updated);
-    } catch {
-      // Payment was collected — reconcile via ref if needed
-    }
-  }, [client, amount, onSuccess]); // eslint-disable-line react-hooks/exhaustive-deps
+  const handlePaystackClose = useCallback(() => {}, []);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-end justify-center" onClick={onClose}>
@@ -601,11 +581,6 @@ function ContributeModal({ client, onSuccess, onClose }) {
         <p className="text-xs text-slate-400 mb-4 capitalize">
           Suggested: {fmt(client.contribution_amount || 0)} · {client.contribution_frequency}
         </p>
-        {error && (
-          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-3 py-2.5 mb-3">
-            <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
-          </div>
-        )}
         <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Amount (₦)</label>
         <input type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder="Enter amount"
           className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 mb-4" />
@@ -614,17 +589,13 @@ function ContributeModal({ client, onSuccess, onClose }) {
             <div key={m} className="bg-slate-50 dark:bg-slate-700 rounded-xl py-2 text-center text-[10px] text-slate-500 dark:text-slate-400 font-medium">{m}</div>
           ))}
         </div>
-        {loading ? (
-          <div className="w-full py-3.5 bg-violet-400 text-white rounded-xl font-bold text-sm text-center">Recording payment…</div>
-        ) : (
-          <PaystackPayBtn
-            amount={parseFloat(amount) || 0}
-            email={client.email}
-            referenceId={refId.current}
-            onSuccess={handlePaystackSuccess}
-            onClose={handlePaystackClose}
-          />
-        )}
+        <PaystackPayBtn
+          amount={parseFloat(amount) || 0}
+          email={client.email}
+          referenceId={refId.current}
+          onSuccess={handlePaystackSuccess}
+          onClose={handlePaystackClose}
+        />
       </div>
     </div>
   );
@@ -1023,13 +994,29 @@ export default function AjoClientPortal({ session, ajoClient }) {
       .finally(() => setLoadingData(false));
   }, [mustChange, ajoClient?.id, ajoClient?.owner_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleContribSuccess = useCallback((updatedClient) => {
-    setClient(updatedClient);
+  const handleContribSuccess = useCallback(async (paid, paystackRef) => {
+    // 1. Close modal + apply optimistic balance update immediately
     setShowPay(false);
-    if (ajoClient?.id) {
-      ajoFn("get-contributions", { client_id: ajoClient.id, owner_id: ajoClient.owner_id })
-        .then(r => { if (r?.contributions) setContributions(r.contributions); })
-        .catch(console.error);
+    setClient(prev => prev ? {
+      ...prev,
+      current_balance: (prev.current_balance || 0) + paid,
+      total_saved:     (prev.total_saved || 0) + paid,
+    } : prev);
+
+    // 2. Record in background, then sync with server values
+    try {
+      const { client: updated } = await ajoFn("record-contribution", {
+        client_id:      ajoClient.id,
+        owner_id:       ajoClient.owner_id,
+        amount:         paid,
+        payment_method: "paystack",
+        paystack_ref:   paystackRef,
+      });
+      if (updated) setClient(updated);
+      const r = await ajoFn("get-contributions", { client_id: ajoClient.id, owner_id: ajoClient.owner_id });
+      if (r?.contributions) setContributions(r.contributions);
+    } catch (err) {
+      console.error("Contribution record failed:", err);
     }
   }, [ajoClient?.id, ajoClient?.owner_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
