@@ -28,6 +28,9 @@ import Loyalty               from "./screens/Loyalty";
 import Branches              from "./screens/Branches";
 import BranchManagerDashboard from "./screens/BranchManagerDashboard";
 import AjoClientPortal       from "./screens/AjoClientPortal";
+import CoopList              from "./screens/CoopList";
+import CoopDashboard         from "./screens/CoopDashboard";
+import CoopMemberPortal      from "./screens/CoopMemberPortal";
 import { useInventory }      from "./hooks/useInventory";
 import { useBiometricLock }  from "./hooks/useBiometricLock";
 import { useLoyalty }        from "./hooks/useLoyalty";
@@ -54,6 +57,10 @@ export default function App() {
   const [showAI,       setShowAI]       = useState(false);
   const [showBranches, setShowBranches] = useState(false);
   const [showLoyalty,  setShowLoyalty]  = useState(false);
+  const [showCoop,     setShowCoop]     = useState(false);
+  const [coopOrg,      setCoopOrg]      = useState(null);
+  const [coopToken,    setCoopToken]    = useState(() => new URLSearchParams(window.location.search).get("coop_token") || "");
+  const [coopQR,       setCoopQR]       = useState(() => new URLSearchParams(window.location.search).get("coop_qr") || "");
   const [aiQuery,      setAiQuery]      = useState("");
   const [branchReport, setBranchReport] = useState(null);
 
@@ -141,6 +148,16 @@ export default function App() {
 
   if (status === "loading")         return <Spinner />;
 
+  // Coop member portal — token in URL (no auth required)
+  if (coopToken) {
+    return (
+      <CoopMemberPortal
+        token={coopToken}
+        onBack={() => { setCoopToken(""); window.history.replaceState({}, "", window.location.pathname); }}
+      />
+    );
+  }
+
   // Ajo client login — route to dedicated client portal
   if (status === "ajo_client_setup" || status === "ajo_client") {
     return <AjoClientPortal session={session} ajoClient={ajoClient} />;
@@ -222,7 +239,8 @@ export default function App() {
                     lock={lock}
                     onNotifications={() => notif.setOpen(true)}
                     onLoyalty={() => setShowLoyalty(true)}
-                    onBranches={() => setShowBranches(true)} />,
+                    onBranches={() => setShowBranches(true)}
+                    onCoops={() => setShowCoop(true)} />,
   };
 
   return (
@@ -314,6 +332,21 @@ export default function App() {
           inventory={inventory}
           initialQuery={aiQuery}
           onClose={() => setShowAI(false)}
+        />
+      )}
+
+      {/* Cooperative / Community Org system — z-60 */}
+      {showCoop && !coopOrg && (
+        <CoopList
+          userId={userId}
+          onOpen={org => setCoopOrg(org)}
+          onClose={() => setShowCoop(false)}
+        />
+      )}
+      {showCoop && coopOrg && (
+        <CoopDashboard
+          org={coopOrg}
+          onBack={() => setCoopOrg(null)}
         />
       )}
 

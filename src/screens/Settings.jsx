@@ -193,6 +193,7 @@ const HelpIcon       = () => ic("M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6
 const GlobeIcon = () => ic("M12 2a10 10 0 100 20A10 10 0 0012 2z|M2 12h20|M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z");
 const GiftIcon   = () => ic("M20 12v10H4V12|M22 7H2v5h20V7z|M12 22V7|M12 7H7.5a2.5 2.5 0 010-5C11 2 12 7 12 7z|M12 7h4.5a2.5 2.5 0 000-5C13 2 12 7 12 7z");
 const BranchIcon = () => ic("M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z|M9 22V12h6v10");
+const CoopIcon   = () => ic("M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2|M23 21v-2a4 4 0 00-3-3.87|M16 3.13a4 4 0 010 7.75|M9 7a4 4 0 100 8 4 4 0 000-8z");
 const LogoutIconSvg  = () => (
   <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-red-500 dark:text-red-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
     <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
@@ -242,7 +243,7 @@ function LanguageModal({ current, onClose }) {
 }
 
 /* ── Main component ───────────────────────────────────────────────── */
-export default function Settings({ store, session, plan = "starter", onUpgrade, onStaffManagement, lock, onNotifications, onLoyalty, onBranches }) {
+export default function Settings({ store, session, plan = "starter", onUpgrade, onStaffManagement, lock, onNotifications, onLoyalty, onBranches, onCoops }) {
   const { profile, setProfile } = store;
   const { lang: langCode }      = useLanguage();
   const t                       = useT();
@@ -406,6 +407,12 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
           label="Branch Management"
           sub={canDo(plan, "branches") ? "Manage branches & staff" : "Premium plan only"}
           onClick={canDo(plan, "branches") ? onBranches : onUpgrade}
+        />
+        <Row
+          icon={<CoopIcon />}
+          label="My Organisations"
+          sub="Cooperatives, associations & groups"
+          onClick={onCoops}
         />
       </SettingsCard>
 
