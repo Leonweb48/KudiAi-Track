@@ -30,19 +30,20 @@ function SetupNotice() {
 /* ── Full-screen photo background wrapper ─────────────────────────── */
 function BgLayout({ children, center = false }) {
   return (
-    <div className="relative min-h-screen w-full overflow-hidden flex flex-col">
-      {/* Portrait photo — fills screen, anchored to top to show face */}
+    <div className="fixed inset-0 flex flex-col overflow-hidden">
+      {/* Portrait photo — fills entire screen, anchored top to show face */}
       <img
         src="/login-bg.jpg"
         alt=""
         className="absolute inset-0 w-full h-full object-cover object-top"
         draggable={false}
       />
-      {/* Gradient: light at top, darkens at bottom for card readability */}
+      {/* Gradient: subtle at top, dark at bottom for card readability */}
       <div className="absolute inset-0 bg-gradient-to-b from-black/25 via-black/5 to-black/80" />
 
-      {/* KudiTrack brand — top left over the photo */}
-      <div className="relative z-10 px-5 pt-11 pb-2 flex items-center gap-3">
+      {/* KudiTrack brand — top, safe area aware */}
+      <div className="relative z-10 flex-shrink-0 px-5 pb-2 flex items-center gap-3"
+        style={{ paddingTop: "max(40px, env(safe-area-inset-top, 40px))" }}>
         <div className="w-10 h-10 rounded-xl bg-white/15 backdrop-blur-sm flex items-center justify-center border border-white/20 shadow">
           <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none">
             <path d="M12 2L3 7v5c0 5.25 3.75 10.15 9 11.35C17.25 22.15 21 17.25 21 12V7L12 2z"
@@ -63,25 +64,28 @@ function BgLayout({ children, center = false }) {
       </div>
 
       {center ? (
-        /* Centered layout for OTP / other full-card screens */
-        <div className="relative z-10 flex-1 flex items-end justify-center px-4 pb-6">
-          <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl p-6">
+        /* OTP screen — card at bottom */
+        <div className="relative z-10 flex-1 min-h-0 flex items-end justify-center px-4 pb-6">
+          <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl p-6 overflow-y-auto" style={{ maxHeight: "80vh" }}>
             {children}
           </div>
         </div>
       ) : (
         <>
-          {/* Hero tagline — above the form card */}
-          <div className="relative z-10 flex-1 flex flex-col justify-end px-6 pb-5">
+          {/* Hero tagline — takes available space, pinned to bottom of its area */}
+          <div className="relative z-10 flex-1 min-h-0 flex flex-col justify-end px-6 pb-4">
             <p className="text-white font-bold text-2xl leading-snug drop-shadow mb-1">
               Track your business.<br />Grow your savings.
             </p>
             <p className="text-white/55 text-sm">Designed for Nigerian entrepreneurs.</p>
           </div>
 
-          {/* Bottom sheet form card */}
-          <div className="relative z-10 bg-white rounded-t-3xl shadow-2xl w-full max-w-md mx-auto px-6 pt-5 pb-8">
-            {children}
+          {/* Bottom sheet — fixed height cap, scrolls internally if form is long */}
+          <div className="relative z-10 flex-shrink-0 bg-white rounded-t-3xl shadow-2xl w-full max-w-md mx-auto overflow-y-auto"
+            style={{ maxHeight: "62vh" }}>
+            <div className="px-6 pt-5 pb-8">
+              {children}
+            </div>
           </div>
         </>
       )}
