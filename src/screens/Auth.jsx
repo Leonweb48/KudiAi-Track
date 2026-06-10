@@ -27,6 +27,68 @@ function SetupNotice() {
   );
 }
 
+/* ── Full-screen photo background wrapper ─────────────────────────── */
+function BgLayout({ children, center = false }) {
+  return (
+    <div className="relative min-h-screen w-full overflow-hidden flex flex-col">
+      {/* Portrait photo — fills screen, anchored to top to show face */}
+      <img
+        src="/login-bg.jpg"
+        alt=""
+        className="absolute inset-0 w-full h-full object-cover object-top"
+        draggable={false}
+      />
+      {/* Gradient: light at top, darkens at bottom for card readability */}
+      <div className="absolute inset-0 bg-gradient-to-b from-black/25 via-black/5 to-black/80" />
+
+      {/* KudiTrack brand — top left over the photo */}
+      <div className="relative z-10 px-5 pt-11 pb-2 flex items-center gap-3">
+        <div className="w-10 h-10 rounded-xl bg-white/15 backdrop-blur-sm flex items-center justify-center border border-white/20 shadow">
+          <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none">
+            <path d="M12 2L3 7v5c0 5.25 3.75 10.15 9 11.35C17.25 22.15 21 17.25 21 12V7L12 2z"
+              fill="url(#lg1)" />
+            <path d="M9 12l2 2 4-4" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <defs>
+              <linearGradient id="lg1" x1="3" y1="2" x2="21" y2="23" gradientUnits="userSpaceOnUse">
+                <stop stopColor="#10b981"/>
+                <stop offset="1" stopColor="#064e3b"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <div>
+          <p className="text-white font-bold text-lg leading-tight tracking-wide">KudiTrack</p>
+          <p className="text-white/55 text-[11px] leading-tight">Business · Savings · Bills</p>
+        </div>
+      </div>
+
+      {center ? (
+        /* Centered layout for OTP / other full-card screens */
+        <div className="relative z-10 flex-1 flex items-end justify-center px-4 pb-6">
+          <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl p-6">
+            {children}
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* Hero tagline — above the form card */}
+          <div className="relative z-10 flex-1 flex flex-col justify-end px-6 pb-5">
+            <p className="text-white font-bold text-2xl leading-snug drop-shadow mb-1">
+              Track your business.<br />Grow your savings.
+            </p>
+            <p className="text-white/55 text-sm">Designed for Nigerian entrepreneurs.</p>
+          </div>
+
+          {/* Bottom sheet form card */}
+          <div className="relative z-10 bg-white rounded-t-3xl shadow-2xl w-full max-w-md mx-auto px-6 pt-5 pb-8">
+            {children}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 /* ── 6-digit OTP input ─────────────────────────────────────────────── */
 function OtpInput({ value, onChange }) {
   return (
@@ -38,8 +100,8 @@ function OtpInput({ value, onChange }) {
       onChange={e => onChange(e.target.value.replace(/\D/g, "").slice(0, 6))}
       placeholder="6-digit code"
       className="w-full text-center text-2xl font-bold tracking-[0.5em] border-2 rounded-xl py-3
-        border-gray-300 focus:border-green-500 focus:outline-none
-        bg-white text-gray-800 transition-colors"
+        border-gray-200 focus:border-emerald-500 focus:outline-none
+        bg-gray-50 text-gray-800 transition-colors"
     />
   );
 }
@@ -56,11 +118,7 @@ function OtpScreen({ email, onBack, onVerified, otpType = "signup" }) {
     setError("");
     setLoading(true);
     try {
-      const { error } = await supabase.auth.verifyOtp({
-        email,
-        token: otp,
-        type: otpType,
-      });
+      const { error } = await supabase.auth.verifyOtp({ email, token: otp, type: otpType });
       if (error) throw error;
       onVerified();
     } catch (err) {
@@ -75,10 +133,7 @@ function OtpScreen({ email, onBack, onVerified, otpType = "signup" }) {
     setResent(false);
     let resendError;
     if (otpType === "email") {
-      const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: { shouldCreateUser: false },
-      });
+      const { error } = await supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: false } });
       resendError = error;
     } else {
       const { error } = await supabase.auth.resend({ type: "signup", email });
@@ -89,70 +144,64 @@ function OtpScreen({ email, onBack, onVerified, otpType = "signup" }) {
   };
 
   return (
-    <div className="w-full max-w-sm bg-white rounded-2xl shadow-lg p-8">
-      <div className="text-center mb-8">
-        <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <BgLayout center>
+      <div className="text-center mb-5">
+        <div className="w-14 h-14 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-3">
+          <svg className="w-7 h-7 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
               d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
           </svg>
         </div>
-        <h2 className="text-xl font-bold text-gray-800">Check your email</h2>
-        <p className="text-sm text-gray-500 mt-1">
-          We sent a 6-digit code to
-        </p>
-        <p className="text-sm font-semibold text-gray-700 mt-0.5">{email}</p>
+        <h2 className="text-lg font-bold text-gray-800">Check your email</h2>
+        <p className="text-sm text-gray-500 mt-0.5">We sent a 6-digit code to</p>
+        <p className="text-sm font-semibold text-gray-700">{email}</p>
       </div>
 
       {error && (
-        <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-center">
+        <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5 text-center">
           {error}
         </div>
       )}
       {resent && (
-        <div className="mb-4 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-center">
+        <div className="mb-4 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2.5 text-center">
           Code resent — check your inbox.
         </div>
       )}
 
-      <div className="mb-6">
+      <div className="mb-5">
         <OtpInput value={otp} onChange={setOtp} />
       </div>
 
       <button
         onClick={handleVerify}
         disabled={loading || otp.length < 6}
-        className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-semibold rounded-lg py-2.5 text-sm transition-colors"
+        className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl py-3 text-sm transition-colors"
       >
         {loading ? "Verifying…" : "Verify Code"}
       </button>
 
-      <div className="flex items-center justify-between mt-5 text-xs text-gray-500">
-        <button onClick={onBack} className="hover:text-gray-700 underline">
-          ← Back
-        </button>
-        <button onClick={handleResend} className="text-green-600 font-medium hover:underline">
-          Resend code
-        </button>
+      <div className="flex items-center justify-between mt-4 text-xs text-gray-500">
+        <button onClick={onBack} className="hover:text-gray-700 underline">← Back</button>
+        <button onClick={handleResend} className="text-emerald-600 font-medium hover:underline">Resend code</button>
       </div>
-    </div>
+    </BgLayout>
   );
 }
 
 /* ── Main Auth screen ──────────────────────────────────────────────── */
 export default function Auth() {
-  const [mode,        setMode]        = useState("login"); // "login" | "register" | "forgot" | "otp"
-  const [email,       setEmail]       = useState("");
-  const [password,    setPass]        = useState("");
-  const [name,        setName]        = useState("");
-  const [loading,     setLoading]     = useState(false);
-  const [error,       setError]       = useState(() => {
+  const [mode,         setMode]         = useState("login"); // "login" | "register" | "forgot" | "otp"
+  const [email,        setEmail]        = useState("");
+  const [password,     setPass]         = useState("");
+  const [name,         setName]         = useState("");
+  const [loading,      setLoading]      = useState(false);
+  const [error,        setError]        = useState(() => {
     const msg = sessionStorage.getItem("auth_block_reason");
     if (msg) sessionStorage.removeItem("auth_block_reason");
     return msg || "";
   });
-  const [info,        setInfo]        = useState("");
-  const [staffConfirm, setStaffConfirm] = useState(false); // true when bypassing email confirmation
+  const [info,         setInfo]         = useState("");
+  const [staffConfirm, setStaffConfirm] = useState(false);
 
   if (!supabaseConfigured) return <SetupNotice />;
 
@@ -168,8 +217,6 @@ export default function Auth() {
         if (signInErr) {
           const msg = signInErr.message.toLowerCase();
           if (msg.includes("not confirmed") || msg.includes("email not confirmed")) {
-            // Account exists but email unconfirmed (staff created without auto-confirm).
-            // Send OTP to confirm email and log them in at the same time.
             const { error: otpErr } = await supabase.auth.signInWithOtp({
               email,
               options: { shouldCreateUser: false },
@@ -183,7 +230,6 @@ export default function Auth() {
           throw signInErr;
         }
       } else if (mode === "register") {
-        // Block staff / ajo_client emails from creating business accounts
         const [{ data: staffCheck }, { data: ajoCheck }] = await Promise.all([
           supabase.from("staff").select("id").eq("email", email.trim().toLowerCase()).maybeSingle(),
           supabase.from("aso_clients").select("id").eq("email", email.trim().toLowerCase()).maybeSingle(),
@@ -226,21 +272,14 @@ export default function Auth() {
       if (isNative) {
         const { data, error } = await supabase.auth.signInWithOAuth({
           provider: "google",
-          options: {
-            redirectTo: OAUTH_REDIRECT,
-            skipBrowserRedirect: true,
-            queryParams: { prompt: "select_account" },
-          },
+          options: { redirectTo: OAUTH_REDIRECT, skipBrowserRedirect: true, queryParams: { prompt: "select_account" } },
         });
         if (error) throw error;
         await Browser.open({ url: data.url, windowName: "_self" });
       } else {
         const { error } = await supabase.auth.signInWithOAuth({
           provider: "google",
-          options: {
-            redirectTo: OAUTH_REDIRECT,
-            queryParams: { prompt: "select_account" },
-          },
+          options: { redirectTo: OAUTH_REDIRECT, queryParams: { prompt: "select_account" } },
         });
         if (error) throw error;
       }
@@ -253,140 +292,150 @@ export default function Auth() {
 
   if (mode === "otp") {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 flex items-center justify-center px-4">
-        <OtpScreen
-          email={email}
-          otpType={staffConfirm ? "email" : "signup"}
-          onBack={() => {
-            setMode(staffConfirm ? "login" : "register");
-            setStaffConfirm(false);
-            clearMessages();
-          }}
-          onVerified={() => { /* useAuth picks up the session automatically */ }}
-        />
-      </div>
+      <OtpScreen
+        email={email}
+        otpType={staffConfirm ? "email" : "signup"}
+        onBack={() => { setMode(staffConfirm ? "login" : "register"); setStaffConfirm(false); clearMessages(); }}
+        onVerified={() => { /* useAuth picks up the session automatically */ }}
+      />
     );
   }
 
+  const isForgot = mode === "forgot";
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 flex items-center justify-center px-4">
-      <div className="w-full max-w-sm bg-white rounded-2xl shadow-lg p-8">
-
-        <div className="text-center mb-8">
-          <AppLogo className="h-20 w-auto mx-auto mb-3" />
-          <p className="text-sm text-gray-500">
-            {mode === "login"    && "Welcome back"}
-            {mode === "register" && "Create your account"}
-            {mode === "forgot"   && "Reset your password"}
-          </p>
+    <BgLayout>
+      {/* Tab switcher — Sign In / Create Account */}
+      {!isForgot && (
+        <div className="flex bg-gray-100 rounded-xl p-1 mb-5">
+          <button
+            onClick={() => { setMode("login"); clearMessages(); }}
+            className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${
+              mode === "login"
+                ? "bg-white text-gray-800 shadow-sm"
+                : "text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            Sign In
+          </button>
+          <button
+            onClick={() => { setMode("register"); clearMessages(); }}
+            className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${
+              mode === "register"
+                ? "bg-white text-gray-800 shadow-sm"
+                : "text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            Create Account
+          </button>
         </div>
+      )}
 
-        {error && (
-          <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-            {error}
-          </div>
-        )}
-        {info && (
-          <div className="mb-4 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
-            {info}
-          </div>
-        )}
+      {isForgot && (
+        <div className="mb-5">
+          <button
+            onClick={() => { setMode("login"); clearMessages(); }}
+            className="text-sm text-emerald-600 font-medium flex items-center gap-1 hover:underline"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7"/>
+            </svg>
+            Back to Sign In
+          </button>
+          <h2 className="text-lg font-bold text-gray-800 mt-2">Reset password</h2>
+          <p className="text-xs text-gray-500">We'll send a reset link to your email.</p>
+        </div>
+      )}
 
-        <form onSubmit={handleEmailAuth} className="space-y-4">
-          {mode === "register" && (
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Full Name</label>
-              <input
-                type="text" required value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Adaeze Okonkwo"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-              />
-            </div>
-          )}
+      {error && (
+        <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5">
+          {error}
+        </div>
+      )}
+      {info && (
+        <div className="mb-4 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2.5">
+          {info}
+        </div>
+      )}
 
+      <form onSubmit={handleEmailAuth} className="space-y-3.5">
+        {mode === "register" && (
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Email</label>
+            <label className="block text-[11px] font-semibold text-gray-400 mb-1.5 uppercase tracking-wider">Full Name</label>
             <input
-              type="email" required value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              type="text" required value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Adaeze Okonkwo"
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
             />
           </div>
-
-          {mode !== "forgot" && (
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Password</label>
-              <input
-                type="password" required value={password}
-                onChange={(e) => setPass(e.target.value)}
-                placeholder="••••••••"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-              />
-            </div>
-          )}
-
-          {mode === "login" && (
-            <div className="text-right">
-              <button type="button"
-                onClick={() => { setMode("forgot"); clearMessages(); }}
-                className="text-xs text-green-600 hover:underline">
-                Forgot password?
-              </button>
-            </div>
-          )}
-
-          <button type="submit" disabled={loading}
-            className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white font-semibold rounded-lg py-2.5 text-sm transition-colors">
-            {loading
-              ? "Please wait…"
-              : mode === "login"    ? "Sign In"
-              : mode === "register" ? "Create Account"
-              : "Send Reset Link"}
-          </button>
-        </form>
-
-        {mode !== "forgot" && (
-          <>
-            <div className="flex items-center gap-2 my-5">
-              <div className="flex-1 h-px bg-gray-200" />
-              <span className="text-xs text-gray-400">or</span>
-              <div className="flex-1 h-px bg-gray-200" />
-            </div>
-
-            <button onClick={handleGoogle} disabled={loading}
-              className="w-full flex items-center justify-center gap-3 border border-gray-300 rounded-lg py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60 transition-colors">
-              <svg viewBox="0 0 24 24" className="w-5 h-5" xmlns="http://www.w3.org/2000/svg">
-                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
-                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-              </svg>
-              Continue with Google
-            </button>
-            <p className="text-center text-[11px] text-gray-400 mt-2">
-              Google login is for business accounts only. Staff and savings clients must use email &amp; password.
-            </p>
-          </>
         )}
 
-        <p className="text-center text-xs text-gray-500 mt-6">
-          {mode === "login" ? (
-            <>Don't have an account?{" "}
-              <button onClick={() => { setMode("register"); clearMessages(); }} className="text-green-600 font-medium hover:underline">
-                Sign up
-              </button>
-            </>
-          ) : (
-            <>Already have an account?{" "}
-              <button onClick={() => { setMode("login"); clearMessages(); }} className="text-green-600 font-medium hover:underline">
-                Sign in
-              </button>
-            </>
-          )}
-        </p>
-      </div>
-    </div>
+        <div>
+          <label className="block text-[11px] font-semibold text-gray-400 mb-1.5 uppercase tracking-wider">Email</label>
+          <input
+            type="email" required value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
+            className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+          />
+        </div>
+
+        {!isForgot && (
+          <div>
+            <label className="block text-[11px] font-semibold text-gray-400 mb-1.5 uppercase tracking-wider">Password</label>
+            <input
+              type="password" required value={password}
+              onChange={(e) => setPass(e.target.value)}
+              placeholder="••••••••"
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+            />
+          </div>
+        )}
+
+        {mode === "login" && (
+          <div className="text-right">
+            <button type="button"
+              onClick={() => { setMode("forgot"); clearMessages(); }}
+              className="text-xs text-emerald-600 hover:underline font-medium">
+              Forgot password?
+            </button>
+          </div>
+        )}
+
+        <button type="submit" disabled={loading}
+          className="w-full bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-60 text-white font-bold rounded-xl py-3.5 text-sm transition-colors shadow-sm">
+          {loading
+            ? "Please wait…"
+            : mode === "login"    ? "Sign In"
+            : mode === "register" ? "Create Account"
+            : "Send Reset Link"}
+        </button>
+      </form>
+
+      {!isForgot && (
+        <>
+          <div className="flex items-center gap-3 my-4">
+            <div className="flex-1 h-px bg-gray-200" />
+            <span className="text-xs text-gray-400 font-medium">or</span>
+            <div className="flex-1 h-px bg-gray-200" />
+          </div>
+
+          <button onClick={handleGoogle} disabled={loading}
+            className="w-full flex items-center justify-center gap-3 border border-gray-200 rounded-xl py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 active:bg-gray-100 disabled:opacity-60 transition-colors">
+            <svg viewBox="0 0 24 24" className="w-5 h-5 flex-shrink-0" xmlns="http://www.w3.org/2000/svg">
+              <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+              <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+              <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+              <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+            </svg>
+            Continue with Google
+          </button>
+          <p className="text-center text-[11px] text-gray-400 mt-2 leading-snug">
+            Google login is for business accounts only.<br />Staff and savings clients must use email &amp; password.
+          </p>
+        </>
+      )}
+    </BgLayout>
   );
 }
