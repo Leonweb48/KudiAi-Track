@@ -40,6 +40,24 @@ export function useAuth() {
       .maybeSingle();
 
     if (!profile) {
+      // Block OAuth logins for staff / ajo_client emails — they must use email+password
+      const isOAuth = !!(sess.user.app_metadata?.provider && sess.user.app_metadata.provider !== "email");
+      if (isOAuth && email) {
+        const [{ data: staffByEmail }, { data: ajoByEmail }] = await Promise.all([
+          supabase.from("staff").select("id").eq("email", email).maybeSingle(),
+          supabase.from("aso_clients").select("id").eq("email", email).maybeSingle(),
+        ]);
+        if (staffByEmail || ajoByEmail) {
+          const role = staffByEmail ? "staff member" : "savings client";
+          sessionStorage.setItem(
+            "auth_block_reason",
+            `This email is registered as a ${role} account. Google login is not available for ${role}s — please sign in with your email and password instead.`,
+          );
+          await supabase.auth.signOut();
+          return;
+        }
+      }
+
       // No owner profile — check if they are a staff member
       let { data: staffRow } = await supabase
         .from("staff")

@@ -120,7 +120,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [showDateFilter, setShowDateFilter] = useState(false);
   const [dueBefore,      setDueBefore]      = useState("");
 
-  const { asoClients, addAsoClient, asoContribute, asoWithdraw, updateAsoClient, profile, staffMap = {} } = store;
+  const { asoClients, addAsoClient, asoContribute, asoWithdraw, updateAsoClient, deleteAsoClient, profile, staffMap = {} } = store;
   const staffOptions = Object.entries(staffMap).map(([id, name]) => ({ id, name }));
 
   const [f, setF] = useState(BLANK);
@@ -1010,6 +1010,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           onClose={() => setClientProf(null)}
           staffList={staffOptions}
           onResetPwd={handleResetPwd}
+          onDelete={deleteAsoClient}
         />
       )}
 

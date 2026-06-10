@@ -466,6 +466,19 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
     return { error: null };
   };
 
+  // ── Delete Aso Client (contributions + auth user via edge fn) ──
+  const deleteAsoClient = async (id) => {
+    setAsoClients(p => p.filter(c => c.id !== id));
+    const { data, error } = await supabase.functions.invoke("delete-ajo-client", {
+      body: { clientId: id },
+    });
+    if (error || data?.error) {
+      loadData();
+      return { error: error?.message || data?.error || "Delete failed" };
+    }
+    return { error: null };
+  };
+
   // ── Profile ────────────────────────────────────────────────────
   const setProfile = async (updater) => {
     const prev = profile;
@@ -507,6 +520,6 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
     dbError, clearDbError: () => setDbError(null), reloadData: loadData,
     addTransaction, deleteTransaction,
     addCredit, repayCredit, updateCredit,
-    addAsoClient, asoContribute, asoWithdraw, updateAsoClient,
+    addAsoClient, asoContribute, asoWithdraw, updateAsoClient, deleteAsoClient,
   };
 }

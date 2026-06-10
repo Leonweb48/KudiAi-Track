@@ -72,7 +72,7 @@ function StatusBadge({ status }) {
 }
 
 /* ── Main component ───────────────────────────────────────────────── */
-export function ClientProfile({ record, type, onSave, onClose, staffList = [], onResetPwd }) {
+export function ClientProfile({ record, type, onSave, onClose, staffList = [], onResetPwd, onDelete }) {
   const [editing,      setEditing]      = useState(false);
   const [form,         setForm]         = useState({ ...record });
   const [photoFile,    setPhotoFile]    = useState(null);
@@ -81,6 +81,9 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], o
   const [saveErr,      setSaveErr]      = useState("");
   const [resetting,    setResetting]    = useState(false);
   const [resetErr,     setResetErr]     = useState("");
+  const [confirmDel,   setConfirmDel]   = useState(false);
+  const [deleting,     setDeleting]     = useState(false);
+  const [delErr,       setDelErr]       = useState("");
 
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
@@ -108,6 +111,15 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], o
     const res = await onResetPwd(record);
     setResetting(false);
     if (res?.error) setResetErr(res.error);
+  };
+
+  const doDelete = async () => {
+    setDeleting(true);
+    setDelErr("");
+    const res = await onDelete(record.id);
+    setDeleting(false);
+    if (res?.error) { setDelErr(res.error); setConfirmDel(false); return; }
+    onClose();
   };
 
   const handleSave = async () => {
@@ -449,6 +461,43 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], o
                     className="w-full py-3 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 rounded-2xl font-bold text-sm border border-amber-200 dark:border-amber-800 active:scale-[0.99] transition disabled:opacity-60">
                     {resetting ? "Resetting password…" : "Reset Portal Password"}
                   </button>
+                </div>
+              )}
+
+              {/* Delete client — Aso only */}
+              {!isCredit && onDelete && (
+                <div className="space-y-2">
+                  {delErr && (
+                    <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/40 text-red-600 dark:text-red-400 text-xs rounded-xl px-4 py-3">
+                      {delErr}
+                    </div>
+                  )}
+                  {!confirmDel ? (
+                    <button onClick={() => setConfirmDel(true)}
+                      className="w-full py-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-2xl font-bold text-sm border border-red-200 dark:border-red-800 active:scale-[0.99] transition flex items-center justify-center gap-2">
+                      <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                        <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14H6L5 6M10 11v6M14 11v6M9 6V4h6v2" />
+                      </svg>
+                      Delete Client
+                    </button>
+                  ) : (
+                    <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-2xl p-4 space-y-3">
+                      <p className="text-sm font-extrabold text-red-700 dark:text-red-400">Delete {name}?</p>
+                      <p className="text-xs text-red-600 dark:text-red-400 leading-relaxed">
+                        This will permanently delete the client, all their contribution history, and their portal login. This cannot be undone.
+                      </p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button onClick={() => setConfirmDel(false)} disabled={deleting}
+                          className="py-2.5 rounded-xl font-bold text-sm bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 transition">
+                          Cancel
+                        </button>
+                        <button onClick={doDelete} disabled={deleting}
+                          className="py-2.5 rounded-xl font-bold text-sm bg-red-600 hover:bg-red-700 text-white transition disabled:opacity-60">
+                          {deleting ? "Deleting…" : "Yes, Delete"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

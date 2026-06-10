@@ -146,7 +146,11 @@ export default function Auth() {
   const [password,    setPass]        = useState("");
   const [name,        setName]        = useState("");
   const [loading,     setLoading]     = useState(false);
-  const [error,       setError]       = useState("");
+  const [error,       setError]       = useState(() => {
+    const msg = sessionStorage.getItem("auth_block_reason");
+    if (msg) sessionStorage.removeItem("auth_block_reason");
+    return msg || "";
+  });
   const [info,        setInfo]        = useState("");
   const [staffConfirm, setStaffConfirm] = useState(false); // true when bypassing email confirmation
 
@@ -179,6 +183,21 @@ export default function Auth() {
           throw signInErr;
         }
       } else if (mode === "register") {
+        // Block staff / ajo_client emails from creating business accounts
+        const [{ data: staffCheck }, { data: ajoCheck }] = await Promise.all([
+          supabase.from("staff").select("id").eq("email", email.trim().toLowerCase()).maybeSingle(),
+          supabase.from("aso_clients").select("id").eq("email", email.trim().toLowerCase()).maybeSingle(),
+        ]);
+        if (staffCheck) {
+          setError("This email is registered as a staff member account and cannot be used to create a business account.");
+          setLoading(false);
+          return;
+        }
+        if (ajoCheck) {
+          setError("This email is registered as a savings client account and cannot be used to create a business account.");
+          setLoading(false);
+          return;
+        }
         const { error } = await supabase.auth.signUp({
           email,
           password,
@@ -346,6 +365,9 @@ export default function Auth() {
               </svg>
               Continue with Google
             </button>
+            <p className="text-center text-[11px] text-gray-400 mt-2">
+              Google login is for business accounts only. Staff and savings clients must use email &amp; password.
+            </p>
           </>
         )}
 
