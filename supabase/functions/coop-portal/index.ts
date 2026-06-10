@@ -138,8 +138,9 @@ serve(async (req) => {
     if (action === "add-member") {
       const b = body as Record<string, string>;
       if (!b.org_id || !b.full_name || !b.email) return json({ error: "org_id, full_name and email required" }, 400);
+      // Count ALL members (including removed) so removed IDs are never reused
       const { count } = await sb.from("org_members").select("id", { count: "exact", head: true })
-        .eq("org_id", b.org_id).neq("status", "removed");
+        .eq("org_id", b.org_id);
       const seq = String((count || 0) + 1).padStart(4, "0");
       const { data: orgRow } = await sb.from("organizations").select("name,reg_number").eq("id", b.org_id).single();
       const prefix = (orgRow?.reg_number || "ORG").split("-")[0];
