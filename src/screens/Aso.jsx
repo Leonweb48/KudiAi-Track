@@ -902,10 +902,23 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             </div>
           )}
 
-          {action === "withdraw" && (
-            <p className="text-xs text-amber-600 dark:text-amber-400 mb-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/60 rounded-xl px-3 py-2">
-              ⚠ Withdrawal fee: {selected.withdrawal_fee_percent}% will be deducted
+          {action === "contribute" && (selected.total_saved || 0) === 0 && (selected.registration_charge || 0) > 0 && (
+            <p className="text-xs text-blue-600 dark:text-blue-400 mb-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/60 rounded-xl px-3 py-2">
+              ℹ Registration fee of {fmt(selected.registration_charge)} will be automatically deducted from this first deposit.
             </p>
+          )}
+
+          {action === "withdraw" && (
+            <div className="mb-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/60 rounded-xl px-3 py-2 space-y-0.5">
+              <p className="text-xs text-amber-600 dark:text-amber-400 font-semibold">
+                ⚠ Withdrawal fee: {selected.withdrawal_fee_percent}% will be deducted from balance
+              </p>
+              {amt && parseFloat(amt) > 0 && (
+                <p className="text-xs text-amber-500 dark:text-amber-400">
+                  Fee: {fmt(parseFloat(amt) * (selected.withdrawal_fee_percent / 100))} · Client receives: {fmt(parseFloat(amt) * (1 - selected.withdrawal_fee_percent / 100))}
+                </p>
+              )}
+            </div>
           )}
 
           <Field label={`Amount (₦) — suggested: ${fmt(selected.contribution_amount)}`}

@@ -397,6 +397,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
 
   const asoContribute = async (id, amount) => {
     let updated;
+    let regFee = 0;
     setAsoClients(p => p.map(c => {
       if (c.id !== id) return c;
       const freqDays = { daily: 1, weekly: 7, monthly: 30 };
@@ -405,7 +406,14 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
       const d     = new Date(base);
       d.setDate(d.getDate() + days);
       const nextDate = d.toISOString().split("T")[0];
-      updated = { ...c, total_saved: c.total_saved + amount, current_balance: c.current_balance + amount, next_contribution_date: nextDate };
+      const isFirst = (c.total_saved || 0) === 0;
+      regFee = isFirst ? (c.registration_charge || 0) : 0;
+      updated = {
+        ...c,
+        total_saved:            c.total_saved + amount,
+        current_balance:        c.current_balance + amount - regFee,
+        next_contribution_date: nextDate,
+      };
       return updated;
     }));
     if (updated) {
@@ -419,6 +427,14 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
           type: "contribution", payment_method: "cash", status: "completed",
           recorded_by: staffId || null,
         }).catch(console.error);
+        if (regFee > 0) {
+          supabase.from("ajo_contributions").insert({
+            aso_client_id: id, owner_id: userId, amount: regFee,
+            type: "registration_fee", payment_method: "cash", status: "completed",
+            notes: "Registration fee deducted from first deposit",
+            recorded_by: staffId || null,
+          }).catch(console.error);
+        }
         onNotify?.("aso", "Contribution Received", `${fmt(amount)} from ${updated.full_name}`);
       }
     }
@@ -427,12 +443,13 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
   const asoWithdraw = async (id, amount) => {
     let updated;
     let netAmount = amount;
+    let feeAmount = 0;
     setAsoClients(p => p.map(c => {
       if (c.id !== id) return c;
-      const fee = amount * (c.withdrawal_fee_percent / 100);
-      const net = amount - fee;
-      netAmount = net;
-      updated = { ...c, total_withdrawn: c.total_withdrawn + net, current_balance: c.current_balance - net };
+      feeAmount = amount * ((c.withdrawal_fee_percent || 0) / 100);
+      netAmount = amount - feeAmount;
+      // Full withdrawal amount (gross) leaves the balance; client receives net; fee is owner's cut
+      updated = { ...c, total_withdrawn: c.total_withdrawn + netAmount, current_balance: c.current_balance - amount };
       return updated;
     }));
     if (updated) {
@@ -444,6 +461,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
         supabase.from("ajo_contributions").insert({
           aso_client_id: id, owner_id: userId, amount: netAmount,
           type: "withdrawal", payment_method: "cash", status: "completed",
+          notes: feeAmount > 0 ? `Withdrawal fee deducted: ${fmt(feeAmount)}` : null,
           recorded_by: staffId || null,
         }).catch(console.error);
       }
