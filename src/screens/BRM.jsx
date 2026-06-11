@@ -458,7 +458,7 @@ export default function BRM({ onClose, userId }) {
         ? marketers.reduce((best,m) => marketerClients(m.id).length > marketerClients(best.id).length ? m : best, marketers[0])
         : null;
       const overdueFU     = notes.filter(n => !n.is_completed && n.follow_up_date && new Date(n.follow_up_date) < new Date());
-      const pipeline₦     = leads.filter(l=>!["won","lost"].includes(l.stage)).reduce((s,l)=>s+(l.deal_value||0),0);
+      const pipelineVal   = leads.filter(l=>!["won","lost"].includes(l.stage)).reduce((s,l)=>s+(l.deal_value||0),0);
 
       const result = [];
 
@@ -482,8 +482,8 @@ export default function BRM({ onClose, userId }) {
         result.push({ type:"insight", icon:"📊", title:`Win rate at ${stats.winRate}% — room to improve`,
           body:`Industry benchmark is 25-35%. Review your proposal quality and response times.` });
 
-      if (pipeline₦ > 0)
-        result.push({ type:"opportunity", icon:"💰", title:`Active pipeline: ${fmtK(pipeline₦)}`,
+      if (pipelineVal > 0)
+        result.push({ type:"opportunity", icon:"💰", title:`Active pipeline: ${fmtK(pipelineVal)}`,
           body:`${leads.filter(l=>!["won","lost"].includes(l.stage)).length} deals in motion. Prioritise by expected close date.` });
 
       if (topMktr && marketers.length > 1)
@@ -500,6 +500,7 @@ export default function BRM({ onClose, userId }) {
       setInsights(result);
     } catch(e) { setErr(e.message); }
     finally { setLoadingInsight(false); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clients, leads, marketers, notes, stats]);
 
   // ── TABS ──────────────────────────────────────────────────────────────────
