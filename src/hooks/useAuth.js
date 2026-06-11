@@ -13,6 +13,7 @@ export function useAuth() {
   const [staff,     setStaff]     = useState(null);
   const [ajoClient, setAjoClient] = useState(null);
   const [orgMember, setOrgMember] = useState(null);
+  const [adminUser, setAdminUser] = useState(null);
 
   // Tracks whether we've already confirmed a subscription this session.
   // A ref (not state) so reads inside async callbacks are always current.
@@ -25,6 +26,7 @@ export function useAuth() {
       setStaff(null);
       setAjoClient(null);
       setOrgMember(null);
+      setAdminUser(null);
       subVerified.current = false;
       localStorage.removeItem(CACHE_KEY);
       return;
@@ -35,6 +37,25 @@ export function useAuth() {
     const email       = sess.user.email;
     const accountType = sess.user.user_metadata?.account_type;
     const mustChange  = sess.user.user_metadata?.must_change_password === true;
+
+    // ── Super Admin early routing ─────────────────────────────────────
+    if (accountType === "super_admin") {
+      const { data: adminRow } = await supabase
+        .from("admin_users")
+        .select("id, username, role, can_create_admins")
+        .eq("user_id", uid)
+        .eq("is_active", true)
+        .maybeSingle();
+      if (adminRow) {
+        setAdminUser(adminRow);
+        subVerified.current = true;
+        setStatus("admin");
+        return;
+      }
+      await supabase.auth.signOut();
+      setStatus("unauthenticated");
+      return;
+    }
 
     // ── Org Member early routing ──────────────────────────────────────
     // Bypass the profile check entirely so a member who accidentally ended
@@ -257,5 +278,5 @@ export function useAuth() {
     supabase.auth.getSession().then(({ data }) => resolve(data.session));
   }, [resolve]);
 
-  return { status, session, plan, setReady, refetch, staff, ajoClient, orgMember, ownerId: staff?.owner_id ?? null };
+  return { status, session, plan, setReady, refetch, staff, ajoClient, orgMember, adminUser, ownerId: staff?.owner_id ?? null };
 }

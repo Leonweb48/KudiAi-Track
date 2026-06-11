@@ -31,6 +31,7 @@ import AjoClientPortal       from "./screens/AjoClientPortal";
 import CoopList              from "./screens/CoopList";
 import CoopDashboard         from "./screens/CoopDashboard";
 import CoopMemberPortal, { CoopMemberFirstLogin } from "./screens/CoopMemberPortal";
+import AdminDashboard        from "./screens/AdminDashboard";
 import { useInventory }      from "./hooks/useInventory";
 import { useBiometricLock }  from "./hooks/useBiometricLock";
 import { useLoyalty }        from "./hooks/useLoyalty";
@@ -62,7 +63,7 @@ export default function App() {
   const [aiQuery,      setAiQuery]      = useState("");
   const [branchReport, setBranchReport] = useState(null);
 
-  const { status, session, plan, setReady, refetch, staff, ajoClient, orgMember } = useAuth();
+  const { status, session, plan, setReady, refetch, staff, ajoClient, orgMember, adminUser } = useAuth();
   const userId = session?.user?.id;
 
   // Notification system — initialised before store so addNotification is stable
@@ -145,6 +146,9 @@ export default function App() {
   const finishUpgrade = (planId) => { setReady(planId); setShowUpgrade(false); };
 
   if (status === "loading")         return <Spinner />;
+
+  // Super Admin — full command center
+  if (status === "admin") return <AdminDashboard session={session} adminUser={adminUser} />;
 
   // Org member — same auth pattern as staff/ajo (email + password, no Google)
   if (status === "org_member_setup") return <CoopMemberFirstLogin member={orgMember} />;
