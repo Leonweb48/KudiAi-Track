@@ -97,6 +97,21 @@ export function useAuth() {
       return;
     }
 
+    // ── Admin fallback: check admin_users by user_id ─────────────────
+    // Catches super_admin even when account_type metadata is missing/wrong.
+    const { data: adminFallback } = await supabase
+      .from("admin_users")
+      .select("id, username, role, can_create_admins")
+      .eq("user_id", uid)
+      .eq("is_active", true)
+      .maybeSingle();
+    if (adminFallback) {
+      setAdminUser(adminFallback);
+      subVerified.current = true;
+      setStatus("admin");
+      return;
+    }
+
     // ── Onboarding check (business owners) ───────────────────────────
     const { data: profile } = await supabase
       .from("profiles")

@@ -31,7 +31,11 @@ serve(async (req) => {
     }
 
     if (existing.user_id) {
-      return json({ ok: true, message: "SuperAdmin auth account already set up.", user_id: existing.user_id });
+      // Always re-apply the correct metadata in case it was missing
+      await sb.auth.admin.updateUserById(existing.user_id, {
+        user_metadata: { account_type: "super_admin", username: "SuperAdmin" },
+      });
+      return json({ ok: true, message: "SuperAdmin metadata refreshed.", user_id: existing.user_id });
     }
 
     // Create Supabase Auth user for SuperAdmin
