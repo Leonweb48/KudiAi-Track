@@ -759,8 +759,6 @@ export default function AdminDashboard({ session, adminUser }) {
     await supabase.auth.signOut();
   };
 
-  const activeNav = NAV.find(n => n.id === activeTab);
-
   const content = {
     overview:   <Overview   session={session} />,
     users:      <Users      session={session} />,
