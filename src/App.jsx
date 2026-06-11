@@ -31,7 +31,6 @@ import AjoClientPortal       from "./screens/AjoClientPortal";
 import CoopList              from "./screens/CoopList";
 import CoopDashboard         from "./screens/CoopDashboard";
 import CoopMemberPortal, { CoopMemberFirstLogin } from "./screens/CoopMemberPortal";
-import BRM                   from "./screens/BRM";
 import { useInventory }      from "./hooks/useInventory";
 import { useBiometricLock }  from "./hooks/useBiometricLock";
 import { useLoyalty }        from "./hooks/useLoyalty";
@@ -60,7 +59,6 @@ export default function App() {
   const [showLoyalty,  setShowLoyalty]  = useState(false);
   const [showCoop,     setShowCoop]     = useState(false);
   const [coopOrg,      setCoopOrg]      = useState(null);
-  const [showBRM,      setShowBRM]      = useState(false);
   const [aiQuery,      setAiQuery]      = useState("");
   const [branchReport, setBranchReport] = useState(null);
 
@@ -234,8 +232,7 @@ export default function App() {
                     onNotifications={() => notif.setOpen(true)}
                     onLoyalty={() => setShowLoyalty(true)}
                     onBranches={() => setShowBranches(true)}
-                    onCoops={() => setShowCoop(true)}
-                    onBrm={() => setShowBRM(true)} />,
+                    onCoops={() => setShowCoop(true)} />,
   };
 
   return (
@@ -328,11 +325,6 @@ export default function App() {
           initialQuery={aiQuery}
           onClose={() => setShowAI(false)}
         />
-      )}
-
-      {/* BRM & CRM — full-screen overlay, z-60 */}
-      {showBRM && (
-        <BRM userId={userId} onClose={() => setShowBRM(false)} />
       )}
 
       {/* Cooperative / Community Org system — z-60 */}
