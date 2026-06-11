@@ -52,7 +52,9 @@ export function useAuth() {
         setStatus(mustChange ? "org_member_setup" : "org_member");
         return;
       }
-      setStatus("onboarding");
+      // No active membership found — sign out rather than drop into business onboarding
+      await supabase.auth.signOut();
+      setStatus("unauthenticated");
       return;
     }
 
@@ -69,6 +71,7 @@ export function useAuth() {
         setStatus(mustChange ? "ajo_client_setup" : "ajo_client");
         return;
       }
+      await supabase.auth.signOut();
       setStatus("unauthenticated");
       return;
     }
