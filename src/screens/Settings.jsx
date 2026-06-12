@@ -242,6 +242,107 @@ function LanguageModal({ current, onClose }) {
   );
 }
 
+/* ── Support Ticket Modal ─────────────────────────────────────────── */
+const SUPPORT_ADMIN_URL = "https://kuditrack-admin.vercel.app";
+const TICKET_TYPES = [
+  { value: "account",      label: "Account / Login" },
+  { value: "payment",      label: "Payment / Billing" },
+  { value: "transaction",  label: "Transaction Issue" },
+  { value: "subscription", label: "Subscription / Plans" },
+  { value: "technical",    label: "Technical Problem" },
+  { value: "ajo",          label: "Ajo / Savings Group" },
+  { value: "general",      label: "General Enquiry" },
+];
+
+function SupportModal({ onClose, session, userType = "business" }) {
+  const [form, setForm] = useState({
+    subject: "", description: "", type: "general", priority: "medium",
+    user_name: session?.business_name || session?.owner_name || session?.full_name || "",
+    user_email: session?.email || "",
+  });
+  const [submitting, setSubmitting] = useState(false);
+  const [done, setDone]             = useState(null);
+  const [error, setError]           = useState("");
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!form.subject.trim() || !form.user_email.trim()) { setError("Subject and email are required."); return; }
+    setSubmitting(true); setError("");
+    try {
+      const res = await fetch(`${SUPPORT_ADMIN_URL}/api/public/support`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...form, source: "business", submitter_type: userType }),
+      });
+      const d = await res.json();
+      if (!res.ok) { setError(d.error || "Failed to submit ticket"); return; }
+      setDone(d.ticket_no);
+    } catch { setError("Network error. Please try again."); }
+    finally { setSubmitting(false); }
+  };
+
+  return (
+    <Modal title="Help & Support" onClose={onClose}>
+      {done ? (
+        <div className="flex flex-col items-center gap-4 py-4 text-center">
+          <div className="w-14 h-14 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
+            <svg viewBox="0 0 24 24" className="w-7 h-7 text-emerald-500" fill="none" stroke="currentColor" strokeWidth={2.5}><polyline points="20 6 9 17 4 12" /></svg>
+          </div>
+          <div>
+            <p className="text-base font-bold text-slate-800 dark:text-slate-100">Ticket Submitted!</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Your ticket number is <span className="font-bold text-indigo-600 dark:text-indigo-400">#{done}</span></p>
+            <p className="text-xs text-slate-400 mt-2">A confirmation has been sent to {form.user_email}. Our team will respond shortly.</p>
+          </div>
+          <button onClick={onClose} className="mt-2 w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold text-sm transition-colors">Close</button>
+        </div>
+      ) : (
+        <form onSubmit={submit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">Your Name</label>
+              <input className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30" value={form.user_name} onChange={e => setForm(f => ({...f, user_name: e.target.value}))} placeholder="Your name" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">Email *</label>
+              <input type="email" className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30" value={form.user_email} onChange={e => setForm(f => ({...f, user_email: e.target.value}))} placeholder="your@email.com" required />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">Category</label>
+              <select className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 focus:outline-none" value={form.type} onChange={e => setForm(f => ({...f, type: e.target.value}))}>
+                {TICKET_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">Priority</label>
+              <select className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 focus:outline-none" value={form.priority} onChange={e => setForm(f => ({...f, priority: e.target.value}))}>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="critical">Critical</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">Subject *</label>
+            <input className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30" value={form.subject} onChange={e => setForm(f => ({...f, subject: e.target.value}))} placeholder="Brief summary of your issue" required />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">Description</label>
+            <textarea className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 resize-none h-24" value={form.description} onChange={e => setForm(f => ({...f, description: e.target.value}))} placeholder="Describe the problem in detail…" />
+          </div>
+          {error && <p className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 px-3 py-2 rounded-xl">⚠ {error}</p>}
+          <button type="submit" disabled={submitting} className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2">
+            {submitting ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : null}
+            {submitting ? "Submitting…" : "Submit Ticket"}
+          </button>
+        </form>
+      )}
+    </Modal>
+  );
+}
+
 /* ── Main component ───────────────────────────────────────────────── */
 export default function Settings({ store, session, plan = "starter", onUpgrade, onStaffManagement, lock, onNotifications, onLoyalty, onBranches, onCoops }) {
   const { profile, setProfile } = store;
@@ -257,6 +358,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
   const [signingOut,    setSigningOut]    = useState(false);
   const [infoModal,     setInfoModal]     = useState(null);
   const [showPinSetup,  setShowPinSetup]  = useState(false);
+  const [showSupport,   setShowSupport]   = useState(false);
   const [lockBusy,      setLockBusy]      = useState(false);
   const [showLangPick,  setShowLangPick]  = useState(false);
 
@@ -496,7 +598,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
       <SettingsCard>
         <Row icon={<DocIcon />}  label={t("settings.terms")}   onClick={() => setInfoModal(INFO.terms)} />
         <Row icon={<DocIcon />}  label={t("settings.privacy")} onClick={() => setInfoModal(INFO.privacy)} />
-        <Row icon={<HelpIcon />} label={t("settings.help")}    onClick={() => window.open("https://wa.me/2348000000000?text=Hi%2C+I+need+help+with+KudiAI+Track", "_blank")} />
+        <Row icon={<HelpIcon />} label="Help & Support"    onClick={() => setShowSupport(true)} />
       </SettingsCard>
 
       {/* ── LOG OUT ────────────────────────────────────────────────── */}
@@ -533,6 +635,15 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
             await lock.enableLock();
             setLockBusy(false);
           }}
+        />
+      )}
+
+      {/* ── Support ticket modal ───────────────────────────────────── */}
+      {showSupport && (
+        <SupportModal
+          onClose={() => setShowSupport(false)}
+          session={{ ...profile, email: session?.user?.email }}
+          userType="business"
         />
       )}
 

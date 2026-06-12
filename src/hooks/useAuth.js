@@ -6,6 +6,37 @@ import { Browser } from "@capacitor/browser";
 import { fetchAndCachePlans, normalizeSlug, hasHigherPlanAvailable } from "../utils/plans";
 
 const CACHE_KEY = "kuditrack_plan";
+const SESSION_LOGGED_KEY = "kuditrack_sess_logged";
+
+async function logPlatformSession(supabaseClient, userId, userType, username, email) {
+  try {
+    // Only log once per tab/session to avoid duplicates on token refresh events
+    const key = `${SESSION_LOGGED_KEY}_${userId}`;
+    if (sessionStorage.getItem(key)) return;
+    sessionStorage.setItem(key, "1");
+
+    let ip = null, city = null, country = null, latitude = null, longitude = null;
+    try {
+      const geo = await fetch("https://ipapi.co/json/", { signal: AbortSignal.timeout(4000) });
+      if (geo.ok) {
+        const g = await geo.json();
+        ip = g.ip; city = g.city; country = g.country_name;
+        latitude = g.latitude; longitude = g.longitude;
+      }
+    } catch { /* geolocation optional */ }
+
+    const ua = typeof navigator !== "undefined" ? (navigator.userAgent || "") : "";
+    const deviceType = /Mobi|Android/i.test(ua) ? "mobile" : "desktop";
+    const browser = /Chrome/i.test(ua) ? "Chrome" : /Firefox/i.test(ua) ? "Firefox" : /Safari/i.test(ua) ? "Safari" : "Other";
+    const osName  = /Android/i.test(ua) ? "Android" : /iPhone|iPad/i.test(ua) ? "iOS" : /Windows/i.test(ua) ? "Windows" : /Mac/i.test(ua) ? "macOS" : "Other";
+
+    await supabaseClient.from("platform_sessions").insert({
+      user_id: userId, user_type: userType, username: username || null, email: email || null,
+      ip_address: ip, city, country, latitude, longitude,
+      device_type: deviceType, browser, os_name: osName,
+    });
+  } catch { /* session logging is non-critical */ }
+}
 
 export function useAuth() {
   const [status,         setStatus]         = useState("loading");
@@ -53,6 +84,7 @@ export function useAuth() {
       if (adminRow) {
         setAdminUser(adminRow);
         subVerified.current = true;
+        logPlatformSession(supabase, uid, "admin", adminRow.username, email);
         setStatus("admin");
         return;
       }
@@ -74,6 +106,7 @@ export function useAuth() {
       if (orgMemberRow) {
         setOrgMember({ ...orgMemberRow, org: orgMemberRow.organizations });
         subVerified.current = true;
+        logPlatformSession(supabase, uid, "org_member", orgMemberRow.full_name, email);
         setStatus(mustChange ? "org_member_setup" : "org_member");
         return;
       }
@@ -93,6 +126,7 @@ export function useAuth() {
       if (ajoClientRow) {
         setAjoClient({ ...ajoClientRow, owner_id: ajoClientRow.user_id });
         subVerified.current = true;
+        logPlatformSession(supabase, uid, "ajo_client", ajoClientRow.full_name, email);
         setStatus(mustChange ? "ajo_client_setup" : "ajo_client");
         return;
       }
@@ -112,6 +146,7 @@ export function useAuth() {
       if (marketerRow) {
         setMarketer(marketerRow);
         subVerified.current = true;
+        logPlatformSession(supabase, uid, "marketer", marketerRow.full_name || marketerRow.username, email);
         setStatus(mustChange ? "marketer_setup" : "marketer");
         return;
       }
@@ -185,6 +220,7 @@ export function useAuth() {
         }
         setStaff({ ...staffRow, user_id: uid });
         subVerified.current = true;
+        logPlatformSession(supabase, uid, "staff", staffRow.full_name, email);
         if (mustChange) {
           setStatus("staff_setup");
         } else if (staffRow.role === "manager" && staffRow.branch_id) {
@@ -250,6 +286,7 @@ export function useAuth() {
       setPlan(resolvedPlan);
       localStorage.setItem(CACHE_KEY, resolvedPlan);
       subVerified.current = true;
+      logPlatformSession(supabase, uid, "business", sess.user.user_metadata?.full_name || sess.user.user_metadata?.owner_name, email);
       // Warm the plans cache and check for upgrade availability
       fetchAndCachePlans(supabase).then(() => {
         setUpgradeAvailable(hasHigherPlanAvailable(resolvedPlan));

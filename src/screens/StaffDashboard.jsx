@@ -36,9 +36,32 @@ const NAV_LABEL = {
 };
 
 
+const SUPPORT_ADMIN_URL = "https://kuditrack-admin.vercel.app";
+
 function StaffProfile({ staff, ownerName, onSignOut, isDark, onToggleDark }) {
   const roleLabel = (staff.role || "").replace(/_/g, " ");
   const initials  = (staff.full_name || "?").split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+  const [showSupport, setShowSupport] = useState(false);
+  const [sForm, setSForm] = useState({ subject:"", description:"", type:"general", priority:"medium" });
+  const [sSubmitting, setSSubmitting] = useState(false);
+  const [sDone, setSDone] = useState(null);
+  const [sErr, setSErr] = useState("");
+
+  const submitTicket = async (e) => {
+    e.preventDefault();
+    if (!sForm.subject.trim()) { setSErr("Subject required."); return; }
+    setSSubmitting(true); setSErr("");
+    try {
+      const res = await fetch(`${SUPPORT_ADMIN_URL}/api/public/support`, {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ ...sForm, user_name: staff.full_name, user_email: staff.email, source:"business", submitter_type:"staff" }),
+      });
+      const d = await res.json();
+      if (!res.ok) { setSErr(d.error || "Failed"); return; }
+      setSDone(d.ticket_no);
+    } catch { setSErr("Network error."); }
+    finally { setSSubmitting(false); }
+  };
   const fields = [
     { label: "Full Name",    value: staff.full_name },
     { label: "Email",        value: staff.email },
@@ -115,10 +138,49 @@ function StaffProfile({ staff, ownerName, onSignOut, isDark, onToggleDark }) {
         </div>
       </div>
 
+      <button onClick={() => setShowSupport(true)}
+        className="w-full py-3.5 bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-900/40 text-indigo-600 dark:text-indigo-400 font-bold rounded-xl text-sm">
+        Help & Support
+      </button>
+
       <button onClick={onSignOut}
         className="w-full py-3.5 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/40 text-red-500 font-bold rounded-xl text-sm">
         Sign Out
       </button>
+
+      {showSupport && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center p-4" onClick={e => e.target===e.currentTarget&&setShowSupport(false)}>
+          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-md p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-slate-800 dark:text-white">Help & Support</h3>
+              <button onClick={() => setShowSupport(false)} className="text-slate-400">✕</button>
+            </div>
+            {sDone ? (
+              <div className="text-center py-4 space-y-2">
+                <p className="text-2xl">✅</p>
+                <p className="font-bold text-slate-800 dark:text-white">Ticket #{sDone} submitted</p>
+                <p className="text-xs text-slate-400">Confirmation sent to {staff.email}</p>
+                <button onClick={() => { setShowSupport(false); setSDone(null); }} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-semibold text-sm">Close</button>
+              </div>
+            ) : (
+              <form onSubmit={submitTicket} className="space-y-3">
+                <select className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none" value={sForm.type} onChange={e => setSForm(f=>({...f,type:e.target.value}))}>
+                  <option value="general">General Enquiry</option>
+                  <option value="account">Account / Login</option>
+                  <option value="transaction">Transaction Issue</option>
+                  <option value="technical">Technical Problem</option>
+                </select>
+                <input className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none" value={sForm.subject} onChange={e => setSForm(f=>({...f,subject:e.target.value}))} placeholder="Subject *" required />
+                <textarea className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none resize-none h-20" value={sForm.description} onChange={e => setSForm(f=>({...f,description:e.target.value}))} placeholder="Describe your issue…" />
+                {sErr && <p className="text-xs text-red-500">{sErr}</p>}
+                <button type="submit" disabled={sSubmitting} className="w-full py-3 bg-indigo-600 disabled:opacity-50 text-white rounded-xl font-semibold text-sm">
+                  {sSubmitting ? "Submitting…" : "Submit Ticket"}
+                </button>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
