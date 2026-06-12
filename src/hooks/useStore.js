@@ -536,7 +536,9 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
     transactions, credits, asoClients, profile, staffMap,
     setProfile, isOnline, loading, pendingSync, isSyncing, runSync,
     dbError, clearDbError: () => setDbError(null), reloadData: loadData,
-    addTransaction, deleteTransaction,
+    addTransaction,
+    // Staff cannot delete transactions — only business owners (no staffId) can
+    deleteTransaction: staffId ? null : deleteTransaction,
     addCredit, repayCredit, updateCredit,
     addAsoClient, asoContribute, asoWithdraw, updateAsoClient, deleteAsoClient,
   };
