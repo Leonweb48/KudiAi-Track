@@ -26,6 +26,7 @@ import Inventory             from "./screens/Inventory";
 import Reports               from "./screens/Reports";
 import AIAssistant           from "./screens/AIAssistant";
 import LockScreen            from "./components/LockScreen";
+import AIChatWidget         from "./components/AIChatWidget";
 import Loyalty               from "./screens/Loyalty";
 import Branches              from "./screens/Branches";
 import BranchManagerDashboard from "./screens/BranchManagerDashboard";
@@ -154,11 +155,21 @@ export default function App() {
 
   // Org member — same auth pattern as staff/ajo (email + password, no Google)
   if (status === "org_member_setup") return <CoopMemberFirstLogin member={orgMember} />;
-  if (status === "org_member")       return <CoopMemberPortal member={orgMember} />;
+  if (status === "org_member") return (
+    <>
+      <CoopMemberPortal member={orgMember} />
+      <AIChatWidget />
+    </>
+  );
 
   // Ajo client login — route to dedicated client portal
   if (status === "ajo_client_setup" || status === "ajo_client") {
-    return <AjoClientPortal session={session} ajoClient={ajoClient} />;
+    return (
+      <>
+        <AjoClientPortal session={session} ajoClient={ajoClient} />
+        <AIChatWidget />
+      </>
+    );
   }
 
   if (status === "unauthenticated") return <Auth />;
@@ -166,8 +177,18 @@ export default function App() {
   if (status === "onboarding")      return <Onboarding session={session} onComplete={refetch} />;
   if (status === "subscribing")     return <SubscriptionPlan session={session} onComplete={setReady} />;
   if (status === "staff_setup")     return <StaffFirstLogin session={session} staff={staff} />;
-  if (status === "staff")           return <StaffDashboard session={session} staff={staff} />;
-  if (status === "branch_manager")  return <BranchManagerDashboard session={session} staff={staff} />;
+  if (status === "staff") return (
+    <>
+      <StaffDashboard session={session} staff={staff} />
+      <AIChatWidget />
+    </>
+  );
+  if (status === "branch_manager") return (
+    <>
+      <BranchManagerDashboard session={session} staff={staff} />
+      <AIChatWidget />
+    </>
+  );
   if (status === "marketer_setup")  return <MarketerFirstLogin marketer={marketer} />;
   if (status === "marketer")        return <MarketerDashboard marketer={marketer} />;
 
@@ -333,6 +354,11 @@ export default function App() {
           initialQuery={aiQuery}
           onClose={() => setShowAI(false)}
         />
+      )}
+
+      {/* Floating AI Chat Widget — visible on all screens when full-screen AI is closed */}
+      {!showAI && (
+        <AIChatWidget store={store} inventory={inventory} />
       )}
 
       {/* Cooperative / Community Org system — z-60 */}
