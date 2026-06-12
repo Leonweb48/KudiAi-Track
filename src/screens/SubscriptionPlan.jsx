@@ -2,79 +2,21 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { usePaystackPayment } from "react-paystack";
 import { supabase } from "../utils/supabase";
 import AppLogo from "../components/AppLogo";
-import { PLAN_ORDER } from "../utils/plans";
+import { fetchAndCachePlans, getActivePlans, normalizeSlug, ALL_FEATURE_LIST } from "../utils/plans";
 import { Capacitor } from "@capacitor/core";
 import { Browser } from "@capacitor/browser";
 import { App } from "@capacitor/app";
 
 const isNative = Capacitor.isNativePlatform();
 
-const PLANS = [
-  {
-    id: "starter",
-    name: "Starter",
-    price: 0,
-    label: "Free forever",
-    color: "gray",
-    popular: false,
-    features: [
-      "Up to 100 transactions/month",
-      "Basic profit & loss reports",
-      "Credit sales tracking",
-      "Customer records",
-      "1 user account",
-    ],
-    missing: [
-      "Aso savings management",
-      "PDF export",
-      "AI-powered insights",
-    ],
-  },
-  {
-    id: "business",
-    name: "Business",
-    price: 2500,
-    label: "/month",
-    color: "green",
-    popular: true,
-    features: [
-      "Unlimited transactions",
-      "All Starter features",
-      "Aso savings management",
-      "PDF report export",
-      "Advanced analytics dashboard",
-      "Email support",
-    ],
-    missing: ["AI-powered insights"],
-  },
-  {
-    id: "premium",
-    name: "Premium",
-    price: 5000,
-    label: "/month",
-    color: "purple",
-    popular: false,
-    features: [
-      "Everything in Business",
-      "AI-powered business insights",
-      "WhatsApp payment reminders",
-      "Priority customer support",
-      "Multi-device access",
-      "Custom business branding",
-    ],
-    missing: [],
-  },
-];
-
 function CheckIcon({ color = "green" }) {
+  const cls = color === "violet" ? "text-violet-500" : color === "amber" ? "text-amber-500" : color === "blue" ? "text-blue-500" : color === "gray" ? "text-gray-400" : "text-green-500";
   return (
-    <svg className={`w-4 h-4 shrink-0 ${color === "green" ? "text-green-500" : color === "purple" ? "text-purple-500" : "text-gray-400"}`}
-      viewBox="0 0 20 20" fill="currentColor">
+    <svg className={`w-4 h-4 shrink-0 ${cls}`} viewBox="0 0 20 20" fill="currentColor">
       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
     </svg>
   );
 }
-
 function XIcon() {
   return (
     <svg className="w-4 h-4 shrink-0 text-gray-300" viewBox="0 0 20 20" fill="currentColor">
@@ -83,67 +25,78 @@ function XIcon() {
   );
 }
 
-// PaidButton must always call usePaystackPayment (React Hook rules),
-// so it renders for any plan — callers decide whether to render it.
+// Derive a color from sort_order
+function planColor(sortOrder) {
+  return ["gray", "blue", "violet", "amber"][sortOrder] || "blue";
+}
+
+// Build the "missing" features list: features in ALL_FEATURE_LIST not in this plan's feature_keys
+function getMissingFeatures(plan, allPlans) {
+  const keys = Array.isArray(plan.feature_keys) ? plan.feature_keys : [];
+  // Only show as missing if a higher-tier plan has it
+  const higherKeys = new Set();
+  allPlans.forEach(p => {
+    if ((p.sort_order ?? 0) > (plan.sort_order ?? 0)) {
+      (Array.isArray(p.feature_keys) ? p.feature_keys : []).forEach(k => higherKeys.add(k));
+    }
+  });
+  return ALL_FEATURE_LIST
+    .filter(f => !keys.includes(f.key) && higherKeys.has(f.key))
+    .map(f => f.label);
+}
+
+// Derives display feature list from DB features array or feature_keys
+function getDisplayFeatures(plan) {
+  const arr = Array.isArray(plan.features) ? plan.features : [];
+  if (arr.length > 0) return arr;
+  // Fallback: build from feature_keys
+  const keys = Array.isArray(plan.feature_keys) ? plan.feature_keys : [];
+  const list = [];
+  if (plan.price_monthly === 0) list.push(`${plan.max_transactions} transactions/mo`);
+  else if (plan.max_transactions >= 999999) list.push("Unlimited transactions");
+  else list.push(`${plan.max_transactions.toLocaleString()} transactions/mo`);
+  if (plan.max_organizations > 1) list.push(`${plan.max_organizations} organizations`);
+  if (plan.max_org_members > 5) list.push(`${plan.max_org_members} members`);
+  ALL_FEATURE_LIST.forEach(f => { if (keys.includes(f.key)) list.push(f.label); });
+  return list;
+}
+
+// PaidButton must always call usePaystackPayment (React Hook rules)
 function PaidButton({ plan, session, onSuccess, disabled }) {
-  const [ref] = useState(`kt-${plan.id}-${Date.now()}`);
+  const [ref] = useState(`kt-${plan.slug}-${Date.now()}`);
   const [busy, setBusy] = useState(false);
   const [nativeErr, setNativeErr] = useState("");
 
   const config = {
     reference: ref,
     email:     session.user.email,
-    amount:    plan.price * 100,
+    amount:    plan.price_monthly * 100,
     publicKey: process.env.REACT_APP_PAYSTACK_PUBLIC_KEY || "",
     metadata: {
       custom_fields: [{ display_name: "Plan", variable_name: "plan", value: plan.name }],
     },
   };
-
   const initPayment = usePaystackPayment(config);
 
-  const cls = plan.id === "premium"
-    ? "w-full py-2.5 rounded-xl font-semibold text-sm bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-50 transition-colors"
-    : "w-full py-2.5 rounded-xl font-semibold text-sm bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 transition-colors";
+  const color = planColor(plan.sort_order);
+  const cls = color === "violet" || color === "amber"
+    ? "w-full py-2.5 rounded-xl font-semibold text-sm bg-violet-600 hover:bg-violet-700 text-white disabled:opacity-50 transition-colors"
+    : "w-full py-2.5 rounded-xl font-semibold text-sm bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 transition-colors";
 
   const handleClick = async () => {
     if (isNative) {
-      setBusy(true);
-      setNativeErr("");
+      setBusy(true); setNativeErr("");
       try {
-        // Use the URL/key already baked into the supabase client — avoids
-        // process.env being empty in the Capacitor WebView at runtime.
         const baseUrl = supabase.supabaseUrl;
         const anonKey = supabase.supabaseKey;
-
-        const res = await fetch(
-          `${baseUrl}/functions/v1/initialize-payment`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${anonKey}`,
-              "apikey": anonKey,
-            },
-            body: JSON.stringify({
-              email: session.user.email,
-              amount: plan.price * 100,
-              reference: ref,
-              planId: plan.id,
-            }),
-          }
-        );
-
+        const res = await fetch(`${baseUrl}/functions/v1/initialize-payment`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${anonKey}`, "apikey": anonKey },
+          body: JSON.stringify({ email: session.user.email, amount: plan.price_monthly * 100, reference: ref, planId: plan.slug }),
+        });
         const data = await res.json();
-
-        if (!res.ok || !data.authorization_url) {
-          throw new Error(data.error || `Server error ${res.status}`);
-        }
-
-        localStorage.setItem(
-          "pendingPayment",
-          JSON.stringify({ planId: plan.id, reference: data.reference || ref })
-        );
+        if (!res.ok || !data.authorization_url) throw new Error(data.error || `Server error ${res.status}`);
+        localStorage.setItem("pendingPayment", JSON.stringify({ planId: plan.slug, reference: data.reference || ref }));
         await Browser.open({ url: data.authorization_url });
       } catch (err) {
         setNativeErr(err.message);
@@ -157,67 +110,63 @@ function PaidButton({ plan, session, onSuccess, disabled }) {
 
   return (
     <div className="space-y-1.5">
-      <button
-        disabled={disabled || busy}
-        onClick={handleClick}
-        className={cls}
-      >
-        {busy ? "Opening Paystack…" : `Subscribe — ₦${plan.price.toLocaleString()}/mo`}
+      <button disabled={disabled || busy} onClick={handleClick} className={cls}>
+        {busy ? "Opening Paystack…" : `Subscribe — ₦${plan.price_monthly.toLocaleString()}/mo`}
       </button>
-      {nativeErr && (
-        <p className="text-[10px] text-red-500 text-center">{nativeErr}</p>
-      )}
+      {nativeErr && <p className="text-[10px] text-red-500 text-center">{nativeErr}</p>}
     </div>
   );
 }
 
 export default function SubscriptionPlan({ session, onComplete, onClose, isUpgrade = false, currentPlan = "starter" }) {
-  const [saving, setSaving] = useState(false);
-  const [error,  setError]  = useState("");
-  // Shown when user returns from browser without the deep link firing
+  const [plans, setPlans] = useState(() => getActivePlans());
+  const [loadingPlans, setLoadingPlans] = useState(plans.length === 0);
+  const [saving,  setSaving]  = useState(false);
+  const [error,   setError]   = useState("");
   const [pendingPayment, setPendingPayment] = useState(
     () => JSON.parse(localStorage.getItem("pendingPayment") || "null")
   );
 
   const saveSubRef = useRef(null);
 
-  const saveSub = useCallback(async (planId, reference) => {
-    setSaving(true);
-    setError("");
+  // Load/refresh plans from DB
+  useEffect(() => {
+    setLoadingPlans(true);
+    fetchAndCachePlans(supabase)
+      .then(() => { setPlans(getActivePlans()); })
+      .catch(() => {})
+      .finally(() => setLoadingPlans(false));
+  }, []);
+
+  const saveSub = useCallback(async (planSlug, reference) => {
+    setSaving(true); setError("");
     try {
-      const expiresAt = planId === "starter"
+      const expiresAt = planSlug === "starter"
         ? null
         : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
-      // Upsert: update existing subscription if one exists, else insert
       const { data: existing } = await supabase
-        .from("subscriptions")
-        .select("id")
-        .eq("user_id", session.user.id)
-        .maybeSingle();
+        .from("subscriptions").select("id").eq("user_id", session.user.id).maybeSingle();
 
       let err;
       if (existing) {
         ({ error: err } = await supabase.from("subscriptions").update({
-          plan:               planId,
-          status:             "active",
-          paystack_reference: reference || null,
-          expires_at:         expiresAt,
+          plan: planSlug, status: "active",
+          paystack_reference: reference || null, expires_at: expiresAt,
         }).eq("id", existing.id));
       } else {
         ({ error: err } = await supabase.from("subscriptions").insert({
-          user_id:            session.user.id,
-          plan:               planId,
-          status:             "active",
-          paystack_reference: reference || null,
-          expires_at:         expiresAt,
+          user_id: session.user.id, plan: planSlug, status: "active",
+          paystack_reference: reference || null, expires_at: expiresAt,
         }));
       }
 
       if (err) throw err;
+      // Mark any upgrade prompts as seen
+      await supabase.from("plan_upgrade_prompts").update({ seen: true }).eq("user_id", session.user.id).eq("seen", false);
       setPendingPayment(null);
       localStorage.removeItem("pendingPayment");
-      onComplete(planId);
+      onComplete(planSlug);
     } catch (e) {
       setError(e.message || "Could not save plan. Please try again.");
       setSaving(false);
@@ -226,14 +175,12 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
 
   saveSubRef.current = saveSub;
 
-  // Re-read localStorage whenever we need a fresh check
   const recheckPending = useCallback(() => {
     const pending = JSON.parse(localStorage.getItem("pendingPayment") || "null");
     if (pending) setPendingPayment(pending);
   }, []);
 
   useEffect(() => {
-    // Case 1: Paystack redirected via deep link (useAuth dispatches this event)
     const handleDeepLink = () => {
       const pending = JSON.parse(localStorage.getItem("pendingPayment") || "null");
       if (!pending) return;
@@ -242,31 +189,38 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
       saveSubRef.current(pending.planId, pending.reference);
     };
     window.addEventListener("paymentCallback", handleDeepLink);
-
-    // Case 2: User paid and manually returned to the app (no deep link fired).
-    // When the app comes back to foreground, re-check localStorage so the
-    // "Activate My Plan" button appears without requiring a page reload.
     let resumeListener;
     if (isNative) {
-      App.addListener("appStateChange", ({ isActive }) => {
-        if (isActive) recheckPending();
-      }).then((l) => { resumeListener = l; });
+      App.addListener("appStateChange", ({ isActive }) => { if (isActive) recheckPending(); })
+        .then((l) => { resumeListener = l; });
     }
-
     return () => {
       window.removeEventListener("paymentCallback", handleDeepLink);
       resumeListener?.remove();
     };
   }, [recheckPending]);
 
-  const handleFree = () => saveSub("starter", null);
-  const handlePaid = (planId) => (ref) => saveSub(planId, ref.reference);
+  const currentNormalized = normalizeSlug(currentPlan);
+  const currentPlanData   = plans.find(p => p.slug === currentNormalized);
+  const currentSortOrder  = currentPlanData?.sort_order ?? 0;
 
-  const currentIdx = PLAN_ORDER.indexOf(currentPlan);
+  const handleFree = () => saveSub("starter", null);
+  const handlePaid = (slug) => (ref) => saveSub(slug, ref.reference);
+
+  if (loadingPlans && plans.length === 0) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 dark:from-slate-900 dark:to-slate-800 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 border-[3px] border-green-500 border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm text-gray-500 dark:text-slate-400">Loading plans…</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 dark:from-slate-900 dark:to-slate-800 px-4 py-10">
-      <div className="max-w-3xl mx-auto">
+      <div className="max-w-4xl mx-auto">
 
         {/* Header */}
         <div className="relative text-center mb-8">
@@ -291,15 +245,9 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
           <div className="mb-4 max-w-sm mx-auto bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-center">
             <p className="text-sm font-semibold text-green-800 mb-2">Payment completed?</p>
             <button
-              onClick={() => {
-                const p = pendingPayment;
-                setPendingPayment(null);
-                localStorage.removeItem("pendingPayment");
-                saveSub(p.planId, p.reference);
-              }}
+              onClick={() => { const p = pendingPayment; setPendingPayment(null); localStorage.removeItem("pendingPayment"); saveSub(p.planId, p.reference); }}
               disabled={saving}
-              className="text-sm font-bold text-white bg-green-600 hover:bg-green-700 px-5 py-2 rounded-lg disabled:opacity-50"
-            >
+              className="text-sm font-bold text-white bg-green-600 hover:bg-green-700 px-5 py-2 rounded-lg disabled:opacity-50">
               Activate My Plan
             </button>
           </div>
@@ -312,68 +260,72 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
         )}
 
         {/* Plan cards */}
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
-          {PLANS.map((plan) => {
-            const isCurrent  = isUpgrade && plan.id === currentPlan;
-            const planIdx    = PLAN_ORDER.indexOf(plan.id);
-            const isDowngrade = isUpgrade && planIdx < currentIdx;
+        <div className={`grid grid-cols-1 gap-5 ${plans.length <= 2 ? "md:grid-cols-2 max-w-2xl mx-auto" : plans.length === 3 ? "md:grid-cols-3" : "md:grid-cols-2 xl:grid-cols-4"}`}>
+          {plans.map((plan) => {
+            const isCurrent   = isUpgrade && plan.slug === currentNormalized;
+            const isDowngrade = isUpgrade && (plan.sort_order ?? 0) < currentSortOrder;
+            const color       = planColor(plan.sort_order);
+            const isPopular   = !isCurrent && (plan.sort_order === 1 || (plans.length === 2 && plan.sort_order > 0));
+            const isBestValue = !isCurrent && plan.sort_order === plans.length - 1 && plans.length > 2;
+            const displayFeatures = getDisplayFeatures(plan);
+            const missingFeatures = getMissingFeatures(plan, plans);
+
+            const ringCls = isCurrent ? "ring-2 ring-blue-400 opacity-75"
+              : isPopular ? "ring-2 ring-green-500"
+              : isBestValue ? "ring-2 ring-violet-400"
+              : "";
 
             return (
-              <div key={plan.id}
-                className={`relative bg-white dark:bg-slate-800 rounded-2xl shadow-md p-6 flex flex-col
-                  ${plan.popular && !isCurrent ? "ring-2 ring-green-500" : ""}
-                  ${plan.id === "premium" && !isCurrent ? "ring-2 ring-purple-400" : ""}
-                  ${isCurrent ? "ring-2 ring-blue-400 opacity-75" : ""}`}>
+              <div key={plan.slug}
+                className={`relative bg-white dark:bg-slate-800 rounded-2xl shadow-md p-6 flex flex-col ${ringCls}`}>
 
                 {isCurrent && (
                   <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
-                    <span className="bg-blue-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow">
-                      Current Plan
-                    </span>
+                    <span className="bg-blue-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow">Current Plan</span>
                   </div>
                 )}
-                {!isCurrent && plan.popular && (
+                {!isCurrent && isPopular && (
                   <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
-                    <span className="bg-green-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow">
-                      Most Popular
-                    </span>
+                    <span className="bg-green-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow">Most Popular</span>
                   </div>
                 )}
-                {!isCurrent && plan.id === "premium" && (
+                {!isCurrent && isBestValue && (
                   <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
-                    <span className="bg-purple-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow">
-                      Best Value
-                    </span>
+                    <span className="bg-violet-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow">Best Value</span>
                   </div>
                 )}
 
                 {/* Price */}
                 <div className="mb-5">
                   <h2 className="text-base font-bold text-gray-700 dark:text-slate-200 uppercase tracking-wide">{plan.name}</h2>
+                  {plan.description && <p className="text-xs text-gray-400 dark:text-slate-500 mt-0.5">{plan.description}</p>}
                   <div className="mt-2 flex items-end gap-1">
-                    {plan.price === 0 ? (
+                    {plan.price_monthly === 0 ? (
                       <span className="text-3xl font-extrabold text-gray-800 dark:text-white">Free</span>
                     ) : (
                       <>
-                        <span className="text-3xl font-extrabold text-gray-800 dark:text-white">₦{plan.price.toLocaleString()}</span>
-                        <span className="text-sm text-gray-400 mb-1">{plan.label}</span>
+                        <span className="text-3xl font-extrabold text-gray-800 dark:text-white">₦{plan.price_monthly.toLocaleString()}</span>
+                        <span className="text-sm text-gray-400 mb-1">/month</span>
                       </>
                     )}
                   </div>
-                  {plan.price === 0 && (
-                    <p className="text-xs text-gray-400 mt-0.5">{plan.label}</p>
+                  {plan.price_monthly === 0 && <p className="text-xs text-gray-400 mt-0.5">Free forever</p>}
+                  {plan.price_yearly > 0 && (
+                    <p className="text-xs text-green-600 dark:text-green-400 mt-0.5">
+                      ₦{plan.price_yearly.toLocaleString()}/year <span className="text-gray-400">(save {Math.round((1 - plan.price_yearly / (plan.price_monthly * 12)) * 100)}%)</span>
+                    </p>
                   )}
                 </div>
 
                 {/* Features */}
                 <ul className="space-y-2.5 flex-1 mb-6">
-                  {plan.features.map((f) => (
+                  {displayFeatures.map((f) => (
                     <li key={f} className="flex items-start gap-2 text-sm text-gray-600 dark:text-slate-300">
-                      <CheckIcon color={plan.id === "premium" ? "purple" : plan.id === "business" ? "green" : "gray"} />
+                      <CheckIcon color={color} />
                       <span>{f}</span>
                     </li>
                   ))}
-                  {plan.missing.map((f) => (
+                  {missingFeatures.map((f) => (
                     <li key={f} className="flex items-start gap-2 text-sm text-gray-400 line-through">
                       <XIcon />
                       <span>{f}</span>
@@ -387,17 +339,18 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
                     ✓ Active Plan
                   </button>
                 ) : isDowngrade ? (
-                  <button onClick={plan.id === "starter" ? handleFree : undefined} disabled={saving || plan.id !== "starter"}
+                  <button onClick={plan.slug === "starter" ? handleFree : undefined}
+                    disabled={saving || plan.slug !== "starter"}
                     className="w-full py-2.5 rounded-xl font-semibold text-sm border-2 border-gray-200 text-gray-400 hover:bg-gray-50 disabled:opacity-40 transition-colors text-xs">
-                    {plan.id === "starter" ? "Downgrade to Free" : "Not available"}
+                    {plan.slug === "starter" ? "Downgrade to Free" : "Not available"}
                   </button>
-                ) : plan.id === "starter" ? (
+                ) : plan.price_monthly === 0 ? (
                   <button onClick={handleFree} disabled={saving}
                     className="w-full py-2.5 rounded-xl font-semibold text-sm border-2 border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors">
                     Get Started Free
                   </button>
                 ) : (
-                  <PaidButton plan={plan} session={session} disabled={saving} onSuccess={handlePaid(plan.id)} />
+                  <PaidButton plan={plan} session={session} disabled={saving} onSuccess={handlePaid(plan.slug)} />
                 )}
               </div>
             );

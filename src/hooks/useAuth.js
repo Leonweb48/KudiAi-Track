@@ -3,14 +3,16 @@ import { supabase, supabaseConfigured } from "../utils/supabase";
 import { Capacitor } from "@capacitor/core";
 import { App } from "@capacitor/app";
 import { Browser } from "@capacitor/browser";
+import { fetchAndCachePlans, normalizeSlug, hasHigherPlanAvailable } from "../utils/plans";
 
 const CACHE_KEY = "kuditrack_plan";
 
 export function useAuth() {
-  const [status,    setStatus]    = useState("loading");
-  const [session,   setSession]   = useState(null);
-  const [plan,      setPlan]      = useState(() => localStorage.getItem(CACHE_KEY) || "starter");
-  const [staff,     setStaff]     = useState(null);
+  const [status,         setStatus]         = useState("loading");
+  const [session,        setSession]        = useState(null);
+  const [plan,           setPlan]           = useState(() => normalizeSlug(localStorage.getItem(CACHE_KEY) || "starter"));
+  const [upgradeAvailable, setUpgradeAvailable] = useState(false);
+  const [staff,          setStaff]          = useState(null);
   const [ajoClient, setAjoClient] = useState(null);
   const [orgMember, setOrgMember] = useState(null);
   const [adminUser, setAdminUser] = useState(null);
@@ -243,11 +245,15 @@ export function useAuth() {
       .maybeSingle();
 
     if (sub) {
-      // DB confirmed — cache it and mark verified
-      const resolvedPlan = sub.plan || "starter";
+      // DB confirmed — normalize slug (business→basic, premium→professional) and cache
+      const resolvedPlan = normalizeSlug(sub.plan) || "starter";
       setPlan(resolvedPlan);
       localStorage.setItem(CACHE_KEY, resolvedPlan);
       subVerified.current = true;
+      // Warm the plans cache and check for upgrade availability
+      fetchAndCachePlans(supabase).then(() => {
+        setUpgradeAvailable(hasHigherPlanAvailable(resolvedPlan));
+      }).catch(() => {});
       setStatus("ready");
       return;
     }
@@ -256,8 +262,12 @@ export function useAuth() {
     // Covers the case where RLS SELECT policy is missing but the user did pay.
     const cached = localStorage.getItem(CACHE_KEY);
     if (cached) {
-      setPlan(cached);
+      const cachedPlan = normalizeSlug(cached);
+      setPlan(cachedPlan);
       subVerified.current = true;
+      fetchAndCachePlans(supabase).then(() => {
+        setUpgradeAvailable(hasHigherPlanAvailable(cachedPlan));
+      }).catch(() => {});
       setStatus("ready");
       return;
     }
@@ -300,10 +310,13 @@ export function useAuth() {
   // Called right after a successful subscription save — skips any DB re-query
   // so RLS issues or token-refresh events cannot send the user back to the plan screen.
   const setReady = useCallback((planId) => {
-    const p = planId || "starter";
+    const p = normalizeSlug(planId || "starter");
     setPlan(p);
     localStorage.setItem(CACHE_KEY, p);
     subVerified.current = true;
+    fetchAndCachePlans(supabase).then(() => {
+      setUpgradeAvailable(hasHigherPlanAvailable(p));
+    }).catch(() => {});
     setStatus("ready");
   }, []);
 
@@ -314,5 +327,5 @@ export function useAuth() {
     supabase.auth.getSession().then(({ data }) => resolve(data.session));
   }, [resolve]);
 
-  return { status, session, plan, setReady, refetch, staff, ajoClient, orgMember, adminUser, marketer, ownerId: staff?.owner_id ?? null };
+  return { status, session, plan, setReady, refetch, upgradeAvailable, staff, ajoClient, orgMember, adminUser, marketer, ownerId: staff?.owner_id ?? null };
 }
