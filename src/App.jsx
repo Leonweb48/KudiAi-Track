@@ -19,6 +19,8 @@ import Onboarding            from "./screens/Onboarding";
 import SubscriptionPlan      from "./screens/SubscriptionPlan";
 import StaffDashboard        from "./screens/StaffDashboard";
 import StaffFirstLogin       from "./screens/StaffFirstLogin";
+import MarketerDashboard     from "./screens/MarketerDashboard";
+import MarketerFirstLogin    from "./screens/MarketerFirstLogin";
 import BillPayments          from "./screens/BillPayments";
 import Inventory             from "./screens/Inventory";
 import Reports               from "./screens/Reports";
@@ -63,7 +65,7 @@ export default function App() {
   const [aiQuery,      setAiQuery]      = useState("");
   const [branchReport, setBranchReport] = useState(null);
 
-  const { status, session, plan, setReady, refetch, staff, ajoClient, orgMember, adminUser } = useAuth();
+  const { status, session, plan, setReady, refetch, staff, ajoClient, orgMember, adminUser, marketer } = useAuth();
   const userId = session?.user?.id;
 
   // Notification system — initialised before store so addNotification is stable
@@ -166,6 +168,8 @@ export default function App() {
   if (status === "staff_setup")     return <StaffFirstLogin session={session} staff={staff} />;
   if (status === "staff")           return <StaffDashboard session={session} staff={staff} />;
   if (status === "branch_manager")  return <BranchManagerDashboard session={session} staff={staff} />;
+  if (status === "marketer_setup")  return <MarketerFirstLogin marketer={marketer} />;
+  if (status === "marketer")        return <MarketerDashboard marketer={marketer} />;
 
   if (showUpgrade) {
     return (

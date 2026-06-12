@@ -14,6 +14,7 @@ export function useAuth() {
   const [ajoClient, setAjoClient] = useState(null);
   const [orgMember, setOrgMember] = useState(null);
   const [adminUser, setAdminUser] = useState(null);
+  const [marketer,  setMarketer]  = useState(null);
 
   // Tracks whether we've already confirmed a subscription this session.
   // A ref (not state) so reads inside async callbacks are always current.
@@ -27,6 +28,7 @@ export function useAuth() {
       setAjoClient(null);
       setOrgMember(null);
       setAdminUser(null);
+      setMarketer(null);
       subVerified.current = false;
       localStorage.removeItem(CACHE_KEY);
       return;
@@ -90,6 +92,25 @@ export function useAuth() {
         setAjoClient({ ...ajoClientRow, owner_id: ajoClientRow.user_id });
         subVerified.current = true;
         setStatus(mustChange ? "ajo_client_setup" : "ajo_client");
+        return;
+      }
+      await supabase.auth.signOut();
+      setStatus("unauthenticated");
+      return;
+    }
+
+    // ── Marketer early routing ────────────────────────────────────────
+    if (accountType === "marketer") {
+      const { data: marketerRow } = await supabase
+        .from("brm_marketers")
+        .select("id, owner_id, username, full_name, email, phone, territory, commission_rate, status, profile_image_url, total_clients, total_commission_earned")
+        .eq("owner_id", uid)
+        .eq("status", "active")
+        .maybeSingle();
+      if (marketerRow) {
+        setMarketer(marketerRow);
+        subVerified.current = true;
+        setStatus(mustChange ? "marketer_setup" : "marketer");
         return;
       }
       await supabase.auth.signOut();
@@ -293,5 +314,5 @@ export function useAuth() {
     supabase.auth.getSession().then(({ data }) => resolve(data.session));
   }, [resolve]);
 
-  return { status, session, plan, setReady, refetch, staff, ajoClient, orgMember, adminUser, ownerId: staff?.owner_id ?? null };
+  return { status, session, plan, setReady, refetch, staff, ajoClient, orgMember, adminUser, marketer, ownerId: staff?.owner_id ?? null };
 }
