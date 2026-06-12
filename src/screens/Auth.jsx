@@ -242,13 +242,23 @@ export default function Auth() {
           setLoading(false);
           return;
         }
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: { data: { full_name: name } },
+        // Use custom registration API — avoids Supabase's broken confirmation email
+        const regRes = await fetch("/api/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: email.trim().toLowerCase(), password, full_name: name }),
         });
-        if (error) throw error;
-        setMode("otp");
+        const regData = await regRes.json();
+        if (!regRes.ok) throw new Error(regData.error || "Registration failed");
+
+        // User is auto-confirmed — sign them in immediately
+        const { error: signInErr2 } = await supabase.auth.signInWithPassword({ email, password });
+        if (signInErr2) {
+          // If sign-in fails (unlikely), show success and let them try logging in
+          setInfo("Account created! Please sign in with your credentials.");
+          setMode("login");
+        }
+        // useAuth picks up the new session automatically — no OTP screen needed
       } else {
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
           redirectTo: window.location.origin,
