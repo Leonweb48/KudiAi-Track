@@ -110,6 +110,31 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
     if (txRes.data)  setTransactions(txRes.data);
     if (crRes.data)  setCredits(crRes.data);
     if (asoRes.data) setAsoClients(asoRes.data);
+
+    // Fire overdue contribution reminders — once per client per calendar day
+    if (asoRes.data?.length) {
+      const todayStr = today();
+      const bizName  = profRes.data?.business_name || "";
+      for (const cl of asoRes.data) {
+        if (!cl.email) continue;
+        if (!cl.next_contribution_date || cl.next_contribution_date >= todayStr) continue;
+        if (["paid", "cancelled", "completed"].includes(cl.status)) continue;
+        const lsKey = `ajo_overdue_${cl.id}_${todayStr}`;
+        if (localStorage.getItem(lsKey)) continue;
+        localStorage.setItem(lsKey, "1");
+        fireEmailTrigger("ajo_contribution_overdue", {
+          client_name:            cl.full_name             || "",
+          client_email:           cl.email                 || "",
+          next_contribution_date: cl.next_contribution_date,
+          contribution_amount:    cl.contribution_amount   || 0,
+          contribution_frequency: cl.contribution_frequency || "",
+          current_balance:        cl.current_balance       || 0,
+          group_name:             cl.group_name            || "",
+          business_name:          bizName,
+        });
+      }
+    }
+
     if (staffRes.data) {
       const map = {};
       staffRes.data.forEach(s => { map[s.id] = s.full_name; });
@@ -482,16 +507,20 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
           }).catch(console.error);
         }
         fireEmailTrigger("ajo_contribution", {
-          owner_id: userId,
-          client_id: id,
-          client_name: updated.full_name || "",
-          client_email: updated.email || "",
-          amount: String(amount),
-          balance: String(updated.current_balance),
-          date: today(),
-          owner_email: profile.email || "",
-          staff_id: staffId || "",
-          staff_name: staffName || "",
+          owner_id:               userId,
+          client_id:              id,
+          client_name:            updated.full_name             || "",
+          client_email:           updated.email                 || "",
+          amount:                 String(amount),
+          balance:                String(updated.current_balance),
+          next_contribution_date: updated.next_contribution_date || "",
+          group_name:             updated.group_name             || "",
+          reg_fee:                String(regFee || 0),
+          date:                   today(),
+          owner_email:            profile.email                  || "",
+          business_name:          profile.business_name          || "",
+          staff_id:               staffId  || "",
+          staff_name:             staffName || "",
         });
         onNotify?.("aso", "Contribution Received", `${fmt(amount)} from ${updated.full_name}`);
       }
@@ -523,15 +552,20 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
           recorded_by: staffId || null,
         }).catch(console.error);
         fireEmailTrigger("ajo_withdrawal", {
-          owner_id: userId,
-          client_id: id,
-          client_name: updated.full_name || "",
-          client_email: updated.email || "",
-          amount: String(netAmount),
-          date: today(),
-          owner_email: profile.email || "",
-          staff_id: staffId || "",
-          staff_name: staffName || "",
+          owner_id:      userId,
+          client_id:     id,
+          client_name:   updated.full_name    || "",
+          client_email:  updated.email        || "",
+          group_name:    updated.group_name   || "",
+          gross_amount:  String(amount),
+          fee_amount:    String(feeAmount),
+          amount:        String(netAmount),
+          balance_after: String(updated.current_balance),
+          date:          today(),
+          owner_email:   profile.email        || "",
+          business_name: profile.business_name || "",
+          staff_id:      staffId  || "",
+          staff_name:    staffName || "",
         });
       }
     }
