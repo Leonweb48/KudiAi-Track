@@ -223,7 +223,9 @@ serve(async (req) => {
         .insert({ org_id: b.org_id, membership_id, full_name: b.full_name,
           email: b.email, phone: b.phone || null, role: b.role || "member",
           address: b.address || null, occupation: b.occupation || null,
-          gender: b.gender || null, next_of_kin: b.next_of_kin || null,
+          gender: b.gender || null, date_of_birth: b.date_of_birth || null,
+          joined_date: b.joined_date || null,
+          next_of_kin: b.next_of_kin || null,
           next_of_kin_phone: b.next_of_kin_phone || null,
         })
         .select(MEMBER_SELECT).single();
@@ -240,9 +242,10 @@ serve(async (req) => {
           org_member_id: member.id,
           org_id: b.org_id,
           must_change_password: true,
+          email_verified: false,
           full_name: b.full_name,
         },
-        email_confirm: false,
+        email_confirm: true,
       });
       if (authErr) {
         return json({ member, temp_password: null, auth_error: authErr.message });
@@ -250,14 +253,11 @@ serve(async (req) => {
       if (authData?.user) {
         await sb.from("org_members").update({ user_id: authData.user.id }).eq("id", member.id);
         (member as Record<string, unknown>).user_id = authData.user.id;
-        // Send 6-digit OTP to member's email for verification
-        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-        const anonKey    = Deno.env.get("SUPABASE_ANON_KEY")!;
-        await fetch(`${supabaseUrl}/auth/v1/otp`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "apikey": anonKey, "Authorization": `Bearer ${anonKey}` },
-          body: JSON.stringify({ email: b.email, create_user: false }),
-        });
+        // Generate a 6-digit OTP and store in the member record (sent in welcome email)
+        const otp = String(Math.floor(100000 + Math.random() * 900000));
+        const otpExpiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 min
+        await sb.from("org_members").update({ otp_code: otp, otp_expires_at: otpExpiresAt }).eq("id", member.id);
+        (member as Record<string, unknown>).otp_code = otp;
       }
       // Fire welcome email to member + notification to org owner
       if (b.email) {
@@ -286,6 +286,7 @@ serve(async (req) => {
               membership_id,
               role: b.role || "member",
               temp_password,
+              otp_code: (member as Record<string, unknown>).otp_code || "",
               owner_email: orgOwnerEmail,
             },
           }),
@@ -295,38 +296,73 @@ serve(async (req) => {
       return json({ member, temp_password });
     }
 
-    if (action === "verify-member-email") {
-      const b = body as { email: string; otp: string };
-      if (!b.email || !b.otp) return json({ error: "email and otp required" }, 400);
-      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-      const anonKey    = Deno.env.get("SUPABASE_ANON_KEY")!;
-      const res = await fetch(`${supabaseUrl}/auth/v1/verify`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "apikey": anonKey, "Authorization": `Bearer ${anonKey}` },
-        body: JSON.stringify({ type: "email", email: b.email, token: b.otp }),
-      });
-      if (!res.ok) {
-        let msg = "Invalid or expired code";
-        try { const e = await res.json(); msg = e.error_description || e.msg || e.message || msg; } catch { /**/ }
-        return json({ error: msg }, 400);
+    // Called by the logged-in member from the OTP verification screen.
+    // Verifies the OTP stored in org_members, then marks email_verified: true in user metadata.
+    if (action === "verify-member-otp") {
+      const authHeader = req.headers.get("Authorization");
+      const jwt = authHeader?.replace("Bearer ", "") || "";
+      const { data: { user }, error: jwtErr } = await sb.auth.getUser(jwt);
+      if (!user || jwtErr) return json({ error: "Not authenticated" }, 401);
+
+      const { otp_code } = body as { otp_code: string };
+      if (!otp_code) return json({ error: "otp_code required" }, 400);
+
+      const { data: member } = await sb.from("org_members")
+        .select("id, otp_code, otp_expires_at")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (!member) return json({ error: "Member account not found" }, 404);
+      if (!member.otp_code || member.otp_code !== otp_code.trim()) {
+        return json({ error: "Invalid verification code" }, 400);
       }
+      if (member.otp_expires_at && new Date() > new Date(member.otp_expires_at)) {
+        return json({ error: "Code has expired. Tap 'Resend' to get a new one." }, 400);
+      }
+
+      // Clear OTP and mark email as verified
+      await sb.from("org_members").update({ otp_code: null, otp_expires_at: null }).eq("id", member.id);
+      const existingMeta = user.user_metadata || {};
+      await sb.auth.admin.updateUserById(user.id, {
+        user_metadata: { ...existingMeta, email_verified: true },
+      });
+
       return json({ success: true });
     }
 
+    // Called by the logged-in member to get a fresh OTP sent to their email.
     if (action === "resend-member-otp") {
-      const b = body as { email: string };
-      if (!b.email) return json({ error: "email required" }, 400);
-      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-      const anonKey    = Deno.env.get("SUPABASE_ANON_KEY")!;
-      const res = await fetch(`${supabaseUrl}/auth/v1/otp`, {
+      const authHeader = req.headers.get("Authorization");
+      const jwt = authHeader?.replace("Bearer ", "") || "";
+      const { data: { user }, error: jwtErr } = await sb.auth.getUser(jwt);
+      if (!user || jwtErr) return json({ error: "Not authenticated" }, 401);
+
+      const { data: member } = await sb.from("org_members")
+        .select("id, email, full_name, org_id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (!member) return json({ error: "Member not found" }, 404);
+
+      const otp = String(Math.floor(100000 + Math.random() * 900000));
+      const otpExpiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+      await sb.from("org_members").update({ otp_code: otp, otp_expires_at: otpExpiresAt }).eq("id", member.id);
+
+      const { data: orgRow } = await sb.from("organizations").select("name").eq("id", member.org_id).maybeSingle();
+
+      fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "apikey": anonKey, "Authorization": `Bearer ${anonKey}` },
-        body: JSON.stringify({ email: b.email, create_user: false }),
-      });
-      if (!res.ok) {
-        const e = await res.json().catch(() => ({}));
-        return json({ error: (e as Record<string,string>).message || "Failed to resend" }, 400);
-      }
+        headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+        body: JSON.stringify({
+          event: "org_member_otp_resend",
+          data: {
+            member_name: member.full_name,
+            member_email: member.email,
+            org_name: orgRow?.name || "",
+            otp_code: otp,
+          },
+        }),
+      }).catch(() => null);
+
       return json({ success: true });
     }
 
@@ -348,8 +384,9 @@ serve(async (req) => {
     if (action === "update-member") {
       const { member_id, org_id, ...fields } = body as Record<string, unknown>;
       const allowed = ["full_name","email","phone","role","status","address","occupation",
-                       "gender","next_of_kin","next_of_kin_phone","suspension_reason",
-                       "privacy_balance","privacy_contributions","privacy_activities","portal_pin"];
+                       "gender","date_of_birth","joined_date","next_of_kin","next_of_kin_phone",
+                       "suspension_reason","privacy_balance","privacy_contributions",
+                       "privacy_activities","portal_pin"];
       const update: Record<string, unknown> = {};
       for (const k of allowed) if (fields[k] !== undefined) update[k] = fields[k];
       if (update.status === "suspended") update.suspended_at = new Date().toISOString();
@@ -383,9 +420,19 @@ serve(async (req) => {
         .select("user_id, email, full_name").eq("id", member_id).eq("org_id", org_id).single();
       if (!m?.user_id) return json({ error: "This member has no login account" }, 400);
       const temp_password = genTempPassword();
+      // Fetch current metadata to preserve account_type and email_verified
+      const { data: authUser } = await sb.auth.admin.getUserById(m.user_id as string);
+      const existingMeta = authUser?.user?.user_metadata || {};
       const { error } = await sb.auth.admin.updateUserById(m.user_id as string, {
         password: temp_password,
-        user_metadata: { must_change_password: true },
+        email_confirm: true,
+        user_metadata: {
+          ...existingMeta,
+          account_type: "org_member",
+          must_change_password: true,
+          // Preserve email_verified if already true; if undefined/false, require re-verification
+          email_verified: existingMeta.email_verified === true,
+        },
       });
       if (error) return json({ error: error.message }, 400);
       return json({ temp_password, email: m.email });

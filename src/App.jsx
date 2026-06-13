@@ -34,6 +34,9 @@ import AjoClientPortal       from "./screens/AjoClientPortal";
 import CoopList              from "./screens/CoopList";
 import CoopDashboard         from "./screens/CoopDashboard";
 import CoopMemberPortal, { CoopMemberFirstLogin } from "./screens/CoopMemberPortal";
+import OrgPortal             from "./screens/OrgPortal";
+import OrgFirstLogin         from "./screens/OrgFirstLogin";
+import OrgMemberOtpVerify   from "./screens/OrgMemberOtpVerify";
 import AdminDashboard        from "./screens/AdminDashboard";
 import { useInventory }      from "./hooks/useInventory";
 import { useBiometricLock }  from "./hooks/useBiometricLock";
@@ -66,7 +69,7 @@ export default function App() {
   const [aiQuery,      setAiQuery]      = useState("");
   const [branchReport, setBranchReport] = useState(null);
 
-  const { status, session, plan, setReady, refetch, upgradeAvailable, staff, ajoClient, orgMember, adminUser, marketer } = useAuth();
+  const { status, session, plan, setReady, refetch, upgradeAvailable, staff, ajoClient, orgMember, adminUser, marketer, org } = useAuth();
   const userId = session?.user?.id;
 
   // Notification system — initialised before store so addNotification is stable
@@ -155,7 +158,12 @@ export default function App() {
   // Super Admin — full command center
   if (status === "admin") return <AdminDashboard session={session} adminUser={adminUser} />;
 
-  // Org member — same auth pattern as staff/ajo (email + password, no Google)
+  // Organisation self-registered portal
+  if (status === "org_setup") return <OrgFirstLogin org={org} />;
+  if (status === "organisation") return <OrgPortal session={session} org={org} />;
+
+  // Org member — email OTP verification then password change on first login
+  if (status === "org_member_otp")   return <OrgMemberOtpVerify member={orgMember} />;
   if (status === "org_member_setup") return <CoopMemberFirstLogin member={orgMember} />;
   if (status === "org_member") return (
     <>

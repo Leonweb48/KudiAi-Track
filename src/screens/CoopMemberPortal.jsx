@@ -37,7 +37,10 @@ export function CoopMemberFirstLogin({ member }) {
     if (password.length < 8) { setError("Minimum 8 characters"); return; }
     if (password !== confirm) { setError("Passwords do not match"); return; }
     setSaving(true); setError("");
-    const { error: err } = await supabase.auth.updateUser({ password, data: { must_change_password: false } });
+    const { error: err } = await supabase.auth.updateUser({
+      password,
+      data: { must_change_password: false, account_type: "org_member", email_verified: true },
+    });
     if (err) { setError(err.message); setSaving(false); return; }
     setSuccess(true);
     // onAuthStateChange fires → must_change_password: false → org_member status → CoopMemberPortal

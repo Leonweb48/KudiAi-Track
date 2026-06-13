@@ -1,0 +1,135 @@
+import { useState } from "react";
+import { supabase } from "../utils/supabase";
+
+const coopFn = async (action, body = {}) => {
+  const r = await supabase.functions.invoke("coop-portal", { body: { action, ...body } });
+  if (r.error) {
+    let msg = r.error.message;
+    try {
+      const errBody = r.data?.error
+        ? r.data
+        : (r.error.context ? await r.error.context.clone().json() : null);
+      if (errBody?.error) msg = errBody.error;
+    } catch { /* keep original */ }
+    throw new Error(msg);
+  }
+  if (r.data?.error) throw new Error(r.data.error);
+  return r.data;
+};
+
+export default function OrgMemberOtpVerify({ member }) {
+  const [otp,       setOtp]       = useState("");
+  const [loading,   setLoading]   = useState(false);
+  const [error,     setError]     = useState("");
+  const [resending, setResending] = useState(false);
+  const [resent,    setResent]    = useState(false);
+
+  const verify = async () => {
+    if (otp.trim().length < 6) { setError("Please enter the 6-digit code"); return; }
+    setLoading(true); setError("");
+    try {
+      await coopFn("verify-member-otp", { otp_code: otp.trim() });
+      // Refresh session so onAuthStateChange fires with email_verified: true
+      // → useAuth routes to org_member_setup (password change screen)
+      await supabase.auth.refreshSession();
+    } catch (e) {
+      setError(e.message || "Invalid code. Please try again.");
+      setLoading(false);
+    }
+  };
+
+  const resend = async () => {
+    setResending(true); setError(""); setResent(false);
+    try {
+      await coopFn("resend-member-otp");
+      setResent(true);
+    } catch (e) {
+      setError(e.message || "Could not resend. Please try again.");
+    } finally {
+      setResending(false);
+    }
+  };
+
+  const firstName = member?.full_name?.split(" ")[0] || "there";
+  const email     = member?.email || "";
+
+  return (
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col">
+      {/* Header */}
+      <div className="bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 px-5 pt-14 pb-6">
+        <div className="w-12 h-12 bg-violet-600 rounded-2xl flex items-center justify-center mb-4">
+          <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6 text-white" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+            <polyline points="22,6 12,13 2,6" />
+          </svg>
+        </div>
+        <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white">Verify Your Email</h1>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+          Hi {firstName}! Enter the 6-digit verification code from your welcome email.
+        </p>
+        {email && (
+          <span className="inline-block mt-2 text-xs font-bold text-violet-600 bg-violet-50 dark:bg-violet-900/20 rounded-xl px-3 py-1.5">
+            {email}
+          </span>
+        )}
+      </div>
+
+      <div className="flex-1 px-5 pt-8 pb-10 space-y-5">
+        <div>
+          <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2 uppercase tracking-wide">
+            Verification Code
+          </label>
+          <input
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            maxLength={6}
+            value={otp}
+            onChange={e => { setOtp(e.target.value.replace(/\D/g, "").slice(0, 6)); setError(""); }}
+            placeholder="000000"
+            className="w-full text-center text-4xl font-mono font-extrabold tracking-[0.6em] py-5 rounded-2xl border-2 border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200 dark:focus:ring-violet-900/40 transition"
+          />
+        </div>
+
+        {error && (
+          <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/40 rounded-xl px-4 py-2.5">
+            <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
+          </div>
+        )}
+
+        {resent && (
+          <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900/40 rounded-xl px-4 py-2.5">
+            <p className="text-xs text-green-700 dark:text-green-400 font-medium">New code sent — check your email inbox.</p>
+          </div>
+        )}
+
+        <button
+          onClick={verify}
+          disabled={loading || otp.length < 6}
+          className="w-full bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white font-bold rounded-2xl py-4 text-sm transition"
+        >
+          {loading ? "Verifying…" : "Verify & Continue →"}
+        </button>
+
+        <button
+          onClick={resend}
+          disabled={resending}
+          className="w-full py-3 text-sm font-semibold text-violet-600 dark:text-violet-400 border border-violet-200 dark:border-violet-800 rounded-2xl hover:bg-violet-50 dark:hover:bg-violet-900/20 disabled:opacity-50 transition"
+        >
+          {resending ? "Sending…" : "Resend verification code"}
+        </button>
+
+        <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 rounded-xl px-4 py-3">
+          <p className="text-xs text-amber-700 dark:text-amber-400">
+            The code was included in your welcome email from your organisation. Check your inbox (and spam folder). Codes expire after 30 minutes.
+          </p>
+        </div>
+
+        <button onClick={() => supabase.auth.signOut()}
+          className="w-full text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition text-center">
+          Sign out
+        </button>
+      </div>
+    </div>
+  );
+}

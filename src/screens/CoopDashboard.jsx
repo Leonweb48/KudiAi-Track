@@ -23,9 +23,18 @@ const fmtDT   = d => d ? new Date(d).toLocaleString("en-NG", { day: "numeric", m
 
 const ROLE_COLORS = {
   admin: "bg-violet-100 text-violet-700", president: "bg-amber-100 text-amber-700",
+  chairman: "bg-amber-100 text-amber-700", vice_chairman: "bg-orange-100 text-orange-700",
   treasurer: "bg-green-100 text-green-700", secretary: "bg-blue-100 text-blue-700",
-  officer: "bg-pink-100 text-pink-700", member: "bg-slate-100 text-slate-600",
+  officer: "bg-pink-100 text-pink-700", welfare_officer: "bg-rose-100 text-rose-700",
+  auditor: "bg-cyan-100 text-cyan-700", patron: "bg-indigo-100 text-indigo-700",
+  member: "bg-slate-100 text-slate-600",
 };
+const ROLE_LABELS = {
+  admin: "Admin", president: "President", chairman: "Chairman", vice_chairman: "Vice Chairman",
+  treasurer: "Treasurer", secretary: "Secretary", officer: "Officer",
+  welfare_officer: "Welfare Officer", auditor: "Auditor", patron: "Patron", member: "Member",
+};
+const ALL_ROLES = ["member","officer","secretary","treasurer","president","chairman","vice_chairman","welfare_officer","auditor","patron","admin"];
 const STATUS_COL = {
   active: "text-green-600", suspended: "text-amber-500", removed: "text-red-500",
   pending: "text-amber-500", approved: "text-blue-600", disbursed: "text-violet-600",
@@ -139,20 +148,20 @@ function OverviewTab({ org, wallet, programs, announcements }) {
 //  MEMBERS TAB
 // ═══════════════════════════════════════════════════
 function MembersTab({ org, members, onRefresh }) {
-  const [showAdd,       setShowAdd]       = useState(false);
-  const [selected,      setSelected]      = useState(null);
-  const [editing,       setEditing]       = useState(false);
-  const [pendingVerify, setPendingVerify] = useState(null); // { email, temp_password, name }
-  const [creds,         setCreds]         = useState(null); // post-verification success display
-  const [otpCode,       setOtpCode]       = useState("");
-  const [otpError,      setOtpError]      = useState("");
-  const [verifying,     setVerifying]     = useState(false);
-  const [resending,     setResending]     = useState(false);
-  const [search,        setSearch]        = useState("");
-  const [form,          setForm]          = useState({ full_name: "", email: "", phone: "", role: "member", address: "", occupation: "", gender: "", next_of_kin: "", next_of_kin_phone: "" });
-  const [loading,       setLoading]       = useState(false);
-  const [saving,        setSaving]        = useState(false);
-  const [error,         setError]         = useState("");
+  const [showAdd,  setShowAdd]  = useState(false);
+  const [selected, setSelected] = useState(null);
+  const [editing,  setEditing]  = useState(false);
+  const [creds,    setCreds]    = useState(null); // { email, temp_password, name, isReset? }
+  const [search,   setSearch]   = useState("");
+  const [form,     setForm]     = useState({
+    full_name: "", email: "", phone: "", role: "member",
+    gender: "", date_of_birth: "", joined_date: "",
+    address: "", occupation: "",
+    next_of_kin: "", next_of_kin_phone: "",
+  });
+  const [loading,  setLoading]  = useState(false);
+  const [saving,   setSaving]   = useState(false);
+  const [error,    setError]    = useState("");
 
   const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
 
@@ -162,6 +171,8 @@ function MembersTab({ org, members, onRefresh }) {
     m.phone?.includes(search)
   );
 
+  const EMPTY_FORM = { full_name: "", email: "", phone: "", role: "member", gender: "", date_of_birth: "", joined_date: "", address: "", occupation: "", next_of_kin: "", next_of_kin_phone: "" };
+
   const handleAdd = async () => {
     if (!form.full_name.trim()) { setError("Full name required"); return; }
     if (!form.email.trim()) { setError("Email address required"); return; }
@@ -169,30 +180,11 @@ function MembersTab({ org, members, onRefresh }) {
     try {
       const result = await coopFn("add-member", { org_id: org.id, ...form });
       setShowAdd(false);
-      setForm({ full_name: "", email: "", phone: "", role: "member", address: "", occupation: "", gender: "", next_of_kin: "", next_of_kin_phone: "" });
-      setOtpCode(""); setOtpError("");
-      setPendingVerify({ email: result.member.email, temp_password: result.temp_password, name: result.member.full_name });
+      setForm(EMPTY_FORM);
+      setCreds({ email: result.member.email, temp_password: result.temp_password, name: result.member.full_name });
       onRefresh();
     } catch (e) { setError(e.message || "Failed"); }
     finally { setLoading(false); }
-  };
-
-  const handleVerifyOtp = async () => {
-    if (otpCode.length !== 6) { setOtpError("Enter the 6-digit code"); return; }
-    setVerifying(true); setOtpError("");
-    try {
-      await coopFn("verify-member-email", { email: pendingVerify.email, otp: otpCode });
-      setCreds({ email: pendingVerify.email, temp_password: pendingVerify.temp_password, name: pendingVerify.name });
-      setPendingVerify(null); setOtpCode("");
-    } catch (e) { setOtpError(e.message || "Invalid or expired code"); }
-    finally { setVerifying(false); }
-  };
-
-  const handleResendOtp = async () => {
-    setResending(true); setOtpError("");
-    try { await coopFn("resend-member-otp", { email: pendingVerify.email }); }
-    catch (e) { setOtpError(e.message || "Failed to resend"); }
-    finally { setResending(false); }
   };
 
   const handleEdit = async () => {
@@ -227,9 +219,11 @@ function MembersTab({ org, members, onRefresh }) {
   const openEdit = (member) => {
     setForm({
       full_name: member.full_name || "", email: member.email || "", phone: member.phone || "",
-      role: member.role || "member", address: member.address || "", occupation: member.occupation || "",
-      gender: member.gender || "", next_of_kin: member.next_of_kin || "",
-      next_of_kin_phone: member.next_of_kin_phone || "",
+      role: member.role || "member", gender: member.gender || "",
+      date_of_birth: member.date_of_birth ? member.date_of_birth.split("T")[0] : "",
+      joined_date: member.joined_date ? member.joined_date.split("T")[0] : "",
+      address: member.address || "", occupation: member.occupation || "",
+      next_of_kin: member.next_of_kin || "", next_of_kin_phone: member.next_of_kin_phone || "",
     });
     setEditing(true);
   };
@@ -262,7 +256,7 @@ function MembersTab({ org, members, onRefresh }) {
                   <p className="text-sm font-bold text-slate-800 dark:text-white truncate">{m.full_name}</p>
                   <p className="text-[10px] text-slate-400 font-mono">{m.membership_id}</p>
                   <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full capitalize ${ROLE_COLORS[m.role] || ROLE_COLORS.member}`}>{m.role}</span>
+                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${ROLE_COLORS[m.role] || ROLE_COLORS.member}`}>{ROLE_LABELS[m.role] || m.role}</span>
                     <span className={`text-[9px] font-bold capitalize ${STATUS_COL[m.status]}`}>● {m.status}</span>
                   </div>
                 </div>
@@ -278,15 +272,19 @@ function MembersTab({ org, members, onRefresh }) {
 
       {/* Add member modal */}
       {showAdd && (
-        <ModalWrap onClose={() => { setShowAdd(false); setError(""); }}>
-          <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">Add Member</h3>
-          <p className="text-xs text-slate-400 mb-4">A temporary password will be generated for first login</p>
+        <ModalWrap onClose={() => { setShowAdd(false); setError(""); setForm(EMPTY_FORM); }}>
+          <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">Register Member</h3>
+          <p className="text-xs text-slate-400 mb-4">Credentials &amp; a verification code will be emailed to the member</p>
           {error && <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-3 text-xs text-red-600">{error}</div>}
           <div className="flex flex-col gap-3">
-            {[["Full Name *","full_name","text","John Adeyemi"],["Email *","email","email","john@email.com"],
-              ["Phone","phone","tel","08012345678"],["Address","address","text","Street address"],
-              ["Occupation","occupation","text","Trader"],["Next of Kin","next_of_kin","text","Mary Adeyemi"],
-              ["Next of Kin Phone","next_of_kin_phone","tel","08098765432"]].map(([label, key, type, ph]) => (
+            {[["Full Name *","full_name","text","John Adeyemi"],
+              ["Email Address *","email","email","john@email.com"],
+              ["Phone Number","phone","tel","08012345678"],
+              ["Home Address","address","text","Street address"],
+              ["Occupation","occupation","text","Trader"],
+              ["Next of Kin Name","next_of_kin","text","Mary Adeyemi"],
+              ["Next of Kin Phone","next_of_kin_phone","tel","08098765432"],
+            ].map(([label, key, type, ph]) => (
               <div key={key}>
                 <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{label}</label>
                 <input className={input} type={type} value={form[key]} onChange={set(key)} placeholder={ph} />
@@ -297,106 +295,75 @@ function MembersTab({ org, members, onRefresh }) {
                 <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Gender</label>
                 <select className={input} value={form.gender} onChange={set("gender")}>
                   <option value="">Select…</option>
-                  <option value="male">Male</option><option value="female">Female</option><option value="other">Other</option>
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                  <option value="other">Other</option>
                 </select>
               </div>
               <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Role</label>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Role *</label>
                 <select className={input} value={form.role} onChange={set("role")}>
-                  {["member","officer","secretary","treasurer","president","admin"].map(r => (
-                    <option key={r} value={r}>{r.charAt(0).toUpperCase()+r.slice(1)}</option>
-                  ))}
+                  {ALL_ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
                 </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Date of Birth</label>
+                <input className={input} type="date" value={form.date_of_birth} onChange={set("date_of_birth")} />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Date Joined</label>
+                <input className={input} type="date" value={form.joined_date} onChange={set("joined_date")} />
               </div>
             </div>
           </div>
           <div className="flex gap-2 mt-5">
-            <button onClick={() => { setShowAdd(false); setError(""); }} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Cancel</button>
-            <button onClick={handleAdd} disabled={loading} className="flex-1 py-3 bg-violet-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">{loading ? "Adding…" : "Add Member"}</button>
+            <button onClick={() => { setShowAdd(false); setError(""); setForm(EMPTY_FORM); }} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Cancel</button>
+            <button onClick={handleAdd} disabled={loading} className="flex-1 py-3 bg-violet-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">{loading ? "Registering…" : "Register Member"}</button>
           </div>
         </ModalWrap>
       )}
 
-      {/* OTP verification modal — shown immediately after member is created */}
-      {pendingVerify && (
-        <ModalWrap onClose={() => {}}>
-          <div className="text-center mb-5">
-            <div className="w-14 h-14 bg-violet-100 rounded-2xl flex items-center justify-center text-2xl mx-auto mb-3">✅</div>
-            <h3 className="text-base font-extrabold text-slate-800 dark:text-white">Member Registered!</h3>
-            <p className="text-xs text-slate-400 mt-1">{pendingVerify.name} has been added to {org.name}</p>
-          </div>
-
-          {/* Credentials block — share with member before they verify */}
-          <div className="bg-violet-50 dark:bg-violet-900/20 rounded-2xl p-4 mb-5 text-left">
-            <p className="text-[10px] font-bold text-violet-500 uppercase tracking-wider mb-2">📋 Login Credentials</p>
-            <div className="flex justify-between items-center mb-2">
-              <span className="text-xs text-slate-400">Email</span>
-              <span className="text-xs font-bold text-slate-700 dark:text-slate-200 max-w-[60%] text-right break-all">{pendingVerify.email}</span>
-            </div>
-            <div className="flex justify-between items-center mb-3">
-              <span className="text-xs text-slate-400">Temp Password</span>
-              <span className="text-base font-extrabold text-violet-600 font-mono tracking-wider">{pendingVerify.temp_password}</span>
-            </div>
-            <button onClick={() => navigator.clipboard?.writeText(`Email: ${pendingVerify.email}\nPassword: ${pendingVerify.temp_password}`)}
-              className="w-full py-2 text-xs font-bold text-violet-600 border border-violet-200 rounded-xl">Copy Credentials</button>
-          </div>
-
-          {/* OTP input */}
-          <div className="bg-slate-50 dark:bg-slate-700 rounded-2xl p-4 mb-4">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">📧 Email Verification</p>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
-              A 6-digit code was sent to <span className="font-bold text-slate-700 dark:text-slate-200">{pendingVerify.email}</span>. Ask the member to check their inbox and share the code.
-            </p>
-            <input
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              maxLength={6}
-              value={otpCode}
-              onChange={e => { setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6)); setOtpError(""); }}
-              placeholder="000000"
-              className="w-full text-center text-3xl font-mono font-extrabold tracking-[0.5em] py-3 rounded-xl border border-slate-200 dark:border-slate-500 bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500 mb-2"
-            />
-            {otpError && <p className="text-xs text-red-500 text-center mb-2">{otpError}</p>}
-            <button onClick={handleResendOtp} disabled={resending}
-              className="w-full text-[11px] text-violet-500 font-semibold disabled:opacity-50 text-center">
-              {resending ? "Sending…" : "Resend code"}
-            </button>
-          </div>
-
-          <button onClick={handleVerifyOtp} disabled={verifying || otpCode.length !== 6}
-            className="w-full py-3 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded-2xl font-extrabold text-sm">
-            {verifying ? "Verifying…" : "Verify Email & Complete →"}
-          </button>
-        </ModalWrap>
-      )}
-
-      {/* Post-verification credentials (password reset or verified new member) */}
+      {/* Credentials modal — shown after registration or password reset */}
       {creds && (
         <ModalWrap onClose={() => setCreds(null)}>
           <div className="text-center">
-            <div className="w-16 h-16 bg-green-100 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-3">🎉</div>
+            <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-2xl flex items-center justify-center mx-auto mb-3">
+              <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8 text-green-600" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+                <path d="M20 6L9 17l-5-5" />
+              </svg>
+            </div>
             <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">
-              {creds.isReset ? "Password Reset Successfully" : "Email Verified!"}
+              {creds.isReset ? "Password Reset!" : "Member Registered!"}
             </h3>
             <p className="text-xs text-slate-400 mb-5">
-              {creds.isReset ? `Share the new password with ${creds.name}` : `${creds.name} can now log in to the member portal`}
+              {creds.isReset
+                ? `Share these new credentials with ${creds.name}`
+                : `Share these credentials with ${creds.name} — they will verify their email and set a new password on first login`}
             </p>
-            <div className="bg-violet-50 dark:bg-violet-900/20 rounded-2xl p-4 mb-4 text-left">
+            <div className="bg-violet-50 dark:bg-violet-900/20 rounded-2xl p-4 mb-3 text-left">
+              <p className="text-[10px] font-bold text-violet-500 uppercase tracking-wider mb-3">Login Credentials</p>
               <div className="flex justify-between items-center mb-2">
                 <span className="text-xs text-slate-400">Email</span>
-                <span className="text-sm font-bold text-slate-800 dark:text-white break-all text-right max-w-[65%]">{creds.email}</span>
+                <span className="text-xs font-bold text-slate-800 dark:text-white break-all text-right max-w-[65%]">{creds.email}</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-xs text-slate-400">{creds.isReset ? "New Password" : "Temp Password"}</span>
-                <span className="text-lg font-extrabold text-violet-600 font-mono tracking-wider">{creds.temp_password}</span>
+                <span className="text-xs text-slate-400">Temp Password</span>
+                <span className="text-base font-extrabold text-violet-600 font-mono tracking-wider">{creds.temp_password}</span>
               </div>
             </div>
-            <p className="text-[10px] text-amber-600 bg-amber-50 rounded-xl px-3 py-2 mb-4">
-              ⚠️ Member will be prompted to set a new password on first login
-            </p>
+            {!creds.isReset && (
+              <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/40 rounded-xl px-3 py-2.5 mb-3 text-left">
+                <p className="text-[11px] text-blue-700 dark:text-blue-400 font-medium">
+                  A welcome email with a 6-digit verification code has been sent to the member. They will verify their email on first login, then set their own password.
+                </p>
+              </div>
+            )}
             <button onClick={() => navigator.clipboard?.writeText(`Email: ${creds.email}\nPassword: ${creds.temp_password}`)}
-              className="w-full py-2.5 border border-violet-200 text-violet-600 rounded-xl font-bold text-sm mb-2">Copy Credentials</button>
+              className="w-full py-2.5 border border-violet-200 dark:border-violet-800 text-violet-600 dark:text-violet-400 rounded-xl font-bold text-sm mb-2">
+              Copy Credentials
+            </button>
             <button onClick={() => setCreds(null)} className="w-full py-2.5 bg-violet-600 text-white rounded-xl font-bold text-sm">Done</button>
           </div>
         </ModalWrap>
@@ -413,9 +380,11 @@ function MembersTab({ org, members, onRefresh }) {
             </div>
           </div>
           <div className="bg-slate-50 dark:bg-slate-700 rounded-xl p-3 mb-4 grid grid-cols-2 gap-2">
-            {[["Role", selected.role], ["Status", selected.status], ["Phone", selected.phone || "—"],
-              ["Email", selected.email || "—"], ["Gender", selected.gender || "—"],
-              ["Occupation", selected.occupation || "—"], ["Next of Kin", selected.next_of_kin || "—"],
+            {[["Role", ROLE_LABELS[selected.role] || selected.role], ["Status", selected.status],
+              ["Phone", selected.phone || "—"], ["Email", selected.email || "—"],
+              ["Gender", selected.gender || "—"], ["Occupation", selected.occupation || "—"],
+              ["Date of Birth", selected.date_of_birth ? fmtDate(selected.date_of_birth) : "—"],
+              ["Next of Kin", selected.next_of_kin || "—"],
               ["Joined", fmtDate(selected.joined_date)], ["Savings", fmt(selected.savings_balance)]].map(([k, v]) => (
               <div key={k}><p className="text-[10px] text-slate-400">{k}</p><p className="text-xs font-bold text-slate-800 dark:text-white capitalize">{v}</p></div>
             ))}
@@ -449,7 +418,8 @@ function MembersTab({ org, members, onRefresh }) {
           <div className="flex flex-col gap-3">
             {[["Full Name","full_name","text"],["Phone","phone","tel"],["Email","email","email"],
               ["Address","address","text"],["Occupation","occupation","text"],
-              ["Next of Kin","next_of_kin","text"],["Next of Kin Phone","next_of_kin_phone","tel"]].map(([label,key,type]) => (
+              ["Next of Kin","next_of_kin","text"],["Next of Kin Phone","next_of_kin_phone","tel"],
+            ].map(([label,key,type]) => (
               <div key={key}>
                 <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{label}</label>
                 <input className={input} type={type} value={form[key]} onChange={set(key)} />
@@ -460,16 +430,26 @@ function MembersTab({ org, members, onRefresh }) {
                 <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Gender</label>
                 <select className={input} value={form.gender} onChange={set("gender")}>
                   <option value="">Select…</option>
-                  <option value="male">Male</option><option value="female">Female</option><option value="other">Other</option>
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                  <option value="other">Other</option>
                 </select>
               </div>
               <div>
                 <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Role</label>
                 <select className={input} value={form.role} onChange={set("role")}>
-                  {["member","officer","secretary","treasurer","president","admin"].map(r => (
-                    <option key={r} value={r}>{r.charAt(0).toUpperCase()+r.slice(1)}</option>
-                  ))}
+                  {ALL_ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
                 </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Date of Birth</label>
+                <input className={input} type="date" value={form.date_of_birth} onChange={set("date_of_birth")} />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Date Joined</label>
+                <input className={input} type="date" value={form.joined_date} onChange={set("joined_date")} />
               </div>
             </div>
           </div>

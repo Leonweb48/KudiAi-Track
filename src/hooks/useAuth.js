@@ -113,6 +113,10 @@ export function useAuth() {
     // Bypass the profile check entirely so a member who accidentally ended
     // up with a profiles row is still routed to their member portal.
     if (accountType === "org_member") {
+      // email_verified: false means new member who hasn't verified their OTP yet.
+      // undefined (old members) is treated as verified for backward compatibility.
+      const emailVerified = sess.user.user_metadata?.email_verified !== false;
+
       const { data: orgMemberRow } = await supabase
         .from("org_members")
         .select("id, org_id, membership_id, full_name, email, phone, role, status, profile_image_url, savings_balance, joined_date, privacy_balance, privacy_contributions, privacy_activities, organizations(id, name, type, reg_number, wallet_balance, total_savings, total_loans_out, member_count, logo_url, address, phone, email)")
@@ -123,7 +127,10 @@ export function useAuth() {
         setOrgMember({ ...orgMemberRow, org: orgMemberRow.organizations });
         subVerified.current = true;
         logPlatformSession(supabase, uid, "org_member", orgMemberRow.full_name, email);
-        if (mustChange) {
+        if (!emailVerified) {
+          // New member — must verify email OTP before changing password
+          setStatus("org_member_otp");
+        } else if (mustChange) {
           fireWelcomeEmail("org_member_first_login", {
             name: orgMemberRow.full_name || "",
             email: email || "",
@@ -367,7 +374,10 @@ export function useAuth() {
       if (orgMemberRow) {
         setOrgMember({ ...orgMemberRow, org: orgMemberRow.organizations });
         subVerified.current = true;
-        if (mustChange) {
+        const emailVerified = sess.user.user_metadata?.email_verified !== false;
+        if (!emailVerified) {
+          setStatus("org_member_otp");
+        } else if (mustChange) {
           fireWelcomeEmail("org_member_first_login", {
             name: orgMemberRow.full_name || "",
             email: email || "",
