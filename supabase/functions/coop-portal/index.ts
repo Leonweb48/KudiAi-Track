@@ -9,7 +9,7 @@ function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { ...CORS, "Content-Type": "application/json" } });
 }
 
-const ORG_SELECT = `id, owner_id, name, type, reg_number, description, purpose, vision, mission,
+const ORG_SELECT = `id, owner_id, portal_user_id, name, type, reg_number, description, purpose, vision, mission,
   address, state_name, lga, phone, email, website, logo_url,
   social_instagram, social_facebook, social_twitter, date_established, registration_fee,
   wallet_balance, total_savings, total_loans_out, member_count, status, created_at`;
@@ -45,6 +45,80 @@ serve(async (req) => {
     // ══════════════════════════════════════════════════
     //  ORGANIZATION MANAGEMENT
     // ══════════════════════════════════════════════════
+
+    // ── Setup org portal login (business owner grants org its own credentials) ─
+    if (action === "setup-org-portal") {
+      const { org_id, owner_id } = body as { org_id: string; owner_id: string };
+      if (!org_id || !owner_id) return json({ error: "org_id and owner_id required" }, 400);
+
+      const { data: org } = await sb.from("organizations")
+        .select("id, name, email, owner_id, portal_user_id, reg_number, type")
+        .eq("id", org_id).maybeSingle();
+      if (!org) return json({ error: "Organisation not found" }, 404);
+      if (org.owner_id !== owner_id) return json({ error: "Unauthorized" }, 403);
+      if (!org.email) return json({ error: "Please add an organisation email in Settings first" }, 400);
+
+      const tempPwd = genTempPassword();
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const anonKey    = Deno.env.get("SUPABASE_ANON_KEY")!;
+
+      // Remove old portal user if it exists
+      if (org.portal_user_id) {
+        await sb.auth.admin.deleteUser(org.portal_user_id).catch(() => null);
+      }
+
+      const { data: authData, error: authError } = await sb.auth.admin.createUser({
+        email: org.email,
+        password: tempPwd,
+        email_confirm: true,
+        user_metadata: {
+          account_type: "organisation",
+          org_id,
+          org_name: org.name,
+          must_change_password: true,
+        },
+      });
+      if (authError) return json({ error: authError.message }, 400);
+
+      const { error: linkError } = await sb.from("organizations").update({ portal_user_id: authData.user.id }).eq("id", org_id);
+      if (linkError) {
+        await sb.auth.admin.deleteUser(authData.user.id).catch(() => null);
+        return json({ error: `Portal user created but could not be linked: ${linkError.message}` }, 400);
+      }
+
+      // Send credentials email to org
+      fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+        body: JSON.stringify({
+          event: "org_portal_created",
+          data: { org_name: org.name, email: org.email, temp_password: tempPwd, reg_number: org.reg_number },
+        }),
+      }).catch(() => null);
+
+      return json({ success: true, email: org.email, temp_password: tempPwd });
+    }
+
+    if (action === "delete-org") {
+      const { org_id, owner_id } = body as { org_id: string; owner_id: string };
+      if (!org_id || !owner_id) return json({ error: "org_id and owner_id required" }, 400);
+
+      const { data: org } = await sb.from("organizations")
+        .select("id, owner_id, portal_user_id").eq("id", org_id).maybeSingle();
+      if (!org) return json({ error: "Organisation not found" }, 404);
+      if (org.owner_id !== owner_id) return json({ error: "Unauthorized" }, 403);
+
+      // Delete portal auth user if one exists
+      if (org.portal_user_id) {
+        await sb.auth.admin.deleteUser(org.portal_user_id).catch(() => null);
+      }
+
+      // Delete org — cascade removes all members, savings, loans, meetings, etc.
+      const { error } = await sb.from("organizations").delete().eq("id", org_id);
+      if (error) return json({ error: error.message }, 400);
+
+      return json({ success: true });
+    }
 
     if (action === "create-org") {
       const b = body as Record<string, string>;
@@ -185,6 +259,39 @@ serve(async (req) => {
           body: JSON.stringify({ email: b.email, create_user: false }),
         });
       }
+      // Fire welcome email to member + notification to org owner
+      if (b.email) {
+        let orgOwnerEmail = "";
+        const { data: orgOwnerRow } = await sb
+          .from("organizations").select("owner_id, email").eq("id", b.org_id).maybeSingle();
+        if (orgOwnerRow?.owner_id) {
+          const { data: ownerProfile } = await sb
+            .from("profiles").select("email").eq("id", orgOwnerRow.owner_id).maybeSingle();
+          orgOwnerEmail = ownerProfile?.email || "";
+          if (!orgOwnerEmail && orgOwnerRow.email) orgOwnerEmail = orgOwnerRow.email;
+          if (!orgOwnerEmail) {
+            const { data: authUser } = await sb.auth.admin.getUserById(orgOwnerRow.owner_id);
+            orgOwnerEmail = authUser?.user?.email || "";
+          }
+        }
+        fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+          body: JSON.stringify({
+            event: "org_member_created",
+            data: {
+              member_name: b.full_name,
+              member_email: b.email,
+              org_name: orgRow?.name || "",
+              membership_id,
+              role: b.role || "member",
+              temp_password,
+              owner_email: orgOwnerEmail,
+            },
+          }),
+        }).catch(() => null);
+      }
+
       return json({ member, temp_password });
     }
 
@@ -394,6 +501,40 @@ serve(async (req) => {
         reference_id: saving.id, paystack_ref: paystack_ref || null, balance_after: newWal,
       });
       const { data: updated_member } = await sb.from("org_members").select(MEMBER_SELECT).eq("id", member_id).single();
+
+      // Fire savings email notifications
+      const { data: memberInfo } = await sb
+        .from("org_members").select("full_name, email").eq("id", member_id).maybeSingle();
+      const { data: orgFull } = await sb
+        .from("organizations").select("name, owner_id").eq("id", org_id).maybeSingle();
+      let ownerEmail = "";
+      if (orgFull?.owner_id) {
+        const { data: ownerInfo } = await sb
+          .from("profiles").select("email").eq("id", orgFull.owner_id).maybeSingle();
+        ownerEmail = ownerInfo?.email || "";
+      }
+
+      if (memberInfo?.email) {
+        fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+          body: JSON.stringify({
+            event: "org_saving",
+            data: {
+              member_name: memberInfo.full_name || "",
+              member_email: memberInfo.email,
+              amount: amt,
+              type: type || "deposit",
+              org_name: orgFull?.name || "",
+              date: new Date().toLocaleDateString("en-NG"),
+              owner_email: ownerEmail,
+              owner_id: orgFull?.owner_id || "",
+              staff_id: recorded_by || "",
+            },
+          }),
+        }).catch(() => null);
+      }
+
       return json({ saving, member: updated_member });
     }
 
@@ -467,6 +608,46 @@ serve(async (req) => {
         org_id, type: "org_withdrawal", amount: totalAmount,
         description: `Org withdrawal: ${purpose}`, reference_id: wd.id, balance_after: newWal,
       });
+
+      // Fire withdrawal email notifications
+      const memberIds = affectedMembers.map(m => m.id);
+      const { data: memberEmailRows } = await sb.from("org_members")
+        .select("id, full_name, email").in("id", memberIds);
+      const { data: wdOrgInfo } = await sb.from("organizations")
+        .select("name, owner_id").eq("id", org_id).maybeSingle();
+      let wdOwnerEmail = "";
+      if (wdOrgInfo?.owner_id) {
+        const { data: wdOwner } = await sb.from("profiles")
+          .select("email").eq("id", wdOrgInfo.owner_id).maybeSingle();
+        wdOwnerEmail = wdOwner?.email || "";
+      }
+      const wdDate = new Date().toLocaleDateString("en-NG");
+      for (const m of (memberEmailRows || [])) {
+        if (m.email) {
+          const mAmt = affectedMembers.find(am => am.id === m.id)?.amount || 0;
+          fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+            body: JSON.stringify({
+              event: "org_saving",
+              data: { member_name: m.full_name || "", member_email: m.email, amount: mAmt,
+                type: "withdrawal", org_name: wdOrgInfo?.name || "", date: wdDate, owner_email: "" },
+            }),
+          }).catch(() => null);
+        }
+      }
+      if (wdOwnerEmail) {
+        fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+          body: JSON.stringify({
+            event: "org_saving",
+            data: { member_name: `${affectedMembers.length} member(s)`, member_email: "",
+              amount: totalAmount, type: "withdrawal", org_name: wdOrgInfo?.name || "",
+              date: wdDate, owner_email: wdOwnerEmail },
+          }),
+        }).catch(() => null);
+      }
 
       return json({ withdrawal_id: wd.id, total_amount: totalAmount, member_count: affectedMembers.length });
     }
