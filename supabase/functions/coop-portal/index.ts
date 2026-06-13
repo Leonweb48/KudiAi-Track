@@ -80,7 +80,7 @@ serve(async (req) => {
       });
       if (authError) return json({ error: authError.message }, 400);
 
-      const { error: linkError } = await sb.from("organizations").update({ portal_user_id: authData.user.id }).eq("id", org_id);
+      const { error: linkError } = await sb.from("organizations").update({ portal_user_id: authData.user.id, status: "active" }).eq("id", org_id);
       if (linkError) {
         await sb.auth.admin.deleteUser(authData.user.id).catch(() => null);
         return json({ error: `Portal user created but could not be linked: ${linkError.message}` }, 400);
@@ -136,6 +136,7 @@ serve(async (req) => {
           phone: b.phone, email: b.email, website: b.website,
           date_established: b.date_established || null,
           registration_fee: parseFloat(b.registration_fee || "0") || 0,
+          status: "active",
         })
         .select(ORG_SELECT).single();
       if (error) return json({ error: error.message }, 400);

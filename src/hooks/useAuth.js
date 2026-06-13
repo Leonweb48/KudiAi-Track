@@ -205,9 +205,9 @@ export function useAuth() {
       const { data: orgRow, error: orgErr } = await supabase.rpc("get_my_org");
       if (orgRow) {
         if (orgRow.status !== "active") {
-          window.dispatchEvent(new CustomEvent("kuditrack_auth_error", {
-            detail: "Your organisation account is not active. Please contact the business that set up your portal.",
-          }));
+          const msg = "Your organisation account is not active. Please contact the business that set up your portal.";
+          sessionStorage.setItem("auth_block_reason", msg);
+          window.dispatchEvent(new CustomEvent("kuditrack_auth_error", { detail: msg }));
           await supabase.auth.signOut();
           setStatus("unauthenticated");
           return;
@@ -407,6 +407,25 @@ export function useAuth() {
           setStatus("unauthenticated");
           return;
         }
+      }
+
+      // Safety net: catch org portal users whose account_type metadata was lost.
+      // get_my_org() is SECURITY DEFINER and matches by portal_user_id OR email.
+      const { data: orgSafetyCheck } = await supabase.rpc("get_my_org");
+      if (orgSafetyCheck) {
+        if (orgSafetyCheck.status !== "active") {
+          const msg = "Your organisation account is not active. Please contact the business that set up your portal.";
+          sessionStorage.setItem("auth_block_reason", msg);
+          window.dispatchEvent(new CustomEvent("kuditrack_auth_error", { detail: msg }));
+          await supabase.auth.signOut();
+          setStatus("unauthenticated");
+          return;
+        }
+        setOrg(orgSafetyCheck);
+        subVerified.current = true;
+        logPlatformSession(supabase, uid, "organisation", orgSafetyCheck.name, email);
+        if (mustChange) { setStatus("org_setup"); } else { setStatus("organisation"); }
+        return;
       }
 
       setStatus("onboarding");
