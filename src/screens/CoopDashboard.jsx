@@ -4,8 +4,13 @@ import { supabase } from "../utils/supabase";
 const coopFn = async (action, body = {}) => {
   const r = await supabase.functions.invoke("coop-portal", { body: { action, ...body } });
   if (r.error) {
-    // r.data still contains the parsed JSON body even on non-2xx responses
-    const msg = r.data?.error || r.error.message;
+    let msg = r.error.message;
+    try {
+      const errBody = r.data?.error
+        ? r.data
+        : (r.error.context ? await r.error.context.clone().json() : null);
+      if (errBody?.error) msg = errBody.error;
+    } catch { /* keep original msg */ }
     throw new Error(msg);
   }
   if (r.data?.error) throw new Error(r.data.error);
@@ -1357,19 +1362,73 @@ function MessagesTab({ org }) {
   );
 }
 
+// ── Delete Org Button (confirm by typing name) ────────────────
+function DeleteOrgButton({ org, onDeleted }) {
+  const [confirm, setConfirm] = useState(false);
+  const [typed,   setTyped]   = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [error,   setError]   = useState("");
+
+  const handleDelete = async () => {
+    if (typed.trim().toLowerCase() !== org.name.trim().toLowerCase()) {
+      setError("Organisation name does not match"); return;
+    }
+    setDeleting(true); setError("");
+    try {
+      await coopFn("delete-org", { org_id: org.id, owner_id: org.owner_id });
+      onDeleted();
+    } catch (e) { setError(e.message || "Delete failed"); setDeleting(false); }
+  };
+
+  if (!confirm) {
+    return (
+      <button onClick={() => setConfirm(true)}
+        className="w-full py-3 border-2 border-red-300 text-red-600 rounded-xl font-bold text-sm hover:bg-red-50 transition-colors">
+        Delete Organisation
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {error && <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 text-xs text-red-600">{error}</div>}
+      <p className="text-xs text-slate-600 dark:text-slate-300">
+        Type <strong className="text-red-600">{org.name}</strong> to confirm deletion:
+      </p>
+      <input
+        className="w-full px-3 py-2.5 rounded-xl border-2 border-red-300 bg-red-50 dark:bg-red-900/20 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-red-400"
+        placeholder={org.name}
+        value={typed}
+        onChange={e => setTyped(e.target.value)}
+      />
+      <div className="flex gap-2">
+        <button onClick={() => { setConfirm(false); setTyped(""); setError(""); }}
+          className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Cancel</button>
+        <button onClick={handleDelete} disabled={deleting}
+          className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">
+          {deleting ? "Deleting…" : "Confirm Delete"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ═══════════════════════════════════════════════════
 //  SETTINGS TAB
 // ═══════════════════════════════════════════════════
-function SettingsTab({ org, onRefresh }) {
-  const [leaders,  setLeaders]  = useState([]);
-  const [form,     setForm]     = useState({ name: org.name || "", purpose: org.purpose || "", vision: org.vision || "", mission: org.mission || "", website: org.website || "", social_instagram: org.social_instagram || "", social_facebook: org.social_facebook || "", social_twitter: org.social_twitter || "", date_established: org.date_established || "", logo_url: org.logo_url || "" });
-  const [lForm,    setLForm]    = useState({ name: "", position: "", phone: "", email: "", sort_order: "0" });
-  const [saving,   setSaving]   = useState(false);
-  const [lSaving,  setLSaving]  = useState(false);
-  const [editL,    setEditL]    = useState(null);
-  const [showAddL, setShowAddL] = useState(false);
-  const [saved,    setSaved]    = useState(false);
-  const [error,    setError]    = useState("");
+function SettingsTab({ org, onRefresh, onBack, isOrgPortal = false }) {
+  const [leaders,     setLeaders]     = useState([]);
+  const [form,        setForm]        = useState({ name: org.name || "", email: org.email || "", phone: org.phone || "", address: org.address || "", state_name: org.state_name || "", lga: org.lga || "", purpose: org.purpose || "", vision: org.vision || "", mission: org.mission || "", website: org.website || "", social_instagram: org.social_instagram || "", social_facebook: org.social_facebook || "", social_twitter: org.social_twitter || "", date_established: org.date_established || "", logo_url: org.logo_url || "" });
+  const [lForm,       setLForm]       = useState({ name: "", position: "", phone: "", email: "", sort_order: "0" });
+  const [saving,      setSaving]      = useState(false);
+  const [lSaving,     setLSaving]     = useState(false);
+  const [editL,       setEditL]       = useState(null);
+  const [showAddL,    setShowAddL]    = useState(false);
+  const [saved,       setSaved]       = useState(false);
+  const [error,       setError]       = useState("");
+  const [portalSaving, setPortalSaving] = useState(false);
+  const [portalResult, setPortalResult] = useState(null);
+  const [portalError,  setPortalError]  = useState("");
 
   const set  = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
   const setL = k => e => setLForm(p => ({ ...p, [k]: e.target.value }));
@@ -1421,6 +1480,30 @@ function SettingsTab({ org, onRefresh }) {
           <div>
             <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Organisation Name</label>
             <input className={input} value={form.name} onChange={set("name")} />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Email</label>
+              <input className={input} type="email" value={form.email} onChange={set("email")} placeholder="org@example.com" />
+            </div>
+            <div>
+              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Phone</label>
+              <input className={input} type="tel" value={form.phone} onChange={set("phone")} placeholder="08000000000" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">State</label>
+              <input className={input} value={form.state_name} onChange={set("state_name")} />
+            </div>
+            <div>
+              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">LGA</label>
+              <input className={input} value={form.lga} onChange={set("lga")} />
+            </div>
+          </div>
+          <div>
+            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Address</label>
+            <input className={input} value={form.address} onChange={set("address")} />
           </div>
           <div>
             <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Logo URL</label>
@@ -1487,11 +1570,72 @@ function SettingsTab({ org, onRefresh }) {
         )}
       </div>
 
-      {/* Portal link */}
-      <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-4 border border-slate-100 dark:border-slate-700">
-        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Member Portal Access</p>
-        <p className="text-xs text-slate-500 dark:text-slate-400">Share individual member portal links via the Members tab. Each member has a unique link that auto-logs them in.</p>
-      </div>
+      {/* Organisation Portal Login */}
+      {!isOrgPortal && <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-100 dark:border-slate-700">
+        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Organisation Portal Login</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+          Grant this organisation its own login so it can manage members and savings independently from this portal.
+        </p>
+        {portalError && <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-3 text-xs text-red-600">{portalError}</div>}
+
+        {!org.email && !form.email.trim() ? (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-3 text-xs text-amber-700">
+            ⚠ Please add an organisation email above and save the profile before setting up a portal login.
+          </div>
+        ) : (
+          <>
+            <div className="bg-slate-50 dark:bg-slate-700/40 rounded-xl px-3 py-2 mb-3 flex items-center gap-2">
+              <span className="text-[10px] text-slate-400 uppercase font-bold w-14 flex-shrink-0">Email</span>
+              <span className="text-xs text-slate-700 dark:text-slate-200 font-mono">{form.email || org.email}</span>
+            </div>
+            {org.portal_user_id && (
+              <div className="bg-green-50 border border-green-200 rounded-xl px-3 py-2 mb-3 text-xs text-green-700">
+                ✓ Portal login is active. The organisation can sign in using their email.
+              </div>
+            )}
+            {portalResult && (
+              <div className="bg-violet-50 border border-violet-200 rounded-2xl p-4 mb-3">
+                <p className="text-[11px] font-bold text-violet-400 uppercase tracking-wider mb-2">Portal Created ✓</p>
+                <p className="text-xs text-slate-600 mb-1">Send these credentials to the organisation:</p>
+                <div className="bg-white rounded-xl p-3 border border-violet-100 flex flex-col gap-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-slate-400 font-bold w-20">Email</span>
+                    <span className="text-xs font-mono text-slate-800">{portalResult.email}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-slate-400 font-bold w-20">Temp Password</span>
+                    <span className="text-xs font-mono font-bold text-violet-700 bg-violet-50 px-2 py-0.5 rounded-lg">{portalResult.temp_password}</span>
+                  </div>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-2">A welcome email has been sent. They'll be prompted to change their password on first login.</p>
+              </div>
+            )}
+            <button
+              onClick={async () => {
+                setPortalSaving(true); setPortalError(""); setPortalResult(null);
+                try {
+                  const r = await coopFn("setup-org-portal", { org_id: org.id, owner_id: org.owner_id });
+                  setPortalResult(r); onRefresh();
+                } catch (e) { setPortalError(e.message || "Setup failed"); }
+                finally { setPortalSaving(false); }
+              }}
+              disabled={portalSaving}
+              className="w-full py-3 bg-violet-600 text-white rounded-xl font-bold text-sm disabled:opacity-50"
+            >
+              {portalSaving ? "Setting up…" : org.portal_user_id ? "Reset Portal Login" : "Setup Portal Login"}
+            </button>
+          </>
+        )}
+      </div>}
+
+      {/* Danger Zone */}
+      {!isOrgPortal && <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-red-100 dark:border-red-900/40">
+        <p className="text-[11px] font-bold text-red-400 uppercase tracking-wider mb-1">Danger Zone</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+          Permanently delete this organisation and all its data — members, savings, loans, and meetings. This cannot be undone.
+        </p>
+        <DeleteOrgButton org={org} onDeleted={onBack} />
+      </div>}
 
       {showAddL && (
         <ModalWrap onClose={() => { setShowAddL(false); setEditL(null); setError(""); }}>
@@ -1531,7 +1675,7 @@ const TABS = [
 
 const ORG_TYPE_ICONS = { cooperative:"🤝", market_association:"🏪", church:"⛪", ngo:"🌍", youth_group:"👥", savings_group:"💰", community_group:"🏘️", professional_association:"💼", savings_club:"🏦" };
 
-export default function CoopDashboard({ org: initialOrg, onBack }) {
+export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = false }) {
   const [tab,          setTab]          = useState("overview");
   const [org,          setOrg]          = useState(initialOrg);
   const [members,      setMembers]      = useState([]);
@@ -1567,18 +1711,24 @@ export default function CoopDashboard({ org: initialOrg, onBack }) {
     loans:    <LoansTab    org={org} members={members} onRefresh={loadAll} />,
     meetings: <MeetingsTab org={org} members={members} />,
     messages: <MessagesTab org={org} />,
-    settings: <SettingsTab org={org} onRefresh={loadAll} />,
+    settings: <SettingsTab org={org} onRefresh={loadAll} onBack={onBack} isOrgPortal={isOrgPortal} />,
   };
 
   return (
     <div className="fixed inset-0 z-[65] bg-slate-50 dark:bg-slate-900 flex justify-center">
       <div className="w-full max-w-md flex flex-col h-full">
         <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 py-3 flex items-center gap-3">
-          <button onClick={onBack} className="w-8 h-8 flex items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
-            <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
-              <path d="M19 12H5M12 5l-7 7 7 7" />
-            </svg>
-          </button>
+          {isOrgPortal ? (
+            <button onClick={onBack} className="text-[11px] font-bold text-red-500 hover:text-red-700 px-2 py-1 rounded-lg hover:bg-red-50 transition-colors">
+              Sign Out
+            </button>
+          ) : (
+            <button onClick={onBack} className="w-8 h-8 flex items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
+              <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+                <path d="M19 12H5M12 5l-7 7 7 7" />
+              </svg>
+            </button>
+          )}
           <span className="text-xl">{ORG_TYPE_ICONS[org.type] || "🏢"}</span>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-extrabold text-slate-800 dark:text-white truncate">{org.name}</p>
