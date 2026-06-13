@@ -7,6 +7,20 @@ import { fetchAndCachePlans, normalizeSlug, hasHigherPlanAvailable } from "../ut
 
 const CACHE_KEY = "kuditrack_plan";
 const SESSION_LOGGED_KEY = "kuditrack_sess_logged";
+const WELCOME_EMAIL_KEY = "kuditrack_welcome_sent";
+
+async function fireWelcomeEmail(event, data) {
+  try {
+    const sentKey = `${WELCOME_EMAIL_KEY}_${data.email || data.name}`;
+    if (sessionStorage.getItem(sentKey)) return;
+    sessionStorage.setItem(sentKey, "1");
+    await fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+      body: JSON.stringify({ event, data }),
+    });
+  } catch { /* non-critical */ }
+}
 
 async function logPlatformSession(supabaseClient, userId, userType, username, email) {
   try {
@@ -48,6 +62,7 @@ export function useAuth() {
   const [orgMember, setOrgMember] = useState(null);
   const [adminUser, setAdminUser] = useState(null);
   const [marketer,  setMarketer]  = useState(null);
+  const [org,       setOrg]       = useState(null);
 
   // Tracks whether we've already confirmed a subscription this session.
   // A ref (not state) so reads inside async callbacks are always current.
@@ -62,6 +77,7 @@ export function useAuth() {
       setOrgMember(null);
       setAdminUser(null);
       setMarketer(null);
+      setOrg(null);
       subVerified.current = false;
       localStorage.removeItem(CACHE_KEY);
       return;
@@ -107,7 +123,16 @@ export function useAuth() {
         setOrgMember({ ...orgMemberRow, org: orgMemberRow.organizations });
         subVerified.current = true;
         logPlatformSession(supabase, uid, "org_member", orgMemberRow.full_name, email);
-        setStatus(mustChange ? "org_member_setup" : "org_member");
+        if (mustChange) {
+          fireWelcomeEmail("org_member_first_login", {
+            name: orgMemberRow.full_name || "",
+            email: email || "",
+            org_name: orgMemberRow.organizations?.name || "",
+          });
+          setStatus("org_member_setup");
+        } else {
+          setStatus("org_member");
+        }
         return;
       }
       // No active membership found — sign out rather than drop into business onboarding
@@ -127,7 +152,12 @@ export function useAuth() {
         setAjoClient({ ...ajoClientRow, owner_id: ajoClientRow.user_id });
         subVerified.current = true;
         logPlatformSession(supabase, uid, "ajo_client", ajoClientRow.full_name, email);
-        setStatus(mustChange ? "ajo_client_setup" : "ajo_client");
+        if (mustChange) {
+          fireWelcomeEmail("ajo_client_first_login", { name: ajoClientRow.full_name || "", email: email || "" });
+          setStatus("ajo_client_setup");
+        } else {
+          setStatus("ajo_client");
+        }
         return;
       }
       await supabase.auth.signOut();
@@ -147,9 +177,61 @@ export function useAuth() {
         setMarketer(marketerRow);
         subVerified.current = true;
         logPlatformSession(supabase, uid, "marketer", marketerRow.full_name || marketerRow.username, email);
-        setStatus(mustChange ? "marketer_setup" : "marketer");
+        if (mustChange) {
+          fireWelcomeEmail("marketer_first_login", {
+            name: marketerRow.full_name || marketerRow.username || "",
+            email: email || "",
+          });
+          setStatus("marketer_setup");
+        } else {
+          setStatus("marketer");
+        }
         return;
       }
+      await supabase.auth.signOut();
+      setStatus("unauthenticated");
+      return;
+    }
+
+    // ── Organisation portal routing ───────────────────────────────────
+    if (accountType === "organisation") {
+      const { data: orgRow, error: orgErr } = await supabase.rpc("get_my_org");
+      if (orgRow) {
+        if (orgRow.status !== "active") {
+          window.dispatchEvent(new CustomEvent("kuditrack_auth_error", {
+            detail: "Your organisation account is not active. Please contact the business that set up your portal.",
+          }));
+          await supabase.auth.signOut();
+          setStatus("unauthenticated");
+          return;
+        }
+        setOrg(orgRow);
+        subVerified.current = true;
+        logPlatformSession(supabase, uid, "organisation", orgRow.name, email);
+        if (mustChange) {
+          setStatus("org_setup");
+        } else {
+          setStatus("organisation");
+        }
+        return;
+      }
+      const reason = orgErr
+        ? `Organisation login error: ${orgErr.message}`
+        : "Organisation not found. Please contact the business that set up your portal.";
+      window.dispatchEvent(new CustomEvent("kuditrack_auth_error", { detail: reason }));
+      await supabase.auth.signOut();
+      setStatus("unauthenticated");
+      return;
+    }
+
+    // ── Hard gate: block known non-business account types from reaching business portals ──
+    // If account_type is set to any portal-specific type but fell through the blocks above,
+    // something is wrong — never allow these into business onboarding or subscription flow.
+    const PORTAL_ACCOUNT_TYPES = ["super_admin", "org_member", "ajo_client", "marketer", "organisation"];
+    if (PORTAL_ACCOUNT_TYPES.includes(accountType)) {
+      window.dispatchEvent(new CustomEvent("kuditrack_auth_error", {
+        detail: "This account cannot sign in here. Please use the portal you were registered for.",
+      }));
       await supabase.auth.signOut();
       setStatus("unauthenticated");
       return;
@@ -168,6 +250,29 @@ export function useAuth() {
       subVerified.current = true;
       setStatus("admin");
       return;
+    }
+
+    // ── Org portal fallback (before profile check) ────────────────────
+    // Catches org portal users even if account_type metadata is missing
+    // OR if they somehow have a profiles row (which would skip the block below).
+    // get_my_org() is a SECURITY DEFINER fn — returns null for non-org users.
+    if (!accountType || accountType === "organisation") {
+      const { data: orgPreCheck } = await supabase.rpc("get_my_org");
+      if (orgPreCheck) {
+        if (orgPreCheck.status !== "active") {
+          window.dispatchEvent(new CustomEvent("kuditrack_auth_error", {
+            detail: "Your organisation account is not active. Please contact the business that set up your portal.",
+          }));
+          await supabase.auth.signOut();
+          setStatus("unauthenticated");
+          return;
+        }
+        setOrg(orgPreCheck);
+        subVerified.current = true;
+        logPlatformSession(supabase, uid, "organisation", orgPreCheck.name, email);
+        if (mustChange) { setStatus("org_setup"); } else { setStatus("organisation"); }
+        return;
+      }
     }
 
     // ── Onboarding check (business owners) ───────────────────────────
@@ -222,6 +327,7 @@ export function useAuth() {
         subVerified.current = true;
         logPlatformSession(supabase, uid, "staff", staffRow.full_name, email);
         if (mustChange) {
+          fireWelcomeEmail("staff_first_login", { name: staffRow.full_name || "", email: email || "" });
           setStatus("staff_setup");
         } else if (staffRow.role === "manager" && staffRow.branch_id) {
           setStatus("branch_manager");
@@ -241,7 +347,12 @@ export function useAuth() {
       if (ajoClientRow) {
         setAjoClient({ ...ajoClientRow, owner_id: ajoClientRow.user_id });
         subVerified.current = true;
-        setStatus(mustChange ? "ajo_client_setup" : "ajo_client");
+        if (mustChange) {
+          fireWelcomeEmail("ajo_client_first_login", { name: ajoClientRow.full_name || "", email: email || "" });
+          setStatus("ajo_client_setup");
+        } else {
+          setStatus("ajo_client");
+        }
         return;
       }
 
@@ -256,8 +367,36 @@ export function useAuth() {
       if (orgMemberRow) {
         setOrgMember({ ...orgMemberRow, org: orgMemberRow.organizations });
         subVerified.current = true;
-        setStatus(mustChange ? "org_member_setup" : "org_member");
+        if (mustChange) {
+          fireWelcomeEmail("org_member_first_login", {
+            name: orgMemberRow.full_name || "",
+            email: email || "",
+            org_name: orgMemberRow.organizations?.name || "",
+          });
+          setStatus("org_member_setup");
+        } else {
+          setStatus("org_member");
+        }
         return;
+      }
+
+      // ── Final gate: block non-business emails from reaching business onboarding ──
+      // If the email is found in any staff table, it must not register as a business.
+      if (email) {
+        const [{ data: staffByEmail }, { data: ajoByEmail }, { data: orgMemberByEmail }] = await Promise.all([
+          supabase.from("staff").select("id").eq("email", email).maybeSingle(),
+          supabase.from("aso_clients").select("id").eq("email", email).maybeSingle(),
+          supabase.from("org_members").select("id").eq("email", email).maybeSingle(),
+        ]);
+        if (staffByEmail || ajoByEmail || orgMemberByEmail) {
+          const roleLabel = staffByEmail ? "staff member" : ajoByEmail ? "savings client" : "organisation member";
+          window.dispatchEvent(new CustomEvent("kuditrack_auth_error", {
+            detail: `This email is registered as a ${roleLabel}. It cannot be used to sign up as a business. Please sign in with the correct portal.`,
+          }));
+          await supabase.auth.signOut();
+          setStatus("unauthenticated");
+          return;
+        }
       }
 
       setStatus("onboarding");
@@ -346,14 +485,29 @@ export function useAuth() {
 
   // Called right after a successful subscription save — skips any DB re-query
   // so RLS issues or token-refresh events cannot send the user back to the plan screen.
-  const setReady = useCallback((planId) => {
+  const setReady = useCallback((planId, prevPlanId) => {
     const p = normalizeSlug(planId || "starter");
+    const prev = normalizeSlug(prevPlanId || "");
     setPlan(p);
     localStorage.setItem(CACHE_KEY, p);
     subVerified.current = true;
     fetchAndCachePlans(supabase).then(() => {
       setUpgradeAvailable(hasHigherPlanAvailable(p));
     }).catch(() => {});
+    // Fire plan upgrade email if plan actually changed (and it's not starter for first time)
+    if (prev && prev !== p && p !== "starter") {
+      supabase.auth.getSession().then(({ data }) => {
+        const user = data?.session?.user;
+        if (user?.email) {
+          fireWelcomeEmail("plan_upgraded", {
+            user_email: user.email,
+            user_name: user.user_metadata?.business_name || user.user_metadata?.owner_name || user.user_metadata?.full_name || user.email,
+            old_plan: prev,
+            new_plan: p,
+          });
+        }
+      }).catch(() => {});
+    }
     setStatus("ready");
   }, []);
 
@@ -364,5 +518,5 @@ export function useAuth() {
     supabase.auth.getSession().then(({ data }) => resolve(data.session));
   }, [resolve]);
 
-  return { status, session, plan, setReady, refetch, upgradeAvailable, staff, ajoClient, orgMember, adminUser, marketer, ownerId: staff?.owner_id ?? null };
+  return { status, session, plan, setReady, refetch, upgradeAvailable, staff, ajoClient, orgMember, adminUser, marketer, org, ownerId: staff?.owner_id ?? null };
 }
