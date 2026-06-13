@@ -218,6 +218,8 @@ export function useAuth() {
       const reason = orgErr
         ? `Organisation login error: ${orgErr.message}`
         : "Organisation not found. Please contact the business that set up your portal.";
+      // Use sessionStorage so the message survives the sign-out/remount cycle
+      sessionStorage.setItem("auth_block_reason", reason);
       window.dispatchEvent(new CustomEvent("kuditrack_auth_error", { detail: reason }));
       await supabase.auth.signOut();
       setStatus("unauthenticated");
@@ -225,13 +227,11 @@ export function useAuth() {
     }
 
     // ── Hard gate: block known non-business account types from reaching business portals ──
-    // If account_type is set to any portal-specific type but fell through the blocks above,
-    // something is wrong — never allow these into business onboarding or subscription flow.
     const PORTAL_ACCOUNT_TYPES = ["super_admin", "org_member", "ajo_client", "marketer", "organisation"];
     if (PORTAL_ACCOUNT_TYPES.includes(accountType)) {
-      window.dispatchEvent(new CustomEvent("kuditrack_auth_error", {
-        detail: "This account cannot sign in here. Please use the portal you were registered for.",
-      }));
+      const msg = "This account cannot sign in here. Please use the portal you were registered for.";
+      sessionStorage.setItem("auth_block_reason", msg);
+      window.dispatchEvent(new CustomEvent("kuditrack_auth_error", { detail: msg }));
       await supabase.auth.signOut();
       setStatus("unauthenticated");
       return;
@@ -260,9 +260,9 @@ export function useAuth() {
       const { data: orgPreCheck } = await supabase.rpc("get_my_org");
       if (orgPreCheck) {
         if (orgPreCheck.status !== "active") {
-          window.dispatchEvent(new CustomEvent("kuditrack_auth_error", {
-            detail: "Your organisation account is not active. Please contact the business that set up your portal.",
-          }));
+          const msg = "Your organisation account is not active. Please contact the business that set up your portal.";
+          sessionStorage.setItem("auth_block_reason", msg);
+          window.dispatchEvent(new CustomEvent("kuditrack_auth_error", { detail: msg }));
           await supabase.auth.signOut();
           setStatus("unauthenticated");
           return;
