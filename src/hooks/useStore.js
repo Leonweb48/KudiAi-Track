@@ -5,6 +5,14 @@ import { logAudit } from "../utils/auditLog";
 import { savePendingOp, getPendingOps, getPendingCount } from "../utils/offlineDb";
 import { syncPending } from "../utils/syncManager";
 
+function fireEmailTrigger(event, data) {
+  fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+    body: JSON.stringify({ event, data }),
+  }).catch(() => null);
+}
+
 // ── localStorage cache ─────────────────────────────────────────────
 function saveCacheLS(key, data) {
   try { localStorage.setItem(key, JSON.stringify(data)); } catch { /**/ }
@@ -167,23 +175,35 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
   // ── Sync engine ────────────────────────────────────────────────
   const runSync = useCallback(async () => {
     if (syncRunning.current || !userId || !supabase) return;
+
+    // Refresh session so the JWT is valid (prevents RLS failures after being offline)
+    const { data: sessionData } = await supabase.auth.getSession().catch(() => ({ data: null }));
+    if (!sessionData?.session) {
+      setDbError("Session expired — please log out and back in, then sync.");
+      return;
+    }
+
     const ops = await getPendingOps(userId).catch(() => []);
     if (!ops.length) return;
 
     syncRunning.current = true;
     setIsSyncing(true);
 
-    await syncPending(supabase, userId, ({ synced, total, data, op }) => {
+    const result = await syncPending(supabase, userId, ({ synced, total, data, op }) => {
       setPendingSync(Math.max(0, total - synced));
-      // Replace the temp item in state with the real Supabase record
       if (op?.table === "transactions" && data) {
         setTransactions(prev => prev.map(t => t.id === `tmp-${op.local_id}` ? data : t));
       }
-    }).catch(console.error);
+    }).catch(e => ({ synced: 0, failed: 1, total: 0, errors: [e?.message || String(e)] }));
 
     try {
       const remaining = await getPendingCount(userId);
       setPendingSync(remaining);
+      if (result?.failed > 0 && result?.errors?.length) {
+        setDbError(`Sync failed (${result.failed} record${result.failed !== 1 ? "s" : ""}): ${result.errors[0]}`);
+      } else if (remaining === 0 && result?.synced > 0) {
+        setDbError(null);
+      }
     } catch { /**/ }
 
     syncRunning.current = false;
@@ -246,6 +266,18 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
       } else {
         onNotify?.("sales", "Expense Recorded", `${fmt(parseFloat(t.amount))} · ${label}`);
       }
+      fireEmailTrigger(t.type === "in" ? "transaction_credit" : "transaction_debit", {
+        owner_id: userId,
+        user_email: profile.email || "",
+        user_name: profile.owner_name || profile.business_name || "",
+        business_name: profile.business_name || "",
+        amount: String(parseFloat(t.amount) || 0),
+        description: t.item_name || t.category || "Transaction",
+        date: t.transaction_date || today(),
+        customer_name: t.customer_name || "",
+        staff_id: staffId || "",
+        staff_name: staffName || "",
+      });
       if (staffId) {
         const amt   = `${t.type === "in" ? "+" : "-"}₦${parseFloat(t.amount).toLocaleString()}`;
         const extra = [t.customer_name, t.payment_type].filter(Boolean).join(" · ");
@@ -330,7 +362,21 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
         .update({ amount_paid: updated.amount_paid, outstanding: updated.outstanding, status: updated.status })
         .eq("id", id);
       if (error) { console.error("repayCredit:", error); loadData(); }
-      else { onNotify?.("payments", "Payment Received", `${fmt(amount)} from ${updated.customer_name}`); }
+      else {
+        onNotify?.("payments", "Payment Received", `${fmt(amount)} from ${updated.customer_name}`);
+        fireEmailTrigger("credit_repayment", {
+          creditor_name:  updated.customer_name || "",
+          creditor_email: updated.email         || "",
+          amount,
+          outstanding:    updated.outstanding,
+          total_amount:   updated.total_amount,
+          status:         updated.status,
+          owner_id:       userId,
+          business_name:  profile.business_name || "",
+          staff_id:       staffId  || "",
+          staff_name:     staffName || "",
+        });
+      }
     }
   };
 
@@ -435,6 +481,18 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
             recorded_by: staffId || null,
           }).catch(console.error);
         }
+        fireEmailTrigger("ajo_contribution", {
+          owner_id: userId,
+          client_id: id,
+          client_name: updated.full_name || "",
+          client_email: updated.email || "",
+          amount: String(amount),
+          balance: String(updated.current_balance),
+          date: today(),
+          owner_email: profile.email || "",
+          staff_id: staffId || "",
+          staff_name: staffName || "",
+        });
         onNotify?.("aso", "Contribution Received", `${fmt(amount)} from ${updated.full_name}`);
       }
     }
@@ -464,6 +522,17 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
           notes: feeAmount > 0 ? `Withdrawal fee deducted: ${fmt(feeAmount)}` : null,
           recorded_by: staffId || null,
         }).catch(console.error);
+        fireEmailTrigger("ajo_withdrawal", {
+          owner_id: userId,
+          client_id: id,
+          client_name: updated.full_name || "",
+          client_email: updated.email || "",
+          amount: String(netAmount),
+          date: today(),
+          owner_email: profile.email || "",
+          staff_id: staffId || "",
+          staff_name: staffName || "",
+        });
       }
     }
   };
