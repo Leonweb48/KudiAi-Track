@@ -117,12 +117,7 @@ export function useAuth() {
       // undefined (old members) is treated as verified for backward compatibility.
       const emailVerified = sess.user.user_metadata?.email_verified !== false;
 
-      const { data: orgMemberRow } = await supabase
-        .from("org_members")
-        .select("id, org_id, membership_id, full_name, email, phone, role, status, profile_image_url, savings_balance, joined_date, privacy_balance, privacy_contributions, privacy_activities, organizations(id, name, type, reg_number, wallet_balance, total_savings, total_loans_out, member_count, logo_url, address, phone, email)")
-        .eq("user_id", uid)
-        .eq("status", "active")
-        .maybeSingle();
+      const { data: orgMemberRow } = await supabase.rpc("get_my_membership");
       if (orgMemberRow) {
         setOrgMember({ ...orgMemberRow, org: orgMemberRow.organizations });
         subVerified.current = true;
@@ -364,12 +359,7 @@ export function useAuth() {
       }
 
       // ── Org Member check ──────────────────────────────────────────
-      const { data: orgMemberRow } = await supabase
-        .from("org_members")
-        .select("id, org_id, membership_id, full_name, email, phone, role, status, profile_image_url, savings_balance, joined_date, privacy_balance, privacy_contributions, privacy_activities, organizations(id, name, type, reg_number, wallet_balance, total_savings, total_loans_out, member_count, logo_url, address, phone, email)")
-        .eq("user_id", uid)
-        .eq("status", "active")
-        .maybeSingle();
+      const { data: orgMemberRow } = await supabase.rpc("get_my_membership");
 
       if (orgMemberRow) {
         setOrgMember({ ...orgMemberRow, org: orgMemberRow.organizations });
