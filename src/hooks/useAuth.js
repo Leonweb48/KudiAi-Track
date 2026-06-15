@@ -152,7 +152,7 @@ export function useAuth() {
     if (accountType === "ajo_client") {
       const { data: ajoClientRow } = await supabase
         .from("aso_clients")
-        .select("id, full_name, user_id, client_user_id, profile_image_url, membership_number, email, current_balance, total_saved, next_contribution_date, contribution_amount, contribution_frequency, status")
+        .select("id, full_name, user_id, client_user_id, profile_image_url, membership_number, email, current_balance, total_saved, total_withdrawn, next_contribution_date, contribution_amount, contribution_frequency, status, registration_charge, withdrawal_fee_percent")
         .eq("client_user_id", uid)
         .maybeSingle();
       if (ajoClientRow) {
@@ -347,7 +347,7 @@ export function useAuth() {
       // ── Ajo Client check ───────────────────────────────────────────
       const { data: ajoClientRow } = await supabase
         .from("aso_clients")
-        .select("id, full_name, user_id, client_user_id, profile_image_url, membership_number, email, current_balance, total_saved, next_contribution_date, contribution_amount, contribution_frequency, status")
+        .select("id, full_name, user_id, client_user_id, profile_image_url, membership_number, email, current_balance, total_saved, total_withdrawn, next_contribution_date, contribution_amount, contribution_frequency, status, registration_charge, withdrawal_fee_percent")
         .eq("client_user_id", uid)
         .maybeSingle();
 

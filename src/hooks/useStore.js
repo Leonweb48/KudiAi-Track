@@ -188,6 +188,20 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  // ── Realtime: live sync for aso_clients balance changes ───────────────
+  useEffect(() => {
+    if (!userId) return;
+    const channel = supabase.channel(`aso_clients_rt_${userId}`)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "aso_clients", filter: `user_id=eq.${userId}` },
+        (payload) => {
+          if (payload.new) {
+            setAsoClients(prev => prev.map(c => c.id === payload.new.id ? { ...c, ...payload.new } : c));
+          }
+        })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [userId]);
+
   // ── Online / offline detection ─────────────────────────────────
   useEffect(() => {
     const on  = () => setIsOnline(true);

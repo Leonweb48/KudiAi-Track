@@ -11,6 +11,7 @@ import { supabase } from "../utils/supabase";
 import { canDo } from "../utils/plans";
 import { fmt, today } from "../utils/helpers";
 import { useT } from "../contexts/LanguageContext";
+import { getLang, speakConfirmation } from "../utils/i18n";
 
 const BLANK = {
   full_name: "", contribution_frequency: "daily", contribution_amount: "",
@@ -123,6 +124,9 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const { asoClients, addAsoClient, asoContribute, asoWithdraw, updateAsoClient, deleteAsoClient, profile, staffMap = {} } = store;
   const staffOptions = Object.entries(staffMap).map(([id, name]) => ({ id, name }));
 
+  const [withdrawalRequests, setWithdrawalRequests] = useState([]);
+  const [processingId,       setProcessingId]       = useState(null);
+
   const [f, setF] = useState(BLANK);
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
 
@@ -137,6 +141,30 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       onAutoOpened?.();
     }
   }, [autoOpen, onAutoOpened, plan]);
+
+  const reloadWithdrawalRequests = async () => {
+    const { data } = await supabase
+      .from("ajo_withdrawal_requests")
+      .select("*, aso_clients(full_name, email, membership_number, current_balance, total_withdrawn)")
+      .eq("status", "pending")
+      .order("requested_at", { ascending: false });
+    setWithdrawalRequests(data || []);
+  };
+
+  useEffect(() => {
+    if (!canDo(plan, "aso")) return;
+    reloadWithdrawalRequests();
+  }, [plan]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Realtime: new withdrawal requests from clients ─────────────────────
+  useEffect(() => {
+    if (!canDo(plan, "aso")) return;
+    const channel = supabase.channel("ajo_withdrawal_requests_rt")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "ajo_withdrawal_requests" },
+        () => reloadWithdrawalRequests())
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [plan]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Aggregate stats
   const totalBal      = asoClients.reduce((s, c) => s + (c.current_balance || 0), 0);
@@ -355,6 +383,72 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     }
   };
 
+  const handleApproveRequest = async (req) => {
+    setProcessingId(req.id);
+    try {
+      const cl         = req.aso_clients || {};
+      const newBalance  = (cl.current_balance || 0) - req.amount;
+      const newWithdrawn = (cl.total_withdrawn || 0) + req.amount;
+
+      await supabase.from("ajo_withdrawal_requests")
+        .update({ status: "approved", approved_at: new Date().toISOString() })
+        .eq("id", req.id);
+
+      await supabase.from("ajo_contributions").insert({
+        aso_client_id:  req.aso_client_id,
+        owner_id:       req.owner_id,
+        amount:         req.net_amount,
+        type:           "withdrawal",
+        payment_method: "cash",
+        status:         "completed",
+        notes:          `Approved withdrawal. Gross: ₦${req.amount}, Fee (${req.fee_type}): ₦${req.fee_amount}`,
+      });
+
+      await supabase.from("aso_clients")
+        .update({ current_balance: newBalance, total_withdrawn: newWithdrawn })
+        .eq("id", req.aso_client_id);
+
+      fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+        body: JSON.stringify({
+          event: "ajo_withdrawal_approved",
+          data: {
+            client_name:   cl.full_name  || "",
+            client_email:  cl.email      || "",
+            business_name: profile?.business_name || "",
+            amount:        req.amount,
+            fee_type:      req.fee_type,
+            fee_amount:    req.fee_amount,
+            net_amount:    req.net_amount,
+            balance_after: newBalance,
+            date: new Date().toLocaleDateString("en-NG"),
+          },
+        }),
+      }).catch(() => null);
+
+      reloadWithdrawalRequests();
+    } catch (e) {
+      console.error("Approve failed:", e);
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const handleRejectRequest = async (req) => {
+    setProcessingId(req.id);
+    try {
+      await supabase.from("ajo_withdrawal_requests")
+        .update({ status: "rejected", approved_at: new Date().toISOString() })
+        .eq("id", req.id);
+      reloadWithdrawalRequests();
+    } catch (e) {
+      console.error("Reject failed:", e);
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
   const reminderMsg = reminderFor ? buildReminderMsg(reminderFor, profile?.business_name) : "";
   const waLink = reminderFor?.phone
     ? `https://wa.me/${reminderFor.phone.replace(/\D/g, "")}?text=${encodeURIComponent(reminderMsg)}`
@@ -422,6 +516,63 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           </div>
         </div>
       </div>
+
+      {/* Withdrawal requests panel */}
+      {withdrawalRequests.length > 0 && (
+        <div className="mb-4">
+          <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2">
+            Withdrawal Requests
+            <span className="ml-2 bg-amber-500 text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded-full">{withdrawalRequests.length}</span>
+          </p>
+          <div className="space-y-2">
+            {withdrawalRequests.map(req => {
+              const cl     = req.aso_clients || {};
+              const isProc = processingId === req.id;
+              const feeLabel = req.fee_type === "registration_fee" ? "Reg fee" : `${req.withdrawal_fee_percent || ""}% fee`;
+              return (
+                <div key={req.id} className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 border border-amber-200 dark:border-amber-800/60 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center flex-shrink-0">
+                      <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-amber-600 dark:text-amber-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                        <path d="M12 19V5M5 12l7 7 7-7" />
+                      </svg>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-extrabold text-slate-800 dark:text-white truncate">{cl.full_name || "—"}</p>
+                      <p className="text-[10px] text-slate-400 font-mono">{cl.membership_number || ""}</p>
+                      <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                        <span className="text-xs font-bold text-amber-700 dark:text-amber-300">
+                          Requests {fmt(req.amount)}
+                        </span>
+                        {req.fee_amount > 0 && (
+                          <span className="text-[10px] text-slate-400">
+                            − {fmt(req.fee_amount)} {feeLabel} = <strong className="text-green-600 dark:text-green-400">{fmt(req.net_amount)}</strong>
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-slate-400 mt-0.5">{req.requested_at?.slice(0, 10)}</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 mt-3">
+                    <button
+                      onClick={() => handleApproveRequest(req)}
+                      disabled={isProc}
+                      className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold text-xs transition active:scale-[0.99] disabled:opacity-50">
+                      {isProc ? "…" : "Approve"}
+                    </button>
+                    <button
+                      onClick={() => handleRejectRequest(req)}
+                      disabled={isProc}
+                      className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-700 hover:bg-red-50 dark:hover:bg-red-900/20 text-slate-600 dark:text-slate-300 hover:text-red-600 dark:hover:text-red-400 rounded-xl font-bold text-xs transition active:scale-[0.99] disabled:opacity-50 border border-slate-200 dark:border-slate-600">
+                      {isProc ? "…" : "Reject"}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Overdue alert */}
       {overdueList.length > 0 && (
@@ -936,8 +1087,13 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             onClick={() => {
               if (!amt) return;
               const a = parseFloat(amt);
-              if (action === "contribute") asoContribute(selected.id, a);
-              else asoWithdraw(selected.id, a);
+              if (action === "contribute") {
+                asoContribute(selected.id, a);
+                speakConfirmation("ajoDeposit", getLang());
+              } else {
+                asoWithdraw(selected.id, a);
+                speakConfirmation("ajoWithdraw", getLang());
+              }
               setSelected(null); setAction(null); setAmt("");
             }}
             className={`w-full py-3.5 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] shadow-sm ${

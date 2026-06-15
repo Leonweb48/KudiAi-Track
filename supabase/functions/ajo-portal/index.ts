@@ -14,11 +14,12 @@ function json(data: unknown, status = 200) {
 }
 
 const CLIENT_SELECT = `
-  id, full_name, email, phone, profile_image_url, owner_id, staff_id,
+  id, full_name, email, phone, profile_image_url, owner_id, user_id, staff_id,
   current_balance, total_saved, total_withdrawn,
   next_contribution_date, contribution_frequency, contribution_amount,
   registration_date, membership_number, portal_active, status,
-  address, state, lga, ward, notes
+  address, state, lga, ward, notes,
+  registration_charge, withdrawal_fee_percent
 `;
 
 serve(async (req) => {
@@ -52,6 +53,28 @@ serve(async (req) => {
       if (!client.portal_active) {
         return json({ error: "Portal access is disabled. Contact your savings agent." }, 403);
       }
+
+      // On first login (no last_login_at set yet), fire welcome email
+      const { data: loginCheck } = await sb
+        .from("aso_clients")
+        .select("last_login_at")
+        .eq("id", client.id)
+        .maybeSingle();
+      const isFirstLogin = !loginCheck?.last_login_at;
+
+      // Update last_login_at
+      await sb.from("aso_clients")
+        .update({ last_login_at: new Date().toISOString() })
+        .eq("id", client.id);
+
+      if (isFirstLogin && client.email) {
+        fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+          body: JSON.stringify({ event: "ajo_client_first_login", data: { name: client.full_name || "", email: client.email } }),
+        }).catch(() => null);
+      }
+
       return json({ client });
     }
 
@@ -62,7 +85,7 @@ serve(async (req) => {
         .from("aso_clients")
         .select(CLIENT_SELECT)
         .eq("id", client_id)
-        .eq("owner_id", owner_id)
+        .or(`user_id.eq.${owner_id},owner_id.eq.${owner_id}`)
         .maybeSingle();
       if (!client) return json({ error: "Client not found" }, 404);
       return json({ client });
@@ -70,12 +93,11 @@ serve(async (req) => {
 
     // ── Contribution history ───────────────────────────────────────
     if (action === "get-contributions") {
-      const { client_id, owner_id } = body as { client_id: string; owner_id: string };
+      const { client_id } = body as { client_id: string };
       const { data } = await sb
         .from("ajo_contributions")
         .select("*")
         .eq("aso_client_id", client_id)
-        .eq("owner_id", owner_id)
         .order("created_at", { ascending: false })
         .limit(100);
       return json({ contributions: data || [] });
@@ -145,7 +167,209 @@ serve(async (req) => {
         .select(CLIENT_SELECT)
         .single();
 
+      // Fire contribution email notifications
+      const { data: clientFull } = await sb
+        .from("aso_clients")
+        .select("full_name, email, user_id, staff_id")
+        .eq("id", client_id)
+        .maybeSingle();
+
+      if (clientFull) {
+        const emailData: Record<string, string | number> = {
+          client_name: clientFull.full_name || "",
+          client_email: clientFull.email || "",
+          amount,
+          date: new Date().toLocaleDateString("en-NG"),
+          balance: (cl.current_balance || 0) + amount,
+        };
+        if (clientFull.staff_id) {
+          const { data: staffRow } = await sb
+            .from("staff").select("email").eq("id", clientFull.staff_id).maybeSingle();
+          if (staffRow?.email) emailData.staff_email = staffRow.email;
+        }
+        const { data: owner } = await sb
+          .from("profiles").select("email").eq("id", owner_id).maybeSingle();
+        if (owner?.email) emailData.owner_email = owner.email;
+
+        fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+          body: JSON.stringify({ event: "ajo_contribution", data: emailData }),
+        }).catch(() => null);
+      }
+
       return json({ client: updated });
+    }
+
+    // ── Client requests a withdrawal ─────────────────────────────
+    if (action === "request-withdrawal") {
+      const { client_id, owner_id, amount } = body as { client_id: string; owner_id: string; amount: number };
+      if (!client_id || !owner_id || !amount || amount <= 0) return json({ error: "client_id, owner_id and amount are required" }, 400);
+
+      const { data: cl } = await sb.from("aso_clients")
+        .select("full_name, email, user_id, current_balance, total_withdrawn, registration_charge, withdrawal_fee_percent")
+        .eq("id", client_id)
+        .or(`user_id.eq.${owner_id},owner_id.eq.${owner_id}`)
+        .maybeSingle();
+
+      if (!cl) return json({ error: "Client not found" }, 404);
+      if (amount > (cl.current_balance || 0)) return json({ error: "Insufficient balance" }, 400);
+
+      // First withdrawal uses flat registration_charge; subsequent use withdrawal_fee_percent
+      const isFirst    = (cl.total_withdrawn || 0) === 0;
+      const feeType    = isFirst ? "registration_fee" : "withdrawal_fee";
+      const feeAmount  = isFirst
+        ? (cl.registration_charge || 0)
+        : (amount * (cl.withdrawal_fee_percent || 0)) / 100;
+      const netAmount  = amount - feeAmount;
+
+      if (netAmount <= 0) return json({ error: "Amount too small after fee deduction" }, 400);
+
+      const resolvedOwnerId = cl.user_id || owner_id;
+
+      const { data: request, error: reqErr } = await sb.from("ajo_withdrawal_requests").insert({
+        aso_client_id: client_id,
+        owner_id: resolvedOwnerId,
+        amount,
+        fee_type:   feeType,
+        fee_amount: feeAmount,
+        net_amount: netAmount,
+        status:     "pending",
+      }).select().single();
+
+      if (reqErr) return json({ error: reqErr.message }, 500);
+
+      const { data: owner } = await sb.from("profiles")
+        .select("email, business_name").eq("id", resolvedOwnerId).maybeSingle();
+
+      fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+        body: JSON.stringify({
+          event: "ajo_withdrawal_request",
+          data: {
+            client_name:   cl.full_name || "",
+            client_email:  cl.email     || "",
+            owner_email:   owner?.email  || "",
+            business_name: owner?.business_name || "",
+            amount,
+            fee_type:   feeType,
+            fee_amount: feeAmount,
+            net_amount: netAmount,
+            date: new Date().toLocaleDateString("en-NG"),
+          },
+        }),
+      }).catch(() => null);
+
+      return json({ request });
+    }
+
+    // ── Client: fetch their own withdrawal requests ───────────────
+    if (action === "get-withdrawal-requests") {
+      const { client_id, owner_id } = body as { client_id: string; owner_id: string };
+      const { data } = await sb.from("ajo_withdrawal_requests")
+        .select("*")
+        .eq("aso_client_id", client_id)
+        .eq("owner_id", owner_id)
+        .order("requested_at", { ascending: false })
+        .limit(20);
+      return json({ requests: data || [] });
+    }
+
+    // ── Business: fetch all pending requests ──────────────────────
+    if (action === "get-pending-requests") {
+      const { owner_id } = body as { owner_id: string };
+      const { data } = await sb.from("ajo_withdrawal_requests")
+        .select("*, aso_clients(full_name, email, current_balance, membership_number)")
+        .eq("owner_id", owner_id)
+        .eq("status", "pending")
+        .order("requested_at", { ascending: false });
+      return json({ requests: data || [] });
+    }
+
+    // ── Business: approve a withdrawal request ────────────────────
+    if (action === "approve-withdrawal") {
+      const { request_id, owner_id } = body as { request_id: string; owner_id: string };
+      if (!request_id || !owner_id) return json({ error: "request_id and owner_id required" }, 400);
+
+      const { data: req } = await sb.from("ajo_withdrawal_requests")
+        .select("*")
+        .eq("id", request_id)
+        .eq("owner_id", owner_id)
+        .eq("status", "pending")
+        .maybeSingle();
+
+      if (!req) return json({ error: "Request not found or already processed" }, 404);
+
+      const { data: cl } = await sb.from("aso_clients")
+        .select("full_name, email, current_balance, total_withdrawn")
+        .eq("id", req.aso_client_id)
+        .maybeSingle();
+
+      if (!cl) return json({ error: "Client not found" }, 404);
+      if ((cl.current_balance || 0) < req.amount) return json({ error: "Insufficient client balance" }, 400);
+
+      await sb.from("ajo_withdrawal_requests")
+        .update({ status: "approved", approved_at: new Date().toISOString() })
+        .eq("id", request_id);
+
+      await sb.from("ajo_contributions").insert({
+        aso_client_id:  req.aso_client_id,
+        owner_id,
+        amount:         req.net_amount,
+        type:           "withdrawal",
+        payment_method: "cash",
+        status:         "completed",
+        notes:          `Approved withdrawal. Gross: ₦${req.amount}, Fee (${req.fee_type}): ₦${req.fee_amount}`,
+      });
+
+      const newBalance  = (cl.current_balance  || 0) - req.amount;
+      const newWithdrawn = (cl.total_withdrawn || 0) + req.amount;
+      await sb.from("aso_clients")
+        .update({ current_balance: newBalance, total_withdrawn: newWithdrawn })
+        .eq("id", req.aso_client_id);
+
+      const { data: owner } = await sb.from("profiles")
+        .select("email, business_name").eq("id", owner_id).maybeSingle();
+
+      fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+        body: JSON.stringify({
+          event: "ajo_withdrawal_approved",
+          data: {
+            client_name:   cl.full_name || "",
+            client_email:  cl.email     || "",
+            owner_email:   owner?.email  || "",
+            business_name: owner?.business_name || "",
+            amount:        req.amount,
+            fee_type:      req.fee_type,
+            fee_amount:    req.fee_amount,
+            net_amount:    req.net_amount,
+            balance_after: newBalance,
+            date: new Date().toLocaleDateString("en-NG"),
+          },
+        }),
+      }).catch(() => null);
+
+      return json({ success: true });
+    }
+
+    // ── Business: reject a withdrawal request ─────────────────────
+    if (action === "reject-withdrawal") {
+      const { request_id, owner_id } = body as { request_id: string; owner_id: string };
+      if (!request_id || !owner_id) return json({ error: "request_id and owner_id required" }, 400);
+
+      const { data: req } = await sb.from("ajo_withdrawal_requests")
+        .select("id").eq("id", request_id).eq("owner_id", owner_id).eq("status", "pending").maybeSingle();
+
+      if (!req) return json({ error: "Request not found or already processed" }, 404);
+
+      await sb.from("ajo_withdrawal_requests")
+        .update({ status: "rejected", approved_at: new Date().toISOString() })
+        .eq("id", request_id);
+
+      return json({ success: true });
     }
 
     // ── Change PIN ────────────────────────────────────────────────

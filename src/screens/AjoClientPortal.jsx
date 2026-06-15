@@ -1,5 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
-import { usePaystackPayment } from "react-paystack";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../utils/supabase";
 import { peyflex } from "../utils/peyflex";
 import { fmt } from "../utils/helpers";
@@ -530,79 +529,125 @@ function ChangePasswordModal({ onClose }) {
   );
 }
 
-// ── Paystack button ───────────────────────────────────────────────────────
-function PaystackPayBtn({ amount, email, referenceId, onSuccess, onClose, disabled }) {
-  const config = {
-    reference: referenceId,
-    email:     email || "client@kuditrack.app",
-    amount:    Math.round(amount * 100),
-    publicKey: process.env.REACT_APP_PAYSTACK_PUBLIC_KEY || "",
-    currency:  "NGN",
-    channels:  ["card", "bank", "ussd", "mobile_money", "bank_transfer"],
+// ── Withdrawal request modal ──────────────────────────────────────────────
+function WithdrawRequestModal({ client, onClose, onSuccess }) {
+  const [amount,  setAmount]  = useState("");
+  const [saving,  setSaving]  = useState(false);
+  const [error,   setError]   = useState("");
+  const [done,    setDone]    = useState(false);
+
+  const isFirst  = (client.total_withdrawn || 0) === 0;
+  const regFee   = client.registration_charge || 0;
+  const pctFee   = client.withdrawal_fee_percent || 0;
+  const amtNum   = parseFloat(amount) || 0;
+  const feeAmt   = isFirst ? regFee : (amtNum * pctFee / 100);
+  const netAmt   = amtNum - feeAmt;
+
+  const handleSubmit = async () => {
+    if (!amtNum || amtNum <= 0)                   { setError("Enter a valid amount"); return; }
+    if (amtNum > (client.current_balance || 0))   { setError("Amount exceeds your balance"); return; }
+    if (netAmt <= 0)                              { setError("Amount too small after fee deduction"); return; }
+    setSaving(true); setError("");
+    try {
+      await ajoFn("request-withdrawal", {
+        client_id: client.id,
+        owner_id:  client.user_id || client.owner_id,
+        amount:    amtNum,
+      });
+      setDone(true);
+      onSuccess();
+    } catch (e) {
+      setError(e.message || "Failed to submit request");
+    } finally {
+      setSaving(false);
+    }
   };
-  const initializePayment = usePaystackPayment(config);
-
-  if (!process.env.REACT_APP_PAYSTACK_PUBLIC_KEY) {
-    return (
-      <div className="text-[11px] text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-3 py-2.5 text-center">
-        Online payment not configured. Contact your savings agent.
-      </div>
-    );
-  }
-
-  return (
-    <button onClick={() => initializePayment(onSuccess, onClose)} disabled={disabled || amount <= 0}
-      className="w-full py-3.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] disabled:opacity-50 shadow-sm flex items-center justify-center gap-2">
-      <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-        <rect x="1" y="4" width="22" height="16" rx="2" /><line x1="1" y1="10" x2="23" y2="10" />
-      </svg>
-      Pay {amount > 0 ? fmt(amount) : ""} via Paystack
-    </button>
-  );
-}
-
-// ── Contribute modal ──────────────────────────────────────────────────────
-function ContributeModal({ client, onSuccess, onClose }) {
-  const [amount, setAmount] = useState(String(client.contribution_amount || ""));
-  const refId = useRef(`KDT-AJO-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`);
-
-  // Pass amount + ref up immediately; parent owns recording + state update
-  const handlePaystackSuccess = useCallback((transaction) => {
-    onSuccess(parseFloat(amount) || 0, transaction?.reference || refId.current);
-  }, [amount, onSuccess]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handlePaystackClose = useCallback(() => {}, []);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-end justify-center" onClick={onClose}>
       <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-t-3xl px-5 py-6 shadow-2xl" onClick={e => e.stopPropagation()}>
         <div className="w-10 h-1 bg-slate-300 dark:bg-slate-600 rounded-full mx-auto mb-5" />
-        <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-0.5">Make Contribution</h3>
-        <p className="text-xs text-slate-400 mb-4 capitalize">
-          Suggested: {fmt(client.contribution_amount || 0)} · {client.contribution_frequency}
-        </p>
-        <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Amount (₦)</label>
-        <input type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder="Enter amount"
-          className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 mb-4" />
-        <div className="grid grid-cols-4 gap-1.5 mb-4">
-          {["💳 Card", "🏦 Bank", "#️⃣ USSD", "📱 Mobile"].map(m => (
-            <div key={m} className="bg-slate-50 dark:bg-slate-700 rounded-xl py-2 text-center text-[10px] text-slate-500 dark:text-slate-400 font-medium">{m}</div>
-          ))}
-        </div>
-        <PaystackPayBtn
-          amount={parseFloat(amount) || 0}
-          email={client.email}
-          referenceId={refId.current}
-          onSuccess={handlePaystackSuccess}
-          onClose={handlePaystackClose}
-        />
+        {done ? (
+          <div className="text-center py-4">
+            <div className="w-14 h-14 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-3">
+              <svg viewBox="0 0 24 24" fill="none" className="w-7 h-7 text-green-600 dark:text-green-400" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+                <path d="M20 6L9 17l-5-5" />
+              </svg>
+            </div>
+            <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">Request Submitted!</h3>
+            <p className="text-xs text-slate-400 dark:text-slate-500">You'll be notified by email once your request is reviewed.</p>
+            <button onClick={onClose} className="mt-5 w-full py-3.5 bg-violet-600 text-white rounded-xl font-bold text-sm">
+              Close
+            </button>
+          </div>
+        ) : (
+          <>
+            <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-0.5">Request Withdrawal</h3>
+            <p className="text-xs text-slate-400 dark:text-slate-500 mb-4">
+              Balance: <strong className="text-slate-600 dark:text-slate-300">{fmt(client.current_balance || 0)}</strong>
+            </p>
+
+            {isFirst && regFee > 0 && (
+              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl px-3 py-2 mb-3">
+                <p className="text-xs text-blue-700 dark:text-blue-300 font-semibold">
+                  First withdrawal — Registration fee: {fmt(regFee)} will be deducted
+                </p>
+              </div>
+            )}
+            {!isFirst && pctFee > 0 && (
+              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-3 py-2 mb-3">
+                <p className="text-xs text-amber-700 dark:text-amber-300 font-semibold">
+                  Withdrawal fee: {pctFee}% will be deducted
+                </p>
+              </div>
+            )}
+
+            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Amount (₦)</label>
+            <input
+              type="number" inputMode="decimal"
+              value={amount} onChange={e => setAmount(e.target.value)}
+              placeholder="Enter amount"
+              className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 mb-3"
+            />
+
+            {amtNum > 0 && (
+              <div className="bg-slate-50 dark:bg-slate-700/60 rounded-xl px-4 py-3 mb-3 space-y-1.5 border border-slate-100 dark:border-slate-600">
+                <div className="flex justify-between text-xs">
+                  <span className="text-slate-500 dark:text-slate-400">Requested</span>
+                  <span className="font-bold text-slate-700 dark:text-slate-200">{fmt(amtNum)}</span>
+                </div>
+                {feeAmt > 0 && (
+                  <div className="flex justify-between text-xs">
+                    <span className="text-slate-500 dark:text-slate-400">
+                      {isFirst ? "Registration fee" : `Fee (${pctFee}%)`}
+                    </span>
+                    <span className="font-bold text-red-500">−{fmt(feeAmt)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-xs border-t border-slate-200 dark:border-slate-600 pt-1.5">
+                  <span className="font-bold text-slate-600 dark:text-slate-300">You receive</span>
+                  <span className="font-extrabold text-green-600 dark:text-green-400">{fmt(Math.max(0, netAmt))}</span>
+                </div>
+              </div>
+            )}
+
+            {error && <p className="text-xs text-red-500 mb-3">{error}</p>}
+
+            <button
+              onClick={handleSubmit}
+              disabled={saving || !amtNum || amtNum <= 0}
+              className="w-full py-3.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] disabled:opacity-50 shadow-sm">
+              {saving ? "Submitting…" : "Submit Request"}
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
 }
 
 // ── Overview tab ──────────────────────────────────────────────────────────
-function OverviewTab({ client, contributions, onPayClick, ownerInfo }) {
+function OverviewTab({ client, contributions, onWithdrawClick, ownerInfo, withdrawRequests = [] }) {
   const totalThisMonth = contributions
     .filter(c => c.type === "contribution" && (c.created_at || "").startsWith(new Date().toISOString().slice(0, 7)))
     .reduce((s, c) => s + (c.amount || 0), 0);
@@ -668,10 +713,6 @@ function OverviewTab({ client, contributions, onPayClick, ownerInfo }) {
               {client.contribution_frequency} · {fmt(client.contribution_amount)} · {client.next_contribution_date}
             </p>
           </div>
-          <button onClick={onPayClick}
-            className="flex-shrink-0 px-3 py-1.5 bg-violet-600 text-white rounded-xl text-xs font-bold active:scale-95 transition">
-            Pay
-          </button>
         </div>
       )}
 
@@ -695,14 +736,63 @@ function OverviewTab({ client, contributions, onPayClick, ownerInfo }) {
         </div>
       )}
 
-      {/* Contribute button */}
-      <button onClick={onPayClick}
+      {/* Fee info card */}
+      {((client.registration_charge > 0) || (client.withdrawal_fee_percent > 0)) && (
+        <div className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3 border border-slate-100 dark:border-slate-700 flex items-center gap-3 shadow-sm">
+          <div className="w-9 h-9 rounded-xl bg-violet-50 dark:bg-violet-900/30 flex items-center justify-center flex-shrink-0">
+            <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-violet-500" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+              <circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/>
+            </svg>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Withdrawal Fees</p>
+            {(client.total_withdrawn || 0) === 0 && client.registration_charge > 0 ? (
+              <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                First withdrawal: <span className="text-violet-600 dark:text-violet-400 font-bold">{fmt(client.registration_charge)} registration fee</span>
+              </p>
+            ) : client.withdrawal_fee_percent > 0 ? (
+              <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                Withdrawal fee: <span className="text-violet-600 dark:text-violet-400 font-bold">{client.withdrawal_fee_percent}% of amount</span>
+              </p>
+            ) : null}
+          </div>
+        </div>
+      )}
+
+      {/* Withdrawal request button */}
+      <button onClick={onWithdrawClick}
         className="w-full py-4 bg-violet-600 hover:bg-violet-700 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] shadow-md flex items-center justify-center gap-2">
         <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-          <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="16" /><line x1="8" y1="12" x2="16" y2="12" />
+          <path d="M12 19V5M5 12l7 7 7-7" />
         </svg>
-        Make Contribution
+        Request Withdrawal
       </button>
+
+      {/* Pending withdrawal requests */}
+      {withdrawRequests.filter(r => r.status === "pending").length > 0 && (
+        <div>
+          <p className="text-[12px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Pending Requests</p>
+          <div className="space-y-2">
+            {withdrawRequests.filter(r => r.status === "pending").map(r => (
+              <div key={r.id} className="bg-amber-50 dark:bg-amber-900/20 rounded-xl px-3 py-3 border border-amber-200 dark:border-amber-800/60 flex items-center gap-3">
+                <div className="w-8 h-8 bg-amber-100 dark:bg-amber-900/40 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-amber-500" stroke="currentColor" strokeWidth={2}>
+                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold text-amber-700 dark:text-amber-300">Pending Review</p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">{r.requested_at?.slice(0, 10)}</p>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <p className="text-xs font-extrabold text-amber-600 dark:text-amber-400">{fmt(r.amount)}</p>
+                  <p className="text-[10px] text-green-600 dark:text-green-400">→ {fmt(r.net_amount)}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Activity calendar */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-4 border border-slate-100 dark:border-slate-700">
@@ -737,8 +827,21 @@ function OverviewTab({ client, contributions, onPayClick, ownerInfo }) {
 }
 
 // ── History tab ───────────────────────────────────────────────────────────
-function HistoryTab({ contributions }) {
-  if (!contributions.length) {
+function HistoryTab({ contributions, withdrawRequests = [] }) {
+  const withdrawItems = withdrawRequests.map(r => ({
+    _type: "withdrawal_request",
+    id: r.id,
+    amount: r.amount,
+    net_amount: r.net_amount,
+    fee_amount: r.fee_amount,
+    fee_type: r.fee_type,
+    status: r.status,
+    date: r.requested_at,
+  }));
+  const contribItems = contributions.map(c => ({ _type: "contribution", ...c, date: c.created_at }));
+  const allItems = [...withdrawItems, ...contribItems].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  if (!allItems.length) {
     return (
       <div className="flex flex-col items-center justify-center py-20 px-4 text-center">
         <div className="w-16 h-16 bg-violet-50 dark:bg-violet-900/20 rounded-full flex items-center justify-center mb-4">
@@ -747,39 +850,66 @@ function HistoryTab({ contributions }) {
           </svg>
         </div>
         <p className="text-slate-500 dark:text-slate-400 text-sm font-semibold">No history yet</p>
-        <p className="text-slate-400 text-xs mt-1">Your contributions will appear here</p>
+        <p className="text-slate-400 text-xs mt-1">Your contributions and withdrawal requests will appear here</p>
       </div>
     );
   }
+
+  const statusCls = (s) => {
+    if (s === "completed" || s === "approved") return "bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400";
+    if (s === "rejected") return "bg-red-50 dark:bg-red-900/20 text-red-500";
+    return "bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400";
+  };
+
   return (
     <div className="px-4 pt-5 pb-28 space-y-2">
-      {contributions.map(c => (
-        <div key={c.id} className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3 border border-slate-100 dark:border-slate-700">
+      {allItems.map(item => item._type === "withdrawal_request" ? (
+        <div key={`wr-${item.id}`} className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3 border border-slate-100 dark:border-slate-700">
           <div className="flex items-start gap-3">
-            <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${c.type === "contribution" ? "bg-green-50 dark:bg-green-900/20" : "bg-red-50 dark:bg-red-900/20"}`}>
-              <svg viewBox="0 0 24 24" fill="none" className={`w-4 h-4 ${c.type === "contribution" ? "text-green-600 dark:text-green-400" : "text-red-500"}`}
-                stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-                {c.type === "contribution" ? <><path d="M12 5v14M5 12l7-7 7 7" /></> : <><path d="M12 19V5M5 12l7 7 7-7" /></>}
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-violet-50 dark:bg-violet-900/20">
+              <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-violet-500" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                <path d="M12 19V5M5 12l7 7 7-7"/>
               </svg>
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between gap-2">
-                <span className={`text-sm font-extrabold tabular ${c.type === "contribution" ? "text-green-600 dark:text-green-400" : "text-red-500"}`}>
-                  {c.type === "contribution" ? "+" : "−"}{fmt(c.amount)}
-                </span>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize flex-shrink-0 ${
-                  c.status === "completed" ? "bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400"
-                  : "bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400"
-                }`}>{c.status}</span>
+                <span className="text-sm font-extrabold tabular text-violet-600 dark:text-violet-400">−{fmt(item.amount)}</span>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize flex-shrink-0 ${statusCls(item.status)}`}>{item.status}</span>
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 capitalize">
-                {c.type} · {c.payment_method || "cash"}
-                {c.paystack_ref && ` · Ref: ${c.paystack_ref.slice(-8)}`}
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Withdrawal request · Net: {fmt(item.net_amount)}
+                {item.fee_amount > 0 && ` · Fee: ${fmt(item.fee_amount)}`}
               </p>
               <p className="text-[10px] text-slate-400 mt-0.5">
-                {new Date(c.created_at).toLocaleString("en-NG", { dateStyle: "medium", timeStyle: "short" })}
+                {new Date(item.date).toLocaleString("en-NG", { dateStyle: "medium", timeStyle: "short" })}
               </p>
-              {c.notes && <p className="text-[10px] text-slate-400 italic mt-0.5">"{c.notes}"</p>}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div key={`c-${item.id}`} className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3 border border-slate-100 dark:border-slate-700">
+          <div className="flex items-start gap-3">
+            <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${item.type === "contribution" ? "bg-green-50 dark:bg-green-900/20" : "bg-red-50 dark:bg-red-900/20"}`}>
+              <svg viewBox="0 0 24 24" fill="none" className={`w-4 h-4 ${item.type === "contribution" ? "text-green-600 dark:text-green-400" : "text-red-500"}`}
+                stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                {item.type === "contribution" ? <><path d="M12 5v14M5 12l7-7 7 7" /></> : <><path d="M12 19V5M5 12l7 7 7-7" /></>}
+              </svg>
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-2">
+                <span className={`text-sm font-extrabold tabular ${item.type === "contribution" ? "text-green-600 dark:text-green-400" : "text-red-500"}`}>
+                  {item.type === "contribution" ? "+" : "−"}{fmt(item.amount)}
+                </span>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize flex-shrink-0 ${statusCls(item.status)}`}>{item.status}</span>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 capitalize">
+                {item.type} · {item.payment_method || "cash"}
+                {item.paystack_ref && ` · Ref: ${item.paystack_ref.slice(-8)}`}
+              </p>
+              <p className="text-[10px] text-slate-400 mt-0.5">
+                {new Date(item.created_at).toLocaleString("en-NG", { dateStyle: "medium", timeStyle: "short" })}
+              </p>
+              {item.notes && <p className="text-[10px] text-slate-400 italic mt-0.5">"{item.notes}"</p>}
             </div>
           </div>
         </div>
@@ -958,14 +1088,15 @@ function ProfileTab({ client, ownerInfo, onChangePwdClick, onLogout, isDark, onT
 
 // ── Main portal ───────────────────────────────────────────────────────────
 export default function AjoClientPortal({ session, ajoClient }) {
-  const [isDark,        setIsDark]        = useState(() => localStorage.getItem("kuditrack_ajo_dark") === "1");
-  const [client,        setClient]        = useState(ajoClient || null);
-  const [contributions, setContributions] = useState([]);
-  const [ownerInfo,     setOwnerInfo]     = useState(null);
-  const [loadingData,   setLoadingData]   = useState(false);
-  const [tab,           setTab]           = useState("overview");
-  const [showPay,       setShowPay]       = useState(false);
-  const [showPwdModal,  setShowPwdModal]  = useState(false);
+  const [isDark,           setIsDark]           = useState(() => localStorage.getItem("kuditrack_ajo_dark") === "1");
+  const [client,           setClient]           = useState(ajoClient || null);
+  const [contributions,    setContributions]    = useState([]);
+  const [ownerInfo,        setOwnerInfo]        = useState(null);
+  const [loadingData,      setLoadingData]      = useState(false);
+  const [tab,              setTab]              = useState("overview");
+  const [showWithdraw,     setShowWithdraw]     = useState(false);
+  const [withdrawRequests, setWithdrawRequests] = useState([]);
+  const [showPwdModal,     setShowPwdModal]     = useState(false);
 
   const mustChange = session?.user?.user_metadata?.must_change_password === true;
 
@@ -977,6 +1108,16 @@ export default function AjoClientPortal({ session, ajoClient }) {
   const toggleDark = useCallback(() => setIsDark(v => !v), []);
   const handleLogout = useCallback(() => supabase.auth.signOut(), []);
 
+  const refreshWithdrawRequests = useCallback(async () => {
+    if (!ajoClient?.id) return;
+    try {
+      const r = await ajoFn("get-withdrawal-requests", { client_id: ajoClient.id, owner_id: ajoClient.owner_id });
+      if (r?.requests) setWithdrawRequests(r.requests);
+    } catch (e) {
+      console.error("Failed to load withdrawal requests:", e);
+    }
+  }, [ajoClient?.id, ajoClient?.owner_id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (mustChange || !ajoClient?.id) return;
     setLoadingData(true);
@@ -984,41 +1125,36 @@ export default function AjoClientPortal({ session, ajoClient }) {
       ajoFn("get-client", { client_id: ajoClient.id, owner_id: ajoClient.owner_id }),
       ajoFn("get-contributions", { client_id: ajoClient.id, owner_id: ajoClient.owner_id }),
       ajoFn("get-owner-info", { owner_id: ajoClient.owner_id, client_id: ajoClient.id }),
+      ajoFn("get-withdrawal-requests", { client_id: ajoClient.id, owner_id: ajoClient.owner_id }),
     ])
-      .then(([clientRes, contribRes, ownerRes]) => {
-        if (clientRes?.client)         setClient(clientRes.client);
+      .then(([clientRes, contribRes, ownerRes, reqRes]) => {
+        if (clientRes?.client) setClient(prev => ({
+          ...clientRes.client,
+          owner_id: clientRes.client.user_id || prev?.owner_id || clientRes.client.owner_id,
+        }));
         if (contribRes?.contributions) setContributions(contribRes.contributions);
         if (ownerRes)                  setOwnerInfo(ownerRes);
+        if (reqRes?.requests)          setWithdrawRequests(reqRes.requests);
       })
       .catch(console.error)
       .finally(() => setLoadingData(false));
   }, [mustChange, ajoClient?.id, ajoClient?.owner_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleContribSuccess = useCallback(async (paid, paystackRef) => {
-    // 1. Close modal + apply optimistic balance update immediately
-    setShowPay(false);
-    setClient(prev => prev ? {
-      ...prev,
-      current_balance: (prev.current_balance || 0) + paid,
-      total_saved:     (prev.total_saved || 0) + paid,
-    } : prev);
+  // ── Realtime: sync balance/contributions from business side ────────────
+  useEffect(() => {
+    if (!ajoClient?.id) return;
 
-    // 2. Record in background, then sync with server values
-    try {
-      const { client: updated } = await ajoFn("record-contribution", {
-        client_id:      ajoClient.id,
-        owner_id:       ajoClient.owner_id,
-        amount:         paid,
-        payment_method: "paystack",
-        paystack_ref:   paystackRef,
-      });
-      if (updated) setClient(updated);
-      const r = await ajoFn("get-contributions", { client_id: ajoClient.id, owner_id: ajoClient.owner_id });
-      if (r?.contributions) setContributions(r.contributions);
-    } catch (err) {
-      console.error("Contribution record failed:", err);
-    }
-  }, [ajoClient?.id, ajoClient?.owner_id]); // eslint-disable-line react-hooks/exhaustive-deps
+    const channel = supabase.channel(`ajo_client_sync_${ajoClient.id}`)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "aso_clients", filter: `id=eq.${ajoClient.id}` },
+        (payload) => { if (payload.new) setClient(prev => ({ ...prev, ...payload.new, owner_id: prev?.owner_id || payload.new.user_id })); })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "ajo_contributions", filter: `aso_client_id=eq.${ajoClient.id}` },
+        (payload) => { if (payload.new) setContributions(prev => [payload.new, ...prev]); })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "ajo_withdrawal_requests", filter: `aso_client_id=eq.${ajoClient.id}` },
+        () => refreshWithdrawRequests())
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [ajoClient?.id, ajoClient?.owner_id, ajoClient?.user_id, refreshWithdrawRequests]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (mustChange) return <AjoClientFirstLogin ajoClient={ajoClient} />;
 
@@ -1060,9 +1196,15 @@ export default function AjoClientPortal({ session, ajoClient }) {
         {/* Tab content */}
         <main className="flex-1 overflow-y-auto pb-20">
           {tab === "overview" && client && (
-            <OverviewTab client={client} contributions={contributions} onPayClick={() => setShowPay(true)} ownerInfo={ownerInfo} />
+            <OverviewTab
+              client={client}
+              contributions={contributions}
+              onWithdrawClick={() => setShowWithdraw(true)}
+              ownerInfo={ownerInfo}
+              withdrawRequests={withdrawRequests}
+            />
           )}
-          {tab === "history" && <HistoryTab contributions={contributions} />}
+          {tab === "history" && <HistoryTab contributions={contributions} withdrawRequests={withdrawRequests} />}
           {tab === "profile" && client && (
             <ProfileTab
               client={client}
@@ -1097,8 +1239,12 @@ export default function AjoClientPortal({ session, ajoClient }) {
         </nav>
       </div>
 
-      {showPay && client && (
-        <ContributeModal client={client} onSuccess={handleContribSuccess} onClose={() => setShowPay(false)} />
+      {showWithdraw && client && (
+        <WithdrawRequestModal
+          client={client}
+          onClose={() => setShowWithdraw(false)}
+          onSuccess={() => { setShowWithdraw(false); refreshWithdrawRequests(); }}
+        />
       )}
       {showPwdModal && (
         <ChangePasswordModal onClose={() => setShowPwdModal(false)} />
