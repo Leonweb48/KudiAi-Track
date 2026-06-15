@@ -337,6 +337,67 @@ serve(async (req) => {
       return json({ success: true });
     }
 
+    // Called by the admin during registration to verify the OTP sent to the member's email.
+    // Sets email_verified: true on the member's auth account so they skip the OTP screen on login.
+    if (action === "verify-member-registration-otp") {
+      const { member_id, otp_code } = body as { member_id: string; otp_code: string };
+      if (!member_id || !otp_code) return json({ error: "member_id and otp_code required" }, 400);
+
+      const { data: member } = await sb.from("org_members")
+        .select("id, user_id, otp_code, otp_expires_at")
+        .eq("id", member_id)
+        .maybeSingle();
+
+      if (!member) return json({ error: "Member not found" }, 404);
+      if (!member.otp_code || member.otp_code !== otp_code.trim()) {
+        return json({ error: "Invalid verification code" }, 400);
+      }
+      if (member.otp_expires_at && new Date() > new Date(member.otp_expires_at)) {
+        return json({ error: "Code has expired. Tap 'Resend' to get a new one." }, 400);
+      }
+
+      await sb.from("org_members").update({ otp_code: null, otp_expires_at: null }).eq("id", member.id);
+
+      if (member.user_id) {
+        const { data: authUser } = await sb.auth.admin.getUserById(member.user_id as string);
+        const existingMeta = authUser?.user?.user_metadata || {};
+        await sb.auth.admin.updateUserById(member.user_id as string, {
+          user_metadata: { ...existingMeta, email_verified: true },
+        });
+      }
+
+      return json({ success: true });
+    }
+
+    // Called by the admin during registration to resend the OTP to the member's email.
+    if (action === "resend-registration-otp") {
+      const { member_id } = body as { member_id: string };
+      if (!member_id) return json({ error: "member_id required" }, 400);
+
+      const { data: member } = await sb.from("org_members")
+        .select("id, email, full_name, org_id")
+        .eq("id", member_id)
+        .maybeSingle();
+      if (!member) return json({ error: "Member not found" }, 404);
+
+      const otp = String(Math.floor(100000 + Math.random() * 900000));
+      const otpExpiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+      await sb.from("org_members").update({ otp_code: otp, otp_expires_at: otpExpiresAt }).eq("id", member.id);
+
+      const { data: orgRow } = await sb.from("organizations").select("name").eq("id", member.org_id).maybeSingle();
+
+      fetch("https://admin.kudiai.app/api/public/email-trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+        body: JSON.stringify({
+          event: "org_member_otp_resend",
+          data: { member_name: member.full_name, member_email: member.email, org_name: orgRow?.name || "", otp_code: otp },
+        }),
+      }).catch(() => null);
+
+      return json({ success: true });
+    }
+
     // Called by the logged-in member to get a fresh OTP sent to their email.
     if (action === "resend-member-otp") {
       const authHeader = req.headers.get("Authorization");

@@ -148,12 +148,17 @@ function OverviewTab({ org, wallet, programs, announcements }) {
 //  MEMBERS TAB
 // ═══════════════════════════════════════════════════
 function MembersTab({ org, members, onRefresh }) {
-  const [showAdd,  setShowAdd]  = useState(false);
-  const [selected, setSelected] = useState(null);
-  const [editing,  setEditing]  = useState(false);
-  const [creds,    setCreds]    = useState(null); // { email, temp_password, name, isReset? }
-  const [search,   setSearch]   = useState("");
-  const [form,     setForm]     = useState({
+  const [addStep,    setAddStep]    = useState(null); // null | "form" | "verify" | "done"
+  const [pendingReg, setPendingReg] = useState(null); // { member_id, email, temp_password, name }
+  const [otpInput,   setOtpInput]   = useState("");
+  const [otpError,   setOtpError]   = useState("");
+  const [verifying,  setVerifying]  = useState(false);
+  const [resending,  setResending]  = useState(false);
+  const [selected,   setSelected]   = useState(null);
+  const [editing,    setEditing]    = useState(false);
+  const [creds,      setCreds]      = useState(null); // { email, temp_password, name, isReset? }
+  const [search,     setSearch]     = useState("");
+  const [form,       setForm]       = useState({
     full_name: "", email: "", phone: "", role: "member",
     gender: "", date_of_birth: "", joined_date: "",
     address: "", occupation: "",
@@ -173,18 +178,44 @@ function MembersTab({ org, members, onRefresh }) {
 
   const EMPTY_FORM = { full_name: "", email: "", phone: "", role: "member", gender: "", date_of_birth: "", joined_date: "", address: "", occupation: "", next_of_kin: "", next_of_kin_phone: "" };
 
+  const closeAddFlow = () => {
+    setAddStep(null); setPendingReg(null);
+    setOtpInput(""); setOtpError(""); setError(""); setForm(EMPTY_FORM);
+  };
+
   const handleAdd = async () => {
     if (!form.full_name.trim()) { setError("Full name required"); return; }
     if (!form.email.trim()) { setError("Email address required"); return; }
     setLoading(true); setError("");
     try {
       const result = await coopFn("add-member", { org_id: org.id, ...form });
-      setShowAdd(false);
+      setPendingReg({ member_id: result.member.id, email: result.member.email, temp_password: result.temp_password, name: result.member.full_name });
       setForm(EMPTY_FORM);
-      setCreds({ email: result.member.email, temp_password: result.temp_password, otp_code: result.member.otp_code || "", name: result.member.full_name });
+      setAddStep("verify");
       onRefresh();
     } catch (e) { setError(e.message || "Failed"); }
     finally { setLoading(false); }
+  };
+
+  const handleVerifyOtp = async () => {
+    if (otpInput.trim().length < 6) { setOtpError("Enter the 6-digit code"); return; }
+    setVerifying(true); setOtpError("");
+    try {
+      await coopFn("verify-member-registration-otp", { member_id: pendingReg.member_id, otp_code: otpInput.trim() });
+      setAddStep("done");
+    } catch (e) { setOtpError(e.message || "Invalid code. Please try again."); }
+    finally { setVerifying(false); }
+  };
+
+  const handleResendOtp = async () => {
+    setResending(true); setOtpError("");
+    try {
+      await coopFn("resend-registration-otp", { member_id: pendingReg.member_id });
+      setOtpError(""); setOtpInput("");
+      // show brief confirmation via a non-error message
+      setOtpError("✓ New code sent to " + pendingReg.email);
+    } catch (e) { setOtpError(e.message || "Could not resend"); }
+    finally { setResending(false); }
   };
 
   const handleEdit = async () => {
@@ -238,7 +269,7 @@ function MembersTab({ org, members, onRefresh }) {
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search members…"
             className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-400" />
         </div>
-        <button onClick={() => setShowAdd(true)} className="px-4 py-2.5 bg-violet-600 text-white rounded-xl text-xs font-bold flex-shrink-0">+ Add</button>
+        <button onClick={() => setAddStep("form")} className="px-4 py-2.5 bg-violet-600 text-white rounded-xl text-xs font-bold flex-shrink-0">+ Add</button>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 pb-24">
@@ -270,11 +301,17 @@ function MembersTab({ org, members, onRefresh }) {
         )}
       </div>
 
-      {/* Add member modal */}
-      {showAdd && (
-        <ModalWrap onClose={() => { setShowAdd(false); setError(""); setForm(EMPTY_FORM); }}>
+      {/* ── Registration wizard (step 1: form, step 2: verify OTP, step 3: done) ── */}
+      {addStep === "form" && (
+        <ModalWrap onClose={closeAddFlow}>
+          {/* Step indicator */}
+          <div className="flex items-center gap-2 mb-4">
+            <div className="flex items-center justify-center w-6 h-6 rounded-full bg-violet-600 text-white text-[10px] font-black">1</div>
+            <div className="flex-1 h-0.5 bg-violet-200 dark:bg-violet-800" />
+            <div className="flex items-center justify-center w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-600 text-slate-400 text-[10px] font-black">2</div>
+          </div>
           <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">Register Member</h3>
-          <p className="text-xs text-slate-400 mb-4">Credentials &amp; a verification code will be emailed to the member</p>
+          <p className="text-xs text-slate-400 mb-4">Fill in the member's details. A verification code will be sent to their email.</p>
           {error && <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-3 text-xs text-red-600">{error}</div>}
           <div className="flex flex-col gap-3">
             {[["Full Name *","full_name","text","John Adeyemi"],
@@ -319,13 +356,103 @@ function MembersTab({ org, members, onRefresh }) {
             </div>
           </div>
           <div className="flex gap-2 mt-5">
-            <button onClick={() => { setShowAdd(false); setError(""); setForm(EMPTY_FORM); }} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Cancel</button>
-            <button onClick={handleAdd} disabled={loading} className="flex-1 py-3 bg-violet-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">{loading ? "Registering…" : "Register Member"}</button>
+            <button onClick={closeAddFlow} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Cancel</button>
+            <button onClick={handleAdd} disabled={loading} className="flex-1 py-3 bg-violet-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">{loading ? "Creating…" : "Continue →"}</button>
           </div>
         </ModalWrap>
       )}
 
-      {/* Credentials modal — shown after registration or password reset */}
+      {addStep === "verify" && pendingReg && (
+        <ModalWrap onClose={closeAddFlow}>
+          {/* Step indicator */}
+          <div className="flex items-center gap-2 mb-4">
+            <div className="flex items-center justify-center w-6 h-6 rounded-full bg-violet-200 dark:bg-violet-800 text-violet-500 text-[10px] font-black">✓</div>
+            <div className="flex-1 h-0.5 bg-violet-600" />
+            <div className="flex items-center justify-center w-6 h-6 rounded-full bg-violet-600 text-white text-[10px] font-black">2</div>
+          </div>
+          <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">Verify Email</h3>
+          <p className="text-xs text-slate-400 mb-4">A 6-digit code was sent to the member's email. Enter it below to complete registration.</p>
+
+          {/* Credentials display */}
+          <div className="bg-violet-50 dark:bg-violet-900/20 rounded-2xl p-4 mb-4">
+            <p className="text-[10px] font-bold text-violet-500 uppercase tracking-wider mb-3">Member Login Credentials</p>
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-xs text-slate-400">Email</span>
+              <span className="text-xs font-bold text-slate-800 dark:text-white break-all text-right max-w-[65%]">{pendingReg.email}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-xs text-slate-400">Temp Password</span>
+              <span className="text-base font-extrabold text-violet-600 font-mono tracking-wider">{pendingReg.temp_password}</span>
+            </div>
+          </div>
+
+          <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-xl px-3 py-2.5 mb-4">
+            <p className="text-[11px] text-amber-700 dark:text-amber-300 font-medium">Share the email and temp password with the member now. After verification, they log in and set their own password.</p>
+          </div>
+
+          {/* OTP input */}
+          <div className="mb-3">
+            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2">6-Digit Verification Code</label>
+            <input
+              type="text" inputMode="numeric" pattern="[0-9]*" maxLength={6}
+              value={otpInput}
+              onChange={e => { setOtpInput(e.target.value.replace(/\D/g, "").slice(0, 6)); setOtpError(""); }}
+              placeholder="000000"
+              className="w-full text-center text-3xl font-mono font-extrabold tracking-[0.5em] py-4 rounded-2xl border-2 border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200 dark:focus:ring-violet-900/40 transition"
+            />
+          </div>
+
+          {otpError && (
+            <div className={`rounded-xl px-3 py-2.5 mb-3 text-xs font-medium ${otpError.startsWith("✓") ? "bg-green-50 border border-green-200 text-green-700" : "bg-red-50 border border-red-200 text-red-600"}`}>
+              {otpError}
+            </div>
+          )}
+
+          <button onClick={handleVerifyOtp} disabled={verifying || otpInput.length < 6}
+            className="w-full py-3.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white font-bold rounded-2xl text-sm transition mb-2">
+            {verifying ? "Verifying…" : "Verify & Complete Registration →"}
+          </button>
+          <button onClick={handleResendOtp} disabled={resending}
+            className="w-full py-2.5 border border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400 rounded-xl font-semibold text-xs disabled:opacity-50">
+            {resending ? "Sending…" : "Resend code to " + pendingReg.email}
+          </button>
+          <button onClick={() => navigator.clipboard?.writeText(`Email: ${pendingReg.email}\nPassword: ${pendingReg.temp_password}`)}
+            className="w-full mt-2 py-2 text-violet-600 dark:text-violet-400 text-xs font-semibold">
+            Copy credentials
+          </button>
+        </ModalWrap>
+      )}
+
+      {addStep === "done" && pendingReg && (
+        <ModalWrap onClose={closeAddFlow}>
+          <div className="text-center py-4">
+            <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8 text-green-600" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+                <path d="M20 6L9 17l-5-5" />
+              </svg>
+            </div>
+            <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">Registration Complete!</h3>
+            <p className="text-xs text-slate-400 mb-5">{pendingReg.name}'s email is verified. They can now log in and will be prompted to set their own password.</p>
+            <div className="bg-slate-50 dark:bg-slate-700/40 rounded-xl p-3 mb-4 text-left">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-xs text-slate-400">Email</span>
+                <span className="text-xs font-bold text-slate-800 dark:text-white">{pendingReg.email}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-slate-400">Temp Password</span>
+                <span className="text-sm font-extrabold text-violet-600 font-mono tracking-wider">{pendingReg.temp_password}</span>
+              </div>
+            </div>
+            <button onClick={() => navigator.clipboard?.writeText(`Email: ${pendingReg.email}\nPassword: ${pendingReg.temp_password}`)}
+              className="w-full py-2.5 border border-violet-200 dark:border-violet-800 text-violet-600 dark:text-violet-400 rounded-xl font-bold text-sm mb-2">
+              Copy Credentials
+            </button>
+            <button onClick={closeAddFlow} className="w-full py-3 bg-violet-600 text-white rounded-xl font-bold text-sm">Done</button>
+          </div>
+        </ModalWrap>
+      )}
+
+      {/* Credentials modal — shown after password reset only */}
       {creds && (
         <ModalWrap onClose={() => setCreds(null)}>
           <div className="text-center">
@@ -334,14 +461,8 @@ function MembersTab({ org, members, onRefresh }) {
                 <path d="M20 6L9 17l-5-5" />
               </svg>
             </div>
-            <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">
-              {creds.isReset ? "Password Reset!" : "Member Registered!"}
-            </h3>
-            <p className="text-xs text-slate-400 mb-5">
-              {creds.isReset
-                ? `Share these new credentials with ${creds.name}`
-                : `Share these credentials with ${creds.name} — they will verify their email and set a new password on first login`}
-            </p>
+            <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">Password Reset!</h3>
+            <p className="text-xs text-slate-400 mb-5">Share these new credentials with {creds.name}</p>
             <div className="bg-violet-50 dark:bg-violet-900/20 rounded-2xl p-4 mb-3 text-left">
               <p className="text-[10px] font-bold text-violet-500 uppercase tracking-wider mb-3">Login Credentials</p>
               <div className="flex justify-between items-center mb-2">
@@ -352,21 +473,8 @@ function MembersTab({ org, members, onRefresh }) {
                 <span className="text-xs text-slate-400">Temp Password</span>
                 <span className="text-base font-extrabold text-violet-600 font-mono tracking-wider">{creds.temp_password}</span>
               </div>
-              {!creds.isReset && creds.otp_code && (
-                <div className="flex justify-between items-center mt-2 pt-2 border-t border-violet-100 dark:border-violet-800/40">
-                  <span className="text-xs text-slate-400">Email OTP Code</span>
-                  <span className="text-base font-extrabold text-amber-600 font-mono tracking-wider">{creds.otp_code}</span>
-                </div>
-              )}
             </div>
-            {!creds.isReset && (
-              <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/40 rounded-xl px-3 py-2.5 mb-3 text-left">
-                <p className="text-[11px] text-blue-700 dark:text-blue-400 font-medium">
-                  Share both the password and the OTP code with the member. They log in with the password, then enter the OTP code to verify their email, then set their own password.
-                </p>
-              </div>
-            )}
-            <button onClick={() => navigator.clipboard?.writeText(`Email: ${creds.email}\nPassword: ${creds.temp_password}${creds.otp_code ? `\nVerification Code: ${creds.otp_code}` : ""}`)}
+            <button onClick={() => navigator.clipboard?.writeText(`Email: ${creds.email}\nPassword: ${creds.temp_password}`)}
               className="w-full py-2.5 border border-violet-200 dark:border-violet-800 text-violet-600 dark:text-violet-400 rounded-xl font-bold text-sm mb-2">
               Copy Credentials
             </button>
