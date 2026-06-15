@@ -19,7 +19,12 @@ const BLANK = {
   phone: "", email: "", nin: "",
   address: "", state: "", lga: "", ward: "",
   next_of_kin: "", next_of_kin_phone: "", next_of_kin_email: "", next_of_kin_address: "",
-  staff_id: "",
+  staff_id: "", ajo_group_id: "",
+};
+
+const BLANK_GROUP = {
+  name: "", description: "", contribution_amount: "", contribution_frequency: "monthly",
+  bank_code: "", account_number: "", account_name: "",
 };
 
 const FREQ_DAYS = { daily: 1, weekly: 7, monthly: 30 };
@@ -127,6 +132,20 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [withdrawalRequests, setWithdrawalRequests] = useState([]);
   const [processingId,       setProcessingId]       = useState(null);
 
+  // Ajo Groups management
+  const [showGroups,     setShowGroups]     = useState(false);
+  const [groups,         setGroups]         = useState([]);
+  const [groupsLoading,  setGroupsLoading]  = useState(false);
+  const [showGroupAdd,   setShowGroupAdd]   = useState(false);
+  const [gf,             setGf]             = useState(BLANK_GROUP);
+  const setG = (k, v) => setGf(p => ({ ...p, [k]: v }));
+  const [groupSaving,    setGroupSaving]    = useState(false);
+  const [groupError,     setGroupError]     = useState("");
+  const [resolving,      setResolving]      = useState(false);
+  const [resolvedName,   setResolvedName]   = useState("");
+  const [subAcctCreating, setSubAcctCreating] = useState(null); // group id
+  const [subAcctMsg,     setSubAcctMsg]     = useState("");
+
   const [f, setF] = useState(BLANK);
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
 
@@ -151,9 +170,124 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     setWithdrawalRequests(data || []);
   };
 
+  const loadGroups = async () => {
+    if (!profile?.id) return;
+    setGroupsLoading(true);
+    try {
+      const { data: grps } = await supabase
+        .from("ajo_groups")
+        .select("*")
+        .eq("owner_id", profile.id)
+        .order("created_at", { ascending: true });
+      setGroups(grps || []);
+    } catch (e) {
+      console.error("loadGroups:", e);
+    } finally {
+      setGroupsLoading(false);
+    }
+  };
+
+  const resolveAccount = async () => {
+    if (!gf.account_number || !gf.bank_code) { setGroupError("Enter bank code and account number first"); return; }
+    setResolving(true); setGroupError(""); setResolvedName("");
+    try {
+      const { data, error } = await supabase.functions.invoke("paystack", {
+        body: { action: "resolve-account", account_number: gf.account_number, bank_code: gf.bank_code },
+      });
+      if (error || !data?.status) throw new Error(data?.message || "Could not verify account");
+      setResolvedName(data.data?.account_name || "");
+      setG("account_name", data.data?.account_name || "");
+    } catch (e) {
+      setGroupError(e.message || "Account verification failed");
+    } finally {
+      setResolving(false);
+    }
+  };
+
+  const saveGroup = async () => {
+    if (!gf.name) { setGroupError("Group name is required"); return; }
+    if (!profile?.id) return;
+    setGroupSaving(true); setGroupError("");
+    try {
+      const { data, error } = await supabase.functions.invoke("ajo-portal", {
+        body: {
+          action: "create-group",
+          owner_id: profile.id,
+          name: gf.name.trim(),
+          description: gf.description || null,
+          contribution_amount: gf.contribution_amount ? Number(gf.contribution_amount) : null,
+          contribution_frequency: gf.contribution_frequency || "monthly",
+          bank_code: gf.bank_code || null,
+          account_number: gf.account_number || null,
+          account_name: gf.account_name || null,
+        },
+      });
+      if (error || data?.error) throw new Error(data?.error || error?.message || "Failed to create group");
+      const newGroup = data.group;
+      // Auto-create Paystack subaccount if bank details provided
+      if (gf.bank_code && gf.account_number && newGroup?.id) {
+        try {
+          const { data: sData } = await supabase.functions.invoke("paystack", {
+            body: {
+              action: "create-subaccount",
+              group_id: newGroup.id,
+              business_name: profile.business_name || gf.name,
+              bank_code: gf.bank_code,
+              account_number: gf.account_number,
+              percentage_charge: 100,
+            },
+          });
+          if (sData?.subaccount_code) {
+            newGroup.paystack_subaccount_code = sData.subaccount_code;
+          }
+        } catch (subErr) {
+          console.error("Subaccount creation failed (group saved):", subErr);
+        }
+      }
+      setGroups(prev => [...prev, newGroup]);
+      setShowGroupAdd(false);
+      setGf(BLANK_GROUP);
+      setResolvedName("");
+    } catch (e) {
+      setGroupError(e.message || "Failed to save group");
+    } finally {
+      setGroupSaving(false);
+    }
+  };
+
+  const createSubaccount = async (grp) => {
+    if (!grp.bank_code || !grp.account_number) {
+      setSubAcctMsg("Add bank details to this group first by editing it.");
+      return;
+    }
+    setSubAcctCreating(grp.id); setSubAcctMsg("");
+    try {
+      const { data, error } = await supabase.functions.invoke("paystack", {
+        body: {
+          action: "create-subaccount",
+          group_id: grp.id,
+          business_name: profile?.business_name || grp.name,
+          bank_code: grp.bank_code,
+          account_number: grp.account_number,
+          percentage_charge: 100,
+        },
+      });
+      if (error || !data?.subaccount_code) throw new Error(data?.error || "Failed to create subaccount");
+      setGroups(prev => prev.map(g => g.id === grp.id
+        ? { ...g, paystack_subaccount_code: data.subaccount_code }
+        : g));
+      setSubAcctMsg(`Subaccount created: ${data.subaccount_code}`);
+    } catch (e) {
+      setSubAcctMsg(e.message || "Subaccount creation failed");
+    } finally {
+      setSubAcctCreating(null);
+    }
+  };
+
   useEffect(() => {
     if (!canDo(plan, "aso")) return;
     reloadWithdrawalRequests();
+    loadGroups();
   }, [plan]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Realtime: new withdrawal requests from clients ─────────────────────
@@ -483,10 +617,20 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       {/* Header */}
       <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 -mx-4 px-4 py-3 mb-4 border-b border-slate-100 dark:border-slate-700/60 flex items-center justify-between">
         <h1 className="text-xl font-extrabold text-slate-800 dark:text-white tracking-tight">{t("aso.title")}</h1>
-        <button onClick={() => { setShowAdd(true); generateClientPassword(); }}
-          className="w-9 h-9 bg-violet-600 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform">
-          <Icon name="plus" size={18} className="text-white" />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => { loadGroups(); setShowGroups(true); }}
+            title="Manage Ajo Groups & Paystack Subaccounts"
+            className="w-9 h-9 bg-slate-100 dark:bg-slate-700 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform">
+            <svg viewBox="0 0 24 24" fill="none" className="w-4.5 h-4.5 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+              <rect x="2" y="5" width="20" height="14" rx="2" /><line x1="2" y1="10" x2="22" y2="10" />
+            </svg>
+          </button>
+          <button onClick={() => { setShowAdd(true); generateClientPassword(); }}
+            className="w-9 h-9 bg-violet-600 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform">
+            <Icon name="plus" size={18} className="text-white" />
+          </button>
+        </div>
       </div>
 
       {/* Hero */}
@@ -1012,6 +1156,24 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             </>
           )}
 
+          {groups.length > 0 && (
+            <>
+              <SectionLabel>Ajo Group (Paystack Routing)</SectionLabel>
+              <Field label="Assign to Group" as="select" value={f.ajo_group_id}
+                onChange={e => set("ajo_group_id", e.target.value)}>
+                <option value="">No group (manual payments only)</option>
+                {groups.map(g => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}{g.paystack_subaccount_code ? " ✓ Paystack ready" : " (no subaccount)"}
+                  </option>
+                ))}
+              </Field>
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 -mt-1">
+                Clients in a Paystack-linked group can self-pay contributions via card/bank.
+              </p>
+            </>
+          )}
+
           <SectionLabel>Notes</SectionLabel>
           <Field as="textarea" value={f.notes}
             onChange={e => set("notes", e.target.value)} placeholder="Optional notes about this client…" />
@@ -1282,6 +1444,167 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                 className="w-full bg-violet-600 hover:bg-violet-700 text-white font-bold rounded-2xl py-3.5 text-sm transition">
                 {otpVerified ? "Done ✓" : "Done"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Ajo Groups Management Modal ─────────────────────────────────── */}
+      {showGroups && (
+        <div className="fixed inset-0 z-[70] bg-black/50 flex items-end justify-center" onClick={e => { if (e.target === e.currentTarget) setShowGroups(false); }}>
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-t-3xl shadow-2xl flex flex-col" style={{ maxHeight: "90vh" }}>
+            {/* Header */}
+            <div className="flex items-center gap-3 px-5 pt-5 pb-3 border-b border-slate-100 dark:border-slate-700 flex-shrink-0">
+              <div className="w-9 h-9 bg-violet-100 dark:bg-violet-900/40 rounded-xl flex items-center justify-center flex-shrink-0">
+                <svg viewBox="0 0 24 24" fill="none" className="w-4.5 h-4.5 text-violet-600 dark:text-violet-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                  <rect x="2" y="5" width="20" height="14" rx="2" /><line x1="2" y1="10" x2="22" y2="10" />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <p className="font-extrabold text-slate-800 dark:text-white text-sm">Ajo Groups</p>
+                <p className="text-[10px] text-slate-400">Manage Paystack subaccounts per group</p>
+              </div>
+              <button onClick={() => setShowGroups(false)} className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-500">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="w-3.5 h-3.5">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+              {/* Explainer */}
+              <div className="bg-violet-50 dark:bg-violet-900/20 rounded-2xl px-4 py-3 border border-violet-100 dark:border-violet-800/60">
+                <p className="text-[11px] text-violet-700 dark:text-violet-300 font-medium leading-relaxed">
+                  Each group is linked to a <strong>Paystack Subaccount</strong>. When a client pays online, 100% of their contribution routes directly to that group's bank account — the platform holds no funds.
+                </p>
+              </div>
+
+              {/* Subaccount message */}
+              {subAcctMsg && (
+                <p className={`text-xs px-3 py-2.5 rounded-xl ${subAcctMsg.includes("failed") || subAcctMsg.includes("Add bank") ? "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400" : "bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400"}`}>
+                  {subAcctMsg}
+                </p>
+              )}
+
+              {/* Groups list */}
+              {groupsLoading ? (
+                <div className="flex justify-center py-8">
+                  <div className="w-7 h-7 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : groups.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-sm text-slate-500 dark:text-slate-400">No groups yet. Create your first group below.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {groups.map(grp => {
+                    const clientCount = asoClients.filter(c => c.ajo_group_id === grp.id).length;
+                    const hasSubacct  = Boolean(grp.paystack_subaccount_code);
+                    return (
+                      <div key={grp.id} className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 border border-slate-100 dark:border-slate-700 shadow-sm">
+                        <div className="flex items-start gap-3">
+                          <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${hasSubacct ? "bg-green-100 dark:bg-green-900/30" : "bg-slate-100 dark:bg-slate-700"}`}>
+                            <svg viewBox="0 0 24 24" fill="none" className={`w-4 h-4 ${hasSubacct ? "text-green-600 dark:text-green-400" : "text-slate-400"}`} stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                              {hasSubacct
+                                ? <><circle cx="12" cy="12" r="10" /><path d="M9 12l2 2 4-4" /></>
+                                : <rect x="2" y="5" width="20" height="14" rx="2" />
+                              }
+                            </svg>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-extrabold text-slate-800 dark:text-white truncate">{grp.name}</p>
+                            <div className="flex flex-wrap gap-1.5 mt-1">
+                              <span className="text-[10px] text-slate-400">{clientCount} client{clientCount !== 1 ? "s" : ""}</span>
+                              {grp.contribution_frequency && <span className="text-[10px] text-slate-400">· {grp.contribution_frequency}</span>}
+                              {grp.contribution_amount   && <span className="text-[10px] text-slate-400">· ₦{fmt(grp.contribution_amount)}</span>}
+                            </div>
+                            {grp.account_number && (
+                              <p className="text-[10px] text-slate-400 mt-0.5 font-mono">{grp.account_name ? `${grp.account_name} · ` : ""}{grp.account_number}</p>
+                            )}
+                            {hasSubacct ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-green-600 dark:text-green-400 mt-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                                {grp.paystack_subaccount_code}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-amber-500 dark:text-amber-400 font-semibold mt-1 block">No Paystack subaccount yet</span>
+                            )}
+                          </div>
+                        </div>
+                        {!hasSubacct && grp.bank_code && grp.account_number && (
+                          <button
+                            onClick={() => createSubaccount(grp)}
+                            disabled={subAcctCreating === grp.id}
+                            className="w-full mt-3 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-xl font-bold text-xs transition active:scale-[0.99] flex items-center justify-center gap-1.5">
+                            {subAcctCreating === grp.id
+                              ? <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />Creating…</>
+                              : "Create Paystack Subaccount"
+                            }
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Add group form */}
+              {showGroupAdd ? (
+                <div className="bg-slate-50 dark:bg-slate-800 rounded-2xl p-4 space-y-3 border border-slate-200 dark:border-slate-700">
+                  <p className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">New Ajo Group</p>
+                  {groupError && <p className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-xl">{groupError}</p>}
+                  <Field label="Group Name *" value={gf.name} onChange={e => setG("name", e.target.value)} placeholder="e.g. Monday Women Ajo" />
+                  <div className="grid grid-cols-2 gap-2">
+                    <Field label="Monthly Amount (₦)" type="number" value={gf.contribution_amount} onChange={e => setG("contribution_amount", e.target.value)} placeholder="0" />
+                    <Field label="Frequency" as="select" value={gf.contribution_frequency} onChange={e => setG("contribution_frequency", e.target.value)}>
+                      <option value="daily">Daily</option>
+                      <option value="weekly">Weekly</option>
+                      <option value="monthly">Monthly</option>
+                    </Field>
+                  </div>
+
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pt-1">Bank Account (for Paystack routing)</p>
+                  <Field label="Bank Code" value={gf.bank_code} onChange={e => { setG("bank_code", e.target.value); setResolvedName(""); }} placeholder="e.g. 057 (Zenith)" />
+                  <div className="flex gap-2">
+                    <div className="flex-1">
+                      <Field label="Account Number" value={gf.account_number} onChange={e => { setG("account_number", e.target.value); setResolvedName(""); }} placeholder="10-digit NUBAN" />
+                    </div>
+                    <button
+                      onClick={resolveAccount}
+                      disabled={resolving || !gf.bank_code || !gf.account_number}
+                      className="self-end mb-0 px-3 py-2.5 bg-slate-700 dark:bg-slate-600 text-white text-xs font-bold rounded-xl disabled:opacity-50 transition whitespace-nowrap">
+                      {resolving ? "…" : "Verify"}
+                    </button>
+                  </div>
+                  {resolvedName && (
+                    <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/60 rounded-xl px-3 py-2 flex items-center gap-2">
+                      <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-green-600 dark:text-green-400 flex-shrink-0" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+                        <path d="M20 6L9 17l-5-5" />
+                      </svg>
+                      <p className="text-xs font-bold text-green-700 dark:text-green-300">{resolvedName}</p>
+                    </div>
+                  )}
+
+                  <div className="flex gap-2 pt-1">
+                    <button onClick={() => { setShowGroupAdd(false); setGf(BLANK_GROUP); setGroupError(""); setResolvedName(""); }}
+                      className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-xs transition">
+                      Cancel
+                    </button>
+                    <button onClick={saveGroup} disabled={groupSaving || !gf.name}
+                      className="flex-1 py-2.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded-xl font-bold text-xs transition active:scale-[0.99]">
+                      {groupSaving ? "Saving…" : "Create Group"}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => { setShowGroupAdd(true); setGroupError(""); setGf(BLANK_GROUP); setResolvedName(""); }}
+                  className="w-full py-3.5 border-2 border-dashed border-violet-200 dark:border-violet-800 text-violet-600 dark:text-violet-400 rounded-2xl font-bold text-sm transition hover:bg-violet-50 dark:hover:bg-violet-900/20 active:scale-[0.99]">
+                  + Create New Group
+                </button>
+              )}
+
+              <div className="h-4" />
             </div>
           </div>
         </div>

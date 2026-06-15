@@ -15,12 +15,20 @@ function json(data: unknown, status = 200) {
 
 const CLIENT_SELECT = `
   id, full_name, email, phone, profile_image_url, owner_id, user_id, staff_id,
+  ajo_group_id,
   current_balance, total_saved, total_withdrawn,
   next_contribution_date, contribution_frequency, contribution_amount,
   registration_date, membership_number, portal_active, status,
   address, state, lga, ward, notes,
   registration_charge, withdrawal_fee_percent
 `;
+
+const PAYSTACK_SECRET = Deno.env.get("PAYSTACK_SECRET_KEY") ?? "";
+const PAYSTACK_PUBLIC = Deno.env.get("PAYSTACK_PUBLIC_KEY") ?? "";
+
+function genRef(prefix = "AJO") {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -388,6 +396,164 @@ serve(async (req) => {
       if (!cl || cl.portal_pin !== String(old_pin).trim()) return json({ error: "Current PIN is incorrect" }, 401);
 
       await sb.from("aso_clients").update({ portal_pin: new_pin }).eq("id", client_id);
+      return json({ success: true });
+    }
+
+    // ── Initialize a Paystack contribution payment (client self-pay) ─────
+    if (action === "initialize-payment") {
+      const { client_id } = body as { client_id: string };
+      if (!client_id) return json({ error: "client_id required" }, 400);
+      if (!PAYSTACK_SECRET) return json({ error: "Paystack not configured" }, 503);
+
+      const { data: cl } = await sb
+        .from("aso_clients")
+        .select("id, email, contribution_amount, contribution_frequency, user_id, owner_id, ajo_group_id, full_name, next_contribution_date")
+        .eq("id", client_id)
+        .maybeSingle();
+
+      if (!cl || !cl.contribution_amount) {
+        return json({ error: "Client not found or no contribution amount set" }, 404);
+      }
+
+      const ownerId = cl.user_id || cl.owner_id;
+      const amount  = Number(cl.contribution_amount);
+      const ref     = genRef("AJO");
+
+      // Resolve the group's Paystack subaccount (if linked)
+      let subaccountCode: string | undefined;
+      if (cl.ajo_group_id) {
+        const { data: grp } = await sb
+          .from("ajo_groups")
+          .select("paystack_subaccount_code")
+          .eq("id", cl.ajo_group_id)
+          .maybeSingle();
+        subaccountCode = grp?.paystack_subaccount_code ?? undefined;
+      }
+
+      // Initialize transaction with Paystack
+      const psRes = await fetch("https://api.paystack.co/transaction/initialize", {
+        method: "POST",
+        headers: {
+          Authorization:  `Bearer ${PAYSTACK_SECRET}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email:      cl.email,
+          amount:     Math.round(amount * 100),
+          reference:  ref,
+          channels:   ["card", "bank", "ussd", "mobile_money", "bank_transfer"],
+          subaccount: subaccountCode,
+          bearer:     subaccountCode ? "subaccount" : undefined,
+          metadata: {
+            client_id,
+            owner_id:  ownerId,
+            client_name: cl.full_name || "",
+            type:      "ajo_contribution",
+          },
+        }),
+      });
+
+      const psData = await psRes.json();
+      if (!psData.status || !psData.data?.access_code) {
+        return json({ error: psData.message || "Failed to initialize payment" }, 422);
+      }
+
+      // Create a PENDING contribution record — confirmed by webhook
+      await sb.from("ajo_contributions").insert({
+        aso_client_id:   client_id,
+        owner_id:        ownerId,
+        amount,
+        type:            "contribution",
+        payment_method:  "paystack",
+        paystack_ref:    ref,
+        paystack_status: "pending",
+        initiated_by:    "client",
+        status:          "pending",
+        subaccount_code: subaccountCode || null,
+        notes:           `Self-pay initiated by client · ref: ${ref}`,
+      });
+
+      return json({
+        access_code:     psData.data.access_code,
+        reference:       ref,
+        amount,
+        email:           cl.email,
+        public_key:      PAYSTACK_PUBLIC,
+        subaccount_code: subaccountCode || null,
+      });
+    }
+
+    // ── Get Ajo groups for a business owner ───────────────────────────────
+    if (action === "get-groups") {
+      const { owner_id } = body as { owner_id: string };
+      if (!owner_id) return json({ error: "owner_id required" }, 400);
+      const { data } = await sb
+        .from("ajo_groups")
+        .select("*")
+        .eq("owner_id", owner_id)
+        .order("created_at", { ascending: true });
+      return json({ groups: data || [] });
+    }
+
+    // ── Create an Ajo group (business portal) ─────────────────────────────
+    if (action === "create-group") {
+      const { owner_id, name, description, contribution_amount, contribution_frequency,
+              bank_code, account_number, account_name } = body as {
+        owner_id: string; name: string; description?: string;
+        contribution_amount?: number; contribution_frequency?: string;
+        bank_code?: string; account_number?: string; account_name?: string;
+      };
+      if (!owner_id || !name) return json({ error: "owner_id and name required" }, 400);
+
+      const { data: grp, error: grpErr } = await sb.from("ajo_groups").insert({
+        owner_id,
+        name: name.trim(),
+        description: description || null,
+        contribution_amount: contribution_amount || null,
+        contribution_frequency: contribution_frequency || "monthly",
+        bank_code: bank_code || null,
+        account_number: account_number || null,
+        account_name: account_name || null,
+      }).select().single();
+
+      if (grpErr) return json({ error: grpErr.message }, 500);
+      return json({ group: grp });
+    }
+
+    // ── Update an Ajo group (business portal) ─────────────────────────────
+    if (action === "update-group") {
+      const { group_id, owner_id, ...updates } = body as {
+        group_id: string; owner_id: string;
+        name?: string; description?: string;
+        contribution_amount?: number; contribution_frequency?: string;
+        bank_code?: string; account_number?: string; account_name?: string;
+        paystack_subaccount_code?: string; paystack_subaccount_id?: string;
+        is_active?: boolean;
+      };
+      if (!group_id || !owner_id) return json({ error: "group_id and owner_id required" }, 400);
+      const { data: grp, error: grpErr } = await sb
+        .from("ajo_groups")
+        .update({ ...updates, updated_at: new Date().toISOString() })
+        .eq("id", group_id)
+        .eq("owner_id", owner_id)
+        .select()
+        .single();
+      if (grpErr) return json({ error: grpErr.message }, 500);
+      return json({ group: grp });
+    }
+
+    // ── Assign a client to an Ajo group ───────────────────────────────────
+    if (action === "assign-group") {
+      const { client_id, group_id, owner_id } = body as {
+        client_id: string; group_id: string | null; owner_id: string;
+      };
+      if (!client_id || !owner_id) return json({ error: "client_id and owner_id required" }, 400);
+      const { error: assignErr } = await sb
+        .from("aso_clients")
+        .update({ ajo_group_id: group_id })
+        .eq("id", client_id)
+        .eq("user_id", owner_id);
+      if (assignErr) return json({ error: assignErr.message }, 500);
       return json({ success: true });
     }
 

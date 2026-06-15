@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../utils/supabase";
 import { peyflex } from "../utils/peyflex";
 import { fmt } from "../utils/helpers";
@@ -11,6 +11,129 @@ async function ajoFn(action, body = {}) {
   if (error) throw new Error(error.message || "Portal request failed");
   if (data?.error) throw new Error(data.error);
   return data;
+}
+
+// ── Load Paystack Inline JS once per session ──────────────────────────────
+function loadPaystackScript() {
+  return new Promise((resolve, reject) => {
+    if (window.PaystackPop) { resolve(window.PaystackPop); return; }
+    const s = document.createElement("script");
+    s.src = "https://js.paystack.co/v1/inline.js";
+    s.onload  = () => resolve(window.PaystackPop);
+    s.onerror = () => reject(new Error("Failed to load Paystack"));
+    document.head.appendChild(s);
+  });
+}
+
+// ── Pay Contribution modal ────────────────────────────────────────────────
+function PayContributionModal({ client, onClose, onSuccess }) {
+  const [status,   setStatus]   = useState("idle"); // idle | loading | paying | done | error
+  const [message,  setMessage]  = useState("");
+
+  const handlePay = async () => {
+    if (!client?.contribution_amount) { setMessage("No contribution amount set by your savings agent."); return; }
+    setStatus("loading"); setMessage("");
+
+    try {
+      // Backend initializes the Paystack transaction with subaccount routing
+      const res = await ajoFn("initialize-payment", { client_id: client.id });
+      if (!res.access_code || !res.public_key) throw new Error("Payment initialization failed");
+
+      setStatus("paying");
+
+      // Load Paystack Inline SDK
+      const PaystackPop = await loadPaystackScript();
+
+      const handler = PaystackPop.setup({
+        key:        res.public_key,
+        email:      res.email || client.email,
+        amount:     Math.round(Number(res.amount) * 100),
+        ref:        res.reference,
+        accessCode: res.access_code,
+        onSuccess: async (transaction) => {
+          setStatus("done");
+          setMessage(`Payment confirmed! Reference: ${transaction.reference}`);
+          onSuccess?.(transaction.reference);
+        },
+        onCancel: () => {
+          setStatus("idle");
+          setMessage("Payment cancelled.");
+        },
+      });
+      handler.openIframe();
+    } catch (e) {
+      setStatus("error");
+      setMessage(e.message || "Payment failed. Please try again.");
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] bg-black/50 flex items-end justify-center">
+      <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-t-3xl p-6 shadow-2xl">
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-10 h-10 bg-green-100 dark:bg-green-900/40 rounded-2xl flex items-center justify-center flex-shrink-0">
+            <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-green-600 dark:text-green-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+              <path d="M12 5v14M5 12l7 7 7-7" />
+            </svg>
+          </div>
+          <div className="flex-1">
+            <p className="font-extrabold text-slate-800 dark:text-white">Pay Contribution</p>
+            <p className="text-[11px] text-slate-400">Secure payment via Paystack</p>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-500">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="w-3.5 h-3.5">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Amount */}
+        <div className="bg-violet-50 dark:bg-violet-900/20 rounded-2xl px-4 py-4 mb-5 text-center">
+          <p className="text-[10px] font-bold text-violet-500 dark:text-violet-400 uppercase tracking-wider mb-1">Amount Due</p>
+          <p className="text-3xl font-black text-violet-700 dark:text-violet-300 tabular">₦{fmt(client?.contribution_amount || 0)}</p>
+          <p className="text-[11px] text-slate-400 mt-1 capitalize">{client?.contribution_frequency} contribution</p>
+        </div>
+
+        {status === "done" ? (
+          <div className="text-center py-4">
+            <div className="w-14 h-14 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-3">
+              <svg viewBox="0 0 24 24" fill="none" className="w-7 h-7 text-green-600" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+                <path d="M20 6L9 17l-5-5" />
+              </svg>
+            </div>
+            <p className="font-bold text-slate-800 dark:text-white mb-1">Payment Successful!</p>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">{message}</p>
+            <p className="text-[11px] text-slate-400 mt-1">Your balance will update shortly.</p>
+            <button onClick={onClose} className="mt-4 w-full py-3 bg-violet-600 text-white rounded-2xl font-bold text-sm">Done</button>
+          </div>
+        ) : (
+          <>
+            {message && (
+              <p className={`text-xs mb-4 px-3 py-2 rounded-xl ${status === "error" ? "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400" : "bg-slate-50 dark:bg-slate-800 text-slate-500"}`}>
+                {message}
+              </p>
+            )}
+            <button
+              onClick={handlePay}
+              disabled={status === "loading" || status === "paying"}
+              className="w-full py-4 bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2 shadow-md">
+              {status === "loading" ? (
+                <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Initializing…</>
+              ) : status === "paying" ? (
+                <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Paystack loading…</>
+              ) : (
+                <>Pay ₦{fmt(client?.contribution_amount || 0)} now</>
+              )}
+            </button>
+            <button onClick={onClose} disabled={status === "loading" || status === "paying"}
+              className="w-full mt-3 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition text-center py-2">
+              Cancel
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // ── Bill constants ────────────────────────────────────────────────────────
@@ -647,7 +770,7 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
 }
 
 // ── Overview tab ──────────────────────────────────────────────────────────
-function OverviewTab({ client, contributions, onWithdrawClick, ownerInfo, withdrawRequests = [] }) {
+function OverviewTab({ client, contributions, onWithdrawClick, onPayClick, ownerInfo, withdrawRequests = [] }) {
   const totalThisMonth = contributions
     .filter(c => c.type === "contribution" && (c.created_at || "").startsWith(new Date().toISOString().slice(0, 7)))
     .reduce((s, c) => s + (c.amount || 0), 0);
@@ -757,6 +880,17 @@ function OverviewTab({ client, contributions, onWithdrawClick, ownerInfo, withdr
             ) : null}
           </div>
         </div>
+      )}
+
+      {/* Pay Contribution button */}
+      {client?.contribution_amount > 0 && (
+        <button onClick={onPayClick}
+          className="w-full py-4 bg-green-600 hover:bg-green-700 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] shadow-md flex items-center justify-center gap-2">
+          <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+            <rect x="1" y="4" width="22" height="16" rx="2" /><line x1="1" y1="10" x2="23" y2="10" />
+          </svg>
+          Pay Contribution · ₦{fmt(client.contribution_amount)}
+        </button>
       )}
 
       {/* Withdrawal request button */}
@@ -1095,6 +1229,7 @@ export default function AjoClientPortal({ session, ajoClient }) {
   const [loadingData,      setLoadingData]      = useState(false);
   const [tab,              setTab]              = useState("overview");
   const [showWithdraw,     setShowWithdraw]     = useState(false);
+  const [showPay,          setShowPay]          = useState(false);
   const [withdrawRequests, setWithdrawRequests] = useState([]);
   const [showPwdModal,     setShowPwdModal]     = useState(false);
 
@@ -1205,6 +1340,7 @@ export default function AjoClientPortal({ session, ajoClient }) {
               client={client}
               contributions={contributions}
               onWithdrawClick={() => setShowWithdraw(true)}
+              onPayClick={() => setShowPay(true)}
               ownerInfo={ownerInfo}
               withdrawRequests={withdrawRequests}
             />
@@ -1244,6 +1380,16 @@ export default function AjoClientPortal({ session, ajoClient }) {
         </nav>
       </div>
 
+      {showPay && client && (
+        <PayContributionModal
+          client={client}
+          onClose={() => setShowPay(false)}
+          onSuccess={(ref) => {
+            setShowPay(false);
+            // Balance will update via Supabase real-time subscription on aso_clients
+          }}
+        />
+      )}
       {showWithdraw && client && (
         <WithdrawRequestModal
           client={client}
