@@ -414,8 +414,11 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         body: JSON.stringify({
           event: "ajo_withdrawal_approved",
           data: {
+            client_id:     req.aso_client_id,
             client_name:   cl.full_name  || "",
             client_email:  cl.email      || "",
+            owner_id:      req.owner_id,
+            owner_email:   profile?.email || "",
             business_name: profile?.business_name || "",
             amount:        req.amount,
             fee_type:      req.fee_type,

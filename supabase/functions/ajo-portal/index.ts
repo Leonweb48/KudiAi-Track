@@ -175,7 +175,9 @@ serve(async (req) => {
         .maybeSingle();
 
       if (clientFull) {
+        const resolvedOwnerId2 = owner_id || clientFull.user_id;
         const emailData: Record<string, string | number> = {
+          client_id:   client_id,
           client_name: clientFull.full_name || "",
           client_email: clientFull.email || "",
           amount,
@@ -184,14 +186,18 @@ serve(async (req) => {
         };
         if (clientFull.staff_id) {
           const { data: staffRow } = await sb
-            .from("staff").select("email").eq("id", clientFull.staff_id).maybeSingle();
+            .from("staff").select("email, full_name").eq("id", clientFull.staff_id).maybeSingle();
           if (staffRow?.email) emailData.staff_email = staffRow.email;
+          if (staffRow?.full_name) emailData.staff_name = staffRow.full_name;
         }
-        const { data: owner } = await sb
-          .from("profiles").select("email").eq("id", owner_id).maybeSingle();
-        if (owner?.email) emailData.owner_email = owner.email;
+        if (resolvedOwnerId2) {
+          const { data: ownerRow } = await sb
+            .from("profiles").select("email, business_name").eq("id", resolvedOwnerId2).maybeSingle();
+          if (ownerRow?.email) emailData.owner_email = ownerRow.email;
+          if (ownerRow?.business_name) emailData.business_name = ownerRow.business_name;
+        }
 
-        fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
+        await fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
           body: JSON.stringify({ event: "ajo_contribution", data: emailData }),
@@ -242,14 +248,16 @@ serve(async (req) => {
       const { data: owner } = await sb.from("profiles")
         .select("email, business_name").eq("id", resolvedOwnerId).maybeSingle();
 
-      fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
+      await fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
         body: JSON.stringify({
           event: "ajo_withdrawal_request",
           data: {
+            client_id:     client_id,
             client_name:   cl.full_name || "",
             client_email:  cl.email     || "",
+            owner_id:      resolvedOwnerId,
             owner_email:   owner?.email  || "",
             business_name: owner?.business_name || "",
             amount,
@@ -332,14 +340,16 @@ serve(async (req) => {
       const { data: owner } = await sb.from("profiles")
         .select("email, business_name").eq("id", owner_id).maybeSingle();
 
-      fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
+      await fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
         body: JSON.stringify({
           event: "ajo_withdrawal_approved",
           data: {
+            client_id:     req.aso_client_id,
             client_name:   cl.full_name || "",
             client_email:  cl.email     || "",
+            owner_id:      owner_id,
             owner_email:   owner?.email  || "",
             business_name: owner?.business_name || "",
             amount:        req.amount,
