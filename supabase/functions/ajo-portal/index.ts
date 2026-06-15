@@ -471,12 +471,13 @@ serve(async (req) => {
       if (insErr) return json({ error: `DB error: ${insErr.message}` }, 500);
 
       return json({
-        access_code:     psData.data.access_code,
-        reference:       ref,
+        access_code:       psData.data.access_code,
+        authorization_url: psData.data.authorization_url,
+        reference:         ref,
         amount,
-        email:           cl.email,
-        public_key:      PAYSTACK_PUBLIC,
-        subaccount_code: subaccountCode || null,
+        email:             cl.email,
+        public_key:        PAYSTACK_PUBLIC,
+        subaccount_code:   subaccountCode || null,
       });
     }
 

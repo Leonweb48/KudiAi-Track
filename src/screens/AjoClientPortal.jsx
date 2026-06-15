@@ -20,64 +20,42 @@ async function ajoFn(action, body = {}) {
   return data;
 }
 
-// ── Load Paystack Inline JS once per session ──────────────────────────────
-function loadPaystackScript() {
-  return new Promise((resolve, reject) => {
-    if (window.PaystackPop) { resolve(window.PaystackPop); return; }
-    const s = document.createElement("script");
-    s.src = "https://js.paystack.co/v1/inline.js";
-    s.onload  = () => resolve(window.PaystackPop);
-    s.onerror = () => reject(new Error("Failed to load Paystack"));
-    document.head.appendChild(s);
-  });
-}
-
 // ── Pay Contribution modal ────────────────────────────────────────────────
 function PayContributionModal({ client, onClose, onSuccess }) {
-  const [status,   setStatus]   = useState("idle"); // idle | loading | paying | done | error
-  const [message,  setMessage]  = useState("");
+  const [status,     setStatus]    = useState("idle"); // idle | loading | awaiting | verifying | done | error
+  const [message,    setMessage]   = useState("");
+  const [pendingRef, setPendingRef] = useState(null);
+
+  const verifyPayment = async () => {
+    if (!pendingRef) return;
+    setStatus("verifying");
+    setMessage("Verifying your payment…");
+    try {
+      const confirmation = await ajoFn("confirm-payment", {
+        client_id: client.id,
+        reference: pendingRef,
+      });
+      setStatus("done");
+      setMessage(`Payment confirmed! Ref: ${pendingRef}`);
+      onSuccess?.(pendingRef, confirmation?.client);
+    } catch (e) {
+      setStatus("awaiting");
+      setMessage(e.message || "Payment not confirmed yet. Please try again.");
+    }
+  };
 
   const handlePay = async () => {
     if (!client?.contribution_amount) { setMessage("No contribution amount set by your savings agent."); return; }
-    setStatus("loading"); setMessage("");
+    setStatus("loading"); setMessage(""); setPendingRef(null);
 
     try {
       const res = await ajoFn("initialize-payment", { client_id: client.id });
-      if (!res.access_code || !res.public_key) throw new Error("Payment initialization failed");
+      if (!res.authorization_url) throw new Error("Payment initialization failed — no checkout URL");
 
-      setStatus("paying");
-
-      const PaystackPop = await loadPaystackScript();
-
-      const handler = PaystackPop.setup({
-        key:        res.public_key,
-        email:      res.email || client.email,
-        amount:     Math.round(Number(res.amount) * 100),
-        ref:        res.reference,
-        accessCode: res.access_code,
-        // Paystack inline.js v1 uses "callback" for success (not "onSuccess")
-        callback: async (transaction) => {
-          setStatus("done");
-          setMessage("Payment received! Updating your balance…");
-          try {
-            const confirmation = await ajoFn("confirm-payment", {
-              client_id: client.id,
-              reference: transaction.reference || res.reference,
-            });
-            setMessage(`Payment confirmed! Ref: ${transaction.reference || res.reference}`);
-            onSuccess?.(transaction.reference, confirmation?.client);
-          } catch {
-            setMessage("Payment received. Your balance will update shortly.");
-            onSuccess?.(transaction.reference, null);
-          }
-        },
-        // Paystack inline.js v1 uses "onClose" when popup is dismissed (not "onCancel")
-        onClose: () => {
-          setStatus(prev => prev === "done" ? prev : "idle");
-          setMessage(prev => prev === "done" ? prev : "Payment cancelled.");
-        },
-      });
-      handler.openIframe();
+      setPendingRef(res.reference);
+      window.open(res.authorization_url, "_blank");
+      setStatus("awaiting");
+      setMessage("Paystack opened in a new tab. Complete your payment there, then tap the button below.");
     } catch (e) {
       setStatus("error");
       setMessage(e.message || "Payment failed. Please try again.");
@@ -125,23 +103,36 @@ function PayContributionModal({ client, onClose, onSuccess }) {
         ) : (
           <>
             {message && (
-              <p className={`text-xs mb-4 px-3 py-2 rounded-xl ${status === "error" ? "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400" : "bg-slate-50 dark:bg-slate-800 text-slate-500"}`}>
+              <p className={`text-xs mb-4 px-3 py-2 rounded-xl ${
+                status === "error" ? "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400"
+                : status === "awaiting" ? "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300"
+                : "bg-slate-50 dark:bg-slate-800 text-slate-500"
+              }`}>
                 {message}
               </p>
             )}
+
+            {(status === "awaiting" || status === "verifying") && (
+              <button
+                onClick={verifyPayment}
+                disabled={status === "verifying"}
+                className="w-full mb-3 py-4 bg-violet-600 hover:bg-violet-700 disabled:opacity-60 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2 shadow-md">
+                {status === "verifying"
+                  ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Verifying…</>
+                  : "I've completed payment — tap to confirm"}
+              </button>
+            )}
+
             <button
               onClick={handlePay}
-              disabled={status === "loading" || status === "paying"}
+              disabled={status === "loading" || status === "awaiting" || status === "verifying"}
               className="w-full py-4 bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2 shadow-md">
-              {status === "loading" ? (
-                <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Initializing…</>
-              ) : status === "paying" ? (
-                <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Paystack loading…</>
-              ) : (
-                <>Pay ₦{fmt(client?.contribution_amount || 0)} now</>
-              )}
+              {status === "loading"
+                ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Opening Paystack…</>
+                : status === "awaiting" ? "Open Paystack again"
+                : <>Pay ₦{fmt(client?.contribution_amount || 0)} now</>}
             </button>
-            <button onClick={onClose} disabled={status === "loading" || status === "paying"}
+            <button onClick={onClose} disabled={status === "loading" || status === "verifying"}
               className="w-full mt-3 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition text-center py-2">
               Cancel
             </button>
