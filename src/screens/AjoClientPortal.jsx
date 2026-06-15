@@ -681,7 +681,7 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
     try {
       await ajoFn("request-withdrawal", {
         client_id: client.id,
-        owner_id:  client.user_id || client.owner_id,
+        owner_id:  client.user_id,
         amount:    amtNum,
       });
       setDone(true);
@@ -1253,7 +1253,7 @@ export default function AjoClientPortal({ session, ajoClient }) {
   const refreshWithdrawRequests = useCallback(async () => {
     if (!ajoClient?.id) return;
     try {
-      const r = await ajoFn("get-withdrawal-requests", { client_id: ajoClient.id, owner_id: ajoClient.owner_id });
+      const r = await ajoFn("get-withdrawal-requests", { client_id: ajoClient.id });
       if (r?.requests) setWithdrawRequests(r.requests);
     } catch (e) {
       console.error("Failed to load withdrawal requests:", e);
@@ -1266,14 +1266,14 @@ export default function AjoClientPortal({ session, ajoClient }) {
     Promise.allSettled([
       ajoFn("get-client",             { client_id: ajoClient.id, owner_id: ajoClient.owner_id }),
       ajoFn("get-contributions",      { client_id: ajoClient.id }),
-      ajoFn("get-owner-info",         { owner_id: ajoClient.owner_id, client_id: ajoClient.id }),
+      ajoFn("get-owner-info",         { owner_id: ajoClient.user_id,  client_id: ajoClient.id }),
       ajoFn("get-withdrawal-requests",{ client_id: ajoClient.id }),
     ])
       .then(([clientRes, contribRes, ownerRes, reqRes]) => {
         if (clientRes.status === "fulfilled" && clientRes.value?.client) {
           setClient(prev => ({
             ...clientRes.value.client,
-            owner_id: clientRes.value.client.user_id || prev?.owner_id || clientRes.value.client.owner_id,
+            user_id: clientRes.value.client.user_id || prev?.user_id,
           }));
         }
         if (contribRes.status === "fulfilled" && contribRes.value?.contributions)
@@ -1293,7 +1293,7 @@ export default function AjoClientPortal({ session, ajoClient }) {
 
     const channel = supabase.channel(`ajo_client_sync_${ajoClient.id}`)
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "aso_clients", filter: `id=eq.${ajoClient.id}` },
-        (payload) => { if (payload.new) setClient(prev => ({ ...prev, ...payload.new, owner_id: prev?.owner_id || payload.new.user_id })); })
+        (payload) => { if (payload.new) setClient(prev => ({ ...prev, ...payload.new })); })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "ajo_contributions", filter: `aso_client_id=eq.${ajoClient.id}` },
         (payload) => { if (payload.new) setContributions(prev => [payload.new, ...prev]); })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "ajo_withdrawal_requests", filter: `aso_client_id=eq.${ajoClient.id}` },

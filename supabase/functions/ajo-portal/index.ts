@@ -14,7 +14,7 @@ function json(data: unknown, status = 200) {
 }
 
 const CLIENT_SELECT = `
-  id, full_name, email, phone, profile_image_url, owner_id, user_id, staff_id,
+  id, full_name, email, phone, profile_image_url, user_id, staff_id,
   ajo_group_id,
   current_balance, total_saved, total_withdrawn,
   next_contribution_date, contribution_frequency, contribution_amount,
@@ -405,20 +405,20 @@ serve(async (req) => {
       if (!client_id) return json({ error: "client_id required" }, 400);
       if (!PAYSTACK_SECRET) return json({ error: "Paystack not configured" }, 503);
 
-      const { data: cl } = await sb
+      const { data: cl, error: clErr } = await sb
         .from("aso_clients")
-        .select("id, email, contribution_amount, contribution_frequency, user_id, owner_id, ajo_group_id, full_name, next_contribution_date")
+        .select("id, email, contribution_amount, contribution_frequency, user_id, ajo_group_id, full_name, next_contribution_date")
         .eq("id", client_id)
         .maybeSingle();
 
-      if (!cl || !cl.contribution_amount) {
-        return json({ error: "Client not found or no contribution amount set" }, 404);
-      }
+      if (clErr) return json({ error: `DB error fetching client: ${clErr.message}` }, 500);
+      if (!cl) return json({ error: "Client not found" }, 404);
+      if (!cl.contribution_amount) return json({ error: "No contribution amount set. Ask your savings agent to set your contribution amount." }, 422);
       if (!cl.email) {
         return json({ error: "Your account has no email address. Ask your savings agent to add one." }, 422);
       }
 
-      const ownerId = cl.owner_id || cl.user_id;
+      const ownerId = cl.user_id;
       if (!ownerId) return json({ error: "Could not resolve business owner. Contact support." }, 422);
 
       const amount  = Number(cl.contribution_amount);
