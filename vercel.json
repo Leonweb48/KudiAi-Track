@@ -2,6 +2,16 @@
   "framework": "create-react-app",
   "buildCommand": "npm run build",
   "outputDirectory": "build",
+  "redirects": [
+    {
+      "source": "/(.*)",
+      "destination": "https://kudiai.app/$1",
+      "permanent": true,
+      "has": [
+        { "type": "host", "value": "kuditrack-kappa.vercel.app" }
+      ]
+    }
+  ],
   "headers": [
     {
       "source": "/index.html",

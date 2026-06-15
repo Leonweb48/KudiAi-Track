@@ -1292,7 +1292,7 @@ serve(async (req) => {
           email:        mem.email,
           amount:       Math.round(Number(amount) * 100),
           reference:    ref,
-          callback_url: "https://kuditrack-kappa.vercel.app/",
+          callback_url: "https://kudiai.app/",
           channels:     ["card", "bank", "ussd", "mobile_money", "bank_transfer"],
           subaccount:   org.paystack_subaccount_code || undefined,
           bearer:       org.paystack_subaccount_code ? "subaccount" : undefined,

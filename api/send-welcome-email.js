@@ -29,7 +29,7 @@ export default async function handler(req, res) {
         <!-- Header -->
         <tr>
           <td style="background:linear-gradient(135deg,#14532d 0%,#16a34a 60%,#4ade80 100%);padding:48px 40px 36px;text-align:center;">
-            <img src="https://kuditrack-kappa.vercel.app/logo.png" alt="KudiAI Track" width="88"
+            <img src="https://kudiai.app/logo.png" alt="KudiAI Track" width="88"
               style="display:block;margin:0 auto 18px;border-radius:18px;box-shadow:0 4px 20px rgba(0,0,0,0.25);" />
             <h1 style="margin:0 0 6px;color:#ffffff;font-size:30px;font-weight:900;letter-spacing:-0.5px;">KudiAI Track</h1>
             <p style="margin:0;color:#bbf7d0;font-size:13px;letter-spacing:1px;text-transform:uppercase;">Smart Finance for Nigerian Traders</p>
@@ -75,7 +75,7 @@ export default async function handler(req, res) {
 
             <!-- CTA -->
             <div style="text-align:center;margin-bottom:32px;">
-              <a href="https://kuditrack-kappa.vercel.app"
+              <a href="https://kudiai.app"
                 style="display:inline-block;background:linear-gradient(135deg,#16a34a,#059669);color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:10px;">
                 Open KudiAI Track →
               </a>

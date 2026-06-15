@@ -1497,7 +1497,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
               {!clientOtpData && (
                 <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-xl px-4 py-3 mb-4">
                   <p className="text-[11px] text-amber-700 dark:text-amber-300 font-medium leading-relaxed">
-                    Client logs in at kuditrack-kappa.vercel.app with their email and this password. They'll set a permanent password on first login.
+                    Client logs in at kudiai.app with their email and this password. They'll set a permanent password on first login.
                   </p>
                 </div>
               )}
