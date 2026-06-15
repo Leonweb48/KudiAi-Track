@@ -34,53 +34,47 @@ function loadPaystackScript() {
 
 // ── Pay Contribution modal ────────────────────────────────────────────────
 function PayContributionModal({ client, onClose, onSuccess }) {
-  const [status,     setStatus]     = useState("idle"); // idle | loading | paying | verifying | done | error
-  const [message,    setMessage]    = useState("");
-  const [pendingRef, setPendingRef] = useState(null);
-
-  const confirmPayment = async (reference) => {
-    setStatus("verifying");
-    setMessage("Verifying payment…");
-    try {
-      const confirmation = await ajoFn("confirm-payment", {
-        client_id: client.id,
-        reference,
-      });
-      setStatus("done");
-      setMessage(`Payment confirmed! Ref: ${reference}`);
-      onSuccess?.(reference, confirmation?.client);
-    } catch (e) {
-      setStatus("error");
-      setMessage(e.message || "Could not verify payment. Contact your savings agent if money was deducted.");
-      setPendingRef(null);
-    }
-  };
+  const [status,   setStatus]   = useState("idle"); // idle | loading | paying | done | error
+  const [message,  setMessage]  = useState("");
 
   const handlePay = async () => {
     if (!client?.contribution_amount) { setMessage("No contribution amount set by your savings agent."); return; }
-    setStatus("loading"); setMessage(""); setPendingRef(null);
+    setStatus("loading"); setMessage("");
 
     try {
       const res = await ajoFn("initialize-payment", { client_id: client.id });
       if (!res.access_code || !res.public_key) throw new Error("Payment initialization failed");
 
-      setPendingRef(res.reference);
       setStatus("paying");
 
       const PaystackPop = await loadPaystackScript();
 
-      // Only pass accessCode + key — extra params (amount, email, ref) conflict with accessCode and break onSuccess
       const handler = PaystackPop.setup({
         key:        res.public_key,
+        email:      res.email || client.email,
+        amount:     Math.round(Number(res.amount) * 100),
+        ref:        res.reference,
         accessCode: res.access_code,
-        onSuccess: async (transaction) => {
-          setPendingRef(null);
-          await confirmPayment(transaction.reference || res.reference);
+        // Paystack inline.js v1 uses "callback" for success (not "onSuccess")
+        callback: async (transaction) => {
+          setStatus("done");
+          setMessage("Payment received! Updating your balance…");
+          try {
+            const confirmation = await ajoFn("confirm-payment", {
+              client_id: client.id,
+              reference: transaction.reference || res.reference,
+            });
+            setMessage(`Payment confirmed! Ref: ${transaction.reference || res.reference}`);
+            onSuccess?.(transaction.reference, confirmation?.client);
+          } catch {
+            setMessage("Payment received. Your balance will update shortly.");
+            onSuccess?.(transaction.reference, null);
+          }
         },
-        onCancel: () => {
-          setStatus("idle");
-          setMessage("Payment cancelled.");
-          setPendingRef(null);
+        // Paystack inline.js v1 uses "onClose" when popup is dismissed (not "onCancel")
+        onClose: () => {
+          setStatus(prev => prev === "done" ? prev : "idle");
+          setMessage(prev => prev === "done" ? prev : "Payment cancelled.");
         },
       });
       handler.openIframe();
@@ -135,31 +129,19 @@ function PayContributionModal({ client, onClose, onSuccess }) {
                 {message}
               </p>
             )}
-
-            {/* When stuck in paying state — Paystack popup closed without calling onSuccess */}
-            {status === "paying" && pendingRef && (
-              <button
-                onClick={() => confirmPayment(pendingRef)}
-                className="w-full mb-3 py-3.5 bg-violet-600 hover:bg-violet-700 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2 shadow-md">
-                I've completed payment — tap to confirm
-              </button>
-            )}
-
             <button
               onClick={handlePay}
-              disabled={status === "loading" || status === "paying" || status === "verifying"}
+              disabled={status === "loading" || status === "paying"}
               className="w-full py-4 bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2 shadow-md">
               {status === "loading" ? (
                 <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Initializing…</>
               ) : status === "paying" ? (
                 <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Paystack loading…</>
-              ) : status === "verifying" ? (
-                <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Verifying…</>
               ) : (
                 <>Pay ₦{fmt(client?.contribution_amount || 0)} now</>
               )}
             </button>
-            <button onClick={onClose} disabled={status === "loading" || status === "paying" || status === "verifying"}
+            <button onClick={onClose} disabled={status === "loading" || status === "paying"}
               className="w-full mt-3 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition text-center py-2">
               Cancel
             </button>
