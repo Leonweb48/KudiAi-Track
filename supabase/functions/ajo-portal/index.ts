@@ -407,7 +407,7 @@ serve(async (req) => {
 
       const { data: cl, error: clErr } = await sb
         .from("aso_clients")
-        .select("id, email, contribution_amount, contribution_frequency, user_id, ajo_group_id, full_name, next_contribution_date")
+        .select("id, email, contribution_amount, contribution_frequency, user_id, paystack_subaccount_code, full_name, next_contribution_date")
         .eq("id", client_id)
         .maybeSingle();
 
@@ -421,19 +421,10 @@ serve(async (req) => {
       const ownerId = cl.user_id;
       if (!ownerId) return json({ error: "Could not resolve business owner. Contact support." }, 422);
 
-      const amount  = Number(cl.contribution_amount);
-      const ref     = genRef("AJO");
-
-      // Resolve the group's Paystack subaccount (if linked)
-      let subaccountCode: string | undefined;
-      if (cl.ajo_group_id) {
-        const { data: grp } = await sb
-          .from("ajo_groups")
-          .select("paystack_subaccount_code")
-          .eq("id", cl.ajo_group_id)
-          .maybeSingle();
-        subaccountCode = grp?.paystack_subaccount_code ?? undefined;
-      }
+      const amount         = Number(cl.contribution_amount);
+      const ref            = genRef("AJO");
+      // Each client has their own subaccount created at registration
+      const subaccountCode = cl.paystack_subaccount_code ?? undefined;
 
       // Initialize transaction with Paystack
       const psRes = await fetch("https://api.paystack.co/transaction/initialize", {

@@ -19,7 +19,8 @@ const BLANK = {
   phone: "", email: "", nin: "",
   address: "", state: "", lga: "", ward: "",
   next_of_kin: "", next_of_kin_phone: "", next_of_kin_email: "", next_of_kin_address: "",
-  staff_id: "", ajo_group_id: "",
+  staff_id: "",
+  bank_code: "", account_number: "", account_name: "",
 };
 
 const BLANK_GROUP = {
@@ -146,6 +147,11 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [subAcctCreating, setSubAcctCreating] = useState(null); // group id
   const [subAcctMsg,     setSubAcctMsg]     = useState("");
 
+  const [banks,               setBanks]               = useState([]);
+  const [clientBankResolving, setClientBankResolving] = useState(false);
+  const [clientResolvedName,  setClientResolvedName]  = useState("");
+  const [clientBankErr,       setClientBankErr]       = useState("");
+
   const [f, setF] = useState(BLANK);
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
 
@@ -160,6 +166,31 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       onAutoOpened?.();
     }
   }, [autoOpen, onAutoOpened, plan]);
+
+  useEffect(() => {
+    if (!showAdd || banks.length > 0) return;
+    supabase.functions.invoke("paystack", { body: { action: "list-banks" } })
+      .then(({ data }) => { if (data?.data) setBanks(data.data); })
+      .catch(() => {});
+  }, [showAdd]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const resolveClientAccount = async () => {
+    if (!f.account_number || !f.bank_code) return;
+    setClientBankResolving(true); setClientBankErr(""); setClientResolvedName("");
+    try {
+      const { data, error } = await supabase.functions.invoke("paystack", {
+        body: { action: "resolve-account", account_number: f.account_number, bank_code: f.bank_code },
+      });
+      if (error || !data?.status) throw new Error(data?.message || "Could not verify account");
+      const name = data.data?.account_name || "";
+      setClientResolvedName(name);
+      set("account_name", name);
+    } catch (e) {
+      setClientBankErr(e.message || "Account verification failed");
+    } finally {
+      setClientBankResolving(false);
+    }
+  };
 
   const reloadWithdrawalRequests = async () => {
     const { data } = await supabase
@@ -439,6 +470,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     setPhotoFile(null); setPhotoPreview(null);
     setClientPassword(""); setConfirmPwd(""); setShowClientPwd(false);
     setAddError("");
+    setClientResolvedName(""); setClientBankErr("");
   };
 
   const handleAdd = async () => {
@@ -465,6 +497,23 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       }
     }
     if (!error && data) {
+      // Auto-create Paystack subaccount if bank details were verified
+      if (f.bank_code && f.account_number && f.account_name) {
+        try {
+          await supabase.functions.invoke("paystack", {
+            body: {
+              action: "create-subaccount",
+              client_id: data.id,
+              business_name: f.full_name,
+              bank_code: f.bank_code,
+              account_number: f.account_number,
+              percentage_charge: 100,
+            },
+          });
+        } catch (subErr) {
+          console.error("Subaccount creation failed (client saved):", subErr);
+        }
+      }
       const tempPwd = clientPassword;
       try {
         await provisionClientLogin(data, tempPwd);
@@ -1073,6 +1122,37 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
               onChange={e => set("email", e.target.value)} placeholder="client@email.com" />
           </div>
 
+          <SectionLabel>Payment Account (Paystack)</SectionLabel>
+          <p className="text-[10px] text-slate-400 dark:text-slate-500 -mt-1 mb-1">
+            Link a bank account so this client can pay contributions directly via Paystack.
+          </p>
+          <Field label="Bank" as="select" value={f.bank_code}
+            onChange={e => { set("bank_code", e.target.value); set("account_name", ""); setClientResolvedName(""); setClientBankErr(""); }}>
+            <option value="">Select bank…</option>
+            {banks.map(b => <option key={b.code} value={b.code}>{b.name}</option>)}
+          </Field>
+          <div className="flex gap-2 items-end">
+            <div className="flex-1">
+              <Field label="Account Number" inputMode="numeric" value={f.account_number}
+                onChange={e => { set("account_number", e.target.value.replace(/\D/g, "").slice(0, 10)); set("account_name", ""); setClientResolvedName(""); setClientBankErr(""); }}
+                placeholder="10-digit NUBAN" />
+            </div>
+            <button type="button" onClick={resolveClientAccount}
+              disabled={clientBankResolving || f.account_number.length < 10 || !f.bank_code}
+              className="mb-0.5 px-3 py-2.5 rounded-xl bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 text-xs font-bold disabled:opacity-40 transition whitespace-nowrap active:scale-95">
+              {clientBankResolving ? "Checking…" : "Verify"}
+            </button>
+          </div>
+          {clientResolvedName && (
+            <p className="text-xs text-green-600 dark:text-green-400 font-semibold -mt-1 flex items-center gap-1">
+              <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+              {clientResolvedName}
+            </p>
+          )}
+          {clientBankErr && (
+            <p className="text-xs text-red-500 -mt-1">{clientBankErr}</p>
+          )}
+
           {/* Portal login password — like staff registration */}
           <div className="bg-violet-50 dark:bg-violet-950/20 border border-violet-200 dark:border-violet-900/40 rounded-2xl p-4 space-y-3 mt-1">
             <div className="flex items-start justify-between gap-3">
@@ -1153,24 +1233,6 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                 <option value="">No staff assigned</option>
                 {staffOptions.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
               </Field>
-            </>
-          )}
-
-          {groups.length > 0 && (
-            <>
-              <SectionLabel>Ajo Group (Paystack Routing)</SectionLabel>
-              <Field label="Assign to Group" as="select" value={f.ajo_group_id}
-                onChange={e => set("ajo_group_id", e.target.value)}>
-                <option value="">No group (manual payments only)</option>
-                {groups.map(g => (
-                  <option key={g.id} value={g.id}>
-                    {g.name}{g.paystack_subaccount_code ? " ✓ Paystack ready" : " (no subaccount)"}
-                  </option>
-                ))}
-              </Field>
-              <p className="text-[10px] text-slate-400 dark:text-slate-500 -mt-1">
-                Clients in a Paystack-linked group can self-pay contributions via card/bank.
-              </p>
             </>
           )}
 

@@ -89,22 +89,24 @@ serve(async (req) => {
       return json(await res.json());
     }
 
-    // ── Create a Paystack subaccount for an Ajo group ─────────────────────
+    // ── Create a Paystack subaccount for an individual Ajo client ────────
     if (action === "create-subaccount") {
-      const { group_id, business_name, bank_code, account_number, percentage_charge = 100 } = body as {
-        group_id: string; business_name: string;
+      const { client_id, business_name, bank_code, account_number, percentage_charge = 100 } = body as {
+        client_id: string; business_name: string;
         bank_code: string; account_number: string; percentage_charge?: number;
       };
+      if (!client_id || !business_name || !bank_code || !account_number) {
+        return json({ error: "client_id, business_name, bank_code and account_number are required" }, 400);
+      }
 
-      // Verify group belongs to the authenticated user
-      const { data: grp, error: grpErr } = await sb
-        .from("ajo_groups").select("id, owner_id").eq("id", group_id).maybeSingle();
-      if (grpErr || !grp) return json({ error: "Group not found" }, 404);
+      // Verify client belongs to the authenticated user
+      const { data: cl, error: clErr } = await sb
+        .from("aso_clients").select("id, user_id").eq("id", client_id).maybeSingle();
+      if (clErr || !cl) return json({ error: "Client not found" }, 404);
 
-      // Validate caller is the group owner (JWT sub matches owner_id)
       const token = authHeader.replace("Bearer ", "");
       const { data: { user } } = await sb.auth.getUser(token);
-      if (!user || user.id !== grp.owner_id) return json({ error: "Forbidden" }, 403);
+      if (!user || user.id !== cl.user_id) return json({ error: "Forbidden" }, 403);
 
       // Create Paystack subaccount
       const psRes = await fetch("https://api.paystack.co/subaccount", {
@@ -122,13 +124,12 @@ serve(async (req) => {
         return json({ error: psData.message || "Failed to create subaccount" }, 422);
       }
 
-      // Persist subaccount code back to the group record
-      await sb.from("ajo_groups").update({
+      // Persist subaccount code back to the client record
+      await sb.from("aso_clients").update({
         paystack_subaccount_code: psData.data.subaccount_code,
         paystack_subaccount_id:   String(psData.data.id),
         account_name:             psData.data.account_name ?? null,
-        updated_at:               new Date().toISOString(),
-      }).eq("id", group_id);
+      }).eq("id", client_id);
 
       return json({ subaccount_code: psData.data.subaccount_code, data: psData.data });
     }

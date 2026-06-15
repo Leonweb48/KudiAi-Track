@@ -457,6 +457,9 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
       portal_pin:             portalPin,
       portal_active:          true,
       ajo_group_id:           cl.ajo_group_id || null,
+      bank_code:              cl.bank_code       || null,
+      account_number:         cl.account_number  || null,
+      account_name:           cl.account_name    || null,
     };
 
     setAsoClients(p => [{ ...payload, id: tempId }, ...p]);
