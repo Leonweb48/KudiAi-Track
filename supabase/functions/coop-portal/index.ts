@@ -234,7 +234,9 @@ serve(async (req) => {
       if (error) return json({ error: error.message }, 400);
       await sb.from("organizations").update({ member_count: (count || 0) + 1 }).eq("id", b.org_id);
 
-      // Create Supabase Auth account — email unconfirmed until OTP verified
+      // Create Supabase Auth account. email_confirm: true lets member sign in immediately
+      // with the temp password. Our custom email_verified: false in user_metadata controls
+      // the in-app OTP step (separate from Supabase's email confirmation).
       const temp_password = genTempPassword();
       const { data: authData, error: authErr } = await sb.auth.admin.createUser({
         email: b.email,
@@ -253,6 +255,9 @@ serve(async (req) => {
         return json({ member, temp_password: null, auth_error: authErr.message });
       }
       if (authData?.user) {
+        // Belt-and-suspenders: explicitly confirm the email so signInWithPassword never
+        // returns "email not confirmed" regardless of project-level settings.
+        await sb.auth.admin.updateUserById(authData.user.id, { email_confirm: true });
         await sb.from("org_members").update({ user_id: authData.user.id }).eq("id", member.id);
         (member as Record<string, unknown>).user_id = authData.user.id;
         // Generate a 6-digit OTP and store in the member record (sent in welcome email)

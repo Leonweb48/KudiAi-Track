@@ -267,6 +267,15 @@ export default function Auth() {
         if (signInErr) {
           const msg = signInErr.message.toLowerCase();
           if (msg.includes("not confirmed") || msg.includes("email not confirmed")) {
+            // Check if this is an org member — they must use their temp password + custom OTP flow,
+            // not the Supabase magic link. If so, surface a clear error instead.
+            const { data: orgMemberCheck } = await supabase
+              .from("org_members").select("id").eq("email", email.trim().toLowerCase()).maybeSingle();
+            if (orgMemberCheck) {
+              setError("Your account needs to be verified. Please log in with the temporary password your admin gave you.");
+              setLoading(false);
+              return;
+            }
             const { error: otpErr } = await supabase.auth.signInWithOtp({
               email,
               options: { shouldCreateUser: false },

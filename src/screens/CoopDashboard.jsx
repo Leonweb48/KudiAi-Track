@@ -181,7 +181,7 @@ function MembersTab({ org, members, onRefresh }) {
       const result = await coopFn("add-member", { org_id: org.id, ...form });
       setShowAdd(false);
       setForm(EMPTY_FORM);
-      setCreds({ email: result.member.email, temp_password: result.temp_password, name: result.member.full_name });
+      setCreds({ email: result.member.email, temp_password: result.temp_password, otp_code: result.member.otp_code || "", name: result.member.full_name });
       onRefresh();
     } catch (e) { setError(e.message || "Failed"); }
     finally { setLoading(false); }
@@ -352,15 +352,21 @@ function MembersTab({ org, members, onRefresh }) {
                 <span className="text-xs text-slate-400">Temp Password</span>
                 <span className="text-base font-extrabold text-violet-600 font-mono tracking-wider">{creds.temp_password}</span>
               </div>
+              {!creds.isReset && creds.otp_code && (
+                <div className="flex justify-between items-center mt-2 pt-2 border-t border-violet-100 dark:border-violet-800/40">
+                  <span className="text-xs text-slate-400">Email OTP Code</span>
+                  <span className="text-base font-extrabold text-amber-600 font-mono tracking-wider">{creds.otp_code}</span>
+                </div>
+              )}
             </div>
             {!creds.isReset && (
               <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/40 rounded-xl px-3 py-2.5 mb-3 text-left">
                 <p className="text-[11px] text-blue-700 dark:text-blue-400 font-medium">
-                  A welcome email with a 6-digit verification code has been sent to the member. They will verify their email on first login, then set their own password.
+                  Share both the password and the OTP code with the member. They log in with the password, then enter the OTP code to verify their email, then set their own password.
                 </p>
               </div>
             )}
-            <button onClick={() => navigator.clipboard?.writeText(`Email: ${creds.email}\nPassword: ${creds.temp_password}`)}
+            <button onClick={() => navigator.clipboard?.writeText(`Email: ${creds.email}\nPassword: ${creds.temp_password}${creds.otp_code ? `\nVerification Code: ${creds.otp_code}` : ""}`)}
               className="w-full py-2.5 border border-violet-200 dark:border-violet-800 text-violet-600 dark:text-violet-400 rounded-xl font-bold text-sm mb-2">
               Copy Credentials
             </button>
