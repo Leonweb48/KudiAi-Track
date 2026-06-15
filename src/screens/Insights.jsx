@@ -1,25 +1,12 @@
 import { useState, useMemo } from "react";
-import { useAI } from "../hooks/useAI";
 import { filterByPeriod, fmt } from "../utils/helpers";
 import { canDo } from "../utils/plans";
 import { useT } from "../contexts/LanguageContext";
+import { getLang } from "../utils/i18n";
 import { getSalesPrediction, getRestockData, getSlowMovers } from "../utils/predictions";
 
-const SECTIONS = [
-  { key: "insights",      label: "Key Insights",  color: "blue"   },
-  { key: "warnings",      label: "Warnings",       color: "amber"  },
-  { key: "opportunities", label: "Opportunities",  color: "green"  },
-  { key: "actions",       label: "Action Items",   color: "purple" },
-];
-
-const COLOR_MAP = {
-  blue:   "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-300",
-  amber:  "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300",
-  green:  "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-800 dark:text-green-300",
-  purple: "bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800 text-purple-800 dark:text-purple-300",
-};
-
-const EMOJI = { insights: "📊", warnings: "⚠️", opportunities: "🚀", actions: "✅" };
+const CHAT_URL = "https://kuditrack-admin.vercel.app/api/public/chat";
+const SECRET   = "kuditrack-email-trigger-2026-amaya";
 
 const AI_QUICK = [
   { label: "Today's Sales",      q: "How were today's sales?"    },
@@ -244,42 +231,94 @@ function SlowMoversSection({ items, t }) {
   );
 }
 
+/* ── Renders **bold** and line-breaks ─────────────────────────────── */
+function FormattedText({ text }) {
+  return text.split("\n").map((line, i) => (
+    <span key={i}>
+      {i > 0 && <br />}
+      {line.split(/\*\*([^*]+)\*\*/g).map((part, j) =>
+        j % 2 === 1 ? <strong key={j} className="font-bold">{part}</strong> : part
+      )}
+    </span>
+  ));
+}
+
+const SPEECH_LANG = { en: "en-NG", pidgin: "en-NG", ha: "ha-NG", ig: "ig-NG", yo: "yo-NG" };
+
+function speakInsight(text, lang) {
+  if (!("speechSynthesis" in window)) return;
+  window.speechSynthesis.cancel();
+  const utt = new SpeechSynthesisUtterance(text.replace(/\*\*/g, ""));
+  utt.lang  = SPEECH_LANG[lang] || "en-NG";
+  utt.rate  = 0.92;
+  utt.pitch = 1.0;
+  window.speechSynthesis.speak(utt);
+}
+
 /* ── Main Insights screen ────────────────────────────────────────── */
 export default function Insights({ store, inventory, plan = "starter", onUpgrade, staffName, onReports, onAIOpen }) {
   const { transactions, credits, asoClients } = store;
   const products = useMemo(() => inventory?.products || [], [inventory]);
-  const { loading, result, error, analyze } = useAI();
-  const [period, setPeriod] = useState("today");
-  const isStaffView = Boolean(staffName);
-  const isPremium   = canDo(plan, "aiInsights");
+  const [period,    setPeriod]    = useState("today");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiInsight, setAiInsight] = useState("");
+  const [aiError,   setAiError]   = useState("");
+  const isStaffView  = Boolean(staffName);
+  const isPremium    = canDo(plan, "aiInsights");
   const hasInventory = canDo(plan, "inventory");
-  const t = useT();
+  const t   = useT();
+  const lang = getLang();
 
   const prediction  = useMemo(() => getSalesPrediction(transactions), [transactions]);
   const restockData = useMemo(() => getRestockData(products, transactions), [products, transactions]);
   const slowMovers  = useMemo(() => getSlowMovers(products, transactions),  [products, transactions]);
 
-  const handleAnalyze = () => {
-    const tx = filterByPeriod(transactions, period);
-    const totalIn  = tx.filter(tx2 => tx2.type === "in").reduce((s, tx2) => s + tx2.amount, 0);
-    const totalOut = tx.filter(tx2 => tx2.type === "out").reduce((s, tx2) => s + tx2.amount, 0);
+  const handleAnalyze = async () => {
+    setAiLoading(true);
+    setAiInsight("");
+    setAiError("");
 
-    const itemCounts = {};
-    tx.forEach(tx2 => { if (tx2.item_name) itemCounts[tx2.item_name] = (itemCounts[tx2.item_name] || 0) + 1; });
-    const topItems = Object.entries(itemCounts).sort((a, b) => b[1] - a[1]).map(([k]) => k);
+    try {
+      const tx       = filterByPeriod(transactions, period);
+      const totalIn  = tx.filter(t2 => t2.type === "in").reduce((s, t2) => s + t2.amount, 0);
+      const totalOut = tx.filter(t2 => t2.type === "out").reduce((s, t2) => s + t2.amount, 0);
 
-    analyze({
-      period,
-      txCount:  tx.length,
-      totalIn,
-      totalOut,
-      profit:   totalIn - totalOut,
-      topItems,
-      totalCreditOutstanding: credits.reduce((s, c) => s + c.outstanding, 0),
-      overdueCredits:         credits.filter(c => c.status === "overdue").length,
-      asoClients:             asoClients.length,
-      asoBalance:             asoClients.reduce((s, c) => s + c.current_balance, 0),
-    });
+      const itemCounts = {};
+      tx.forEach(t2 => { if (t2.item_name) itemCounts[t2.item_name] = (itemCounts[t2.item_name] || 0) + 1; });
+      const topItems = Object.entries(itemCounts).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k]) => k);
+
+      const creditOwed   = credits.reduce((s, c) => s + (c.outstanding || 0), 0);
+      const overdueCount = credits.filter(c => c.status === "overdue").length;
+      const ajoBal       = asoClients.reduce((s, c) => s + (c.current_balance || 0), 0);
+      const outOfStock   = products.filter(p => p.quantity === 0).length;
+      const lowStock     = products.filter(p => p.quantity > 0 && p.quantity <= (p.low_stock_threshold || 5)).length;
+
+      const context = `Business: ${store.profile?.business_name || "Unknown"} | Period analysed: ${period}
+${period.charAt(0).toUpperCase() + period.slice(1)} transactions: ${tx.length} | Sales: ₦${fmt(totalIn)} | Expenses: ₦${fmt(totalOut)} | Profit: ₦${fmt(totalIn - totalOut)}
+Top selling items: ${topItems.join(", ") || "None recorded"}
+Outstanding credit: ₦${fmt(creditOwed)} | Overdue credit customers: ${overdueCount}
+Inventory: ${products.length} products | ${outOfStock} out of stock | ${lowStock} low stock
+Ajo/savings balance: ₦${fmt(ajoBal)} across ${asoClients.length} clients`;
+
+      const res = await fetch(CHAT_URL, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json", "x-trigger-secret": SECRET },
+        body:    JSON.stringify({
+          message:         `Analyse my business performance for the ${period} period. Give me: key insights from the numbers, any warnings I should know about, growth opportunities I can act on, and 2–3 specific action items for this week. Be direct, practical, and encouraging.`,
+          lang,
+          businessContext: context,
+          history:         [],
+        }),
+      });
+
+      if (!res.ok) throw new Error("API error");
+      const { reply } = await res.json();
+      setAiInsight(reply || "");
+    } catch {
+      setAiError("Could not generate insights. Please check your connection and try again.");
+    } finally {
+      setAiLoading(false);
+    }
   };
 
   return (
@@ -322,11 +361,11 @@ export default function Insights({ store, inventory, plan = "starter", onUpgrade
           <div className="flex items-center justify-between px-4 pt-4 pb-3">
             <div className="flex items-center gap-2.5">
               <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center flex-shrink-0">
-                <span className="text-base leading-none">🤖</span>
+                <span className="text-base leading-none">✨</span>
               </div>
               <div>
-                <p className="text-sm font-bold text-white leading-tight">AI Business Assistant</p>
-                <p className="text-[10px] text-white/50 leading-tight">Powered by your real business data</p>
+                <p className="text-sm font-bold text-white leading-tight">KudiAI Business Assistant</p>
+                <p className="text-[10px] text-white/50 leading-tight">Powered by Gemini · knows your real data</p>
               </div>
             </div>
             <button onClick={() => onAIOpen("")}
@@ -363,13 +402,13 @@ export default function Insights({ store, inventory, plan = "starter", onUpgrade
                 ))}
               </div>
 
-              <button onClick={handleAnalyze} disabled={loading}
+              <button onClick={handleAnalyze} disabled={aiLoading}
                 className={`w-full py-4 rounded-2xl font-bold text-sm mb-5 shadow-md transition-all active:scale-95 ${
-                  loading
+                  aiLoading
                     ? "bg-slate-200 dark:bg-slate-700 text-slate-400 cursor-not-allowed"
                     : "bg-green-600 hover:bg-green-700 text-white"
                 }`}>
-                {loading ? (
+                {aiLoading ? (
                   <span className="flex items-center justify-center gap-2">
                     <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full spinner inline-block" />
                     {t("insights.analyzing")}
@@ -377,33 +416,41 @@ export default function Insights({ store, inventory, plan = "starter", onUpgrade
                 ) : t("insights.generate")}
               </button>
 
-              {error && (
+              {aiError && (
                 <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-2xl p-4 text-sm text-red-600 dark:text-red-400 text-center mb-4">
-                  {error}
+                  {aiError}
                 </div>
               )}
 
-              {result && (
-                <div className="space-y-4 mb-5">
-                  {SECTIONS.map(({ key, label, color }) =>
-                    result[key]?.length > 0 ? (
-                      <div key={key} className={`rounded-2xl border p-4 ${COLOR_MAP[color]}`}>
-                        <p className="font-bold text-sm mb-2">{EMOJI[key]} {label}</p>
-                        <ul className="space-y-1.5">
-                          {result[key].map((item, i) => (
-                            <li key={i} className="text-xs flex gap-2">
-                              <span className="mt-0.5 flex-shrink-0">•</span>
-                              <span>{item}</span>
-                            </li>
-                          ))}
-                        </ul>
+              {aiInsight && (
+                <div className="mb-5 rounded-3xl overflow-hidden border border-slate-200 dark:border-slate-700 shadow-card">
+                  {/* Card header */}
+                  <div className="flex items-center justify-between px-4 py-3"
+                    style={{ background: "linear-gradient(135deg,#1e293b 0%,#0f172a 100%)" }}>
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center flex-shrink-0">
+                        <span className="text-xs leading-none">✨</span>
                       </div>
-                    ) : null
-                  )}
+                      <p className="text-sm font-bold text-white">Gemini AI Insight</p>
+                    </div>
+                    <button
+                      onClick={() => speakInsight(aiInsight, lang)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white/80 text-[11px] font-semibold transition-colors active:scale-95">
+                      <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" stroke="none" />
+                        <path d="M15.54 8.46a5 5 0 0 1 0 7.07" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+                      </svg>
+                      Listen
+                    </button>
+                  </div>
+                  {/* Insight body */}
+                  <div className="bg-white dark:bg-slate-800 px-4 py-4 text-sm text-slate-700 dark:text-slate-200 leading-relaxed">
+                    <FormattedText text={aiInsight} />
+                  </div>
                 </div>
               )}
 
-              {!result && !loading && (
+              {!aiInsight && !aiLoading && (
                 <div className="text-center py-8 mb-5">
                   <div className="w-16 h-16 bg-amber-50 dark:bg-amber-900/20 rounded-full flex items-center justify-center mx-auto mb-4">
                     <span className="text-3xl">✨</span>

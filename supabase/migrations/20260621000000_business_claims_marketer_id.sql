@@ -100,6 +100,7 @@ ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS resolution_note TEXT;
 ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS closed_at TIMESTAMPTZ;
 
 -- Update ticket_number generation function to handle longer sequences
+DROP FUNCTION IF EXISTS generate_ticket_number() CASCADE;
 CREATE OR REPLACE FUNCTION generate_ticket_number()
 RETURNS TEXT AS $$
 DECLARE

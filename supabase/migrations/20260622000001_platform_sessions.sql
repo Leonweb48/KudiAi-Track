@@ -23,6 +23,7 @@ CREATE INDEX IF NOT EXISTS idx_platform_sessions_user_id    ON platform_sessions
 ALTER TABLE platform_sessions ENABLE ROW LEVEL SECURITY;
 
 -- Users can insert their own sessions (needed by main app Supabase client)
+DROP POLICY IF EXISTS "users_insert_own_session" ON platform_sessions;
 CREATE POLICY "users_insert_own_session" ON platform_sessions
   FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
 

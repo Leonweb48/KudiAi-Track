@@ -11,6 +11,8 @@ ALTER TABLE subscription_plans
 -- Drop the old catch-all service-only policy (it was blocking client reads).
 -- The service_role key bypasses RLS entirely, so admin portal writes still work.
 DROP POLICY IF EXISTS "plans_service_only" ON subscription_plans;
+DROP POLICY IF EXISTS "authenticated_view_active_plans" ON subscription_plans;
+DROP POLICY IF EXISTS "anon_view_active_plans" ON subscription_plans;
 
 CREATE POLICY "authenticated_view_active_plans" ON subscription_plans
   FOR SELECT TO authenticated USING (is_active = true);
@@ -56,6 +58,9 @@ CREATE TABLE IF NOT EXISTS plan_upgrade_prompts (
 
 ALTER TABLE plan_upgrade_prompts ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "user_read_own_prompts" ON plan_upgrade_prompts;
+DROP POLICY IF EXISTS "user_mark_seen" ON plan_upgrade_prompts;
+
 CREATE POLICY "user_read_own_prompts" ON plan_upgrade_prompts
   FOR SELECT TO authenticated USING (auth.uid() = user_id);
 
@@ -97,7 +102,11 @@ BEGIN
 END;
 $$;
 
-DROP TRIGGER IF EXISTS trg_ajo_group_limit ON aso_groups;
-CREATE TRIGGER trg_ajo_group_limit
-  BEFORE INSERT ON aso_groups
-  FOR EACH ROW EXECUTE FUNCTION trg_check_ajo_group_limit();
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'aso_groups') THEN
+    DROP TRIGGER IF EXISTS trg_ajo_group_limit ON aso_groups;
+    CREATE TRIGGER trg_ajo_group_limit
+      BEFORE INSERT ON aso_groups
+      FOR EACH ROW EXECUTE FUNCTION trg_check_ajo_group_limit();
+  END IF;
+END $$;

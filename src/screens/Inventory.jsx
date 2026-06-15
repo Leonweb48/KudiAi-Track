@@ -2,6 +2,7 @@ import { useState } from "react";
 import { fmt } from "../utils/helpers";
 import { canDo } from "../utils/plans";
 import { useT } from "../contexts/LanguageContext";
+import { getLang, speakConfirmation } from "../utils/i18n";
 
 const CATEGORIES = [
   "Electronics", "Clothing", "Food & Beverages", "Cosmetics",
@@ -572,18 +573,27 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
 
   const handleSave = async (formData) => {
     setSaving(true);
+    const isNew = !editProd?.id;
     let ok;
     if (editProd?.id) ok = await updateProduct(editProd.id, formData);
     else               ok = await addProduct(formData);
     setSaving(false);
-    if (ok) { setShowForm(false); setEditProd(null); }
+    if (ok) {
+      setShowForm(false);
+      setEditProd(null);
+      if (isNew) speakConfirmation("stockIn", getLang());
+    }
   };
 
   const handleRecord = async (movData) => {
     setSaving(true);
+    const movType = movData.type;
     const ok = await recordMovement(movData);
     setSaving(false);
-    if (ok) setMovModal(null);
+    if (ok) {
+      setMovModal(null);
+      if (movType === "restock") speakConfirmation("stockIn", getLang());
+    }
   };
 
   const handleDelete = async () => {

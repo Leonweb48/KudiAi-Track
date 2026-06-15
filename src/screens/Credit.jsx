@@ -8,6 +8,7 @@ import { ClientProfile }  from "../components/shared/ClientProfile";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import { supabase } from "../utils/supabase";
 import { fmt } from "../utils/helpers";
+import { getLang, speakConfirmation } from "../utils/i18n";
 import { useT } from "../contexts/LanguageContext";
 
 const BLANK = {
@@ -538,6 +539,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
             onClick={() => {
               if (!repayAmt) return;
               repayCredit(repaying.id, parseFloat(repayAmt));
+              speakConfirmation("creditSaved", getLang());
               setRepaying(null); setRepayAmt("");
             }}
             className="w-full py-3.5 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] shadow-sm">

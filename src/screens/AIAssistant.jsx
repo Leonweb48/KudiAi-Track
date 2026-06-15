@@ -1,267 +1,103 @@
 import { useState, useRef, useEffect } from "react";
 import { today, fmt } from "../utils/helpers";
-import { detectLanguage, getLang, respond } from "../utils/i18n";
-import { APP_PAT, BIZ_PAT, APP_FAQ, BIZ_KB } from "../utils/aiKnowledge";
-import { getSalesPrediction } from "../utils/predictions";
+import { getLang } from "../utils/i18n";
 
-/* ── Speech language codes ──────────────────────────────────────── */
-const SPEECH_LANG = { en: "en-NG", pidgin: "en-NG", ha: "ha", ig: "ig", yo: "yo" };
+const CHAT_URL = "https://kuditrack-admin.vercel.app/api/public/chat";
+const SECRET   = "kuditrack-email-trigger-2026-amaya";
 
-/* ── Quick-access questions ──────────────────────────────────────── */
+const SPEECH_LANG = { en: "en-NG", pidgin: "en-NG", ha: "ha-NG", ig: "ig-NG", yo: "yo-NG" };
+
 const QUICK = [
-  { label: "Today's Sales",    q: "How were today's sales?"                           },
-  { label: "Sales Forecast",   q: "Show my sales forecast and predictions"            },
-  { label: "Total Profit",     q: "What is my total profit?"                          },
-  { label: "Outstanding Credit", q: "Show my outstanding credit"                     },
-  { label: "App Features",     q: "What can this app do for my business?"             },
-  { label: "Stock Status",     q: "What is my stock status?"                          },
-  { label: "Pricing Tips",     q: "What is a good pricing strategy for my business?"  },
-  { label: "Best Sellers",     q: "What are my best selling items?"                   },
-  { label: "Grow Business",    q: "How can I grow my business?"                       },
+  { label: "Today's Sales",      q: "How were today's sales?"                          },
+  { label: "Sales Forecast",     q: "Show my sales forecast and predictions"           },
+  { label: "Total Profit",       q: "What is my total profit?"                         },
+  { label: "Outstanding Credit", q: "Show my outstanding credit"                      },
+  { label: "Stock Status",       q: "What is my stock status?"                         },
+  { label: "Best Sellers",       q: "What are my best selling items?"                  },
+  { label: "Grow Business",      q: "How can I grow my business?"                      },
+  { label: "App Features",       q: "What can this app do for my business?"            },
+  { label: "Pricing Tips",       q: "What is a good pricing strategy for my business?" },
 ];
 
-function recentDate(transactions) {
-  const sorted = [...transactions].sort(
-    (a, b) => new Date(b.transaction_date) - new Date(a.transaction_date)
-  );
-  return sorted[0]?.transaction_date || "—";
-}
+const GREETINGS = {
+  en:     "Hello! I'm **KudiAI**, your Gemini-powered business assistant.\n\nI know your real business data — sales, credit, inventory, ajo savings — and I'm here to give you smart, specific advice to help your business grow.\n\nTap a quick question below or ask me anything!",
+  pidgin: "Hello! I be **KudiAI**, your Gemini business assistant.\n\nI sabi your real business data — sales, credit, stock, ajo savings — and I dey here to help you grow your business.\n\nTap any question or ask me anything!",
+  ha:     "Sannu! Ni ne **KudiAI**, mataimakiyar kasuwancin Gemini.\n\nNa san bayanan kasuwancin ku na ainihi — siyarwa, bashi, kaya, ajiya — kuma ina nan don taimaka muku.\n\nDanna tambaya ko rubuta naku!",
+  ig:     "Nnọọ! Abụ m **KudiAI**, onye inyeaka azụmaahịa Gemini gị.\n\nM maara data azụmaahịa gị n'ezie — ire ahịa, ugwo, ngwa ahịa, ihe nchekwa ajo.\n\nPị ajụjụ ma ọ bụ jụọ m ihe ọ bụla!",
+  yo:     "Ẹ káàbọ̀! Èmi ni **KudiAI**, olùrànlọ́wọ́ isọwọ Gemini rẹ.\n\nMo mọ data isowo gidi rẹ — tita, gbese, oja, ajo — mo si wa nibi lati ran ọ lọwọ.\n\nTẹ ibeere tabi béèrè nipa isowo rẹ!",
+};
 
-/* ── Core analysis engine ────────────────────────────────────────── */
-function analyzeQuery(query, { transactions = [], credits = [], asoClients = [], products = [] }) {
-  const q = query.toLowerCase().trim();
-  const lang = detectLanguage(q) || getLang();
+/* ── Build a compact business context string to send to Gemini ─────── */
+function buildContext(store, products) {
+  const { profile = {}, transactions = [], credits = [], asoClients = [] } = store;
   const todayStr = today();
-  const now = new Date();
+  const now      = new Date();
+  const cm       = now.getMonth();
+  const cy       = now.getFullYear();
 
-  /* ── APP FAQ ── */
-  for (const { key, hits } of APP_PAT) {
-    if (hits.some(h => q.includes(h))) {
-      return (APP_FAQ[lang] || APP_FAQ.en)[key] || APP_FAQ.en[key];
-    }
-  }
+  const txIn   = transactions.filter(t => t.type === "in");
+  const txOut  = transactions.filter(t => t.type === "out");
+  const allIn  = txIn.reduce((s, t) => s + t.amount, 0);
+  const allOut = txOut.reduce((s, t) => s + t.amount, 0);
 
-  /* ── GENERAL BUSINESS KNOWLEDGE ── */
-  for (const { key, hits } of BIZ_PAT) {
-    if (hits.some(h => q.includes(h))) {
-      return (BIZ_KB[lang] || BIZ_KB.en)[key] || BIZ_KB.en[key];
-    }
-  }
+  const tdIn  = txIn.filter(t => t.transaction_date === todayStr).reduce((s, t) => s + t.amount, 0);
+  const tdOut = txOut.filter(t => t.transaction_date === todayStr).reduce((s, t) => s + t.amount, 0);
+  const tdCnt = transactions.filter(t => t.transaction_date === todayStr).length;
 
-  const monthOf = (t) => {
-    const d = new Date(t.transaction_date);
-    return { m: d.getMonth(), y: d.getFullYear() };
-  };
-  const thisMonthTx = transactions.filter(t => {
-    const { m, y } = monthOf(t);
-    return m === now.getMonth() && y === now.getFullYear();
-  });
-  const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const lastMonthTx = transactions.filter(t => {
-    const { m, y } = monthOf(t);
-    return m === lastMonth.getMonth() && y === lastMonth.getFullYear();
-  });
+  const mTx  = transactions.filter(t => { const d = new Date(t.transaction_date); return d.getMonth() === cm && d.getFullYear() === cy; });
+  const mIn  = mTx.filter(t => t.type === "in").reduce((s, t) => s + t.amount, 0);
+  const mOut = mTx.filter(t => t.type === "out").reduce((s, t) => s + t.amount, 0);
 
-  /* ── TODAY'S SALES ── */
-  if (
-    q.includes("today") || q.includes("yau") || q.includes("oni") ||
-    q.includes("taa ") || q.includes("oge") ||
-    (q.includes("how were") && (q.includes("sale") || q.includes("day"))) ||
-    q.includes("today sales") || q.includes("sales today")
-  ) {
-    const sales   = transactions.filter(t => t.transaction_date === todayStr && t.type === "in");
-    const outs    = transactions.filter(t => t.transaction_date === todayStr && t.type === "out");
-    const revenue = sales.reduce((s, t) => s + t.amount, 0);
-    const expense = outs.reduce((s, t) => s + t.amount, 0);
-    const top     = [...sales].sort((a, b) => b.amount - a.amount).slice(0, 3);
-    return respond("todaySales", lang, {
-      revenue, expense, profit: revenue - expense, sales, outs, top,
-      lastDate: recentDate(transactions),
-    });
-  }
+  const itemMap = {};
+  txIn.forEach(t => { if (t.item_name) itemMap[t.item_name] = (itemMap[t.item_name] || 0) + t.amount; });
+  const topItems = Object.entries(itemMap).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k]) => k);
 
-  /* ── SALES PREDICTION ── */
-  if (
-    q.includes("predict") || q.includes("forecast") || q.includes("expected sales") ||
-    q.includes("next week") || q.includes("next month") || q.includes("how much will") ||
-    q.includes("revenue forecast") || q.includes("sales prediction") ||
-    q.includes("hasashen") || q.includes("amụmạ ahịa") || q.includes("asọtẹlẹ")
-  ) {
-    const pred = getSalesPrediction(transactions);
-    if (!pred) return respond("help", lang, {});
-    const fN = (n) => fmt(Math.round(n));
-    const arrow = pred.trend === "up" ? "↑" : pred.trend === "down" ? "↓" : "→";
-    const pctStr = pred.trendPct !== null ? ` ${arrow} ${Math.abs(pred.trendPct)}%` : "";
-    const R = {
-      en:     `**Sales Forecast** (28-day average: ${fN(pred.avgDaily)}/day)\n\n📅 **This Week:** ${fN(pred.thisWeekActual)} so far → **${fN(pred.projectedWeek)} projected**\n📆 **This Month:** ${fN(pred.thisMonthActual)} so far → **${fN(pred.projectedMonth)} projected**\n\nTrend: ${pred.trend === "up" ? "📈 Growing" : pred.trend === "down" ? "📉 Declining" : "📊 Stable"}${pctStr} vs last 2 weeks\n\n💡 Record transactions daily for better predictions.`,
-      pidgin: `**Sales Forecast** (28-day average: ${fN(pred.avgDaily)}/day)\n\n📅 **This Week:** ${fN(pred.thisWeekActual)} so far → **${fN(pred.projectedWeek)} projected**\n📆 **This Month:** ${fN(pred.thisMonthActual)} so far → **${fN(pred.projectedMonth)} projected**\n\nTrend: ${pred.trend === "up" ? "📈 E dey grow" : pred.trend === "down" ? "📉 E dey fall" : "📊 E dey steady"}${pctStr} vs last 2 weeks\n\n💡 Record transactions every day for better predictions.`,
-      ha:     `**Hasashen Siyarwa** (matsakaici: ${fN(pred.avgDaily)}/rana)\n\n📅 **Wannan Mako:** ${fN(pred.thisWeekActual)} → hasashe **${fN(pred.projectedWeek)}**\n📆 **Wannan Wata:** ${fN(pred.thisMonthActual)} → hasashe **${fN(pred.projectedMonth)}**\n\nTrend: ${pred.trend === "up" ? "📈 Yana girma" : pred.trend === "down" ? "📉 Yana raguwa" : "📊 Yana daidai"}${pctStr}`,
-      ig:     `**Amụmạ Ahịa** (nkezi: ${fN(pred.avgDaily)}/ụbọchị)\n\n📅 **Izu a:** ${fN(pred.thisWeekActual)} → amụmạ **${fN(pred.projectedWeek)}**\n📆 **Ọnwa a:** ${fN(pred.thisMonthActual)} → amụmạ **${fN(pred.projectedMonth)}**\n\nTrend: ${pred.trend === "up" ? "📈 Na-eto" : pred.trend === "down" ? "📉 Na-ada" : "📊 Kwụsịrị"}${pctStr}`,
-      yo:     `**Asọtẹlẹ Tita** (apapọ: ${fN(pred.avgDaily)}/ọjọ)\n\n📅 **Ọsẹ Yii:** ${fN(pred.thisWeekActual)} → a sọ asọ **${fN(pred.projectedWeek)}**\n📆 **Oṣù Yii:** ${fN(pred.thisMonthActual)} → a sọ asọ **${fN(pred.projectedMonth)}**\n\nTrend: ${pred.trend === "up" ? "📈 N dagba" : pred.trend === "down" ? "📉 N dinku" : "📊 Dúró niwọn"}${pctStr}`,
-    };
-    return R[lang] || R.en;
-  }
+  const custMap = {};
+  txIn.forEach(t => { if (t.customer_name) custMap[t.customer_name] = (custMap[t.customer_name] || 0) + t.amount; });
+  const topCusts = Object.entries(custMap).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, v]) => `${k} (₦${fmt(v)})`);
 
-  /* ── TOTAL PROFIT ── */
-  if (
-    q.includes("profit") || q.includes("riba") || q.includes("uru") ||
-    q.includes("ere ") || q.includes("overall") ||
-    q.includes("total earn") || q.includes("total profit")
-  ) {
-    const allIn  = transactions.filter(t => t.type === "in").reduce((s, t) => s + t.amount, 0);
-    const allOut = transactions.filter(t => t.type === "out").reduce((s, t) => s + t.amount, 0);
-    const mIn    = thisMonthTx.filter(t => t.type === "in").reduce((s, t) => s + t.amount, 0);
-    const mOut   = thisMonthTx.filter(t => t.type === "out").reduce((s, t) => s + t.amount, 0);
-    const lmIn   = lastMonthTx.filter(t => t.type === "in").reduce((s, t) => s + t.amount, 0);
-    const pct    = lmIn > 0 ? Math.round(((mIn - lmIn) / lmIn) * 100) : null;
-    return respond("totalProfit", lang, { allIn, allOut, mIn, mOut, lmIn, pct });
-  }
+  const unpaid     = credits.filter(c => c.status !== "paid");
+  const overdue    = credits.filter(c => c.status === "overdue");
+  const creditOwed = unpaid.reduce((s, c) => s + (c.outstanding || 0), 0);
 
-  /* ── OUTSTANDING CREDIT ── */
-  if (
-    q.includes("credit") || q.includes("outstanding") || q.includes("owe") ||
-    q.includes("debt") || q.includes("bashi") || q.includes("gbese") ||
-    q.includes("ugwo") || q.includes("bin ku")
-  ) {
-    const unpaid    = credits.filter(c => c.status !== "paid");
-    const overdue   = credits.filter(c => c.status === "overdue");
-    const totalOwed = unpaid.reduce((s, c) => s + (c.outstanding || 0), 0);
-    const top3      = [...unpaid].sort((a, b) => (b.outstanding || 0) - (a.outstanding || 0)).slice(0, 3);
-    return respond("credit", lang, { unpaid, overdue, totalOwed, top3 });
-  }
+  const outOfStock = products.filter(p => p.quantity === 0).length;
+  const lowStock   = products.filter(p => p.quantity > 0 && p.quantity <= (p.low_stock_threshold || 5)).length;
+  const stockVal   = products.reduce((s, p) => s + (p.selling_price || 0) * p.quantity, 0);
 
-  /* ── TOP CUSTOMERS ── */
-  if (
-    q.includes("customer") || q.includes("abokin") || q.includes("ndị ahịa") ||
-    q.includes("onibara") || q.includes("loyal") || q.includes("best customer") ||
-    q.includes("top customer")
-  ) {
-    const map = {};
-    transactions
-      .filter(t => t.type === "in" && t.customer_name)
-      .forEach(t => {
-        if (!map[t.customer_name]) map[t.customer_name] = { total: 0, count: 0 };
-        map[t.customer_name].total += t.amount;
-        map[t.customer_name].count += 1;
-      });
-    const sorted = Object.entries(map)
-      .sort(([, a], [, b]) => b.total - a.total)
-      .slice(0, 5);
-    return respond("topCustomers", lang, { sorted });
-  }
+  const ajoActive = asoClients.filter(c => c.status === "active").length;
+  const ajoBal    = asoClients.reduce((s, c) => s + (c.current_balance || 0), 0);
+  const ajoTarget = asoClients.reduce((s, c) => s + (c.target_amount  || 0), 0);
+  const ajoOver   = asoClients.filter(c => c.next_contribution_date && new Date() > new Date(c.next_contribution_date)).length;
 
-  /* ── STOCK STATUS ── */
-  if (
-    q.includes("stock") || q.includes("inventory") || q.includes("product") ||
-    q.includes("kaya") || q.includes("ngwaahia") || q.includes("ile-oja") ||
-    q.includes("kayan ajiya")
-  ) {
-    const out       = products.filter(p => p.quantity === 0);
-    const low       = products.filter(p => p.quantity > 0 && p.quantity <= (p.low_stock_threshold || 5));
-    const good      = products.filter(p => p.quantity > (p.low_stock_threshold || 5));
-    const costVal   = products.reduce((s, p) => s + (p.cost_price || 0) * p.quantity, 0);
-    const retailVal = products.reduce((s, p) => s + (p.selling_price || 0) * p.quantity, 0);
-    return respond("stock", lang, { products, out, low, good, costVal, retailVal });
-  }
-
-  /* ── MONTHLY SALES ── */
-  if (
-    q.includes("month") || q.includes("monthly") || q.includes("this month") ||
-    q.includes("wata") || q.includes("ọnwa") || q.includes("osu yi")
-  ) {
-    const mSales = thisMonthTx.filter(t => t.type === "in");
-    const mExp   = thisMonthTx.filter(t => t.type === "out").reduce((s, t) => s + t.amount, 0);
-    const mRev   = mSales.reduce((s, t) => s + t.amount, 0);
-    const lmRev  = lastMonthTx.filter(t => t.type === "in").reduce((s, t) => s + t.amount, 0);
-    const pct    = lmRev > 0 ? Math.round(((mRev - lmRev) / lmRev) * 100) : null;
-    return respond("monthly", lang, { mSales, mRev, mExp, lmRev, pct });
-  }
-
-  /* ── EXPENSES ── */
-  if (
-    q.includes("expense") || q.includes("spending") || q.includes("cash out") ||
-    q.includes("kashe") || q.includes("inawo") || q.includes("ejiri ego") ||
-    q.includes("money comot")
-  ) {
-    const all    = transactions.filter(t => t.type === "out");
-    const total  = all.reduce((s, t) => s + t.amount, 0);
-    const mTotal = thisMonthTx.filter(t => t.type === "out").reduce((s, t) => s + t.amount, 0);
-    const catMap = {};
-    all.forEach(t => { catMap[t.category] = (catMap[t.category] || 0) + t.amount; });
-    const topCats = Object.entries(catMap).sort(([, a], [, b]) => b - a).slice(0, 4);
-    return respond("expenses", lang, { total, mTotal, topCats });
-  }
-
-  /* ── BEST SELLERS ── */
-  if (
-    q.includes("best sell") || q.includes("top item") || q.includes("top sell") ||
-    q.includes("popular") || q.includes("most sold") || q.includes("dey sell pass") ||
-    q.includes("ire kachasị") || q.includes("tita julo")
-  ) {
-    const itemMap = {};
-    transactions
-      .filter(t => t.type === "in" && t.item_name)
-      .forEach(t => {
-        if (!itemMap[t.item_name]) itemMap[t.item_name] = { total: 0, count: 0 };
-        itemMap[t.item_name].total += t.amount;
-        itemMap[t.item_name].count += 1;
-      });
-    const sorted = Object.entries(itemMap)
-      .sort(([, a], [, b]) => b.total - a.total)
-      .slice(0, 5);
-    return respond("bestSellers", lang, { sorted });
-  }
-
-  /* ── OVERDUE ── */
-  if (
-    q.includes("overdue") || q.includes("late") || q.includes("missed") ||
-    q.includes("wuce lokaci") || q.includes("agafeela oge") || q.includes("koja akoko")
-  ) {
-    const odCredits = credits.filter(c => c.status === "overdue");
-    const odAso     = asoClients.filter(
-      c => c.next_contribution_date && new Date() > new Date(c.next_contribution_date)
-    );
-    return respond("overdue", lang, { odCredits, odAso });
-  }
-
-  /* ── AJO / ASO ── */
-  if (
-    q.includes("ajo") || q.includes("aso") || q.includes("savings") ||
-    q.includes("contribution") || q.includes("ajiya") || q.includes("ifowopamo")
-  ) {
-    const active      = asoClients.filter(c => c.status === "active");
-    const totalBal    = asoClients.reduce((s, c) => s + (c.current_balance || 0), 0);
-    const totalTarget = asoClients.reduce((s, c) => s + (c.target_amount || 0), 0);
-    const overdue     = asoClients.filter(
-      c => c.next_contribution_date && new Date() > new Date(c.next_contribution_date)
-    );
-    return respond("ajo", lang, { clients: asoClients, active, totalBal, totalTarget, overdue });
-  }
-
-  /* ── DEFAULT / HELP ── */
-  return respond("help", lang, {});
+  return `Business: ${profile.business_name || "Unknown"} | Owner: ${profile.owner_name || "Unknown"} | Today: ${todayStr}
+ALL-TIME FINANCES: Sales ₦${fmt(allIn)} | Expenses ₦${fmt(allOut)} | Net Profit ₦${fmt(allIn - allOut)}
+THIS MONTH: Sales ₦${fmt(mIn)} | Expenses ₦${fmt(mOut)} | Profit ₦${fmt(mIn - mOut)}
+TODAY: Sales ₦${fmt(tdIn)} | Expenses ₦${fmt(tdOut)} | Transactions: ${tdCnt}
+TOTAL TRANSACTIONS: ${transactions.length}
+TOP ITEMS: ${topItems.join(", ") || "None recorded yet"}
+TOP CUSTOMERS: ${topCusts.join(", ") || "None recorded yet"}
+CREDIT: ₦${fmt(creditOwed)} outstanding from ${unpaid.length} customers | ${overdue.length} overdue
+INVENTORY: ${products.length} products | ${outOfStock} out of stock | ${lowStock} low stock | Total stock value ₦${fmt(stockVal)}
+AJO/SAVINGS: ${asoClients.length} clients (${ajoActive} active) | Balance ₦${fmt(ajoBal)} / Target ₦${fmt(ajoTarget)} | ${ajoOver} overdue contributions`;
 }
 
-/* ── Renders **bold** and line-breaks ────────────────────────────── */
+/* ── Renders **bold** and line-breaks ────────────────────────────────── */
 function FormattedText({ text }) {
   return text.split("\n").map((line, i) => (
     <span key={i}>
       {i > 0 && <br />}
       {line.split(/\*\*([^*]+)\*\*/g).map((part, j) =>
-        j % 2 === 1
-          ? <strong key={j} className="font-bold">{part}</strong>
-          : part
+        j % 2 === 1 ? <strong key={j} className="font-bold">{part}</strong> : part
       )}
     </span>
   ));
 }
 
-/* ── Typing indicator ────────────────────────────────────────────── */
 function TypingDots() {
   return (
     <div className="flex items-end gap-2">
       <div className="w-7 h-7 rounded-full bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center flex-shrink-0">
-        <span className="text-[11px] leading-none">🤖</span>
+        <span className="text-[11px] leading-none">✨</span>
       </div>
       <div className="bg-white dark:bg-slate-800 px-4 py-3 rounded-2xl rounded-bl-md shadow-card border border-slate-100 dark:border-slate-700/60">
         <div className="flex gap-1.5 items-center h-3">
@@ -275,26 +111,20 @@ function TypingDots() {
   );
 }
 
-/* ── Greeting based on stored language ──────────────────────────── */
-const GREETINGS = {
-  en:     "Hello! I'm your AI Business Assistant. I can answer questions about your real business data (sales, credit, stock, customers), give general business advice, and guide you through the app.\n\nTap a quick question below or type your own — you can also tap 🎤 to ask by voice!",
-  pidgin: "Hello! I be your AI Business Assistant. I fit answer question about your real business data (sales, credit, stock, customers), give general business advice, and guide you for the app.\n\nTap any question or type wetin you want ask — you fit also tap 🎤 ask by voice!",
-  ha:     "Sannu! Ni ne mataimakiyar kasuwancin AI. Zan iya amsa tambayoyi game da bayanan kasuwancin ku na ainihi, ba da shawarwarin kasuwanci na gaba ɗaya, da kuma jagorantar ku cikin app.\n\nDanna tambaya ko rubuta naku — kuna iya danna 🎤 don tambaya da murya!",
-  ig:     "Nnọọ! Abụ m onye inyeaka azụmaahịa AI gị. Nwere ike aza ajụjụ banyere data azụmaahịa gị n'ezie, nye ndụmọdụ azụmaahịa n'ozuzu, na duzie gị n'ngwa.\n\nPị ajụjụ ma ọ bụ dee nke gị — ị nwere ike pịa 🎤 iji jụọ n'olu!",
-  yo:     "Ẹ káàbọ̀! Èmi ni olùrànlọ́wọ́ isọwọ AI rẹ. Mo le dahun awọn ibeere nipa data isowo gidi rẹ, fun imọran isowo gbogbogbo, ati ṣe amọna rẹ nipasẹ app.\n\nTẹ ibeere tabi tẹ tirẹ silẹ — o tún le tẹ 🎤 láti béèrè nípa ohùn!",
-};
-
-/* ── Strip markdown for TTS ─────────────────────────────────────── */
-function stripMd(text) {
-  return text
-    .replace(/\*\*/g, "")
-    .replace(/^#{1,6}\s*/gm, "")
-    .trim();
+function speakText(text, lang) {
+  if (!("speechSynthesis" in window)) return;
+  window.speechSynthesis.cancel();
+  const utt  = new SpeechSynthesisUtterance(text.replace(/\*\*/g, ""));
+  utt.lang   = SPEECH_LANG[lang] || "en-NG";
+  utt.rate   = 0.92;
+  utt.pitch  = 1.0;
+  window.speechSynthesis.speak(utt);
 }
 
-/* ── Main screen ─────────────────────────────────────────────────── */
+/* ── Main screen ─────────────────────────────────────────────────────── */
 export default function AIAssistant({ store, inventory, onClose, initialQuery = "" }) {
-  const greeting = GREETINGS[getLang()] || GREETINGS.en;
+  const lang     = getLang();
+  const greeting = GREETINGS[lang] || GREETINGS.en;
 
   const [messages,  setMessages]  = useState([{ role: "assistant", text: greeting }]);
   const [input,     setInput]     = useState("");
@@ -302,82 +132,83 @@ export default function AIAssistant({ store, inventory, onClose, initialQuery = 
   const [listening, setListening] = useState(false);
   const [ttsOn,     setTtsOn]     = useState(false);
 
-  const listRef   = useRef(null);
-  const inputRef  = useRef(null);
-  const askedRef  = useRef(false);
-  const recogRef  = useRef(null);
-  const ttsOnRef  = useRef(false);
-  const askFnRef  = useRef(null);
+  const listRef  = useRef(null);
+  const inputRef = useRef(null);
+  const askedRef = useRef(false);
+  const recogRef = useRef(null);
+  const ttsOnRef = useRef(false);
+  const msgRef   = useRef(messages);
 
   ttsOnRef.current = ttsOn;
-
-  const hasSpeech = Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
-  const hasTts    = "speechSynthesis" in window;
+  msgRef.current   = messages;
 
   useEffect(() => {
     if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
   }, [messages, thinking]);
 
-  function speakText(text) {
-    if (!hasTts) return;
-    window.speechSynthesis.cancel();
-    const ut = new SpeechSynthesisUtterance(stripMd(text));
-    ut.lang = SPEECH_LANG[getLang()] || "en-NG";
-    ut.rate = 0.92;
-    window.speechSynthesis.speak(ut);
-  }
-
-  function ask(query) {
+  async function ask(query) {
     const q = query.trim();
     if (!q || thinking) return;
+
     setMessages(prev => [...prev, { role: "user", text: q }]);
     setInput("");
     setThinking(true);
-    setTimeout(() => {
+
+    try {
       const products = inventory?.products || [];
-      const answer = analyzeQuery(q, { ...store, products });
-      setMessages(prev => [...prev, { role: "assistant", text: answer }]);
+      const context  = buildContext(store, products);
+      // Pass last 10 messages (skip greeting) as conversation history
+      const history  = msgRef.current.slice(1).map(m => ({ role: m.role, text: m.text }));
+
+      const res = await fetch(CHAT_URL, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json", "x-trigger-secret": SECRET },
+        body:    JSON.stringify({ message: q, lang, businessContext: context, history }),
+      });
+
+      let reply = "I couldn't get a response right now. Please check your connection and try again.";
+      if (res.ok) {
+        const data = await res.json();
+        if (data.reply) reply = data.reply;
+      }
+
+      setMessages(prev => [...prev, { role: "assistant", text: reply }]);
+      if (ttsOnRef.current) speakText(reply, lang);
+    } catch {
+      setMessages(prev => [...prev, { role: "assistant", text: "Network error. Please check your connection and try again." }]);
+    } finally {
       setThinking(false);
-      if (ttsOnRef.current) speakText(answer);
-    }, 500);
+    }
   }
 
-  askFnRef.current = ask;
+  const askRef = useRef(ask);
+  askRef.current = ask;
 
   useEffect(() => {
     if (initialQuery && !askedRef.current) {
       askedRef.current = true;
-      ask(initialQuery); // eslint-disable-line react-hooks/exhaustive-deps
+      askRef.current(initialQuery);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const hasSpeech = Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
+
   function startListening() {
-    if (!hasSpeech) return;
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const r  = new SR();
-    r.lang           = SPEECH_LANG[getLang()] || "en-NG";
+    if (!SR) return;
+    const r = new SR();
+    r.lang           = SPEECH_LANG[lang] || "en-NG";
     r.continuous     = false;
     r.interimResults = false;
-    r.onresult = (e) => {
-      setListening(false);
-      askFnRef.current(e.results[0][0].transcript);
-    };
-    r.onerror = () => setListening(false);
-    r.onend   = () => setListening(false);
+    r.onresult = e => { setListening(false); askRef.current(e.results[0][0].transcript); };
+    r.onerror  = () => setListening(false);
+    r.onend    = () => setListening(false);
     r.start();
     setListening(true);
     recogRef.current = r;
   }
 
-  function stopListening() {
-    recogRef.current?.stop();
-    setListening(false);
-  }
-
-  function toggleTts() {
-    if (ttsOn && hasTts) window.speechSynthesis.cancel();
-    setTtsOn(v => !v);
-  }
+  function stopListening() { recogRef.current?.stop(); setListening(false); }
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-50 dark:bg-slate-900 flex flex-col">
@@ -387,38 +218,34 @@ export default function AIAssistant({ store, inventory, onClose, initialQuery = 
         className="flex items-center gap-3 px-4 py-3 bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 shadow-sm flex-shrink-0"
         style={{ paddingTop: "calc(0.75rem + env(safe-area-inset-top, 0px))" }}>
         <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center flex-shrink-0">
-          <span className="text-base leading-none">🤖</span>
+          <span className="text-base leading-none">✨</span>
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-bold text-slate-800 dark:text-white leading-tight">AI Business Assistant</p>
-          <p className="text-[10px] text-slate-400 dark:text-slate-500">Business data · App guide · General advice</p>
+          <p className="text-sm font-bold text-slate-800 dark:text-white leading-tight">KudiAI Business Assistant</p>
+          <p className="text-[10px] text-slate-400 dark:text-slate-500">Powered by Gemini · knows your real data</p>
         </div>
 
         {/* TTS toggle */}
-        {hasTts && (
-          <button
-            onClick={toggleTts}
-            title={ttsOn ? "Mute voice" : "Enable voice replies"}
-            className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors flex-shrink-0 ${
-              ttsOn
-                ? "bg-brand-100 dark:bg-brand-900/40 text-brand-600 dark:text-brand-400"
-                : "bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500"
-            }`}>
-            {ttsOn ? (
-              <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" stroke="none" />
-                <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-                <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
-              </svg>
-            ) : (
-              <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" stroke="none" />
-                <line x1="23" y1="9" x2="17" y2="15" />
-                <line x1="17" y1="9" x2="23" y2="15" />
-              </svg>
-            )}
-          </button>
-        )}
+        <button
+          onClick={() => setTtsOn(v => !v)}
+          title={ttsOn ? "Mute voice replies" : "Enable voice replies"}
+          className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors flex-shrink-0 ${
+            ttsOn
+              ? "bg-brand-100 dark:bg-brand-900/40 text-brand-600 dark:text-brand-400"
+              : "bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500"
+          }`}>
+          {ttsOn ? (
+            <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" stroke="none" />
+              <path d="M15.54 8.46a5 5 0 0 1 0 7.07" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" stroke="none" />
+              <line x1="23" y1="9" x2="17" y2="15" /><line x1="17" y1="9" x2="23" y2="15" />
+            </svg>
+          )}
+        </button>
 
         <button
           onClick={onClose}
@@ -445,7 +272,7 @@ export default function AIAssistant({ store, inventory, onClose, initialQuery = 
           <div key={idx} className={`flex items-end gap-2 ${m.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
             {m.role === "assistant" && (
               <div className="w-7 h-7 rounded-full bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center flex-shrink-0 mb-0.5">
-                <span className="text-[11px] leading-none">🤖</span>
+                <span className="text-[11px] leading-none">✨</span>
               </div>
             )}
             <div className={`max-w-[82%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${
@@ -454,9 +281,9 @@ export default function AIAssistant({ store, inventory, onClose, initialQuery = 
                 : "bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 shadow-card border border-slate-100 dark:border-slate-700/60 rounded-bl-md"
             }`}>
               <FormattedText text={m.text} />
-              {m.role === "assistant" && hasTts && idx > 0 && (
+              {m.role === "assistant" && idx > 0 && (
                 <button
-                  onClick={() => speakText(m.text)}
+                  onClick={() => speakText(m.text, lang)}
                   className="mt-2 flex items-center gap-1 text-[10px] text-slate-400 dark:text-slate-500 hover:text-brand-500 dark:hover:text-brand-400 transition-colors">
                   <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                     <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" stroke="none" />
@@ -478,7 +305,6 @@ export default function AIAssistant({ store, inventory, onClose, initialQuery = 
         style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom, 0px))" }}>
         <div className="flex gap-2 items-center">
 
-          {/* Mic button */}
           {hasSpeech && (
             <button
               onClick={listening ? stopListening : startListening}
@@ -496,8 +322,7 @@ export default function AIAssistant({ store, inventory, onClose, initialQuery = 
                 <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                   <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
                   <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                  <line x1="12" y1="19" x2="12" y2="23" />
-                  <line x1="8" y1="23" x2="16" y2="23" />
+                  <line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" />
                 </svg>
               )}
             </button>
@@ -508,7 +333,7 @@ export default function AIAssistant({ store, inventory, onClose, initialQuery = 
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => e.key === "Enter" && !e.shiftKey && ask(input)}
-            placeholder={listening ? "Listening… speak now" : "Ask about your business, the app, or business tips…"}
+            placeholder={listening ? "Listening… speak now" : "Ask anything about your business…"}
             className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/60 text-sm text-slate-700 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white dark:focus:bg-slate-700"
           />
 

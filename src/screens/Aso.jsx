@@ -408,6 +408,8 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         .update({ current_balance: newBalance, total_withdrawn: newWithdrawn })
         .eq("id", req.aso_client_id);
 
+      // Rule: always notify business owner + ajo client when withdrawal is approved
+      // Emails resolved server-side from IDs to guarantee fresh delivery
       fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
@@ -415,17 +417,14 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           event: "ajo_withdrawal_approved",
           data: {
             client_id:     req.aso_client_id,
-            client_name:   cl.full_name  || "",
-            client_email:  cl.email      || "",
             owner_id:      req.owner_id,
-            owner_email:   profile?.email || "",
             business_name: profile?.business_name || "",
             amount:        req.amount,
             fee_type:      req.fee_type,
             fee_amount:    req.fee_amount,
             net_amount:    req.net_amount,
             balance_after: newBalance,
-            date: new Date().toLocaleDateString("en-NG"),
+            date:          new Date().toLocaleDateString("en-NG"),
           },
         }),
       }).catch(() => null);

@@ -120,6 +120,43 @@ serve(async (req) => {
       }
     }
 
+    if (created) {
+      // Fire welcome email to client + notifications to staff + business owner
+      const emailData: Record<string, string> = {
+        client_name: client.full_name || "",
+        client_email: client.email,
+        membership_number: "", // populated below
+      };
+      try {
+        const { data: freshClient } = await adminClient
+          .from("aso_clients")
+          .select("membership_number, staff_id, user_id")
+          .eq("id", client.id)
+          .maybeSingle();
+        if (freshClient?.membership_number) emailData.membership_number = freshClient.membership_number;
+        if (freshClient?.staff_id) {
+          const { data: staffRow } = await adminClient
+            .from("staff")
+            .select("email, full_name")
+            .eq("id", freshClient.staff_id)
+            .maybeSingle();
+          if (staffRow?.email) emailData.staff_email = staffRow.email;
+        }
+        const { data: owner } = await adminClient
+          .from("profiles")
+          .select("email, business_name")
+          .eq("id", client.user_id)
+          .maybeSingle();
+        if (owner?.email) { emailData.owner_email = owner.email; emailData.owner_name = owner.business_name || ""; }
+      } catch { /* email data lookup is non-fatal */ }
+
+      fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+        body: JSON.stringify({ event: "ajo_client_registered", data: emailData }),
+      }).catch(() => null);
+    }
+
     return json({
       success: true,
       created,

@@ -444,7 +444,7 @@ export default function StaffDashboard({ session, staff }) {
     <div className={staffDark ? "dark" : ""}>
       <div className="h-screen bg-slate-50 dark:bg-slate-900 flex justify-center">
         <div className="w-full max-w-md relative flex flex-col h-screen">
-          <SyncBar isOnline={store.isOnline} pending={store.pendingSync} />
+          <SyncBar isOnline={store.isOnline} pending={store.pendingSync} isSyncing={store.isSyncing} onSync={store.runSync} />
 
           {/* Minimal Header */}
           <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 pt-11 pb-2 flex items-center gap-2">

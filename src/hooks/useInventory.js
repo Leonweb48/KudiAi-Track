@@ -63,9 +63,27 @@ export function useInventory(userId, staffId = null, onNotify = null, branchId =
     };
     const { error } = await supabase.from("products").insert(prod);
     if (error) { setDbError(error.message); return false; }
+    if (prod.quantity > 0) {
+      fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+        body: JSON.stringify({
+          event: "stock_entry",
+          data: {
+            owner_id: userId,
+            staff_id: staffId || null,
+            branch_id: effectiveBranch,
+            product_name: prod.product_name,
+            quantity: prod.quantity,
+            category: prod.category || null,
+            entry_type: "new_product",
+          },
+        }),
+      }).catch(() => null);
+    }
     setProducts(prev => [...prev, prod].sort((a, b) => a.product_name.localeCompare(b.product_name)));
     return true;
-  }, [userId, branchId]);
+  }, [userId, staffId, branchId]);
 
   const updateProduct = useCallback(async (id, data) => {
     if (!supabase) return false;
@@ -126,6 +144,25 @@ export function useInventory(userId, staffId = null, onNotify = null, branchId =
     ]);
 
     if (me || pe) { setDbError((me || pe).message); return false; }
+
+    if (type === "restock") {
+      fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+        body: JSON.stringify({
+          event: "stock_entry",
+          data: {
+            owner_id: userId,
+            staff_id: staffId || null,
+            branch_id: branchId || null,
+            product_name: product.product_name,
+            quantity: Math.abs(inputQty),
+            category: product.category || null,
+            entry_type: "restock",
+          },
+        }),
+      }).catch(() => null);
+    }
 
     setMovements(prev => [mov, ...prev]);
     setProducts(prev => prev.map(p => p.id === product_id ? { ...p, quantity: newQty } : p));

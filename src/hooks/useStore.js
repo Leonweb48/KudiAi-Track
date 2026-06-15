@@ -520,19 +520,17 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
             recorded_by: staffId || null,
           }).catch(console.error);
         }
+        // Rule: always notify business owner + ajo client on contribution
+        // Emails resolved server-side from IDs to guarantee fresh delivery
         fireEmailTrigger("ajo_contribution", {
           owner_id:               userId,
           client_id:              id,
-          client_name:            updated.full_name             || "",
-          client_email:           updated.email                 || "",
-          amount:                 amount,
+          amount,
           balance:                updated.current_balance,
           next_contribution_date: updated.next_contribution_date || "",
           group_name:             updated.group_name             || "",
           reg_fee:                regFee || 0,
           date:                   today(),
-          owner_email:            profile.email                  || "",
-          user_email:             profile.email                  || "",
           business_name:          profile.business_name          || "",
           staff_id:               staffId  || "",
           staff_name:             staffName || "",
@@ -566,19 +564,17 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
           notes: feeAmount > 0 ? `Withdrawal fee deducted: ${fmt(feeAmount)}` : null,
           recorded_by: staffId || null,
         }).catch(console.error);
+        // Rule: always notify business owner + ajo client on withdrawal
+        // Emails resolved server-side from IDs to guarantee fresh delivery
         fireEmailTrigger("ajo_withdrawal", {
           owner_id:      userId,
           client_id:     id,
-          client_name:   updated.full_name    || "",
-          client_email:  updated.email        || "",
           group_name:    updated.group_name   || "",
           gross_amount:  amount,
           fee_amount:    feeAmount,
           amount:        netAmount,
           balance_after: updated.current_balance,
           date:          today(),
-          owner_email:   profile.email        || "",
-          user_email:    profile.email        || "",
           business_name: profile.business_name || "",
           staff_id:      staffId  || "",
           staff_name:    staffName || "",

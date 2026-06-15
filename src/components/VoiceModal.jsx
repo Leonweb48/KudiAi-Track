@@ -2,18 +2,22 @@ import { useVoiceTx } from "../hooks/useVoiceTx";
 import { fmt, today } from "../utils/helpers";
 import Modal from "./shared/Modal";
 
+const MAX_SECS = 60;
+
 const LANGUAGES = [
-  { code: "en", label: "EN", name: "English" },
-  { code: "ha", label: "HA", name: "Hausa" },
-  { code: "ig", label: "IG", name: "Igbo" },
-  { code: "yo", label: "YO", name: "Yoruba" },
+  { code: "en",     label: "EN",  name: "English" },
+  { code: "pidgin", label: "PID", name: "Pidgin"  },
+  { code: "ha",     label: "HA",  name: "Hausa"   },
+  { code: "ig",     label: "IG",  name: "Igbo"    },
+  { code: "yo",     label: "YO",  name: "Yoruba"  },
 ];
 
 const EXAMPLES = {
-  en: '"I sold 3 Ankara fabric for ₦4,500 cash"',
-  ha: '"Na sayar da atamfa 3 naira 4500"',
-  ig: '"Aresụ Ankara atọ maka naira 4500"',
-  yo: '"Mo ta aso Ankara mẹta fún ₦4500"',
+  en:     '"I sold 3 Ankara fabric for ₦4,500 cash"',
+  pidgin: '"I sell am 3 Ankara for 4500 naira"',
+  ha:     '"Na sayar da atamfa 3 naira 4500"',
+  ig:     '"Aresụ Ankara atọ maka naira 4500"',
+  yo:     '"Mo ta aso Ankara mẹta fún ₦4500"',
 };
 
 const CATEGORY_COLORS = {
@@ -60,8 +64,9 @@ function ParsedCard({ parsed }) {
 
 export default function VoiceModal({ onClose, onSave }) {
   const {
-    isRecording, status, transcript, interim, parsed, error,
+    isRecording, status, parsed, error,
     lang, setLang, startRecording, stopAndProcess, reset,
+    recordingSeconds,
   } = useVoiceTx();
 
   const handleSave = () => {
@@ -75,9 +80,10 @@ export default function VoiceModal({ onClose, onSave }) {
     onClose();
   };
 
-  const isParsing  = status === "parsing";
-  const isBusy     = isRecording || isParsing;
-  const liveText   = transcript ? transcript + (interim ? " " + interim : "") : interim;
+  const isParsing = status === "parsing";
+  const isBusy    = isRecording || isParsing;
+
+  const fmtSecs = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
   return (
     <Modal title="Voice Transaction" onClose={onClose}>
@@ -145,13 +151,18 @@ export default function VoiceModal({ onClose, onSave }) {
           {/* Status / hint text */}
           {isParsing && (
             <div className="text-center">
-              <p className="font-semibold text-slate-700 dark:text-slate-200 text-sm">Understanding transaction…</p>
-              <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Parsing your transaction details…</p>
+              <p className="font-semibold text-slate-700 dark:text-slate-200 text-sm">Analyzing with Gemini AI…</p>
+              <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Extracting your transaction details</p>
             </div>
           )}
-          {isRecording && !liveText && (
+          {isRecording && (
             <div className="text-center">
-              <p className="font-semibold text-slate-700 dark:text-slate-200 text-sm">Listening…</p>
+              <p className="font-semibold text-slate-700 dark:text-slate-200 text-sm tabular-nums">
+                {fmtSecs(recordingSeconds)}
+                {recordingSeconds >= 50 && (
+                  <span className="ml-2 text-amber-500 text-xs font-normal">max {MAX_SECS}s</span>
+                )}
+              </p>
               <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Speak your transaction, then tap stop</p>
             </div>
           )}
@@ -159,31 +170,10 @@ export default function VoiceModal({ onClose, onSave }) {
             <div className="text-center">
               <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Tap the mic to start</p>
               <p className="text-xs text-slate-400 dark:text-slate-500 mt-2 italic max-w-[230px] leading-relaxed">
-                {EXAMPLES[lang]}
+                {EXAMPLES[lang] || EXAMPLES.en}
               </p>
             </div>
           )}
-
-          {/* Live caption box while recording */}
-          {isRecording && liveText && (
-            <div className="mt-4 w-full bg-slate-50 dark:bg-slate-900 rounded-xl p-3.5 border border-slate-100 dark:border-slate-800 min-h-[56px]">
-              <p className="text-[10px] text-brand-500 font-bold uppercase tracking-wide mb-1">Live</p>
-              <p className="text-sm text-slate-700 dark:text-slate-200 leading-relaxed">
-                {transcript && <span>{transcript} </span>}
-                {interim   && <span className="text-slate-400 dark:text-slate-500 italic">{interim}</span>}
-              </p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Final transcript (shown after recording, while parsing or on done/error) */}
-      {transcript && !isRecording && status !== "idle" && (
-        <div className="mb-4">
-          <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wide mb-1.5">Heard</p>
-          <p className="text-sm text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-900 rounded-xl p-3 border border-slate-100 dark:border-slate-800 italic leading-relaxed">
-            "{transcript}"
-          </p>
         </div>
       )}
 

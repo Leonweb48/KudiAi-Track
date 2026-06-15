@@ -110,6 +110,29 @@ serve(async (req) => {
       }
     }
 
+    if (created) {
+      // Fire welcome email to staff + notification to business owner
+      const emailData: Record<string, string> = {
+        staff_name: staff.full_name || "",
+        staff_email: staff.email,
+        role: "Staff",
+      };
+      try {
+        const { data: owner } = await adminClient
+          .from("profiles")
+          .select("email, business_name")
+          .eq("id", staff.owner_id)
+          .maybeSingle();
+        if (owner?.email) { emailData.owner_email = owner.email; emailData.business_name = owner.business_name || ""; }
+      } catch { /* non-fatal */ }
+
+      fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+        body: JSON.stringify({ event: "staff_created", data: emailData }),
+      }).catch(() => null);
+    }
+
     return json({
       success: true,
       created,

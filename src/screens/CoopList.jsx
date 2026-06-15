@@ -1,9 +1,20 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../utils/supabase";
 
-const coopFn = (action, body = {}) =>
-  supabase.functions.invoke("coop-portal", { body: { action, ...body } })
-    .then(r => { if (r.error) throw r.error; return r.data; });
+const coopFn = async (action, body = {}) => {
+  const r = await supabase.functions.invoke("coop-portal", { body: { action, ...body } });
+  if (r.error) {
+    let msg = r.error.message;
+    try {
+      const errBody = r.data?.error
+        ? r.data
+        : (r.error.context ? await r.error.context.clone().json() : null);
+      if (errBody?.error) msg = errBody.error;
+    } catch { /* keep original msg */ }
+    throw new Error(msg);
+  }
+  return r.data;
+};
 
 const ORG_TYPES = [
   { value: "cooperative",            label: "Cooperative",            icon: "🤝" },

@@ -146,7 +146,10 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
         : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
       const { data: existing } = await supabase
-        .from("subscriptions").select("id").eq("user_id", session.user.id).maybeSingle();
+        .from("subscriptions").select("id, plan").eq("user_id", session.user.id).maybeSingle();
+
+      // First-time paid: no prior subscription, or prior was free starter
+      const isFirstTimePaid = planSlug !== "starter" && (!existing || existing.plan === "starter" || !existing.plan);
 
       let err;
       if (existing) {
@@ -164,6 +167,55 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
       if (err) throw err;
       // Mark any upgrade prompts as seen
       await supabase.from("plan_upgrade_prompts").update({ seen: true }).eq("user_id", session.user.id).eq("seen", false);
+
+      // Fire email notifications for all paid plan purchases (non-blocking)
+      if (planSlug !== "starter") {
+        const planData = plans.find(p => p.slug === planSlug);
+        const features = planData ? getDisplayFeatures(planData) : [];
+        const { data: profile } = await supabase
+          .from("profiles").select("full_name, business_name").eq("id", session.user.id).maybeSingle();
+        const userName = profile?.full_name || session.user.email;
+        const bizName  = profile?.business_name || "";
+
+        // Welcome email to the subscribing user (first-time only)
+        if (isFirstTimePaid) {
+          fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+            body: JSON.stringify({
+              event: "subscription_welcome",
+              data: {
+                user_email:    session.user.email,
+                user_name:     userName,
+                plan_name:     planData?.name || planSlug,
+                plan_slug:     planSlug,
+                plan_price:    planData?.price_monthly || 0,
+                plan_features: features,
+              },
+            }),
+          }).catch(() => null);
+        }
+
+        // Admin alert — every paid plan purchase (new subscription or upgrade/renewal)
+        fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+          body: JSON.stringify({
+            event: "plan_purchased",
+            data: {
+              user_email:    session.user.email,
+              user_name:     userName,
+              business_name: bizName,
+              plan_name:     planData?.name || planSlug,
+              plan_slug:     planSlug,
+              plan_price:    planData?.price_monthly || 0,
+              reference:     reference || "",
+              is_first_time: isFirstTimePaid,
+            },
+          }),
+        }).catch(() => null);
+      }
+
       setPendingPayment(null);
       localStorage.removeItem("pendingPayment");
       onComplete(planSlug);
@@ -171,7 +223,7 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
       setError(e.message || "Could not save plan. Please try again.");
       setSaving(false);
     }
-  }, [session, onComplete]);
+  }, [session, onComplete, plans]);
 
   saveSubRef.current = saveSub;
 

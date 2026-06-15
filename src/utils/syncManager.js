@@ -1,14 +1,15 @@
 import { getPendingOps, markOpSynced } from "./offlineDb";
 
 export async function syncPending(supabase, userId, onProgress) {
-  if (!supabase || !userId) return { synced: 0, failed: 0, total: 0 };
+  if (!supabase || !userId) return { synced: 0, failed: 0, total: 0, errors: [] };
 
   const pending = await getPendingOps(userId);
-  if (!pending.length) return { synced: 0, failed: 0, total: 0 };
+  if (!pending.length) return { synced: 0, failed: 0, total: 0, errors: [] };
 
   let synced = 0;
   let failed = 0;
   const total = pending.length;
+  const errors = [];
 
   for (const op of pending) {
     try {
@@ -33,6 +34,7 @@ export async function syncPending(supabase, userId, onProgress) {
           synced++;
           onProgress?.({ synced, total, op });
         } else {
+          errors.push(error.message || error.code || "Unknown error");
           throw error;
         }
       } else {
@@ -41,10 +43,12 @@ export async function syncPending(supabase, userId, onProgress) {
         onProgress?.({ synced, total, data, op });
       }
     } catch (err) {
-      console.warn("[sync] failed:", op.local_id, err?.message);
+      const msg = err?.message || String(err);
+      if (!errors.includes(msg)) errors.push(msg);
+      console.warn("[sync] failed:", op.local_id, msg);
       failed++;
     }
   }
 
-  return { synced, failed, total };
+  return { synced, failed, total, errors };
 }
