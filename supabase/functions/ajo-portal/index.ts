@@ -480,6 +480,62 @@ serve(async (req) => {
       });
     }
 
+    // ── Confirm a Paystack contribution payment (client self-pay) ────────────
+    if (action === "confirm-payment") {
+      const { client_id, reference } = body as { client_id: string; reference: string };
+      if (!client_id || !reference) return json({ error: "client_id and reference required" }, 400);
+      if (!PAYSTACK_SECRET) return json({ error: "Paystack not configured" }, 503);
+
+      // Verify the payment actually succeeded on Paystack's end
+      const verRes = await fetch(
+        `https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`,
+        { headers: { Authorization: `Bearer ${PAYSTACK_SECRET}`, "Content-Type": "application/json" } },
+      );
+      const verData = await verRes.json();
+      if (!verData.status || verData.data?.status !== "success") {
+        return json({ error: "Payment not confirmed by Paystack" }, 422);
+      }
+      const paidAmount = Number(verData.data.amount) / 100; // kobo → naira
+
+      // Find the pending contribution (created by initialize-payment)
+      const { data: contrib } = await sb
+        .from("ajo_contributions")
+        .select("id, paystack_status")
+        .eq("paystack_ref", reference)
+        .eq("aso_client_id", client_id)
+        .maybeSingle();
+
+      // Idempotency: only update balance if not already processed by webhook
+      if (contrib && contrib.paystack_status !== "success") {
+        await sb.from("ajo_contributions").update({
+          status:          "completed",
+          paystack_status: "success",
+        }).eq("id", contrib.id);
+
+        const { data: cl } = await sb.from("aso_clients")
+          .select("current_balance, total_saved, contribution_frequency, next_contribution_date")
+          .eq("id", client_id).maybeSingle();
+
+        if (cl) {
+          const freqDays: Record<string, number> = { daily: 1, weekly: 7, monthly: 30 };
+          const days = freqDays[cl.contribution_frequency] || 30;
+          const base = cl.next_contribution_date || new Date().toISOString().slice(0, 10);
+          const nd = new Date(base);
+          nd.setDate(nd.getDate() + days);
+          await sb.from("aso_clients").update({
+            current_balance:        (cl.current_balance || 0) + paidAmount,
+            total_saved:            (cl.total_saved     || 0) + paidAmount,
+            next_contribution_date: nd.toISOString().slice(0, 10),
+          }).eq("id", client_id);
+        }
+      }
+
+      const { data: updatedClient } = await sb
+        .from("aso_clients").select(CLIENT_SELECT).eq("id", client_id).maybeSingle();
+
+      return json({ client: updatedClient, amount: paidAmount });
+    }
+
     // ── Get Ajo groups for a business owner ───────────────────────────────
     if (action === "get-groups") {
       const { owner_id } = body as { owner_id: string };

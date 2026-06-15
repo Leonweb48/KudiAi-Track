@@ -59,8 +59,18 @@ function PayContributionModal({ client, onClose, onSuccess }) {
         accessCode: res.access_code,
         onSuccess: async (transaction) => {
           setStatus("done");
-          setMessage(`Payment confirmed! Reference: ${transaction.reference}`);
-          onSuccess?.(transaction.reference);
+          setMessage("Payment received! Updating your balance…");
+          try {
+            const confirmation = await ajoFn("confirm-payment", {
+              client_id: client.id,
+              reference: transaction.reference,
+            });
+            setMessage(`Payment confirmed! Ref: ${transaction.reference}`);
+            onSuccess?.(transaction.reference, confirmation?.client);
+          } catch {
+            setMessage("Payment received. Your balance will update shortly.");
+            onSuccess?.(transaction.reference, null);
+          }
         },
         onCancel: () => {
           setStatus("idle");
@@ -1391,9 +1401,9 @@ export default function AjoClientPortal({ session, ajoClient }) {
         <PayContributionModal
           client={client}
           onClose={() => setShowPay(false)}
-          onSuccess={(ref) => {
-            setShowPay(false);
-            // Balance will update via Supabase real-time subscription on aso_clients
+          onSuccess={(ref, updatedClient) => {
+            if (updatedClient) setClient(prev => ({ ...prev, ...updatedClient }));
+            // Modal closes when user taps "Done" — don't close it here
           }}
         />
       )}
