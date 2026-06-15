@@ -26,23 +26,20 @@ function PayContributionModal({ client, onClose, onSuccess }) {
   const [message,    setMessage]   = useState("");
   const [pendingRef, setPendingRef] = useState(null);
 
-  const verifyPayment = async () => {
-    if (!pendingRef) return;
+  const doVerify = useCallback(async (ref) => {
+    if (!ref) return;
     setStatus("verifying");
     setMessage("Verifying your payment…");
     try {
-      const confirmation = await ajoFn("confirm-payment", {
-        client_id: client.id,
-        reference: pendingRef,
-      });
+      const confirmation = await ajoFn("confirm-payment", { client_id: client.id, reference: ref });
       setStatus("done");
-      setMessage(`Payment confirmed! Ref: ${pendingRef}`);
-      onSuccess?.(pendingRef, confirmation?.client);
+      setMessage(`Payment confirmed! Ref: ${ref}`);
+      onSuccess?.(ref, confirmation?.client);
     } catch (e) {
       setStatus("awaiting");
-      setMessage(e.message || "Payment not confirmed yet. Please try again.");
+      setMessage(e.message || "Payment not confirmed yet. Tap below to retry.");
     }
-  };
+  }, [client.id, onSuccess]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePay = async () => {
     if (!client?.contribution_amount) { setMessage("No contribution amount set by your savings agent."); return; }
@@ -50,12 +47,41 @@ function PayContributionModal({ client, onClose, onSuccess }) {
 
     try {
       const res = await ajoFn("initialize-payment", { client_id: client.id });
-      if (!res.authorization_url) throw new Error("Payment initialization failed — no checkout URL");
+      if (!res.authorization_url) throw new Error("Payment initialization failed");
 
-      setPendingRef(res.reference);
-      window.open(res.authorization_url, "_blank");
+      const ref = res.reference;
+      setPendingRef(ref);
       setStatus("awaiting");
-      setMessage("Paystack opened in a new tab. Complete your payment there, then tap the button below.");
+      setMessage("Paystack is open. After paying, come back here and tap the button below.");
+
+      // Open as popup on desktop, new tab on mobile
+      const popup = window.open(
+        res.authorization_url,
+        "paystack-checkout",
+        "width=520,height=700,left=200,top=80,scrollbars=yes",
+      );
+
+      if (!popup) return; // popup blocked — user must tap verify manually
+
+      // Poll: auto-verify when popup closes or redirects back to our domain
+      const poll = setInterval(async () => {
+        try {
+          if (popup.closed) {
+            clearInterval(poll);
+            setTimeout(() => doVerify(ref), 600);
+            return;
+          }
+          // Once popup navigates to our domain, grab the reference and close it
+          try {
+            const urlRef = new URL(popup.location.href).searchParams.get("reference");
+            if (urlRef) {
+              clearInterval(poll);
+              popup.close();
+              setTimeout(() => doVerify(urlRef || ref), 300);
+            }
+          } catch { /* still on Paystack domain — cross-origin, keep polling */ }
+        } catch { clearInterval(poll); }
+      }, 500);
     } catch (e) {
       setStatus("error");
       setMessage(e.message || "Payment failed. Please try again.");
