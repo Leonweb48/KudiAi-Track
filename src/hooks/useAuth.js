@@ -14,7 +14,7 @@ async function fireWelcomeEmail(event, data) {
     const sentKey = `${WELCOME_EMAIL_KEY}_${data.email || data.name}`;
     if (sessionStorage.getItem(sentKey)) return;
     sessionStorage.setItem(sentKey, "1");
-    await fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
+    await fetch("https://admin.kudiai.app/api/public/email-trigger", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
       body: JSON.stringify({ event, data }),

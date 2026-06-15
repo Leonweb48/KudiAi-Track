@@ -191,20 +191,229 @@ function HomeTab({ member, org, announcements }) {
 }
 
 // ═══════════════════════════════════════════════════
+//  PAY VIA PAYSTACK MODAL
+// ═══════════════════════════════════════════════════
+function PayOrgModal({ member, org, onClose, onSuccess }) {
+  const [status,     setStatus]    = useState("idle");
+  const [message,    setMessage]   = useState("");
+  const [pendingRef, setPendingRef]= useState(null);
+  const [amount,     setAmount]    = useState("");
+  const [programId,  setProgramId] = useState("");
+  const [programs,   setPrograms]  = useState([]);
+
+  useEffect(() => {
+    coopFn("member-get-programs", { member_id: member.id, org_id: org.id })
+      .then(r => setPrograms((r.programs || []).filter(p => p.status === "active")))
+      .catch(() => null);
+  }, [member.id, org.id]);
+
+  const doVerify = useCallback(async (ref) => {
+    if (!ref) return;
+    setStatus("verifying");
+    setMessage("Verifying your payment…");
+    try {
+      const res = await coopFn("confirm-member-payment", {
+        member_id: member.id, org_id: org.id, reference: ref,
+        program_id: programId || undefined,
+      });
+      setStatus("done");
+      setMessage(`Payment confirmed! Ref: ${ref}`);
+      onSuccess?.(ref, res?.member);
+    } catch (e) {
+      setStatus("awaiting");
+      setMessage(e.message || "Payment not confirmed yet. Tap below to retry.");
+    }
+  }, [member.id, org.id, programId, onSuccess]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handlePay = async () => {
+    const amt = parseFloat(amount);
+    if (!amt || amt <= 0) { setMessage("Enter a valid amount"); return; }
+    setStatus("loading"); setMessage(""); setPendingRef(null);
+    try {
+      const res = await coopFn("initialize-member-payment", {
+        member_id: member.id, org_id: org.id, amount: amt,
+        program_id: programId || undefined,
+      });
+      if (!res.authorization_url) throw new Error("Payment initialization failed");
+
+      const ref = res.reference;
+      setPendingRef(ref);
+      setStatus("awaiting");
+      setMessage("Paystack is open. After paying, come back here and tap the button below.");
+
+      const popup = window.open(res.authorization_url, "paystack-org-checkout", "width=520,height=700,left=200,top=80,scrollbars=yes");
+      if (!popup) return;
+
+      const poll = setInterval(async () => {
+        try {
+          if (popup.closed) { clearInterval(poll); setTimeout(() => doVerify(ref), 600); return; }
+          try {
+            const urlRef = new URL(popup.location.href).searchParams.get("reference");
+            if (urlRef) { clearInterval(poll); popup.close(); setTimeout(() => doVerify(urlRef || ref), 300); }
+          } catch { /* still on Paystack domain */ }
+        } catch { clearInterval(poll); }
+      }, 500);
+    } catch (e) {
+      setStatus("error");
+      setMessage(e.message || "Payment failed. Please try again.");
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[80] bg-black/60 flex items-end justify-center" onClick={e => { if (e.target === e.currentTarget && status !== "loading") onClose(); }}>
+      <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-t-3xl px-5 py-6 max-h-[90vh] overflow-y-auto">
+        <div className="w-10 h-1 bg-slate-200 dark:bg-slate-600 rounded-full mx-auto mb-5" />
+        <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">Pay via Paystack</h3>
+        <p className="text-xs text-slate-400 mb-4">Contribute directly to {org.name}</p>
+
+        {status !== "done" && (
+          <div className="flex flex-col gap-3 mb-4">
+            <div>
+              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Amount (₦) *</label>
+              <input
+                type="number" value={amount} onChange={e => setAmount(e.target.value)}
+                placeholder="Enter amount"
+                disabled={status !== "idle" && status !== "error"}
+                className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 disabled:opacity-50" />
+            </div>
+            {programs.length > 0 && (
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Program (Optional)</label>
+                <select value={programId} onChange={e => setProgramId(e.target.value)}
+                  disabled={status !== "idle" && status !== "error"}
+                  className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 disabled:opacity-50">
+                  <option value="">— General contribution —</option>
+                  {programs.map(p => <option key={p.id} value={p.id}>{p.name}{p.contribution_type === "fixed" ? ` (${fmt(p.amount)})` : ""}</option>)}
+                </select>
+              </div>
+            )}
+          </div>
+        )}
+
+        {message && (
+          <p className={`text-xs px-3 py-2.5 rounded-xl mb-4 border ${status === "error" ? "bg-red-50 border-red-200 text-red-600" : status === "done" ? "bg-green-50 border-green-200 text-green-700" : "bg-blue-50 border-blue-100 text-blue-700"}`}>
+            {message}
+          </p>
+        )}
+
+        {status === "done" ? (
+          <button onClick={onClose} className="w-full py-4 bg-green-600 text-white font-bold rounded-2xl text-sm">Done</button>
+        ) : (status === "awaiting" || status === "verifying") ? (
+          <button onClick={() => doVerify(pendingRef)} disabled={status === "verifying"}
+            className="w-full mb-3 py-4 bg-violet-600 text-white font-bold rounded-2xl text-sm disabled:opacity-60">
+            {status === "verifying"
+              ? <span className="flex items-center justify-center gap-2"><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Verifying…</span>
+              : "I've completed payment — tap to confirm"}
+          </button>
+        ) : (
+          <button onClick={handlePay} disabled={status === "loading" || !amount}
+            className="w-full py-4 bg-violet-600 text-white font-bold rounded-2xl text-sm disabled:opacity-60">
+            {status === "loading"
+              ? <span className="flex items-center justify-center gap-2"><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Opening Paystack…</span>
+              : "Pay Now"}
+          </button>
+        )}
+
+        {status === "idle" || status === "error" ? (
+          <button onClick={onClose} className="w-full py-3 text-xs text-slate-400 hover:text-slate-600 mt-1">Cancel</button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════
+//  REQUEST WITHDRAWAL MODAL
+// ═══════════════════════════════════════════════════
+function RequestWithdrawalModal({ member, org, onClose, onSuccess }) {
+  const [amount,  setAmount]  = useState("");
+  const [reason,  setReason]  = useState("");
+  const [saving,  setSaving]  = useState(false);
+  const [error,   setError]   = useState("");
+  const [done,    setDone]    = useState(false);
+
+  const handleSubmit = async () => {
+    const amt = parseFloat(amount);
+    if (!amt || amt <= 0) { setError("Enter a valid amount"); return; }
+    if (amt > (member.savings_balance || 0)) { setError(`Amount exceeds your balance of ${fmt(member.savings_balance)}`); return; }
+    setSaving(true); setError("");
+    try {
+      await coopFn("request-member-withdrawal", { member_id: member.id, org_id: org.id, amount: amt, reason });
+      setDone(true);
+      onSuccess?.();
+    } catch (e) { setError(e.message || "Failed to submit request"); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[80] bg-black/60 flex items-end justify-center" onClick={e => { if (e.target === e.currentTarget && !saving) onClose(); }}>
+      <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-t-3xl px-5 py-6">
+        <div className="w-10 h-1 bg-slate-200 dark:bg-slate-600 rounded-full mx-auto mb-5" />
+
+        {done ? (
+          <div className="text-center py-6">
+            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8 text-green-600" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M20 6L9 17l-5-5" /></svg>
+            </div>
+            <p className="text-base font-extrabold text-slate-800 dark:text-white mb-1">Request Submitted</p>
+            <p className="text-xs text-slate-400 mb-6">Your withdrawal request is pending approval from {org.name}.</p>
+            <button onClick={onClose} className="w-full py-3 bg-violet-600 text-white font-bold rounded-2xl text-sm">Done</button>
+          </div>
+        ) : (
+          <>
+            <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">Request Withdrawal</h3>
+            <p className="text-xs text-slate-400 mb-4">Available balance: <strong className="text-green-600">{fmt(member.savings_balance)}</strong></p>
+            {error && <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-3 text-xs text-red-600">{error}</div>}
+            <div className="flex flex-col gap-3">
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Amount (₦) *</label>
+                <input type="number" value={amount} onChange={e => { setAmount(e.target.value); setError(""); }}
+                  placeholder="Enter amount"
+                  className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Reason (Optional)</label>
+                <textarea value={reason} onChange={e => setReason(e.target.value)} rows={2} placeholder="Why do you need this withdrawal?"
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-violet-400" />
+              </div>
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button onClick={onClose} disabled={saving} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Cancel</button>
+              <button onClick={handleSubmit} disabled={saving || !amount}
+                className="flex-1 py-3 bg-amber-500 text-white rounded-xl font-bold text-sm disabled:opacity-50">
+                {saving ? "Submitting…" : "Submit Request"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════
 //  CONTRIBUTIONS TAB
 // ═══════════════════════════════════════════════════
-function ContributionsTab({ member, org }) {
-  const [programs, setPrograms] = useState([]);
-  const [history,  setHistory]  = useState([]);
-  const [loading,  setLoading]  = useState(true);
+function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
+  const [member,      setMember]      = useState(initialMember);
+  const [programs,    setPrograms]    = useState([]);
+  const [history,     setHistory]     = useState([]);
+  const [wdRequests,  setWdRequests]  = useState([]);
+  const [loading,     setLoading]     = useState(true);
+  const [showPay,     setShowPay]     = useState(false);
+  const [showWdReq,   setShowWdReq]   = useState(false);
+
+  useEffect(() => { setMember(initialMember); }, [initialMember]);
 
   const load = useCallback(() => {
     Promise.all([
-      coopFn("member-get-programs", { member_id: member.id, org_id: org.id }),
-      coopFn("member-get-savings",  { member_id: member.id }),
-    ]).then(([pr, sr]) => {
+      coopFn("member-get-programs",            { member_id: member.id, org_id: org.id }),
+      coopFn("member-get-savings",             { member_id: member.id }),
+      coopFn("get-member-withdrawal-requests", { member_id: member.id }),
+    ]).then(([pr, sr, rr]) => {
       setPrograms(pr.programs || []);
       setHistory(sr.savings || []);
+      setWdRequests(rr.requests || []);
     }).finally(() => setLoading(false));
   }, [member.id, org.id]);
   useEffect(() => { load(); }, [load]);
@@ -212,6 +421,8 @@ function ContributionsTab({ member, org }) {
   if (loading) return <div className="flex justify-center py-16"><div className="w-8 h-8 border-[3px] border-violet-500 border-t-transparent rounded-full animate-spin" /></div>;
 
   const totalContributed = history.filter(h => h.type === "deposit").reduce((sum, h) => sum + Number(h.amount), 0);
+  const hasPaystack = !!org.paystack_subaccount_code;
+  const pendingWd = wdRequests.filter(r => r.status === "pending").length;
 
   return (
     <div className="p-4 pb-28 flex flex-col gap-4">
@@ -224,6 +435,27 @@ function ContributionsTab({ member, org }) {
           <p className="text-lg font-extrabold text-violet-600 tabular">{fmt(totalContributed)}</p>
           <p className="text-[10px] text-slate-400 mt-0.5">Total Contributions</p>
         </div>
+      </div>
+
+      {/* Action Buttons */}
+      <div className="flex gap-2">
+        {hasPaystack && (
+          <button onClick={() => setShowPay(true)}
+            className="flex-1 py-3 bg-violet-600 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5">
+            <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+              <path d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+            </svg>
+            Pay via Paystack
+          </button>
+        )}
+        <button onClick={() => setShowWdReq(true)}
+          className={`${hasPaystack ? "flex-1" : "w-full"} py-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 text-amber-700 dark:text-amber-400 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5`}>
+          <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+            <path d="M12 19V5M5 12l7-7 7 7" />
+          </svg>
+          Request Withdrawal
+          {pendingWd > 0 && <span className="ml-1 w-4 h-4 rounded-full bg-amber-500 text-white text-[9px] font-black flex items-center justify-center">{pendingWd}</span>}
+        </button>
       </div>
 
       {programs.filter(p => p.status === "active").length > 0 && (
@@ -240,6 +472,26 @@ function ContributionsTab({ member, org }) {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {wdRequests.length > 0 && (
+        <div>
+          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Withdrawal Requests</p>
+          <div className="flex flex-col gap-2">
+            {wdRequests.slice(0, 5).map(r => (
+              <div key={r.id} className="bg-white dark:bg-slate-800 rounded-xl px-3 py-2.5 border border-slate-100 dark:border-slate-700 flex justify-between items-center">
+                <div>
+                  <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{fmt(r.amount)}</p>
+                  {r.reason && <p className="text-[10px] text-slate-400 line-clamp-1">{r.reason}</p>}
+                  <p className="text-[10px] text-slate-400">{fmtDate(r.created_at)}</p>
+                </div>
+                <span className={`text-[10px] font-bold capitalize px-2 py-0.5 rounded-full ${r.status === "pending" ? "bg-amber-50 text-amber-600" : r.status === "approved" ? "bg-green-50 text-green-600" : "bg-red-50 text-red-500"}`}>
+                  {r.status}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -267,6 +519,23 @@ function ContributionsTab({ member, org }) {
           </div>
         )}
       </div>
+
+      {showPay && (
+        <PayOrgModal
+          member={member} org={org}
+          onClose={() => setShowPay(false)}
+          onSuccess={(ref, updatedMember) => {
+            if (updatedMember) { setMember(prev => ({ ...prev, ...updatedMember })); onMemberUpdate?.(updatedMember); }
+          }}
+        />
+      )}
+      {showWdReq && (
+        <RequestWithdrawalModal
+          member={member} org={org}
+          onClose={() => setShowWdReq(false)}
+          onSuccess={() => { setShowWdReq(false); load(); }}
+        />
+      )}
     </div>
   );
 }
@@ -580,9 +849,12 @@ const PORTAL_TABS = [
   { id: "messages",      label: "Messages", icon: "M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" },
 ];
 
-export default function CoopMemberPortal({ member }) {
+export default function CoopMemberPortal({ member: initialMember }) {
+  const [member,        setMember]        = useState(initialMember);
   const [tab,           setTab]           = useState("home");
   const [announcements, setAnnouncements] = useState([]);
+
+  useEffect(() => { setMember(initialMember); }, [initialMember]);
 
   const org = member?.org || member?.organizations || {};
 
@@ -593,11 +865,15 @@ export default function CoopMemberPortal({ member }) {
     }
   }, [member?.id, org?.id]);
 
+  const handleMemberUpdate = (updatedMember) => {
+    setMember(prev => ({ ...prev, ...updatedMember }));
+  };
+
   if (!member) return null;
 
   const tabContent = {
     home:          <HomeTab member={member} org={org} announcements={announcements} />,
-    contributions: <ContributionsTab member={member} org={org} />,
+    contributions: <ContributionsTab member={member} org={org} onMemberUpdate={handleMemberUpdate} />,
     loans:         <LoansTab member={member} org={org} />,
     meetings:      <MeetingsTab member={member} org={org} />,
     directory:     <DirectoryTab member={member} org={org} />,

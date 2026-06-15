@@ -239,7 +239,7 @@ async function fireContributionEmail(
       if (staff?.full_name) emailData.staff_name  = staff.full_name;
     }
 
-    await fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
+    await fetch("https://admin.kudiai.app/api/public/email-trigger", {
       method:  "POST",
       headers: {
         "Content-Type":   "application/json",

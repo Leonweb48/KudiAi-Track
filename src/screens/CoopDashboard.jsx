@@ -637,16 +637,18 @@ function ProgramsTab({ org, onRefresh }) {
 //  FINANCE TAB (Savings + Withdrawals)
 // ═══════════════════════════════════════════════════
 function FinanceTab({ org, members, programs, onRefresh }) {
-  const [subTab,     setSubTab]     = useState("contributions");
-  const [savings,    setSavings]    = useState([]);
-  const [withdrawals,setWithdrawals]= useState([]);
-  const [loading,    setLoading]    = useState(true);
-  const [showRecord, setShowRecord] = useState(false);
-  const [showWd,     setShowWd]     = useState(false);
-  const [form,       setForm]       = useState({ member_id: "", amount: "", type: "deposit", payment_method: "cash", notes: "", program_id: "" });
-  const [wdForm,     setWdForm]     = useState({ purpose: "", method: "equal", per_member_amount: "", authorized_by: "", notes: "", program_id: "" });
-  const [saving,     setSaving]     = useState(false);
-  const [error,      setError]      = useState("");
+  const [subTab,       setSubTab]       = useState("contributions");
+  const [savings,      setSavings]      = useState([]);
+  const [withdrawals,  setWithdrawals]  = useState([]);
+  const [wdRequests,   setWdRequests]   = useState([]);
+  const [loading,      setLoading]      = useState(true);
+  const [showRecord,   setShowRecord]   = useState(false);
+  const [showWd,       setShowWd]       = useState(false);
+  const [form,         setForm]         = useState({ member_id: "", amount: "", type: "deposit", payment_method: "cash", notes: "", program_id: "" });
+  const [wdForm,       setWdForm]       = useState({ purpose: "", method: "equal", per_member_amount: "", authorized_by: "", notes: "", program_id: "" });
+  const [saving,       setSaving]       = useState(false);
+  const [handlingReq,  setHandlingReq]  = useState(null);
+  const [error,        setError]        = useState("");
 
   const set  = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
   const setW = k => e => setWdForm(p => ({ ...p, [k]: e.target.value }));
@@ -655,12 +657,23 @@ function FinanceTab({ org, members, programs, onRefresh }) {
     Promise.all([
       coopFn("get-savings", { org_id: org.id }),
       coopFn("get-withdrawals", { org_id: org.id }),
-    ]).then(([sr, wr]) => {
+      coopFn("get-withdrawal-requests-admin", { org_id: org.id }),
+    ]).then(([sr, wr, rr]) => {
       setSavings(sr.savings || []);
       setWithdrawals(wr.withdrawals || []);
+      setWdRequests(rr.requests || []);
     }).finally(() => setLoading(false));
   }, [org.id]);
   useEffect(() => { load(); }, [load]);
+
+  const handleRequest = async (req, decision) => {
+    setHandlingReq(req.id);
+    try {
+      await coopFn("handle-withdrawal-request", { request_id: req.id, decision });
+      load(); onRefresh();
+    } catch (e) { alert(e.message || "Failed"); }
+    finally { setHandlingReq(null); }
+  };
 
   const activeMembers = members.filter(m => m.status === "active");
   const activePrograms = programs.filter(p => p.status === "active");
@@ -692,12 +705,17 @@ function FinanceTab({ org, members, programs, onRefresh }) {
   return (
     <div className="flex flex-col h-full">
       <div className="flex gap-1 px-4 pt-4 pb-2">
-        {[["contributions","Contributions"],["withdrawals","Withdrawals"]].map(([id,label]) => (
-          <button key={id} onClick={() => setSubTab(id)}
-            className={`flex-1 py-2 rounded-xl text-xs font-bold transition ${subTab === id ? "bg-violet-600 text-white" : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400"}`}>
-            {label}
-          </button>
-        ))}
+        {[["contributions","Contributions"],["withdrawals","Withdrawals"],["requests","Member Requests"]].map(([id,label]) => {
+          const pendingCount = id === "requests" ? wdRequests.filter(r => r.status === "pending").length : 0;
+          return (
+            <button key={id} onClick={() => setSubTab(id)} className="relative">
+              <span className={`flex-1 block py-2 px-2 rounded-xl text-xs font-bold transition ${subTab === id ? "bg-violet-600 text-white" : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400"}`}>
+                {label}
+                {pendingCount > 0 && <span className="ml-1 inline-flex items-center justify-center w-4 h-4 rounded-full bg-amber-500 text-white text-[9px] font-black">{pendingCount}</span>}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       {subTab === "contributions" && (
@@ -761,6 +779,56 @@ function FinanceTab({ org, members, programs, onRefresh }) {
             )}
           </div>
         </>
+      )}
+
+      {subTab === "requests" && (
+        <div className="flex-1 overflow-y-auto px-4 pb-24 pt-2">
+          {loading ? (
+            <div className="flex justify-center py-10"><div className="w-6 h-6 border-[3px] border-amber-500 border-t-transparent rounded-full animate-spin" /></div>
+          ) : wdRequests.length === 0 ? (
+            <div className="text-center py-12 text-slate-400 text-sm">No withdrawal requests yet</div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {wdRequests.map(r => (
+                <div key={r.id} className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-100 dark:border-slate-700">
+                  <div className="flex justify-between items-start mb-2">
+                    <div>
+                      <p className="text-sm font-extrabold text-slate-800 dark:text-white">{r.org_members?.full_name || "—"}</p>
+                      <p className="text-[10px] text-slate-400 font-mono">{r.org_members?.membership_id}</p>
+                      <p className="text-[10px] text-slate-400">{fmtDT(r.created_at)}</p>
+                      {r.reason && <p className="text-[11px] text-slate-500 mt-0.5 italic">"{r.reason}"</p>}
+                    </div>
+                    <div className="text-right">
+                      <p className="text-base font-extrabold text-amber-600">−{fmt(r.amount)}</p>
+                      <span className={`text-[10px] font-bold capitalize ${r.status === "pending" ? "text-amber-500" : r.status === "approved" ? "text-green-600" : "text-red-500"}`}>
+                        ● {r.status}
+                      </span>
+                    </div>
+                  </div>
+                  {r.status === "pending" && (
+                    <div className="flex gap-2 mt-2">
+                      <button
+                        onClick={() => handleRequest(r, "reject")}
+                        disabled={handlingReq === r.id}
+                        className="flex-1 py-2 rounded-xl text-xs font-bold border border-red-200 text-red-500 disabled:opacity-50">
+                        Reject
+                      </button>
+                      <button
+                        onClick={() => handleRequest(r, "approve")}
+                        disabled={handlingReq === r.id}
+                        className="flex-1 py-2 rounded-xl text-xs font-bold bg-green-600 text-white disabled:opacity-50">
+                        {handlingReq === r.id ? "Processing…" : "Approve"}
+                      </button>
+                    </div>
+                  )}
+                  {r.admin_notes && (
+                    <p className="text-[10px] text-slate-400 mt-1.5">Note: {r.admin_notes}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
       {showRecord && (
@@ -1396,6 +1464,123 @@ function DeleteOrgButton({ org, onDeleted }) {
 // ═══════════════════════════════════════════════════
 //  SETTINGS TAB
 // ═══════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════
+//  PAYSTACK BANK ACCOUNT SETUP (inside Settings)
+// ═══════════════════════════════════════════════════
+function OrgBankSetupSection({ org, onRefresh }) {
+  const [banks,       setBanks]       = useState([]);
+  const [bankForm,    setBankForm]    = useState({ bank_code: "", account_number: "" });
+  const [verifying,   setVerifying]   = useState(false);
+  const [resolvedName,setResolvedName]= useState("");
+  const [creating,    setCreating]    = useState(false);
+  const [bankError,   setBankError]   = useState("");
+  const [bankSuccess, setBankSuccess] = useState("");
+  const [showBankForm,setShowBankForm]= useState(false);
+
+  useEffect(() => {
+    coopFn("list-banks", {}).catch(() => null)
+      .then(r => setBanks(r?.banks || [])).catch(() => null);
+  }, []);
+
+  const handleVerify = async () => {
+    if (!bankForm.bank_code || bankForm.account_number.length !== 10) {
+      setBankError("Select a bank and enter a 10-digit account number"); return;
+    }
+    setVerifying(true); setBankError(""); setResolvedName("");
+    try {
+      const r = await coopFn("resolve-bank-account", { bank_code: bankForm.bank_code, account_number: bankForm.account_number });
+      setResolvedName(r.account_name || "");
+      if (!r.account_name) setBankError("Account not found — check number and bank");
+    } catch (e) { setBankError(e.message || "Could not verify account"); }
+    finally { setVerifying(false); }
+  };
+
+  const handleSetupBank = async () => {
+    if (!resolvedName) { setBankError("Verify your account first"); return; }
+    setCreating(true); setBankError(""); setBankSuccess("");
+    try {
+      await coopFn("setup-org-bank", {
+        org_id: org.id, owner_id: org.owner_id,
+        bank_code: bankForm.bank_code, account_number: bankForm.account_number,
+      });
+      setBankSuccess("Bank account linked successfully!");
+      setShowBankForm(false); setBankForm({ bank_code: "", account_number: "" }); setResolvedName("");
+      onRefresh();
+    } catch (e) { setBankError(e.message || "Failed to link bank account"); }
+    finally { setCreating(false); }
+  };
+
+  const hasBank = !!org.paystack_subaccount_code;
+
+  return (
+    <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-100 dark:border-slate-700">
+      <div className="flex justify-between items-center mb-1">
+        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Paystack Bank Account</p>
+        {hasBank && (
+          <button onClick={() => { setShowBankForm(v => !v); setBankError(""); setBankSuccess(""); setResolvedName(""); }}
+            className="text-[10px] font-bold text-violet-600 bg-violet-50 dark:bg-violet-900/20 px-2 py-1 rounded-lg">
+            {showBankForm ? "Cancel" : "Update"}
+          </button>
+        )}
+      </div>
+      <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
+        Link a bank account to receive member contributions directly via Paystack.
+      </p>
+
+      {bankError && <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-3 text-xs text-red-600">{bankError}</div>}
+      {bankSuccess && <div className="bg-green-50 border border-green-200 rounded-xl px-3 py-2 mb-3 text-xs text-green-700">✓ {bankSuccess}</div>}
+
+      {hasBank && !showBankForm ? (
+        <div className="space-y-1.5">
+          <div className="bg-green-50 border border-green-200 rounded-xl px-3 py-2 mb-2 text-xs text-green-700 font-semibold">
+            ✓ Paystack subaccount active — members can pay directly
+          </div>
+          {[["Account Name", org.account_name], ["Account Number", org.account_number],
+            ["Subaccount Code", org.paystack_subaccount_code]].map(([k, v]) => (
+            <div key={k} className="flex justify-between items-center py-1 border-b border-slate-50 dark:border-slate-700/50 last:border-0">
+              <span className="text-[10px] text-slate-400">{k}</span>
+              <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 font-mono">{v || "—"}</span>
+            </div>
+          ))}
+        </div>
+      ) : (showBankForm || !hasBank) ? (
+        <div className="flex flex-col gap-3">
+          <div>
+            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Bank *</label>
+            <select className={input} value={bankForm.bank_code}
+              onChange={e => { setBankForm(p => ({ ...p, bank_code: e.target.value })); setResolvedName(""); setBankError(""); }}>
+              <option value="">Select bank…</option>
+              {banks.map(b => <option key={b.code} value={b.code}>{b.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Account Number *</label>
+            <div className="flex gap-2">
+              <input className={input} value={bankForm.account_number} maxLength={10}
+                onChange={e => { setBankForm(p => ({ ...p, account_number: e.target.value.replace(/\D/g,"") })); setResolvedName(""); setBankError(""); }}
+                placeholder="10-digit account number" />
+              <button onClick={handleVerify} disabled={verifying || bankForm.account_number.length !== 10}
+                className="px-3 py-2.5 bg-slate-700 text-white rounded-xl text-xs font-bold whitespace-nowrap disabled:opacity-50">
+                {verifying ? "…" : "Verify"}
+              </button>
+            </div>
+          </div>
+          {resolvedName && (
+            <div className="bg-green-50 border border-green-200 rounded-xl px-3 py-2 text-xs">
+              <span className="text-slate-500">Account Name: </span>
+              <strong className="text-green-700">{resolvedName}</strong>
+            </div>
+          )}
+          <button onClick={handleSetupBank} disabled={creating || !resolvedName}
+            className="w-full py-3 bg-violet-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">
+            {creating ? "Linking…" : hasBank ? "Update Bank Account" : "Link Bank Account"}
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function SettingsTab({ org, onRefresh, onBack, isOrgPortal = false }) {
   const [leaders,     setLeaders]     = useState([]);
   const [form,        setForm]        = useState({ name: org.name || "", email: org.email || "", phone: org.phone || "", address: org.address || "", state_name: org.state_name || "", lga: org.lga || "", purpose: org.purpose || "", vision: org.vision || "", mission: org.mission || "", website: org.website || "", social_instagram: org.social_instagram || "", social_facebook: org.social_facebook || "", social_twitter: org.social_twitter || "", date_established: org.date_established || "", logo_url: org.logo_url || "" });
@@ -1607,6 +1792,9 @@ function SettingsTab({ org, onRefresh, onBack, isOrgPortal = false }) {
           </>
         )}
       </div>}
+
+      {/* Paystack Bank Account */}
+      <OrgBankSetupSection org={org} onRefresh={onRefresh} />
 
       {/* Danger Zone */}
       {!isOrgPortal && <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-red-100 dark:border-red-900/40">

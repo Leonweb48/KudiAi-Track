@@ -6,7 +6,7 @@ import { savePendingOp, getPendingOps, getPendingCount } from "../utils/offlineD
 import { syncPending } from "../utils/syncManager";
 
 function fireEmailTrigger(event, data) {
-  fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
+  fetch("https://admin.kudiai.app/api/public/email-trigger", {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
     body: JSON.stringify({ event, data }),

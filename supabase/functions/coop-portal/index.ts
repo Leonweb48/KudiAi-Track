@@ -12,7 +12,8 @@ function json(data: unknown, status = 200) {
 const ORG_SELECT = `id, owner_id, portal_user_id, name, type, reg_number, description, purpose, vision, mission,
   address, state_name, lga, phone, email, website, logo_url,
   social_instagram, social_facebook, social_twitter, date_established, registration_fee,
-  wallet_balance, total_savings, total_loans_out, member_count, status, created_at`;
+  wallet_balance, total_savings, total_loans_out, member_count, status, created_at,
+  bank_code, account_number, account_name, paystack_subaccount_code, paystack_subaccount_id, percentage_charge`;
 
 const MEMBER_SELECT = `id, org_id, membership_id, full_name, email, phone, role, status,
   profile_image_url, address, occupation, gender, date_of_birth, joined_date,
@@ -87,7 +88,7 @@ serve(async (req) => {
       }
 
       // Send credentials email to org
-      fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
+      fetch("https://admin.kudiai.app/api/public/email-trigger", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
         body: JSON.stringify({
@@ -275,7 +276,7 @@ serve(async (req) => {
             orgOwnerEmail = authUser?.user?.email || "";
           }
         }
-        fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
+        fetch("https://admin.kudiai.app/api/public/email-trigger", {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
           body: JSON.stringify({
@@ -350,7 +351,7 @@ serve(async (req) => {
 
       const { data: orgRow } = await sb.from("organizations").select("name").eq("id", member.org_id).maybeSingle();
 
-      fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
+      fetch("https://admin.kudiai.app/api/public/email-trigger", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
         body: JSON.stringify({
@@ -563,7 +564,7 @@ serve(async (req) => {
       }
 
       if (memberInfo?.email) {
-        fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
+        fetch("https://admin.kudiai.app/api/public/email-trigger", {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
           body: JSON.stringify({
@@ -673,7 +674,7 @@ serve(async (req) => {
       for (const m of (memberEmailRows || [])) {
         if (m.email) {
           const mAmt = affectedMembers.find(am => am.id === m.id)?.amount || 0;
-          fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
+          fetch("https://admin.kudiai.app/api/public/email-trigger", {
             method: "POST",
             headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
             body: JSON.stringify({
@@ -685,7 +686,7 @@ serve(async (req) => {
         }
       }
       if (wdOwnerEmail) {
-        fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
+        fetch("https://admin.kudiai.app/api/public/email-trigger", {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
           body: JSON.stringify({
@@ -1094,6 +1095,397 @@ serve(async (req) => {
         .select("id, membership_id, full_name, role, profile_image_url, phone, email, occupation, joined_date, privacy_balance, privacy_contributions, privacy_activities, savings_balance")
         .eq("org_id", org_id).eq("status", "active").order("full_name");
       return json({ members: members || [] });
+    }
+
+    // ══════════════════════════════════════════════════
+    //  PAYSTACK INTEGRATION (org subaccount + member payments)
+    // ══════════════════════════════════════════════════
+
+    const PAYSTACK_SECRET = Deno.env.get("PAYSTACK_SECRET_KEY") ?? "";
+    const PAYSTACK_PUBLIC = Deno.env.get("PAYSTACK_PUBLIC_KEY") ?? "";
+    const PS_HEADERS = {
+      Authorization: `Bearer ${PAYSTACK_SECRET}`,
+      "Content-Type": "application/json",
+    };
+
+    // ── List Nigerian banks (Paystack) ────────────────────────────────────
+    if (action === "list-banks") {
+      if (!PAYSTACK_SECRET) return json({ error: "Paystack not configured" }, 503);
+      const res = await fetch(
+        "https://api.paystack.co/bank?country=nigeria&use_cursor=false&perPage=100",
+        { headers: PS_HEADERS },
+      );
+      const d = await res.json();
+      return json({ banks: d.data || [] });
+    }
+
+    // ── Resolve bank account number → account name ─────────────────────────
+    if (action === "resolve-bank-account") {
+      const { bank_code, account_number } = body as { bank_code: string; account_number: string };
+      if (!PAYSTACK_SECRET) return json({ error: "Paystack not configured" }, 503);
+      const res = await fetch(
+        `https://api.paystack.co/bank/resolve?account_number=${encodeURIComponent(account_number)}&bank_code=${encodeURIComponent(bank_code)}`,
+        { headers: PS_HEADERS },
+      );
+      const d = await res.json();
+      if (!d.status || !d.data?.account_name) return json({ error: d.message || "Account not found" }, 422);
+      return json({ account_name: d.data.account_name });
+    }
+
+    // ── Setup org bank account & create Paystack subaccount ─────────────────
+    if (action === "setup-org-bank") {
+      const { org_id, owner_id, bank_code, account_number } = body as {
+        org_id: string; owner_id: string; bank_code: string; account_number: string;
+      };
+      if (!org_id || !owner_id || !bank_code || !account_number)
+        return json({ error: "org_id, owner_id, bank_code, account_number required" }, 400);
+      if (!PAYSTACK_SECRET) return json({ error: "Paystack not configured" }, 503);
+
+      const { data: org } = await sb.from("organizations")
+        .select("id, owner_id, name, paystack_subaccount_code").eq("id", org_id).maybeSingle();
+      if (!org) return json({ error: "Organisation not found" }, 404);
+      if (org.owner_id !== owner_id) return json({ error: "Unauthorized" }, 403);
+
+      // Verify bank account with Paystack
+      const verRes = await fetch(
+        `https://api.paystack.co/bank/resolve?account_number=${encodeURIComponent(account_number)}&bank_code=${encodeURIComponent(bank_code)}`,
+        { headers: PS_HEADERS },
+      );
+      const verData = await verRes.json();
+      if (!verData.status || !verData.data?.account_name)
+        return json({ error: verData.message || "Could not verify bank account" }, 422);
+
+      const account_name = verData.data.account_name as string;
+
+      // Create (or update) Paystack subaccount
+      let subaccountCode: string;
+      let subaccountId: string;
+
+      if (org.paystack_subaccount_code) {
+        // Update existing subaccount
+        const upRes = await fetch(`https://api.paystack.co/subaccount/${org.paystack_subaccount_code}`, {
+          method: "PUT",
+          headers: PS_HEADERS,
+          body: JSON.stringify({ settlement_bank: bank_code, account_number }),
+        });
+        const upData = await upRes.json();
+        if (!upData.status) return json({ error: upData.message || "Failed to update subaccount" }, 422);
+        subaccountCode = org.paystack_subaccount_code;
+        subaccountId   = String(upData.data?.id || "");
+      } else {
+        // Create new subaccount
+        const psRes = await fetch("https://api.paystack.co/subaccount", {
+          method: "POST",
+          headers: PS_HEADERS,
+          body: JSON.stringify({
+            business_name:    org.name,
+            settlement_bank:  bank_code,
+            account_number,
+            percentage_charge: 100,
+          }),
+        });
+        const psData = await psRes.json();
+        if (!psData.status || !psData.data?.subaccount_code)
+          return json({ error: psData.message || "Failed to create subaccount" }, 422);
+        subaccountCode = psData.data.subaccount_code;
+        subaccountId   = String(psData.data.id);
+      }
+
+      await sb.from("organizations").update({
+        bank_code, account_number, account_name,
+        paystack_subaccount_code: subaccountCode,
+        paystack_subaccount_id:   subaccountId,
+        percentage_charge:        100,
+      }).eq("id", org_id);
+
+      return json({ account_name, subaccount_code: subaccountCode });
+    }
+
+    // ── Initialize member payment via Paystack ────────────────────────────
+    if (action === "initialize-member-payment") {
+      const { member_id, org_id, amount, program_id } = body as {
+        member_id: string; org_id: string; amount: number; program_id?: string;
+      };
+      if (!member_id || !org_id || !amount) return json({ error: "member_id, org_id, amount required" }, 400);
+      if (!PAYSTACK_SECRET) return json({ error: "Paystack not configured" }, 503);
+
+      const { data: mem } = await sb.from("org_members")
+        .select("email, full_name").eq("id", member_id).maybeSingle();
+      if (!mem?.email) return json({ error: "Member email not found" }, 404);
+
+      const { data: org } = await sb.from("organizations")
+        .select("name, paystack_subaccount_code").eq("id", org_id).maybeSingle();
+      if (!org) return json({ error: "Organisation not found" }, 404);
+
+      const ref = `ORG-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
+
+      const psRes = await fetch("https://api.paystack.co/transaction/initialize", {
+        method: "POST",
+        headers: PS_HEADERS,
+        body: JSON.stringify({
+          email:        mem.email,
+          amount:       Math.round(Number(amount) * 100),
+          reference:    ref,
+          callback_url: "https://kuditrack-kappa.vercel.app/",
+          channels:     ["card", "bank", "ussd", "mobile_money", "bank_transfer"],
+          subaccount:   org.paystack_subaccount_code || undefined,
+          bearer:       org.paystack_subaccount_code ? "subaccount" : undefined,
+          metadata: {
+            member_id, org_id, member_name: mem.full_name || "",
+            type: "org_contribution", program_id: program_id || null,
+          },
+        }),
+      });
+      const psData = await psRes.json();
+      if (!psData.status || !psData.data?.authorization_url)
+        return json({ error: psData.message || "Payment initialization failed" }, 422);
+
+      return json({
+        authorization_url: psData.data.authorization_url,
+        reference:         ref,
+        amount:            Number(amount),
+        email:             mem.email,
+        public_key:        PAYSTACK_PUBLIC,
+      });
+    }
+
+    // ── Confirm member Paystack payment & update balances ─────────────────
+    if (action === "confirm-member-payment") {
+      const { member_id, org_id, reference, program_id } = body as {
+        member_id: string; org_id: string; reference: string; program_id?: string;
+      };
+      if (!member_id || !org_id || !reference) return json({ error: "member_id, org_id, reference required" }, 400);
+      if (!PAYSTACK_SECRET) return json({ error: "Paystack not configured" }, 503);
+
+      const verRes = await fetch(
+        `https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`,
+        { headers: PS_HEADERS },
+      );
+      const verData = await verRes.json();
+      if (!verData.status || verData.data?.status !== "success")
+        return json({ error: "Payment not confirmed by Paystack" }, 422);
+
+      const paidAmount = Number(verData.data.amount) / 100;
+
+      // Idempotency: only process once
+      const { data: existing } = await sb.from("org_savings")
+        .select("id").eq("paystack_ref", reference).eq("member_id", member_id).maybeSingle();
+
+      if (!existing) {
+        const { data: mem } = await sb.from("org_members")
+          .select("savings_balance, full_name, email").eq("id", member_id).single();
+        const balanceAfter = (mem?.savings_balance || 0) + paidAmount;
+
+        const { data: saving } = await sb.from("org_savings").insert({
+          org_id, member_id, amount: paidAmount, type: "deposit",
+          payment_method: "paystack", paystack_ref: reference,
+          balance_after: balanceAfter, program_id: program_id || null,
+        }).select("id").single();
+
+        await sb.from("org_members").update({ savings_balance: balanceAfter }).eq("id", member_id);
+
+        const { data: orgRow } = await sb.from("organizations")
+          .select("wallet_balance, total_savings, name, owner_id").eq("id", org_id).single();
+        const newWal = (orgRow?.wallet_balance || 0) + paidAmount;
+        const newSav = (orgRow?.total_savings  || 0) + paidAmount;
+        await sb.from("organizations").update({ wallet_balance: newWal, total_savings: newSav }).eq("id", org_id);
+
+        await sb.from("org_wallet_txns").insert({
+          org_id, type: "savings_deposit", amount: paidAmount,
+          description: `Member self-pay via Paystack — ${member_id}`,
+          reference_id: saving?.id, paystack_ref: reference, balance_after: newWal,
+        });
+
+        // Email notification
+        let ownerEmail = "";
+        if (orgRow?.owner_id) {
+          const { data: op } = await sb.from("profiles")
+            .select("email").eq("id", orgRow.owner_id).maybeSingle();
+          ownerEmail = op?.email || "";
+        }
+        if (mem?.email) {
+          fetch("https://admin.kudiai.app/api/public/email-trigger", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+            body: JSON.stringify({
+              event: "org_saving",
+              data: {
+                member_name:  mem.full_name || "",
+                member_email: mem.email,
+                amount:       paidAmount,
+                type:         "deposit",
+                payment_method: "paystack",
+                org_name:     orgRow?.name || "",
+                date:         new Date().toLocaleDateString("en-NG"),
+                owner_email:  ownerEmail,
+                owner_id:     orgRow?.owner_id || "",
+                paystack_ref: reference,
+              },
+            }),
+          }).catch(() => null);
+        }
+      }
+
+      const { data: updatedMember } = await sb.from("org_members")
+        .select(MEMBER_SELECT).eq("id", member_id).maybeSingle();
+      return json({ member: updatedMember, amount: paidAmount });
+    }
+
+    // ── Member submits a withdrawal request ───────────────────────────────
+    if (action === "request-member-withdrawal") {
+      const { member_id, org_id, amount, reason } = body as {
+        member_id: string; org_id: string; amount: number; reason?: string;
+      };
+      const amt = parseFloat(String(amount));
+      if (!member_id || !org_id || !amt) return json({ error: "member_id, org_id, amount required" }, 400);
+
+      const { data: mem } = await sb.from("org_members")
+        .select("savings_balance, full_name").eq("id", member_id).maybeSingle();
+      if (!mem) return json({ error: "Member not found" }, 404);
+      if ((mem.savings_balance || 0) < amt) return json({ error: "Insufficient savings balance" }, 400);
+
+      const { data: req, error: reqErr } = await sb.from("org_member_withdrawal_requests")
+        .insert({ org_id, member_id, amount: amt, reason: reason || null })
+        .select("*").single();
+      if (reqErr) return json({ error: reqErr.message }, 400);
+
+      // Notify org owner
+      const { data: orgFull } = await sb.from("organizations")
+        .select("name, owner_id").eq("id", org_id).maybeSingle();
+      if (orgFull?.owner_id) {
+        const { data: op } = await sb.from("profiles")
+          .select("email").eq("id", orgFull.owner_id).maybeSingle();
+        if (op?.email) {
+          fetch("https://admin.kudiai.app/api/public/email-trigger", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+            body: JSON.stringify({
+              event: "org_withdrawal_request",
+              data: {
+                member_name:  mem.full_name || "",
+                org_name:     orgFull.name || "",
+                owner_email:  op.email,
+                amount:       amt,
+                reason:       reason || "",
+                date:         new Date().toLocaleDateString("en-NG"),
+              },
+            }),
+          }).catch(() => null);
+        }
+      }
+
+      return json({ request: req });
+    }
+
+    // ── Member views their own withdrawal requests ─────────────────────────
+    if (action === "get-member-withdrawal-requests") {
+      const { member_id } = body as { member_id: string };
+      if (!member_id) return json({ error: "member_id required" }, 400);
+      const { data: requests } = await sb.from("org_member_withdrawal_requests")
+        .select("*").eq("member_id", member_id)
+        .order("created_at", { ascending: false }).limit(30);
+      return json({ requests: requests || [] });
+    }
+
+    // ── Admin views all withdrawal requests for an org ─────────────────────
+    if (action === "get-withdrawal-requests-admin") {
+      const { org_id, status } = body as { org_id: string; status?: string };
+      if (!org_id) return json({ error: "org_id required" }, 400);
+      let q = sb.from("org_member_withdrawal_requests")
+        .select("*, org_members(full_name, membership_id, savings_balance, email)")
+        .eq("org_id", org_id);
+      if (status) q = q.eq("status", status);
+      const { data: requests } = await q.order("created_at", { ascending: false }).limit(50);
+      return json({ requests: requests || [] });
+    }
+
+    // ── Admin approves or rejects a withdrawal request ─────────────────────
+    if (action === "handle-withdrawal-request") {
+      const { request_id, decision, admin_notes, reviewed_by } = body as {
+        request_id: string; decision: "approve" | "reject"; admin_notes?: string; reviewed_by?: string;
+      };
+      if (!request_id || !decision) return json({ error: "request_id and decision required" }, 400);
+
+      const { data: req } = await sb.from("org_member_withdrawal_requests")
+        .select("*").eq("id", request_id).maybeSingle();
+      if (!req) return json({ error: "Request not found" }, 404);
+      if (req.status !== "pending") return json({ error: "Request has already been handled" }, 400);
+
+      if (decision === "approve") {
+        const { data: mem } = await sb.from("org_members")
+          .select("savings_balance, full_name, email").eq("id", req.member_id).single();
+        if (!mem || (mem.savings_balance || 0) < req.amount)
+          return json({ error: "Member has insufficient savings balance" }, 400);
+
+        const newBal = (mem.savings_balance || 0) - req.amount;
+        await sb.from("org_members").update({ savings_balance: newBal }).eq("id", req.member_id);
+
+        const { data: saving } = await sb.from("org_savings").insert({
+          org_id: req.org_id, member_id: req.member_id, amount: req.amount,
+          type: "withdrawal", payment_method: "withdrawal_request",
+          notes: req.reason || "Withdrawal request approved", balance_after: newBal,
+        }).select("id").single();
+
+        const { data: orgRow } = await sb.from("organizations")
+          .select("wallet_balance, total_savings").eq("id", req.org_id).single();
+        const newWal = Math.max(0, (orgRow?.wallet_balance || 0) - req.amount);
+        const newSav = Math.max(0, (orgRow?.total_savings  || 0) - req.amount);
+        await sb.from("organizations")
+          .update({ wallet_balance: newWal, total_savings: newSav }).eq("id", req.org_id);
+
+        await sb.from("org_wallet_txns").insert({
+          org_id: req.org_id, type: "savings_withdrawal", amount: req.amount,
+          description: `Member withdrawal approved — ${req.member_id}`,
+          reference_id: saving?.id, balance_after: newWal,
+        });
+
+        if (mem.email) {
+          fetch("https://admin.kudiai.app/api/public/email-trigger", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+            body: JSON.stringify({
+              event: "org_withdrawal_approved",
+              data: {
+                member_name:  mem.full_name || "",
+                member_email: mem.email,
+                amount:       req.amount,
+                admin_notes:  admin_notes || "",
+                date:         new Date().toLocaleDateString("en-NG"),
+              },
+            }),
+          }).catch(() => null);
+        }
+      } else {
+        // Rejected — notify member, no balance change
+        const { data: mem } = await sb.from("org_members")
+          .select("full_name, email").eq("id", req.member_id).maybeSingle();
+        if (mem?.email) {
+          fetch("https://admin.kudiai.app/api/public/email-trigger", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+            body: JSON.stringify({
+              event: "org_withdrawal_rejected",
+              data: {
+                member_name:  mem.full_name || "",
+                member_email: mem.email,
+                amount:       req.amount,
+                reason:       req.reason || "",
+                admin_notes:  admin_notes || "",
+                date:         new Date().toLocaleDateString("en-NG"),
+              },
+            }),
+          }).catch(() => null);
+        }
+      }
+
+      await sb.from("org_member_withdrawal_requests").update({
+        status:      decision === "approve" ? "approved" : "rejected",
+        admin_notes: admin_notes || null,
+        reviewed_by: reviewed_by || null,
+        reviewed_at: new Date().toISOString(),
+      }).eq("id", request_id);
+
+      return json({ success: true });
     }
 
     return json({ error: `Unknown action: ${action}` }, 400);

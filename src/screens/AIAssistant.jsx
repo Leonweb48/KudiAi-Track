@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { getLang } from "../utils/i18n";
 import { buildContext } from "../utils/buildContext";
 
-const CHAT_URL = "https://kuditrack-admin.vercel.app/api/public/chat";
+const CHAT_URL = "https://admin.kudiai.app/api/public/chat";
 const SECRET   = "kuditrack-email-trigger-2026-amaya";
 
 const SPEECH_LANG = { en: "en-NG", pidgin: "en-NG", ha: "ha-NG", ig: "ig-NG", yo: "yo-NG" };

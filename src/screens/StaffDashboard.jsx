@@ -36,7 +36,7 @@ const NAV_LABEL = {
 };
 
 
-const SUPPORT_ADMIN_URL = "https://kuditrack-admin.vercel.app";
+const SUPPORT_ADMIN_URL = "https://admin.kudiai.app";
 
 function StaffProfile({ staff, ownerName, onSignOut, isDark, onToggleDark }) {
   const roleLabel = (staff.role || "").replace(/_/g, " ");

@@ -5,7 +5,7 @@ import { useT } from "../contexts/LanguageContext";
 import { getLang } from "../utils/i18n";
 import { getSalesPrediction, getRestockData, getSlowMovers } from "../utils/predictions";
 
-const CHAT_URL = "https://kuditrack-admin.vercel.app/api/public/chat";
+const CHAT_URL = "https://admin.kudiai.app/api/public/chat";
 const SECRET   = "kuditrack-email-trigger-2026-amaya";
 
 const AI_QUICK = [

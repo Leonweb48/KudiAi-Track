@@ -243,7 +243,7 @@ function LanguageModal({ current, onClose }) {
 }
 
 /* ── Support Ticket Modal ─────────────────────────────────────────── */
-const SUPPORT_ADMIN_URL = "https://kuditrack-admin.vercel.app";
+const SUPPORT_ADMIN_URL = "https://admin.kudiai.app";
 const TICKET_TYPES = [
   { value: "account",      label: "Account / Login" },
   { value: "payment",      label: "Payment / Billing" },

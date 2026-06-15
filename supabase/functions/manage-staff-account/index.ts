@@ -126,7 +126,7 @@ serve(async (req) => {
         if (owner?.email) { emailData.owner_email = owner.email; emailData.business_name = owner.business_name || ""; }
       } catch { /* non-fatal */ }
 
-      fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
+      fetch("https://admin.kudiai.app/api/public/email-trigger", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
         body: JSON.stringify({ event: "staff_created", data: emailData }),

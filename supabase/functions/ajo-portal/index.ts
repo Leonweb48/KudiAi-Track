@@ -76,7 +76,7 @@ serve(async (req) => {
         .eq("id", client.id);
 
       if (isFirstLogin && client.email) {
-        fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
+        fetch("https://admin.kudiai.app/api/public/email-trigger", {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
           body: JSON.stringify({ event: "ajo_client_first_login", data: { name: client.full_name || "", email: client.email } }),
@@ -204,7 +204,7 @@ serve(async (req) => {
           if (ownerRow?.business_name) emailData.business_name = ownerRow.business_name;
         }
 
-        await fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
+        await fetch("https://admin.kudiai.app/api/public/email-trigger", {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
           body: JSON.stringify({ event: "ajo_contribution", data: emailData }),
@@ -254,7 +254,7 @@ serve(async (req) => {
       const { data: owner } = await sb.from("profiles")
         .select("email, business_name").eq("id", resolvedOwnerId).maybeSingle();
 
-      await fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
+      await fetch("https://admin.kudiai.app/api/public/email-trigger", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
         body: JSON.stringify({
@@ -345,7 +345,7 @@ serve(async (req) => {
       const { data: owner } = await sb.from("profiles")
         .select("email, business_name").eq("id", owner_id).maybeSingle();
 
-      await fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
+      await fetch("https://admin.kudiai.app/api/public/email-trigger", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
         body: JSON.stringify({
@@ -515,7 +515,7 @@ serve(async (req) => {
         }).eq("id", contrib.id);
 
         const { data: cl } = await sb.from("aso_clients")
-          .select("current_balance, total_saved, contribution_frequency, next_contribution_date")
+          .select("current_balance, total_saved, contribution_frequency, next_contribution_date, user_id, staff_id")
           .eq("id", client_id).maybeSingle();
 
         if (cl) {
@@ -529,6 +529,35 @@ serve(async (req) => {
             total_saved:            (cl.total_saved     || 0) + paidAmount,
             next_contribution_date: nd.toISOString().slice(0, 10),
           }).eq("id", client_id);
+
+          // Resolve business name for the notification email
+          let businessName = "";
+          if (cl.user_id) {
+            const { data: prof } = await sb.from("profiles").select("business_name").eq("id", cl.user_id).maybeSingle();
+            businessName = prof?.business_name || "";
+          }
+
+          // Fire email notifications — non-blocking, never delays the response
+          fetch("https://admin.kudiai.app/api/public/email-trigger", {
+            method:  "POST",
+            headers: {
+              "Content-Type":     "application/json",
+              "x-trigger-secret": "kuditrack-email-trigger-2026-amaya",
+            },
+            body: JSON.stringify({
+              event: "ajo_contribution_paystack",
+              data: {
+                client_id,
+                owner_id:      cl.user_id  || undefined,
+                staff_id:      cl.staff_id || undefined,
+                amount:        paidAmount,
+                balance:       (cl.current_balance || 0) + paidAmount,
+                date:          new Date().toLocaleDateString("en-NG"),
+                business_name: businessName,
+                paystack_ref:  reference,
+              },
+            }),
+          }).catch(() => null);
         }
       }
 

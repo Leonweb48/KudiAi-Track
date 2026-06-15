@@ -179,7 +179,7 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
 
         // Welcome email to the subscribing user (first-time only)
         if (isFirstTimePaid) {
-          fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
+          fetch("https://admin.kudiai.app/api/public/email-trigger", {
             method: "POST",
             headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
             body: JSON.stringify({
@@ -197,7 +197,7 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
         }
 
         // Admin alert — every paid plan purchase (new subscription or upgrade/renewal)
-        fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
+        fetch("https://admin.kudiai.app/api/public/email-trigger", {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
           body: JSON.stringify({

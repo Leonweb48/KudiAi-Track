@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 
-const VOICE_PARSE_URL  = "https://kuditrack-admin.vercel.app/api/public/voice-parse";
+const VOICE_PARSE_URL  = "https://admin.kudiai.app/api/public/voice-parse";
 const TRIGGER_SECRET   = "kuditrack-email-trigger-2026-amaya";
 const MAX_RECORD_SECS  = 60;
 

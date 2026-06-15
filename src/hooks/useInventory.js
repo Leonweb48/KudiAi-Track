@@ -64,7 +64,7 @@ export function useInventory(userId, staffId = null, onNotify = null, branchId =
     const { error } = await supabase.from("products").insert(prod);
     if (error) { setDbError(error.message); return false; }
     if (prod.quantity > 0) {
-      fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
+      fetch("https://admin.kudiai.app/api/public/email-trigger", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
         body: JSON.stringify({
@@ -146,7 +146,7 @@ export function useInventory(userId, staffId = null, onNotify = null, branchId =
     if (me || pe) { setDbError((me || pe).message); return false; }
 
     if (type === "restock") {
-      fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
+      fetch("https://admin.kudiai.app/api/public/email-trigger", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
         body: JSON.stringify({

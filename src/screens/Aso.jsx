@@ -593,7 +593,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
       // Rule: always notify business owner + ajo client when withdrawal is approved
       // Emails resolved server-side from IDs to guarantee fresh delivery
-      fetch("https://kuditrack-admin.vercel.app/api/public/email-trigger", {
+      fetch("https://admin.kudiai.app/api/public/email-trigger", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
         body: JSON.stringify({
