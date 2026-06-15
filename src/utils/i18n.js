@@ -454,6 +454,70 @@ export const R = {
   },
 };
 
+/* ── Text-to-Speech confirmation — hybrid: instant browser TTS + Gemini ──
+   1. Browser Web Speech fires IMMEDIATELY so the user always hears something.
+   2. Gemini 2.5 Flash TTS runs in parallel — if it arrives in time it cancels
+      the browser voice and plays the natural Nigerian AI audio instead.
+   3. If Gemini fails or is slow, the browser voice already covered it.       */
+
+
+const TTS_LANG_MAP = {
+  en:     "en-NG",
+  pidgin: "en-NG",
+  ha:     "ha-NG",
+  ig:     "ig-NG",
+  yo:     "yo-NG",
+};
+
+const TTS_MESSAGES = {
+  "en-NG": {
+    cashIn:      "Success! Cash in recorded.",
+    cashOut:     "Success! Cash out recorded.",
+    stockIn:     "Inventory updated. Stock in successful.",
+    creditSaved: "Credit payment recorded.",
+    ajoDeposit:  "Ajo contribution successfully saved.",
+    ajoWithdraw: "Ajo withdrawal successful.",
+  },
+  "ha-NG": {
+    cashIn:      "An yi nasara. An yi rikodin kuɗi shiga.",
+    cashOut:     "An yi nasara. An yi rikodin kuɗi fita.",
+    stockIn:     "An sabunta kaya. Shigar da kaya ya yi nasara.",
+    creditSaved: "An yi rikodin biyan bashi.",
+    ajoDeposit:  "An adana gudunmawar Ajo cikin nasara.",
+    ajoWithdraw: "Cire kuɗin Ajo ya yi nasara.",
+  },
+  "yo-NG": {
+    cashIn:      "Ẹ kú owó. A ti kọ ọ sílẹ̀.",
+    cashOut:     "A ti kọ owó tí ó jáde sílẹ̀.",
+    stockIn:     "A ti ṣe àfikún ọjà pẹ̀lú àṣeyọrí.",
+    creditSaved: "A ti kọ sísanwó gbèsè sílẹ̀.",
+    ajoDeposit:  "A ti fipamọ̀ owó àjọ rẹ pẹ̀lú àṣeyọrí.",
+    ajoWithdraw: "Yíyọ owó àjọ yọrí sí rere.",
+  },
+  "ig-NG": {
+    cashIn:      "Ọ gara nke ọma. E dekọrọ ego mbata.",
+    cashOut:     "Ọ gara nke ọma. E dekọrọ ego ọpụpụ.",
+    stockIn:     "Emegharịrị ngwa ahịa. Ịbata ngwa ahịa gara nke ọma.",
+    creditSaved: "E dekọrọ ịkwụ ụgwọ banyere bishị.",
+    ajoDeposit:  "Echekwara ego otu Ajo nke ọma.",
+    ajoWithdraw: "Ịdọrọ ego Ajo gara nke ọma.",
+  },
+};
+
+export const speakConfirmation = (eventKey, langCode = "en") => {
+  if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+  const bcp47 = TTS_LANG_MAP[langCode] || "en-NG";
+  const msgs  = TTS_MESSAGES[bcp47] || TTS_MESSAGES["en-NG"];
+  const text  = msgs[eventKey]      || TTS_MESSAGES["en-NG"][eventKey];
+  if (!text) return;
+  window.speechSynthesis.cancel();
+  const utt   = new SpeechSynthesisUtterance(text);
+  utt.lang    = bcp47;
+  utt.rate    = 0.95;
+  utt.pitch   = 1.0;
+  window.speechSynthesis.speak(utt);
+};
+
 /* ── Resolve response for given intent + language ────────────────── */
 export function respond(intent, lang, data) {
   const L = lang || "en";

@@ -80,12 +80,11 @@ serve(async (req) => {
 
     // ── Refresh client data by ID (session already validated) ─────
     if (action === "get-client") {
-      const { client_id, owner_id } = body as { client_id: string; owner_id: string };
+      const { client_id } = body as { client_id: string };
       const { data: client } = await sb
         .from("aso_clients")
         .select(CLIENT_SELECT)
         .eq("id", client_id)
-        .or(`user_id.eq.${owner_id},owner_id.eq.${owner_id}`)
         .maybeSingle();
       if (!client) return json({ error: "Client not found" }, 404);
       return json({ client });
@@ -210,12 +209,11 @@ serve(async (req) => {
     // ── Client requests a withdrawal ─────────────────────────────
     if (action === "request-withdrawal") {
       const { client_id, owner_id, amount } = body as { client_id: string; owner_id: string; amount: number };
-      if (!client_id || !owner_id || !amount || amount <= 0) return json({ error: "client_id, owner_id and amount are required" }, 400);
+      if (!client_id || !amount || amount <= 0) return json({ error: "client_id and amount are required" }, 400);
 
       const { data: cl } = await sb.from("aso_clients")
         .select("full_name, email, user_id, current_balance, total_withdrawn, registration_charge, withdrawal_fee_percent")
         .eq("id", client_id)
-        .or(`user_id.eq.${owner_id},owner_id.eq.${owner_id}`)
         .maybeSingle();
 
       if (!cl) return json({ error: "Client not found" }, 404);
@@ -274,11 +272,10 @@ serve(async (req) => {
 
     // ── Client: fetch their own withdrawal requests ───────────────
     if (action === "get-withdrawal-requests") {
-      const { client_id, owner_id } = body as { client_id: string; owner_id: string };
+      const { client_id } = body as { client_id: string };
       const { data } = await sb.from("ajo_withdrawal_requests")
         .select("*")
         .eq("aso_client_id", client_id)
-        .eq("owner_id", owner_id)
         .order("requested_at", { ascending: false })
         .limit(20);
       return json({ requests: data || [] });

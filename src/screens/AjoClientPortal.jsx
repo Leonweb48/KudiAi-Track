@@ -1121,20 +1121,25 @@ export default function AjoClientPortal({ session, ajoClient }) {
   useEffect(() => {
     if (mustChange || !ajoClient?.id) return;
     setLoadingData(true);
-    Promise.all([
-      ajoFn("get-client", { client_id: ajoClient.id, owner_id: ajoClient.owner_id }),
-      ajoFn("get-contributions", { client_id: ajoClient.id, owner_id: ajoClient.owner_id }),
-      ajoFn("get-owner-info", { owner_id: ajoClient.owner_id, client_id: ajoClient.id }),
-      ajoFn("get-withdrawal-requests", { client_id: ajoClient.id, owner_id: ajoClient.owner_id }),
+    Promise.allSettled([
+      ajoFn("get-client",             { client_id: ajoClient.id, owner_id: ajoClient.owner_id }),
+      ajoFn("get-contributions",      { client_id: ajoClient.id }),
+      ajoFn("get-owner-info",         { owner_id: ajoClient.owner_id, client_id: ajoClient.id }),
+      ajoFn("get-withdrawal-requests",{ client_id: ajoClient.id }),
     ])
       .then(([clientRes, contribRes, ownerRes, reqRes]) => {
-        if (clientRes?.client) setClient(prev => ({
-          ...clientRes.client,
-          owner_id: clientRes.client.user_id || prev?.owner_id || clientRes.client.owner_id,
-        }));
-        if (contribRes?.contributions) setContributions(contribRes.contributions);
-        if (ownerRes)                  setOwnerInfo(ownerRes);
-        if (reqRes?.requests)          setWithdrawRequests(reqRes.requests);
+        if (clientRes.status === "fulfilled" && clientRes.value?.client) {
+          setClient(prev => ({
+            ...clientRes.value.client,
+            owner_id: clientRes.value.client.user_id || prev?.owner_id || clientRes.value.client.owner_id,
+          }));
+        }
+        if (contribRes.status === "fulfilled" && contribRes.value?.contributions)
+          setContributions(contribRes.value.contributions);
+        if (ownerRes.status === "fulfilled" && ownerRes.value)
+          setOwnerInfo(ownerRes.value);
+        if (reqRes.status === "fulfilled" && reqRes.value?.requests)
+          setWithdrawRequests(reqRes.value.requests);
       })
       .catch(console.error)
       .finally(() => setLoadingData(false));
