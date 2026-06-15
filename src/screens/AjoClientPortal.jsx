@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../utils/supabase";
 import { peyflex } from "../utils/peyflex";
 import { fmt } from "../utils/helpers";
