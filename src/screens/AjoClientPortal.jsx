@@ -140,7 +140,7 @@ function PayContributionModal({ client, onClose, onSuccess }) {
 
             {(status === "awaiting" || status === "verifying") && (
               <button
-                onClick={verifyPayment}
+                onClick={() => doVerify(pendingRef)}
                 disabled={status === "verifying"}
                 className="w-full mb-3 py-4 bg-violet-600 hover:bg-violet-700 disabled:opacity-60 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2 shadow-md">
                 {status === "verifying"
