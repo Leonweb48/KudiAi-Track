@@ -414,8 +414,13 @@ serve(async (req) => {
       if (!cl || !cl.contribution_amount) {
         return json({ error: "Client not found or no contribution amount set" }, 404);
       }
+      if (!cl.email) {
+        return json({ error: "Your account has no email address. Ask your savings agent to add one." }, 422);
+      }
 
-      const ownerId = cl.user_id || cl.owner_id;
+      const ownerId = cl.owner_id || cl.user_id;
+      if (!ownerId) return json({ error: "Could not resolve business owner. Contact support." }, 422);
+
       const amount  = Number(cl.contribution_amount);
       const ref     = genRef("AJO");
 
@@ -459,7 +464,7 @@ serve(async (req) => {
       }
 
       // Create a PENDING contribution record — confirmed by webhook
-      await sb.from("ajo_contributions").insert({
+      const { error: insErr } = await sb.from("ajo_contributions").insert({
         aso_client_id:   client_id,
         owner_id:        ownerId,
         amount,
@@ -472,6 +477,7 @@ serve(async (req) => {
         subaccount_code: subaccountCode || null,
         notes:           `Self-pay initiated by client · ref: ${ref}`,
       });
+      if (insErr) return json({ error: `DB error: ${insErr.message}` }, 500);
 
       return json({
         access_code:     psData.data.access_code,

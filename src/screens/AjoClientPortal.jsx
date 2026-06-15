@@ -8,7 +8,14 @@ async function ajoFn(action, body = {}) {
   const { data, error } = await supabase.functions.invoke("ajo-portal", {
     body: { action, ...body },
   });
-  if (error) throw new Error(error.message || "Portal request failed");
+  if (error) {
+    let msg = error.message || "Portal request failed";
+    try {
+      const errBody = await error.context?.json?.();
+      if (errBody?.error) msg = errBody.error;
+    } catch {}
+    throw new Error(msg);
+  }
   if (data?.error) throw new Error(data.error);
   return data;
 }
