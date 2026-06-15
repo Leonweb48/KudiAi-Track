@@ -372,6 +372,7 @@ export default function App() {
         <AIAssistant
           store={store}
           inventory={inventory}
+          branches={branchesHook.branches}
           initialQuery={aiQuery}
           onClose={() => setShowAI(false)}
         />
@@ -379,7 +380,7 @@ export default function App() {
 
       {/* Floating AI Chat Widget — visible on all screens when full-screen AI is closed */}
       {!showAI && (
-        <AIChatWidget store={store} inventory={inventory} />
+        <AIChatWidget store={store} inventory={inventory} branches={branchesHook.branches} />
       )}
 
       {/* Cooperative / Community Org system — z-60 */}

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
-import { today, fmt } from "../utils/helpers";
 import { getLang } from "../utils/i18n";
+import { buildContext } from "../utils/buildContext";
 
 const CHAT_URL = "https://kuditrack-admin.vercel.app/api/public/chat";
 const SECRET   = "kuditrack-email-trigger-2026-amaya";
@@ -8,15 +8,21 @@ const SECRET   = "kuditrack-email-trigger-2026-amaya";
 const SPEECH_LANG = { en: "en-NG", pidgin: "en-NG", ha: "ha-NG", ig: "ig-NG", yo: "yo-NG" };
 
 const QUICK = [
-  { label: "Today's Sales",      q: "How were today's sales?"                          },
-  { label: "Sales Forecast",     q: "Show my sales forecast and predictions"           },
-  { label: "Total Profit",       q: "What is my total profit?"                         },
-  { label: "Outstanding Credit", q: "Show my outstanding credit"                      },
-  { label: "Stock Status",       q: "What is my stock status?"                         },
-  { label: "Best Sellers",       q: "What are my best selling items?"                  },
-  { label: "Grow Business",      q: "How can I grow my business?"                      },
-  { label: "App Features",       q: "What can this app do for my business?"            },
-  { label: "Pricing Tips",       q: "What is a good pricing strategy for my business?" },
+  { label: "Today's Sales",      q: "How were today's sales?"                                      },
+  { label: "Sales Forecast",     q: "Show my sales forecast and predictions"                       },
+  { label: "Total Profit",       q: "What is my total profit?"                                     },
+  { label: "Outstanding Credit", q: "Who owes me money and how much in total?"                     },
+  { label: "Overdue Credits",    q: "Show me all overdue credit customers"                         },
+  { label: "Stock Status",       q: "What is my current stock status and what is running low?"     },
+  { label: "Best Sellers",       q: "What are my best selling items?"                              },
+  { label: "Ajo Summary",        q: "Give me a full Ajo savings summary with all client balances"  },
+  { label: "Ajo Overdue",        q: "Which Ajo clients are overdue for contribution?"              },
+  { label: "Staff Overview",     q: "Tell me about my staff"                                       },
+  { label: "Branch Summary",     q: "Give me a summary of my branches"                             },
+  { label: "Monthly Report",     q: "Give me a full monthly business report"                       },
+  { label: "Grow Business",      q: "How can I grow my business?"                                  },
+  { label: "App Features",       q: "What can this app do for my business?"                        },
+  { label: "Pricing Tips",       q: "What is a good pricing strategy for my business?"             },
 ];
 
 const GREETINGS = {
@@ -26,60 +32,6 @@ const GREETINGS = {
   ig:     "Nnọọ! Abụ m **KudiAI**, onye inyeaka azụmaahịa Gemini gị.\n\nM maara data azụmaahịa gị n'ezie — ire ahịa, ugwo, ngwa ahịa, ihe nchekwa ajo.\n\nPị ajụjụ ma ọ bụ jụọ m ihe ọ bụla!",
   yo:     "Ẹ káàbọ̀! Èmi ni **KudiAI**, olùrànlọ́wọ́ isọwọ Gemini rẹ.\n\nMo mọ data isowo gidi rẹ — tita, gbese, oja, ajo — mo si wa nibi lati ran ọ lọwọ.\n\nTẹ ibeere tabi béèrè nipa isowo rẹ!",
 };
-
-/* ── Build a compact business context string to send to Gemini ─────── */
-function buildContext(store, products) {
-  const { profile = {}, transactions = [], credits = [], asoClients = [] } = store;
-  const todayStr = today();
-  const now      = new Date();
-  const cm       = now.getMonth();
-  const cy       = now.getFullYear();
-
-  const txIn   = transactions.filter(t => t.type === "in");
-  const txOut  = transactions.filter(t => t.type === "out");
-  const allIn  = txIn.reduce((s, t) => s + t.amount, 0);
-  const allOut = txOut.reduce((s, t) => s + t.amount, 0);
-
-  const tdIn  = txIn.filter(t => t.transaction_date === todayStr).reduce((s, t) => s + t.amount, 0);
-  const tdOut = txOut.filter(t => t.transaction_date === todayStr).reduce((s, t) => s + t.amount, 0);
-  const tdCnt = transactions.filter(t => t.transaction_date === todayStr).length;
-
-  const mTx  = transactions.filter(t => { const d = new Date(t.transaction_date); return d.getMonth() === cm && d.getFullYear() === cy; });
-  const mIn  = mTx.filter(t => t.type === "in").reduce((s, t) => s + t.amount, 0);
-  const mOut = mTx.filter(t => t.type === "out").reduce((s, t) => s + t.amount, 0);
-
-  const itemMap = {};
-  txIn.forEach(t => { if (t.item_name) itemMap[t.item_name] = (itemMap[t.item_name] || 0) + t.amount; });
-  const topItems = Object.entries(itemMap).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k]) => k);
-
-  const custMap = {};
-  txIn.forEach(t => { if (t.customer_name) custMap[t.customer_name] = (custMap[t.customer_name] || 0) + t.amount; });
-  const topCusts = Object.entries(custMap).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, v]) => `${k} (₦${fmt(v)})`);
-
-  const unpaid     = credits.filter(c => c.status !== "paid");
-  const overdue    = credits.filter(c => c.status === "overdue");
-  const creditOwed = unpaid.reduce((s, c) => s + (c.outstanding || 0), 0);
-
-  const outOfStock = products.filter(p => p.quantity === 0).length;
-  const lowStock   = products.filter(p => p.quantity > 0 && p.quantity <= (p.low_stock_threshold || 5)).length;
-  const stockVal   = products.reduce((s, p) => s + (p.selling_price || 0) * p.quantity, 0);
-
-  const ajoActive = asoClients.filter(c => c.status === "active").length;
-  const ajoBal    = asoClients.reduce((s, c) => s + (c.current_balance || 0), 0);
-  const ajoTarget = asoClients.reduce((s, c) => s + (c.target_amount  || 0), 0);
-  const ajoOver   = asoClients.filter(c => c.next_contribution_date && new Date() > new Date(c.next_contribution_date)).length;
-
-  return `Business: ${profile.business_name || "Unknown"} | Owner: ${profile.owner_name || "Unknown"} | Today: ${todayStr}
-ALL-TIME FINANCES: Sales ₦${fmt(allIn)} | Expenses ₦${fmt(allOut)} | Net Profit ₦${fmt(allIn - allOut)}
-THIS MONTH: Sales ₦${fmt(mIn)} | Expenses ₦${fmt(mOut)} | Profit ₦${fmt(mIn - mOut)}
-TODAY: Sales ₦${fmt(tdIn)} | Expenses ₦${fmt(tdOut)} | Transactions: ${tdCnt}
-TOTAL TRANSACTIONS: ${transactions.length}
-TOP ITEMS: ${topItems.join(", ") || "None recorded yet"}
-TOP CUSTOMERS: ${topCusts.join(", ") || "None recorded yet"}
-CREDIT: ₦${fmt(creditOwed)} outstanding from ${unpaid.length} customers | ${overdue.length} overdue
-INVENTORY: ${products.length} products | ${outOfStock} out of stock | ${lowStock} low stock | Total stock value ₦${fmt(stockVal)}
-AJO/SAVINGS: ${asoClients.length} clients (${ajoActive} active) | Balance ₦${fmt(ajoBal)} / Target ₦${fmt(ajoTarget)} | ${ajoOver} overdue contributions`;
-}
 
 /* ── Renders **bold** and line-breaks ────────────────────────────────── */
 function FormattedText({ text }) {
@@ -122,7 +74,7 @@ function speakText(text, lang) {
 }
 
 /* ── Main screen ─────────────────────────────────────────────────────── */
-export default function AIAssistant({ store, inventory, onClose, initialQuery = "" }) {
+export default function AIAssistant({ store, inventory, branches = [], onClose, initialQuery = "" }) {
   const lang     = getLang();
   const greeting = GREETINGS[lang] || GREETINGS.en;
 
@@ -156,7 +108,7 @@ export default function AIAssistant({ store, inventory, onClose, initialQuery = 
 
     try {
       const products = inventory?.products || [];
-      const context  = buildContext(store, products);
+      const context  = buildContext(store, products, branches);
       // Pass last 10 messages (skip greeting) as conversation history
       const history  = msgRef.current.slice(1).map(m => ({ role: m.role, text: m.text }));
 
