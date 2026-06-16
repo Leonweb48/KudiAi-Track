@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "../utils/supabase";
+import BillPayments from "./BillPayments";
 
 const coopFn = async (action, body = {}) => {
   const r = await supabase.functions.invoke("coop-portal", { body: { action, ...body } });
@@ -122,75 +123,164 @@ export function CoopMemberFirstLogin({ member }) {
 }
 
 // ═══════════════════════════════════════════════════
-//  HOME TAB
+//  HOME TAB — Premium Member Dashboard
 // ═══════════════════════════════════════════════════
-function HomeTab({ member, org, announcements }) {
+const MBR_QUICK = [
+  { id:"airtime",     label:"Airtime",     g1:"#ef4444", g2:"#b91c1c", icon:"M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 8.81 19.79 19.79 0 01.25 2.18 2 2 0 012.22 0h3a2 2 0 012 1.72c.122.966.356 1.916.7 2.81a2 2 0 01-.45 2.11L6.95 7.91a16 16 0 006.29 6.29l1.27-.56a2 2 0 012.11-.45c.894.344 1.844.578 2.81.7A2 2 0 0122 16.92z" },
+  { id:"data",        label:"Data",        g1:"#3b82f6", g2:"#1d4ed8", icon:"M1.05 5l4.95-3 4.95 3 4.95-3L21 5|M1.05 11l4.95-3 4.95 3 4.95-3L21 11|M1.05 17l4.95-3 4.95 3 4.95-3L21 17" },
+  { id:"electricity", label:"Electricity", g1:"#f59e0b", g2:"#b45309", icon:"M13 2L3 14h9l-1 8 10-12h-9l1-8z" },
+  { id:"cable",       label:"Cable TV",    g1:"#8b5cf6", g2:"#6d28d9", icon:"M2 7a2 2 0 012-2h16a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V7z|M12 19v3|M8 22h8" },
+];
+
+function HomeTab({ member, org, announcements, loans = [], wdRequests = [], onQuickService, onNavigate }) {
+  const activeLoans  = loans.filter(l => ["approved","disbursed","ongoing"].includes(l.status));
+  const pendingWd    = wdRequests.filter(r => r.status === "pending");
+  const pinnedAnns   = announcements.filter(a => a.is_pinned);
+  const visibleAnns  = [...pinnedAnns.slice(0,1), ...announcements.filter(a => !a.is_pinned).slice(0,2)].slice(0,3);
+
+  const STATS = [
+    { label:"Savings Balance",  value: fmt(member.savings_balance),
+      sub: "current balance", bg:"#059669", tab:"contributions",
+      icon:"M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" },
+    { label:"Active Loans",     value: activeLoans.length,
+      sub: activeLoans.length > 0 ? fmt(activeLoans.reduce((s,l)=>s+(l.outstanding_balance||0),0))+" owed" : "none active",
+      bg:"#dc2626", tab:"loans",
+      icon:"M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" },
+    { label:"Withdrawal Reqs",  value: pendingWd.length,
+      sub: pendingWd.length > 0 ? "pending approval" : "none pending",
+      bg: pendingWd.length > 0 ? "#d97706" : "#64748b", tab:"contributions",
+      icon:"M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" },
+    { label:"Messages",         value: announcements.length,
+      sub: pinnedAnns.length > 0 ? `${pinnedAnns.length} pinned` : "from organisation",
+      bg:"#2563eb", tab:"messages",
+      icon:"M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" },
+  ];
+
   return (
-    <div className="p-4 pb-28 flex flex-col gap-4">
-      <div className="bg-gradient-to-br from-violet-600 to-violet-800 rounded-3xl p-5 text-white">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center text-2xl font-extrabold">
-            {member.full_name?.charAt(0).toUpperCase()}
+    <div className="pb-8 space-y-6">
+
+      {/* ── Hero Balance Card ── */}
+      <div className="mx-4 mt-5 rounded-3xl overflow-hidden shadow-2xl"
+        style={{ background: "linear-gradient(145deg, #0a1628 0%, #1e3a5f 45%, #1d4ed8 100%)" }}>
+        <div className="px-6 pt-7 pb-6">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center text-xl font-extrabold text-white">
+              {member.full_name?.charAt(0).toUpperCase()}
+            </div>
+            <div>
+              <p className="text-white font-extrabold text-base leading-tight">{member.full_name}</p>
+              <p className="text-blue-200 text-[10px] font-mono">{member.membership_id}</p>
+              <p className="text-blue-200 text-[10px] capitalize">{member.role} · {org.name}</p>
+            </div>
           </div>
-          <div>
-            <p className="font-extrabold text-base">{member.full_name}</p>
-            <p className="text-xs text-violet-200 font-mono">{member.membership_id}</p>
-            <p className="text-[10px] text-violet-200 capitalize">{member.role}</p>
+          <p className="text-[10px] font-extrabold text-blue-300 uppercase tracking-[0.25em] mb-2">Savings Balance</p>
+          <p className="text-[44px] font-black text-white leading-none tabular-nums">{fmt(member.savings_balance)}</p>
+          <div className="flex items-center mt-5 pt-4 border-t border-white/10">
+            <div className="flex-1">
+              <p className="text-sm font-extrabold text-white">{fmtDate(member.joined_date)}</p>
+              <p className="text-[10px] mt-0.5 text-blue-300">Member since</p>
+            </div>
+            <div className="border-l border-white/10 pl-4 ml-4 flex-1">
+              <p className="text-sm font-extrabold text-white capitalize">{member.role}</p>
+              <p className="text-[10px] mt-0.5 text-blue-300">Role</p>
+            </div>
+            <div className="border-l border-white/10 pl-4 ml-4 flex-1">
+              <p className="text-sm font-extrabold text-white capitalize">{member.status || "active"}</p>
+              <p className="text-[10px] mt-0.5 text-blue-300">Status</p>
+            </div>
           </div>
         </div>
-        <div className="flex justify-between items-end">
-          <div>
-            <p className="text-xs text-violet-200 mb-0.5">Your Savings Balance</p>
-            <p className="text-3xl font-black tabular">{fmt(member.savings_balance)}</p>
-          </div>
-          <div className="text-right">
-            <p className="text-xs text-violet-200 mb-0.5">Member since</p>
-            <p className="text-sm font-bold">{fmtDate(member.joined_date)}</p>
-          </div>
+        <div className="h-1 w-full" style={{ background: "linear-gradient(90deg, #2563eb, #06b6d4, #8b5cf6)" }} />
+      </div>
+
+      {/* ── Quick Services ── */}
+      <div className="px-4">
+        <div className="flex justify-between items-center mb-4">
+          <p className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em]">Quick Services</p>
+          {onNavigate && <button onClick={() => onNavigate("bills")} className="text-[10px] font-bold text-blue-600 dark:text-blue-400">View All →</button>}
+        </div>
+        <div className="grid grid-cols-4 gap-3">
+          {MBR_QUICK.map(s => (
+            <button key={s.id} onClick={() => onQuickService?.(s.id)}
+              className="flex flex-col items-center gap-2.5 active:scale-95 transition-transform duration-150">
+              <div className="w-[58px] h-[58px] rounded-[18px] flex items-center justify-center shadow-lg"
+                style={{ background:`linear-gradient(145deg,${s.g1},${s.g2})` }}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  {s.icon.split("|").map((p,i) => <path key={i} d={p} />)}
+                </svg>
+              </div>
+              <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400 leading-tight text-center">{s.label}</span>
+            </button>
+          ))}
         </div>
       </div>
 
-      <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-100 dark:border-slate-700">
-        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">
-          {ORG_TYPE_ICONS[org.type] || "🏢"} {org.name}
-        </p>
-        <div className="grid grid-cols-3 gap-3">
-          {[["Total Funds", org.total_savings, "text-green-600"],
-            ["Active Loans", org.total_loans_out, "text-amber-600"],
-            ["Members", org.member_count, "text-violet-600"]].map(([label, val, color]) => (
-            <div key={label} className="text-center bg-slate-50 dark:bg-slate-700 rounded-xl p-2">
-              <p className={`text-sm font-extrabold tabular ${color}`}>{label === "Members" ? val : fmt(val)}</p>
-              <p className="text-[9px] text-slate-400 mt-0.5">{label}</p>
+      {/* ── My Summary ── */}
+      <div className="px-4">
+        <p className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em] mb-4">My Summary</p>
+        <div className="grid grid-cols-2 gap-3">
+          {STATS.map(s => (
+            <button key={s.label} onClick={() => onNavigate?.(s.tab)}
+              className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-100 dark:border-slate-700/60 shadow-sm text-left active:scale-[0.97] transition-all">
+              <div className="w-10 h-10 rounded-xl mb-3 flex items-center justify-center"
+                style={{ background: s.bg + "18" }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ stroke: s.bg }}>
+                  {s.icon.split("|").map((p,i) => <path key={i} d={p} />)}
+                </svg>
+              </div>
+              <p className="text-2xl font-black text-slate-800 dark:text-white leading-none tabular-nums">{s.value}</p>
+              <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mt-1.5">{s.label}</p>
+              {s.sub && <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">{s.sub}</p>}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Organisation Card ── */}
+      <div className="px-4">
+        <p className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em] mb-3">Organisation</p>
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700/60 shadow-sm overflow-hidden">
+          <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-50 dark:border-slate-700/40">
+            <div className="w-10 h-10 rounded-xl bg-violet-50 dark:bg-violet-900/20 flex items-center justify-center text-lg">
+              {ORG_TYPE_ICONS[org.type] || "🏢"}
+            </div>
+            <div>
+              <p className="text-sm font-extrabold text-slate-800 dark:text-white">{org.name}</p>
+              <p className="text-[10px] text-slate-400 capitalize">{org.type?.replace(/_/g," ")} · {org.member_count || 0} members</p>
+            </div>
+          </div>
+          {[
+            ["Total Funds", fmt(org.total_savings || 0), "#059669"],
+            ["Loans Out",   fmt(org.total_loans_out || 0), "#dc2626"],
+          ].map(([k, v, c]) => (
+            <div key={k} className="flex justify-between items-center px-4 py-3 border-b border-slate-50 dark:border-slate-700/30 last:border-0">
+              <span className="text-xs text-slate-400">{k}</span>
+              <span className="text-sm font-extrabold" style={{ color: c }}>{v}</span>
             </div>
           ))}
         </div>
       </div>
 
-      {announcements.filter(a => a.is_pinned).length > 0 && (
-        <div>
-          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">📌 Pinned</p>
-          {announcements.filter(a => a.is_pinned).map(a => (
-            <div key={a.id} className={`rounded-2xl p-3 border mb-2 last:mb-0 ${ANN_COLORS[a.type] || ANN_COLORS.announcement}`}>
-              <p className="text-xs font-extrabold">{ANN_ICONS[a.type]} {a.title}</p>
-              <p className="text-[11px] mt-1 opacity-80 line-clamp-2">{a.body}</p>
-            </div>
-          ))}
+      {/* ── Announcements ── */}
+      {visibleAnns.length > 0 && (
+        <div className="px-4">
+          <div className="flex justify-between items-center mb-3">
+            <p className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em]">Announcements</p>
+            {onNavigate && <button onClick={() => onNavigate("messages")} className="text-[10px] font-bold text-blue-600 dark:text-blue-400">View All →</button>}
+          </div>
+          <div className="flex flex-col gap-2">
+            {visibleAnns.map(a => (
+              <div key={a.id} className={`px-4 py-3 rounded-2xl border text-xs ${ANN_COLORS[a.type] || ANN_COLORS.announcement}`}>
+                <div className="flex justify-between items-start gap-2">
+                  <p className="font-extrabold leading-snug flex-1">{ANN_ICONS[a.type]} {a.title}</p>
+                  {a.is_pinned && <span className="text-[9px] flex-shrink-0">📌</span>}
+                </div>
+                <p className="opacity-75 mt-1.5 line-clamp-2 leading-relaxed">{a.body}</p>
+              </div>
+            ))}
+          </div>
         </div>
       )}
-
-      {announcements.filter(a => !a.is_pinned).length > 0 && (
-        <div>
-          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Recent</p>
-          {announcements.filter(a => !a.is_pinned).slice(0, 3).map(a => (
-            <div key={a.id} className="bg-white dark:bg-slate-800 rounded-xl px-3 py-2.5 border border-slate-100 dark:border-slate-700 mb-1.5 last:mb-0">
-              <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{ANN_ICONS[a.type]} {a.title}</p>
-              <p className="text-[11px] text-slate-400 mt-0.5 line-clamp-1">{a.body}</p>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <button onClick={() => supabase.auth.signOut()} className="w-full py-3 border border-red-200 text-red-500 rounded-2xl font-bold text-sm mt-2">Sign Out</button>
     </div>
   );
 }
@@ -792,21 +882,70 @@ function MessagesTab({ member, org }) {
 }
 
 // ═══════════════════════════════════════════════════
+//  BILLS TAB (member portal — no print services)
+// ═══════════════════════════════════════════════════
+function MemberBillsTab({ member, org, autoService = null, onAutoOpened = null }) {
+  const [bills, setBills] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    coopFn("get-member-bills", { member_id: member.id })
+      .then(r => setBills(r.bills || []))
+      .catch(() => setBills([]))
+      .finally(() => setLoading(false));
+  }, [member.id]);
+
+  const addTransaction = useCallback(async (payload) => {
+    try {
+      const r = await coopFn("add-member-bill", { member_id: member.id, org_id: org.id, ...payload });
+      if (r.bill) setBills(prev => [r.bill, ...prev]);
+    } catch (e) { console.error("Failed to save member bill:", e); }
+  }, [member.id, org.id]);
+
+  const store = useMemo(() => ({
+    transactions: bills,
+    addTransaction,
+    profile: { email: member.email, owner_name: member.full_name, business_name: org.name, id: member.id },
+  }), [bills, addTransaction, member.email, member.full_name, org.name, member.id]);
+
+  if (loading) return <div className="flex justify-center py-16"><div className="w-6 h-6 border-[3px] border-blue-500 border-t-transparent rounded-full animate-spin" /></div>;
+
+  return (
+    <BillPayments
+      store={store}
+      plan=""
+      excludeCats={["print-airtime", "print-data"]}
+      businessName={org.name}
+      autoService={autoService}
+      onAutoOpened={onAutoOpened}
+    />
+  );
+}
+
+// ═══════════════════════════════════════════════════
 //  MAIN PORTAL
 // ═══════════════════════════════════════════════════
-const PORTAL_TABS = [
-  { id: "home",          label: "Home",     icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" },
-  { id: "contributions", label: "Savings",  icon: "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" },
-  { id: "loans",         label: "Loans",    icon: "M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" },
-  { id: "meetings",      label: "Meetings", icon: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" },
-  { id: "directory",     label: "Directory",icon: "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" },
-  { id: "messages",      label: "Messages", icon: "M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" },
+const MAIN_TABS = [
+  { id: "home",          label: "Home",    icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" },
+  { id: "contributions", label: "Savings", icon: "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" },
+  { id: "loans",         label: "Loans",   icon: "M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" },
+];
+
+const MORE_TABS = [
+  { id: "bills",     label: "Bills",     color:"#7c3aed", icon:"M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" },
+  { id: "meetings",  label: "Meetings",  color:"#0f766e", icon:"M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" },
+  { id: "directory", label: "Directory", color:"#2563eb", icon:"M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" },
+  { id: "messages",  label: "Messages",  color:"#059669", icon:"M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" },
 ];
 
 export default function CoopMemberPortal({ member: initialMember }) {
   const [member,        setMember]        = useState(initialMember);
   const [tab,           setTab]           = useState("home");
   const [announcements, setAnnouncements] = useState([]);
+  const [loans,         setLoans]         = useState([]);
+  const [wdRequests,    setWdRequests]    = useState([]);
+  const [showMore,      setShowMore]      = useState(false);
+  const [billsAutoSvc,  setBillsAutoSvc]  = useState(null);
   const [processingPayment, setProcessingPayment] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     const ref = params.get("trxref") || params.get("reference");
@@ -821,7 +960,7 @@ export default function CoopMemberPortal({ member: initialMember }) {
 
   const org = member?.org || member?.organizations || {};
 
-  // Detect Paystack redirect return and confirm payment
+  // Detect Paystack return for savings payment
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const ref = params.get("trxref") || params.get("reference");
@@ -838,10 +977,8 @@ export default function CoopMemberPortal({ member: initialMember }) {
     setProcessingPayment(true);
 
     coopFn("confirm-member-payment", {
-      member_id: pending.member_id,
-      org_id: pending.org_id,
-      reference: ref,
-      program_id: pending.program_id || undefined,
+      member_id: pending.member_id, org_id: pending.org_id,
+      reference: ref, program_id: pending.program_id || undefined,
     }).then(res => {
       if (res.member) setMember(prev => ({ ...prev, ...res.member }));
       setTab("contributions");
@@ -853,12 +990,40 @@ export default function CoopMemberPortal({ member: initialMember }) {
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Detect Paystack return for bill payment — switch to bills tab so BillPayments handles it
   useEffect(() => {
-    if (member?.id && org?.id) {
-      coopFn("member-get-announcements", { member_id: member.id, org_id: org.id })
-        .then(r => setAnnouncements(r.announcements || [])).catch(console.error);
+    const params = new URLSearchParams(window.location.search);
+    const billRef = params.get("bill_ref") || params.get("trxref");
+    if (billRef && localStorage.getItem(`ck_bill_pending_${billRef}`)) {
+      setTab("bills");
     }
-  }, [member?.id, org?.id]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load announcements + summary counts for dashboard
+  useEffect(() => {
+    if (!member?.id || !org?.id) return;
+    const safe = p => p.catch(() => ({}));
+    Promise.all([
+      coopFn("member-get-announcements",       { member_id: member.id, org_id: org.id }),
+      safe(coopFn("member-get-loans",              { member_id: member.id, org_id: org.id })),
+      safe(coopFn("get-member-withdrawal-requests", { member_id: member.id })),
+    ]).then(([annR, loanR, wdR]) => {
+      setAnnouncements(annR.announcements || []);
+      setLoans(loanR.loans || []);
+      setWdRequests(wdR.requests || []);
+    }).catch(console.error);
+  }, [member?.id, org?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const navigateTo = useCallback((tabId) => {
+    setTab(tabId);
+    setShowMore(false);
+  }, []);
+
+  const openQuickService = useCallback((serviceId) => {
+    setBillsAutoSvc(serviceId);
+    setTab("bills");
+    setShowMore(false);
+  }, []);
 
   const handleMemberUpdate = (updatedMember) => {
     setMember(prev => ({ ...prev, ...updatedMember }));
@@ -867,53 +1032,118 @@ export default function CoopMemberPortal({ member: initialMember }) {
   if (!member) return null;
 
   const tabContent = {
-    home:          <HomeTab member={member} org={org} announcements={announcements} />,
+    home:          <HomeTab member={member} org={org} announcements={announcements} loans={loans} wdRequests={wdRequests} onQuickService={openQuickService} onNavigate={navigateTo} />,
     contributions: <ContributionsTab member={member} org={org} onMemberUpdate={handleMemberUpdate} />,
     loans:         <LoansTab member={member} org={org} />,
+    bills:         <MemberBillsTab member={member} org={org} autoService={billsAutoSvc} onAutoOpened={() => setBillsAutoSvc(null)} />,
     meetings:      <MeetingsTab member={member} org={org} />,
     directory:     <DirectoryTab member={member} org={org} />,
     messages:      <MessagesTab member={member} org={org} />,
   };
 
+  const isMoreTab = MORE_TABS.some(t => t.id === tab);
   const emergencyCount = announcements.filter(a => a.type === "emergency").length;
 
   return (
     <div className="fixed inset-0 z-[70] bg-slate-50 dark:bg-slate-900 flex justify-center">
       <div className="w-full max-w-md flex flex-col h-full">
-        <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 py-3 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center font-extrabold text-violet-600 flex-shrink-0">
+
+        {/* ── Top Header ── */}
+        <div className="sticky top-0 z-20 bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm border-b border-slate-100 dark:border-slate-800 px-4 py-3 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center text-base font-extrabold text-white flex-shrink-0"
+            style={{ background: "linear-gradient(145deg,#2563eb,#1e3a8a)" }}>
             {member.full_name?.charAt(0).toUpperCase()}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-extrabold text-slate-800 dark:text-white truncate">{member.full_name}</p>
-            <p className="text-[10px] text-slate-400">{org?.name}</p>
+            <p className="text-sm font-extrabold text-slate-800 dark:text-white truncate leading-tight">{member.full_name}</p>
+            <p className="text-[9px] text-slate-400 font-mono tracking-wider">{member.membership_id} · {org?.name}</p>
           </div>
-          <div className="text-right flex-shrink-0">
-            <p className="text-sm font-extrabold text-green-600">{fmt(member.savings_balance)}</p>
-            <p className="text-[9px] text-slate-400">savings</p>
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <div className="text-right">
+              <p className="text-sm font-extrabold text-green-600">{fmt(member.savings_balance)}</p>
+              <p className="text-[9px] text-slate-400">savings</p>
+            </div>
+            <button onClick={() => supabase.auth.signOut()}
+              className="text-[10px] font-extrabold text-red-500 border border-red-200 dark:border-red-800 px-2.5 py-1 rounded-lg">
+              Sign Out
+            </button>
           </div>
         </div>
 
-        <main className="flex-1 overflow-y-auto">
+        {/* ── Main Content ── */}
+        <main className="flex-1 overflow-y-auto pb-[68px]">
           {tabContent[tab]}
         </main>
 
-        <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 pb-safe">
-          <div className="flex">
-            {PORTAL_TABS.map(t => (
-              <button key={t.id} onClick={() => setTab(t.id)}
-                className={`flex-1 flex flex-col items-center gap-0.5 py-3 transition-colors relative ${tab === t.id ? "text-violet-600" : "text-slate-400 dark:text-slate-500"}`}>
-                <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-                  <path d={t.icon} />
-                </svg>
-                <span className="text-[9px] font-bold">{t.label}</span>
-                {t.id === "messages" && emergencyCount > 0 && (
-                  <span className="absolute top-1.5 right-1/2 translate-x-3 w-2 h-2 bg-red-500 rounded-full" />
-                )}
-              </button>
-            ))}
+        {/* ── Bottom Navigation ── */}
+        <div className="fixed bottom-0 left-0 right-0 z-20 flex justify-center pointer-events-none">
+          <div className="w-full max-w-md pointer-events-auto">
+            <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200/80 dark:border-slate-800 px-2 pt-2"
+              style={{ paddingBottom: "max(8px, env(safe-area-inset-bottom))" }}>
+              <div className="flex items-end justify-around">
+                {MAIN_TABS.map(t => {
+                  const active = tab === t.id;
+                  return (
+                    <button key={t.id} onClick={() => { setTab(t.id); setShowMore(false); }}
+                      className="flex flex-col items-center gap-1 px-3 py-1.5 min-w-[52px] relative">
+                      {active && <span className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full bg-blue-600" />}
+                      <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5"
+                        stroke={active ? "#2563eb" : "#94a3b8"} strokeWidth={active ? 2.5 : 2} strokeLinecap="round" strokeLinejoin="round">
+                        <path d={t.icon} />
+                      </svg>
+                      <span className={`text-[9px] font-bold ${active ? "text-blue-600" : "text-slate-400 dark:text-slate-500"}`}>{t.label}</span>
+                    </button>
+                  );
+                })}
+                {/* More button */}
+                <button onClick={() => setShowMore(p => !p)}
+                  className="flex flex-col items-center gap-1 px-3 py-1.5 min-w-[52px] relative">
+                  {isMoreTab && <span className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full bg-blue-600" />}
+                  {emergencyCount > 0 && <span className="absolute top-1 right-2 w-2 h-2 bg-red-500 rounded-full" />}
+                  <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5"
+                    stroke={isMoreTab || showMore ? "#2563eb" : "#94a3b8"} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M5 12h.01M12 12h.01M19 12h.01" />
+                  </svg>
+                  <span className={`text-[9px] font-bold ${isMoreTab || showMore ? "text-blue-600" : "text-slate-400 dark:text-slate-500"}`}>More</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
+
+        {/* ── More Sheet ── */}
+        {showMore && (
+          <div className="fixed inset-0 z-30 flex justify-center items-end" onClick={() => setShowMore(false)}>
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" />
+            <div className="relative w-full max-w-md bg-white dark:bg-slate-900 rounded-t-3xl overflow-hidden"
+              style={{ paddingBottom: "max(24px, env(safe-area-inset-bottom))" }}
+              onClick={e => e.stopPropagation()}>
+              <div className="w-12 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto mt-3 mb-5" />
+              <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-[0.2em] px-5 mb-4">More</p>
+              <div className="grid grid-cols-2 gap-3 px-4 pb-2">
+                {MORE_TABS.map(t => {
+                  const active = tab === t.id;
+                  return (
+                    <button key={t.id} onClick={() => navigateTo(t.id)}
+                      className={`flex flex-col items-center gap-2.5 py-5 rounded-2xl transition-all active:scale-95 relative ${active ? "bg-blue-50 dark:bg-blue-900/30" : "bg-slate-50 dark:bg-slate-800"}`}>
+                      <div className="w-11 h-11 rounded-xl flex items-center justify-center"
+                        style={{ background: (t.color || "#64748b") + "18" }}>
+                        <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                          style={{ stroke: active ? "#2563eb" : (t.color || "#64748b") }}>
+                          {t.icon.split("|").map((p, i) => <path key={i} d={p} />)}
+                        </svg>
+                      </div>
+                      {t.id === "messages" && emergencyCount > 0 && (
+                        <span className="absolute top-3 right-3 w-2 h-2 bg-red-500 rounded-full" />
+                      )}
+                      <span className={`text-[11px] font-bold ${active ? "text-blue-600" : "text-slate-600 dark:text-slate-300"}`}>{t.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Payment processing overlay */}
