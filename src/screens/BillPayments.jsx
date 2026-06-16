@@ -78,7 +78,6 @@ const PRINT_VALUES = ["100", "200", "500"];
 
 /* ─── Helpers ─────────────────────────────────────────────────────────────── */
 
-const rcpId = () => "RCP-" + Math.random().toString(36).slice(2, 8).toUpperCase();
 
 function fmtDT(iso) {
   if (!iso) return "";
