@@ -451,7 +451,7 @@ export default function BillPayments({ store, plan, staffName = null, businessNa
     if (catId === "spectranet") loadPlans("spectranet-plans", {});
     if (catId === "smile") loadPlans("smile-plans", {});
     if (catId === "print-data") loadPlans("data-plans", { network: "MTN" });
-  }, [isEnterprise]);
+  }, [isEnterprise, excludeCats]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (autoService) { openSheet(autoService); onAutoOpened?.(); }
