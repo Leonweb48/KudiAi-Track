@@ -64,83 +64,193 @@ const ModalWrap = ({ children, onClose }) => (
 );
 
 // ═══════════════════════════════════════════════════
-//  OVERVIEW TAB
+//  OVERVIEW TAB — Premium Dashboard
 // ═══════════════════════════════════════════════════
-function OverviewTab({ org, wallet, programs, announcements }) {
-  const recentTxns = (wallet?.transactions || []).slice(0, 6);
+const OV_QUICK = [
+  { id:"airtime",     label:"Airtime",     g1:"#ef4444", g2:"#b91c1c", icon:"M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 8.81 19.79 19.79 0 01.25 2.18 2 2 0 012.22 0h3a2 2 0 012 1.72c.122.966.356 1.916.7 2.81a2 2 0 01-.45 2.11L6.95 7.91a16 16 0 006.29 6.29l1.27-.56a2 2 0 012.11-.45c.894.344 1.844.578 2.81.7A2 2 0 0122 16.92z" },
+  { id:"data",        label:"Data",        g1:"#3b82f6", g2:"#1d4ed8", icon:"M1.05 5l4.95-3 4.95 3 4.95-3L21 5|M1.05 11l4.95-3 4.95 3 4.95-3L21 11|M1.05 17l4.95-3 4.95 3 4.95-3L21 17" },
+  { id:"electricity", label:"Electricity", g1:"#f59e0b", g2:"#b45309", icon:"M13 2L3 14h9l-1 8 10-12h-9l1-8z" },
+  { id:"cable",       label:"Cable TV",    g1:"#8b5cf6", g2:"#6d28d9", icon:"M2 7a2 2 0 012-2h16a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V7z|M12 19v3|M8 22h8" },
+];
+
+function OverviewTab({ org, wallet, programs, announcements, members = [], loans = [], wdRequests = [], onQuickService = null, onNavigate = null }) {
+  const activeMembers  = members.filter(m => m.status === "active");
+  const activePrograms = programs.filter(p => p.status === "active");
+  const pendingReqs    = wdRequests.filter(r => r.status === "pending");
+  const activeLoans    = loans.filter(l => ["approved","disbursed","ongoing"].includes(l.status));
+  const recentTxns     = (wallet?.transactions || []).slice(0, 5);
+  const pinnedAnns     = announcements.filter(a => a.is_pinned).slice(0, 1);
+  const recentAnns     = announcements.filter(a => !a.is_pinned).slice(0, 2);
+  const visibleAnns    = [...pinnedAnns, ...recentAnns].slice(0, 3);
+
+  const STATS = [
+    { label:"Members",         value: members.length,       sub:`${activeMembers.length} active`,
+      bg:"#6d28d9", tab:"members",
+      icon:"M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" },
+    { label:"Active Programs",  value: activePrograms.length, sub:`${programs.length} total`,
+      bg:"#059669", tab:"programs",
+      icon:"M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" },
+    { label:"Contributions",    value: fmt(org.total_savings), sub:"total collected",
+      bg:"#0891b2", tab:"finance",
+      icon:"M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" },
+    { label:"Withdrawals",      value: fmt(org.total_loans_out), sub:"total disbursed",
+      bg:"#dc2626", tab:"finance",
+      icon:"M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" },
+    { label:"Member Requests",  value: pendingReqs.length,   sub: pendingReqs.length > 0 ? "need attention" : "all clear",
+      bg: pendingReqs.length > 0 ? "#d97706" : "#64748b", tab:"finance",
+      icon:"M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" },
+    { label:"Active Loans",     value: activeLoans.length,   sub: fmt(activeLoans.reduce((s,l) => s+(l.outstanding_balance||0), 0)) + " out",
+      bg:"#ea580c", tab:"loans",
+      icon:"M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" },
+    { label:"Messages",         value: announcements.length, sub:`${announcements.filter(a=>a.is_pinned).length} pinned`,
+      bg:"#2563eb", tab:"messages",
+      icon:"M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" },
+    { label:"Org Meetings",     value: "—",                  sub:"view calendar",
+      bg:"#0f766e", tab:"meetings",
+      icon:"M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" },
+  ];
+
   return (
-    <div className="p-4 pb-24 flex flex-col gap-4">
-      <div className="bg-gradient-to-br from-violet-600 to-violet-800 rounded-2xl p-4 text-white">
-        <p className="text-xs font-bold text-violet-200 uppercase tracking-wider mb-1">Organisation Wallet</p>
-        <p className="text-3xl font-black tabular">{fmt(org.wallet_balance)}</p>
-        <div className="grid grid-cols-3 gap-2 mt-4 pt-4 border-t border-white/20">
-          <div><p className="text-sm font-extrabold">{fmt(org.total_savings)}</p><p className="text-[10px] text-violet-200">Total Savings</p></div>
-          <div><p className="text-sm font-extrabold">{fmt(org.total_loans_out)}</p><p className="text-[10px] text-violet-200">Loans Out</p></div>
-          <div><p className="text-sm font-extrabold">{org.member_count || 0}</p><p className="text-[10px] text-violet-200">Members</p></div>
-        </div>
-      </div>
+    <div className="pb-8 space-y-6">
 
-      {programs.length > 0 && (
-        <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-100 dark:border-slate-700">
-          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Active Programs</p>
-          {programs.filter(p => p.status === "active").slice(0, 4).map(p => (
-            <div key={p.id} className="flex justify-between items-center py-1.5 border-b border-slate-100 dark:border-slate-700 last:border-0">
-              <div>
-                <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">{p.name}</p>
-                <p className="text-[10px] text-slate-400 capitalize">{FREQ_LABELS[p.frequency]} · {p.contribution_type === "fixed" ? fmt(p.amount) : "Voluntary"}</p>
+      {/* ── Hero Balance Card ── */}
+      <div className="mx-4 mt-5 rounded-3xl overflow-hidden shadow-2xl"
+        style={{ background: "linear-gradient(145deg, #0f0a1e 0%, #2e1065 45%, #6d28d9 100%)" }}>
+        <div className="px-6 pt-7 pb-6">
+          <p className="text-[10px] font-extrabold text-violet-300 uppercase tracking-[0.25em] mb-3">Organisation Wallet</p>
+          <p className="text-[44px] font-black text-white leading-none tabular-nums">{fmt(org.wallet_balance)}</p>
+          <div className="flex items-center gap-0 mt-6 pt-5 border-t border-white/10">
+            {[
+              { label:"Total Savings", value: fmt(org.total_savings), color:"#a78bfa" },
+              { label:"Loans Out",     value: fmt(org.total_loans_out), color:"#f9a8d4" },
+              { label:"Members",       value: String(org.member_count||0), color:"#6ee7b7" },
+            ].map((item, i) => (
+              <div key={item.label} className={`flex-1 ${i > 0 ? "border-l border-white/10 pl-4 ml-4" : ""}`}>
+                <p className="text-sm font-extrabold text-white tabular-nums">{item.value}</p>
+                <p className="text-[10px] mt-0.5" style={{ color: item.color }}>{item.label}</p>
               </div>
-              <p className="text-xs font-extrabold text-green-600">{fmt(p.total_collected)}</p>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {announcements.length > 0 && (
-        <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-100 dark:border-slate-700">
-          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Latest Announcements</p>
-          {announcements.slice(0, 3).map(a => (
-            <div key={a.id} className={`px-3 py-2 rounded-xl border text-xs mb-2 last:mb-0 ${ANN_COLORS[a.type] || ANN_COLORS.announcement}`}>
-              <div className="flex justify-between items-start">
-                <p className="font-bold">{a.title}</p>
-                {a.is_pinned && <span className="text-[9px] font-bold uppercase">📌 Pinned</span>}
-              </div>
-              <p className="opacity-80 mt-0.5 line-clamp-2">{a.body}</p>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-100 dark:border-slate-700">
-        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Organisation Details</p>
-        {[["Reg. Number", org.reg_number], ["Type", org.type?.replace(/_/g," ")],
-          ["Phone", org.phone || "—"], ["Email", org.email || "—"],
-          ["Address", org.address || "—"],
-          ...(org.date_established ? [["Established", fmtDate(org.date_established)]] : []),
-          ...(org.website ? [["Website", org.website]] : []),
-        ].map(([k, v]) => (
-          <div key={k} className="flex justify-between items-start gap-4 py-1 border-b border-slate-50 dark:border-slate-700/50 last:border-0">
-            <span className="text-xs text-slate-400 flex-shrink-0">{k}</span>
-            <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 text-right capitalize">{v}</span>
+            ))}
           </div>
-        ))}
+        </div>
+        <div className="h-1 w-full" style={{ background: "linear-gradient(90deg, #7c3aed, #ec4899, #3b82f6)" }} />
       </div>
 
-      {recentTxns.length > 0 && (
-        <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-100 dark:border-slate-700">
-          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Recent Activity</p>
-          {recentTxns.map(t => (
-            <div key={t.id} className="flex justify-between items-center py-1.5 border-b border-slate-100 dark:border-slate-700 last:border-0">
-              <div>
-                <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 capitalize">{t.type.replace(/_/g," ")}</p>
-                <p className="text-[10px] text-slate-400">{fmtDT(t.created_at)}</p>
+      {/* ── Quick Services (org portal only) ── */}
+      {onQuickService && (
+        <div className="px-4">
+          <div className="flex justify-between items-center mb-4">
+            <p className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em]">Quick Services</p>
+            {onNavigate && <button onClick={() => onNavigate("bills")} className="text-[10px] font-bold text-violet-600 dark:text-violet-400">View All →</button>}
+          </div>
+          <div className="grid grid-cols-4 gap-3">
+            {OV_QUICK.map(s => (
+              <button key={s.id} onClick={() => onQuickService(s.id)}
+                className="flex flex-col items-center gap-2.5 active:scale-95 transition-transform duration-150">
+                <div className="w-[58px] h-[58px] rounded-[18px] flex items-center justify-center shadow-lg"
+                  style={{ background:`linear-gradient(145deg,${s.g1},${s.g2})` }}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    {s.icon.split("|").map((p,i) => <path key={i} d={p} />)}
+                  </svg>
+                </div>
+                <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400 leading-tight text-center">{s.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Dashboard Summary Grid ── */}
+      <div className="px-4">
+        <p className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em] mb-4">Dashboard Summary</p>
+        <div className="grid grid-cols-2 gap-3">
+          {STATS.map(s => (
+            <button key={s.label} onClick={() => onNavigate?.(s.tab)}
+              className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-100 dark:border-slate-700/60 shadow-sm text-left active:scale-[0.97] transition-all">
+              <div className="w-10 h-10 rounded-xl mb-3 flex items-center justify-center"
+                style={{ background: s.bg + "18" }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ stroke: s.bg }}>
+                  {s.icon.split("|").map((p,i) => <path key={i} d={p} />)}
+                </svg>
               </div>
-              <p className={`text-xs font-extrabold tabular ${t.type.includes("withdrawal")||t.type.includes("disbursement") ? "text-red-500" : "text-green-600"}`}>
-                {t.type.includes("withdrawal")||t.type.includes("disbursement") ? "−" : "+"}{fmt(t.amount)}
-              </p>
+              <p className="text-2xl font-black text-slate-800 dark:text-white leading-none tabular-nums">{s.value}</p>
+              <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mt-1.5">{s.label}</p>
+              {s.sub && <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">{s.sub}</p>}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Recent Activity ── */}
+      {recentTxns.length > 0 && (
+        <div className="px-4">
+          <div className="flex justify-between items-center mb-3">
+            <p className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em]">Recent Activity</p>
+            {onNavigate && <button onClick={() => onNavigate("finance")} className="text-[10px] font-bold text-violet-600 dark:text-violet-400">See All →</button>}
+          </div>
+          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700/60 shadow-sm overflow-hidden">
+            {recentTxns.map((t, i) => {
+              const isOut = t.type?.includes("withdrawal") || t.type?.includes("disbursement");
+              return (
+                <div key={t.id} className={`flex items-center gap-3 px-4 py-3 ${i < recentTxns.length-1 ? "border-b border-slate-50 dark:border-slate-700/40" : ""}`}>
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${isOut ? "bg-red-50 dark:bg-red-900/20" : "bg-green-50 dark:bg-green-900/20"}`}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" strokeWidth="2.5" strokeLinecap="round" stroke={isOut ? "#ef4444" : "#16a34a"}>
+                      <path d={isOut ? "M12 5v14M19 12l-7 7-7-7" : "M12 19V5M5 12l7-7 7 7"} />
+                    </svg>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-slate-800 dark:text-white capitalize truncate">{t.type?.replace(/_/g," ")}</p>
+                    <p className="text-[10px] text-slate-400">{fmtDT(t.created_at)}</p>
+                  </div>
+                  <p className={`text-sm font-extrabold flex-shrink-0 ${isOut ? "text-red-500" : "text-green-600"}`}>
+                    {isOut ? "−" : "+"}{fmt(t.amount)}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Announcements ── */}
+      {visibleAnns.length > 0 && (
+        <div className="px-4">
+          <div className="flex justify-between items-center mb-3">
+            <p className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em]">Announcements</p>
+            {onNavigate && <button onClick={() => onNavigate("messages")} className="text-[10px] font-bold text-violet-600 dark:text-violet-400">View All →</button>}
+          </div>
+          <div className="flex flex-col gap-2">
+            {visibleAnns.map(a => (
+              <div key={a.id} className={`px-4 py-3 rounded-2xl border text-xs ${ANN_COLORS[a.type] || ANN_COLORS.announcement}`}>
+                <div className="flex justify-between items-start gap-2">
+                  <p className="font-extrabold leading-snug flex-1">{a.title}</p>
+                  {a.is_pinned && <span className="text-[9px] flex-shrink-0">📌</span>}
+                </div>
+                <p className="opacity-75 mt-1.5 line-clamp-2 leading-relaxed">{a.body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Org Profile ── */}
+      <div className="px-4">
+        <p className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em] mb-3">Organisation Profile</p>
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700/60 shadow-sm overflow-hidden">
+          {[
+            ["Reg. Number", org.reg_number],
+            ["Type",        org.type?.replace(/_/g," ")],
+            ["Phone",       org.phone || "—"],
+            ["Email",       org.email || "—"],
+            ["Address",     org.address || "—"],
+            ...(org.date_established ? [["Established", fmtDate(org.date_established)]] : []),
+          ].map(([k, v]) => (
+            <div key={k} className="flex justify-between items-center px-4 py-3 border-b border-slate-50 dark:border-slate-700/30 last:border-0">
+              <span className="text-xs text-slate-400">{k}</span>
+              <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 text-right max-w-[60%] capitalize">{v}</span>
             </div>
           ))}
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -1945,7 +2055,7 @@ function SettingsTab({ org, onRefresh, onBack, isOrgPortal = false }) {
 // ═══════════════════════════════════════════════════
 //  BILLS TAB (org portal only — no print services)
 // ═══════════════════════════════════════════════════
-function BillsTab({ org }) {
+function BillsTab({ org, autoService = null, onAutoOpened = null }) {
   const [bills, setBills] = useState([]);
   const [loadingBills, setLoadingBills] = useState(true);
 
@@ -1985,13 +2095,34 @@ function BillsTab({ org }) {
       plan=""
       excludeCats={["print-airtime", "print-data"]}
       businessName={org.name}
+      autoService={autoService}
+      onAutoOpened={onAutoOpened}
     />
   );
 }
 
 // ═══════════════════════════════════════════════════
-//  MAIN DASHBOARD
+//  NAVIGATION STRUCTURE
 // ═══════════════════════════════════════════════════
+
+// Bottom nav (org portal)
+const MAIN_TABS = [
+  { id: "overview", label: "Home",    icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" },
+  { id: "members",  label: "Members", icon: "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" },
+  { id: "finance",  label: "Finance", icon: "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" },
+  { id: "loans",    label: "Loans",   icon: "M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" },
+];
+
+// "More" sheet tabs (org portal)
+const MORE_TABS = [
+  { id: "programs",  label: "Programs",  icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2",          color: "#059669" },
+  { id: "meetings",  label: "Meetings",  icon: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z",                                                   color: "#0f766e" },
+  { id: "messages",  label: "Messages",  icon: "M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z",                               color: "#2563eb" },
+  { id: "bills",     label: "Bills",     icon: "M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z",                                                   color: "#7c3aed", orgOnly: true },
+  { id: "settings",  label: "Settings",  icon: "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z|M15 12a3 3 0 11-6 0 3 3 0 016 0z", color: "#64748b" },
+];
+
+// Horizontal scroll tabs (non-org-portal view, admin side)
 const TABS = [
   { id: "overview",  label: "Overview",  icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" },
   { id: "members",   label: "Members",   icon: "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" },
@@ -2006,36 +2137,64 @@ const TABS = [
 
 const ORG_TYPE_ICONS = { cooperative:"🤝", market_association:"🏪", church:"⛪", ngo:"🌍", youth_group:"👥", savings_group:"💰", community_group:"🏘️", professional_association:"💼", savings_club:"🏦" };
 
+// ═══════════════════════════════════════════════════
+//  MAIN DASHBOARD
+// ═══════════════════════════════════════════════════
 export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = false }) {
-  const [tab,          setTab]          = useState("overview");
-  const [org,          setOrg]          = useState(initialOrg);
-  const [members,      setMembers]      = useState([]);
-  const [wallet,       setWallet]       = useState(null);
-  const [programs,     setPrograms]     = useState([]);
-  const [announcements,setAnnouncements]= useState([]);
-  const [loading,      setLoading]      = useState(true);
+  const [tab,           setTab]           = useState("overview");
+  const [org,           setOrg]           = useState(initialOrg);
+  const [members,       setMembers]       = useState([]);
+  const [wallet,        setWallet]        = useState(null);
+  const [programs,      setPrograms]      = useState([]);
+  const [announcements, setAnnouncements] = useState([]);
+  const [loans,         setLoans]         = useState([]);
+  const [wdRequests,    setWdRequests]    = useState([]);
+  const [loading,       setLoading]       = useState(true);
+  const [showMore,      setShowMore]      = useState(false);
+  const [billsAutoSvc,  setBillsAutoSvc]  = useState(null);
 
   const loadAll = useCallback(() => {
     const orgId = org.id;
+    const safe = fn => fn.catch(() => ({}));
     Promise.all([
       coopFn("get-org",           { org_id: orgId }),
       coopFn("get-members",       { org_id: orgId }),
       coopFn("get-wallet",        { org_id: orgId }),
       coopFn("get-programs",      { org_id: orgId }),
       coopFn("get-announcements", { org_id: orgId }),
-    ]).then(([orgR, memR, walR, progR, annR]) => {
+      safe(coopFn("get-loans",    { org_id: orgId })),
+      safe(coopFn("get-withdrawal-requests-admin", { org_id: orgId })),
+    ]).then(([orgR, memR, walR, progR, annR, loanR, wdR]) => {
       setOrg(prev => orgR.org || prev);
       setMembers(memR.members || []);
       setWallet(walR);
       setPrograms(progR.programs || []);
       setAnnouncements(annR.announcements || []);
+      setLoans(loanR.loans || []);
+      setWdRequests(wdR.requests || wdR.withdrawals || []);
     }).catch(console.error).finally(() => setLoading(false));
   }, [org.id]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
+  const navigateTo = useCallback((tabId) => {
+    setTab(tabId);
+    setShowMore(false);
+  }, []);
+
+  const openQuickService = useCallback((serviceId) => {
+    setBillsAutoSvc(serviceId);
+    setTab("bills");
+    setShowMore(false);
+  }, []);
+
   const tabContent = {
-    overview: <OverviewTab org={org} wallet={wallet} programs={programs} announcements={announcements} />,
+    overview: <OverviewTab
+                org={org} wallet={wallet} programs={programs} announcements={announcements}
+                members={members} loans={loans} wdRequests={wdRequests}
+                onQuickService={isOrgPortal ? openQuickService : null}
+                onNavigate={isOrgPortal ? navigateTo : null}
+              />,
     members:  <MembersTab  org={org} members={members} onRefresh={loadAll} />,
     programs: <ProgramsTab org={org} onRefresh={loadAll} />,
     finance:  <FinanceTab  org={org} members={members} programs={programs} onRefresh={loadAll} />,
@@ -2043,26 +2202,124 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
     meetings: <MeetingsTab org={org} members={members} />,
     messages: <MessagesTab org={org} />,
     settings: <SettingsTab org={org} onRefresh={loadAll} onBack={onBack} isOrgPortal={isOrgPortal} />,
-    bills:    <BillsTab    org={org} />,
+    bills:    <BillsTab    org={org} autoService={billsAutoSvc} onAutoOpened={() => setBillsAutoSvc(null)} />,
   };
 
-  const visibleTabs = TABS.filter(t => !t.orgOnly || isOrgPortal);
+  const isMoreTab = MORE_TABS.some(t => t.id === tab);
 
+  // ─── ORG PORTAL LAYOUT (premium, bottom nav) ───
+  if (isOrgPortal) {
+    const visibleMoreTabs = MORE_TABS.filter(t => !t.orgOnly || isOrgPortal);
+    return (
+      <div className="fixed inset-0 z-[65] bg-slate-50 dark:bg-slate-900 flex justify-center">
+        <div className="w-full max-w-md flex flex-col h-full">
+
+          {/* ── Top Header ── */}
+          <div className="sticky top-0 z-20 bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm border-b border-slate-100 dark:border-slate-800 px-4 py-3 flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg flex-shrink-0"
+              style={{ background: "linear-gradient(145deg,#7c3aed,#4c1d95)" }}>
+              <span>{ORG_TYPE_ICONS[org.type] || "🏢"}</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-extrabold text-slate-800 dark:text-white truncate leading-tight">{org.name}</p>
+              <p className="text-[9px] text-slate-400 font-mono tracking-wider">{org.reg_number}</p>
+            </div>
+            {loading && <div className="w-4 h-4 border-2 border-violet-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />}
+            <button onClick={onBack}
+              className="text-[10px] font-extrabold text-red-500 border border-red-200 dark:border-red-800 px-2.5 py-1 rounded-lg">
+              Sign Out
+            </button>
+          </div>
+
+          {/* ── Main Content ── */}
+          <main className="flex-1 overflow-y-auto pb-[68px]">
+            {tabContent[tab]}
+          </main>
+
+          {/* ── Bottom Navigation ── */}
+          <div className="fixed bottom-0 left-0 right-0 z-20 flex justify-center pointer-events-none">
+            <div className="w-full max-w-md pointer-events-auto">
+              <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200/80 dark:border-slate-800 px-2 pt-2 pb-safe"
+                style={{ paddingBottom: "max(8px, env(safe-area-inset-bottom))" }}>
+                <div className="flex items-end justify-around">
+                  {MAIN_TABS.map(t => {
+                    const active = tab === t.id;
+                    return (
+                      <button key={t.id} onClick={() => { setTab(t.id); setShowMore(false); }}
+                        className="flex flex-col items-center gap-1 px-3 py-1.5 min-w-[52px] relative">
+                        {active && (
+                          <span className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full bg-violet-600" />
+                        )}
+                        <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5"
+                          stroke={active ? "#7c3aed" : "#94a3b8"} strokeWidth={active ? 2.5 : 2} strokeLinecap="round" strokeLinejoin="round">
+                          <path d={t.icon} />
+                        </svg>
+                        <span className={`text-[9px] font-bold ${active ? "text-violet-600" : "text-slate-400 dark:text-slate-500"}`}>{t.label}</span>
+                      </button>
+                    );
+                  })}
+                  {/* More button */}
+                  <button onClick={() => setShowMore(p => !p)}
+                    className="flex flex-col items-center gap-1 px-3 py-1.5 min-w-[52px] relative">
+                    {isMoreTab && (
+                      <span className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full bg-violet-600" />
+                    )}
+                    <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5"
+                      stroke={isMoreTab || showMore ? "#7c3aed" : "#94a3b8"} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M5 12h.01M12 12h.01M19 12h.01" />
+                    </svg>
+                    <span className={`text-[9px] font-bold ${isMoreTab || showMore ? "text-violet-600" : "text-slate-400 dark:text-slate-500"}`}>More</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ── More Sheet ── */}
+          {showMore && (
+            <div className="fixed inset-0 z-30 flex justify-center items-end" onClick={() => setShowMore(false)}>
+              <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" />
+              <div className="relative w-full max-w-md bg-white dark:bg-slate-900 rounded-t-3xl pb-safe overflow-hidden"
+                style={{ paddingBottom: "max(24px, env(safe-area-inset-bottom))" }}
+                onClick={e => e.stopPropagation()}>
+                <div className="w-12 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto mt-3 mb-5" />
+                <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-[0.2em] px-5 mb-4">More</p>
+                <div className="grid grid-cols-3 gap-1 px-4 pb-2">
+                  {visibleMoreTabs.map(t => {
+                    const active = tab === t.id;
+                    return (
+                      <button key={t.id} onClick={() => navigateTo(t.id)}
+                        className={`flex flex-col items-center gap-2.5 py-4 rounded-2xl transition-all active:scale-95 ${active ? "bg-violet-50 dark:bg-violet-900/30" : "bg-slate-50 dark:bg-slate-800"}`}>
+                        <div className="w-11 h-11 rounded-xl flex items-center justify-center"
+                          style={{ background: (t.color || "#64748b") + "18" }}>
+                          <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                            style={{ stroke: active ? "#7c3aed" : (t.color || "#64748b") }}>
+                            {t.icon.split("|").map((p, i) => <path key={i} d={p} />)}
+                          </svg>
+                        </div>
+                        <span className={`text-[10px] font-bold ${active ? "text-violet-600" : "text-slate-600 dark:text-slate-300"}`}>{t.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ─── ADMIN / NON-ORG PORTAL LAYOUT (horizontal scroll tabs) ───
   return (
     <div className="fixed inset-0 z-[65] bg-slate-50 dark:bg-slate-900 flex justify-center">
       <div className="w-full max-w-md flex flex-col h-full">
         <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 py-3 flex items-center gap-3">
-          {isOrgPortal ? (
-            <button onClick={onBack} className="text-[11px] font-bold text-red-500 hover:text-red-700 px-2 py-1 rounded-lg hover:bg-red-50 transition-colors">
-              Sign Out
-            </button>
-          ) : (
-            <button onClick={onBack} className="w-8 h-8 flex items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
-              <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
-                <path d="M19 12H5M12 5l-7 7 7 7" />
-              </svg>
-            </button>
-          )}
+          <button onClick={onBack} className="w-8 h-8 flex items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
+            <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+              <path d="M19 12H5M12 5l-7 7 7 7" />
+            </svg>
+          </button>
           <span className="text-xl">{ORG_TYPE_ICONS[org.type] || "🏢"}</span>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-extrabold text-slate-800 dark:text-white truncate">{org.name}</p>
@@ -2073,11 +2330,11 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
 
         <div className="bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 overflow-x-auto">
           <div className="flex min-w-max">
-            {visibleTabs.map(t => (
+            {TABS.filter(t => !t.orgOnly).map(t => (
               <button key={t.id} onClick={() => setTab(t.id)}
                 className={`flex flex-col items-center gap-0.5 px-3.5 py-2.5 border-b-2 transition-colors ${tab === t.id ? "border-violet-600 text-violet-600" : "border-transparent text-slate-400 dark:text-slate-500"}`}>
                 <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 flex-shrink-0" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-                  <path d={t.icon} />
+                  {t.icon.split("|").map((p, i) => <path key={i} d={p} />)}
                 </svg>
                 <span className="text-[9px] font-bold whitespace-nowrap">{t.label}</span>
               </button>
