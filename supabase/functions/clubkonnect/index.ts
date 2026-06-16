@@ -466,9 +466,9 @@ serve(async (req) => {
         }
       };
       const results = await Promise.all([
-        ping("Airtime",       "APIAirtimeNetworkV2.asp",     { APIKey: AIRTIME_K }),
+        ping("Airtime",       "APIDatabundleNetworkV2.asp",  { APIKey: AIRTIME_K }),
         ping("Data",          "APIDatabundlePlansV2.asp",    { APIKey: DATA_K, MobileNetwork: "01" }),
-        ping("Cable TV",      "APICableTVTypeV2.asp",        { APIKey: CABLETV_K }),
+        ping("Cable TV",      "APICableTVPackagesV2.asp",    { APIKey: CABLETV_K, CableTV: "dstv" }),
         ping("Electricity",   "APIElectricityTypeV2.asp",    { APIKey: ELECTRICITY_K }),
         ping("Betting",       "APIBettingTypeV2.asp",        { APIKey: BETTING_K }),
         ping("WAEC",          "APIWAECPackagesV2.asp",       { APIKey: WAEC_K }),
@@ -476,7 +476,7 @@ serve(async (req) => {
         ping("Spectranet",    "APISpectranetPackagesV2.asp", { APIKey: SPECTRANET_K }),
         ping("Smile",         "APISmilePackagesV2.asp",      { APIKey: SMILE_K }),
         ping("Print Airtime", "APIEPINDiscountV2.asp",       { APIKey: PRINT_AIRTIME_K }),
-        ping("Print Data",    "APIDatabundlePlansV2.asp",    { APIKey: PRINT_DATA_K, MobileNetwork: "01" }),
+        ping("Print Data",    "APIDatabundleEPINV1.asp",     { APIKey: PRINT_DATA_K, MobileNetwork: "01", DataPlan: "test", Quantity: "1", RequestID: "HEALTHCHECK", CallBackURL: "https://kudiai.app/" }),
       ]);
       return json({ results });
     }
