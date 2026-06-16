@@ -394,11 +394,10 @@ function KeyStatusPanel({ onClose }) {
 
 export default function BillPayments({ store, plan, staffName = null, businessName = null, autoService = null, onAutoOpened = null }) {
   const { transactions, addTransaction } = store;
-  const planSlug = plan?.slug ?? "";
-  // Unlock for enterprise: match by feature key, slug name, or sort_order (highest tier)
-  const isEnterprise = canDo(planSlug, "apiAccess") ||
-    planSlug === "enterprise" ||
-    (plan?.sort_order ?? -1) >= 3;
+  // plan is a slug string from useAuth (e.g. "enterprise"), not a plan object
+  const planSlug = typeof plan === "string" ? plan : (plan?.slug ?? "");
+  // Unlock for enterprise: match by feature key or slug name
+  const isEnterprise = canDo(planSlug, "apiAccess") || planSlug === "enterprise";
 
   const [selectedCat,  setSelectedCat]  = useState(null);
   const [showKeyStatus, setShowKeyStatus] = useState(false);
