@@ -440,6 +440,38 @@ serve(async (req) => {
       return json({ status: "SUCCESS", reference: String(data.orderid ?? data.requestid ?? ""), pins, message: String(data.status ?? "ORDER_RECEIVED") });
     }
 
+    // ── Health check — test every service key in parallel ─────────────────────
+    if (action === "health-check") {
+      const isInvalid = (d: Record<string, unknown>) => {
+        const s = String(d?.status ?? d?.Status ?? d?._raw ?? "").toUpperCase();
+        return s.includes("INVALID_CREDENTIALS") || s.includes("INVALID_KEY") ||
+               s.includes("INVALID_APIKEY") || s.includes("UNAUTHORIZED") ||
+               s.includes("INVALID_USER");
+      };
+      const ping = async (label: string, path: string, params: Record<string, string>) => {
+        try {
+          const d = await ck(path, params);
+          return { label, ok: !isInvalid(d), detail: isInvalid(d) ? String(d?.status ?? "INVALID_CREDENTIALS") : "ok" };
+        } catch (e) {
+          return { label, ok: false, detail: (e as Error).message };
+        }
+      };
+      const results = await Promise.all([
+        ping("Airtime",       "APIAirtimeNetworkV2.asp",     { APIKey: AIRTIME_K }),
+        ping("Data",          "APIDatabundlePlansV2.asp",    { APIKey: DATA_K, MobileNetwork: "01" }),
+        ping("Cable TV",      "APICableTVTypeV2.asp",        { APIKey: CABLETV_K }),
+        ping("Electricity",   "APIElectricityTypeV2.asp",    { APIKey: ELECTRICITY_K }),
+        ping("Betting",       "APIBettingTypeV2.asp",        { APIKey: BETTING_K }),
+        ping("WAEC",          "APIWAECPackagesV2.asp",       { APIKey: WAEC_K }),
+        ping("JAMB",          "APIJAMBPackagesV2.asp",       { APIKey: JAMB_K }),
+        ping("Spectranet",    "APISpectranetPackagesV2.asp", { APIKey: SPECTRANET_K }),
+        ping("Smile",         "APISmilePackagesV2.asp",      { APIKey: SMILE_K }),
+        ping("Print Airtime", "APIEPINDiscountV2.asp",       { APIKey: PRINT_AIRTIME_K }),
+        ping("Print Data",    "APIDatabundlePlansV2.asp",    { APIKey: PRINT_DATA_K, MobileNetwork: "01" }),
+      ]);
+      return json({ results });
+    }
+
     return json({ error: `Unknown action: ${action}` });
   } catch (e) {
     console.error("clubkonnect error:", e);
