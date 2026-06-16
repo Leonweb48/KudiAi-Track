@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { fmt, today } from "../utils/helpers";
 import { clubkonnect } from "../utils/clubkonnect";
 import { BillReceipt } from "../components/shared/Receipt";
