@@ -3,6 +3,7 @@ import { fmt, today } from "../utils/helpers";
 import { clubkonnect } from "../utils/clubkonnect";
 import { canDo } from "../utils/plans";
 import { BillReceipt } from "../components/shared/Receipt";
+import { supabase } from "../utils/supabase";
 
 /* ─── Service catalogue ───────────────────────────────────────────────────── */
 
@@ -392,8 +393,10 @@ function KeyStatusPanel({ onClose }) {
   );
 }
 
+const BILL_PENDING_PREFIX = "ck_bill_pending_";
+
 export default function BillPayments({ store, plan, staffName = null, businessName = null, autoService = null, onAutoOpened = null }) {
-  const { transactions, addTransaction } = store;
+  const { transactions, addTransaction, profile } = store;
   // plan is a slug string from useAuth (e.g. "enterprise"), not a plan object
   const planSlug = typeof plan === "string" ? plan : (plan?.slug ?? "");
   // Unlock for enterprise: match by feature key or slug name
@@ -444,6 +447,22 @@ export default function BillPayments({ store, plan, staffName = null, businessNa
   useEffect(() => {
     if (autoService) { openSheet(autoService); onAutoOpened?.(); }
   }, [autoService]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Handle return from Paystack redirect
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const billRef = params.get("bill_ref");
+    const trxref  = params.get("trxref") || params.get("reference");
+    const ref = billRef || trxref;
+    if (!ref) return;
+    // Clean URL immediately
+    window.history.replaceState({}, "", window.location.pathname);
+    const stored = localStorage.getItem(BILL_PENDING_PREFIX + ref);
+    if (!stored) return;
+    const pending = JSON.parse(stored);
+    setSaving(true);
+    fulfillAfterPayment(ref, pending);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const closeSheet = () => { setSelectedCat(null); setForm({}); setError(""); resetVerify(); };
 
@@ -538,138 +557,208 @@ export default function BillPayments({ store, plan, staffName = null, businessNa
     }
   };
 
+  // ── Step 1: Validate form, initialize Paystack, redirect to checkout ──────────
   const handlePay = async () => {
     setError(""); setSaving(true);
     try {
-      let ref = "", note = "", itemName = "", customerRef = "", cardDetails = "", pinsArr = null;
       const amount = parseFloat(form.amount) || 0;
 
-      if (selectedCat === "airtime") {
-        if (!form.phone || !form.network || !form.amount) throw new Error("Phone, network and amount required");
-        const r = await clubkonnect("airtime", { phone: form.phone, network: form.network, amount: String(form.amount) });
-        ref = r.reference; itemName = `${form.network} Airtime`; customerRef = form.phone;
-        note = `Network: ${form.network}${ref ? ` | Ref: ${ref}` : ""}`;
+      // Validate per service
+      if (selectedCat === "airtime"     && (!form.phone || !form.network || !amount)) throw new Error("Phone, network and amount required");
+      if (selectedCat === "data"        && (!form.phone || !form.planId))              throw new Error("Phone and data plan required");
+      if (selectedCat === "cable"       && (!form.provider || !form.packageId || !form.smartcard || !form.phone)) throw new Error("All cable TV fields required");
+      if (selectedCat === "cable"       && verifyStatus !== "ok")                      throw new Error("Please verify smartcard number first");
+      if (selectedCat === "electricity" && (!form.company || !form.meterType || !form.meterNo || !amount || !form.phone)) throw new Error("All electricity fields required");
+      if (selectedCat === "electricity" && verifyStatus !== "ok")                      throw new Error("Please verify meter number first");
+      if (selectedCat === "betting"     && (!form.company || !form.customerId || !amount)) throw new Error("Platform, customer ID and amount required");
+      if (selectedCat === "betting"     && verifyStatus !== "ok")                      throw new Error("Please verify customer ID first");
+      if (selectedCat === "waec"        && (!form.examType || !form.phone))            throw new Error("Exam type and phone required");
+      if (selectedCat === "jamb"        && (!form.examType || !form.phone))            throw new Error("Exam type and phone required");
+      if (selectedCat === "jamb"        && form.profileId && verifyStatus !== "ok")    throw new Error("Please verify JAMB profile ID first");
+      if (selectedCat === "spectranet"  && (!form.accountNo || !form.planId))          throw new Error("Account number and plan required");
+      if (selectedCat === "smile"       && (!form.accountNo || !form.planId))          throw new Error("Account number and plan required");
+      if (selectedCat === "smile"       && verifyStatus !== "ok")                      throw new Error("Please verify Smile account first");
+      if (selectedCat === "print-airtime" && (!form.network || !form.value || !form.quantity)) throw new Error("Network, value and quantity required");
+      if (selectedCat === "print-data"  && (!form.network || !form.planId || !form.quantity))  throw new Error("Network, plan and quantity required");
 
-      } else if (selectedCat === "data") {
-        if (!form.phone || !form.planId) throw new Error("Phone and data plan required");
-        const r = await clubkonnect("data", { phone: form.phone, network: form.network, planId: form.planId });
-        ref = r.reference; itemName = `${form.network} ${form.planName} Data`; customerRef = form.phone;
-        note = `Network: ${form.network} | Plan: ${form.planName}${ref ? ` | Ref: ${ref}` : ""}`;
-
-      } else if (selectedCat === "cable") {
-        if (!form.provider || !form.packageId || !form.smartcard || !form.phone) throw new Error("All cable TV fields required");
-        if (verifyStatus !== "ok") throw new Error("Please verify smartcard number first");
-        const r = await clubkonnect("cable", { provider: form.provider, packageId: form.packageId, smartcard: form.smartcard, phone: form.phone });
-        ref = r.reference;
-        const provName = CABLE_PROVIDERS.find(p => p.code === form.provider)?.name || form.provider;
-        itemName = `${provName} ${form.packageName}`; customerRef = form.smartcard;
-        note = `Smartcard: ${form.smartcard} | ${verifyName}${ref ? ` | Ref: ${ref}` : ""}`;
-
-      } else if (selectedCat === "electricity") {
-        if (!form.company || !form.meterType || !form.meterNo || !form.amount || !form.phone) throw new Error("All electricity fields required");
-        if (verifyStatus !== "ok") throw new Error("Please verify meter number first");
-        const r = await clubkonnect("electricity", { company: form.company, meterType: form.meterType, meterNo: form.meterNo, amount: String(form.amount), phone: form.phone });
-        ref = r.reference;
-        const compName = ELECTRICITY_COMPANIES.find(c => c.code === form.company)?.name || form.company;
-        const mTypeName = form.meterType === "01" ? "Prepaid" : "Postpaid";
-        itemName = `${compName} ${mTypeName}`; customerRef = form.meterNo;
-        if (r.token) note = `Token: ${r.token} | Meter: ${form.meterNo} | ${verifyName}${ref ? ` | Ref: ${ref}` : ""}`;
-        else note = `Meter: ${form.meterNo} | ${verifyName}${ref ? ` | Ref: ${ref}` : ""}`;
-
-      } else if (selectedCat === "betting") {
-        if (!form.company || !form.customerId || !form.amount) throw new Error("Platform, customer ID and amount required");
-        if (verifyStatus !== "ok") throw new Error("Please verify customer ID first");
-        const r = await clubkonnect("betting", { company: form.company, customerId: form.customerId, amount: String(form.amount) });
-        ref = r.reference;
-        const compName = BETTING_COMPANIES.find(c => c.code === form.company)?.name || form.company;
-        itemName = `${compName} Wallet Top-up`; customerRef = form.customerId;
-        note = `Customer: ${form.customerId} | ${verifyName}${ref ? ` | Ref: ${ref}` : ""}`;
-
-      } else if (selectedCat === "waec") {
-        if (!form.examType || !form.phone) throw new Error("Exam type and phone required");
-        const r = await clubkonnect("waec", { examType: form.examType, phone: form.phone });
-        ref = r.reference; cardDetails = r.cardDetails || "";
-        const typeName = WAEC_TYPES.find(t => t.code === form.examType)?.name || form.examType;
-        itemName = `WAEC ${typeName}`; customerRef = form.phone;
-        note = `Phone: ${form.phone}${cardDetails ? ` | ${cardDetails}` : ""}${ref ? ` | Ref: ${ref}` : ""}`;
-
-      } else if (selectedCat === "jamb") {
-        if (!form.examType || !form.phone) throw new Error("Exam type and phone required");
-        if (form.profileId && verifyStatus !== "ok") throw new Error("Please verify JAMB profile ID first");
-        const r = await clubkonnect("jamb", { examType: form.examType, phone: form.phone });
-        ref = r.reference; cardDetails = r.cardDetails || "";
-        const typeName = JAMB_TYPES.find(t => t.code === form.examType)?.name || form.examType;
-        itemName = `JAMB ${typeName}`; customerRef = form.phone;
-        note = `Phone: ${form.phone}${cardDetails ? ` | ${cardDetails}` : ""}${ref ? ` | Ref: ${ref}` : ""}`;
-
-      } else if (selectedCat === "spectranet") {
-        if (!form.accountNo || !form.planId) throw new Error("Account number and plan required");
-        const r = await clubkonnect("spectranet", { accountNo: form.accountNo, planId: form.planId });
-        ref = r.reference; itemName = `Spectranet ${form.planName}`; customerRef = form.accountNo;
-        note = `Account: ${form.accountNo} | Plan: ${form.planName}${ref ? ` | Ref: ${ref}` : ""}`;
-
-      } else if (selectedCat === "smile") {
-        if (!form.accountNo || !form.planId) throw new Error("Account number and plan required");
-        if (verifyStatus !== "ok") throw new Error("Please verify Smile account first");
-        const r = await clubkonnect("smile", { accountNo: form.accountNo, planId: form.planId });
-        ref = r.reference; itemName = `Smile ${form.planName}`; customerRef = form.accountNo;
-        note = `Account: ${form.accountNo} | ${verifyName}${ref ? ` | Ref: ${ref}` : ""}`;
-
-      } else if (selectedCat === "print-airtime") {
-        if (!form.network || !form.value || !form.quantity) throw new Error("Network, value and quantity required");
-        const r = await clubkonnect("print-airtime", { network: form.network, value: form.value, quantity: form.quantity });
-        ref = r.reference; pinsArr = r.pins || [];
-        const qty = parseInt(form.quantity, 10);
-        itemName = `${form.network} ₦${form.value} Airtime Print x${qty}`;
-        customerRef = `${qty} pins`;
-        note = `Network: ${form.network} | Value: ₦${form.value} x${qty}${ref ? ` | Ref: ${ref}` : ""}`;
-
-      } else if (selectedCat === "print-data") {
-        if (!form.network || !form.planId || !form.quantity) throw new Error("Network, plan and quantity required");
-        const r = await clubkonnect("print-data", { network: form.network, planId: form.planId, quantity: form.quantity });
-        ref = r.reference; pinsArr = r.pins || [];
-        const qty = parseInt(form.quantity, 10);
-        itemName = `${form.network} ${form.planName} Data Print x${qty}`;
-        customerRef = `${qty} pins`;
-        note = `Network: ${form.network} | Plan: ${form.planName} x${qty}${ref ? ` | Ref: ${ref}` : ""}`;
-      }
-
-      const totalAmount = selectedCat === "print-airtime"
-        ? parseInt(form.value, 10) * parseInt(form.quantity, 10)
+      // Calculate charge amount
+      const chargeAmount = selectedCat === "print-airtime"
+        ? parseInt(form.value, 10) * parseInt(form.quantity || "1", 10)
         : selectedCat === "print-data"
-          ? amount * parseInt(form.quantity, 10)
+          ? amount * parseInt(form.quantity || "1", 10)
           : amount;
 
-      const payload = {
-        type: "out", category: selectedCat, payment_type: "bill_payment",
-        item_name: itemName, customer_name: customerRef,
-        amount: totalAmount || amount, note,
-        transaction_date: today(),
-      };
+      if (!chargeAmount || chargeAmount <= 0) throw new Error("Invalid amount");
 
-      await addTransaction(payload);
-      setSaving(false); closeSheet();
+      // Store bill details so we can fulfill after payment return
+      const ref = `KDT-BILL-${Date.now()}`;
+      localStorage.setItem(BILL_PENDING_PREFIX + ref, JSON.stringify({
+        cat: selectedCat, form: { ...form }, verifyName,
+      }));
 
-      if (pinsArr && pinsArr.length > 0) {
-        setPins({ list: pinsArr, title: itemName });
-      } else {
-        setReceipt({
-          ...payload, receiptId: rcpId(), apiRef: ref,
-          created_at: new Date().toISOString(), staffName, businessName,
-          ...(cardDetails ? { note: `${note}\nCard: ${cardDetails}` } : {}),
-        });
+      // Initialize Paystack
+      const email = profile?.email || "";
+      const catLabel = CATS.find(c => c.id === selectedCat)?.label || selectedCat;
+      const callbackUrl = `${window.location.origin}${window.location.pathname}?bill_ref=${ref}`;
+
+      const { data: ps } = await supabase.functions.invoke("paystack", {
+        body: {
+          action: "initialize",
+          email,
+          amount: chargeAmount,
+          reference: ref,
+          callback_url: callbackUrl,
+          metadata: {
+            bill_type: selectedCat,
+            bill_label: catLabel,
+            customer: form.phone || form.meterNo || form.smartcard || form.customerId || form.accountNo || "",
+          },
+        },
+      });
+
+      if (ps?.error || !ps?.data?.authorization_url) {
+        localStorage.removeItem(BILL_PENDING_PREFIX + ref);
+        throw new Error(ps?.error || ps?.data?.message || "Could not initialize payment");
       }
+
+      // Redirect to Paystack checkout
+      window.location.href = ps.data.authorization_url;
     } catch (err) {
       setSaving(false);
       setError(err.message || "Payment failed. Please try again.");
     }
   };
 
+  // ── Step 2: Verify payment then fulfill via ClubKonnect ───────────────────────
+  const fulfillAfterPayment = useCallback(async (ref, pending) => {
+    setError("");
+    try {
+      // Verify payment with Paystack
+      const { data: vd } = await supabase.functions.invoke("paystack", {
+        body: { action: "verify", reference: ref },
+      });
+      if (vd?.data?.status !== "success") {
+        throw new Error(vd?.data?.gateway_response || "Payment not confirmed. Please contact support.");
+      }
+
+      const { cat, form: f, verifyName: vName } = pending;
+      let apiRef = "", note = "", itemName = "", customerRef = "", cardDetails = "", pinsArr = null;
+      const amount = parseFloat(f.amount) || 0;
+
+      if (cat === "airtime") {
+        const r = await clubkonnect("airtime", { phone: f.phone, network: f.network, amount: String(f.amount) });
+        apiRef = r.reference; itemName = `${f.network} Airtime`; customerRef = f.phone;
+        note = `Network: ${f.network}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
+
+      } else if (cat === "data") {
+        const r = await clubkonnect("data", { phone: f.phone, network: f.network, planId: f.planId });
+        apiRef = r.reference; itemName = `${f.network} ${f.planName} Data`; customerRef = f.phone;
+        note = `Network: ${f.network} | Plan: ${f.planName}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
+
+      } else if (cat === "cable") {
+        const r = await clubkonnect("cable", { provider: f.provider, packageId: f.packageId, smartcard: f.smartcard, phone: f.phone });
+        apiRef = r.reference;
+        const provName = CABLE_PROVIDERS.find(p => p.code === f.provider)?.name || f.provider;
+        itemName = `${provName} ${f.packageName}`; customerRef = f.smartcard;
+        note = `Smartcard: ${f.smartcard} | ${vName}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
+
+      } else if (cat === "electricity") {
+        const r = await clubkonnect("electricity", { company: f.company, meterType: f.meterType, meterNo: f.meterNo, amount: String(f.amount), phone: f.phone });
+        apiRef = r.reference;
+        const compName = ELECTRICITY_COMPANIES.find(c => c.code === f.company)?.name || f.company;
+        const mTypeName = f.meterType === "01" ? "Prepaid" : "Postpaid";
+        itemName = `${compName} ${mTypeName}`; customerRef = f.meterNo;
+        note = r.token ? `Token: ${r.token} | Meter: ${f.meterNo} | ${vName}${apiRef ? ` | Ref: ${apiRef}` : ""}` : `Meter: ${f.meterNo} | ${vName}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
+
+      } else if (cat === "betting") {
+        const r = await clubkonnect("betting", { company: f.company, customerId: f.customerId, amount: String(f.amount) });
+        apiRef = r.reference;
+        const compName = BETTING_COMPANIES.find(c => c.code === f.company)?.name || f.company;
+        itemName = `${compName} Wallet Top-up`; customerRef = f.customerId;
+        note = `Customer: ${f.customerId} | ${vName}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
+
+      } else if (cat === "waec") {
+        const r = await clubkonnect("waec", { examType: f.examType, phone: f.phone });
+        apiRef = r.reference; cardDetails = r.cardDetails || "";
+        itemName = `WAEC ${WAEC_TYPES.find(t => t.code === f.examType)?.name || f.examType}`; customerRef = f.phone;
+        note = `Phone: ${f.phone}${cardDetails ? ` | ${cardDetails}` : ""}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
+
+      } else if (cat === "jamb") {
+        const r = await clubkonnect("jamb", { examType: f.examType, phone: f.phone });
+        apiRef = r.reference; cardDetails = r.cardDetails || "";
+        itemName = `JAMB ${JAMB_TYPES.find(t => t.code === f.examType)?.name || f.examType}`; customerRef = f.phone;
+        note = `Phone: ${f.phone}${cardDetails ? ` | ${cardDetails}` : ""}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
+
+      } else if (cat === "spectranet") {
+        const r = await clubkonnect("spectranet", { accountNo: f.accountNo, planId: f.planId });
+        apiRef = r.reference; itemName = `Spectranet ${f.planName}`; customerRef = f.accountNo;
+        note = `Account: ${f.accountNo} | Plan: ${f.planName}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
+
+      } else if (cat === "smile") {
+        const r = await clubkonnect("smile", { accountNo: f.accountNo, planId: f.planId });
+        apiRef = r.reference; itemName = `Smile ${f.planName}`; customerRef = f.accountNo;
+        note = `Account: ${f.accountNo} | ${vName}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
+
+      } else if (cat === "print-airtime") {
+        const r = await clubkonnect("print-airtime", { network: f.network, value: f.value, quantity: f.quantity });
+        apiRef = r.reference; pinsArr = r.pins || [];
+        const qty = parseInt(f.quantity, 10);
+        itemName = `${f.network} ₦${f.value} Airtime Print x${qty}`; customerRef = `${qty} pins`;
+        note = `Network: ${f.network} | Value: ₦${f.value} x${qty}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
+
+      } else if (cat === "print-data") {
+        const r = await clubkonnect("print-data", { network: f.network, planId: f.planId, quantity: f.quantity });
+        apiRef = r.reference; pinsArr = r.pins || [];
+        const qty = parseInt(f.quantity, 10);
+        itemName = `${f.network} ${f.planName} Data Print x${qty}`; customerRef = `${qty} pins`;
+        note = `Network: ${f.network} | Plan: ${f.planName} x${qty}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
+      }
+
+      const totalAmount = cat === "print-airtime"
+        ? parseInt(f.value, 10) * parseInt(f.quantity || "1", 10)
+        : cat === "print-data" ? amount * parseInt(f.quantity || "1", 10) : amount;
+
+      const payload = {
+        type: "out", category: cat, payment_type: "bill_payment",
+        item_name: itemName, customer_name: customerRef,
+        amount: totalAmount || amount, note,
+        transaction_date: today(),
+      };
+
+      await addTransaction(payload);
+      localStorage.removeItem(BILL_PENDING_PREFIX + ref);
+      setSaving(false); closeSheet();
+
+      if (pinsArr?.length > 0) {
+        setPins({ list: pinsArr, title: itemName });
+      } else {
+        setReceipt({
+          ...payload, receiptId: rcpId(), apiRef,
+          created_at: new Date().toISOString(), staffName, businessName,
+          ...(cardDetails ? { note: `${note}\nCard: ${cardDetails}` } : {}),
+        });
+      }
+    } catch (err) {
+      setSaving(false);
+      setError(`Payment received but service failed: ${err.message}. Paystack Ref: ${ref}`);
+    }
+  }, [addTransaction, staffName, businessName]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const cat = CATS.find(c => c.id === selectedCat);
   const detected = form.phone?.length >= 4 ? detectNetwork(form.phone) : null;
 
   return (
     <div className="pb-32 screen-enter">
+
+      {/* Paystack return loading overlay */}
+      {saving && !selectedCat && (
+        <div className="fixed inset-0 z-[60] bg-white dark:bg-slate-900 flex flex-col items-center justify-center gap-4">
+          <div className="w-12 h-12 border-4 border-green-500 border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm font-bold text-slate-700 dark:text-slate-300">Completing your payment…</p>
+          <p className="text-xs text-slate-400">Please wait while we process your bill</p>
+          {error && <p className="text-xs text-red-500 px-6 text-center mt-2">{error}</p>}
+        </div>
+      )}
 
       {/* Header */}
       <div className="px-4 pt-5 pb-4 bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 sticky top-0 z-10">
@@ -1007,10 +1096,10 @@ export default function BillPayments({ store, plan, staffName = null, businessNa
                 <button onClick={handlePay} disabled={saving}
                   className="w-full text-white font-bold rounded-xl py-3.5 text-sm transition-all disabled:opacity-60"
                   style={{ background: `linear-gradient(135deg,${cat.g1},${cat.g2})` }}>
-                  {saving ? "Processing…" : (
-                    selectedCat === "print-airtime" ? `Print ${form.quantity || 1} × ₦${form.value} Pins` :
-                    selectedCat === "print-data" ? `Print ${form.quantity || 1} Data Pins` :
-                    form.amount ? `Pay ${fmt(parseFloat(form.amount) || 0)}` : `Pay`
+                  {saving ? "Redirecting to Paystack…" : (
+                    selectedCat === "print-airtime" ? `Pay with Paystack · ${form.quantity || 1} × ₦${form.value}` :
+                    selectedCat === "print-data" ? `Pay with Paystack · ${form.quantity || 1} Plan${parseInt(form.quantity||"1")>1?"s":""}` :
+                    form.amount ? `Pay ${fmt(parseFloat(form.amount) || 0)} with Paystack` : `Pay with Paystack`
                   )}
                 </button>
               </div>

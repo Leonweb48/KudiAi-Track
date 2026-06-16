@@ -44,20 +44,23 @@ serve(async (req) => {
         metadata?: Record<string, unknown>; subaccount?: string;
         bearer?: string; channels?: string[];
       };
+      const { callback_url } = body as { callback_url?: string };
       const res = await fetch("https://api.paystack.co/transaction/initialize", {
         method: "POST",
         headers: psHeaders,
         body: JSON.stringify({
           email,
-          amount:     Math.round(Number(amount) * 100),
+          amount:       Math.round(Number(amount) * 100),
           reference,
           metadata,
-          subaccount: subaccount ?? undefined,
-          bearer:     bearer ?? (subaccount ? "subaccount" : undefined),
-          channels:   channels ?? ["card", "bank", "ussd", "mobile_money", "bank_transfer"],
+          callback_url: callback_url ?? undefined,
+          subaccount:   subaccount ?? undefined,
+          bearer:       bearer ?? (subaccount ? "subaccount" : undefined),
+          channels:     channels ?? ["card", "bank", "ussd", "mobile_money", "bank_transfer"],
         }),
       });
-      return json(await res.json());
+      const psResp = await res.json();
+      return json({ ...psResp, public_key: PUBLIC_KEY });
     }
 
     // ── Verify a transaction ───────────────────────────────────────────────
