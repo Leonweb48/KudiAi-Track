@@ -733,9 +733,27 @@ export default function BillPayments({ store, plan, staffName = null, businessNa
       setFulfillResult({ ok: true, label: itemName, detail: note, pinsArr: pinsArr || [], psRef: ref, apiRef, cardDetails });
     } catch (err) {
       setSaving(false);
-      setFulfillResult({ ok: false, label: "", detail: err.message, psRef: ref, apiRef: "" });
+      const ckError = err.message || "Unknown error";
+      setFulfillResult({ ok: false, label: "", detail: ckError, psRef: ref, apiRef: "" });
+
+      // Fire-and-forget: alert admin/finance of the failed delivery
+      try {
+        const { cat, form: f } = pending;
+        await supabase.functions.invoke("clubkonnect", {
+          body: {
+            action:     "bill-failure-alert",
+            user_id:    profile?.id    || null,
+            user_email: profile?.email || null,
+            user_name:  profile?.owner_name || profile?.business_name || null,
+            service:    CATS.find(c => c.id === cat)?.label || cat,
+            amount:     parseFloat(f.amount) || 0,
+            ps_ref:     ref,
+            ck_error:   ckError,
+          },
+        });
+      } catch (_) { /* alert is best-effort */ }
     }
-  }, [addTransaction, staffName, businessName]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [addTransaction, staffName, businessName, profile]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const cat = CATS.find(c => c.id === selectedCat);
   const detected = form.phone?.length >= 4 ? detectNetwork(form.phone) : null;
@@ -827,23 +845,37 @@ export default function BillPayments({ store, plan, staffName = null, businessNa
 
           {/* Failure state */}
           {fulfillResult && !fulfillResult.ok && (
-            <div className="flex-1 flex flex-col items-center justify-center gap-5 px-8">
-              <div className="w-16 h-16 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.5" strokeLinecap="round">
-                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-                </svg>
+            <div className="flex-1 flex flex-col px-6 py-8 gap-5">
+              <div className="flex flex-col items-center gap-3 pt-4">
+                <div className="w-16 h-16 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.5" strokeLinecap="round">
+                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                  </svg>
+                </div>
+                <p className="text-lg font-black text-slate-800 dark:text-white text-center">Service Delivery Failed</p>
               </div>
-              <div className="text-center">
-                <p className="text-base font-bold text-slate-800 dark:text-white">Service Delivery Failed</p>
-                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">{fulfillResult.detail}</p>
+
+              {/* Exact error from API */}
+              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-2xl px-4 py-4">
+                <p className="text-xs font-bold text-red-600 dark:text-red-400 uppercase tracking-wide mb-1">Reason from provider</p>
+                <p className="text-sm font-semibold text-red-700 dark:text-red-300 leading-relaxed">{fulfillResult.detail}</p>
               </div>
-              <div className="w-full bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl px-4 py-3 text-center">
-                <p className="text-xs font-bold text-amber-700 dark:text-amber-400 mb-1">Your payment was received</p>
-                <p className="text-xs text-amber-600 dark:text-amber-500">Contact support with this reference:</p>
-                <p className="font-mono text-sm font-black text-amber-700 dark:text-amber-300 mt-1 break-all">{fulfillResult.psRef}</p>
+
+              {/* Payment reference + assurance */}
+              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl px-4 py-4 space-y-2">
+                <p className="text-xs font-bold text-amber-700 dark:text-amber-400">✓ Your Paystack payment was received</p>
+                <p className="text-xs text-amber-600 dark:text-amber-500 leading-relaxed">
+                  Our team has been automatically notified and will resolve this immediately. Keep this reference:
+                </p>
+                <p className="font-mono text-sm font-black text-amber-700 dark:text-amber-300 break-all">{fulfillResult.psRef}</p>
               </div>
+
+              <p className="text-xs text-slate-400 dark:text-slate-500 text-center leading-relaxed">
+                A critical alert has been sent to the admin and finance team. You will be contacted or your service will be fulfilled shortly.
+              </p>
+
               <button onClick={() => setFulfillResult(null)}
-                className="w-full py-3 bg-slate-800 dark:bg-white text-white dark:text-slate-900 font-bold rounded-xl text-sm">
+                className="w-full py-3.5 bg-slate-800 dark:bg-white text-white dark:text-slate-900 font-bold rounded-xl text-sm mt-auto">
                 Back to Bill Payments
               </button>
             </div>

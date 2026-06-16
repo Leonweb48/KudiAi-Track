@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -38,18 +39,35 @@ async function ck(path: string, params: Record<string, string>): Promise<Record<
   catch { return { _raw: text, _http: res.status }; }
 }
 
+// Statuses that always mean failure regardless of statuscode
+const FAIL_PATTERNS = [
+  "INSUFFICIENT", "LOW_WALLET", "LOW WALLET", "LOW BALANCE", "NO BALANCE",
+  "FAILED", "FAILURE", "TRANSACTION FAILED", "ORDER FAILED", "ORDER_FAILED",
+  "NETWORK ERROR", "SERVICE UNAVAILABLE", "DUPLICATE", "INVALID_CREDENTIALS",
+  "INVALID_KEY", "INVALID KEY", "INVALID USER", "UNAUTHORIZED",
+];
+
 function isOk(data: Record<string, unknown>): boolean {
-  const code = String(data?.statuscode ?? data?.StatusCode ?? "");
-  const stat = String(data?.status ?? data?.Status ?? "").toUpperCase();
-  return code === "100" || code === "200" || stat === "ORDER_RECEIVED" || stat === "ORDER_COMPLETED";
+  const code = String(data?.statuscode ?? data?.StatusCode ?? "").trim();
+  const stat = String(data?.status ?? data?.Status ?? "").toUpperCase().trim();
+
+  // Explicit failure — override any good statuscode
+  if (FAIL_PATTERNS.some(p => stat.includes(p))) return false;
+
+  return code === "100" || code === "200" ||
+         stat === "ORDER_RECEIVED" || stat === "ORDER_COMPLETED" ||
+         stat === "SUCCESSFUL" || stat === "SUCCESS";
 }
 
 function errMsg(data: Record<string, unknown>, fallback: string): string {
-  return String(
-    data?.status ?? data?.Status ?? data?.message ?? data?.Message ??
-    data?.description ?? data?._raw ?? fallback
-  );
+  // Prefer the human-readable status message from ClubKonnect
+  const raw = data?.status ?? data?.Status ?? data?.message ?? data?.Message ??
+              data?.description ?? data?.Description ?? data?._raw ?? fallback;
+  return String(raw);
 }
+
+const SUPABASE_URL  = Deno.env.get("SUPABASE_URL")              ?? "";
+const SERVICE_KEY   = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -438,6 +456,53 @@ serve(async (req) => {
       if (!isOk(data)) return json({ error: errMsg(data, "Print data failed"), _raw: data });
       const pins = (data?.TXN_EPIN_DATABUNDLE ?? []) as Record<string, unknown>[];
       return json({ status: "SUCCESS", reference: String(data.orderid ?? data.requestid ?? ""), pins, message: String(data.status ?? "ORDER_RECEIVED") });
+    }
+
+    // ── Bill failure alert — create critical support ticket + admin notification ─
+    if (action === "bill-failure-alert") {
+      const { user_id, user_email, user_name, service, amount, ps_ref, ck_error } = body as {
+        user_id?: string; user_email?: string; user_name?: string;
+        service?: string; amount?: number; ps_ref?: string; ck_error?: string;
+      };
+      try {
+        const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+
+        // Create a critical support ticket so admin/finance see it immediately
+        const subject = `BILLING FAILURE: ${service} — Paystack paid, ClubKonnect failed`;
+        const description =
+          `A customer paid successfully via Paystack but bill delivery failed.\n\n` +
+          `User: ${user_name || "Unknown"} (${user_email || "N/A"})\n` +
+          `Service: ${service}\n` +
+          `Amount: ₦${amount?.toLocaleString() || "?"}\n` +
+          `Paystack Reference: ${ps_ref}\n` +
+          `ClubKonnect Error: ${ck_error}\n\n` +
+          `ACTION REQUIRED: Verify ClubKonnect wallet balance and manually fulfill or refund.`;
+
+        await sb.from("support_tickets").insert({
+          subject,
+          description,
+          type:     "payment",
+          priority: "critical",
+          status:   "open",
+          user_id:  user_id || null,
+          user_email: user_email || null,
+          user_name:  user_name  || null,
+        });
+
+        // Also insert into admin_tasks for finance team visibility
+        await sb.from("admin_tasks").insert({
+          title:       `⚠ ClubKonnect wallet failure — ${service}`,
+          description: `Paystack ref ${ps_ref} was charged ₦${amount?.toLocaleString() || "?"} but ClubKonnect returned: "${ck_error}". Check wallet balance and fulfill manually.`,
+          priority: "critical",
+          status:   "pending",
+        });
+
+        console.log(`Bill failure alert created: ${ps_ref} — ${ck_error}`);
+        return json({ ok: true });
+      } catch (e) {
+        console.error("bill-failure-alert error:", e);
+        return json({ ok: false, error: (e as Error).message });
+      }
     }
 
     // ── Health check — test every service key in parallel ─────────────────────
