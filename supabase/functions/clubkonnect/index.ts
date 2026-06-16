@@ -442,18 +442,25 @@ serve(async (req) => {
 
     // ── Health check — test every service key in parallel ─────────────────────
     if (action === "health-check") {
+      // Only check the top-level status field — never scan the whole JSON body
+      // which may contain "INVALID" in product names, IDs, etc.
       const isInvalid = (d: Record<string, unknown>) => {
-        const s = JSON.stringify(d).toUpperCase();
-        return s.includes("INVALID_CREDENTIALS") || s.includes("INVALID_KEY") ||
-               s.includes("INVALID_APIKEY") || s.includes("UNAUTHORIZED") ||
-               s.includes("INVALID_USER") || s.includes("INVALID_ID");
+        const s = String(d?.status ?? d?.Status ?? "").toUpperCase().trim();
+        return s === "INVALID_CREDENTIALS" || s === "INVALID_KEY" ||
+               s === "INVALID_APIKEY"      || s === "INVALID_USER" ||
+               s === "INVALID_USERID"      || s === "UNAUTHORIZED" ||
+               (s.startsWith("INVALID") && s.includes("CREDENTIAL"));
       };
+      // A response is positively OK if it has real data (not just absence of error)
+      const hasData = (d: Record<string, unknown>) =>
+        !!(d?.MOBILE_NETWORK ?? d?.TV_ID ?? d?.Networks ?? d?.Packages ?? d?.packages ??
+           d?.Plans ?? d?.plans ?? d?.DataBundlePlans ?? d?.CardDetails ?? d?.card_details);
       const ping = async (label: string, path: string, params: Record<string, string>) => {
         try {
           const d = await ck(path, params);
-          const raw = JSON.stringify(d).slice(0, 120);
-          const bad = isInvalid(d);
-          return { label, ok: !bad, detail: bad ? (String(d?.status ?? d?.Status ?? "INVALID_CREDENTIALS")) : "ok", raw };
+          const raw = JSON.stringify(d).slice(0, 150);
+          if (isInvalid(d)) return { label, ok: false, detail: String(d?.status ?? "INVALID_CREDENTIALS"), raw };
+          return { label, ok: true, detail: hasData(d) ? "confirmed" : "reachable", raw };
         } catch (e) {
           return { label, ok: false, detail: (e as Error).message, raw: "" };
         }
