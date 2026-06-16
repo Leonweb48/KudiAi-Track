@@ -144,26 +144,31 @@ serve(async (req) => {
       const data = await ck("APICableTVPackagesV2.asp", { APIKey: CABLETV_K, CableTV: provider });
       if (data?.status && String(data.status).includes("INVALID")) return json({ error: `Cable API key error: ${data.status}`, packages: [] });
 
-      // Try MOBILE_NETWORK / PRODUCT format first (same V2 pattern)
-      const mobileNet = data?.MOBILE_NETWORK as Record<string, Record<string, unknown>[]> | undefined;
+      // Response format: { TV_ID: { DStv: [{ ID, PRODUCT: [{PACKAGE_ID, PACKAGE_NAME, PACKAGE_AMOUNT}] }] } }
+      const TV_KEY: Record<string, string> = { dstv: "DStv", gotv: "GOtv", startimes: "StarTimes", showmax: "Showmax" };
+      const tvId = data?.TV_ID as Record<string, Record<string, unknown>[]> | undefined;
       let packages: { package_id: string; package_name: string; package_amount: number }[] = [];
 
-      if (mobileNet) {
-        const provKey = provider.toUpperCase();
-        const groups = mobileNet[provKey] ?? Object.values(mobileNet)[0] ?? [];
+      if (tvId) {
+        const tvKey = TV_KEY[provider] ?? provider;
+        const groups = tvId[tvKey] ?? Object.values(tvId)[0] ?? [];
         for (const group of groups) {
           for (const p of ((group?.PRODUCT ?? []) as Record<string, unknown>[])) {
-            const pid = String(p.PRODUCT_CODE ?? p.PRODUCT_ID ?? "");
-            if (pid) packages.push({ package_id: pid, package_name: String(p.PRODUCT_NAME ?? ""), package_amount: Number(p.PRODUCT_AMOUNT ?? 0) });
+            const pid = String(p.PACKAGE_ID ?? p.PRODUCT_CODE ?? p.id ?? "");
+            if (pid) packages.push({
+              package_id:     pid,
+              package_name:   String(p.PACKAGE_NAME ?? p.PRODUCT_NAME ?? ""),
+              package_amount: Number(p.PACKAGE_AMOUNT ?? p.PRODUCT_AMOUNT ?? 0),
+            });
           }
         }
       } else {
         const raw: unknown[] = Array.isArray(data) ? data
           : (data?.Packages ?? data?.packages ?? data?.CableTVPackages ?? data?.response ?? data?.data ?? []) as unknown[];
         packages = (raw as Record<string, unknown>[]).map(p => ({
-          package_id:     String(p.PackageCode ?? p.PRODUCT_CODE ?? p.Package ?? p.id ?? ""),
-          package_name:   String(p.PackageName ?? p.PRODUCT_NAME ?? p.Name ?? p.name ?? ""),
-          package_amount: Number(p.Price ?? p.PRODUCT_AMOUNT ?? p.amount ?? 0),
+          package_id:     String(p.PACKAGE_ID ?? p.PackageCode ?? p.id ?? ""),
+          package_name:   String(p.PACKAGE_NAME ?? p.PackageName ?? p.name ?? ""),
+          package_amount: Number(p.PACKAGE_AMOUNT ?? p.Price ?? p.amount ?? 0),
         })).filter(p => p.package_id && p.package_id !== "undefined");
       }
 
@@ -176,9 +181,13 @@ serve(async (req) => {
       const { provider, smartcard } = body as { provider: string; smartcard: string };
       if (!provider || !smartcard) return json({ error: "provider and smartcard required" });
       const data = await ck("APIVerifyCableTVV1.asp", { APIKey: CABLETV_K, CableTV: provider, SmartCardNo: smartcard });
-      const name = String(data?.customer_name ?? data?.CustomerName ?? "");
-      if (!name || name === "INVALID_SMARTCARDNO" || name.toLowerCase().includes("invalid"))
-        return json({ error: "Invalid smartcard number" });
+      console.log("cable-verify raw:", JSON.stringify(data).slice(0, 400));
+      const statusStr = String(data?.status ?? data?.Status ?? "").toUpperCase();
+      if (statusStr.includes("INVALID_CREDENTIALS") || statusStr.includes("INVALID_KEY") || statusStr.includes("UNAUTHORIZED"))
+        return json({ error: `Cable TV API key error: ${statusStr}` });
+      const name = String(data?.customer_name ?? data?.CustomerName ?? data?.CUSTOMER_NAME ?? "");
+      if (!name || name.toUpperCase() === "INVALID_SMARTCARDNO" || name.toUpperCase().includes("INVALID"))
+        return json({ error: `Smartcard not found (${smartcard}). Check the number and selected provider.`, _raw: data });
       return json({ customer_name: name });
     }
 
@@ -206,9 +215,14 @@ serve(async (req) => {
       const { company, meterNo, meterType } = body as { company: string; meterNo: string; meterType: string };
       if (!company || !meterNo || !meterType) return json({ error: "company, meterNo and meterType required" });
       const data = await ck("APIVerifyElectricityV1.asp", { APIKey: ELECTRICITY_K, ElectricCompany: company, MeterNo: meterNo, MeterType: meterType });
-      const name = String(data?.customer_name ?? data?.CustomerName ?? "");
-      if (!name || name === "INVALID_METERNO" || name.toLowerCase().includes("invalid"))
-        return json({ error: "Invalid meter number" });
+      console.log("electricity-verify raw:", JSON.stringify(data).slice(0, 400));
+      // API key / credential errors
+      const statusStr = String(data?.status ?? data?.Status ?? "").toUpperCase();
+      if (statusStr.includes("INVALID_CREDENTIALS") || statusStr.includes("INVALID_KEY") || statusStr.includes("UNAUTHORIZED"))
+        return json({ error: `Electricity API key error: ${statusStr}` });
+      const name = String(data?.customer_name ?? data?.CustomerName ?? data?.CUSTOMER_NAME ?? "");
+      if (!name || name.toUpperCase() === "INVALID_METERNO" || name.toUpperCase().includes("INVALID"))
+        return json({ error: `Meter not found (${meterNo}). Check the number and selected company.`, _raw: data });
       return json({ customer_name: name });
     }
 
