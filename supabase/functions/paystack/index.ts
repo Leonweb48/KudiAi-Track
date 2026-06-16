@@ -193,6 +193,70 @@ serve(async (req) => {
       return json({ ...psData, public_key: PUBLIC_KEY });
     }
 
+    // ── Create Paystack dedicated virtual account ──────────────────────────
+    if (action === "create-virtual-account") {
+      const token = authHeader.replace("Bearer ", "");
+      const { data: { user }, error: authErr } = await sb.auth.getUser(token);
+      if (authErr || !user) return json({ error: "Unauthorized" }, 401);
+
+      const { data: profile } = await sb.from("profiles")
+        .select("owner_name, business_name, paystack_customer_code, virtual_account_number, virtual_account_bank, virtual_account_name")
+        .eq("id", user.id).maybeSingle();
+
+      if (profile?.virtual_account_number) {
+        return json({ account: { bank: profile.virtual_account_bank, number: profile.virtual_account_number, name: profile.virtual_account_name } });
+      }
+
+      const email = user.email ?? "";
+      const businessName = (profile?.business_name || profile?.owner_name || "Business").slice(0, 60);
+
+      let customerCode = profile?.paystack_customer_code;
+      if (!customerCode) {
+        const custRes = await fetch("https://api.paystack.co/customer", {
+          method: "POST", headers: psHeaders,
+          body: JSON.stringify({ email, first_name: businessName, last_name: "Business" }),
+        });
+        const custData = await custRes.json();
+        if (!custData.status) return json({ error: custData.message || "Failed to create Paystack customer" });
+        customerCode = custData.data.customer_code;
+        await sb.from("profiles").update({ paystack_customer_code: customerCode }).eq("id", user.id);
+      }
+
+      const preferredBank = (body as { preferred_bank?: string }).preferred_bank ?? "wema-bank";
+      const dvaRes = await fetch("https://api.paystack.co/dedicated_account", {
+        method: "POST", headers: psHeaders,
+        body: JSON.stringify({ customer: customerCode, preferred_bank: preferredBank }),
+      });
+      const dvaData = await dvaRes.json();
+      if (!dvaData.status) return json({ error: dvaData.message || "Failed to create virtual account" });
+
+      const acct = dvaData.data;
+      const bankName   = acct.bank?.name ?? preferredBank;
+      const acctNumber = acct.account_number;
+      const acctName   = acct.account_name;
+
+      await sb.from("profiles").update({
+        virtual_account_bank:   bankName,
+        virtual_account_number: acctNumber,
+        virtual_account_name:   acctName,
+        virtual_account_ref:    acct.id ? String(acct.id) : null,
+      }).eq("id", user.id);
+
+      return json({ account: { bank: bankName, number: acctNumber, name: acctName } });
+    }
+
+    // ── Fetch virtual account from profile ─────────────────────────────────
+    if (action === "get-virtual-account") {
+      const token = authHeader.replace("Bearer ", "");
+      const { data: { user } } = await sb.auth.getUser(token);
+      if (!user) return json({ error: "Unauthorized" }, 401);
+      const { data: profile } = await sb.from("profiles")
+        .select("virtual_account_bank, virtual_account_number, virtual_account_name")
+        .eq("id", user.id).maybeSingle();
+      if (!profile?.virtual_account_number) return json({ account: null });
+      return json({ account: { bank: profile.virtual_account_bank, number: profile.virtual_account_number, name: profile.virtual_account_name } });
+    }
+
     return json({ error: `Unknown action: ${action}` }, 400);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

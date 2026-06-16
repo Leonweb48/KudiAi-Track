@@ -1,9 +1,10 @@
-import { useMemo } from "react";
+import { useMemo, useState, useCallback } from "react";
 import { fmt, today } from "../utils/helpers";
 import { NotificationBell } from "../components/NotificationCenter";
 import { useT } from "../contexts/LanguageContext";
 import AppLogo from "../components/AppLogo";
 import { getSalesPrediction } from "../utils/predictions";
+import { supabase } from "../utils/supabase";
 
 function greetingKey() {
   const h = new Date().getHours();
@@ -97,6 +98,111 @@ function TxRow({ t }) {
   );
 }
 
+/* ── Digital Wallet card ─────────────────────────────────────────── */
+function DigitalWalletCard({ profile, onCreated }) {
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState("");
+  const [copied,  setCopied]  = useState(false);
+
+  const hasAccount = !!profile?.virtual_account_number;
+
+  const create = useCallback(async () => {
+    setLoading(true); setError("");
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const { data, error: fnErr } = await supabase.functions.invoke("paystack", {
+        body: { action: "create-virtual-account" },
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+      });
+      if (fnErr || data?.error) throw new Error(data?.error || fnErr?.message || "Failed");
+      onCreated?.(data.account);
+    } catch (e) { setError(e.message); }
+    finally { setLoading(false); }
+  }, [onCreated]);
+
+  const copy = () => {
+    navigator.clipboard?.writeText(profile.virtual_account_number || "");
+    setCopied(true); setTimeout(() => setCopied(false), 2000);
+  };
+
+  if (hasAccount) return (
+    <div className="rounded-3xl overflow-hidden shadow-lg"
+      style={{ background: "linear-gradient(135deg,#1e1b4b 0%,#312e81 50%,#4c1d95 100%)" }}>
+      <div className="px-5 pt-5 pb-4">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-white/15 flex items-center justify-center">
+              <Svg d="M3 10h18|M7 15h.01|M11 15h2|M3 6h18v14a2 2 0 01-2 2H5a2 2 0 01-2-2V6z" size={16} color="white" sw={2} />
+            </div>
+            <span className="text-xs font-bold text-white/70 uppercase tracking-widest">Digital Wallet</span>
+          </div>
+          <span className="text-[10px] font-bold text-white/50 uppercase">{profile.virtual_account_bank}</span>
+        </div>
+        <p className="text-2xl font-black text-white tracking-[0.15em] tabular">
+          {(profile.virtual_account_number || "").replace(/(\d{4})(\d{3})(\d{3})/, "$1 $2 $3")}
+        </p>
+        <p className="text-sm text-white/70 font-semibold mt-1 truncate">{profile.virtual_account_name}</p>
+      </div>
+      <div className="flex border-t border-white/10">
+        <button onClick={copy}
+          className="flex-1 flex items-center justify-center gap-2 py-3 text-xs font-bold text-white/80 hover:bg-white/10 transition-colors">
+          <Svg d={copied ? "M20 6L9 17l-5-5" : "M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414A1 1 0 0120 8.414V15a2 2 0 01-2 2h-2"} size={14} color="white" sw={2.5} />
+          {copied ? "Copied!" : "Copy Number"}
+        </button>
+        <div className="w-px bg-white/10" />
+        <button onClick={() => {
+          const txt = `Bank: ${profile.virtual_account_bank}\nAccount: ${profile.virtual_account_number}\nName: ${profile.virtual_account_name}`;
+          if (navigator.share) navigator.share({ title: "My Business Account", text: txt });
+          else navigator.clipboard?.writeText(txt);
+        }} className="flex-1 flex items-center justify-center gap-2 py-3 text-xs font-bold text-white/80 hover:bg-white/10 transition-colors">
+          <Svg d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8|M16 6l-4-4-4 4|M12 2v13" size={14} color="white" sw={2.5} />
+          Share
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <button onClick={create} disabled={loading}
+      className="w-full rounded-3xl px-5 py-5 border-2 border-dashed border-indigo-300 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-950/30 flex items-center gap-4 active:scale-98 transition-all">
+      <div className="w-12 h-12 rounded-2xl bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center flex-shrink-0">
+        {loading
+          ? <div className="w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+          : <Svg d="M3 10h18|M7 15h.01|M11 15h2|M3 6h18v14a2 2 0 01-2 2H5a2 2 0 01-2-2V6z" size={22} color="#6366f1" sw={2} />}
+      </div>
+      <div className="text-left">
+        <p className="text-sm font-bold text-indigo-700 dark:text-indigo-300">Set Up Digital Wallet</p>
+        <p className="text-xs text-indigo-500 dark:text-indigo-400 mt-0.5">
+          {loading ? "Creating your virtual account…" : "Get a free virtual bank account for your business"}
+        </p>
+        {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
+      </div>
+      <Svg d="M9 18l6-6-6-6" size={18} color="#6366f1" sw={2.5} />
+    </button>
+  );
+}
+
+/* ── Mic for Sale card ───────────────────────────────────────────── */
+function MicForSaleCard({ onPress }) {
+  return (
+    <button onClick={onPress}
+      className="w-full rounded-3xl px-5 py-4 flex items-center gap-4 active:scale-98 transition-all shadow-md overflow-hidden relative"
+      style={{ background: "linear-gradient(135deg,#059669 0%,#047857 60%,#065f46 100%)" }}>
+      <div className="absolute -right-6 -top-6 w-24 h-24 rounded-full bg-white/5 pointer-events-none" />
+      <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center flex-shrink-0">
+        <Svg d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z|M19 10v2a7 7 0 01-14 0v-2|M12 19v4|M8 23h8" size={24} color="white" sw={2} />
+      </div>
+      <div className="text-left flex-1">
+        <p className="text-sm font-black text-white">Mic for Sale</p>
+        <p className="text-xs text-white/70 mt-0.5">Tap & speak to record a sale instantly</p>
+      </div>
+      <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+        <Svg d="M9 18l6-6-6-6" size={16} color="white" sw={2.5} />
+      </div>
+    </button>
+  );
+}
+
 /* ── Sales forecast card ─────────────────────────────────────────── */
 function SalesForecastCard({ prediction, t }) {
   const { projectedWeek, projectedMonth, thisWeekActual, thisMonthActual, trend, trendPct } = prediction;
@@ -135,8 +241,16 @@ function SalesForecastCard({ prediction, t }) {
 
 /* ── Main ────────────────────────────────────────────────────────── */
 export default function Home({ store, setTab, onQuickAction, onVoiceOpen, notif }) {
-  const { transactions, credits, asoClients, profile, loading } = store;
+  const { transactions, credits, asoClients, profile, loading, updateProfile } = store;
   const t = useT();
+
+  const handleVirtualAccountCreated = useCallback((account) => {
+    updateProfile?.({
+      virtual_account_bank:   account.bank,
+      virtual_account_number: account.number,
+      virtual_account_name:   account.name,
+    });
+  }, [updateProfile]);
 
   const todayTx    = transactions.filter(t => t.transaction_date === today());
   const cashIn     = todayTx.filter(t => t.type === "in" ).reduce((s, t) => s + t.amount, 0);
@@ -229,6 +343,12 @@ export default function Home({ store, setTab, onQuickAction, onVoiceOpen, notif 
         </div>
       </div>
 
+      {/* ── Digital Wallet ───────────────────────────────────────────── */}
+      <DigitalWalletCard profile={profile} onCreated={handleVirtualAccountCreated} />
+
+      {/* ── Mic for Sale ─────────────────────────────────────────────── */}
+      <MicForSaleCard onPress={() => onVoiceOpen?.()} />
+
       {/* ── 4 stat cards ─────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-3">
         <StatCard label={t("home.cashIn")}       value={fmt(cashIn)}      icon={P.in}     iconBg="bg-green-100 dark:bg-green-900/40" iconColor="#16a34a" loading={loading} onClick={() => setTab("transactions")} />
@@ -243,13 +363,12 @@ export default function Home({ store, setTab, onQuickAction, onVoiceOpen, notif 
       <div>
         <h2 className="text-[13px] font-bold text-slate-700 dark:text-slate-300 mb-3 tracking-wide">{t("home.quickActions")}</h2>
         <div className="grid grid-cols-3 gap-y-4 gap-x-2">
-          <ActionBtn label={t("home.voiceRecord")} icon={P.mic}    bg="bg-gradient-to-br from-green-500 to-green-600"  iconColor="white" onClick={() => onVoiceOpen?.()} />
-          <ActionBtn label={t("home.cashIn")}      icon={P.in}     bg="bg-gradient-to-br from-green-500 to-emerald-600" iconColor="white" onClick={() => onQuickAction?.("transactions","in")} />
-          <ActionBtn label={t("home.cashOut")}     icon={P.out}    bg="bg-gradient-to-br from-red-500 to-red-600"       iconColor="white" onClick={() => onQuickAction?.("transactions","out")} />
-          <ActionBtn label={t("home.payBills")}    icon={P.bills}  bg="bg-gradient-to-br from-cyan-500 to-teal-600"     iconColor="white" onClick={() => setTab("bills")} />
-          <ActionBtn label={t("home.creditSale")}  icon={P.credit} bg="bg-gradient-to-br from-amber-400 to-amber-500"   iconColor="white" onClick={() => onQuickAction?.("credit")} />
-          <ActionBtn label={t("home.asoClient")}   icon={P.bank}   bg="bg-gradient-to-br from-blue-500 to-blue-600"     iconColor="white" onClick={() => onQuickAction?.("aso")} />
-          <ActionBtn label={t("home.reports")}     icon={P.report} bg="bg-gradient-to-br from-purple-500 to-violet-600" iconColor="white" onClick={() => setTab("insights")} />
+          <ActionBtn label={t("home.cashIn")}     icon={P.in}     bg="bg-gradient-to-br from-green-500 to-emerald-600" iconColor="white" onClick={() => onQuickAction?.("transactions","in")} />
+          <ActionBtn label={t("home.cashOut")}    icon={P.out}    bg="bg-gradient-to-br from-red-500 to-red-600"       iconColor="white" onClick={() => onQuickAction?.("transactions","out")} />
+          <ActionBtn label={t("home.payBills")}   icon={P.bills}  bg="bg-gradient-to-br from-cyan-500 to-teal-600"     iconColor="white" onClick={() => setTab("bills")} />
+          <ActionBtn label={t("home.creditSale")} icon={P.credit} bg="bg-gradient-to-br from-amber-400 to-amber-500"   iconColor="white" onClick={() => onQuickAction?.("credit")} />
+          <ActionBtn label={t("home.asoClient")}  icon={P.bank}   bg="bg-gradient-to-br from-blue-500 to-blue-600"     iconColor="white" onClick={() => onQuickAction?.("aso")} />
+          <ActionBtn label={t("home.reports")}    icon={P.report} bg="bg-gradient-to-br from-purple-500 to-violet-600" iconColor="white" onClick={() => setTab("insights")} />
         </div>
       </div>
 
