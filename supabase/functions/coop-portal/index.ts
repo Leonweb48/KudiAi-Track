@@ -1269,8 +1269,8 @@ serve(async (req) => {
 
     // ── Initialize member payment via Paystack ────────────────────────────
     if (action === "initialize-member-payment") {
-      const { member_id, org_id, amount, program_id } = body as {
-        member_id: string; org_id: string; amount: number; program_id?: string;
+      const { member_id, org_id, amount, program_id, callback_url } = body as {
+        member_id: string; org_id: string; amount: number; program_id?: string; callback_url?: string;
       };
       if (!member_id || !org_id || !amount) return json({ error: "member_id, org_id, amount required" }, 400);
       if (!PAYSTACK_SECRET) return json({ error: "Paystack not configured" }, 503);
@@ -1292,7 +1292,7 @@ serve(async (req) => {
           email:        mem.email,
           amount:       Math.round(Number(amount) * 100),
           reference:    ref,
-          callback_url: "https://kudiai.app/",
+          callback_url: callback_url || "https://kudiai.app/",
           channels:     ["card", "bank", "ussd", "mobile_money", "bank_transfer"],
           subaccount:   org.paystack_subaccount_code || undefined,
           bearer:       org.paystack_subaccount_code ? "subaccount" : undefined,
