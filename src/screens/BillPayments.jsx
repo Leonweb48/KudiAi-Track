@@ -261,8 +261,9 @@ function PlanGrid({ plans, selectedId, onSelect, loading, error, onRetry }) {
 function Overview({ bills }) {
   const todayStr   = new Date().toISOString().slice(0, 10);
   const weekAgoStr = (() => { const d = new Date(); d.setDate(d.getDate() - 7); return d.toISOString().slice(0, 10); })();
-  const todayTotal = bills.filter(b => (b.transaction_date || "") === todayStr).reduce((s, b) => s + b.amount, 0);
-  const weekTotal  = bills.filter(b => (b.transaction_date || "") >= weekAgoStr).reduce((s, b) => s + b.amount, 0);
+  const successful = bills.filter(b => b.bill_status !== "failed");
+  const todayTotal = successful.filter(b => (b.transaction_date || "") === todayStr).reduce((s, b) => s + b.amount, 0);
+  const weekTotal  = successful.filter(b => (b.transaction_date || "") >= weekAgoStr).reduce((s, b) => s + b.amount, 0);
   return (
     <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700/60 overflow-hidden shadow-sm">
       <div className="grid grid-cols-2 divide-x divide-slate-100 dark:divide-slate-700/60">
@@ -281,20 +282,24 @@ function Overview({ bills }) {
 
 function BillRow({ bill }) {
   const cat = CATS.find(c => c.id === bill.category) || CATS[0];
+  const failed = bill.bill_status === "failed";
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 border border-slate-100 dark:border-slate-700/50 flex items-center gap-3 shadow-sm">
+    <div className={`rounded-2xl px-4 py-3.5 border flex items-center gap-3 shadow-sm ${failed ? "bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800/50" : "bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700/50"}`}>
       <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-        style={{ background: `linear-gradient(135deg,${cat.g1},${cat.g2})` }}>
+        style={{ background: failed ? "linear-gradient(135deg,#ef4444,#dc2626)" : `linear-gradient(135deg,${cat.g1},${cat.g2})` }}>
         <Ico d={CAT_ICONS[bill.category] || CAT_ICONS.airtime} size={18} c="white" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-bold text-slate-800 dark:text-white truncate">{bill.item_name}</p>
+        <div className="flex items-center gap-1.5">
+          <p className="text-sm font-bold text-slate-800 dark:text-white truncate">{bill.item_name}</p>
+          {failed && <span className="text-[9px] font-black bg-red-500 text-white px-1.5 py-0.5 rounded-full flex-shrink-0">FAILED</span>}
+        </div>
         <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">
           {bill.customer_name && `${bill.customer_name} · `}{fmtDT(bill.created_at)}
         </p>
         {bill.note && <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate italic">{bill.note}</p>}
       </div>
-      <p className="text-sm font-extrabold text-red-500 flex-shrink-0">{fmt(bill.amount)}</p>
+      <p className={`text-sm font-extrabold flex-shrink-0 ${failed ? "text-red-400 line-through" : "text-red-500"}`}>{fmt(bill.amount)}</p>
     </div>
   );
 }
@@ -724,28 +729,64 @@ export default function BillPayments({ store, plan, staffName = null, businessNa
         item_name: itemName, customer_name: customerRef,
         amount: totalAmount || amount, note,
         transaction_date: today(),
+        bill_status: "success",
       };
 
       await addTransaction(payload);
       localStorage.removeItem(BILL_PENDING_PREFIX + ref);
       setSaving(false);
       setFulfillResult({ ok: true, label: itemName, detail: note, pinsArr: pinsArr || [], psRef: ref, apiRef, cardDetails });
+
+      // Send success confirmation email to business user (best-effort)
+      try {
+        await supabase.functions.invoke("clubkonnect", {
+          body: {
+            action:     "bill-success-email",
+            user_email: profile?.email || null,
+            user_name:  profile?.owner_name || profile?.business_name || null,
+            service:    CATS.find(c => c.id === cat)?.label || cat,
+            amount:     totalAmount || amount,
+            reference:  ref,
+            detail:     note,
+          },
+        });
+      } catch (_) { /* email is best-effort */ }
     } catch (err) {
       setSaving(false);
       const ckError = err.message || "Unknown error";
       setFulfillResult({ ok: false, label: "", detail: ckError, psRef: ref, apiRef: "" });
 
-      // Fire-and-forget: alert admin/finance of the failed delivery
+      // Record the failed bill in history
       try {
-        const { cat, form: f } = pending;
+        const { cat: fCat, form: f } = pending;
+        const catLabel = CATS.find(c => c.id === fCat)?.label || fCat;
+        const failAmount = fCat === "print-airtime"
+          ? parseInt(f.value || "0", 10) * parseInt(f.quantity || "1", 10)
+          : fCat === "print-data"
+            ? parseFloat(f.amount || "0") * parseInt(f.quantity || "1", 10)
+            : parseFloat(f.amount || "0");
+        await addTransaction({
+          type: "out", category: fCat, payment_type: "bill_payment",
+          item_name: catLabel,
+          customer_name: f.phone || f.meterNo || f.smartcard || f.customerId || f.accountNo || "",
+          amount: failAmount || 0,
+          note: `FAILED: ${ckError} | PS: ${ref}`,
+          transaction_date: today(),
+          bill_status: "failed",
+        });
+      } catch (_) { /* best-effort */ }
+
+      // Alert admin/finance of the failed delivery
+      try {
+        const { cat: fCat2, form: f2 } = pending;
         await supabase.functions.invoke("clubkonnect", {
           body: {
             action:     "bill-failure-alert",
             user_id:    profile?.id    || null,
             user_email: profile?.email || null,
             user_name:  profile?.owner_name || profile?.business_name || null,
-            service:    CATS.find(c => c.id === cat)?.label || cat,
-            amount:     parseFloat(f.amount) || 0,
+            service:    CATS.find(c => c.id === fCat2)?.label || fCat2,
+            amount:     parseFloat(f2.amount) || 0,
             ps_ref:     ref,
             ck_error:   ckError,
           },
@@ -904,11 +945,11 @@ export default function BillPayments({ store, plan, staffName = null, businessNa
         <div className="bg-gradient-to-br from-green-600 to-emerald-700 rounded-2xl px-5 py-4 text-white flex items-center justify-between shadow-md">
           <div>
             <p className="text-[10px] font-bold text-green-100 uppercase tracking-widest">Total Spent</p>
-            <p className="text-2xl font-black mt-0.5">{fmt(bills.reduce((s, b) => s + b.amount, 0))}</p>
+            <p className="text-2xl font-black mt-0.5">{fmt(bills.filter(b => b.bill_status !== "failed").reduce((s, b) => s + b.amount, 0))}</p>
           </div>
           <div className="text-right">
             <p className="text-[10px] font-bold text-green-100 uppercase tracking-widest">Transactions</p>
-            <p className="text-2xl font-black mt-0.5">{bills.length}</p>
+            <p className="text-2xl font-black mt-0.5">{bills.filter(b => b.bill_status !== "failed").length}</p>
           </div>
         </div>
 

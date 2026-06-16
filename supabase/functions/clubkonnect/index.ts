@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import nodemailer from "npm:nodemailer@6";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -458,7 +459,28 @@ serve(async (req) => {
       return json({ status: "SUCCESS", reference: String(data.orderid ?? data.requestid ?? ""), pins, message: String(data.status ?? "ORDER_RECEIVED") });
     }
 
-    // ── Bill failure alert — create critical support ticket + admin notification ─
+    // ── Shared email helper ───────────────────────────────────────────────────────
+    const sendEmail = async (
+      sb: ReturnType<typeof createClient>,
+      opts: { to: string; subject: string; html: string }
+    ) => {
+      const { data: smtp } = await sb.from("smtp_config").select("*").limit(1).maybeSingle();
+      if (!smtp) { console.error("sendEmail: no SMTP config found"); return; }
+      const transport = nodemailer.createTransport({
+        host: smtp.host,
+        port: smtp.port,
+        secure: smtp.encryption === "ssl",
+        auth: { user: smtp.username, pass: smtp.password },
+      });
+      await transport.sendMail({
+        from: `"${smtp.from_name}" <${smtp.from_email}>`,
+        to:   opts.to,
+        subject: opts.subject,
+        html: opts.html,
+      });
+    };
+
+    // ── Bill failure alert — create critical support ticket + email admins & user ─
     if (action === "bill-failure-alert") {
       const { user_id, user_email, user_name, service, amount, ps_ref, ck_error } = body as {
         user_id?: string; user_email?: string; user_name?: string;
@@ -468,7 +490,7 @@ serve(async (req) => {
         const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
         // Create a critical support ticket so admin/finance see it immediately
-        const subject = `BILLING FAILURE: ${service} — Paystack paid, ClubKonnect failed`;
+        const ticketSubject = `BILLING FAILURE: ${service} — Paystack paid, ClubKonnect failed`;
         const description =
           `A customer paid successfully via Paystack but bill delivery failed.\n\n` +
           `User: ${user_name || "Unknown"} (${user_email || "N/A"})\n` +
@@ -479,28 +501,131 @@ serve(async (req) => {
           `ACTION REQUIRED: Verify ClubKonnect wallet balance and manually fulfill or refund.`;
 
         await sb.from("support_tickets").insert({
-          subject,
+          subject:    ticketSubject,
           description,
-          type:     "payment",
-          priority: "critical",
-          status:   "open",
-          user_id:  user_id || null,
+          type:       "payment",
+          priority:   "critical",
+          status:     "open",
+          user_id:    user_id || null,
           user_email: user_email || null,
           user_name:  user_name  || null,
         });
 
-        // Also insert into admin_tasks for finance team visibility
         await sb.from("admin_tasks").insert({
-          title:       `⚠ ClubKonnect wallet failure — ${service}`,
+          title:       `ClubKonnect wallet failure — ${service}`,
           description: `Paystack ref ${ps_ref} was charged ₦${amount?.toLocaleString() || "?"} but ClubKonnect returned: "${ck_error}". Check wallet balance and fulfill manually.`,
           priority: "critical",
           status:   "pending",
         });
 
+        // Email SuperAdmin + Finance admins
+        const { data: admins } = await sb
+          .from("admin_users")
+          .select("email, role")
+          .in("role", ["super_admin", "finance_admin"])
+          .eq("is_active", true)
+          .not("email", "is", null);
+
+        const adminEmailHtml = `
+          <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
+            <div style="background:#dc2626;padding:20px 24px;border-radius:12px 12px 0 0">
+              <h1 style="color:#fff;margin:0;font-size:20px">⚠ Bill Payment Failure Alert</h1>
+            </div>
+            <div style="background:#fff;padding:24px;border:1px solid #fca5a5;border-top:none;border-radius:0 0 12px 12px">
+              <p style="margin:0 0 16px;color:#374151">A customer paid via Paystack but <strong>ClubKonnect failed to deliver</strong> the service.</p>
+              <table style="width:100%;border-collapse:collapse;font-size:14px">
+                <tr><td style="padding:8px 0;color:#6b7280;width:140px">User</td><td style="padding:8px 0;font-weight:600;color:#111827">${user_name || "Unknown"} (${user_email || "N/A"})</td></tr>
+                <tr style="background:#fef2f2"><td style="padding:8px;color:#6b7280">Service</td><td style="padding:8px;font-weight:600;color:#111827">${service}</td></tr>
+                <tr><td style="padding:8px 0;color:#6b7280">Amount Paid</td><td style="padding:8px 0;font-weight:600;color:#111827">₦${amount?.toLocaleString() || "?"}</td></tr>
+                <tr style="background:#fef2f2"><td style="padding:8px;color:#6b7280">Paystack Ref</td><td style="padding:8px;font-family:monospace;color:#111827">${ps_ref}</td></tr>
+                <tr><td style="padding:8px 0;color:#6b7280">Error</td><td style="padding:8px 0;font-weight:600;color:#dc2626">${ck_error}</td></tr>
+              </table>
+              <div style="margin-top:20px;padding:16px;background:#fef9c3;border:1px solid #fde68a;border-radius:8px">
+                <p style="margin:0;font-weight:700;color:#92400e">ACTION REQUIRED</p>
+                <p style="margin:8px 0 0;color:#92400e;font-size:14px">Check ClubKonnect wallet balance and manually fulfill or refund this customer immediately.</p>
+              </div>
+            </div>
+          </div>`;
+
+        for (const admin of (admins || [])) {
+          if (admin.email) {
+            try { await sendEmail(sb, { to: admin.email, subject: `[KudiTrack] URGENT: Bill delivery failed — ${service}`, html: adminEmailHtml }); }
+            catch (e) { console.error("Admin email failed:", admin.email, (e as Error).message); }
+          }
+        }
+
+        // Email the business user
+        if (user_email) {
+          const userEmailHtml = `
+            <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
+              <div style="background:#1e293b;padding:20px 24px;border-radius:12px 12px 0 0">
+                <h1 style="color:#fff;margin:0;font-size:20px">KudiTrack — Bill Payment Update</h1>
+              </div>
+              <div style="background:#fff;padding:24px;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 12px 12px">
+                <p style="margin:0 0 12px;color:#374151">Dear ${user_name || "Valued Customer"},</p>
+                <p style="margin:0 0 16px;color:#374151">Your Paystack payment of <strong>₦${amount?.toLocaleString() || "?"}</strong> for <strong>${service}</strong> was received successfully. However, we encountered a temporary issue delivering the service.</p>
+                <div style="padding:16px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;margin-bottom:16px">
+                  <p style="margin:0;font-weight:700;color:#dc2626">Delivery issue detected</p>
+                  <p style="margin:8px 0 0;color:#dc2626;font-size:14px">${ck_error}</p>
+                </div>
+                <div style="padding:16px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px">
+                  <p style="margin:0;font-weight:600;color:#92400e">Your money is safe</p>
+                  <p style="margin:8px 0 0;color:#92400e;font-size:14px">Our team has been automatically alerted and will resolve this immediately. Keep your payment reference below for follow-up:</p>
+                  <p style="margin:12px 0 0;font-family:monospace;font-size:16px;font-weight:700;color:#1e293b">${ps_ref}</p>
+                </div>
+                <p style="margin:16px 0 0;color:#6b7280;font-size:13px">If you do not receive your service within 2 hours, please contact our support team with the reference above.</p>
+              </div>
+            </div>`;
+          try { await sendEmail(sb, { to: user_email, subject: `KudiTrack: Action needed on your ${service} payment`, html: userEmailHtml }); }
+          catch (e) { console.error("User failure email failed:", (e as Error).message); }
+        }
+
         console.log(`Bill failure alert created: ${ps_ref} — ${ck_error}`);
         return json({ ok: true });
       } catch (e) {
         console.error("bill-failure-alert error:", e);
+        return json({ ok: false, error: (e as Error).message });
+      }
+    }
+
+    // ── Bill success email — notify business user their bill was delivered ────────
+    if (action === "bill-success-email") {
+      const { user_email, user_name, service, amount, reference, detail } = body as {
+        user_email?: string; user_name?: string; service?: string;
+        amount?: number; reference?: string; detail?: string;
+      };
+      if (!user_email) return json({ ok: false, error: "user_email required" });
+      try {
+        const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+        const detailRows = (detail || "").split(" | ").filter(Boolean).map(d => {
+          const [k, ...rest] = d.split(": ");
+          return rest.length
+            ? `<tr><td style="padding:6px 0;color:#6b7280;width:120px">${k}</td><td style="padding:6px 0;font-weight:600;color:#111827">${rest.join(": ")}</td></tr>`
+            : `<tr><td colspan="2" style="padding:6px 0;color:#374151">${d}</td></tr>`;
+        }).join("");
+        const html = `
+          <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
+            <div style="background:linear-gradient(135deg,#059669,#047857);padding:28px 24px;border-radius:12px 12px 0 0;text-align:center">
+              <div style="width:56px;height:56px;background:rgba(255,255,255,0.2);border-radius:50%;margin:0 auto 12px;display:flex;align-items:center;justify-content:center">
+                <span style="color:#fff;font-size:28px">✓</span>
+              </div>
+              <h1 style="color:#fff;margin:0;font-size:22px">Bill Payment Successful</h1>
+              <p style="color:rgba(255,255,255,0.8);margin:6px 0 0;font-size:15px">${service}</p>
+            </div>
+            <div style="background:#fff;padding:24px;border:1px solid #d1fae5;border-top:none;border-radius:0 0 12px 12px">
+              <p style="margin:0 0 16px;color:#374151">Dear ${user_name || "Valued Customer"},</p>
+              <p style="margin:0 0 20px;color:#374151">Your <strong>${service}</strong> payment of <strong>₦${amount?.toLocaleString() || "?"}</strong> was processed successfully.</p>
+              ${detailRows ? `<table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:16px">${detailRows}</table>` : ""}
+              <div style="padding:12px 16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px">
+                <p style="margin:0;font-size:13px;color:#166534">Payment Ref: <strong style="font-family:monospace">${reference}</strong></p>
+              </div>
+              <p style="margin:16px 0 0;color:#6b7280;font-size:13px">Thank you for using KudiTrack. Keep this email as proof of your transaction.</p>
+            </div>
+          </div>`;
+        await sendEmail(sb, { to: user_email, subject: `KudiTrack: ${service} payment confirmed ✓`, html });
+        return json({ ok: true });
+      } catch (e) {
+        console.error("bill-success-email error:", e);
         return json({ ok: false, error: (e as Error).message });
       }
     }

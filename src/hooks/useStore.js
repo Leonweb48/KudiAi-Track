@@ -275,6 +275,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
       payment_type:     t.payment_type      || "cash",
       note:             t.note              || "",
       transaction_date: t.transaction_date  || today(),
+      bill_status:      t.bill_status       !== undefined ? t.bill_status : null,
     };
 
     setTransactions(p => [{ ...payload, id: tempId, _pending: true }, ...p]);
