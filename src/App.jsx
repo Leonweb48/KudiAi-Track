@@ -250,7 +250,9 @@ export default function App() {
                     plan={plan}
                     onUpgrade={openUpgrade}
                     branches={branchesHook.branches} />,
-    bills:        <BillPayments store={store} plan={plan} />,
+    bills:        <BillPayments store={store} plan={plan}
+                    autoService={autoAdd?.tab === "bills" ? autoAdd?.type : null}
+                    onAutoOpened={clearAutoAdd} />,
     insights:     <Insights
                     store={store}
                     inventory={inventory}

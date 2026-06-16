@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { fmt, today } from "../utils/helpers";
 import { clubkonnect } from "../utils/clubkonnect";
 import { canDo } from "../utils/plans";
@@ -392,7 +392,7 @@ function KeyStatusPanel({ onClose }) {
   );
 }
 
-export default function BillPayments({ store, plan, staffName = null, businessName = null }) {
+export default function BillPayments({ store, plan, staffName = null, businessName = null, autoService = null, onAutoOpened = null }) {
   const { transactions, addTransaction } = store;
   const planSlug = plan?.slug ?? "";
   // Unlock for enterprise: match by feature key, slug name, or sort_order (highest tier)
@@ -441,6 +441,10 @@ export default function BillPayments({ store, plan, staffName = null, businessNa
     if (catId === "smile") loadPlans("smile-plans", {});
     if (catId === "print-data") loadPlans("data-plans", { network: "MTN" });
   }, [isEnterprise]);
+
+  useEffect(() => {
+    if (autoService) { openSheet(autoService); onAutoOpened?.(); }
+  }, [autoService]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const closeSheet = () => { setSelectedCat(null); setForm({}); setError(""); resetVerify(); };
 

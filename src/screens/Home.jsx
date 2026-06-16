@@ -97,24 +97,62 @@ function TxRow({ t }) {
   );
 }
 
-/* ── Mic for Sale card ───────────────────────────────────────────── */
-function MicForSaleCard({ onPress }) {
+/* ── Bill services + Mic shortcut card ───────────────────────────── */
+const BILL_SERVICES = [
+  { id: "airtime",     label: "Airtime",     g1: "#ef4444", g2: "#dc2626", icon: "M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81a19.79 19.79 0 01-3.07-8.67A2 2 0 012 .82h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" },
+  { id: "data",        label: "Data",        g1: "#3b82f6", g2: "#1d4ed8", icon: "M1 6l11-4 11 4|M1 12l11-4 11 4|M1 18l11-4 11 4" },
+  { id: "electricity", label: "Electricity", g1: "#f59e0b", g2: "#d97706", icon: "M13 2L3 14h9l-1 8 10-12h-9l1-8z" },
+  { id: "cable",       label: "Cable TV",    g1: "#8b5cf6", g2: "#6d28d9", icon: "M20.2 6L20 6H4a2 2 0 00-2 2v10a2 2 0 002 2h16a2 2 0 002-2V8a2 2 0 00-1.8-2zM6 15a1 1 0 110-2 1 1 0 010 2zm3 0a1 1 0 110-2 1 1 0 010 2z|M8 6l4-4 4 4" },
+  { id: "betting",     label: "Betting",     g1: "#10b981", g2: "#059669", icon: "M12 2a10 10 0 100 20A10 10 0 0012 2z|M12 8v8|M8 12h8" },
+  { id: "waec",        label: "WAEC",        g1: "#06b6d4", g2: "#0891b2", icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2|M9 5a2 2 0 002 2h2a2 2 0 002-2|M9 5a2 2 0 012-2h2a2 2 0 012 2|M9 13h6|M9 17h4" },
+  { id: "jamb",        label: "JAMB",        g1: "#f97316", g2: "#ea580c", icon: "M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z|M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z" },
+  { id: "spectranet",  label: "Spectranet",  g1: "#6366f1", g2: "#4f46e5", icon: "M5 12.55a11 11 0 0114.08 0|M1.42 9a16 16 0 0121.16 0|M8.53 16.11a6 6 0 016.95 0|M12 20h.01" },
+  { id: "smile",       label: "Smile 4G",   g1: "#ec4899", g2: "#db2777", icon: "M5 12.55a11 11 0 0114.08 0|M1.42 9a16 16 0 0121.16 0|M8.53 16.11a6 6 0 016.95 0|M12 20h.01" },
+];
+
+function QuickBillsCard({ onBillOpen, onVoiceOpen }) {
   return (
-    <button onClick={onPress}
-      className="w-full rounded-3xl px-5 py-4 flex items-center gap-4 active:scale-98 transition-all shadow-md overflow-hidden relative"
-      style={{ background: "linear-gradient(135deg,#059669 0%,#047857 60%,#065f46 100%)" }}>
-      <div className="absolute -right-6 -top-6 w-24 h-24 rounded-full bg-white/5 pointer-events-none" />
-      <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center flex-shrink-0">
-        <Svg d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z|M19 10v2a7 7 0 01-14 0v-2|M12 19v4|M8 23h8" size={24} color="white" sw={2} />
+    <div className="bg-white dark:bg-slate-800 rounded-3xl p-4 shadow-card border border-slate-100 dark:border-slate-700/50">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-[12px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Quick Bills</p>
+        <button onClick={() => onBillOpen?.()}
+          className="text-[11px] font-bold text-brand-600 dark:text-brand-400">See all</button>
       </div>
-      <div className="text-left flex-1">
-        <p className="text-sm font-black text-white">Mic for Sale</p>
-        <p className="text-xs text-white/70 mt-0.5">Tap & speak to record a sale instantly</p>
+      <div className="grid grid-cols-5 gap-y-4">
+        {BILL_SERVICES.map(s => (
+          <button key={s.id} onClick={() => onBillOpen?.(s.id)}
+            className="flex flex-col items-center gap-1.5 active:scale-90 transition-transform">
+            <div className="w-11 h-11 rounded-2xl flex items-center justify-center shadow-sm"
+              style={{ background: `linear-gradient(135deg,${s.g1},${s.g2})` }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                {s.icon.split("|").map((d, i) => <path key={i} d={d} />)}
+              </svg>
+            </div>
+            <span className="text-[9px] font-semibold text-slate-500 dark:text-slate-400 text-center leading-tight">
+              {s.label}
+            </span>
+          </button>
+        ))}
+        {/* Mic for Sale — last slot */}
+        <button onClick={() => onVoiceOpen?.()}
+          className="flex flex-col items-center gap-1.5 active:scale-90 transition-transform">
+          <div className="w-11 h-11 rounded-2xl flex items-center justify-center shadow-sm"
+            style={{ background: "linear-gradient(135deg,#059669,#065f46)" }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+              stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" />
+              <path d="M19 10v2a7 7 0 01-14 0v-2" />
+              <path d="M12 19v4" />
+              <path d="M8 23h8" />
+            </svg>
+          </div>
+          <span className="text-[9px] font-semibold text-slate-500 dark:text-slate-400 text-center leading-tight">
+            Mic Sale
+          </span>
+        </button>
       </div>
-      <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
-        <Svg d="M9 18l6-6-6-6" size={16} color="white" sw={2.5} />
-      </div>
-    </button>
+    </div>
   );
 }
 
@@ -250,8 +288,8 @@ export default function Home({ store, setTab, onQuickAction, onVoiceOpen, notif 
         </div>
       </div>
 
-      {/* ── Mic for Sale ─────────────────────────────────────────────── */}
-      <MicForSaleCard onPress={() => onVoiceOpen?.()} />
+      {/* ── Quick Bills + Mic ────────────────────────────────────────── */}
+      <QuickBillsCard onBillOpen={(id) => onQuickAction?.("bills", id)} onVoiceOpen={onVoiceOpen} />
 
       {/* ── 4 stat cards ─────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-3">
