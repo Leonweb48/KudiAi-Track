@@ -81,16 +81,38 @@ serve(async (req) => {
       const { network } = body as { network: string };
       const netId = NET_ID[network] ?? "01";
       const data = await ck("APIDatabundlePlansV2.asp", { APIKey: DATA_K, MobileNetwork: netId });
-      console.log("data-plans raw:", JSON.stringify(data).slice(0, 600));
       if (data?.status && String(data.status).includes("INVALID")) return json({ error: `Data API key error: ${data.status}`, plans: [] });
-      const raw: unknown[] = Array.isArray(data)
-        ? data
-        : (data?.DataBundlePlans ?? data?.response ?? data?.DataPlans ?? data?.plans ?? data?.data ?? data?.Result ?? []) as unknown[];
-      const plans = (raw as Record<string, unknown>[]).map(p => ({
-        plan_id:     String(p.DataPlan   ?? p.dataplan   ?? p.PlanID   ?? p.plan_id ?? p.id   ?? ""),
-        plan_name:   String(p.DataPlanName ?? p.planname ?? p.PlanName ?? p.plan_name ?? p.name ?? ""),
-        plan_amount: Number(p.Price ?? p.price ?? p.Amount ?? p.amount ?? 0),
-      })).filter(p => p.plan_id && p.plan_id !== "undefined");
+
+      // Response format: { MOBILE_NETWORK: { MTN: [{ ID, PRODUCT: [{PRODUCT_CODE, PRODUCT_NAME, PRODUCT_AMOUNT}] }] } }
+      const NET_KEY: Record<string, string> = { MTN: "MTN", Glo: "GLO", "9mobile": "9MOBILE", Airtel: "AIRTEL" };
+      const mobileNet = data?.MOBILE_NETWORK as Record<string, Record<string, unknown>[]> | undefined;
+      let plans: { plan_id: string; plan_name: string; plan_amount: number }[] = [];
+
+      if (mobileNet) {
+        const netKey = NET_KEY[network] ?? "MTN";
+        const groups = mobileNet[netKey] ?? [];
+        for (const group of groups) {
+          const products = (group?.PRODUCT ?? []) as Record<string, unknown>[];
+          for (const p of products) {
+            const pid = String(p.PRODUCT_CODE ?? p.PRODUCT_ID ?? "");
+            if (pid) plans.push({
+              plan_id:     pid,
+              plan_name:   String(p.PRODUCT_NAME ?? ""),
+              plan_amount: Number(p.PRODUCT_AMOUNT ?? 0),
+            });
+          }
+        }
+      } else {
+        // Fallback for older response shapes
+        const raw: unknown[] = Array.isArray(data) ? data
+          : (data?.DataBundlePlans ?? data?.response ?? data?.DataPlans ?? data?.plans ?? data?.data ?? []) as unknown[];
+        plans = (raw as Record<string, unknown>[]).map(p => ({
+          plan_id:     String(p.DataPlan ?? p.PRODUCT_CODE ?? p.id ?? ""),
+          plan_name:   String(p.DataPlanName ?? p.PRODUCT_NAME ?? p.name ?? ""),
+          plan_amount: Number(p.Price ?? p.PRODUCT_AMOUNT ?? p.amount ?? 0),
+        })).filter(p => p.plan_id && p.plan_id !== "undefined");
+      }
+
       if (!plans.length) return json({ plans: [], error: `No plans returned: ${JSON.stringify(data).slice(0, 200)}` });
       return json({ plans, _count: plans.length });
     }
@@ -120,16 +142,31 @@ serve(async (req) => {
       const { provider } = body as { provider: string };
       if (!provider) return json({ error: "provider required" });
       const data = await ck("APICableTVPackagesV2.asp", { APIKey: CABLETV_K, CableTV: provider });
-      console.log("cable-packages raw:", JSON.stringify(data).slice(0, 600));
       if (data?.status && String(data.status).includes("INVALID")) return json({ error: `Cable API key error: ${data.status}`, packages: [] });
-      const raw: unknown[] = Array.isArray(data)
-        ? data
-        : (data?.Packages ?? data?.packages ?? data?.CableTVPackages ?? data?.response ?? data?.data ?? data?.Result ?? []) as unknown[];
-      const packages = (raw as Record<string, unknown>[]).map(p => ({
-        package_id:   String(p.PackageCode ?? p.packagecode ?? p.Package ?? p.Code ?? p.code ?? p.id ?? ""),
-        package_name: String(p.PackageName ?? p.packagename ?? p.Name ?? p.name ?? ""),
-        package_amount: Number(p.Price ?? p.price ?? p.Amount ?? p.amount ?? 0),
-      })).filter(p => p.package_id && p.package_id !== "undefined");
+
+      // Try MOBILE_NETWORK / PRODUCT format first (same V2 pattern)
+      const mobileNet = data?.MOBILE_NETWORK as Record<string, Record<string, unknown>[]> | undefined;
+      let packages: { package_id: string; package_name: string; package_amount: number }[] = [];
+
+      if (mobileNet) {
+        const provKey = provider.toUpperCase();
+        const groups = mobileNet[provKey] ?? Object.values(mobileNet)[0] ?? [];
+        for (const group of groups) {
+          for (const p of ((group?.PRODUCT ?? []) as Record<string, unknown>[])) {
+            const pid = String(p.PRODUCT_CODE ?? p.PRODUCT_ID ?? "");
+            if (pid) packages.push({ package_id: pid, package_name: String(p.PRODUCT_NAME ?? ""), package_amount: Number(p.PRODUCT_AMOUNT ?? 0) });
+          }
+        }
+      } else {
+        const raw: unknown[] = Array.isArray(data) ? data
+          : (data?.Packages ?? data?.packages ?? data?.CableTVPackages ?? data?.response ?? data?.data ?? []) as unknown[];
+        packages = (raw as Record<string, unknown>[]).map(p => ({
+          package_id:     String(p.PackageCode ?? p.PRODUCT_CODE ?? p.Package ?? p.id ?? ""),
+          package_name:   String(p.PackageName ?? p.PRODUCT_NAME ?? p.Name ?? p.name ?? ""),
+          package_amount: Number(p.Price ?? p.PRODUCT_AMOUNT ?? p.amount ?? 0),
+        })).filter(p => p.package_id && p.package_id !== "undefined");
+      }
+
       if (!packages.length) return json({ packages: [], error: `No packages returned: ${JSON.stringify(data).slice(0, 200)}` });
       return json({ packages });
     }
@@ -270,14 +307,25 @@ serve(async (req) => {
     // ── Spectranet plans ──────────────────────────────────────────────────────
     if (action === "spectranet-plans") {
       const data = await ck("APISpectranetPackagesV2.asp", { APIKey: SPECTRANET_K });
-      console.log("spectranet-plans raw:", JSON.stringify(data).slice(0, 600));
       if (data?.status && String(data.status).includes("INVALID")) return json({ error: `Spectranet API key error: ${data.status}`, plans: [] });
-      const raw: unknown[] = Array.isArray(data) ? data : (data?.Packages ?? data?.packages ?? data?.DataBundlePlans ?? data?.response ?? data?.data ?? data?.Result ?? []) as unknown[];
-      const plans = (raw as Record<string, unknown>[]).map(p => ({
-        plan_id:     String(p.DataPlan ?? p.PackageCode ?? p.Code ?? p.code ?? p.id ?? ""),
-        plan_name:   String(p.DataPlanName ?? p.PackageName ?? p.Name ?? p.name ?? ""),
-        plan_amount: Number(p.Price ?? p.price ?? p.Amount ?? p.amount ?? 0),
-      })).filter(p => p.plan_id && p.plan_id !== "undefined");
+      const mobileNet = data?.MOBILE_NETWORK as Record<string, Record<string, unknown>[]> | undefined;
+      let plans: { plan_id: string; plan_name: string; plan_amount: number }[] = [];
+      if (mobileNet) {
+        const groups = mobileNet["SPECTRANET"] ?? mobileNet["spectranet"] ?? Object.values(mobileNet)[0] ?? [];
+        for (const group of groups) {
+          for (const p of ((group?.PRODUCT ?? []) as Record<string, unknown>[])) {
+            const pid = String(p.PRODUCT_CODE ?? p.PRODUCT_ID ?? "");
+            if (pid) plans.push({ plan_id: pid, plan_name: String(p.PRODUCT_NAME ?? ""), plan_amount: Number(p.PRODUCT_AMOUNT ?? 0) });
+          }
+        }
+      } else {
+        const raw: unknown[] = Array.isArray(data) ? data : (data?.Packages ?? data?.packages ?? data?.response ?? data?.data ?? []) as unknown[];
+        plans = (raw as Record<string, unknown>[]).map(p => ({
+          plan_id:     String(p.DataPlan ?? p.PackageCode ?? p.PRODUCT_CODE ?? p.id ?? ""),
+          plan_name:   String(p.DataPlanName ?? p.PackageName ?? p.PRODUCT_NAME ?? p.name ?? ""),
+          plan_amount: Number(p.Price ?? p.PRODUCT_AMOUNT ?? p.amount ?? 0),
+        })).filter(p => p.plan_id && p.plan_id !== "undefined");
+      }
       if (!plans.length) return json({ plans: [], error: `No Spectranet plans returned: ${JSON.stringify(data).slice(0, 200)}` });
       return json({ plans });
     }
@@ -297,14 +345,25 @@ serve(async (req) => {
     // ── Smile plans ───────────────────────────────────────────────────────────
     if (action === "smile-plans") {
       const data = await ck("APISmilePackagesV2.asp", { APIKey: SMILE_K });
-      console.log("smile-plans raw:", JSON.stringify(data).slice(0, 600));
       if (data?.status && String(data.status).includes("INVALID")) return json({ error: `Smile API key error: ${data.status}`, plans: [] });
-      const raw: unknown[] = Array.isArray(data) ? data : (data?.Packages ?? data?.packages ?? data?.DataBundlePlans ?? data?.response ?? data?.data ?? data?.Result ?? []) as unknown[];
-      const plans = (raw as Record<string, unknown>[]).map(p => ({
-        plan_id:     String(p.DataPlan ?? p.PackageCode ?? p.Code ?? p.code ?? p.id ?? ""),
-        plan_name:   String(p.DataPlanName ?? p.PackageName ?? p.Name ?? p.name ?? ""),
-        plan_amount: Number(p.Price ?? p.price ?? p.Amount ?? p.amount ?? 0),
-      })).filter(p => p.plan_id && p.plan_id !== "undefined");
+      const mobileNet = data?.MOBILE_NETWORK as Record<string, Record<string, unknown>[]> | undefined;
+      let plans: { plan_id: string; plan_name: string; plan_amount: number }[] = [];
+      if (mobileNet) {
+        const groups = mobileNet["SMILE"] ?? mobileNet["smile-direct"] ?? Object.values(mobileNet)[0] ?? [];
+        for (const group of groups) {
+          for (const p of ((group?.PRODUCT ?? []) as Record<string, unknown>[])) {
+            const pid = String(p.PRODUCT_CODE ?? p.PRODUCT_ID ?? "");
+            if (pid) plans.push({ plan_id: pid, plan_name: String(p.PRODUCT_NAME ?? ""), plan_amount: Number(p.PRODUCT_AMOUNT ?? 0) });
+          }
+        }
+      } else {
+        const raw: unknown[] = Array.isArray(data) ? data : (data?.Packages ?? data?.packages ?? data?.response ?? data?.data ?? []) as unknown[];
+        plans = (raw as Record<string, unknown>[]).map(p => ({
+          plan_id:     String(p.DataPlan ?? p.PackageCode ?? p.PRODUCT_CODE ?? p.id ?? ""),
+          plan_name:   String(p.DataPlanName ?? p.PackageName ?? p.PRODUCT_NAME ?? p.name ?? ""),
+          plan_amount: Number(p.Price ?? p.PRODUCT_AMOUNT ?? p.amount ?? 0),
+        })).filter(p => p.plan_id && p.plan_id !== "undefined");
+      }
       if (!plans.length) return json({ plans: [], error: `No Smile plans returned: ${JSON.stringify(data).slice(0, 200)}` });
       return json({ plans });
     }
