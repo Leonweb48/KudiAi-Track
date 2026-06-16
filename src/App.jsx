@@ -250,7 +250,7 @@ export default function App() {
                     plan={plan}
                     onUpgrade={openUpgrade}
                     branches={branchesHook.branches} />,
-    bills:        <BillPayments store={store} />,
+    bills:        <BillPayments store={store} plan={plan} />,
     insights:     <Insights
                     store={store}
                     inventory={inventory}

@@ -1,17 +1,26 @@
 import { useState, useMemo, useCallback } from "react";
 import { fmt, today } from "../utils/helpers";
 import { clubkonnect } from "../utils/clubkonnect";
+import { canDo } from "../utils/plans";
 import { BillReceipt } from "../components/shared/Receipt";
 
-/* ── Categories (Airtime + Data only via ClubKonnect) ──────────────── */
+/* ─── Service catalogue ───────────────────────────────────────────────────── */
 
 const CATS = [
-  { id: "airtime", label: "Airtime", g1: "#ef4444", g2: "#dc2626" },
-  { id: "data",    label: "Data",    g1: "#3b82f6", g2: "#1d4ed8" },
+  { id: "airtime",      label: "Airtime",        g1: "#ef4444", g2: "#dc2626" },
+  { id: "data",         label: "Data Bundle",     g1: "#3b82f6", g2: "#1d4ed8" },
+  { id: "cable",        label: "Cable TV",        g1: "#8b5cf6", g2: "#6d28d9" },
+  { id: "electricity",  label: "Electricity",     g1: "#f59e0b", g2: "#d97706" },
+  { id: "betting",      label: "Betting Wallet",  g1: "#10b981", g2: "#059669" },
+  { id: "waec",         label: "WAEC ePin",       g1: "#06b6d4", g2: "#0891b2" },
+  { id: "jamb",         label: "JAMB ePin",       g1: "#f97316", g2: "#ea580c" },
+  { id: "spectranet",   label: "Spectranet",      g1: "#6366f1", g2: "#4f46e5" },
+  { id: "smile",        label: "Smile 4G",        g1: "#ec4899", g2: "#db2777" },
+  { id: "print-airtime", label: "Print Airtime",  g1: "#64748b", g2: "#475569", enterprise: true },
+  { id: "print-data",   label: "Print Data",      g1: "#64748b", g2: "#475569", enterprise: true },
 ];
 
 const NETWORKS = ["MTN", "Airtel", "Glo", "9mobile"];
-
 const NET_CONFIG = {
   MTN:       { bg: "#FFC300", fg: "#000", abbr: "MTN"     },
   Airtel:    { bg: "#EF3340", fg: "#fff", abbr: "Airtel"  },
@@ -19,7 +28,54 @@ const NET_CONFIG = {
   "9mobile": { bg: "#006B54", fg: "#fff", abbr: "9mobile" },
 };
 
-/* ── Helpers ─────────────────────────────────────────────────────────── */
+const ELECTRICITY_COMPANIES = [
+  { code: "01", name: "EKEDC (Eko)" },
+  { code: "02", name: "IKEDC (Ikeja)" },
+  { code: "03", name: "AEDC (Abuja)" },
+  { code: "04", name: "KEDC (Kano)" },
+  { code: "05", name: "PHEDC (Port Harcourt)" },
+  { code: "06", name: "JEDC (Jos)" },
+  { code: "07", name: "IBEDC (Ibadan)" },
+  { code: "08", name: "KAEDC (Kaduna)" },
+  { code: "09", name: "EEDC (Enugu)" },
+  { code: "10", name: "BEDC (Benin)" },
+  { code: "11", name: "YEDC (Yola)" },
+  { code: "12", name: "APLE (Abuja)" },
+];
+
+const CABLE_PROVIDERS = [
+  { code: "dstv",      name: "DSTV"      },
+  { code: "gotv",      name: "GOtv"      },
+  { code: "startimes", name: "StarTimes" },
+  { code: "showmax",   name: "Showmax"   },
+];
+
+const BETTING_COMPANIES = [
+  { code: "product-nairabet",   name: "NairaBet"   },
+  { code: "product-bang-bet",   name: "BangBet"    },
+  { code: "product-bet-way",    name: "Betway"     },
+  { code: "product-bet-land",   name: "BetLand"    },
+  { code: "product-bet-king",   name: "BetKing"    },
+  { code: "product-1x-bet",     name: "1xBet"      },
+  { code: "product-naija-bet",  name: "NaijaBet"   },
+  { code: "prd-sporty-bet",     name: "SportyBet"  },
+  { code: "product-merry-bet",  name: "MerryBet"   },
+];
+
+const WAEC_TYPES = [
+  { code: "waecdirect",       name: "WAEC Direct (Scratch Card)" },
+  { code: "waec-registration", name: "WAEC Registration"         },
+];
+
+const JAMB_TYPES = [
+  { code: "utme-no-mock", name: "UTME (No Mock)" },
+  { code: "utme-mock",    name: "UTME with Mock" },
+  { code: "de",           name: "Direct Entry (DE)" },
+];
+
+const PRINT_VALUES = ["100", "200", "500"];
+
+/* ─── Helpers ─────────────────────────────────────────────────────────────── */
 
 const rcpId = () => "RCP-" + Math.random().toString(36).slice(2, 8).toUpperCase();
 
@@ -47,9 +103,7 @@ function detectNetwork(phone) {
   return null;
 }
 
-function catMeta(id) { return CATS.find(c => c.id === id) || CATS[0]; }
-
-/* ── Icons ────────────────────────────────────────────────────────────── */
+/* ─── Icons ───────────────────────────────────────────────────────────────── */
 
 function Ico({ d, size = 22, c = "currentColor", sw = 2 }) {
   return (
@@ -61,11 +115,20 @@ function Ico({ d, size = 22, c = "currentColor", sw = 2 }) {
 }
 
 const CAT_ICONS = {
-  airtime: "M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 8.81 19.79 19.79 0 01.25 2.18 2 2 0 012.22 0h3a2 2 0 012 1.72c.122.966.356 1.916.7 2.81a2 2 0 01-.45 2.11L6.95 7.91a16 16 0 006.29 6.29l1.27-.56a2 2 0 012.11-.45c.894.344 1.844.578 2.81.7A2 2 0 0122 16.92z",
-  data:    "M1.05 5l4.95-3 4.95 3 4.95-3L21 5|M1.05 11l4.95-3 4.95 3 4.95-3L21 11|M1.05 17l4.95-3 4.95 3 4.95-3L21 17",
+  airtime:       "M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 8.81 19.79 19.79 0 01.25 2.18 2 2 0 012.22 0h3a2 2 0 012 1.72c.122.966.356 1.916.7 2.81a2 2 0 01-.45 2.11L6.95 7.91a16 16 0 006.29 6.29l1.27-.56a2 2 0 012.11-.45c.894.344 1.844.578 2.81.7A2 2 0 0122 16.92z",
+  data:          "M1.05 5l4.95-3 4.95 3 4.95-3L21 5|M1.05 11l4.95-3 4.95 3 4.95-3L21 11|M1.05 17l4.95-3 4.95 3 4.95-3L21 17",
+  cable:         "M2 7a2 2 0 012-2h16a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V7z|M12 19v3|M8 22h8",
+  electricity:   "M13 2L3 14h9l-1 8 10-12h-9l1-8z",
+  betting:       "M12 2a10 10 0 100 20 10 10 0 000-20z|M12 8v4l3 3",
+  waec:          "M12 2L2 7l10 5 10-5-10-5z|M2 17l10 5 10-5|M2 12l10 5 10-5",
+  jamb:          "M4 19.5A2.5 2.5 0 016.5 17H20|M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z",
+  spectranet:    "M5 12.55a11 11 0 0114.08 0|M1.42 9a16 16 0 0121.16 0|M8.53 16.11a6 6 0 016.95 0|M12 20h.01",
+  smile:         "M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z",
+  "print-airtime": "M6 9V2h12v7|M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2|M6 14h12v8H6v-8z",
+  "print-data":  "M6 9V2h12v7|M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2|M6 14h12v8H6v-8z",
 };
 
-/* ── Network selector ────────────────────────────────────────────────── */
+/* ─── Shared sub-components ───────────────────────────────────────────────── */
 
 function NetworkSelector({ value, onChange, detected }) {
   return (
@@ -104,16 +167,14 @@ function NetworkSelector({ value, onChange, detected }) {
   );
 }
 
-/* ── Phone input with auto-detect badge ──────────────────────────────── */
-
-function PhoneInput({ value, onChange }) {
+function PhoneInput({ value, onChange, label = "Phone Number *", placeholder = "08012345678" }) {
   const detected = value.length >= 4 ? detectNetwork(value) : null;
   const cfg = detected ? NET_CONFIG[detected] : null;
   return (
     <div>
-      <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Phone Number *</label>
+      <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">{label}</label>
       <div className="relative">
-        <input type="tel" value={value} onChange={onChange} placeholder="08012345678"
+        <input type="tel" value={value} onChange={onChange} placeholder={placeholder}
           className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500 pr-20" />
         {cfg && (
           <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-black px-2 py-0.5 rounded-full leading-none"
@@ -124,16 +185,78 @@ function PhoneInput({ value, onChange }) {
   );
 }
 
-/* ── Overview card ────────────────────────────────────────────────────── */
+function SelectInput({ label, value, onChange, options, placeholder = "Select…" }) {
+  return (
+    <div>
+      <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">{label}</label>
+      <select value={value} onChange={e => onChange(e.target.value)}
+        className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500">
+        <option value="">{placeholder}</option>
+        {options.map(o => <option key={o.code} value={o.code}>{o.name}</option>)}
+      </select>
+    </div>
+  );
+}
+
+function TextInput({ label, value, onChange, placeholder, type = "text" }) {
+  return (
+    <div>
+      <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">{label}</label>
+      <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
+        className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500" />
+    </div>
+  );
+}
+
+function VerifyBadge({ status, name }) {
+  if (status === "loading") return (
+    <div className="flex items-center gap-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl px-3 py-2">
+      <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full spinner" />
+      <p className="text-xs text-blue-700 dark:text-blue-300 font-medium">Verifying…</p>
+    </div>
+  );
+  if (status === "ok") return (
+    <div className="flex items-center gap-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl px-3 py-2">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={2.5} strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
+      <p className="text-xs text-green-700 dark:text-green-300 font-semibold">{name}</p>
+    </div>
+  );
+  if (status === "error") return (
+    <div className="flex items-center gap-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-3 py-2">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth={2.5} strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
+      <p className="text-xs text-red-700 dark:text-red-300 font-medium">{name}</p>
+    </div>
+  );
+  return null;
+}
+
+function PlanGrid({ plans, selectedId, onSelect, loading }) {
+  if (loading) return (
+    <div className="grid grid-cols-3 gap-2">
+      {[1,2,3,4,5,6].map(i => <div key={i} className="h-14 bg-slate-100 dark:bg-slate-700 rounded-xl animate-pulse" />)}
+    </div>
+  );
+  if (!plans.length) return <p className="text-xs text-slate-400">No plans available</p>;
+  return (
+    <div className="grid grid-cols-3 gap-2">
+      {plans.map(pl => (
+        <button key={pl.plan_id} type="button" onClick={() => onSelect(pl)}
+          className={`py-2 px-1 rounded-xl border-2 text-center transition-colors ${selectedId === pl.plan_id ? "border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300" : "border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400"}`}>
+          <p className="text-[11px] font-bold leading-tight">{pl.plan_name}</p>
+          {pl.plan_amount ? <p className="text-[10px] font-medium mt-0.5">₦{Number(pl.plan_amount).toLocaleString()}</p> : null}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* ─── Overview / history ───────────────────────────────────────────────────── */
 
 function Overview({ bills }) {
   const todayStr   = new Date().toISOString().slice(0, 10);
   const weekAgoStr = (() => { const d = new Date(); d.setDate(d.getDate() - 7); return d.toISOString().slice(0, 10); })();
   const todayTotal = bills.filter(b => (b.transaction_date || "") === todayStr).reduce((s, b) => s + b.amount, 0);
   const weekTotal  = bills.filter(b => (b.transaction_date || "") >= weekAgoStr).reduce((s, b) => s + b.amount, 0);
-  const airtimeTotal = bills.filter(b => b.category === "airtime").reduce((s, b) => s + b.amount, 0);
-  const dataTotal    = bills.filter(b => b.category === "data").reduce((s, b) => s + b.amount, 0);
-
   return (
     <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700/60 overflow-hidden shadow-sm">
       <div className="grid grid-cols-2 divide-x divide-slate-100 dark:divide-slate-700/60">
@@ -146,25 +269,12 @@ function Overview({ bills }) {
           <p className="text-xl font-black text-slate-800 dark:text-white leading-tight mt-0.5">{fmt(weekTotal)}</p>
         </div>
       </div>
-      <div className="grid grid-cols-2 divide-x divide-slate-100 dark:divide-slate-700/60 border-t border-slate-100 dark:border-slate-700/60">
-        {[{ label: "Airtime", val: airtimeTotal, c: "#ef4444" }, { label: "Data", val: dataTotal, c: "#3b82f6" }].map(x => (
-          <div key={x.label} className="px-5 py-3">
-            <div className="flex items-center gap-1.5 mb-0.5">
-              <span className="w-2 h-2 rounded-full" style={{ background: x.c }} />
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{x.label}</p>
-            </div>
-            <p className="text-base font-black text-slate-700 dark:text-slate-200">{fmt(x.val)}</p>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
 
-/* ── History row ──────────────────────────────────────────────────────── */
-
 function BillRow({ bill }) {
-  const cat = catMeta(bill.category);
+  const cat = CATS.find(c => c.id === bill.category) || CATS[0];
   return (
     <div className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 border border-slate-100 dark:border-slate-700/50 flex items-center gap-3 shadow-sm">
       <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
@@ -183,92 +293,296 @@ function BillRow({ bill }) {
   );
 }
 
-/* ── Main component ───────────────────────────────────────────────────── */
+/* ─── PIN/card details modal ──────────────────────────────────────────────── */
 
-export default function BillPayments({ store, staffName = null, businessName = null }) {
+function PinModal({ pins, title, onClose }) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-4">
+      <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl">
+        <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-800">
+          <h3 className="text-base font-bold text-slate-800 dark:text-white">{title}</h3>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
+            <Ico d="M18 6L6 18|M6 6l12 12" size={14} c="#64748b" />
+          </button>
+        </div>
+        <div className="px-5 py-4 space-y-3 max-h-80 overflow-y-auto">
+          {pins.map((pin, i) => (
+            <div key={i} className="bg-slate-50 dark:bg-slate-800 rounded-xl px-4 py-3 border border-slate-200 dark:border-slate-700">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Pin {i + 1}</p>
+              <p className="font-mono text-sm font-bold text-slate-800 dark:text-white break-all">{String(pin.pin ?? pin)}</p>
+              {pin.sno && <p className="text-[10px] text-slate-400 mt-0.5">S/N: {pin.sno}</p>}
+            </div>
+          ))}
+        </div>
+        <div className="px-5 pb-5">
+          <button onClick={onClose} className="w-full bg-slate-800 dark:bg-slate-700 text-white rounded-xl py-3 text-sm font-bold">Done</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Main component ───────────────────────────────────────────────────────── */
+
+export default function BillPayments({ store, plan, staffName = null, businessName = null }) {
   const { transactions, addTransaction } = store;
+  const planSlug = plan?.slug ?? "";
+  const isEnterprise = canDo(planSlug, "apiAccess");
 
   const [selectedCat, setSelectedCat] = useState(null);
   const [form,        setForm]        = useState({});
   const [saving,      setSaving]      = useState(false);
   const [error,       setError]       = useState("");
   const [receipt,     setReceipt]     = useState(null);
+  const [pins,        setPins]        = useState(null);
 
-  const [dataPlans,        setDataPlans]        = useState([]);
-  const [dataPlansLoading, setDataPlansLoading] = useState(false);
+  // Verification state
+  const [verifyStatus, setVerifyStatus] = useState("idle"); // idle | loading | ok | error
+  const [verifyName,   setVerifyName]   = useState("");
+
+  // Dynamic option lists
+  const [plans,        setPlans]        = useState([]);
+  const [plansLoading, setPlansLoading] = useState(false);
+  const [pkgs,         setPkgs]         = useState([]);
+  const [pkgsLoading,  setPkgsLoading]  = useState(false);
 
   const bills = useMemo(
     () => transactions.filter(t => t.payment_type === "bill_payment"),
     [transactions]
   );
 
-  const loadDataPlans = useCallback(async (network) => {
-    setDataPlansLoading(true); setDataPlans([]);
-    try { const res = await clubkonnect("data-plans", { network }); setDataPlans(res?.plans || []); }
-    catch { setDataPlans([]); }
-    finally { setDataPlansLoading(false); }
-  }, []);
+  const resetVerify = () => { setVerifyStatus("idle"); setVerifyName(""); };
 
-  const openSheet = (catId) => {
+  const openSheet = useCallback((catId) => {
+    const catMeta = CATS.find(c => c.id === catId);
+    if (catMeta?.enterprise && !isEnterprise) return;
     setSelectedCat(catId);
-    setForm({ network: "MTN", phone: "", amount: "", planId: "", planName: "" });
-    setError("");
-    setDataPlans([]);
-    if (catId === "data") loadDataPlans("MTN");
+    setForm({ network: "MTN", phone: "", amount: "", planId: "", planName: "",
+               provider: "", smartcard: "", meterNo: "", meterType: "01",
+               company: "", customerId: "", examType: "", profileId: "",
+               accountNo: "", value: "100", quantity: "1" });
+    setError(""); setPins(null); resetVerify(); setPlans([]); setPkgs([]);
+    if (catId === "data") loadPlans("data-plans", { network: "MTN" });
+    if (catId === "spectranet") loadPlans("spectranet-plans", {});
+    if (catId === "smile") loadPlans("smile-plans", {});
+    if (catId === "print-data") loadPlans("data-plans", { network: "MTN" });
+  }, [isEnterprise]);
+
+  const closeSheet = () => { setSelectedCat(null); setForm({}); setError(""); resetVerify(); };
+
+  const loadPlans = async (action, extra) => {
+    setPlansLoading(true); setPlans([]);
+    try { const r = await clubkonnect(action, extra); setPlans(r?.plans || []); }
+    catch { setPlans([]); }
+    finally { setPlansLoading(false); }
   };
 
-  const closeSheet = () => { setSelectedCat(null); setForm({}); setError(""); };
+  const loadPkgs = async (action, extra) => {
+    setPkgsLoading(true); setPkgs([]);
+    try { const r = await clubkonnect(action, extra); setPkgs(r?.packages || []); }
+    catch { setPkgs([]); }
+    finally { setPkgsLoading(false); }
+  };
 
-  const handleSetForm = useCallback((updater) => {
-    setForm(prev => {
-      const next = typeof updater === "function" ? updater(prev) : updater;
-      if (selectedCat === "data" && next.network !== prev.network) {
-        loadDataPlans(next.network);
-        return { ...next, planId: "", planName: "", amount: "" };
-      }
-      return next;
-    });
-  }, [selectedCat, loadDataPlans]);
+  const setF = (key, val) => setForm(f => ({ ...f, [key]: val }));
+
+  // Auto-load cable packages when provider changes
+  const handleProviderChange = (provider) => {
+    setF("provider", provider); setF("packageId", ""); setF("packageName", ""); setF("amount", "");
+    resetVerify(); setF("smartcard", "");
+    if (provider) loadPkgs("cable-packages", { provider });
+  };
+
+  // Reload data plans when network changes
+  const handleNetworkChange = (network) => {
+    setF("network", network); setF("planId", ""); setF("planName", ""); setF("amount", "");
+    if (selectedCat === "data" || selectedCat === "print-data") loadPlans("data-plans", { network });
+  };
+
+  // Verify handlers
+  const verifyMeter = async () => {
+    if (!form.company || !form.meterNo || !form.meterType) { setError("Select company, meter type and enter meter number"); return; }
+    setVerifyStatus("loading"); setError("");
+    try {
+      const r = await clubkonnect("electricity-verify", { company: form.company, meterNo: form.meterNo, meterType: form.meterType });
+      setVerifyStatus("ok"); setVerifyName(r.customer_name);
+    } catch (e) {
+      setVerifyStatus("error"); setVerifyName(e.message || "Verification failed");
+    }
+  };
+
+  const verifySmartcard = async () => {
+    if (!form.provider || !form.smartcard) { setError("Select provider and enter smartcard number"); return; }
+    setVerifyStatus("loading"); setError("");
+    try {
+      const r = await clubkonnect("cable-verify", { provider: form.provider, smartcard: form.smartcard });
+      setVerifyStatus("ok"); setVerifyName(r.customer_name);
+    } catch (e) {
+      setVerifyStatus("error"); setVerifyName(e.message || "Verification failed");
+    }
+  };
+
+  const verifyBetting = async () => {
+    if (!form.company || !form.customerId) { setError("Select platform and enter customer ID"); return; }
+    setVerifyStatus("loading"); setError("");
+    try {
+      const r = await clubkonnect("betting-verify", { company: form.company, customerId: form.customerId });
+      setVerifyStatus("ok"); setVerifyName(r.customer_name);
+    } catch (e) {
+      setVerifyStatus("error"); setVerifyName(e.message || "Verification failed");
+    }
+  };
+
+  const verifyJamb = async () => {
+    if (!form.examType || !form.profileId) { setError("Select exam type and enter profile ID"); return; }
+    setVerifyStatus("loading"); setError("");
+    try {
+      const r = await clubkonnect("jamb-verify", { examType: form.examType, profileId: form.profileId });
+      setVerifyStatus("ok"); setVerifyName(r.customer_name);
+    } catch (e) {
+      setVerifyStatus("error"); setVerifyName(e.message || "Verification failed");
+    }
+  };
+
+  const verifySmile = async () => {
+    if (!form.accountNo) { setError("Enter account number"); return; }
+    setVerifyStatus("loading"); setError("");
+    try {
+      const r = await clubkonnect("smile-verify", { accountNo: form.accountNo });
+      setVerifyStatus("ok"); setVerifyName(r.customer_name);
+    } catch (e) {
+      setVerifyStatus("error"); setVerifyName(e.message || "Verification failed");
+    }
+  };
 
   const handlePay = async () => {
-    const amount = parseFloat(form.amount);
-    if (!amount || amount <= 0) { setError("Enter a valid amount"); return; }
-    if (!form.phone)            { setError("Phone number is required"); return; }
-    if (selectedCat === "data" && !form.planId) { setError("Select a data plan"); return; }
-
-    setSaving(true); setError("");
+    setError(""); setSaving(true);
     try {
-      let ref = null;
+      let ref = "", note = "", itemName = "", customerRef = "", cardDetails = "", pinsArr = null;
+      const amount = parseFloat(form.amount) || 0;
+
       if (selectedCat === "airtime") {
-        const res = await clubkonnect("airtime", { phone: form.phone, network: form.network, amount: String(form.amount) });
-        ref = res.reference;
-      } else {
-        const res = await clubkonnect("data", { phone: form.phone, network: form.network, planId: form.planId });
-        ref = res.reference;
+        if (!form.phone || !form.network || !form.amount) throw new Error("Phone, network and amount required");
+        const r = await clubkonnect("airtime", { phone: form.phone, network: form.network, amount: String(form.amount) });
+        ref = r.reference; itemName = `${form.network} Airtime`; customerRef = form.phone;
+        note = `Network: ${form.network}${ref ? ` | Ref: ${ref}` : ""}`;
+
+      } else if (selectedCat === "data") {
+        if (!form.phone || !form.planId) throw new Error("Phone and data plan required");
+        const r = await clubkonnect("data", { phone: form.phone, network: form.network, planId: form.planId });
+        ref = r.reference; itemName = `${form.network} ${form.planName} Data`; customerRef = form.phone;
+        note = `Network: ${form.network} | Plan: ${form.planName}${ref ? ` | Ref: ${ref}` : ""}`;
+
+      } else if (selectedCat === "cable") {
+        if (!form.provider || !form.packageId || !form.smartcard || !form.phone) throw new Error("All cable TV fields required");
+        if (verifyStatus !== "ok") throw new Error("Please verify smartcard number first");
+        const r = await clubkonnect("cable", { provider: form.provider, packageId: form.packageId, smartcard: form.smartcard, phone: form.phone });
+        ref = r.reference;
+        const provName = CABLE_PROVIDERS.find(p => p.code === form.provider)?.name || form.provider;
+        itemName = `${provName} ${form.packageName}`; customerRef = form.smartcard;
+        note = `Smartcard: ${form.smartcard} | ${verifyName}${ref ? ` | Ref: ${ref}` : ""}`;
+
+      } else if (selectedCat === "electricity") {
+        if (!form.company || !form.meterType || !form.meterNo || !form.amount || !form.phone) throw new Error("All electricity fields required");
+        if (verifyStatus !== "ok") throw new Error("Please verify meter number first");
+        const r = await clubkonnect("electricity", { company: form.company, meterType: form.meterType, meterNo: form.meterNo, amount: String(form.amount), phone: form.phone });
+        ref = r.reference;
+        const compName = ELECTRICITY_COMPANIES.find(c => c.code === form.company)?.name || form.company;
+        const mTypeName = form.meterType === "01" ? "Prepaid" : "Postpaid";
+        itemName = `${compName} ${mTypeName}`; customerRef = form.meterNo;
+        if (r.token) note = `Token: ${r.token} | Meter: ${form.meterNo} | ${verifyName}${ref ? ` | Ref: ${ref}` : ""}`;
+        else note = `Meter: ${form.meterNo} | ${verifyName}${ref ? ` | Ref: ${ref}` : ""}`;
+
+      } else if (selectedCat === "betting") {
+        if (!form.company || !form.customerId || !form.amount) throw new Error("Platform, customer ID and amount required");
+        if (verifyStatus !== "ok") throw new Error("Please verify customer ID first");
+        const r = await clubkonnect("betting", { company: form.company, customerId: form.customerId, amount: String(form.amount) });
+        ref = r.reference;
+        const compName = BETTING_COMPANIES.find(c => c.code === form.company)?.name || form.company;
+        itemName = `${compName} Wallet Top-up`; customerRef = form.customerId;
+        note = `Customer: ${form.customerId} | ${verifyName}${ref ? ` | Ref: ${ref}` : ""}`;
+
+      } else if (selectedCat === "waec") {
+        if (!form.examType || !form.phone) throw new Error("Exam type and phone required");
+        const r = await clubkonnect("waec", { examType: form.examType, phone: form.phone });
+        ref = r.reference; cardDetails = r.cardDetails || "";
+        const typeName = WAEC_TYPES.find(t => t.code === form.examType)?.name || form.examType;
+        itemName = `WAEC ${typeName}`; customerRef = form.phone;
+        note = `Phone: ${form.phone}${cardDetails ? ` | ${cardDetails}` : ""}${ref ? ` | Ref: ${ref}` : ""}`;
+
+      } else if (selectedCat === "jamb") {
+        if (!form.examType || !form.phone) throw new Error("Exam type and phone required");
+        if (form.profileId && verifyStatus !== "ok") throw new Error("Please verify JAMB profile ID first");
+        const r = await clubkonnect("jamb", { examType: form.examType, phone: form.phone });
+        ref = r.reference; cardDetails = r.cardDetails || "";
+        const typeName = JAMB_TYPES.find(t => t.code === form.examType)?.name || form.examType;
+        itemName = `JAMB ${typeName}`; customerRef = form.phone;
+        note = `Phone: ${form.phone}${cardDetails ? ` | ${cardDetails}` : ""}${ref ? ` | Ref: ${ref}` : ""}`;
+
+      } else if (selectedCat === "spectranet") {
+        if (!form.accountNo || !form.planId) throw new Error("Account number and plan required");
+        const r = await clubkonnect("spectranet", { accountNo: form.accountNo, planId: form.planId });
+        ref = r.reference; itemName = `Spectranet ${form.planName}`; customerRef = form.accountNo;
+        note = `Account: ${form.accountNo} | Plan: ${form.planName}${ref ? ` | Ref: ${ref}` : ""}`;
+
+      } else if (selectedCat === "smile") {
+        if (!form.accountNo || !form.planId) throw new Error("Account number and plan required");
+        if (verifyStatus !== "ok") throw new Error("Please verify Smile account first");
+        const r = await clubkonnect("smile", { accountNo: form.accountNo, planId: form.planId });
+        ref = r.reference; itemName = `Smile ${form.planName}`; customerRef = form.accountNo;
+        note = `Account: ${form.accountNo} | ${verifyName}${ref ? ` | Ref: ${ref}` : ""}`;
+
+      } else if (selectedCat === "print-airtime") {
+        if (!form.network || !form.value || !form.quantity) throw new Error("Network, value and quantity required");
+        const r = await clubkonnect("print-airtime", { network: form.network, value: form.value, quantity: form.quantity });
+        ref = r.reference; pinsArr = r.pins || [];
+        const qty = parseInt(form.quantity, 10);
+        itemName = `${form.network} ₦${form.value} Airtime Print x${qty}`;
+        customerRef = `${qty} pins`;
+        note = `Network: ${form.network} | Value: ₦${form.value} x${qty}${ref ? ` | Ref: ${ref}` : ""}`;
+
+      } else if (selectedCat === "print-data") {
+        if (!form.network || !form.planId || !form.quantity) throw new Error("Network, plan and quantity required");
+        const r = await clubkonnect("print-data", { network: form.network, planId: form.planId, quantity: form.quantity });
+        ref = r.reference; pinsArr = r.pins || [];
+        const qty = parseInt(form.quantity, 10);
+        itemName = `${form.network} ${form.planName} Data Print x${qty}`;
+        customerRef = `${qty} pins`;
+        note = `Network: ${form.network} | Plan: ${form.planName} x${qty}${ref ? ` | Ref: ${ref}` : ""}`;
       }
 
-      const isAirtime = selectedCat === "airtime";
+      const totalAmount = selectedCat === "print-airtime"
+        ? parseInt(form.value, 10) * parseInt(form.quantity, 10)
+        : selectedCat === "print-data"
+          ? amount * parseInt(form.quantity, 10)
+          : amount;
+
       const payload = {
         type: "out", category: selectedCat, payment_type: "bill_payment",
-        item_name:     isAirtime ? `${form.network} Airtime` : `${form.network} ${form.planName} Data`,
-        customer_name: form.phone,
-        amount,
-        note: isAirtime
-          ? `Network: ${form.network}${ref ? ` | Ref: ${ref}` : ""}`
-          : `Network: ${form.network} | Plan: ${form.planName}${ref ? ` | Ref: ${ref}` : ""}`,
+        item_name: itemName, customer_name: customerRef,
+        amount: totalAmount || amount, note,
         transaction_date: today(),
       };
 
       await addTransaction(payload);
       setSaving(false); closeSheet();
-      setReceipt({ ...payload, receiptId: rcpId(), apiRef: ref, created_at: new Date().toISOString(), staffName, businessName });
+
+      if (pinsArr && pinsArr.length > 0) {
+        setPins({ list: pinsArr, title: itemName });
+      } else {
+        setReceipt({
+          ...payload, receiptId: rcpId(), apiRef: ref,
+          created_at: new Date().toISOString(), staffName, businessName,
+          ...(cardDetails ? { note: `${note}\nCard: ${cardDetails}` } : {}),
+        });
+      }
     } catch (err) {
       setSaving(false);
       setError(err.message || "Payment failed. Please try again.");
     }
   };
 
-  const cat = selectedCat ? catMeta(selectedCat) : null;
+  const cat = CATS.find(c => c.id === selectedCat);
   const detected = form.phone?.length >= 4 ? detectNetwork(form.phone) : null;
 
   return (
@@ -276,8 +590,8 @@ export default function BillPayments({ store, staffName = null, businessName = n
 
       {/* Header */}
       <div className="px-4 pt-5 pb-4 bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 sticky top-0 z-10">
-        <h1 className="text-xl font-extrabold text-slate-900 dark:text-white">Airtime & Data</h1>
-        <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Instant recharge via ClubKonnect</p>
+        <h1 className="text-xl font-extrabold text-slate-900 dark:text-white">Bill Payments</h1>
+        <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">VTU services via ClubKonnect</p>
       </div>
 
       <div className="px-4 pt-4 space-y-4">
@@ -294,26 +608,34 @@ export default function BillPayments({ store, staffName = null, businessName = n
           </div>
         </div>
 
-        {/* Overview */}
         {bills.length > 0 && <Overview bills={bills} />}
 
-        {/* Service cards */}
+        {/* Service grid */}
         <div>
           <h2 className="text-[13px] font-bold text-slate-700 dark:text-slate-300 mb-3 tracking-wide">Select Service</h2>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-3">
             {CATS.map(c => {
-              const count = bills.filter(b => b.category === c.id).length;
+              const locked = c.enterprise && !isEnterprise;
+              const count  = bills.filter(b => b.category === c.id).length;
               return (
-                <button key={c.id} onClick={() => openSheet(c.id)}
-                  className="rounded-2xl p-5 flex flex-col items-center gap-2.5 shadow-md active:scale-95 transition-all duration-150 text-white relative"
+                <button key={c.id} onClick={() => openSheet(c.id)} disabled={locked}
+                  className={`rounded-2xl p-4 flex flex-col items-center gap-2 shadow-sm active:scale-95 transition-all duration-150 text-white relative ${locked ? "opacity-50 cursor-not-allowed" : ""}`}
                   style={{ background: `linear-gradient(135deg,${c.g1},${c.g2})` }}>
-                  <Ico d={CAT_ICONS[c.id]} size={32} c="rgba(255,255,255,0.95)" />
-                  <p className="text-sm font-bold">{c.label}</p>
-                  {count > 0 && <p className="text-[9px] font-semibold bg-white/25 px-2 py-0.5 rounded-full">{count} sent</p>}
+                  {locked && (
+                    <span className="absolute top-1.5 right-1.5 bg-white/30 rounded-full px-1.5 py-0.5 text-[8px] font-black tracking-wide">PRO</span>
+                  )}
+                  <Ico d={CAT_ICONS[c.id]} size={26} c="rgba(255,255,255,0.95)" />
+                  <p className="text-[11px] font-bold text-center leading-tight">{c.label}</p>
+                  {count > 0 && <p className="text-[9px] font-semibold bg-white/25 px-1.5 py-0.5 rounded-full">{count}</p>}
                 </button>
               );
             })}
           </div>
+          {!isEnterprise && (
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center mt-2">
+              Print Airtime & Print Data require the Enterprise plan
+            </p>
+          )}
         </div>
 
         {/* History */}
@@ -324,10 +646,10 @@ export default function BillPayments({ store, staffName = null, businessName = n
           {bills.length === 0 ? (
             <div className="text-center py-12 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700/50">
               <div className="w-14 h-14 bg-slate-100 dark:bg-slate-700 rounded-full flex items-center justify-center mx-auto mb-3">
-                <Ico d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 8.81 19.79 19.79 0 01.25 2.18 2 2 0 012.22 0h3a2 2 0 012 1.72c.122.966.356 1.916.7 2.81a2 2 0 01-.45 2.11L6.95 7.91a16 16 0 006.29 6.29l1.27-.56a2 2 0 012.11-.45c.894.344 1.844.578 2.81.7A2 2 0 0122 16.92z" size={22} c="#94a3b8" />
+                <Ico d={CAT_ICONS.airtime} size={22} c="#94a3b8" />
               </div>
-              <p className="text-slate-500 dark:text-slate-400 text-sm font-semibold">No recharges yet</p>
-              <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Tap Airtime or Data above to get started</p>
+              <p className="text-slate-500 dark:text-slate-400 text-sm font-semibold">No bills paid yet</p>
+              <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Tap a service above to get started</p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -337,12 +659,11 @@ export default function BillPayments({ store, staffName = null, businessName = n
         </div>
       </div>
 
-      {/* Payment bottom sheet */}
+      {/* Bottom sheet */}
       {selectedCat && cat && (
         <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40">
-          <div className="bg-white dark:bg-slate-900 rounded-t-3xl max-h-[92vh] flex flex-col">
+          <div className="bg-white dark:bg-slate-900 rounded-t-3xl max-h-[94vh] flex flex-col">
 
-            {/* Sheet header */}
             <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-xl flex items-center justify-center"
@@ -350,9 +671,7 @@ export default function BillPayments({ store, staffName = null, businessName = n
                   <Ico d={CAT_ICONS[selectedCat]} size={17} c="white" />
                 </div>
                 <div>
-                  <h2 className="text-base font-bold text-slate-800 dark:text-white">
-                    {selectedCat === "airtime" ? "Airtime Recharge" : "Data Bundle"}
-                  </h2>
+                  <h2 className="text-base font-bold text-slate-800 dark:text-white">{cat.label}</h2>
                   <p className="text-[10px] text-green-600 font-semibold">Live via ClubKonnect</p>
                 </div>
               </div>
@@ -363,79 +682,220 @@ export default function BillPayments({ store, staffName = null, businessName = n
 
             <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
 
-              {/* Network selector */}
-              <NetworkSelector
-                value={form.network}
-                onChange={v => handleSetForm(f => ({ ...f, network: v }))}
-                detected={detected && detected === form.network ? detected : null}
-              />
-
-              {/* Phone */}
-              <PhoneInput value={form.phone} onChange={e => {
-                const phone = e.target.value;
-                const net = detectNetwork(phone);
-                handleSetForm(f => ({ ...f, phone, ...(net ? { network: net } : {}) }));
-              }} />
-
-              {/* Airtime amount */}
-              {selectedCat === "airtime" && (
+              {/* ── AIRTIME ── */}
+              {selectedCat === "airtime" && <>
+                <NetworkSelector value={form.network} onChange={handleNetworkChange} detected={detected && detected === form.network ? detected : null} />
+                <PhoneInput value={form.phone} onChange={e => { const v = e.target.value; const net = detectNetwork(v); setForm(f => ({ ...f, phone: v, ...(net ? { network: net } : {}) })); }} />
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Amount (₦) *</label>
-                  <input type="number" value={form.amount}
-                    onChange={e => handleSetForm(f => ({ ...f, amount: e.target.value }))}
-                    placeholder="100"
+                  <input type="number" value={form.amount} onChange={e => setF("amount", e.target.value)} placeholder="100"
                     className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500" />
-                  {/* Quick amounts */}
                   <div className="flex gap-2 mt-2 flex-wrap">
-                    {[50, 100, 200, 500, 1000].map(a => (
-                      <button key={a} type="button"
-                        onClick={() => handleSetForm(f => ({ ...f, amount: String(a) }))}
+                    {[50,100,200,500,1000].map(a => (
+                      <button key={a} type="button" onClick={() => setF("amount", String(a))}
                         className={`px-3 py-1 rounded-full text-xs font-bold border transition-colors ${form.amount === String(a) ? "bg-green-600 text-white border-green-600" : "border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400"}`}>
                         ₦{a}
                       </button>
                     ))}
                   </div>
                 </div>
-              )}
+              </>}
 
-              {/* Data plan selector */}
-              {selectedCat === "data" && (
+              {/* ── DATA ── */}
+              {selectedCat === "data" && <>
+                <NetworkSelector value={form.network} onChange={handleNetworkChange} detected={detected && detected === form.network ? detected : null} />
+                <PhoneInput value={form.phone} onChange={e => { const v = e.target.value; const net = detectNetwork(v); setForm(f => ({ ...f, phone: v, ...(net ? { network: net } : {}) })); }} />
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">Data Plan *</label>
-                  {dataPlansLoading ? (
-                    <div className="grid grid-cols-3 gap-2">
-                      {[1,2,3,4,5,6].map(i => <div key={i} className="h-14 bg-slate-100 dark:bg-slate-700 rounded-xl animate-pulse" />)}
+                  <PlanGrid plans={plans} selectedId={form.planId} loading={plansLoading}
+                    onSelect={pl => setForm(f => ({ ...f, planId: pl.plan_id, planName: pl.plan_name, amount: String(pl.plan_amount) }))} />
+                </div>
+              </>}
+
+              {/* ── CABLE TV ── */}
+              {selectedCat === "cable" && <>
+                <SelectInput label="Provider *" value={form.provider} onChange={handleProviderChange} options={CABLE_PROVIDERS} placeholder="Select provider…" />
+                {form.provider && <>
+                  <TextInput label="Smartcard / IUC Number *" value={form.smartcard} onChange={v => { setF("smartcard", v); resetVerify(); }} placeholder="Enter smartcard number" />
+                  <PhoneInput label="Phone Number *" value={form.phone} onChange={e => setF("phone", e.target.value)} placeholder="08012345678" />
+                  <button type="button" onClick={verifySmartcard} disabled={verifyStatus === "loading"}
+                    className="w-full border-2 border-purple-500 text-purple-600 dark:text-purple-400 font-bold rounded-xl py-2.5 text-sm disabled:opacity-50">
+                    {verifyStatus === "loading" ? "Verifying…" : "Verify Smartcard"}
+                  </button>
+                  <VerifyBadge status={verifyStatus === "idle" ? null : verifyStatus} name={verifyName} />
+                  {verifyStatus === "ok" && <>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">Subscription Package *</label>
+                      <PlanGrid
+                        plans={pkgs.map(p => ({ plan_id: p.package_id, plan_name: p.package_name, plan_amount: p.package_amount }))}
+                        selectedId={form.packageId} loading={pkgsLoading}
+                        onSelect={p => setForm(f => ({ ...f, packageId: p.plan_id, packageName: p.plan_name, amount: String(p.plan_amount) }))} />
                     </div>
-                  ) : dataPlans.length > 0 ? (
-                    <div className="grid grid-cols-3 gap-2">
-                      {dataPlans.map(pl => (
-                        <button key={pl.plan_id} type="button"
-                          onClick={() => handleSetForm(f => ({ ...f, planId: pl.plan_id, planName: pl.plan_name, amount: String(pl.plan_amount) }))}
-                          className={`py-2 px-1 rounded-xl border-2 text-center transition-colors ${form.planId === pl.plan_id ? "border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-700" : "border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400"}`}>
-                          <p className="text-[11px] font-bold leading-tight">{pl.plan_name}</p>
-                          {pl.plan_amount ? <p className="text-[10px] font-medium mt-0.5">₦{Number(pl.plan_amount).toLocaleString()}</p> : null}
+                  </>}
+                </>}
+              </>}
+
+              {/* ── ELECTRICITY ── */}
+              {selectedCat === "electricity" && <>
+                <SelectInput label="Electricity Company *" value={form.company} onChange={v => { setF("company", v); resetVerify(); }} options={ELECTRICITY_COMPANIES} placeholder="Select company…" />
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">Meter Type *</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[{ code: "01", name: "Prepaid" }, { code: "02", name: "Postpaid" }].map(mt => (
+                      <button key={mt.code} type="button" onClick={() => { setF("meterType", mt.code); resetVerify(); }}
+                        className={`py-2.5 rounded-xl border-2 text-sm font-bold transition-colors ${form.meterType === mt.code ? "border-amber-500 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300" : "border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400"}`}>
+                        {mt.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <TextInput label="Meter Number *" value={form.meterNo} onChange={v => { setF("meterNo", v); resetVerify(); }} placeholder="Enter meter number" />
+                <PhoneInput label="Phone Number *" value={form.phone} onChange={e => setF("phone", e.target.value)} placeholder="08012345678" />
+                <button type="button" onClick={verifyMeter} disabled={verifyStatus === "loading"}
+                  className="w-full border-2 border-amber-500 text-amber-600 dark:text-amber-400 font-bold rounded-xl py-2.5 text-sm disabled:opacity-50">
+                  {verifyStatus === "loading" ? "Verifying…" : "Verify Meter Number"}
+                </button>
+                <VerifyBadge status={verifyStatus === "idle" ? null : verifyStatus} name={verifyName} />
+                {verifyStatus === "ok" && (
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Amount (₦) * <span className="text-slate-400 font-normal">min ₦1,000</span></label>
+                    <input type="number" value={form.amount} onChange={e => setF("amount", e.target.value)} placeholder="1000"
+                      className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500" />
+                    <div className="flex gap-2 mt-2 flex-wrap">
+                      {[1000,2000,5000,10000,20000].map(a => (
+                        <button key={a} type="button" onClick={() => setF("amount", String(a))}
+                          className={`px-3 py-1 rounded-full text-xs font-bold border transition-colors ${form.amount === String(a) ? "bg-amber-500 text-white border-amber-500" : "border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400"}`}>
+                          ₦{a.toLocaleString()}
                         </button>
                       ))}
                     </div>
-                  ) : (
-                    <div className="space-y-1.5">
-                      <input type="text" value={form.planName || ""}
-                        onChange={e => handleSetForm(f => ({ ...f, planId: e.target.value, planName: e.target.value }))}
-                        placeholder="Enter plan, e.g. 1GB Daily"
-                        className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                      <p className="text-[11px] text-slate-400">Plans unavailable — enter plan name manually</p>
+                  </div>
+                )}
+              </>}
+
+              {/* ── BETTING ── */}
+              {selectedCat === "betting" && <>
+                <SelectInput label="Betting Platform *" value={form.company} onChange={v => { setF("company", v); resetVerify(); setF("customerId", ""); }} options={BETTING_COMPANIES} placeholder="Select platform…" />
+                <TextInput label="Customer ID *" value={form.customerId} onChange={v => { setF("customerId", v); resetVerify(); }} placeholder="Enter your betting ID" />
+                <button type="button" onClick={verifyBetting} disabled={verifyStatus === "loading"}
+                  className="w-full border-2 border-emerald-500 text-emerald-600 dark:text-emerald-400 font-bold rounded-xl py-2.5 text-sm disabled:opacity-50">
+                  {verifyStatus === "loading" ? "Verifying…" : "Verify Account"}
+                </button>
+                <VerifyBadge status={verifyStatus === "idle" ? null : verifyStatus} name={verifyName} />
+                {verifyStatus === "ok" && (
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Amount (₦) *</label>
+                    <input type="number" value={form.amount} onChange={e => setF("amount", e.target.value)} placeholder="500"
+                      className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                    <div className="flex gap-2 mt-2 flex-wrap">
+                      {[500,1000,2000,5000,10000].map(a => (
+                        <button key={a} type="button" onClick={() => setF("amount", String(a))}
+                          className={`px-3 py-1 rounded-full text-xs font-bold border transition-colors ${form.amount === String(a) ? "bg-emerald-600 text-white border-emerald-600" : "border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400"}`}>
+                          ₦{a.toLocaleString()}
+                        </button>
+                      ))}
                     </div>
-                  )}
-                  {form.planId && form.amount && (
-                    <div className="mt-2">
-                      <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Amount (₦)</label>
-                      <input type="number" value={form.amount}
-                        onChange={e => handleSetForm(f => ({ ...f, amount: e.target.value }))}
-                        className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    </div>
-                  )}
+                  </div>
+                )}
+              </>}
+
+              {/* ── WAEC ── */}
+              {selectedCat === "waec" && <>
+                <SelectInput label="Exam Type *" value={form.examType} onChange={v => setF("examType", v)} options={WAEC_TYPES} placeholder="Select exam type…" />
+                <PhoneInput label="Phone Number *" value={form.phone} onChange={e => setF("phone", e.target.value)} placeholder="08012345678" />
+                {form.examType && (
+                  <div className="bg-cyan-50 dark:bg-cyan-900/20 border border-cyan-200 dark:border-cyan-800 rounded-xl px-4 py-3">
+                    <p className="text-xs text-cyan-700 dark:text-cyan-300 font-medium">The ePin/scratch card details will be shown after payment.</p>
+                  </div>
+                )}
+              </>}
+
+              {/* ── JAMB ── */}
+              {selectedCat === "jamb" && <>
+                <SelectInput label="Exam Type *" value={form.examType} onChange={v => { setF("examType", v); resetVerify(); }} options={JAMB_TYPES} placeholder="Select exam type…" />
+                <PhoneInput label="Phone Number *" value={form.phone} onChange={e => setF("phone", e.target.value)} placeholder="08012345678" />
+                <TextInput label="JAMB Profile ID (optional — verify to confirm name)" value={form.profileId} onChange={v => { setF("profileId", v); resetVerify(); }} placeholder="Enter profile ID" />
+                {form.profileId && (
+                  <button type="button" onClick={verifyJamb} disabled={verifyStatus === "loading"}
+                    className="w-full border-2 border-orange-500 text-orange-600 dark:text-orange-400 font-bold rounded-xl py-2.5 text-sm disabled:opacity-50">
+                    {verifyStatus === "loading" ? "Verifying…" : "Verify Profile ID"}
+                  </button>
+                )}
+                <VerifyBadge status={verifyStatus === "idle" ? null : verifyStatus} name={verifyName} />
+              </>}
+
+              {/* ── SPECTRANET ── */}
+              {selectedCat === "spectranet" && <>
+                <TextInput label="Account Number *" value={form.accountNo} onChange={v => setF("accountNo", v)} placeholder="Enter Spectranet account number" />
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">Data Plan *</label>
+                  <PlanGrid plans={plans} selectedId={form.planId} loading={plansLoading}
+                    onSelect={pl => setForm(f => ({ ...f, planId: pl.plan_id, planName: pl.plan_name, amount: String(pl.plan_amount) }))} />
                 </div>
-              )}
+              </>}
+
+              {/* ── SMILE ── */}
+              {selectedCat === "smile" && <>
+                <TextInput label="Smile Account Number *" value={form.accountNo} onChange={v => { setF("accountNo", v); resetVerify(); }} placeholder="Enter Smile account number" />
+                <button type="button" onClick={verifySmile} disabled={verifyStatus === "loading"}
+                  className="w-full border-2 border-pink-500 text-pink-600 dark:text-pink-400 font-bold rounded-xl py-2.5 text-sm disabled:opacity-50">
+                  {verifyStatus === "loading" ? "Verifying…" : "Verify Account"}
+                </button>
+                <VerifyBadge status={verifyStatus === "idle" ? null : verifyStatus} name={verifyName} />
+                {verifyStatus === "ok" && (
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">Data Plan *</label>
+                    <PlanGrid plans={plans} selectedId={form.planId} loading={plansLoading}
+                      onSelect={pl => setForm(f => ({ ...f, planId: pl.plan_id, planName: pl.plan_name, amount: String(pl.plan_amount) }))} />
+                  </div>
+                )}
+              </>}
+
+              {/* ── PRINT AIRTIME ── */}
+              {selectedCat === "print-airtime" && <>
+                <NetworkSelector value={form.network} onChange={v => setF("network", v)} detected={null} />
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">Denomination *</label>
+                  <div className="flex gap-2">
+                    {PRINT_VALUES.map(v => (
+                      <button key={v} type="button" onClick={() => setF("value", v)}
+                        className={`flex-1 py-2.5 rounded-xl border-2 text-sm font-bold transition-colors ${form.value === v ? "border-slate-600 bg-slate-600 text-white" : "border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400"}`}>
+                        ₦{v}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Quantity (1–100) *</label>
+                  <input type="number" value={form.quantity} onChange={e => setF("quantity", e.target.value)} min="1" max="100" placeholder="1"
+                    className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-slate-500" />
+                </div>
+                <div className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Total cost: <strong className="text-slate-800 dark:text-white">₦{(parseInt(form.value || 0) * parseInt(form.quantity || 0)).toLocaleString()}</strong>
+                    {" "}({form.quantity} × ₦{form.value})
+                  </p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">PINs will be shown after purchase</p>
+                </div>
+              </>}
+
+              {/* ── PRINT DATA ── */}
+              {selectedCat === "print-data" && <>
+                <NetworkSelector value={form.network} onChange={handleNetworkChange} detected={null} />
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">Data Plan *</label>
+                  <PlanGrid plans={plans} selectedId={form.planId} loading={plansLoading}
+                    onSelect={pl => setForm(f => ({ ...f, planId: pl.plan_id, planName: pl.plan_name, amount: String(pl.plan_amount) }))} />
+                </div>
+                {form.planId && (
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Quantity (1–100) *</label>
+                    <input type="number" value={form.quantity} onChange={e => setF("quantity", e.target.value)} min="1" max="100" placeholder="1"
+                      className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-slate-500" />
+                    <p className="text-[10px] text-slate-400 mt-1">PINs will be shown after purchase</p>
+                  </div>
+                )}
+              </>}
 
               {staffName && (
                 <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl px-4 py-2.5 flex items-center gap-2">
@@ -444,20 +904,26 @@ export default function BillPayments({ store, staffName = null, businessName = n
                 </div>
               )}
 
-              {error && <p className="text-xs text-red-500 bg-red-50 border border-red-200 rounded-xl px-3 py-2">{error}</p>}
+              {error && <p className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-3 py-2">{error}</p>}
 
               <div className="pb-6">
                 <button onClick={handlePay} disabled={saving}
                   className="w-full text-white font-bold rounded-xl py-3.5 text-sm transition-all disabled:opacity-60"
                   style={{ background: `linear-gradient(135deg,${cat.g1},${cat.g2})` }}>
-                  {saving ? "Processing…" : `Pay ${form.amount ? fmt(parseFloat(form.amount) || 0) : ""}`}
+                  {saving ? "Processing…" : (
+                    selectedCat === "print-airtime" ? `Print ${form.quantity || 1} × ₦${form.value} Pins` :
+                    selectedCat === "print-data" ? `Print ${form.quantity || 1} Data Pins` :
+                    form.amount ? `Pay ${fmt(parseFloat(form.amount) || 0)}` : `Pay`
+                  )}
                 </button>
               </div>
+
             </div>
           </div>
         </div>
       )}
 
+      {pins && <PinModal pins={pins.list} title={pins.title} onClose={() => setPins(null)} />}
       {receipt && <BillReceipt bill={receipt} onClose={() => setReceipt(null)} />}
     </div>
   );
