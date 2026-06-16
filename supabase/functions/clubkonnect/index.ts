@@ -81,14 +81,17 @@ serve(async (req) => {
       const { network } = body as { network: string };
       const netId = NET_ID[network] ?? "01";
       const data = await ck("APIDatabundlePlansV2.asp", { APIKey: DATA_K, MobileNetwork: netId });
+      console.log("data-plans raw:", JSON.stringify(data).slice(0, 600));
+      if (data?.status && String(data.status).includes("INVALID")) return json({ error: `Data API key error: ${data.status}`, plans: [] });
       const raw: unknown[] = Array.isArray(data)
         ? data
-        : (data?.DataPlans ?? data?.plans ?? data?.data ?? data?.DataBundlePlans ?? []) as unknown[];
+        : (data?.DataBundlePlans ?? data?.response ?? data?.DataPlans ?? data?.plans ?? data?.data ?? data?.Result ?? []) as unknown[];
       const plans = (raw as Record<string, unknown>[]).map(p => ({
-        plan_id:     String(p.DataPlan   ?? p.dataplan   ?? p.PlanID   ?? p.id   ?? ""),
-        plan_name:   String(p.DataPlanName ?? p.planname ?? p.PlanName ?? p.name ?? ""),
+        plan_id:     String(p.DataPlan   ?? p.dataplan   ?? p.PlanID   ?? p.plan_id ?? p.id   ?? ""),
+        plan_name:   String(p.DataPlanName ?? p.planname ?? p.PlanName ?? p.plan_name ?? p.name ?? ""),
         plan_amount: Number(p.Price ?? p.price ?? p.Amount ?? p.amount ?? 0),
-      })).filter(p => p.plan_id);
+      })).filter(p => p.plan_id && p.plan_id !== "undefined");
+      if (!plans.length) return json({ plans: [], error: `No plans returned: ${JSON.stringify(data).slice(0, 200)}` });
       return json({ plans, _count: plans.length });
     }
 
@@ -117,14 +120,17 @@ serve(async (req) => {
       const { provider } = body as { provider: string };
       if (!provider) return json({ error: "provider required" });
       const data = await ck("APICableTVPackagesV2.asp", { APIKey: CABLETV_K, CableTV: provider });
+      console.log("cable-packages raw:", JSON.stringify(data).slice(0, 600));
+      if (data?.status && String(data.status).includes("INVALID")) return json({ error: `Cable API key error: ${data.status}`, packages: [] });
       const raw: unknown[] = Array.isArray(data)
         ? data
-        : (data?.Packages ?? data?.packages ?? data?.data ?? []) as unknown[];
+        : (data?.Packages ?? data?.packages ?? data?.CableTVPackages ?? data?.response ?? data?.data ?? data?.Result ?? []) as unknown[];
       const packages = (raw as Record<string, unknown>[]).map(p => ({
-        package_id:   String(p.PackageCode ?? p.packagecode ?? p.Code ?? p.code ?? p.Package ?? ""),
+        package_id:   String(p.PackageCode ?? p.packagecode ?? p.Package ?? p.Code ?? p.code ?? p.id ?? ""),
         package_name: String(p.PackageName ?? p.packagename ?? p.Name ?? p.name ?? ""),
         package_amount: Number(p.Price ?? p.price ?? p.Amount ?? p.amount ?? 0),
-      })).filter(p => p.package_id);
+      })).filter(p => p.package_id && p.package_id !== "undefined");
+      if (!packages.length) return json({ packages: [], error: `No packages returned: ${JSON.stringify(data).slice(0, 200)}` });
       return json({ packages });
     }
 
@@ -264,12 +270,15 @@ serve(async (req) => {
     // ── Spectranet plans ──────────────────────────────────────────────────────
     if (action === "spectranet-plans") {
       const data = await ck("APISpectranetPackagesV2.asp", { APIKey: SPECTRANET_K });
-      const raw: unknown[] = Array.isArray(data) ? data : (data?.Packages ?? data?.packages ?? data?.data ?? []) as unknown[];
+      console.log("spectranet-plans raw:", JSON.stringify(data).slice(0, 600));
+      if (data?.status && String(data.status).includes("INVALID")) return json({ error: `Spectranet API key error: ${data.status}`, plans: [] });
+      const raw: unknown[] = Array.isArray(data) ? data : (data?.Packages ?? data?.packages ?? data?.DataBundlePlans ?? data?.response ?? data?.data ?? data?.Result ?? []) as unknown[];
       const plans = (raw as Record<string, unknown>[]).map(p => ({
-        plan_id:     String(p.DataPlan ?? p.PackageCode ?? p.Code ?? p.code ?? ""),
+        plan_id:     String(p.DataPlan ?? p.PackageCode ?? p.Code ?? p.code ?? p.id ?? ""),
         plan_name:   String(p.DataPlanName ?? p.PackageName ?? p.Name ?? p.name ?? ""),
         plan_amount: Number(p.Price ?? p.price ?? p.Amount ?? p.amount ?? 0),
-      })).filter(p => p.plan_id);
+      })).filter(p => p.plan_id && p.plan_id !== "undefined");
+      if (!plans.length) return json({ plans: [], error: `No Spectranet plans returned: ${JSON.stringify(data).slice(0, 200)}` });
       return json({ plans });
     }
 
@@ -288,12 +297,15 @@ serve(async (req) => {
     // ── Smile plans ───────────────────────────────────────────────────────────
     if (action === "smile-plans") {
       const data = await ck("APISmilePackagesV2.asp", { APIKey: SMILE_K });
-      const raw: unknown[] = Array.isArray(data) ? data : (data?.Packages ?? data?.packages ?? data?.data ?? []) as unknown[];
+      console.log("smile-plans raw:", JSON.stringify(data).slice(0, 600));
+      if (data?.status && String(data.status).includes("INVALID")) return json({ error: `Smile API key error: ${data.status}`, plans: [] });
+      const raw: unknown[] = Array.isArray(data) ? data : (data?.Packages ?? data?.packages ?? data?.DataBundlePlans ?? data?.response ?? data?.data ?? data?.Result ?? []) as unknown[];
       const plans = (raw as Record<string, unknown>[]).map(p => ({
-        plan_id:     String(p.DataPlan ?? p.PackageCode ?? p.Code ?? p.code ?? ""),
+        plan_id:     String(p.DataPlan ?? p.PackageCode ?? p.Code ?? p.code ?? p.id ?? ""),
         plan_name:   String(p.DataPlanName ?? p.PackageName ?? p.Name ?? p.name ?? ""),
         plan_amount: Number(p.Price ?? p.price ?? p.Amount ?? p.amount ?? 0),
-      })).filter(p => p.plan_id);
+      })).filter(p => p.plan_id && p.plan_id !== "undefined");
+      if (!plans.length) return json({ plans: [], error: `No Smile plans returned: ${JSON.stringify(data).slice(0, 200)}` });
       return json({ plans });
     }
 

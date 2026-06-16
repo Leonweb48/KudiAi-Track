@@ -230,13 +230,19 @@ function VerifyBadge({ status, name }) {
   return null;
 }
 
-function PlanGrid({ plans, selectedId, onSelect, loading }) {
+function PlanGrid({ plans, selectedId, onSelect, loading, error, onRetry }) {
   if (loading) return (
     <div className="grid grid-cols-3 gap-2">
       {[1,2,3,4,5,6].map(i => <div key={i} className="h-14 bg-slate-100 dark:bg-slate-700 rounded-xl animate-pulse" />)}
     </div>
   );
-  if (!plans.length) return <p className="text-xs text-slate-400">No plans available</p>;
+  if (error) return (
+    <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-3 py-3 space-y-2">
+      <p className="text-xs text-red-600 dark:text-red-400 font-medium">{error}</p>
+      {onRetry && <button onClick={onRetry} className="text-xs font-bold text-red-600 dark:text-red-400 underline">Retry</button>}
+    </div>
+  );
+  if (!plans.length) return null;
   return (
     <div className="grid grid-cols-3 gap-2">
       {plans.map(pl => (
@@ -343,8 +349,10 @@ export default function BillPayments({ store, plan, staffName = null, businessNa
   // Dynamic option lists
   const [plans,        setPlans]        = useState([]);
   const [plansLoading, setPlansLoading] = useState(false);
+  const [plansError,   setPlansError]   = useState("");
   const [pkgs,         setPkgs]         = useState([]);
   const [pkgsLoading,  setPkgsLoading]  = useState(false);
+  const [pkgsError,    setPkgsError]    = useState("");
 
   const bills = useMemo(
     () => transactions.filter(t => t.payment_type === "bill_payment"),
@@ -361,7 +369,7 @@ export default function BillPayments({ store, plan, staffName = null, businessNa
                provider: "", smartcard: "", meterNo: "", meterType: "01",
                company: "", customerId: "", examType: "", profileId: "",
                accountNo: "", value: "100", quantity: "1" });
-    setError(""); setPins(null); resetVerify(); setPlans([]); setPkgs([]);
+    setError(""); setPins(null); resetVerify(); setPlans([]); setPlansError(""); setPkgs([]); setPkgsError("");
     if (catId === "data") loadPlans("data-plans", { network: "MTN" });
     if (catId === "spectranet") loadPlans("spectranet-plans", {});
     if (catId === "smile") loadPlans("smile-plans", {});
@@ -371,16 +379,22 @@ export default function BillPayments({ store, plan, staffName = null, businessNa
   const closeSheet = () => { setSelectedCat(null); setForm({}); setError(""); resetVerify(); };
 
   const loadPlans = async (action, extra) => {
-    setPlansLoading(true); setPlans([]);
-    try { const r = await clubkonnect(action, extra); setPlans(r?.plans || []); }
-    catch { setPlans([]); }
+    setPlansLoading(true); setPlans([]); setPlansError("");
+    try {
+      const r = await clubkonnect(action, extra);
+      if (r?.plans?.length) { setPlans(r.plans); }
+      else { setPlansError(r?.error || "No plans returned from provider"); }
+    } catch (e) { setPlansError(e.message || "Failed to load plans"); }
     finally { setPlansLoading(false); }
   };
 
   const loadPkgs = async (action, extra) => {
-    setPkgsLoading(true); setPkgs([]);
-    try { const r = await clubkonnect(action, extra); setPkgs(r?.packages || []); }
-    catch { setPkgs([]); }
+    setPkgsLoading(true); setPkgs([]); setPkgsError("");
+    try {
+      const r = await clubkonnect(action, extra);
+      if (r?.packages?.length) { setPkgs(r.packages); }
+      else { setPkgsError(r?.error || "No packages returned from provider"); }
+    } catch (e) { setPkgsError(e.message || "Failed to load packages"); }
     finally { setPkgsLoading(false); }
   };
 
@@ -707,7 +721,8 @@ export default function BillPayments({ store, plan, staffName = null, businessNa
                 <PhoneInput value={form.phone} onChange={e => { const v = e.target.value; const net = detectNetwork(v); setForm(f => ({ ...f, phone: v, ...(net ? { network: net } : {}) })); }} />
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">Data Plan *</label>
-                  <PlanGrid plans={plans} selectedId={form.planId} loading={plansLoading}
+                  <PlanGrid plans={plans} selectedId={form.planId} loading={plansLoading} error={plansError}
+                    onRetry={() => loadPlans("data-plans", { network: form.network })}
                     onSelect={pl => setForm(f => ({ ...f, planId: pl.plan_id, planName: pl.plan_name, amount: String(pl.plan_amount) }))} />
                 </div>
               </>}
@@ -728,7 +743,8 @@ export default function BillPayments({ store, plan, staffName = null, businessNa
                       <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">Subscription Package *</label>
                       <PlanGrid
                         plans={pkgs.map(p => ({ plan_id: p.package_id, plan_name: p.package_name, plan_amount: p.package_amount }))}
-                        selectedId={form.packageId} loading={pkgsLoading}
+                        selectedId={form.packageId} loading={pkgsLoading} error={pkgsError}
+                        onRetry={() => loadPkgs("cable-packages", { provider: form.provider })}
                         onSelect={p => setForm(f => ({ ...f, packageId: p.plan_id, packageName: p.plan_name, amount: String(p.plan_amount) }))} />
                     </div>
                   </>}
@@ -829,7 +845,8 @@ export default function BillPayments({ store, plan, staffName = null, businessNa
                 <TextInput label="Account Number *" value={form.accountNo} onChange={v => setF("accountNo", v)} placeholder="Enter Spectranet account number" />
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">Data Plan *</label>
-                  <PlanGrid plans={plans} selectedId={form.planId} loading={plansLoading}
+                  <PlanGrid plans={plans} selectedId={form.planId} loading={plansLoading} error={plansError}
+                    onRetry={() => loadPlans("spectranet-plans", {})}
                     onSelect={pl => setForm(f => ({ ...f, planId: pl.plan_id, planName: pl.plan_name, amount: String(pl.plan_amount) }))} />
                 </div>
               </>}
@@ -845,7 +862,8 @@ export default function BillPayments({ store, plan, staffName = null, businessNa
                 {verifyStatus === "ok" && (
                   <div>
                     <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">Data Plan *</label>
-                    <PlanGrid plans={plans} selectedId={form.planId} loading={plansLoading}
+                    <PlanGrid plans={plans} selectedId={form.planId} loading={plansLoading} error={plansError}
+                      onRetry={() => loadPlans("smile-plans", {})}
                       onSelect={pl => setForm(f => ({ ...f, planId: pl.plan_id, planName: pl.plan_name, amount: String(pl.plan_amount) }))} />
                   </div>
                 )}
@@ -884,7 +902,8 @@ export default function BillPayments({ store, plan, staffName = null, businessNa
                 <NetworkSelector value={form.network} onChange={handleNetworkChange} detected={null} />
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">Data Plan *</label>
-                  <PlanGrid plans={plans} selectedId={form.planId} loading={plansLoading}
+                  <PlanGrid plans={plans} selectedId={form.planId} loading={plansLoading} error={plansError}
+                    onRetry={() => loadPlans("data-plans", { network: form.network })}
                     onSelect={pl => setForm(f => ({ ...f, planId: pl.plan_id, planName: pl.plan_name, amount: String(pl.plan_amount) }))} />
                 </div>
                 {form.planId && (
