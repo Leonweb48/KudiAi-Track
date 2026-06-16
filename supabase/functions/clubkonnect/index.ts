@@ -443,17 +443,19 @@ serve(async (req) => {
     // ── Health check — test every service key in parallel ─────────────────────
     if (action === "health-check") {
       const isInvalid = (d: Record<string, unknown>) => {
-        const s = String(d?.status ?? d?.Status ?? d?._raw ?? "").toUpperCase();
+        const s = JSON.stringify(d).toUpperCase();
         return s.includes("INVALID_CREDENTIALS") || s.includes("INVALID_KEY") ||
                s.includes("INVALID_APIKEY") || s.includes("UNAUTHORIZED") ||
-               s.includes("INVALID_USER");
+               s.includes("INVALID_USER") || s.includes("INVALID_ID");
       };
       const ping = async (label: string, path: string, params: Record<string, string>) => {
         try {
           const d = await ck(path, params);
-          return { label, ok: !isInvalid(d), detail: isInvalid(d) ? String(d?.status ?? "INVALID_CREDENTIALS") : "ok" };
+          const raw = JSON.stringify(d).slice(0, 120);
+          const bad = isInvalid(d);
+          return { label, ok: !bad, detail: bad ? (String(d?.status ?? d?.Status ?? "INVALID_CREDENTIALS")) : "ok", raw };
         } catch (e) {
-          return { label, ok: false, detail: (e as Error).message };
+          return { label, ok: false, detail: (e as Error).message, raw: "" };
         }
       };
       const results = await Promise.all([
