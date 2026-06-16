@@ -390,7 +390,10 @@ function KeyStatusPanel({ onClose }) {
 export default function BillPayments({ store, plan, staffName = null, businessName = null }) {
   const { transactions, addTransaction } = store;
   const planSlug = plan?.slug ?? "";
-  const isEnterprise = canDo(planSlug, "apiAccess");
+  // Unlock for enterprise: match by feature key, slug name, or sort_order (highest tier)
+  const isEnterprise = canDo(planSlug, "apiAccess") ||
+    planSlug === "enterprise" ||
+    (plan?.sort_order ?? -1) >= 3;
 
   const [selectedCat,  setSelectedCat]  = useState(null);
   const [showKeyStatus, setShowKeyStatus] = useState(false);
