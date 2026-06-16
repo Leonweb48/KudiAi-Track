@@ -360,11 +360,16 @@ function KeyStatusPanel({ onClose }) {
             </div>
           )}
           {results && results.map((r, i) => (
-            <div key={i} className={`flex items-center justify-between rounded-xl px-4 py-2.5 border ${r.ok ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800" : "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"}`}>
-              <span className={`text-sm font-semibold ${r.ok ? "text-green-700 dark:text-green-300" : "text-red-700 dark:text-red-300"}`}>{r.label}</span>
-              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${r.ok ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300" : "bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300"}`}>
-                {r.ok ? "OK" : "Invalid Key"}
-              </span>
+            <div key={i} className={`rounded-xl px-4 py-2.5 border ${r.ok ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800" : "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"}`}>
+              <div className="flex items-center justify-between">
+                <span className={`text-sm font-semibold ${r.ok ? "text-green-700 dark:text-green-300" : "text-red-700 dark:text-red-300"}`}>{r.label}</span>
+                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${r.ok ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300" : "bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300"}`}>
+                  {r.ok ? "OK" : r.detail || "Invalid Key"}
+                </span>
+              </div>
+              {!r.ok && r.raw && (
+                <p className="text-[10px] text-red-400 dark:text-red-500 mt-1 break-all leading-tight">{r.raw}</p>
+              )}
             </div>
           ))}
           {results && results.some(r => !r.ok) && (
