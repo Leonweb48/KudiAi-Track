@@ -409,6 +409,8 @@ export default function BillPayments({ store, plan, staffName = null, businessNa
   const [error,       setError]       = useState("");
   const [receipt,     setReceipt]     = useState(null);
   const [pins,        setPins]        = useState(null);
+  // Result of ClubKonnect fulfillment after Paystack return
+  const [fulfillResult, setFulfillResult] = useState(null); // null | { ok, label, detail, pinsArr, psRef }
 
   // Verification state
   const [verifyStatus, setVerifyStatus] = useState("idle"); // idle | loading | ok | error
@@ -727,20 +729,11 @@ export default function BillPayments({ store, plan, staffName = null, businessNa
 
       await addTransaction(payload);
       localStorage.removeItem(BILL_PENDING_PREFIX + ref);
-      setSaving(false); closeSheet();
-
-      if (pinsArr?.length > 0) {
-        setPins({ list: pinsArr, title: itemName });
-      } else {
-        setReceipt({
-          ...payload, receiptId: rcpId(), apiRef,
-          created_at: new Date().toISOString(), staffName, businessName,
-          ...(cardDetails ? { note: `${note}\nCard: ${cardDetails}` } : {}),
-        });
-      }
+      setSaving(false);
+      setFulfillResult({ ok: true, label: itemName, detail: note, pinsArr: pinsArr || [], psRef: ref, apiRef, cardDetails });
     } catch (err) {
       setSaving(false);
-      setError(`Payment received but service failed: ${err.message}. Paystack Ref: ${ref}`);
+      setFulfillResult({ ok: false, label: "", detail: err.message, psRef: ref, apiRef: "" });
     }
   }, [addTransaction, staffName, businessName]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -750,36 +743,114 @@ export default function BillPayments({ store, plan, staffName = null, businessNa
   return (
     <div className="pb-32 screen-enter">
 
-      {/* Paystack return — full-screen processing overlay */}
-      {saving && !selectedCat && (
-        <div className="fixed inset-0 z-[60] bg-white dark:bg-slate-900 flex flex-col items-center justify-center gap-5 px-8">
-          {!error ? (
-            <>
+      {/* ── Paystack return overlay (processing → result) ─────────────────── */}
+      {(saving && !selectedCat) || fulfillResult ? (
+        <div className="fixed inset-0 z-[60] bg-white dark:bg-slate-900 flex flex-col">
+
+          {/* Processing state */}
+          {saving && !fulfillResult && (
+            <div className="flex-1 flex flex-col items-center justify-center gap-5 px-8">
               <div className="w-16 h-16 border-4 border-green-500 border-t-transparent rounded-full animate-spin" />
               <div className="text-center">
                 <p className="text-base font-bold text-slate-800 dark:text-white">Payment confirmed!</p>
                 <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Delivering your service, please wait…</p>
               </div>
-            </>
-          ) : (
-            <>
+            </div>
+          )}
+
+          {/* Success state */}
+          {fulfillResult?.ok && (
+            <div className="flex-1 flex flex-col">
+              {/* Green header */}
+              <div className="flex flex-col items-center justify-center py-10 px-6"
+                style={{ background: "linear-gradient(145deg,#059669,#047857)" }}>
+                <div className="w-16 h-16 rounded-full bg-white/20 flex items-center justify-center mb-3">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                </div>
+                <p className="text-xl font-black text-white">Bill Payment Successful</p>
+                <p className="text-sm text-white/70 mt-1">{fulfillResult.label}</p>
+              </div>
+
+              {/* Details */}
+              <div className="flex-1 overflow-y-auto px-5 py-5 space-y-3">
+                {/* Detail rows */}
+                {fulfillResult.detail.split(" | ").map((d, i) => {
+                  const [k, ...rest] = d.split(": ");
+                  return rest.length > 0 ? (
+                    <div key={i} className="flex items-start justify-between gap-3 py-2.5 border-b border-slate-100 dark:border-slate-800">
+                      <span className="text-xs text-slate-400 dark:text-slate-500 font-semibold uppercase tracking-wide flex-shrink-0">{k}</span>
+                      <span className="text-sm font-bold text-slate-800 dark:text-white text-right break-all">{rest.join(": ")}</span>
+                    </div>
+                  ) : (
+                    <div key={i} className="py-2.5 border-b border-slate-100 dark:border-slate-800">
+                      <span className="text-sm text-slate-600 dark:text-slate-400">{d}</span>
+                    </div>
+                  );
+                })}
+
+                {/* Paystack ref */}
+                <div className="flex items-start justify-between gap-3 py-2.5 border-b border-slate-100 dark:border-slate-800">
+                  <span className="text-xs text-slate-400 dark:text-slate-500 font-semibold uppercase tracking-wide flex-shrink-0">Payment Ref</span>
+                  <span className="text-xs font-mono text-slate-600 dark:text-slate-400 text-right break-all">{fulfillResult.psRef}</span>
+                </div>
+
+                {/* Pins */}
+                {fulfillResult.pinsArr?.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">PIN(s)</p>
+                    <div className="space-y-2">
+                      {fulfillResult.pinsArr.map((pin, i) => {
+                        const serial = pin.EPIN_SERIAL ?? pin.serial ?? "";
+                        const code   = pin.EPIN ?? pin.pin ?? pin.code ?? JSON.stringify(pin);
+                        return (
+                          <div key={i} className="bg-slate-50 dark:bg-slate-800 rounded-xl px-4 py-3">
+                            {serial ? <p className="text-[10px] text-slate-400 mb-0.5">S/N: {serial}</p> : null}
+                            <p className="font-mono font-bold text-slate-800 dark:text-white tracking-widest text-sm">{code}</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="px-5 pb-8 pt-3">
+                <button onClick={() => setFulfillResult(null)}
+                  className="w-full py-3.5 bg-green-600 text-white font-bold rounded-xl text-sm">
+                  Done
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Failure state */}
+          {fulfillResult && !fulfillResult.ok && (
+            <div className="flex-1 flex flex-col items-center justify-center gap-5 px-8">
               <div className="w-16 h-16 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.5" strokeLinecap="round">
                   <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
                 </svg>
               </div>
               <div className="text-center">
-                <p className="text-base font-bold text-slate-800 dark:text-white">Delivery failed</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">{error}</p>
+                <p className="text-base font-bold text-slate-800 dark:text-white">Service Delivery Failed</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">{fulfillResult.detail}</p>
               </div>
-              <button onClick={() => { setSaving(false); setError(""); }}
-                className="mt-2 px-6 py-2.5 bg-slate-800 dark:bg-white text-white dark:text-slate-900 font-bold rounded-xl text-sm">
-                Dismiss
+              <div className="w-full bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl px-4 py-3 text-center">
+                <p className="text-xs font-bold text-amber-700 dark:text-amber-400 mb-1">Your payment was received</p>
+                <p className="text-xs text-amber-600 dark:text-amber-500">Contact support with this reference:</p>
+                <p className="font-mono text-sm font-black text-amber-700 dark:text-amber-300 mt-1 break-all">{fulfillResult.psRef}</p>
+              </div>
+              <button onClick={() => setFulfillResult(null)}
+                className="w-full py-3 bg-slate-800 dark:bg-white text-white dark:text-slate-900 font-bold rounded-xl text-sm">
+                Back to Bill Payments
               </button>
-            </>
+            </div>
           )}
+
         </div>
-      )}
+      ) : null}
 
       {/* Header */}
       <div className="px-4 pt-5 pb-4 bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 sticky top-0 z-10">
