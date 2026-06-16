@@ -1554,6 +1554,39 @@ serve(async (req) => {
       return json({ success: true });
     }
 
+    // ══════════════════════════════════════════════════
+    //  ORG BILL TRANSACTIONS
+    // ══════════════════════════════════════════════════
+
+    if (action === "get-org-bills") {
+      const { org_id } = body as { org_id: string };
+      if (!org_id) return json({ error: "org_id required" }, 400);
+      const { data, error } = await sb
+        .from("org_bill_transactions")
+        .select("*")
+        .eq("org_id", org_id)
+        .order("created_at", { ascending: false })
+        .limit(200);
+      if (error) return json({ error: error.message }, 400);
+      return json({ bills: data });
+    }
+
+    if (action === "add-org-bill") {
+      const { org_id, category, item_name, customer_name, amount, note, transaction_date, bill_status, payment_type } =
+        body as {
+          org_id: string; category: string; item_name: string; customer_name?: string;
+          amount: number; note?: string; transaction_date?: string; bill_status?: string; payment_type?: string;
+        };
+      if (!org_id || !category || !item_name) return json({ error: "org_id, category and item_name required" }, 400);
+      const { data, error } = await sb
+        .from("org_bill_transactions")
+        .insert({ org_id, category, item_name, customer_name, amount, note, transaction_date, bill_status: bill_status || "success", payment_type: payment_type || "bill_payment" })
+        .select()
+        .single();
+      if (error) return json({ error: error.message }, 400);
+      return json({ bill: data });
+    }
+
     return json({ error: `Unknown action: ${action}` }, 400);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

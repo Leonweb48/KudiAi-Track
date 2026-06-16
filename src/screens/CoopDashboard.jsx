@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "../utils/supabase";
+import BillPayments from "./BillPayments";
 
 const coopFn = async (action, body = {}) => {
   const r = await supabase.functions.invoke("coop-portal", { body: { action, ...body } });
@@ -1942,6 +1943,53 @@ function SettingsTab({ org, onRefresh, onBack, isOrgPortal = false }) {
 }
 
 // ═══════════════════════════════════════════════════
+//  BILLS TAB (org portal only — no print services)
+// ═══════════════════════════════════════════════════
+function BillsTab({ org }) {
+  const [bills, setBills] = useState([]);
+  const [loadingBills, setLoadingBills] = useState(true);
+
+  useEffect(() => {
+    coopFn("get-org-bills", { org_id: org.id })
+      .then(r => setBills(r.bills || []))
+      .catch(() => setBills([]))
+      .finally(() => setLoadingBills(false));
+  }, [org.id]);
+
+  const addTransaction = useCallback(async (payload) => {
+    try {
+      const r = await coopFn("add-org-bill", { org_id: org.id, ...payload });
+      if (r.bill) setBills(prev => [r.bill, ...prev]);
+    } catch (e) {
+      console.error("Failed to save org bill:", e);
+    }
+  }, [org.id]);
+
+  const store = useMemo(() => ({
+    transactions: bills,
+    addTransaction,
+    profile: { email: org.email, owner_name: org.name, business_name: org.name, id: org.id },
+  }), [bills, addTransaction, org.email, org.name, org.id]);
+
+  if (loadingBills) {
+    return (
+      <div className="flex justify-center py-16">
+        <div className="w-6 h-6 border-[3px] border-violet-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <BillPayments
+      store={store}
+      plan=""
+      excludeCats={["print-airtime", "print-data"]}
+      businessName={org.name}
+    />
+  );
+}
+
+// ═══════════════════════════════════════════════════
 //  MAIN DASHBOARD
 // ═══════════════════════════════════════════════════
 const TABS = [
@@ -1953,6 +2001,7 @@ const TABS = [
   { id: "meetings",  label: "Meetings",  icon: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" },
   { id: "messages",  label: "Messages",  icon: "M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" },
   { id: "settings",  label: "Settings",  icon: "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z" },
+  { id: "bills",     label: "Bills",     icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2M9 14l2 2 4-4", orgOnly: true },
 ];
 
 const ORG_TYPE_ICONS = { cooperative:"🤝", market_association:"🏪", church:"⛪", ngo:"🌍", youth_group:"👥", savings_group:"💰", community_group:"🏘️", professional_association:"💼", savings_club:"🏦" };
@@ -1994,7 +2043,10 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
     meetings: <MeetingsTab org={org} members={members} />,
     messages: <MessagesTab org={org} />,
     settings: <SettingsTab org={org} onRefresh={loadAll} onBack={onBack} isOrgPortal={isOrgPortal} />,
+    bills:    <BillsTab    org={org} />,
   };
+
+  const visibleTabs = TABS.filter(t => !t.orgOnly || isOrgPortal);
 
   return (
     <div className="fixed inset-0 z-[65] bg-slate-50 dark:bg-slate-900 flex justify-center">
@@ -2021,7 +2073,7 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
 
         <div className="bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 overflow-x-auto">
           <div className="flex min-w-max">
-            {TABS.map(t => (
+            {visibleTabs.map(t => (
               <button key={t.id} onClick={() => setTab(t.id)}
                 className={`flex flex-col items-center gap-0.5 px-3.5 py-2.5 border-b-2 transition-colors ${tab === t.id ? "border-violet-600 text-violet-600" : "border-transparent text-slate-400 dark:text-slate-500"}`}>
                 <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 flex-shrink-0" stroke="currentColor" strokeWidth={2} strokeLinecap="round">

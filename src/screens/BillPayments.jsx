@@ -399,7 +399,7 @@ function KeyStatusPanel({ onClose }) {
 
 const BILL_PENDING_PREFIX = "ck_bill_pending_";
 
-export default function BillPayments({ store, plan, staffName = null, businessName = null, autoService = null, onAutoOpened = null }) {
+export default function BillPayments({ store, plan, staffName = null, businessName = null, autoService = null, onAutoOpened = null, excludeCats = [] }) {
   const { transactions, addTransaction, profile } = store;
   // plan is a slug string from useAuth (e.g. "enterprise"), not a plan object
   const planSlug = typeof plan === "string" ? plan : (plan?.slug ?? "");
@@ -435,7 +435,10 @@ export default function BillPayments({ store, plan, staffName = null, businessNa
 
   const resetVerify = () => { setVerifyStatus("idle"); setVerifyName(""); };
 
+  const visibleCats = excludeCats.length ? CATS.filter(c => !excludeCats.includes(c.id)) : CATS;
+
   const openSheet = useCallback((catId) => {
+    if (excludeCats.includes(catId)) return;
     const catMeta = CATS.find(c => c.id === catId);
     if (catMeta?.enterprise && !isEnterprise) return;
     setSelectedCat(catId);
@@ -959,7 +962,7 @@ export default function BillPayments({ store, plan, staffName = null, businessNa
         <div>
           <h2 className="text-[13px] font-bold text-slate-700 dark:text-slate-300 mb-3 tracking-wide">Select Service</h2>
           <div className="grid grid-cols-3 gap-3">
-            {CATS.map(c => {
+            {visibleCats.map(c => {
               const locked = c.enterprise && !isEnterprise;
               const count  = bills.filter(b => b.category === c.id).length;
               return (
@@ -976,7 +979,7 @@ export default function BillPayments({ store, plan, staffName = null, businessNa
               );
             })}
           </div>
-          {!isEnterprise && (
+          {!isEnterprise && visibleCats.some(c => c.enterprise) && (
             <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center mt-2">
               Print Airtime & Print Data require the Enterprise plan
             </p>
