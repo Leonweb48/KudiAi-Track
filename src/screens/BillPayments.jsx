@@ -750,13 +750,34 @@ export default function BillPayments({ store, plan, staffName = null, businessNa
   return (
     <div className="pb-32 screen-enter">
 
-      {/* Paystack return loading overlay */}
+      {/* Paystack return — full-screen processing overlay */}
       {saving && !selectedCat && (
-        <div className="fixed inset-0 z-[60] bg-white dark:bg-slate-900 flex flex-col items-center justify-center gap-4">
-          <div className="w-12 h-12 border-4 border-green-500 border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm font-bold text-slate-700 dark:text-slate-300">Completing your payment…</p>
-          <p className="text-xs text-slate-400">Please wait while we process your bill</p>
-          {error && <p className="text-xs text-red-500 px-6 text-center mt-2">{error}</p>}
+        <div className="fixed inset-0 z-[60] bg-white dark:bg-slate-900 flex flex-col items-center justify-center gap-5 px-8">
+          {!error ? (
+            <>
+              <div className="w-16 h-16 border-4 border-green-500 border-t-transparent rounded-full animate-spin" />
+              <div className="text-center">
+                <p className="text-base font-bold text-slate-800 dark:text-white">Payment confirmed!</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Delivering your service, please wait…</p>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="w-16 h-16 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.5" strokeLinecap="round">
+                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+              </div>
+              <div className="text-center">
+                <p className="text-base font-bold text-slate-800 dark:text-white">Delivery failed</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">{error}</p>
+              </div>
+              <button onClick={() => { setSaving(false); setError(""); }}
+                className="mt-2 px-6 py-2.5 bg-slate-800 dark:bg-white text-white dark:text-slate-900 font-bold rounded-xl text-sm">
+                Dismiss
+              </button>
+            </>
+          )}
         </div>
       )}
 

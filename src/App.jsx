@@ -96,6 +96,15 @@ export default function App() {
     document.documentElement.classList.toggle("dark", !!isDark);
   }, [isDark]);
 
+  // ── Paystack bill payment return: switch to bills tab so BillPayments mounts ──
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const billRef = params.get("bill_ref") || params.get("trxref");
+    if (billRef && localStorage.getItem(`ck_bill_pending_${billRef}`)) {
+      setTab("bills");
+    }
+  }, []);
+
   // ── Smart daily alerts (overdue credits + missed aso payments) ──
   const alertFiredRef = useRef(false);
   useEffect(() => {
