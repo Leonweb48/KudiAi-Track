@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { supabase } from "../utils/supabase";
 import BillPayments from "./BillPayments";
 import GroupChat from "./GroupChat";
@@ -888,6 +888,117 @@ const MORE_TABS = [
   { id: "directory", label: "Directory", color:"#2563eb", icon:"M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" },
 ];
 
+// ─── Member Profile Sheet ─────────────────────────────────────────────────────
+function ProfileSheet({ member, onClose, onSave }) {
+  const [form,       setForm]       = useState({ full_name: member.full_name || "", phone: member.phone || "" });
+  const [preview,    setPreview]    = useState(member.avatar_url || null);
+  const [avatarFile, setAvatarFile] = useState(null);
+  const [saving,     setSaving]     = useState(false);
+  const [error,      setError]      = useState("");
+  const fileRef                      = useRef(null);
+
+  const onPickFile = e => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setAvatarFile(file);
+    setPreview(URL.createObjectURL(file));
+  };
+
+  const save = async () => {
+    if (!form.full_name.trim()) { setError("Name is required"); return; }
+    setSaving(true); setError("");
+    try {
+      let avatar_url = member.avatar_url || null;
+      if (avatarFile) {
+        const ext  = avatarFile.name.split(".").pop() || "jpg";
+        const path = `members/${member.id}/${Date.now()}.${ext}`;
+        const { data, error: upErr } = await supabase.storage.from("avatars").upload(path, avatarFile, { upsert: true });
+        if (upErr) throw upErr;
+        const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(data.path);
+        avatar_url = publicUrl;
+      }
+      const { error: dbErr } = await supabase.from("org_members")
+        .update({ full_name: form.full_name.trim(), phone: form.phone.trim() || null, avatar_url })
+        .eq("id", member.id);
+      if (dbErr) throw dbErr;
+      onSave({ full_name: form.full_name.trim(), phone: form.phone.trim() || null, avatar_url });
+      onClose();
+    } catch (e) { setError(e.message || "Failed to save"); }
+    setSaving(false);
+  };
+
+  const inp = "w-full bg-slate-100 rounded-xl px-4 py-3 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-blue-400";
+  const fmtDate = d => d ? new Date(d).toLocaleDateString("en-NG", { day:"numeric", month:"short", year:"numeric" }) : "—";
+
+  return (
+    <div className="fixed inset-0 z-[90] flex items-end justify-center" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" />
+      <div className="relative w-full max-w-md bg-white rounded-t-3xl flex flex-col overflow-hidden"
+        style={{ maxHeight: "92dvh" }} onClick={e => e.stopPropagation()}>
+        <div className="w-10 h-1 bg-slate-200 rounded-full mx-auto mt-3 mb-1 flex-shrink-0" />
+        <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 flex-shrink-0">
+          <h3 className="text-base font-extrabold text-slate-800">My Profile</h3>
+          <button onClick={onClose} className="text-slate-400 p-1">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-5 h-5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 py-5 flex flex-col gap-4 min-h-0">
+          {/* Avatar picker */}
+          <div className="flex flex-col items-center gap-2 pb-4 border-b border-slate-100">
+            <button onClick={() => fileRef.current?.click()} className="relative group active:scale-95 transition-transform">
+              {preview
+                ? <img src={preview} alt="" className="w-24 h-24 rounded-full object-cover ring-4 ring-blue-100 shadow-xl" />
+                : <div className="w-24 h-24 rounded-full flex items-center justify-center text-3xl font-black text-white shadow-xl ring-4 ring-blue-100"
+                    style={{ background: "linear-gradient(145deg,#2563eb,#1e3a8a)" }}>
+                    {member.full_name?.charAt(0).toUpperCase()}
+                  </div>
+              }
+              <div className="absolute bottom-0 right-0 w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center border-2 border-white shadow-md">
+                <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.5} className="w-4 h-4"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+              </div>
+            </button>
+            <input ref={fileRef} type="file" accept="image/*" onChange={onPickFile} className="hidden" />
+            <p className="text-[11px] text-slate-400">Tap to change photo</p>
+          </div>
+
+          {error && <p className="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-xl">{error}</p>}
+
+          <div>
+            <label className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">Full Name</label>
+            <input className={inp} value={form.full_name} onChange={e => setForm(p => ({ ...p, full_name: e.target.value }))} />
+          </div>
+          <div>
+            <label className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">Phone Number</label>
+            <input className={inp} type="tel" placeholder="08000000000" value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} />
+          </div>
+
+          {[
+            ["Membership ID", member.membership_id],
+            ["Role",          member.role],
+            ["Status",        member.status],
+            ["Member Since",  fmtDate(member.joined_date)],
+          ].map(([label, val]) => (
+            <div key={label}>
+              <label className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">{label}</label>
+              <p className="bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm text-slate-500 capitalize">{val || "—"}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="px-5 py-4 border-t border-slate-100 flex gap-2 flex-shrink-0">
+          <button onClick={onClose} className="flex-1 py-3 border border-slate-200 text-slate-600 rounded-xl font-bold text-sm active:bg-slate-50">Cancel</button>
+          <button onClick={save} disabled={saving}
+            className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold text-sm disabled:opacity-50 active:bg-blue-700">
+            {saving ? "Saving…" : "Save Changes"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function CoopMemberPortal({ member: initialMember }) {
   const [member,        setMember]        = useState(initialMember);
   const [tab,           setTab]           = useState("home");
@@ -895,6 +1006,7 @@ export default function CoopMemberPortal({ member: initialMember }) {
   const [loans,         setLoans]         = useState([]);
   const [wdRequests,    setWdRequests]    = useState([]);
   const [showMore,      setShowMore]      = useState(false);
+  const [showProfile,   setShowProfile]   = useState(false);
   const [billsAutoSvc,  setBillsAutoSvc]  = useState(null);
   const [processingPayment, setProcessingPayment] = useState(() => {
     const params = new URLSearchParams(window.location.search);
@@ -1000,11 +1112,19 @@ export default function CoopMemberPortal({ member: initialMember }) {
       <div className="w-full max-w-md flex flex-col overflow-hidden" style={{ height: "100dvh" }}>
 
         {/* ── Top Header ── */}
-        <div className="sticky top-0 z-20 bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm border-b border-slate-100 dark:border-slate-800 px-4 py-3 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center text-base font-extrabold text-white flex-shrink-0"
-            style={{ background: "linear-gradient(145deg,#2563eb,#1e3a8a)" }}>
-            {member.full_name?.charAt(0).toUpperCase()}
-          </div>
+        <div className="sticky top-0 z-20 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 py-3 flex items-center gap-3">
+          <button onClick={() => setShowProfile(true)} className="flex-shrink-0 active:opacity-75 transition-opacity relative">
+            {member.avatar_url
+              ? <img src={member.avatar_url} alt="" className="w-9 h-9 rounded-xl object-cover ring-2 ring-blue-200" />
+              : <div className="w-9 h-9 rounded-xl flex items-center justify-center text-base font-extrabold text-white"
+                  style={{ background: "linear-gradient(145deg,#2563eb,#1e3a8a)" }}>
+                  {member.full_name?.charAt(0).toUpperCase()}
+                </div>
+            }
+            <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-blue-600 rounded-full border-2 border-white flex items-center justify-center">
+              <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={3} className="w-2 h-2"><path d="M12 5v14M5 12h14"/></svg>
+            </span>
+          </button>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-extrabold text-slate-800 dark:text-white truncate leading-tight">{member.full_name}</p>
             <p className="text-[9px] text-slate-400 font-mono truncate">{member.membership_id} · {org?.name}</p>
@@ -1096,6 +1216,15 @@ export default function CoopMemberPortal({ member: initialMember }) {
           </div>
         )}
       </div>
+
+      {/* ── Member profile sheet ── */}
+      {showProfile && (
+        <ProfileSheet
+          member={member}
+          onClose={() => setShowProfile(false)}
+          onSave={updates => setMember(prev => ({ ...prev, ...updates }))}
+        />
+      )}
 
       {/* Payment processing overlay */}
       {processingPayment && (

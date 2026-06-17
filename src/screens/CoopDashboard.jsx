@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { supabase } from "../utils/supabase";
 import BillPayments from "./BillPayments";
 import GroupChat from "./GroupChat";
@@ -1683,8 +1683,10 @@ function OrgBankSetupSection({ org, onRefresh }) {
 }
 
 function SettingsTab({ org, onRefresh, onBack, isOrgPortal = false }) {
-  const [leaders,     setLeaders]     = useState([]);
-  const [form,        setForm]        = useState({ name: org.name || "", email: org.email || "", phone: org.phone || "", address: org.address || "", state_name: org.state_name || "", lga: org.lga || "", purpose: org.purpose || "", vision: org.vision || "", mission: org.mission || "", website: org.website || "", social_instagram: org.social_instagram || "", social_facebook: org.social_facebook || "", social_twitter: org.social_twitter || "", date_established: org.date_established || "", logo_url: org.logo_url || "" });
+  const [leaders,       setLeaders]       = useState([]);
+  const [form,          setForm]          = useState({ name: org.name || "", email: org.email || "", phone: org.phone || "", address: org.address || "", state_name: org.state_name || "", lga: org.lga || "", purpose: org.purpose || "", vision: org.vision || "", mission: org.mission || "", website: org.website || "", social_instagram: org.social_instagram || "", social_facebook: org.social_facebook || "", social_twitter: org.social_twitter || "", date_established: org.date_established || "", logo_url: org.logo_url || "" });
+  const [logoUploading, setLogoUploading] = useState(false);
+  const logoFileRef                        = useRef(null);
   const [lForm,       setLForm]       = useState({ name: "", position: "", phone: "", email: "", sort_order: "0" });
   const [saving,      setSaving]      = useState(false);
   const [lSaving,     setLSaving]     = useState(false);
@@ -1735,6 +1737,22 @@ function SettingsTab({ org, onRefresh, onBack, isOrgPortal = false }) {
     setEditL(l); setShowAddL(true);
   };
 
+  const handleLogoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setLogoUploading(true);
+    try {
+      const ext  = file.name.split(".").pop() || "jpg";
+      const path = `orgs/${org.id}/${Date.now()}.${ext}`;
+      const { data, error: upErr } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
+      if (upErr) throw upErr;
+      const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(data.path);
+      setForm(p => ({ ...p, logo_url: publicUrl }));
+    } catch (e) { setError(e.message || "Upload failed"); }
+    setLogoUploading(false);
+  };
+
   return (
     <div className="flex-1 overflow-y-auto px-4 pt-4 pb-24 flex flex-col gap-5">
       {/* Org Profile */}
@@ -1772,8 +1790,26 @@ function SettingsTab({ org, onRefresh, onBack, isOrgPortal = false }) {
             <input className={input} value={form.address} onChange={set("address")} />
           </div>
           <div>
-            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Logo URL</label>
-            <input className={input} value={form.logo_url} onChange={set("logo_url")} placeholder="https://..." type="url" />
+            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Organisation Logo / Photo</label>
+            <div className="flex items-center gap-4">
+              {form.logo_url
+                ? <img src={form.logo_url} alt="logo" className="w-16 h-16 rounded-xl object-cover border border-slate-200 flex-shrink-0" />
+                : <div className="w-16 h-16 rounded-xl bg-violet-50 border border-slate-200 flex items-center justify-center text-2xl flex-shrink-0">
+                    {org.type === "cooperative" ? "🤝" : "🏢"}
+                  </div>
+              }
+              <div className="flex flex-col gap-2">
+                <button onClick={() => logoFileRef.current?.click()} disabled={logoUploading}
+                  className="text-xs font-bold text-blue-600 border border-blue-200 bg-blue-50 px-3 py-2 rounded-xl active:bg-blue-100 disabled:opacity-50">
+                  {logoUploading ? "Uploading…" : "Upload Photo"}
+                </button>
+                {form.logo_url && (
+                  <button onClick={() => setForm(p => ({ ...p, logo_url: "" }))}
+                    className="text-xs text-red-500 font-medium text-left">Remove photo</button>
+                )}
+              </div>
+            </div>
+            <input ref={logoFileRef} type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
           </div>
           <div>
             <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Purpose</label>
@@ -2091,11 +2127,14 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
         <div className="w-full max-w-md flex flex-col h-full">
 
           {/* ── Top Header ── */}
-          <div className="sticky top-0 z-20 bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm border-b border-slate-100 dark:border-slate-800 px-4 py-3 flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg flex-shrink-0"
-              style={{ background: "linear-gradient(145deg,#7c3aed,#4c1d95)" }}>
-              <span>{ORG_TYPE_ICONS[org.type] || "🏢"}</span>
-            </div>
+          <div className="sticky top-0 z-20 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 py-3 flex items-center gap-3">
+            {org.logo_url
+              ? <img src={org.logo_url} alt="" className="w-9 h-9 rounded-xl object-cover ring-2 ring-violet-200 flex-shrink-0" />
+              : <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg flex-shrink-0"
+                  style={{ background: "linear-gradient(145deg,#7c3aed,#4c1d95)" }}>
+                  <span>{ORG_TYPE_ICONS[org.type] || "🏢"}</span>
+                </div>
+            }
             <div className="flex-1 min-w-0">
               <p className="text-sm font-extrabold text-slate-800 dark:text-white truncate leading-tight">{org.name}</p>
               <p className="text-[9px] text-slate-400 font-mono tracking-wider">{org.reg_number}</p>

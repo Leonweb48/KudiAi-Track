@@ -115,13 +115,19 @@ function AudioPlayer({ url, duration, isMe }) {
 }
 
 // ─── Avatar ───────────────────────────────────────────────────────────────────
-function Av({ name = "?", size = 32, online }) {
+function Av({ name = "?", size = 32, online, url }) {
+  const [imgErr, setImgErr] = useState(false);
+  const showImg = url && !imgErr;
   return (
     <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
-      <div className="w-full h-full rounded-full flex items-center justify-center font-bold text-white"
-        style={{ fontSize: size * 0.38, background: avatarColor(name) }}>
-        {name.charAt(0).toUpperCase()}
-      </div>
+      {showImg
+        ? <img src={url} alt={name} className="w-full h-full rounded-full object-cover"
+            onError={() => setImgErr(true)} />
+        : <div className="w-full h-full rounded-full flex items-center justify-center font-bold text-white"
+            style={{ fontSize: size * 0.38, background: avatarColor(name) }}>
+            {name.charAt(0).toUpperCase()}
+          </div>
+      }
       {online && (
         <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-white" />
       )}
@@ -129,8 +135,43 @@ function Av({ name = "?", size = 32, online }) {
   );
 }
 
+// ─── Sender Profile Sheet ─────────────────────────────────────────────────────
+function SenderProfile({ member, onClose }) {
+  const fmt = d => d ? new Date(d).toLocaleDateString([], { day:"numeric", month:"short", year:"numeric" }) : "—";
+  return (
+    <div className="fixed inset-0 z-[130] flex items-end justify-center" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-[2px]" />
+      <div className="relative w-full max-w-md bg-white rounded-t-3xl overflow-hidden"
+        onClick={e => e.stopPropagation()}>
+        <div className="w-10 h-1 bg-slate-200 rounded-full mx-auto mt-3 mb-2" />
+        <div className="flex flex-col items-center px-5 pt-3 pb-6">
+          <Av name={member.full_name || "?"} size={84} url={member.avatar_url} />
+          <p className="text-lg font-extrabold text-slate-800 mt-3 text-center">{member.full_name}</p>
+          <span className={`mt-1.5 text-[10px] font-bold px-2.5 py-0.5 rounded-full
+            ${(member.role === "admin" || member.role === "org") ? "bg-violet-100 text-violet-600" : "bg-blue-100 text-blue-600"}`}>
+            {(member.role === "admin" || member.role === "org") ? "ADMIN" : "MEMBER"}
+          </span>
+          {member.joined_date && (
+            <p className="text-xs text-slate-400 mt-2">Member since {fmt(member.joined_date)}</p>
+          )}
+          {member.phone && (
+            <a href={`tel:${member.phone}`}
+              className="mt-2 text-sm text-blue-600 font-semibold active:underline">
+              {member.phone}
+            </a>
+          )}
+          <button onClick={onClose}
+            className="mt-5 w-full py-3 bg-slate-100 rounded-2xl text-sm font-bold text-slate-600 active:bg-slate-200">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Message Bubble ───────────────────────────────────────────────────────────
-function Bubble({ msg, isMe, showName, showAv, myId, lastSeen, memberCount, onLongPress, onReact, onJumpTo }) {
+function Bubble({ msg, isMe, showName, showAv, myId, lastSeen, memberCount, avatarUrl, onLongPress, onReact, onJumpTo, onAvatarTap }) {
   const timer = useRef(null);
   const moved = useRef(false);
 
@@ -174,10 +215,14 @@ function Bubble({ msg, isMe, showName, showAv, myId, lastSeen, memberCount, onLo
   return (
     <div className={`flex items-end gap-1.5 px-2 my-[2px] ${isMe ? "flex-row-reverse" : ""}`}>
 
-      {/* Avatar slot */}
+      {/* Avatar slot — tappable to view sender profile */}
       {!isMe && (
         <div style={{ width: 30 }} className="flex-shrink-0 mb-1">
-          {showAv ? <Av name={msg.sender_name} size={30} /> : null}
+          {showAv
+            ? <button onClick={() => onAvatarTap?.(msg)} className="active:scale-90 transition-transform block">
+                <Av name={msg.sender_name} size={30} url={avatarUrl} />
+              </button>
+            : null}
         </div>
       )}
 
@@ -436,7 +481,7 @@ function GroupInfo({ orgId, orgName, org, settings, members, onlineIds, lastSeen
 
           {/* Admin row */}
           <div className="flex items-center gap-3 px-4 py-3">
-            <Av name={org?.owner_name || orgName} size={44} online />
+            <Av name={org?.owner_name || orgName} size={44} online url={org?.logo_url} />
             <div className="flex-1 min-w-0">
               <p className="text-[14px] font-bold text-slate-800 truncate">{org?.owner_name || orgName}</p>
               <p className="text-[11px] text-blue-500 font-semibold">Admin · online</p>
@@ -448,7 +493,7 @@ function GroupInfo({ orgId, orgName, org, settings, members, onlineIds, lastSeen
             const seen   = lastSeen[m.user_id];
             return (
               <div key={m.id} className="flex items-center gap-3 px-4 py-3">
-                <Av name={m.full_name} size={44} online={online} />
+                <Av name={m.full_name} size={44} online={online} url={m.avatar_url} />
                 <div className="flex-1 min-w-0">
                   <p className="text-[14px] font-bold text-slate-800 truncate">{m.full_name}</p>
                   <p className={`text-[11px] font-medium ${online ? "text-green-500" : "text-slate-400"}`}>
@@ -517,6 +562,7 @@ export default function GroupChat({ orgId, myName, myRole = "member", orgName, o
   const [searchQ,      setSearchQ]      = useState("");
   const [showScrollBtn,setShowScrollBtn]= useState(false);
   const [unread,       setUnread]       = useState(0);
+  const [viewProfile,  setViewProfile]  = useState(null);
 
   const listRef     = useRef(null);
   const bottomRef   = useRef(null);
@@ -561,7 +607,7 @@ export default function GroupChat({ orgId, myName, myRole = "member", orgName, o
 
     Promise.all([
       fetchPage(),
-      supabase.from("org_members").select("id,full_name,user_id,role,status").eq("org_id", orgId).eq("status", "active"),
+      supabase.from("org_members").select("id,full_name,user_id,role,status,avatar_url,phone,joined_date").eq("org_id", orgId).eq("status", "active"),
       supabase.from("org_chat_settings").select("*").eq("org_id", orgId).maybeSingle(),
       supabase.from("org_chat_reads").select("user_id,last_read_at").eq("org_id", orgId),
     ]).then(([msgs, memR, setR, readsR]) => {
@@ -876,6 +922,14 @@ export default function GroupChat({ orgId, myName, myRole = "member", orgName, o
   const displayName = settings?.chat_name || `${orgName} Group`;
   const canSend     = text.trim().length > 0 || !!mediaPreview;
 
+  // Map user_id → avatar_url for quick lookup in message bubbles
+  const avatarMap = useMemo(() => {
+    const m = {};
+    for (const mem of members) if (mem.avatar_url) m[mem.user_id] = mem.avatar_url;
+    if (org?.logo_url) m["__org__"] = org.logo_url;
+    return m;
+  }, [members, org]);
+
   // ─────────────────────────────────────────────────────────────────────────
   if (loading) return (
     <div className="fixed inset-0 z-[80] bg-[#e8edf2] flex items-center justify-center">
@@ -1006,9 +1060,17 @@ export default function GroupChat({ orgId, myName, myRole = "member", orgName, o
                   <Bubble
                     msg={msg} isMe={isMe} showName={!grouped} showAv={showAv}
                     myId={myIdRef.current || myId} lastSeen={lastSeen} memberCount={members.length}
+                    avatarUrl={avatarMap[msg.sender_id] || null}
                     onLongPress={m => setCtxMsg(m)}
                     onReact={(m, e) => doAction("react", m, e)}
                     onJumpTo={jumpTo}
+                    onAvatarTap={m => {
+                      const mem = members.find(x => x.user_id === m.sender_id);
+                      if (mem) { setViewProfile(mem); return; }
+                      if (m.sender_role === "admin" || m.sender_role === "org") {
+                        setViewProfile({ full_name: m.sender_name, role: "admin", avatar_url: org?.logo_url, joined_date: null, phone: null });
+                      }
+                    }}
                   />
                 </div>
               );
@@ -1187,6 +1249,11 @@ export default function GroupChat({ orgId, myName, myRole = "member", orgName, o
           onSave={s => setSettings(s)}
           onClose={() => setEditSettings(false)}
         />
+      )}
+
+      {/* ── Sender profile sheet ── */}
+      {viewProfile && (
+        <SenderProfile member={viewProfile} onClose={() => setViewProfile(null)} />
       )}
     </div>
   );
