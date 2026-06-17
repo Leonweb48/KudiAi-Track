@@ -312,26 +312,6 @@ function CtxMenu({ msg, isMe, isAdmin, onClose, onAction }) {
   );
 }
 
-// ─── Full emoji grid ──────────────────────────────────────────────────────────
-function EmojiGrid({ onPick, onClose }) {
-  return (
-    <div className="fixed inset-0 z-[120] flex justify-center items-end" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" />
-      <div className="relative w-full max-w-md bg-white rounded-t-2xl overflow-hidden"
-        onClick={e => e.stopPropagation()}>
-        <div className="w-10 h-1 bg-slate-200 rounded-full mx-auto mt-3 mb-2" />
-        <div className="grid grid-cols-8 px-2 pb-6">
-          {ALL_EMOJIS.map(e => (
-            <button key={e} onClick={() => { onPick(e); onClose(); }}
-              className="py-3 text-2xl active:scale-125 transition-transform text-center">{e}
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Edit Settings Modal (admin only) ────────────────────────────────────────
 function EditSettings({ orgId, settings, myId, onSave, onClose }) {
   const [form, setForm]   = useState({ chat_name: settings?.chat_name || "", description: settings?.description || "", rules: settings?.rules || "", emoji: settings?.emoji || "💬" });
