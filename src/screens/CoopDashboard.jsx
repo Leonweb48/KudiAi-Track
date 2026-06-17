@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "../utils/supabase";
 import BillPayments from "./BillPayments";
+import GroupChat from "./GroupChat";
 
 const coopFn = async (action, body = {}) => {
   const r = await supabase.functions.invoke("coop-portal", { body: { action, ...body } });
@@ -2200,7 +2201,7 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
     finance:  <FinanceTab  org={org} members={members} programs={programs} onRefresh={loadAll} />,
     loans:    <LoansTab    org={org} members={members} onRefresh={loadAll} />,
     meetings: <MeetingsTab org={org} members={members} />,
-    messages: <MessagesTab org={org} />,
+    messages: <GroupChat orgId={org.id} myName={org.owner_name || "Admin"} myRole="admin" orgName={org.name} org={org} onBack={() => setTab("overview")} />,
     settings: <SettingsTab org={org} onRefresh={loadAll} onBack={onBack} isOrgPortal={isOrgPortal} />,
     bills:    <BillsTab    org={org} autoService={billsAutoSvc} onAutoOpened={() => setBillsAutoSvc(null)} />,
   };

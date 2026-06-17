@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "../utils/supabase";
 import BillPayments from "./BillPayments";
+import GroupChat from "./GroupChat";
 
 const coopFn = async (action, body = {}) => {
   const r = await supabase.functions.invoke("coop-portal", { body: { action, ...body } });
@@ -1038,7 +1039,7 @@ export default function CoopMemberPortal({ member: initialMember }) {
     bills:         <MemberBillsTab member={member} org={org} autoService={billsAutoSvc} onAutoOpened={() => setBillsAutoSvc(null)} />,
     meetings:      <MeetingsTab member={member} org={org} />,
     directory:     <DirectoryTab member={member} org={org} />,
-    messages:      <MessagesTab member={member} org={org} />,
+    messages:      <GroupChat orgId={org.id} myName={member.full_name} myRole="member" orgName={org.name} org={org} onBack={() => navigateTo("home")} />,
   };
 
   const isMoreTab = MORE_TABS.some(t => t.id === tab);
