@@ -829,58 +829,7 @@ function DirectoryTab({ member: selfMember, org }) {
   );
 }
 
-// ═══════════════════════════════════════════════════
-//  MESSAGES TAB
-// ═══════════════════════════════════════════════════
-function MessagesTab({ member, org }) {
-  const [announcements, setAnnouncements] = useState([]);
-  const [loading,       setLoading]       = useState(true);
 
-  const load = useCallback(() => {
-    coopFn("member-get-announcements", { member_id: member.id, org_id: org.id })
-      .then(r => setAnnouncements(r.announcements || []))
-      .finally(() => setLoading(false));
-  }, [member.id, org.id]);
-  useEffect(() => { load(); }, [load]);
-
-  if (loading) return <div className="flex justify-center py-16"><div className="w-8 h-8 border-[3px] border-blue-500 border-t-transparent rounded-full animate-spin" /></div>;
-
-  return (
-    <div className="p-4 pb-28 flex flex-col gap-3">
-      {announcements.length === 0 ? (
-        <div className="flex flex-col items-center py-20 text-center">
-          <span className="text-5xl mb-4">📭</span>
-          <p className="text-base font-extrabold text-slate-700 dark:text-slate-200 mb-2">No Messages</p>
-          <p className="text-sm text-slate-400">No announcements from your organisation yet.</p>
-        </div>
-      ) : (
-        <>
-          {announcements.filter(a => a.type === "emergency").map(a => (
-            <div key={a.id} className="rounded-2xl p-4 border-2 border-red-400 bg-red-50">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-lg">🚨</span>
-                <p className="text-sm font-extrabold text-red-700">EMERGENCY NOTICE</p>
-              </div>
-              <p className="text-sm font-bold text-red-800 mb-1">{a.title}</p>
-              <p className="text-xs text-red-700 leading-relaxed">{a.body}</p>
-              <p className="text-[10px] text-red-500 mt-2">{a.author_name} · {fmtDate(a.created_at)}</p>
-            </div>
-          ))}
-          {announcements.filter(a => a.type !== "emergency").map(a => (
-            <div key={a.id} className={`rounded-2xl p-4 border ${ANN_COLORS[a.type] || ANN_COLORS.announcement}`}>
-              <div className="flex justify-between items-start gap-2 mb-1">
-                <p className="text-sm font-extrabold flex-1">{ANN_ICONS[a.type]} {a.title}</p>
-                {a.is_pinned && <span className="text-[9px] font-bold bg-white/60 px-1.5 py-0.5 rounded-full flex-shrink-0">📌 Pinned</span>}
-              </div>
-              <p className="text-xs opacity-80 leading-relaxed mb-2">{a.body}</p>
-              <p className="text-[10px] opacity-60">{a.author_name} · {fmtDate(a.created_at)}</p>
-            </div>
-          ))}
-        </>
-      )}
-    </div>
-  );
-}
 
 // ═══════════════════════════════════════════════════
 //  BILLS TAB (member portal — no print services)

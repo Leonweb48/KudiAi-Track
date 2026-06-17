@@ -189,7 +189,7 @@ function MessageBubble({ msg, isMe, showAvatar, showName, myId, onLongPress, onR
             </p>
           ) : isImg ? (
             <div>
-              <img src={msg.media_url} alt="image" loading="lazy"
+              <img src={msg.media_url} alt={msg.media_name || ""} loading="lazy"
                 onClick={() => window.open(msg.media_url, "_blank")}
                 className="rounded-xl max-w-[220px] max-h-[240px] object-cover cursor-zoom-in mb-1" />
               {msg.content && <p className="text-sm">{msg.content}</p>}
