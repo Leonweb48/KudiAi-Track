@@ -165,17 +165,17 @@ function HomeTab({ member, org, announcements, loans = [], wdRequests = [], onQu
         style={{ background: "linear-gradient(145deg, #0a1628 0%, #1e3a5f 45%, #1d4ed8 100%)" }}>
         <div className="px-6 pt-7 pb-6">
           <div className="flex items-center gap-3 mb-5">
-            <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center text-xl font-extrabold text-white">
+            <div className="w-11 h-11 rounded-2xl bg-white/20 flex items-center justify-center text-xl font-extrabold text-white flex-shrink-0">
               {member.full_name?.charAt(0).toUpperCase()}
             </div>
-            <div>
-              <p className="text-white font-extrabold text-base leading-tight">{member.full_name}</p>
-              <p className="text-blue-200 text-[10px] font-mono">{member.membership_id}</p>
-              <p className="text-blue-200 text-[10px] capitalize">{member.role} · {org.name}</p>
+            <div className="min-w-0 flex-1">
+              <p className="text-white font-extrabold text-[15px] leading-tight truncate">{member.full_name}</p>
+              <p className="text-blue-200 text-[10px] font-mono truncate">{member.membership_id}</p>
+              <p className="text-blue-200 text-[10px] capitalize truncate">{member.role} · {org.name}</p>
             </div>
           </div>
-          <p className="text-[10px] font-extrabold text-blue-300 uppercase tracking-[0.25em] mb-2">Savings Balance</p>
-          <p className="text-[44px] font-black text-white leading-none tabular-nums">{fmt(member.savings_balance)}</p>
+          <p className="text-[10px] font-extrabold text-blue-300 uppercase tracking-[0.25em] mb-1.5">Savings Balance</p>
+          <p className="text-[34px] font-black text-white leading-none tabular-nums break-all">{fmt(member.savings_balance)}</p>
           <div className="flex items-center mt-5 pt-4 border-t border-white/10">
             <div className="flex-1">
               <p className="text-sm font-extrabold text-white">{fmtDate(member.joined_date)}</p>
@@ -200,17 +200,17 @@ function HomeTab({ member, org, announcements, loans = [], wdRequests = [], onQu
           <p className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em]">Quick Services</p>
           {onNavigate && <button onClick={() => onNavigate("bills")} className="text-[10px] font-bold text-blue-600 dark:text-blue-400">View All →</button>}
         </div>
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-4 gap-2">
           {MBR_QUICK.map(s => (
             <button key={s.id} onClick={() => onQuickService?.(s.id)}
-              className="flex flex-col items-center gap-2.5 active:scale-95 transition-transform duration-150">
-              <div className="w-[58px] h-[58px] rounded-[18px] flex items-center justify-center shadow-lg"
+              className="flex flex-col items-center gap-2 active:scale-95 transition-transform duration-150">
+              <div className="w-full aspect-square rounded-[18px] flex items-center justify-center shadow-lg max-w-[64px] mx-auto"
                 style={{ background:`linear-gradient(145deg,${s.g1},${s.g2})` }}>
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                   {s.icon.split("|").map((p,i) => <path key={i} d={p} />)}
                 </svg>
               </div>
-              <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400 leading-tight text-center">{s.label}</span>
+              <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400 leading-tight text-center w-full">{s.label}</span>
             </button>
           ))}
         </div>
@@ -995,8 +995,9 @@ export default function CoopMemberPortal({ member: initialMember }) {
   const emergencyCount = announcements.filter(a => a.type === "emergency").length;
 
   return (
-    <div className="fixed inset-0 z-[70] bg-slate-50 dark:bg-slate-900 flex justify-center">
-      <div className="w-full max-w-md flex flex-col h-full">
+    <div className="fixed inset-x-0 top-0 z-[70] bg-slate-50 dark:bg-slate-900 flex justify-center overflow-hidden"
+      style={{ height: "100dvh" }}>
+      <div className="w-full max-w-md flex flex-col overflow-hidden" style={{ height: "100dvh" }}>
 
         {/* ── Top Header ── */}
         <div className="sticky top-0 z-20 bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm border-b border-slate-100 dark:border-slate-800 px-4 py-3 flex items-center gap-3">
@@ -1006,7 +1007,7 @@ export default function CoopMemberPortal({ member: initialMember }) {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-extrabold text-slate-800 dark:text-white truncate leading-tight">{member.full_name}</p>
-            <p className="text-[9px] text-slate-400 font-mono tracking-wider">{member.membership_id} · {org?.name}</p>
+            <p className="text-[9px] text-slate-400 font-mono truncate">{member.membership_id} · {org?.name}</p>
           </div>
           <div className="flex items-center gap-3 flex-shrink-0">
             <div className="text-right">
@@ -1021,7 +1022,7 @@ export default function CoopMemberPortal({ member: initialMember }) {
         </div>
 
         {/* ── Main Content ── */}
-        <main className="flex-1 overflow-y-auto pb-[68px]">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden pb-20 min-h-0">
           {tabContent[tab]}
         </main>
 
