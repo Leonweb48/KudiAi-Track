@@ -43,32 +43,52 @@ const avatarColor = (name = "") => {
   return p[Math.abs(h) % p.length];
 };
 
+// Detect best supported recording MIME type (webm for Chrome, mp4 for Safari/iOS)
+const getBestMime = () => {
+  if (typeof MediaRecorder === "undefined") return null;
+  const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4", "audio/mpeg", ""];
+  return candidates.find(t => !t || MediaRecorder.isTypeSupported(t)) ?? "";
+};
+const mimeToExt = mime => {
+  if (mime.includes("ogg")) return "ogg";
+  if (mime.includes("mp4") || mime.includes("mpeg")) return "mp4";
+  return "webm";
+};
+
 // ─── Audio Player ─────────────────────────────────────────────────────────────
 function AudioPlayer({ url, duration, isMe }) {
   const [playing, setPlaying] = useState(false);
   const [cur,     setCur]     = useState(0);
-  const ref                    = useRef(null);
-
-  useEffect(() => {
-    const a = new Audio(url);
-    ref.current = a;
-    a.onended      = () => { setPlaying(false); setCur(0); };
-    a.ontimeupdate = () => setCur(a.currentTime);
-    return () => { a.pause(); ref.current = null; };
-  }, [url]);
+  const [dur,     setDur]     = useState(duration || 0);
+  const audioRef              = useRef(null);
 
   const toggle = () => {
-    const a = ref.current;
+    const a = audioRef.current;
     if (!a) return;
-    if (playing) { a.pause(); setPlaying(false); }
-    else         { a.play();  setPlaying(true); }
+    if (playing) {
+      a.pause();
+      setPlaying(false);
+    } else {
+      a.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
+    }
   };
 
-  const pct  = Math.min(((cur || 0) / (duration || 1)) * 100, 100);
+  const pct  = Math.min(((cur || 0) / (dur || 1)) * 100, 100);
   const BARS = [2,4,7,5,8,3,6,9,4,7,5,3,8,6,4,5,9,3,7,5,4,6,3,5];
 
   return (
     <div className="flex items-center gap-2.5 min-w-[180px] py-0.5">
+      {/* Hidden native audio element — most reliable cross-browser approach */}
+      <audio
+        ref={audioRef}
+        src={url}
+        preload="metadata"
+        onEnded={() => { setPlaying(false); setCur(0); }}
+        onTimeUpdate={e => setCur(e.target.currentTime)}
+        onLoadedMetadata={e => { if (e.target.duration && isFinite(e.target.duration)) setDur(e.target.duration); }}
+        onError={() => setPlaying(false)}
+        style={{ display: "none" }}
+      />
       <button onClick={toggle}
         className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-transform active:scale-90
           ${isMe ? "bg-white/20 hover:bg-white/30" : "bg-blue-100 hover:bg-blue-200"}`}>
@@ -87,7 +107,7 @@ function AudioPlayer({ url, duration, isMe }) {
           })}
         </div>
         <span className={`text-[10px] font-medium ${isMe ? "text-white/60" : "text-slate-400"}`}>
-          {fmtDuration(cur)} / {fmtDuration(duration)}
+          {fmtDuration(cur)} / {fmtDuration(dur)}
         </span>
       </div>
     </div>
@@ -765,22 +785,26 @@ export default function GroupChat({ orgId, myName, myRole = "member", orgName, o
   // ── Voice recording ───────────────────────────────────────────────────────
   const startRec = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const rec    = new MediaRecorder(stream);
+      const stream   = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mime     = getBestMime();
+      const recOpts  = mime ? { mimeType: mime } : {};
+      const rec      = new MediaRecorder(stream, recOpts);
+      const usedMime = rec.mimeType || mime || "audio/webm";
       audioChunks.current = [];
       recDur.current      = 0;
-      rec.ondataavailable = e => audioChunks.current.push(e.data);
+      rec.ondataavailable = e => { if (e.data.size > 0) audioChunks.current.push(e.data); };
       rec.onstop = async () => {
         stream.getTracks().forEach(t => t.stop());
-        const blob = new Blob(audioChunks.current, { type: "audio/webm" });
-        const file = new File([blob], `voice-${Date.now()}.webm`, { type: "audio/webm" });
+        const blob = new Blob(audioChunks.current, { type: usedMime });
+        const ext  = mimeToExt(usedMime);
+        const file = new File([blob], `voice-${Date.now()}.${ext}`, { type: usedMime });
         try {
           const url = await upload(file);
-          await sendMsg({ type: "audio", media_url: url, media_name: file.name, duration: recDur.current });
+          await sendMsg({ type: "audio", media_url: url, media_name: file.name, media_mime: usedMime, duration: recDur.current });
         } catch {}
         setRecSecs(0);
       };
-      rec.start();
+      rec.start(250); // collect in 250ms chunks for reliability
       recRef.current = rec;
       setRecording(true);
       recTimer.current = setInterval(() => setRecSecs(s => { recDur.current = s + 1; return s + 1; }), 1000);
