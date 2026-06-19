@@ -352,7 +352,13 @@ export default function StaffDashboard({ session, staff }) {
     ...(!canPrintData    ? ["print-data"]    : []),
   ];
 
-  const [tab,       setTab]       = useState("overview");
+  const [tab,       setTab]       = useState(() => {
+    const p = new URLSearchParams(window.location.search);
+    const ref = p.get("bill_ref") || p.get("trxref") || p.get("reference");
+    if (ref && localStorage.getItem(`ck_bill_pending_${ref}`)) return "bills";
+    if (Object.keys(localStorage).some(k => k.startsWith("ck_bill_pending_"))) return "bills";
+    return "overview";
+  });
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [autoAdd,   setAutoAdd]   = useState(null);
   const [ownerName, setOwnerName] = useState("");
@@ -371,6 +377,15 @@ export default function StaffDashboard({ session, staff }) {
   useEffect(() => {
     document.documentElement.classList.toggle("dark", staffDark);
   }, [staffDark]);
+
+  // Switch to bills tab when Paystack redirects back after payment
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const billRef = params.get("bill_ref") || params.get("trxref");
+    if (billRef && localStorage.getItem(`ck_bill_pending_${billRef}`)) {
+      setTab("bills");
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reset to overview if the active tab's permission was revoked
   useEffect(() => {
