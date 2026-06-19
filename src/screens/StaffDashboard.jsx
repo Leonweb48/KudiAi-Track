@@ -1336,16 +1336,16 @@ export default function StaffDashboard({ session, staff }) {
   }
 
   return (
-    <div className="h-screen bg-slate-50 dark:bg-slate-900 flex justify-center transition-colors duration-200">
-      <div className="w-full max-w-md flex flex-col h-full relative overflow-hidden">
+    <div className="h-[100dvh] bg-slate-50 dark:bg-slate-900 flex justify-center transition-colors duration-200">
+      <div className="w-full max-w-md flex flex-col h-full relative">
 
         {/* PIN lock overlay */}
         {pinLocked && (
           <StaffPinLock staffId={staffId} onUnlock={() => setPinLocked(false)} />
         )}
 
-        {/* Header */}
-        <header className="flex-shrink-0 h-14 flex items-center justify-between px-4 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 z-30">
+        {/* Header — sticky, never scrolls away */}
+        <header className="flex-none sticky top-0 z-30 h-14 flex items-center justify-between px-4 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shadow-sm">
           <AppLogo className="h-8 w-8" />
           <p className="text-[15px] font-extrabold text-slate-800 dark:text-slate-100 tracking-tight">KudiAI Track</p>
           <button onClick={() => goTo("me")}
@@ -1357,13 +1357,13 @@ export default function StaffDashboard({ session, staff }) {
           </button>
         </header>
 
-        {/* Content */}
-        <main className="flex-1 overflow-hidden">
+        {/* Content — fills remaining space, scrolls internally */}
+        <main className="flex-1 min-h-0 overflow-hidden">
           {renderContent()}
         </main>
 
-        {/* Bottom nav — 5 tabs */}
-        <nav className="flex-shrink-0 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 shadow-float z-40">
+        {/* Bottom nav — sticky, never scrolls away */}
+        <nav className="flex-none sticky bottom-0 z-40 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 shadow-float">
           <div className="flex items-stretch h-[60px]">
             {NAV.map(n => {
               const active = tab === n.id;
