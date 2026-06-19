@@ -17,8 +17,6 @@ import Settings              from "./screens/Settings";
 import Auth                  from "./screens/Auth";
 import Onboarding            from "./screens/Onboarding";
 import SubscriptionPlan      from "./screens/SubscriptionPlan";
-import StaffDashboard        from "./screens/StaffDashboard";
-import StaffFirstLogin       from "./screens/StaffFirstLogin";
 import MarketerDashboard     from "./screens/MarketerDashboard";
 import MarketerFirstLogin    from "./screens/MarketerFirstLogin";
 import BillPayments          from "./screens/BillPayments";
@@ -56,7 +54,13 @@ function Spinner() {
 }
 
 export default function App() {
-  const [tab,         setTab]         = useState("home");
+  const [tab,         setTab]         = useState(() => {
+    const p = new URLSearchParams(window.location.search);
+    const ref = p.get("bill_ref") || p.get("trxref") || p.get("reference");
+    if (ref && localStorage.getItem(`ck_bill_pending_${ref}`)) return "bills";
+    if (Object.keys(localStorage).some(k => k.startsWith("ck_bill_pending_"))) return "bills";
+    return "home";
+  });
   const [autoAdd,     setAutoAdd]     = useState(null);
   const [voiceOpen,   setVoiceOpen]   = useState(false);
   const [showUpgrade,  setShowUpgrade]  = useState(false);
@@ -195,13 +199,8 @@ export default function App() {
 
   if (status === "onboarding")      return <Onboarding session={session} onComplete={refetch} />;
   if (status === "subscribing")     return <SubscriptionPlan session={session} onComplete={setReady} />;
-  if (status === "staff_setup")     return <StaffFirstLogin session={session} staff={staff} />;
-  if (status === "staff") return (
-    <>
-      <StaffDashboard session={session} staff={staff} />
-      <AIChatWidget />
-    </>
-  );
+  if (status === "staff_setup")     return null; // StaffDashboard rebuild pending
+  if (status === "staff")           return null; // StaffDashboard rebuild pending
   if (status === "branch_manager") return (
     <>
       <BranchManagerDashboard session={session} staff={staff} />
@@ -259,7 +258,7 @@ export default function App() {
                     plan={plan}
                     onUpgrade={openUpgrade}
                     branches={branchesHook.branches} />,
-    bills:        <BillPayments store={store} plan={plan}
+    bills:        <BillPayments store={store} plan={plan} markup={1.098} airtimeDiscount={0.01} pointsEnabled
                     autoService={autoAdd?.tab === "bills" ? autoAdd?.type : null}
                     onAutoOpened={clearAutoAdd} />,
     insights:     <Insights
