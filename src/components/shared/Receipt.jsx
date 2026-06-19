@@ -775,7 +775,6 @@ export function StaffActivityStatement({ store, staffName, businessName, onClose
   const [period,    setPeriod]    = useState("month");
   const [customFrom,setCustomFrom]= useState(stmtTodayStr());
   const [customTo,  setCustomTo]  = useState(stmtTodayStr());
-  const [preview,   setPreview]   = useState(false);
   const [exporting, setExporting] = useState(false);
   const reportRef = useRef(null);
 
@@ -815,125 +814,100 @@ export function StaffActivityStatement({ store, staffName, businessName, onClose
     setExporting(false);
   };
 
-  /* ── Preview screen ── */
-  if (preview) {
-    return (
-      <div className="fixed inset-0 z-[60] bg-slate-100 dark:bg-slate-900 flex flex-col">
+  return (
+    <>
+      {/* Off-screen report — always in DOM so html2canvas can capture it instantly */}
+      <div aria-hidden="true" style={{position:"fixed",left:"-9999px",top:0,width:794,zIndex:-1,pointerEvents:"none"}}>
+        <div ref={reportRef} style={{width:794,background:"#fff"}}>
+          <StaffReportTemplate
+            staffName={staffName} businessName={businessName}
+            period={period} from={from} to={to}
+            txns={txns} cashIn={cashIn} cashOut={cashOut} profit={profit}
+            credits={credits} asoClients={asoClients}
+          />
+        </div>
+      </div>
+
+      {/* Selector screen */}
+      <div className="fixed inset-0 z-[60] bg-slate-50 dark:bg-slate-900 flex flex-col">
         <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 px-4 py-3 flex items-center gap-3 flex-shrink-0">
-          <button onClick={() => setPreview(false)}
+          <button onClick={onClose}
             className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center active:scale-95 transition">
             <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
               <path d="M19 12H5M12 5l-7 7 7 7"/>
             </svg>
           </button>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-slate-800 dark:text-white truncate">Activity Statement</p>
-            <p className="text-xs text-slate-400 dark:text-slate-500">{from===to?stmtFmtD(from):`${stmtFmtD(from)} — ${stmtFmtD(to)}`}</p>
+          <div>
+            <p className="text-base font-black text-slate-800 dark:text-white">Activity Statement</p>
+            <p className="text-xs text-slate-400 dark:text-slate-500">{staffName} · PDF saved to device</p>
           </div>
-          <button onClick={exportPDF} disabled={exporting}
-            className="flex items-center gap-2 px-4 py-2.5 bg-green-600 text-white rounded-xl font-bold text-sm active:scale-95 transition disabled:opacity-50 flex-shrink-0">
-            {exporting
-              ? <><div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin"/>Exporting…</>
-              : <><svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>Export PDF</>
-            }
-          </button>
         </div>
-        <div className="flex-1 overflow-y-auto bg-slate-300 dark:bg-slate-700">
-          <div className="py-4 flex justify-center">
-            <div style={{zoom:Math.min(1,(window.innerWidth-16)/794),width:794,flexShrink:0}}>
-              <div ref={reportRef} style={{width:794,background:"#fff",boxShadow:"0 20px 60px rgba(0,0,0,.25)"}}>
-                <StaffReportTemplate
-                  staffName={staffName} businessName={businessName}
-                  period={period} from={from} to={to}
-                  txns={txns} cashIn={cashIn} cashOut={cashOut} profit={profit}
-                  credits={credits} asoClients={asoClients}
-                />
+
+        <div className="flex-1 overflow-y-auto px-4 py-5">
+
+          <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3">Select Period</p>
+          <div className="flex gap-1.5 flex-wrap mb-3">
+            {STMT_PERIODS.map(p => (
+              <button key={p.id} onClick={() => setPeriod(p.id)}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all active:scale-95 ${
+                  period===p.id
+                    ? "bg-slate-800 dark:bg-white text-white dark:text-slate-900 shadow-sm"
+                    : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
+                }`}>
+                {p.label}
+              </button>
+            ))}
+          </div>
+
+          {period==="custom" && (
+            <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 mb-5 grid grid-cols-2 gap-3">
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">From</p>
+                <input type="date" value={customFrom} onChange={e=>setCustomFrom(e.target.value)}
+                  className="w-full text-sm text-slate-800 dark:text-slate-100 bg-transparent focus:outline-none"/>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">To</p>
+                <input type="date" value={customTo} onChange={e=>setCustomTo(e.target.value)}
+                  className="w-full text-sm text-slate-800 dark:text-slate-100 bg-transparent focus:outline-none"/>
               </div>
             </div>
+          )}
+
+          {period!=="custom" && (
+            <div className="bg-slate-100 dark:bg-slate-800 rounded-xl px-4 py-2.5 mb-5 flex items-center gap-2">
+              <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" className="text-slate-400 flex-shrink-0">
+                <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+              </svg>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                <span className="font-bold text-slate-700 dark:text-slate-200">{stmtFmtD(from)}</span>
+                {from!==to && <> → <span className="font-bold text-slate-700 dark:text-slate-200">{stmtFmtD(to)}</span></>}
+              </p>
+            </div>
+          )}
+
+          {/* Quick stats preview */}
+          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4 mb-5 grid grid-cols-3 gap-3">
+            {[["Cash In",fmt(cashIn),"text-green-600"],["Cash Out",fmt(cashOut),"text-red-500"],["Profit",fmt(profit),profit>=0?"text-green-600":"text-red-500"],["Txns",txns.length,"text-blue-600"],["Credits",credits.length,"text-amber-600"],["Ajo",asoClients.length,"text-violet-600"]].map(([l,v,c]) => (
+              <div key={l} className="text-center">
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1">{l}</p>
+                <p className={`text-sm font-extrabold tabular ${c}`}>{v}</p>
+              </div>
+            ))}
           </div>
+
+          <button onClick={exportPDF} disabled={exporting}
+            className="w-full py-4 bg-green-600 disabled:opacity-60 text-white rounded-2xl font-extrabold text-sm active:scale-[0.98] shadow-lg flex items-center justify-center gap-2 transition-all">
+            {exporting
+              ? <><div className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin"/>Generating PDF…</>
+              : <><svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                </svg>Save PDF to Device</>
+            }
+          </button>
+          <div className="h-8"/>
         </div>
       </div>
-    );
-  }
-
-  /* ── Selector screen ── */
-  return (
-    <div className="fixed inset-0 z-[60] bg-slate-50 dark:bg-slate-900 flex flex-col">
-      <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 px-4 py-3 flex items-center gap-3 flex-shrink-0">
-        <button onClick={onClose}
-          className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center active:scale-95 transition">
-          <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-            <path d="M19 12H5M12 5l-7 7 7 7"/>
-          </svg>
-        </button>
-        <div>
-          <p className="text-base font-black text-slate-800 dark:text-white">Activity Statement</p>
-          <p className="text-xs text-slate-400 dark:text-slate-500">{staffName} · Professional PDF export</p>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto px-4 py-5">
-
-        <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3">Select Period</p>
-        <div className="flex gap-1.5 flex-wrap mb-3">
-          {STMT_PERIODS.map(p => (
-            <button key={p.id} onClick={() => setPeriod(p.id)}
-              className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all active:scale-95 ${
-                period===p.id
-                  ? "bg-slate-800 dark:bg-white text-white dark:text-slate-900 shadow-sm"
-                  : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
-              }`}>
-              {p.label}
-            </button>
-          ))}
-        </div>
-
-        {period==="custom" && (
-          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 mb-5 grid grid-cols-2 gap-3">
-            <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">From</p>
-              <input type="date" value={customFrom} onChange={e=>setCustomFrom(e.target.value)}
-                className="w-full text-sm text-slate-800 dark:text-slate-100 bg-transparent focus:outline-none"/>
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">To</p>
-              <input type="date" value={customTo} onChange={e=>setCustomTo(e.target.value)}
-                className="w-full text-sm text-slate-800 dark:text-slate-100 bg-transparent focus:outline-none"/>
-            </div>
-          </div>
-        )}
-
-        {period!=="custom" && (
-          <div className="bg-slate-100 dark:bg-slate-800 rounded-xl px-4 py-2.5 mb-5 flex items-center gap-2">
-            <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" className="text-slate-400 flex-shrink-0">
-              <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-            </svg>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              <span className="font-bold text-slate-700 dark:text-slate-200">{stmtFmtD(from)}</span>
-              {from!==to && <> → <span className="font-bold text-slate-700 dark:text-slate-200">{stmtFmtD(to)}</span></>}
-            </p>
-          </div>
-        )}
-
-        {/* Quick preview of stats */}
-        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4 mb-5 grid grid-cols-3 gap-3">
-          {[["Cash In",fmt(cashIn),"text-green-600"],["Cash Out",fmt(cashOut),"text-red-500"],["Profit",fmt(profit),profit>=0?"text-green-600":"text-red-500"],["Txns",txns.length,"text-blue-600"],["Credits",credits.length,"text-amber-600"],["Ajo",asoClients.length,"text-violet-600"]].map(([l,v,c]) => (
-            <div key={l} className="text-center">
-              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1">{l}</p>
-              <p className={`text-sm font-extrabold tabular ${c}`}>{v}</p>
-            </div>
-          ))}
-        </div>
-
-        <button onClick={() => setPreview(true)}
-          className="w-full py-4 bg-green-600 text-white rounded-2xl font-extrabold text-sm active:scale-[0.98] shadow-lg flex items-center justify-center gap-2">
-          <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
-            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>
-          </svg>
-          Generate Statement
-        </button>
-        <div className="h-8"/>
-      </div>
-    </div>
+    </>
   );
 }
