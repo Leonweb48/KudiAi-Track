@@ -524,3 +524,134 @@ export function AsoReceipt({ client, profile, onClose }) {
     </Overlay>
   );
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   STAFF ACTIVITY STATEMENT
+   Period selector lives OUTSIDE the capturable card so it doesn't
+   appear in the PDF. Uses the same infrastructure as other receipts.
+══════════════════════════════════════════════════════════════════ */
+function dateFloor(period) {
+  const now = new Date();
+  if (period === "today") return now.toISOString().split("T")[0];
+  if (period === "week")  { const d = new Date(now); d.setDate(d.getDate() - 7);  return d.toISOString().split("T")[0]; }
+  if (period === "month") { const d = new Date(now); d.setDate(d.getDate() - 30); return d.toISOString().split("T")[0]; }
+  return null;
+}
+
+export function StaffActivityStatement({ store, staffName, businessName, onClose }) {
+  const [period,    setPeriod]    = useState("month");
+  const [cachedPng, setCachedPng] = useState(null);
+  const cardRef = useRef(null);
+
+  const transactions = store?.transactions || [];
+  const credits      = store?.credits      || [];
+  const asoClients   = store?.asoClients   || [];
+
+  const cutoff  = dateFloor(period);
+  const txns    = cutoff ? transactions.filter(t => t.transaction_date >= cutoff) : transactions;
+  const cashIn  = txns.filter(t => t.type === "in" ).reduce((s, t) => s + t.amount, 0);
+  const cashOut = txns.filter(t => t.type === "out").reduce((s, t) => s + t.amount, 0);
+  const profit  = cashIn - cashOut;
+  const crAmt   = credits.reduce((s, c) => s + (c.outstanding || 0), 0);
+  const overdue = credits.filter(c => c.status === "overdue").length;
+  const ajoBal  = asoClients.reduce((s, c) => s + (c.current_balance || 0), 0);
+
+  const PERIOD_LABELS = { today: "Today", week: "Last 7 Days", month: "Last 30 Days", all: "All Time" };
+  const dateStr = new Date().toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" });
+
+  useEffect(() => {
+    let cancelled = false;
+    setCachedPng(null);
+    const t = setTimeout(async () => {
+      if (!cardRef.current || cancelled) return;
+      try {
+        const f = await captureFile(cardRef);
+        if (!cancelled) setCachedPng(f);
+      } catch { /* ignore */ }
+    }, 500);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [period]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-start overflow-y-auto py-6 px-4"
+      style={{ background: "rgba(8,12,30,0.94)", backdropFilter: "blur(12px)" }}>
+
+      <div className="flex items-center justify-between w-full max-w-[340px] mb-4">
+        <span style={{ fontSize: 10, fontWeight: 800, color: "rgba(255,255,255,0.35)", letterSpacing: 3, textTransform: "uppercase" }}>
+          Activity Statement
+        </span>
+        <button onClick={onClose}
+          className="w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center border border-white/25 active:scale-90 transition">
+          <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-white" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+
+      {/* Period selector — outside capturable card */}
+      <div className="flex gap-2 w-full max-w-[340px] mb-4">
+        {[["today","Today"],["week","7 Days"],["month","30 Days"],["all","All Time"]].map(([v, l]) => (
+          <button key={v} onClick={() => setPeriod(v)}
+            className="flex-1 py-2 rounded-xl text-[11px] font-bold transition-all"
+            style={{
+              background: period === v ? GRN  : "rgba(255,255,255,0.1)",
+              color:      period === v ? "#fff" : "rgba(255,255,255,0.5)",
+            }}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {/* Capturable receipt card */}
+      <div ref={cardRef} style={{
+        width: "100%", maxWidth: 340,
+        background: "white", borderRadius: 16, overflow: "hidden",
+        boxShadow: "0 40px 100px rgba(0,0,0,0.6)",
+        fontFamily: "DM Sans, system-ui, -apple-system, sans-serif",
+      }}>
+        <Header title="STAFF ACTIVITY STATEMENT" business={businessName || "My Business"}
+          email={SUPPORT_EMAIL} date={dateStr} id={null} />
+
+        <AmountHero
+          label="Net Profit" amount={fmt(profit)}
+          color={profit >= 0 ? GRN : "#dc2626"}
+          badge={PERIOD_LABELS[period].toUpperCase()}
+          badgeColor={profit >= 0 ? GRN : "#dc2626"}
+        />
+
+        <SectionHead label="Staff Information" />
+        <Row label="Staff"     value={staffName    || "—"} bold />
+        <Row label="Business"  value={businessName || "—"} />
+        <Row label="Period"    value={PERIOD_LABELS[period]} />
+        <Row label="Generated" value={dateStr} last />
+
+        <SectionHead label="Sales Summary" />
+        <Row label="Cash In"      value={fmt(cashIn)}  color={GRN}     bold />
+        <Row label="Cash Out"     value={fmt(cashOut)} color="#dc2626" bold />
+        <Row label="Net Profit"   value={fmt(profit)}  color={profit >= 0 ? GRN : "#dc2626"} bold />
+        <Row label="Transactions" value={`${txns.length} records`} last />
+
+        <SectionHead label="Credit & Savings" />
+        <Row label="Outstanding Credit" value={fmt(crAmt)}  color="#d97706" bold />
+        <Row label="Overdue Credits"    value={overdue > 0 ? `${overdue} accounts` : "None"} color={overdue > 0 ? "#dc2626" : GRN} />
+        <Row label="Ajo Balance"        value={fmt(ajoBal)} color={NAVY} bold />
+        <Row label="Ajo Clients"        value={`${asoClients.length} clients`} last />
+
+        <Footer />
+      </div>
+
+      <ShareButtons
+        cardRef={cardRef}
+        pdfName={`KudiAITrack_Staff_Statement_${(staffName || "staff").replace(/\s+/g, "_")}.pdf`}
+        cachedPng={cachedPng}
+      />
+
+      <p className="text-white/20 text-xs mt-4 pb-4 flex items-center gap-1.5">
+        {cachedPng
+          ? <><span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" />Ready to share</>
+          : <><span className="w-1.5 h-1.5 rounded-full bg-white/30 inline-block animate-pulse" />Preparing…</>
+        }
+      </p>
+    </div>
+  );
+}

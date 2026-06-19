@@ -4,12 +4,12 @@ import { useStore }           from "../hooks/useStore";
 import { useInventory }       from "../hooks/useInventory";
 import { useBiometricLock }   from "../hooks/useBiometricLock";
 import { fmt, today }         from "../utils/helpers";
-import { buildContext }       from "../utils/buildContext";
-import { getLang }            from "../utils/i18n";
 import AppLogo                from "../components/AppLogo";
 import Icon                   from "../components/Icon";
 import Modal                  from "../components/shared/Modal";
+import AIChatWidget           from "../components/AIChatWidget";
 import VoiceModal             from "../components/VoiceModal";
+import { TransactionReceipt, StaffActivityStatement } from "../components/shared/Receipt";
 import BillPayments           from "./BillPayments";
 import Credit                 from "./Credit";
 import Aso                    from "./Aso";
@@ -19,8 +19,6 @@ import Insights               from "./Insights";
 /* ═══════════════════════════════════════════════════════════════════
    CONSTANTS
 ═══════════════════════════════════════════════════════════════════ */
-const CHAT_URL  = "https://admin.kudiai.app/api/public/chat";
-const SECRET    = "kuditrack-email-trigger-2026-amaya";
 const ADMIN_URL = "https://admin.kudiai.app";
 const YEAR      = new Date().getFullYear();
 
@@ -208,151 +206,6 @@ function TxRow({ t, onClick }) {
         {onClick && <p className="text-[10px] text-slate-300 dark:text-slate-600 mt-0.5">receipt →</p>}
       </div>
     </button>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════════════
-   RECEIPT MODAL
-═══════════════════════════════════════════════════════════════════ */
-function ReceiptModal({ txn, staffName, businessName, onClose }) {
-  const isIn     = txn.type === "in";
-  const receiptNo = `RCP-${(txn.id || "").toString().slice(0, 8).toUpperCase() || "00000000"}`;
-  const [copied, setCopied] = useState(false);
-
-  const text = [
-    "═══════════════════════════",
-    `       ${businessName || "Business"}`,
-    "═══════════════════════════",
-    `Receipt:  ${receiptNo}`,
-    `Date:     ${txn.transaction_date || "—"}`,
-    `Staff:    ${staffName || "—"}`,
-    "───────────────────────────",
-    `Item:     ${txn.item_name || "Transaction"}`,
-    `Type:     ${isIn ? "Cash In" : "Cash Out"}`,
-    `Payment:  ${txn.payment_type || "—"}`,
-    txn.category    ? `Category: ${txn.category}` : "",
-    txn.customer_name ? `Customer: ${txn.customer_name}` : "",
-    "───────────────────────────",
-    `AMOUNT:   ₦${Number(txn.amount || 0).toLocaleString("en-NG")}`,
-    "═══════════════════════════",
-    "  Powered by AMAYA & Co.",
-    "   Technologies Ltd",
-  ].filter(Boolean).join("\n");
-
-  const share = async () => {
-    if (navigator.share) { try { await navigator.share({ title: `Receipt ${receiptNo}`, text }); } catch { /* dismissed */ } }
-    else { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end justify-center p-4" onClick={onClose}>
-      <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-3xl overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
-        <div className={`px-6 py-5 flex items-center justify-between ${isIn ? "bg-green-500" : "bg-red-500"}`}>
-          <div>
-            <p className="text-white/70 text-[11px] font-bold uppercase tracking-widest">Receipt · {isIn ? "Cash In" : "Cash Out"}</p>
-            <p className="text-white font-black text-2xl mt-0.5">{fmt(txn.amount)}</p>
-          </div>
-          <div className="text-right">
-            <p className="text-white font-bold text-sm">{receiptNo}</p>
-            <p className="text-white/70 text-xs mt-0.5">{txn.transaction_date}</p>
-          </div>
-        </div>
-        <div className="px-6 py-4 space-y-3">
-          {[["Item", txn.item_name || "Transaction"],["Category", txn.category],["Payment", txn.payment_type],["Customer", txn.customer_name],["Staff", staffName],["Business", businessName]].filter(([, v]) => v).map(([k, v]) => (
-            <div key={k} className="flex items-center justify-between py-1 border-b border-slate-100 dark:border-slate-700/50 last:border-0">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">{k}</span>
-              <span className="text-sm font-semibold text-slate-700 dark:text-slate-200 max-w-[55%] text-right truncate">{v}</span>
-            </div>
-          ))}
-        </div>
-        <div className="px-6 pb-5 flex gap-3">
-          <button onClick={share}
-            className="flex-1 h-12 rounded-2xl bg-brand-600 text-white font-bold text-sm flex items-center justify-center gap-2 active:scale-95 transition">
-            <Svg d={copied ? P.check : P.share} size={16} color="#fff" />
-            {copied ? "Copied!" : "Share Receipt"}
-          </button>
-          <button onClick={onClose}
-            className="h-12 px-5 rounded-2xl border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 font-bold text-sm active:scale-95 transition">
-            Close
-          </button>
-        </div>
-        <p className="text-center pb-4 text-[10px] text-slate-300 dark:text-slate-600">Powered by AMAYA & Co. Technologies</p>
-      </div>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════════════
-   STATEMENT MODAL
-═══════════════════════════════════════════════════════════════════ */
-function StatementModal({ store, staffName, businessName, onClose }) {
-  const [period,  setPeriod]  = useState("month");
-  const [copied,  setCopied]  = useState(false);
-  const { transactions = [], credits = [], asoClients = [] } = store;
-
-  const cutoff = dateRange(period);
-  const txns   = cutoff ? transactions.filter(t => t.transaction_date >= cutoff) : transactions;
-  const cashIn  = txns.filter(t => t.type === "in").reduce((s, t) => s + t.amount, 0);
-  const cashOut = txns.filter(t => t.type === "out").reduce((s, t) => s + t.amount, 0);
-  const profit  = cashIn - cashOut;
-  const openCr  = credits.filter(c => c.status !== "paid");
-  const crAmt   = openCr.reduce((s, c) => s + (c.outstanding || 0), 0);
-  const ajoBal  = asoClients.reduce((s, c) => s + (c.current_balance || 0), 0);
-  const label   = { today: "Today", week: "Last 7 Days", month: "Last 30 Days", all: "All Time" }[period];
-
-  const text = [
-    "═══════════════════════════════════",
-    "       STAFF ACTIVITY STATEMENT",
-    "═══════════════════════════════════",
-    `Staff:    ${staffName || "—"}`,
-    `Business: ${businessName || "—"}`,
-    `Period:   ${label}`,
-    `Date:     ${new Date().toLocaleDateString("en-NG")}`,
-    "───────────────────────────────────",
-    "TRANSACTIONS",
-    `  Cash In:   ₦${cashIn.toLocaleString("en-NG")}`,
-    `  Cash Out:  ₦${cashOut.toLocaleString("en-NG")}`,
-    `  Profit:    ₦${profit.toLocaleString("en-NG")}`,
-    `  Count:     ${txns.length}`,
-    "───────────────────────────────────",
-    `  Outstanding Credit: ₦${crAmt.toLocaleString("en-NG")} (${openCr.length})`,
-    `  Ajo Balance:        ₦${ajoBal.toLocaleString("en-NG")} (${asoClients.length})`,
-    "───────────────────────────────────",
-    `  Generated: ${new Date().toLocaleString("en-NG")}`,
-    "  Powered by AMAYA & Co. Technologies",
-    `  © ${YEAR} All rights reserved`,
-    "═══════════════════════════════════",
-  ].join("\n");
-
-  const share = async () => {
-    if (navigator.share) { try { await navigator.share({ title: "Staff Statement", text }); } catch { /* dismissed */ } }
-    else { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); }
-  };
-
-  return (
-    <Modal title="Activity Statement" onClose={onClose}>
-      <div className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1 mb-4">
-        {[["today","Today"],["week","7 Days"],["month","30 Days"],["all","All Time"]].map(([v, l]) => (
-          <button key={v} onClick={() => setPeriod(v)}
-            className={`flex-shrink-0 px-4 py-2 rounded-xl text-xs font-bold transition ${period === v ? "bg-brand-600 text-white" : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400"}`}>
-            {l}
-          </button>
-        ))}
-      </div>
-      <div className="space-y-3 mb-5">
-        {[["Cash In", fmt(cashIn), "text-green-600"],["Cash Out", fmt(cashOut), "text-red-500"],["Net Profit", fmt(profit), profit >= 0 ? "text-green-600" : "text-red-500"],["Transactions", `${txns.length} records`, "text-slate-700 dark:text-slate-200"],["Outstanding Cr", `${fmt(crAmt)} (${openCr.length})`, "text-amber-600"],["Ajo Balance", `${fmt(ajoBal)} (${asoClients.length})`, "text-blue-600"]].map(([l, v, c]) => (
-          <div key={l} className="flex items-center justify-between py-2 border-b border-slate-100 dark:border-slate-700/50 last:border-0">
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{l}</span>
-            <span className={`text-sm font-extrabold tabular ${c}`}>{v}</span>
-          </div>
-        ))}
-      </div>
-      <button onClick={share}
-        className="w-full h-12 rounded-2xl bg-brand-600 text-white font-bold text-sm flex items-center justify-center gap-2 active:scale-95 transition">
-        <Svg d={copied ? P.check : P.share} size={16} color="#fff" />
-        {copied ? "Copied!" : "Share Statement"}
-      </button>
-    </Modal>
   );
 }
 
@@ -619,145 +472,6 @@ function FAQ() {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   FLOATING KUDIAI CHAT WIDGET (staff-scoped, matches AIChatWidget)
-═══════════════════════════════════════════════════════════════════ */
-const QUICK_ASKS = [
-  { label: "Today's Sales",  q: "How were my sales today?"                                        },
-  { label: "Total Profit",   q: "What is my total profit?"                                        },
-  { label: "Outstanding",    q: "Who owes me money and how much in total?"                        },
-  { label: "Stock Status",   q: "What is my current stock status and what is running low?"        },
-  { label: "Ajo Summary",    q: "Give me a full Ajo savings summary with all client details"      },
-  { label: "My Performance", q: "Evaluate my performance and suggest how I can improve this month"},
-];
-
-const GREETING = "Hi! I'm **KudiAI**, your AI assistant powered by Gemini.\n\nAsk me anything about your sales, credit, stock, or Ajo data — I know your real data!";
-
-function FormattedText({ text }) {
-  return text.split("\n").map((line, i) => (
-    <span key={i}>{i > 0 && <br />}{line.split(/\*\*([^*]+)\*\*/g).map((p, j) => j % 2 === 1 ? <strong key={j} className="font-semibold">{p}</strong> : p)}</span>
-  ));
-}
-
-function StaffChatWidget({ store, inventory, staff }) {
-  const [open,     setOpen]     = useState(false);
-  const [messages, setMessages] = useState([{ role: "assistant", text: GREETING }]);
-  const [input,    setInput]    = useState("");
-  const [thinking, setThinking] = useState(false);
-  const listRef  = useRef(null);
-  const inputRef = useRef(null);
-  const msgRef   = useRef(messages);
-  msgRef.current = messages;
-
-  useEffect(() => { if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight; }, [messages, thinking]);
-  useEffect(() => { if (open && inputRef.current) setTimeout(() => inputRef.current?.focus(), 150); }, [open]);
-
-  const ask = useCallback(async (q) => {
-    const query = q.trim();
-    if (!query || thinking) return;
-    setMessages(prev => [...prev, { role: "user", text: query }]);
-    setInput("");
-    setThinking(true);
-    try {
-      const lang    = getLang();
-      const staffCtx = `STAFF CONTEXT:\nName: ${staff?.full_name}\nRole: ${staff?.role}\nBusiness: ${staff?.business_name}\n\n`;
-      const ctx     = staffCtx + buildContext(store, inventory?.products || [], []);
-      const history = msgRef.current.slice(1).map(m => ({ role: m.role, text: m.text }));
-      const res = await fetch(CHAT_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-trigger-secret": SECRET },
-        body: JSON.stringify({ message: query, lang, businessContext: ctx, history }),
-      });
-      const reply = res.ok ? await res.text() : "Couldn't get a response. Please try again.";
-      setMessages(prev => [...prev, { role: "assistant", text: reply || "No response received." }]);
-    } catch {
-      setMessages(prev => [...prev, { role: "assistant", text: "Network error. Check your connection." }]);
-    } finally { setThinking(false); }
-  }, [thinking, store, inventory, staff]);
-
-  return (
-    <>
-      {!open && (
-        <button onClick={() => setOpen(true)}
-          className="fixed bottom-20 right-4 z-[55] w-13 h-13 rounded-full shadow-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-white transition-transform active:scale-90"
-          style={{ width: 52, height: 52 }} aria-label="Open KudiAI Assistant">
-          <span className="text-xl leading-none">✨</span>
-        </button>
-      )}
-      {open && (
-        <div className="fixed inset-x-0 bottom-0 z-[55] flex justify-center pointer-events-none">
-          <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-t-2xl shadow-2xl border border-slate-200 dark:border-slate-700 flex flex-col pointer-events-auto"
-            style={{ height: "72vh", maxHeight: 560 }}>
-            <div className="flex items-center gap-2.5 px-4 py-3 border-b border-slate-100 dark:border-slate-700 flex-shrink-0">
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center flex-shrink-0">
-                <span className="text-sm leading-none">✨</span>
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-slate-800 dark:text-white leading-tight">KudiAI Assistant</p>
-                <p className="text-[10px] text-brand-500 dark:text-brand-400 font-medium">Powered by Gemini · knows your real data</p>
-              </div>
-              <button onClick={() => setOpen(false)}
-                className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-500">
-                <Svg d="M18 6L6 18|M6 6l12 12" size={14} color="currentColor" />
-              </button>
-            </div>
-            <div ref={listRef} className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
-              {messages.map((m, i) => (
-                <div key={i} className={`flex items-end gap-2 ${m.role === "user" ? "flex-row-reverse" : ""}`}>
-                  {m.role === "assistant" && (
-                    <div className="w-6 h-6 rounded-full bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center flex-shrink-0 self-end">
-                      <span className="text-[10px] leading-none">✨</span>
-                    </div>
-                  )}
-                  <div className={`max-w-[82%] px-3 py-2 rounded-2xl text-xs leading-relaxed ${m.role === "user" ? "bg-brand-500 text-white rounded-br-sm" : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-bl-sm border border-slate-200 dark:border-slate-700"}`}>
-                    <FormattedText text={m.text} />
-                  </div>
-                </div>
-              ))}
-              {thinking && (
-                <div className="flex items-end gap-2">
-                  <div className="w-6 h-6 rounded-full bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center flex-shrink-0">
-                    <span className="text-[10px] leading-none">✨</span>
-                  </div>
-                  <div className="bg-slate-100 dark:bg-slate-800 px-3 py-2 rounded-2xl rounded-bl-sm border border-slate-200 dark:border-slate-700">
-                    <div className="flex gap-1 items-center h-3">
-                      {[0, 150, 300].map(d => <div key={d} className="w-1.5 h-1.5 bg-brand-400 rounded-full animate-bounce" style={{ animationDelay: `${d}ms` }} />)}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-            {messages.length <= 2 && (
-              <div className="px-3 py-2 border-t border-slate-100 dark:border-slate-700/60 flex-shrink-0">
-                <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-                  {QUICK_ASKS.map(({ label, q }) => (
-                    <button key={label} onClick={() => ask(q)} disabled={thinking}
-                      className="flex-shrink-0 px-2.5 py-1 rounded-full bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 text-[10px] font-medium border border-brand-100 dark:border-brand-800 whitespace-nowrap disabled:opacity-50">
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-            <div className="px-3 py-3 border-t border-slate-100 dark:border-slate-700 flex items-center gap-2 flex-shrink-0"
-              style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom, 0px))" }}>
-              <input ref={inputRef} value={input} onChange={e => setInput(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(input); } }}
-                disabled={thinking}
-                placeholder={thinking ? "KudiAI is thinking…" : "Ask anything about your data…"}
-                className="flex-1 px-3 py-2 rounded-xl text-xs bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-white placeholder-slate-400 border border-transparent focus:border-brand-300 dark:focus:border-brand-600 outline-none disabled:opacity-60" />
-              <button onClick={() => ask(input)} disabled={!input.trim() || thinking}
-                className="w-8 h-8 rounded-xl bg-brand-500 disabled:bg-slate-200 dark:disabled:bg-slate-700 flex items-center justify-center transition-colors active:scale-95">
-                <Svg d={P.send} size={14} color="white" />
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════════════
    HOME TAB
 ═══════════════════════════════════════════════════════════════════ */
 function StaffHome({ staff, store, inventory, onGoTo, onVoiceOpen }) {
@@ -1000,7 +714,7 @@ function StaffSales({ store, staff, session, livePerms, initialSub, initialData,
       )}
 
       {receipt && (
-        <ReceiptModal txn={receipt} staffName={staff?.full_name} businessName={staff?.business_name} onClose={() => setReceipt(null)} />
+        <TransactionReceipt txn={receipt} profile={store.profile || { business_name: staff?.business_name }} onClose={() => setReceipt(null)} />
       )}
     </div>
   );
@@ -1126,7 +840,7 @@ function StaffMe({ staff, session, store, inventory, livePerms, staffId, lock, p
     <div className="h-full flex flex-col">
       <SubHeader title="Reports & Insights" />
       <div className="flex-1 overflow-y-auto pb-4">
-        <Insights store={store} inventory={inventory} plan={plan || "starter"} staffName={staff?.full_name} />
+        <Insights store={store} inventory={inventory} plan={plan || "starter"} onUpgrade={null} />
       </div>
     </div>
   );
@@ -1315,7 +1029,7 @@ function StaffMe({ staff, session, store, inventory, livePerms, staffId, lock, p
         }} />
       )}
       {showSupport && <SupportModal onClose={() => setShowSupport(false)} staffName={staff?.full_name} staffEmail={staff?.email || session?.user?.email || ""} />}
-      {showStatement && <StatementModal store={store} staffName={staff?.full_name} businessName={staff?.business_name} onClose={() => setShowStatement(false)} />}
+      {showStatement && <StaffActivityStatement store={store} staffName={staff?.full_name} businessName={staff?.business_name || store.profile?.business_name} onClose={() => setShowStatement(false)} />}
     </div>
   );
 }
@@ -1473,7 +1187,7 @@ export default function StaffDashboard({ session, staff }) {
         </nav>
 
         {/* Floating KudiAI Chat Widget */}
-        <StaffChatWidget store={store} inventory={inventory} staff={staff} />
+        <AIChatWidget store={store} inventory={inventory} branches={[]} />
 
         {/* Voice Modal */}
         {voiceOpen && (
