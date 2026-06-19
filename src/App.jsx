@@ -17,6 +17,7 @@ import Settings              from "./screens/Settings";
 import Auth                  from "./screens/Auth";
 import Onboarding            from "./screens/Onboarding";
 import SubscriptionPlan      from "./screens/SubscriptionPlan";
+import StaffDashboard        from "./screens/StaffDashboard";
 import MarketerDashboard     from "./screens/MarketerDashboard";
 import MarketerFirstLogin    from "./screens/MarketerFirstLogin";
 import BillPayments          from "./screens/BillPayments";
@@ -199,8 +200,12 @@ export default function App() {
 
   if (status === "onboarding")      return <Onboarding session={session} onComplete={refetch} />;
   if (status === "subscribing")     return <SubscriptionPlan session={session} onComplete={setReady} />;
-  if (status === "staff_setup")     return null; // StaffDashboard rebuild pending
-  if (status === "staff")           return null; // StaffDashboard rebuild pending
+  if (status === "staff_setup" || status === "staff") return (
+    <>
+      <StaffDashboard session={session} staff={staff} />
+      <AIChatWidget />
+    </>
+  );
   if (status === "branch_manager") return (
     <>
       <BranchManagerDashboard session={session} staff={staff} />
