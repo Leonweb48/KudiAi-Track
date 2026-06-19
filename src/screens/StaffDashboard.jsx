@@ -4,7 +4,7 @@ import { useStore }           from "../hooks/useStore";
 import { useInventory }       from "../hooks/useInventory";
 import { useBiometricLock }   from "../hooks/useBiometricLock";
 import { fmt, today }         from "../utils/helpers";
-import { canDo }              from "../utils/plans";
+import { canDo, normalizeSlug } from "../utils/plans";
 import AppLogo                from "../components/AppLogo";
 import Icon                   from "../components/Icon";
 import Modal                  from "../components/shared/Modal";
@@ -1075,7 +1075,41 @@ export default function StaffDashboard({ session, staff }) {
   const inventory = useInventory(ownerId, staffId, null, staff?.branch_id || null);
   const lock      = useBiometricLock(staffId);
 
-  const plan = store.profile?.plan || "starter";
+  // Fetch the business owner's active subscription plan — this is the single
+  // source of truth for what features are available to staff. It lives in the
+  // `subscriptions` table (not `profiles`), so we query it directly and keep
+  // it live via Postgres realtime so a plan upgrade is reflected immediately.
+  const [ownerPlan, setOwnerPlan] = useState("starter");
+
+  useEffect(() => {
+    if (!ownerId) return;
+    let cancelled = false;
+
+    async function fetchOwnerPlan() {
+      const { data } = await supabase
+        .from("subscriptions")
+        .select("plan")
+        .eq("user_id", ownerId)
+        .eq("status", "active")
+        .maybeSingle();
+      if (!cancelled) setOwnerPlan(normalizeSlug(data?.plan || "starter"));
+    }
+
+    fetchOwnerPlan();
+
+    const ch = supabase
+      .channel(`owner_sub_${ownerId}`)
+      .on("postgres_changes", {
+        event: "*", schema: "public",
+        table: "subscriptions",
+        filter: `user_id=eq.${ownerId}`,
+      }, fetchOwnerPlan)
+      .subscribe();
+
+    return () => { cancelled = true; supabase.removeChannel(ch); };
+  }, [ownerId]);
+
+  const plan = ownerPlan;
 
   // Dark mode bootstrap
   useEffect(() => {
