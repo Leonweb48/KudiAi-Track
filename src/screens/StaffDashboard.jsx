@@ -1075,10 +1075,11 @@ export default function StaffDashboard({ session, staff }) {
   const inventory = useInventory(ownerId, staffId, null, staff?.branch_id || null);
   const lock      = useBiometricLock(staffId);
 
-  // Fetch the business owner's active subscription plan — this is the single
-  // source of truth for what features are available to staff. It lives in the
-  // `subscriptions` table (not `profiles`), so we query it directly and keep
-  // it live via Postgres realtime so a plan upgrade is reflected immediately.
+  // Fetch the business owner's active subscription plan.
+  // Uses a SECURITY DEFINER RPC so the staff member's JWT can read the
+  // owner's subscription row (direct SELECT is blocked by RLS).
+  // Realtime re-fetches when the owner's subscription row changes
+  // (the migration also adds an RLS policy that allows staff to subscribe).
   const [ownerPlan, setOwnerPlan] = useState("starter");
 
   useEffect(() => {
@@ -1086,17 +1087,13 @@ export default function StaffDashboard({ session, staff }) {
     let cancelled = false;
 
     async function fetchOwnerPlan() {
-      const { data } = await supabase
-        .from("subscriptions")
-        .select("plan")
-        .eq("user_id", ownerId)
-        .eq("status", "active")
-        .maybeSingle();
-      if (!cancelled) setOwnerPlan(normalizeSlug(data?.plan || "starter"));
+      const { data } = await supabase.rpc("get_owner_plan");
+      if (!cancelled) setOwnerPlan(normalizeSlug(data || "starter"));
     }
 
     fetchOwnerPlan();
 
+    // Live-update when the owner upgrades/changes plan
     const ch = supabase
       .channel(`owner_sub_${ownerId}`)
       .on("postgres_changes", {
