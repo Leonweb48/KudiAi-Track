@@ -775,7 +775,7 @@ function StaffHome({ staff, store, inventory, onGoTo, onVoiceOpen }) {
   const name = (staff?.full_name || "Staff").split(" ")[0];
 
   return (
-    <div className="overflow-y-auto h-full px-4 pb-28 screen-enter">
+    <div className="overflow-y-auto h-full px-4 pb-6 screen-enter">
 
       {/* Greeting */}
       <div className="pt-5 pb-2">
@@ -943,11 +943,11 @@ function StaffSales({ store, staff, session, livePerms, initialSub, initialData,
       {sub === "bills" && (
         <div className="flex-1 overflow-hidden">
           {!allowed.includes("bills")
-            ? <div className="flex flex-col items-center justify-center h-full gap-3 pb-16 text-center px-8">
+            ? <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-8">
                 <p className="text-base font-bold text-slate-600 dark:text-slate-400">Bills not enabled</p>
                 <p className="text-sm text-slate-400">Contact your manager to enable bill payments.</p>
               </div>
-            : <div className="h-full overflow-y-auto pb-16">
+            : <div className="h-full overflow-y-auto pb-4">
                 <BillPayments store={store} staffName={staff?.full_name}
                   staffEmail={session?.user?.email || staff?.email || ""} businessName={staff?.business_name} />
               </div>
@@ -987,7 +987,7 @@ function StaffSales({ store, staff, session, livePerms, initialSub, initialData,
               </div>
             ))}
           </div>
-          <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2 pb-16">
+          <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2 pb-4">
             {loading ? [1,2,3,4].map(i => <div key={i} className="h-[72px] bg-slate-100 dark:bg-slate-700/60 rounded-2xl animate-pulse" />) :
              (sub === "cash" ? cashOnly : filtered).length === 0
               ? <p className="text-center text-sm text-slate-400 py-12">No transactions found</p>
@@ -1029,16 +1029,16 @@ function StaffRecords({ store, staff, livePerms, initialSub }) {
       <div className="flex-1 overflow-hidden">
         {sub === "credit" && (
           allowed.includes("credit")
-            ? <div className="h-full overflow-y-auto pb-16"><Credit store={store} plan="starter" /></div>
-            : <div className="flex flex-col items-center justify-center h-full gap-3 pb-16 text-center px-8">
+            ? <div className="h-full overflow-y-auto pb-4"><Credit store={store} plan="starter" /></div>
+            : <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-8">
                 <p className="text-base font-bold text-slate-600 dark:text-slate-400">Credit not enabled</p>
                 <p className="text-sm text-slate-400">Contact your manager to enable the credit module.</p>
               </div>
         )}
         {sub === "ajo" && (
           allowed.includes("aso")
-            ? <div className="h-full overflow-y-auto pb-16"><Aso store={store} plan="starter" staffId={staff?.id} /></div>
-            : <div className="flex flex-col items-center justify-center h-full gap-3 pb-16 text-center px-8">
+            ? <div className="h-full overflow-y-auto pb-4"><Aso store={store} plan="starter" staffId={staff?.id} /></div>
+            : <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-8">
                 <p className="text-base font-bold text-slate-600 dark:text-slate-400">Ajo not enabled</p>
                 <p className="text-sm text-slate-400">Contact your manager to enable the Ajo module.</p>
               </div>
@@ -1059,14 +1059,14 @@ function StaffStock({ inventory, staff, livePerms, plan }) {
 
   if (!canView) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-4 px-8 text-center pb-16">
+      <div className="flex flex-col items-center justify-center h-full gap-4 px-8 text-center">
         <p className="text-base font-bold text-slate-600 dark:text-slate-400">Stock access not enabled</p>
         <p className="text-sm text-slate-400">Your manager hasn't enabled inventory for your account.</p>
       </div>
     );
   }
   return (
-    <div className="h-full overflow-hidden pb-16">
+    <div className="h-full overflow-hidden">
       <Inventory inventory={inventory} isOwner={false} canAdd={canAdd} plan={plan || "starter"} staffBranchId={staff?.branch_id || null} />
     </div>
   );
@@ -1125,7 +1125,7 @@ function StaffMe({ staff, session, store, inventory, livePerms, staffId, lock, p
   if (view === "reports") return (
     <div className="h-full flex flex-col">
       <SubHeader title="Reports & Insights" />
-      <div className="flex-1 overflow-y-auto pb-16">
+      <div className="flex-1 overflow-y-auto pb-4">
         <Insights store={store} inventory={inventory} plan={plan || "starter"} staffName={staff?.full_name} />
       </div>
     </div>
@@ -1135,7 +1135,7 @@ function StaffMe({ staff, session, store, inventory, livePerms, staffId, lock, p
   if (view === "edit") return (
     <div className="h-full flex flex-col">
       <SubHeader title="Edit Profile" />
-      <div className="flex-1 overflow-y-auto px-4 py-5 space-y-5 pb-20">
+      <div className="flex-1 overflow-y-auto px-4 py-5 space-y-5 pb-6">
         <div className="flex flex-col items-center gap-3">
           <div className="relative">
             <div className="w-24 h-24 rounded-3xl bg-brand-600 flex items-center justify-center shadow-lg overflow-hidden">
@@ -1190,7 +1190,7 @@ function StaffMe({ staff, session, store, inventory, livePerms, staffId, lock, p
   );
 
   return (
-    <div className="h-full overflow-y-auto pb-24">
+    <div className="h-full overflow-y-auto pb-4">
       {/* Profile card */}
       <div className="mx-4 mt-5 mb-5">
         <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-card border border-slate-100 dark:border-slate-700/50 p-5 flex items-center gap-4">
@@ -1300,7 +1300,7 @@ function StaffMe({ staff, session, store, inventory, livePerms, staffId, lock, p
             </button>
             <p className="text-base font-extrabold text-slate-800 dark:text-slate-100">Frequently Asked Questions</p>
           </div>
-          <div className="flex-1 overflow-y-auto px-4 py-4 pb-20"><FAQ /></div>
+          <div className="flex-1 overflow-y-auto px-4 py-4 pb-6"><FAQ /></div>
         </div>
       )}
 
@@ -1423,7 +1423,7 @@ export default function StaffDashboard({ session, staff }) {
         {lock.locked && <LockScreen lock={lock} />}
 
         {/* Header */}
-        <header className="flex-none sticky top-0 z-30 h-14 flex items-center justify-between px-4 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shadow-sm">
+        <header className="flex-none z-30 h-14 flex items-center justify-between px-4 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shadow-sm">
           <AppLogo className="h-8 w-8" />
           <div className="flex items-baseline gap-0.5 select-none">
             <span className="text-[17px] font-black tracking-tight text-slate-800 dark:text-white leading-none">Kudi</span>
@@ -1445,7 +1445,7 @@ export default function StaffDashboard({ session, staff }) {
         </main>
 
         {/* Bottom nav */}
-        <nav className="flex-none sticky bottom-0 z-40 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 shadow-float">
+        <nav className="flex-none z-40 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 shadow-float">
           <div className="flex items-stretch h-[60px]">
             {NAV.map(n => {
               const active = tab === n.id;
