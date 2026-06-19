@@ -526,132 +526,414 @@ export function AsoReceipt({ client, profile, onClose }) {
 }
 
 /* ══════════════════════════════════════════════════════════════════
-   STAFF ACTIVITY STATEMENT
-   Period selector lives OUTSIDE the capturable card so it doesn't
-   appear in the PDF. Uses the same infrastructure as other receipts.
+   STAFF ACTIVITY STATEMENT  —  Reports.jsx modality
+   Full-screen selector → 794 px preview → multi-page PDF export.
+   Letterhead, stat grids, tables, and export identical to Reports.jsx.
 ══════════════════════════════════════════════════════════════════ */
-function dateFloor(period) {
-  const now = new Date();
-  if (period === "today") return now.toISOString().split("T")[0];
-  if (period === "week")  { const d = new Date(now); d.setDate(d.getDate() - 7);  return d.toISOString().split("T")[0]; }
-  if (period === "month") { const d = new Date(now); d.setDate(d.getDate() - 30); return d.toISOString().split("T")[0]; }
-  return null;
+
+/* ── date helpers ── */
+function stmtAddDays(d, n) {
+  const dt = new Date(d); dt.setDate(dt.getDate() + n);
+  return dt.toISOString().split("T")[0];
 }
+function stmtMonthStart() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-01`;
+}
+function stmtTodayStr() { return new Date().toISOString().split("T")[0]; }
+function stmtRange(period, cFrom, cTo) {
+  const t = stmtTodayStr();
+  if (period === "today")  return { from: t, to: t };
+  if (period === "week")   return { from: stmtAddDays(t,-6), to: t };
+  if (period === "month")  return { from: stmtMonthStart(), to: t };
+  if (period === "year")   return { from: `${new Date().getFullYear()}-01-01`, to: t };
+  return { from: cFrom || t, to: cTo || t };
+}
+function stmtFmtD(s) {
+  if (!s) return "—";
+  return new Date(s+"T00:00:00").toLocaleDateString("en-NG",{day:"numeric",month:"short",year:"numeric"});
+}
+
+/* ── report rendering helpers (mirror Reports.jsx) ── */
+function RS(style) { return { fontFamily:"'Segoe UI',Arial,sans-serif", ...style }; }
+
+function RStatGrid({ stats }) {
+  return (
+    <div style={{display:"grid",gridTemplateColumns:`repeat(${Math.min(stats.length,4)},1fr)`,gap:10,marginBottom:18}}>
+      {stats.map((s,i) => (
+        <div key={i} style={RS({background:s.bg||"#f8fafc",border:`1px solid ${s.border||"#e2e8f0"}`,borderRadius:10,padding:"11px 12px",overflow:"hidden",minWidth:0})}>
+          <p style={RS({fontSize:8,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:0.8,margin:"0 0 5px",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"})}>{s.label}</p>
+          <p style={RS({fontSize:15,fontWeight:900,color:s.color||"#1e293b",margin:0,wordBreak:"break-word",lineHeight:1.2})}>{s.value}</p>
+          {s.sub && <p style={RS({fontSize:9,color:"#94a3b8",margin:"3px 0 0"})}>{s.sub}</p>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RSection({ children }) {
+  return (
+    <p style={RS({fontSize:10,fontWeight:800,color:"#64748b",textTransform:"uppercase",letterSpacing:1.5,margin:"20px 0 10px",borderBottom:"2px solid #e2e8f0",paddingBottom:6})}>
+      {children}
+    </p>
+  );
+}
+
+function RTable({ cols, rows, highlight }) {
+  return (
+    <table style={{width:"100%",borderCollapse:"collapse",fontSize:9,tableLayout:"fixed",marginBottom:14}}>
+      <colgroup>{cols.map((c,i) => <col key={i} style={{width:c.w||`${Math.floor(100/cols.length)}%`}}/>)}</colgroup>
+      <thead>
+        <tr style={{background:"#f1f5f9"}}>
+          {cols.map((c,i) => (
+            <th key={i} style={RS({padding:"6px 6px",textAlign:c.right?"right":"left",fontWeight:700,color:"#475569",fontSize:8,letterSpacing:0.3,textTransform:"uppercase",wordBreak:"break-word"})}>
+              {c.label}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r,ri) => (
+          <tr key={ri} style={{background:highlight?.(r,ri)||(ri%2===0?"#ffffff":"#f8fafc"),borderBottom:"1px solid #f1f5f9"}}>
+            {cols.map((c,ci) => (
+              <td key={ci} style={RS({padding:"5px 6px",textAlign:c.right?"right":"left",color:c.color?.(r)||"#334155",fontWeight:c.bold?"600":"400",wordBreak:"break-word",overflowWrap:"break-word"})}>
+                {r[c.key]}
+              </td>
+            ))}
+          </tr>
+        ))}
+        {rows.length === 0 && (
+          <tr><td colSpan={cols.length} style={RS({padding:"14px 8px",textAlign:"center",color:"#94a3b8",fontStyle:"italic",fontSize:9})}>No data for this period</td></tr>
+        )}
+      </tbody>
+    </table>
+  );
+}
+
+/* ── report template (794 px, matches Reports.jsx letterhead) ── */
+function StaffReportTemplate({ staffName, businessName, period, from, to, txns, cashIn, cashOut, profit, credits, asoClients }) {
+  const now = new Date().toLocaleString("en-NG",{day:"numeric",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"});
+  const periodLabel = from === to ? stmtFmtD(from) : `${stmtFmtD(from)} — ${stmtFmtD(to)}`;
+  const crAmt   = credits.reduce((s,c) => s+(c.outstanding||0), 0);
+  const overdue = credits.filter(c => c.status==="overdue");
+  const ajoBal  = asoClients.reduce((s,c) => s+(c.current_balance||0), 0);
+
+  const txRows = txns.slice(0,80).map(t => ({
+    date:   stmtFmtD(t.transaction_date),
+    item:   t.item_name||"—",
+    cat:    t.category||"—",
+    type:   t.type==="in"?"Income":"Expense",
+    amount: fmt(t.amount),
+    pay:    t.payment_type||"—",
+    _type:  t.type,
+  }));
+
+  const crRows = credits.map(c => ({
+    name:   c.customer_name||"—",
+    total:  fmt(c.total_amount||0),
+    paid:   fmt(c.amount_paid||0),
+    owed:   fmt(c.outstanding||0),
+    due:    stmtFmtD(c.due_date),
+    status: (c.status||"active").replace(/_/g," ").toUpperCase(),
+    _s:     c.status,
+  }));
+
+  const asoRows = asoClients.map(c => ({
+    name:    c.full_name||"—",
+    freq:    c.contribution_frequency||"—",
+    contrib: fmt(c.contribution_amount||0),
+    saved:   fmt(c.total_saved||0),
+    balance: fmt(c.current_balance||0),
+    next:    stmtFmtD(c.next_contribution_date),
+  }));
+
+  return (
+    <div style={RS({width:794,background:"#ffffff",color:"#1e293b",overflow:"hidden"})}>
+
+      {/* LETTERHEAD — identical to Reports.jsx */}
+      <div style={{background:"linear-gradient(135deg,#064e3b 0%,#065f46 60%,#047857 100%)",padding:"28px 36px 22px",display:"flex",alignItems:"center",gap:16}}>
+        <div style={{width:52,height:52,borderRadius:12,background:"white",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,overflow:"hidden",padding:4}}>
+          <img src="/logo.png" alt="KudiAI" style={{width:"100%",height:"100%",objectFit:"contain"}} onError={e=>{e.target.style.display="none";}}/>
+        </div>
+        <div style={{flex:1}}>
+          <div style={{display:"flex",alignItems:"baseline",gap:3}}>
+            <span style={RS({color:"white",fontSize:22,fontWeight:900,letterSpacing:-0.5})}>KUDI</span>
+            <span style={RS({color:"#6ee7b7",fontSize:22,fontWeight:900,letterSpacing:-0.5})}>AI</span>
+            <span style={RS({color:"rgba(255,255,255,0.55)",fontSize:10,fontWeight:700,letterSpacing:3,textTransform:"uppercase",marginLeft:5})}>Track</span>
+          </div>
+          <p style={RS({color:"rgba(255,255,255,0.85)",margin:"4px 0 0",fontSize:13,fontWeight:600,wordBreak:"break-word"})}>{businessName||"My Business"}</p>
+          <p style={RS({color:"rgba(255,255,255,0.5)",margin:"2px 0 0",fontSize:10})}>{SUPPORT_EMAIL}</p>
+        </div>
+        <div style={{textAlign:"right"}}>
+          <p style={RS({color:"rgba(255,255,255,0.5)",fontSize:10,margin:0})}>Generated</p>
+          <p style={RS({color:"white",fontSize:11,fontWeight:600,margin:"2px 0 0"})}>{now}</p>
+        </div>
+      </div>
+
+      {/* REPORT TITLE BAND */}
+      <div style={{background:"#f0fdf4",borderBottom:"3px solid #16a34a",padding:"14px 36px"}}>
+        <p style={RS({color:"#16a34a",fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:2,margin:"0 0 3px"})}>Staff Activity Statement</p>
+        <p style={RS({color:"#64748b",fontSize:12,margin:0})}>
+          Staff: <strong style={{color:"#1e293b"}}>{staffName||"—"}</strong>
+          &nbsp;·&nbsp;Period: <strong style={{color:"#1e293b"}}>{periodLabel}</strong>
+        </p>
+      </div>
+
+      {/* CONTENT */}
+      <div style={{padding:"24px 36px"}}>
+
+        {/* Sales summary */}
+        <RStatGrid stats={[
+          {label:"Cash In",    value:fmt(cashIn),  color:"#16a34a", bg:"#f0fdf4", border:"#bbf7d0"},
+          {label:"Cash Out",   value:fmt(cashOut), color:"#ef4444", bg:"#fef2f2", border:"#fecaca"},
+          {label:"Net Profit", value:fmt(profit),  color:profit>=0?"#16a34a":"#ef4444", bg:"#f8fafc", border:"#e2e8f0"},
+          {label:"Transactions",value:txns.length, color:"#0284c7", bg:"#eff6ff", border:"#bfdbfe"},
+        ]}/>
+
+        <RSection>Transaction Log</RSection>
+        <RTable
+          cols={[
+            {key:"date",  label:"Date",    w:"12%"},
+            {key:"item",  label:"Item",    bold:true, w:"28%"},
+            {key:"cat",   label:"Category",w:"16%"},
+            {key:"type",  label:"Type",    color:r=>r._type==="in"?"#16a34a":"#ef4444", bold:true, w:"10%"},
+            {key:"amount",label:"Amount",  right:true, bold:true, w:"16%"},
+            {key:"pay",   label:"Payment", w:"18%"},
+          ]}
+          rows={txRows}
+          highlight={r=>r._type==="out"?"#fff5f5":undefined}
+        />
+        {txns.length > 80 && <p style={RS({fontSize:10,color:"#94a3b8",fontStyle:"italic",marginTop:-8})}>Showing first 80 of {txns.length} transactions</p>}
+
+        {/* Credit summary */}
+        <RStatGrid stats={[
+          {label:"Outstanding Credit", value:fmt(crAmt),         color:"#d97706", bg:"#fffbeb", border:"#fde68a"},
+          {label:"Credit Records",     value:credits.length,      color:"#334155", bg:"#f8fafc", border:"#e2e8f0"},
+          {label:"Overdue Accounts",   value:overdue.length,      color:"#dc2626", bg:"#fef2f2", border:"#fecaca"},
+          {label:"Overdue Amount",     value:fmt(overdue.reduce((s,c)=>s+(c.outstanding||0),0)), color:"#dc2626", bg:"#fff1f2", border:"#fecdd3"},
+        ]}/>
+
+        {crRows.length > 0 && <>
+          <RSection>Credit Records</RSection>
+          <RTable
+            cols={[
+              {key:"name",  label:"Customer", bold:true, w:"22%"},
+              {key:"total", label:"Total",    right:true, w:"14%"},
+              {key:"paid",  label:"Paid",     right:true, color:()=>"#16a34a", w:"14%"},
+              {key:"owed",  label:"Owed",     right:true, bold:true, color:r=>r._s==="overdue"?"#dc2626":"#ef4444", w:"14%"},
+              {key:"due",   label:"Due Date", w:"18%"},
+              {key:"status",label:"Status",   color:r=>r._s==="overdue"?"#dc2626":r._s==="paid"?"#16a34a":"#64748b", bold:true, w:"18%"},
+            ]}
+            rows={crRows}
+            highlight={r=>r._s==="overdue"?"#fff5f5":undefined}
+          />
+        </>}
+
+        {/* Ajo summary */}
+        <RStatGrid stats={[
+          {label:"Ajo Balance", value:fmt(ajoBal),          color:"#7c3aed", bg:"#faf5ff", border:"#e9d5ff"},
+          {label:"Ajo Clients", value:asoClients.length,   color:"#0284c7", bg:"#eff6ff", border:"#bfdbfe"},
+          {label:"Total Saved", value:fmt(asoClients.reduce((s,c)=>s+(c.total_saved||0),0)), color:"#16a34a", bg:"#f0fdf4", border:"#bbf7d0"},
+          {label:"Withdrawn",   value:fmt(asoClients.reduce((s,c)=>s+(c.total_withdrawn||0),0)), color:"#ef4444", bg:"#fef2f2", border:"#fecaca"},
+        ]}/>
+
+        {asoRows.length > 0 && <>
+          <RSection>Ajo / Savings Clients</RSection>
+          <RTable
+            cols={[
+              {key:"name",    label:"Client",      bold:true, w:"24%"},
+              {key:"freq",    label:"Frequency",              w:"14%"},
+              {key:"contrib", label:"Contribution",right:true, w:"16%"},
+              {key:"saved",   label:"Total Saved", right:true, color:()=>"#16a34a", w:"16%"},
+              {key:"balance", label:"Balance",     right:true, bold:true, color:()=>"#7c3aed", w:"16%"},
+              {key:"next",    label:"Next Due",               w:"14%"},
+            ]}
+            rows={asoRows}
+          />
+        </>}
+
+      </div>
+
+      {/* FOOTER */}
+      <div style={{borderTop:"1px solid #e2e8f0",padding:"12px 36px",display:"flex",justifyContent:"space-between",alignItems:"center",background:"#f8fafc"}}>
+        <span style={RS({fontSize:10,color:"#94a3b8"})}>Generated by KudiAI Track · {staffName||"Staff"} · {businessName||"My Business"}</span>
+        <span style={RS({fontSize:10,color:"#cbd5e1"})}>CONFIDENTIAL</span>
+      </div>
+    </div>
+  );
+}
+
+const STMT_PERIODS = [
+  {id:"today", label:"Today"},
+  {id:"week",  label:"This Week"},
+  {id:"month", label:"This Month"},
+  {id:"year",  label:"This Year"},
+  {id:"custom",label:"Custom"},
+];
 
 export function StaffActivityStatement({ store, staffName, businessName, onClose }) {
   const [period,    setPeriod]    = useState("month");
-  const [cachedPng, setCachedPng] = useState(null);
-  const cardRef = useRef(null);
+  const [customFrom,setCustomFrom]= useState(stmtTodayStr());
+  const [customTo,  setCustomTo]  = useState(stmtTodayStr());
+  const [preview,   setPreview]   = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const reportRef = useRef(null);
 
   const transactions = store?.transactions || [];
   const credits      = store?.credits      || [];
   const asoClients   = store?.asoClients   || [];
 
-  const cutoff  = dateFloor(period);
-  const txns    = cutoff ? transactions.filter(t => t.transaction_date >= cutoff) : transactions;
-  const cashIn  = txns.filter(t => t.type === "in" ).reduce((s, t) => s + t.amount, 0);
-  const cashOut = txns.filter(t => t.type === "out").reduce((s, t) => s + t.amount, 0);
+  const { from, to } = stmtRange(period, customFrom, customTo);
+  const txns    = transactions.filter(t => t.transaction_date >= from && t.transaction_date <= to);
+  const cashIn  = txns.filter(t => t.type==="in" ).reduce((s,t) => s+t.amount, 0);
+  const cashOut = txns.filter(t => t.type==="out").reduce((s,t) => s+t.amount, 0);
   const profit  = cashIn - cashOut;
-  const crAmt   = credits.reduce((s, c) => s + (c.outstanding || 0), 0);
-  const overdue = credits.filter(c => c.status === "overdue").length;
-  const ajoBal  = asoClients.reduce((s, c) => s + (c.current_balance || 0), 0);
 
-  const PERIOD_LABELS = { today: "Today", week: "Last 7 Days", month: "Last 30 Days", all: "All Time" };
-  const dateStr = new Date().toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" });
+  const exportPDF = async () => {
+    if (!reportRef.current || exporting) return;
+    setExporting(true);
+    try {
+      const canvas = await html2canvas(reportRef.current, {
+        scale:2, backgroundColor:"#ffffff", useCORS:true, logging:false,
+        width:794, windowWidth:794, scrollX:0, scrollY:0,
+      });
+      const imgData = canvas.toDataURL("image/png");
+      const pdf     = new jsPDF({orientation:"p",unit:"mm",format:"a4"});
+      const pdfW    = pdf.internal.pageSize.getWidth();
+      const pdfH    = pdf.internal.pageSize.getHeight();
+      const imgH    = (canvas.height / canvas.width) * pdfW;
+      pdf.addImage(imgData,"PNG",0,0,pdfW,imgH);
+      let remaining = imgH - pdfH, page = 1;
+      while (remaining > 0) {
+        pdf.addPage();
+        pdf.addImage(imgData,"PNG",0,-(page*pdfH),pdfW,imgH);
+        remaining -= pdfH; page++;
+      }
+      const name = (staffName||"staff").replace(/\s+/g,"_");
+      pdf.save(`KudiAITrack_Staff_Statement_${name}_${from}_${to}.pdf`);
+    } catch(e) { console.error("PDF export:", e); }
+    setExporting(false);
+  };
 
-  useEffect(() => {
-    let cancelled = false;
-    setCachedPng(null);
-    const t = setTimeout(async () => {
-      if (!cardRef.current || cancelled) return;
-      try {
-        const f = await captureFile(cardRef);
-        if (!cancelled) setCachedPng(f);
-      } catch { /* ignore */ }
-    }, 500);
-    return () => { cancelled = true; clearTimeout(t); };
-  }, [period]);
+  /* ── Preview screen ── */
+  if (preview) {
+    return (
+      <div className="fixed inset-0 z-[60] bg-slate-100 dark:bg-slate-900 flex flex-col">
+        <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 px-4 py-3 flex items-center gap-3 flex-shrink-0">
+          <button onClick={() => setPreview(false)}
+            className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center active:scale-95 transition">
+            <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+              <path d="M19 12H5M12 5l-7 7 7 7"/>
+            </svg>
+          </button>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-slate-800 dark:text-white truncate">Activity Statement</p>
+            <p className="text-xs text-slate-400 dark:text-slate-500">{from===to?stmtFmtD(from):`${stmtFmtD(from)} — ${stmtFmtD(to)}`}</p>
+          </div>
+          <button onClick={exportPDF} disabled={exporting}
+            className="flex items-center gap-2 px-4 py-2.5 bg-green-600 text-white rounded-xl font-bold text-sm active:scale-95 transition disabled:opacity-50 flex-shrink-0">
+            {exporting
+              ? <><div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin"/>Exporting…</>
+              : <><svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>Export PDF</>
+            }
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto bg-slate-300 dark:bg-slate-700">
+          <div className="py-4 flex justify-center">
+            <div style={{zoom:Math.min(1,(window.innerWidth-16)/794),width:794,flexShrink:0}}>
+              <div ref={reportRef} style={{width:794,background:"#fff",boxShadow:"0 20px 60px rgba(0,0,0,.25)"}}>
+                <StaffReportTemplate
+                  staffName={staffName} businessName={businessName}
+                  period={period} from={from} to={to}
+                  txns={txns} cashIn={cashIn} cashOut={cashOut} profit={profit}
+                  credits={credits} asoClients={asoClients}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
+  /* ── Selector screen ── */
   return (
-    <div className="fixed inset-0 z-50 flex flex-col items-center justify-start overflow-y-auto py-6 px-4"
-      style={{ background: "rgba(8,12,30,0.94)", backdropFilter: "blur(12px)" }}>
-
-      <div className="flex items-center justify-between w-full max-w-[340px] mb-4">
-        <span style={{ fontSize: 10, fontWeight: 800, color: "rgba(255,255,255,0.35)", letterSpacing: 3, textTransform: "uppercase" }}>
-          Activity Statement
-        </span>
+    <div className="fixed inset-0 z-[60] bg-slate-50 dark:bg-slate-900 flex flex-col">
+      <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 px-4 py-3 flex items-center gap-3 flex-shrink-0">
         <button onClick={onClose}
-          className="w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center border border-white/25 active:scale-90 transition">
-          <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-white" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
-            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center active:scale-95 transition">
+          <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+            <path d="M19 12H5M12 5l-7 7 7 7"/>
           </svg>
         </button>
+        <div>
+          <p className="text-base font-black text-slate-800 dark:text-white">Activity Statement</p>
+          <p className="text-xs text-slate-400 dark:text-slate-500">{staffName} · Professional PDF export</p>
+        </div>
       </div>
 
-      {/* Period selector — outside capturable card */}
-      <div className="flex gap-2 w-full max-w-[340px] mb-4">
-        {[["today","Today"],["week","7 Days"],["month","30 Days"],["all","All Time"]].map(([v, l]) => (
-          <button key={v} onClick={() => setPeriod(v)}
-            className="flex-1 py-2 rounded-xl text-[11px] font-bold transition-all"
-            style={{
-              background: period === v ? GRN  : "rgba(255,255,255,0.1)",
-              color:      period === v ? "#fff" : "rgba(255,255,255,0.5)",
-            }}>
-            {l}
-          </button>
-        ))}
+      <div className="flex-1 overflow-y-auto px-4 py-5">
+
+        <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3">Select Period</p>
+        <div className="flex gap-1.5 flex-wrap mb-3">
+          {STMT_PERIODS.map(p => (
+            <button key={p.id} onClick={() => setPeriod(p.id)}
+              className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all active:scale-95 ${
+                period===p.id
+                  ? "bg-slate-800 dark:bg-white text-white dark:text-slate-900 shadow-sm"
+                  : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
+              }`}>
+              {p.label}
+            </button>
+          ))}
+        </div>
+
+        {period==="custom" && (
+          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 mb-5 grid grid-cols-2 gap-3">
+            <div>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">From</p>
+              <input type="date" value={customFrom} onChange={e=>setCustomFrom(e.target.value)}
+                className="w-full text-sm text-slate-800 dark:text-slate-100 bg-transparent focus:outline-none"/>
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">To</p>
+              <input type="date" value={customTo} onChange={e=>setCustomTo(e.target.value)}
+                className="w-full text-sm text-slate-800 dark:text-slate-100 bg-transparent focus:outline-none"/>
+            </div>
+          </div>
+        )}
+
+        {period!=="custom" && (
+          <div className="bg-slate-100 dark:bg-slate-800 rounded-xl px-4 py-2.5 mb-5 flex items-center gap-2">
+            <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" className="text-slate-400 flex-shrink-0">
+              <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+            </svg>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              <span className="font-bold text-slate-700 dark:text-slate-200">{stmtFmtD(from)}</span>
+              {from!==to && <> → <span className="font-bold text-slate-700 dark:text-slate-200">{stmtFmtD(to)}</span></>}
+            </p>
+          </div>
+        )}
+
+        {/* Quick preview of stats */}
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4 mb-5 grid grid-cols-3 gap-3">
+          {[["Cash In",fmt(cashIn),"text-green-600"],["Cash Out",fmt(cashOut),"text-red-500"],["Profit",fmt(profit),profit>=0?"text-green-600":"text-red-500"],["Txns",txns.length,"text-blue-600"],["Credits",credits.length,"text-amber-600"],["Ajo",asoClients.length,"text-violet-600"]].map(([l,v,c]) => (
+            <div key={l} className="text-center">
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1">{l}</p>
+              <p className={`text-sm font-extrabold tabular ${c}`}>{v}</p>
+            </div>
+          ))}
+        </div>
+
+        <button onClick={() => setPreview(true)}
+          className="w-full py-4 bg-green-600 text-white rounded-2xl font-extrabold text-sm active:scale-[0.98] shadow-lg flex items-center justify-center gap-2">
+          <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>
+          </svg>
+          Generate Statement
+        </button>
+        <div className="h-8"/>
       </div>
-
-      {/* Capturable receipt card */}
-      <div ref={cardRef} style={{
-        width: "100%", maxWidth: 340,
-        background: "white", borderRadius: 16, overflow: "hidden",
-        boxShadow: "0 40px 100px rgba(0,0,0,0.6)",
-        fontFamily: "DM Sans, system-ui, -apple-system, sans-serif",
-      }}>
-        <Header title="STAFF ACTIVITY STATEMENT" business={businessName || "My Business"}
-          email={SUPPORT_EMAIL} date={dateStr} id={null} />
-
-        <AmountHero
-          label="Net Profit" amount={fmt(profit)}
-          color={profit >= 0 ? GRN : "#dc2626"}
-          badge={PERIOD_LABELS[period].toUpperCase()}
-          badgeColor={profit >= 0 ? GRN : "#dc2626"}
-        />
-
-        <SectionHead label="Staff Information" />
-        <Row label="Staff"     value={staffName    || "—"} bold />
-        <Row label="Business"  value={businessName || "—"} />
-        <Row label="Period"    value={PERIOD_LABELS[period]} />
-        <Row label="Generated" value={dateStr} last />
-
-        <SectionHead label="Sales Summary" />
-        <Row label="Cash In"      value={fmt(cashIn)}  color={GRN}     bold />
-        <Row label="Cash Out"     value={fmt(cashOut)} color="#dc2626" bold />
-        <Row label="Net Profit"   value={fmt(profit)}  color={profit >= 0 ? GRN : "#dc2626"} bold />
-        <Row label="Transactions" value={`${txns.length} records`} last />
-
-        <SectionHead label="Credit & Savings" />
-        <Row label="Outstanding Credit" value={fmt(crAmt)}  color="#d97706" bold />
-        <Row label="Overdue Credits"    value={overdue > 0 ? `${overdue} accounts` : "None"} color={overdue > 0 ? "#dc2626" : GRN} />
-        <Row label="Ajo Balance"        value={fmt(ajoBal)} color={NAVY} bold />
-        <Row label="Ajo Clients"        value={`${asoClients.length} clients`} last />
-
-        <Footer />
-      </div>
-
-      <ShareButtons
-        cardRef={cardRef}
-        pdfName={`KudiAITrack_Staff_Statement_${(staffName || "staff").replace(/\s+/g, "_")}.pdf`}
-        cachedPng={cachedPng}
-      />
-
-      <p className="text-white/20 text-xs mt-4 pb-4 flex items-center gap-1.5">
-        {cachedPng
-          ? <><span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" />Ready to share</>
-          : <><span className="w-1.5 h-1.5 rounded-full bg-white/30 inline-block animate-pulse" />Preparing…</>
-        }
-      </p>
     </div>
   );
 }
