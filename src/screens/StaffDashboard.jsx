@@ -178,7 +178,6 @@ function StaffHome({ store, staff, ownerName, allowed, canCreate, setTab, onVoic
   const totalAso     = asoClients.reduce((s, c) => s + c.current_balance, 0);
 
   const roleLabel = (staff.role || "").replace(/_/g, " ");
-  const initials  = (staff.full_name || "?").split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
 
   return (
     <div className="px-4 pt-5 pb-32 space-y-5">
