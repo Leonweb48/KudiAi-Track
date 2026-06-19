@@ -49,24 +49,36 @@ serve(async (req) => {
   let payload: Record<string, unknown>;
   try { payload = JSON.parse(rawBody); } catch { return err("Invalid JSON", 400); }
 
-  const event = payload.event as string;
-  const data  = payload.data  as Record<string, unknown>;
-
-  // Only handle charge.success for now
-  if (event !== "charge.success") return ok("ignored");
-
-  const reference  = data.reference as string;
+  const event      = payload.event as string;
+  const data       = payload.data  as Record<string, unknown>;
+  const reference  = (data.reference ?? "") as string;
   const amountKobo = Number(data.amount ?? 0);
   const amountNgn  = amountKobo / 100;
-  const channel    = (data.channel ?? data.payment_channel ?? "card") as string;
-  const paidAt     = (data.paid_at ?? data.created_at ?? new Date().toISOString()) as string;
   const meta       = (data.metadata ?? {}) as Record<string, unknown>;
-  const clientId   = meta.client_id as string | undefined;
-  const ownerId    = meta.owner_id  as string | undefined;
-
-  if (!reference) return err("Missing reference", 400);
 
   const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+
+  // ── Handle failed / disrupted charges ────────────────────────────────
+  if (event === "charge.failed") {
+    const customer   = (data.customer ?? {}) as Record<string, unknown>;
+    const userEmail  = customer.email as string | undefined;
+    const metaFields = (meta.custom_fields ?? []) as Array<Record<string, string>>;
+    const planField  = metaFields.find(f => f.variable_name === "plan");
+    const planName   = planField?.value || "";
+    if (userEmail) {
+      await firePaymentFailureEmail(userEmail, planName, reference, amountNgn);
+    }
+    return ok("failure handled");
+  }
+
+  if (event !== "charge.success") return ok("ignored");
+
+  const channel  = (data.channel ?? data.payment_channel ?? "card") as string;
+  const paidAt   = (data.paid_at ?? data.created_at ?? new Date().toISOString()) as string;
+  const clientId = meta.client_id as string | undefined;
+  const ownerId  = meta.owner_id  as string | undefined;
+
+  if (!reference) return err("Missing reference", 400);
 
   // ── 3. Idempotency — skip if already processed ────────────────────────
   const { data: existing } = await sb
@@ -189,6 +201,29 @@ async function recordNewContribution(
     notes:           `Self-pay via Paystack · ref: ${reference}`,
   });
   await updateClientBalance(sb, clientId, amount);
+}
+
+async function firePaymentFailureEmail(
+  userEmail: string,
+  planName: string,
+  reference: string,
+  amount: number,
+) {
+  try {
+    await fetch("https://admin.kudiai.app/api/public/email-trigger", {
+      method:  "POST",
+      headers: {
+        "Content-Type":     "application/json",
+        "x-trigger-secret": "kuditrack-email-trigger-2026-amaya",
+      },
+      body: JSON.stringify({
+        event: "payment_failed",
+        data: { user_email: userEmail, plan_name: planName, amount, reference },
+      }),
+    }).catch(() => null);
+  } catch (e) {
+    console.error("[paystack-webhook] Payment failure email failed:", e);
+  }
 }
 
 async function fireContributionEmail(

@@ -104,7 +104,24 @@ function PaidButton({ plan, session, onSuccess, disabled }) {
         setBusy(false);
       }
     } else {
-      initPayment({ onSuccess, onClose: () => {} });
+      initPayment({
+        onSuccess,
+        onClose: () => {
+          fetch("https://admin.kudiai.app/api/public/email-trigger", {
+            method:  "POST",
+            headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+            body: JSON.stringify({
+              event: "payment_cancelled",
+              data: {
+                user_email: session.user.email,
+                plan_name:  plan.name,
+                plan_slug:  plan.slug,
+                plan_price: plan.price_monthly,
+              },
+            }),
+          }).catch(() => null);
+        },
+      });
     }
   };
 
@@ -177,24 +194,25 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
         const userName = profile?.full_name || session.user.email;
         const bizName  = profile?.business_name || "";
 
-        // Welcome email to the subscribing user (first-time only)
-        if (isFirstTimePaid) {
-          fetch("https://admin.kudiai.app/api/public/email-trigger", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
-            body: JSON.stringify({
-              event: "subscription_welcome",
-              data: {
-                user_email:    session.user.email,
-                user_name:     userName,
-                plan_name:     planData?.name || planSlug,
-                plan_slug:     planSlug,
-                plan_price:    planData?.price_monthly || 0,
-                plan_features: features,
-              },
-            }),
-          }).catch(() => null);
-        }
+        // Plan confirmation email to user — every paid purchase (new, upgrade, renewal)
+        fetch("https://admin.kudiai.app/api/public/email-trigger", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+          body: JSON.stringify({
+            event: "subscription_welcome",
+            data: {
+              user_email:    session.user.email,
+              user_name:     userName,
+              business_name: bizName,
+              plan_name:     planData?.name || planSlug,
+              plan_slug:     planSlug,
+              plan_price:    planData?.price_monthly || 0,
+              plan_features: features,
+              reference:     reference || "",
+              is_first_time: isFirstTimePaid,
+            },
+          }),
+        }).catch(() => null);
 
         // Admin alert — every paid plan purchase (new subscription or upgrade/renewal)
         fetch("https://admin.kudiai.app/api/public/email-trigger", {

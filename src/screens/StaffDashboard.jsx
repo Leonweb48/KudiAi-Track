@@ -4,6 +4,7 @@ import { useStore }           from "../hooks/useStore";
 import { useInventory }       from "../hooks/useInventory";
 import { useBiometricLock }   from "../hooks/useBiometricLock";
 import { fmt, today }         from "../utils/helpers";
+import { canDo }              from "../utils/plans";
 import AppLogo                from "../components/AppLogo";
 import Icon                   from "../components/Icon";
 import Modal                  from "../components/shared/Modal";
@@ -474,7 +475,7 @@ function FAQ() {
 /* ═══════════════════════════════════════════════════════════════════
    HOME TAB
 ═══════════════════════════════════════════════════════════════════ */
-function StaffHome({ staff, store, inventory, onGoTo, onVoiceOpen }) {
+function StaffHome({ staff, store, inventory, plan, onGoTo, onVoiceOpen }) {
   const { transactions = [], credits = [], asoClients = [], loading } = store;
   const todayStr     = today();
   const todayTx      = transactions.filter(t => t.transaction_date === todayStr);
@@ -507,7 +508,7 @@ function StaffHome({ staff, store, inventory, onGoTo, onVoiceOpen }) {
           <Svg d="M9 18l6-6-6-6" size={16} color="#ef4444" />
         </button>
       )}
-      {lowStock.length > 0 && (
+      {canDo(plan, "inventory") && lowStock.length > 0 && (
         <button onClick={() => onGoTo("stock")}
           className="w-full flex items-center gap-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-700/40 rounded-2xl px-4 py-3 mb-4 active:scale-[.98] transition text-left">
           <Svg d={P.alert} size={18} color="#f97316" />
@@ -575,12 +576,14 @@ function StaffHome({ staff, store, inventory, onGoTo, onVoiceOpen }) {
 
       {/* Stat cards — all clickable to their tabs */}
       <div className="grid grid-cols-2 gap-3 mb-5">
-        <StatCard label="Cash In"          value={fmt(cashIn)}      icon={P.in}     iconBg="bg-green-100 dark:bg-green-900/40"  iconColor="#16a34a" loading={loading} onClick={() => onGoTo("sales", "cash")} />
-        <StatCard label="Cash Out"         value={fmt(cashOut)}     icon={P.out}    iconBg="bg-red-100 dark:bg-red-900/40"     iconColor="#ef4444" loading={loading} onClick={() => onGoTo("sales", "all")} />
-        <StatCard label="Pending Credit"   value={fmt(totalCredit)} icon={P.credit} iconBg="bg-amber-100 dark:bg-amber-900/40" iconColor="#d97706"
+        <StatCard label="Cash In"        value={fmt(cashIn)}      icon={P.in}     iconBg="bg-green-100 dark:bg-green-900/40"  iconColor="#16a34a" loading={loading} onClick={() => onGoTo("sales", "cash")} />
+        <StatCard label="Cash Out"       value={fmt(cashOut)}     icon={P.out}    iconBg="bg-red-100 dark:bg-red-900/40"     iconColor="#ef4444" loading={loading} onClick={() => onGoTo("sales", "all")} />
+        <StatCard label="Pending Credit" value={fmt(totalCredit)} icon={P.credit} iconBg="bg-amber-100 dark:bg-amber-900/40" iconColor="#d97706"
           sub={overdueCount > 0 ? `⚠ ${overdueCount} overdue` : `${credits.length} records`} loading={loading} onClick={() => onGoTo("records", "credit")} />
-        <StatCard label="Ajo Balance"      value={fmt(totalAso)}    icon={P.bank}   iconBg="bg-blue-100 dark:bg-blue-900/40"   iconColor="#2563eb"
-          sub={`${asoClients.length} clients`} loading={loading} onClick={() => onGoTo("records", "ajo")} />
+        {canDo(plan, "aso") && (
+          <StatCard label="Ajo Balance" value={fmt(totalAso)} icon={P.bank} iconBg="bg-blue-100 dark:bg-blue-900/40" iconColor="#2563eb"
+            sub={`${asoClients.length} clients`} loading={loading} onClick={() => onGoTo("records", "ajo")} />
+        )}
       </div>
 
       {/* Quick Actions */}
@@ -591,7 +594,9 @@ function StaffHome({ staff, store, inventory, onGoTo, onVoiceOpen }) {
           <ActionBtn label="Cash Out"  icon={P.out}    bg="bg-gradient-to-br from-red-500 to-red-600"       onClick={() => onGoTo("sales", "cash")} />
           <ActionBtn label="Pay Bills" icon={P.bills}  bg="bg-gradient-to-br from-cyan-500 to-teal-600"     onClick={() => onGoTo("sales", "bills")} />
           <ActionBtn label="Credit"    icon={P.credit} bg="bg-gradient-to-br from-amber-400 to-amber-500"   onClick={() => onGoTo("records", "credit")} />
-          <ActionBtn label="Ajo"       icon={P.bank}   bg="bg-gradient-to-br from-blue-500 to-blue-600"     onClick={() => onGoTo("records", "ajo")} />
+          {canDo(plan, "aso") && (
+            <ActionBtn label="Ajo" icon={P.bank} bg="bg-gradient-to-br from-blue-500 to-blue-600" onClick={() => onGoTo("records", "ajo")} />
+          )}
           <ActionBtn label="Reports"   icon={P.report} bg="bg-gradient-to-br from-purple-500 to-violet-600" onClick={() => onGoTo("me", "reports")} />
         </div>
       </div>
@@ -723,7 +728,8 @@ function StaffSales({ store, staff, session, livePerms, initialSub, initialData,
 /* ═══════════════════════════════════════════════════════════════════
    RECORDS TAB
 ═══════════════════════════════════════════════════════════════════ */
-function StaffRecords({ store, staff, livePerms, initialSub }) {
+function StaffRecords({ store, staff, livePerms, initialSub, plan }) {
+  const ajoOnPlan = canDo(plan, "aso");
   const [sub, setSub] = useState(initialSub || "credit");
   useEffect(() => { if (initialSub) setSub(initialSub); }, [initialSub]);
   const allowed = livePerms.filter(p => p.can_view).map(p => p.module);
@@ -732,7 +738,10 @@ function StaffRecords({ store, staff, livePerms, initialSub }) {
     <div className="h-full flex flex-col">
       <div className="flex-shrink-0 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 pt-3 pb-0">
         <div className="flex gap-1">
-          {[["credit","Credit"],["ajo","Ajo"]].map(([v, l]) => (
+          {[
+            ["credit","Credit", true],
+            ["ajo","Ajo", ajoOnPlan],
+          ].filter(([,, show]) => show).map(([v, l]) => (
             <button key={v} onClick={() => setSub(v)}
               className={`px-6 py-2.5 text-[12px] font-bold transition-all border-b-2 ${sub === v ? "border-brand-600 text-brand-600 dark:text-brand-400 dark:border-brand-400" : "border-transparent text-slate-400 dark:text-slate-500"}`}>
               {l}
@@ -749,7 +758,13 @@ function StaffRecords({ store, staff, livePerms, initialSub }) {
                 <p className="text-sm text-slate-400">Contact your manager to enable the credit module.</p>
               </div>
         )}
-        {sub === "ajo" && (
+        {sub === "ajo" && !ajoOnPlan && (
+          <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-8">
+            <p className="text-base font-bold text-slate-600 dark:text-slate-400">Plan upgrade required</p>
+            <p className="text-sm text-slate-400">Ajo / Savings management requires the Basic plan or higher. Ask the business owner to upgrade.</p>
+          </div>
+        )}
+        {sub === "ajo" && ajoOnPlan && (
           allowed.includes("aso")
             ? <div className="h-full overflow-y-auto pb-4"><Aso store={store} plan="starter" staffId={staff?.id} /></div>
             : <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-8">
@@ -766,10 +781,19 @@ function StaffRecords({ store, staff, livePerms, initialSub }) {
    STOCK TAB
 ═══════════════════════════════════════════════════════════════════ */
 function StaffStock({ inventory, staff, livePerms, plan }) {
-  const isEnterprise = plan === "enterprise";
-  const allowed = livePerms.filter(p => p.can_view).map(p => p.module);
-  const canView  = isEnterprise || allowed.includes("inventory");
-  const canAdd   = isEnterprise || (livePerms.find(p => p.module === "inventory")?.can_create || false);
+  const planAllows = canDo(plan, "inventory");
+  const allowed    = livePerms.filter(p => p.can_view).map(p => p.module);
+  const canView    = planAllows && allowed.includes("inventory");
+  const canAdd     = planAllows && (livePerms.find(p => p.module === "inventory")?.can_create || false);
+
+  if (!planAllows) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-4 px-8 text-center">
+        <p className="text-base font-bold text-slate-600 dark:text-slate-400">Plan upgrade required</p>
+        <p className="text-sm text-slate-400">Inventory management requires the Basic plan or higher. Ask the business owner to upgrade.</p>
+      </div>
+    );
+  }
 
   if (!canView) {
     return (
@@ -1120,9 +1144,9 @@ export default function StaffDashboard({ session, staff }) {
 
   function renderContent() {
     switch (tab) {
-      case "home":    return <StaffHome    staff={staff} store={store} inventory={inventory} onGoTo={goTo} onVoiceOpen={() => setVoiceOpen(true)} />;
+      case "home":    return <StaffHome    staff={staff} store={store} inventory={inventory} plan={plan} onGoTo={goTo} onVoiceOpen={() => setVoiceOpen(true)} />;
       case "sales":   return <StaffSales   store={store} staff={staff} session={session} livePerms={livePerms} initialSub={subNav} initialData={subData} onVoiceOpen={() => setVoiceOpen(true)} />;
-      case "records": return <StaffRecords store={store} staff={staff} livePerms={livePerms} initialSub={subNav} />;
+      case "records": return <StaffRecords store={store} staff={staff} livePerms={livePerms} initialSub={subNav} plan={plan} />;
       case "stock":   return <StaffStock   inventory={inventory} staff={staff} livePerms={livePerms} plan={plan} />;
       case "me":      return <StaffMe      staff={staff} session={session} store={store} inventory={inventory} livePerms={livePerms} staffId={staffId} lock={lock} plan={plan} initialView={subNav} />;
       default:        setTab("home"); return null;
