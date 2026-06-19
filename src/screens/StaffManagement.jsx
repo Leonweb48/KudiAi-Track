@@ -403,7 +403,14 @@ export default function StaffManagement({ session, plan = "starter", onBack }) {
       { staff_id: staffId, module: "print-airtime", can_view: perms["print-airtime"]?.can_view || false, can_create: false },
       { staff_id: staffId, module: "print-data",    can_view: perms["print-data"]?.can_view    || false, can_create: false },
     ];
-    await supabase.from("staff_permissions").upsert(permRows, { onConflict: "staff_id,module" });
+
+    // Delete then re-insert — works without a unique constraint and surfaces errors
+    const { error: delErr } = await supabase.from("staff_permissions").delete().eq("staff_id", staffId);
+    if (delErr) throw new Error(`Failed to update permissions: ${delErr.message}`);
+
+    const { error: insErr } = await supabase.from("staff_permissions").insert(permRows);
+    if (insErr) throw new Error(`Failed to save permissions: ${insErr.message}`);
+
     // Instant push to staff portal — subscribe() is NOT async, no await
     const _bch = supabase.channel(`perms_${userId}`);
     _bch.subscribe((status) => {
