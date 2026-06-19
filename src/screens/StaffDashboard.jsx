@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useStore }       from "../hooks/useStore";
 import { useInventory }   from "../hooks/useInventory";
 import { supabase }       from "../utils/supabase";
@@ -7,6 +7,7 @@ import Credit             from "./Credit";
 import Aso                from "./Aso";
 import Insights           from "./Insights";
 import Inventory          from "./Inventory";
+import BillPayments       from "./BillPayments";
 import VoiceModal         from "../components/VoiceModal";
 import SyncBar            from "../components/SyncBar";
 import Icon               from "../components/Icon";
@@ -18,6 +19,7 @@ const NAV_ICON = {
   inventory:    "inventory",
   credit:       "credit",
   aso:          "aso",
+  bills:        "bills",
   insights:     "insights",
   profile:      "user",
 };
@@ -28,6 +30,7 @@ const NAV_LABEL = {
   inventory:    "Stock",
   credit:       "Credit",
   aso:          "Ajo",
+  bills:        "Bills",
   insights:     "Reports",
   profile:      "Profile",
 };
@@ -223,6 +226,15 @@ const MODULE_ICONS = {
       <line x1="12" y1="22.08" x2="12" y2="12" />
     </svg>
   ),
+  bills: (
+    <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" />
+      <path d="M9 5a2 2 0 002 2h2a2 2 0 002-2" />
+      <path d="M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+      <line x1="9" y1="13" x2="15" y2="13" />
+      <line x1="9" y1="17" x2="13" y2="17" />
+    </svg>
+  ),
   profile: (
     <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
       <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
@@ -237,6 +249,7 @@ const MODULE_LABELS = {
   inventory:    "Inventory",
   credit:       "Credit Sales",
   aso:          "Ajo Savings",
+  bills:        "Bill Payments",
   insights:     "Reports",
   profile:      "My Profile",
 };
@@ -259,8 +272,77 @@ export default function StaffDashboard({ session, staff }) {
     }
   }, [branchId]);
 
-  // Compute allowed modules from staff_permissions
-  const allowed = (staff.staff_permissions || []).filter(p => p.can_view).map(p => p.module);
+  // Live permissions — synced in real-time so owner changes take effect immediately
+  const [livePerms,  setLivePerms]  = useState(staff.staff_permissions || []);
+  const [liveStatus, setLiveStatus] = useState(staff.status);
+
+  useEffect(() => {
+    if (!supabase || !staffId) return;
+
+    const refreshPerms = () => {
+      supabase.from("staff_permissions").select("*").eq("staff_id", staffId)
+        .then(({ data }) => { if (data) setLivePerms(data); });
+      supabase.from("staff").select("status").eq("id", staffId).maybeSingle()
+        .then(({ data }) => { if (data?.status) setLiveStatus(data.status); });
+    };
+
+    // Fetch immediately on mount
+    refreshPerms();
+
+    // Re-fetch when the user returns to the tab/app window
+    const onVisibility = () => { if (document.visibilityState === "visible") refreshPerms(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("focus", refreshPerms);
+
+    // Poll every 30 s as a reliable fallback (Realtime needs replication enabled on the table)
+    const poll = setInterval(refreshPerms, 30_000);
+
+    // Realtime as a fast path if replication is enabled
+    const ch = supabase.channel(`staff_live_${staffId}`)
+      .on("postgres_changes", {
+        event: "*", schema: "public", table: "staff_permissions",
+        filter: `staff_id=eq.${staffId}`,
+      }, refreshPerms)
+      .on("postgres_changes", {
+        event: "UPDATE", schema: "public", table: "staff",
+        filter: `id=eq.${staffId}`,
+      }, ({ new: row }) => {
+        if (row?.status) setLiveStatus(row.status);
+      })
+      .subscribe();
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("focus", refreshPerms);
+      clearInterval(poll);
+      supabase.removeChannel(ch);
+    };
+  }, [staffId]);
+
+  // Compute allowed nav modules from live permissions
+  const PRINT_MODULES = ["print-airtime", "print-data"];
+  const allowed = livePerms
+    .filter(p => p.can_view && !PRINT_MODULES.includes(p.module))
+    .map(p => p.module);
+
+  // Fetch owner's plan to gate enterprise-only features
+  const [ownerPlan, setOwnerPlan] = useState("starter");
+  const planFetched = useRef(false);
+  useEffect(() => {
+    if (planFetched.current || !supabase) return;
+    planFetched.current = true;
+    supabase.from("subscriptions").select("plan").eq("user_id", ownerId).eq("status", "active").maybeSingle()
+      .then(({ data }) => { if (data?.plan) setOwnerPlan(data.plan); });
+  }, [ownerId]);
+
+  // Build excludeCats for BillPayments — requires Enterprise plan + owner toggle
+  const isEnterprise = ownerPlan === "enterprise";
+  const canPrintAirtime = isEnterprise && livePerms.some(p => p.module === "print-airtime" && p.can_view);
+  const canPrintData    = isEnterprise && livePerms.some(p => p.module === "print-data"    && p.can_view);
+  const billExcludeCats = [
+    ...(!canPrintAirtime ? ["print-airtime"] : []),
+    ...(!canPrintData    ? ["print-data"]    : []),
+  ];
 
   const [tab,       setTab]       = useState("overview");
   const [voiceOpen, setVoiceOpen] = useState(false);
@@ -282,6 +364,13 @@ export default function StaffDashboard({ session, staff }) {
     document.documentElement.classList.toggle("dark", staffDark);
   }, [staffDark]);
 
+  // Reset to overview if the active tab's permission was revoked
+  useEffect(() => {
+    if (tab !== "overview" && tab !== "profile" && !allowed.includes(tab)) {
+      setTab("overview");
+    }
+  }, [livePerms]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     supabase.from("profiles").select("business_name, full_name").eq("id", ownerId).maybeSingle()
       .then(({ data }) => { if (data) setOwnerName(data.business_name || data.full_name || ""); });
@@ -289,7 +378,7 @@ export default function StaffDashboard({ session, staff }) {
 
   const handleSignOut = () => supabase.auth.signOut();
 
-  const canCreate = (module) => (staff.staff_permissions || []).some(p => p.module === module && p.can_create);
+  const canCreate = (module) => livePerms.some(p => p.module === module && p.can_create);
   const mustChangePassword = Boolean(session?.user?.user_metadata?.must_change_password);
 
   const changePassword = async () => {
@@ -314,7 +403,7 @@ export default function StaffDashboard({ session, staff }) {
     setChangingPassword(false);
   };
 
-  if (staff.status !== "active") {
+  if (liveStatus !== "active") {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col items-center justify-center px-6 text-center">
         <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-4">
@@ -352,6 +441,8 @@ export default function StaffDashboard({ session, staff }) {
   }
 
   const renderTab = () => {
+    // Hard gate: block any tab that is no longer in the allowed list
+    if (tab !== "overview" && tab !== "profile" && !allowed.includes(tab)) return null;
     const noCreate = !canCreate(tab);
     if (tab === "overview") {
       const todayKey = new Date().toISOString().slice(0, 10);
@@ -418,11 +509,13 @@ export default function StaffDashboard({ session, staff }) {
       case "aso":
         return <Aso store={store} plan="premium" autoOpen={autoAdd?.tab === "aso"} onAutoOpened={() => setAutoAdd(null)} onUpgrade={() => {}} readOnly={noCreate} staffId={staffId} />;
       case "inventory":
-        return <Inventory inventory={inventory} isOwner={false} canAdd={true} plan="business" onUpgrade={() => {}} branches={staffBranch ? [staffBranch] : []} staffBranchId={branchId} />;
+        return <Inventory inventory={inventory} isOwner={false} canAdd={canCreate("inventory")} plan="business" onUpgrade={() => {}} branches={staffBranch ? [staffBranch] : []} staffBranchId={branchId} />;
+      case "bills":
+        return <BillPayments store={store} plan="premium" markup={1.098} airtimeDiscount={0.01} pointsEnabled staffName={staffName} staffEmail={staff.email} businessName={ownerName} excludeCats={billExcludeCats} />;
       case "insights":
         return <Insights store={store} plan="premium" onUpgrade={() => {}} staffName={staffName} />;
       case "profile":
-        return <StaffProfile staff={staff} ownerName={ownerName} onSignOut={handleSignOut} isDark={staffDark} onToggleDark={toggleDark} />;
+        return <StaffProfile staff={{ ...staff, staff_permissions: livePerms, status: liveStatus }} ownerName={ownerName} onSignOut={handleSignOut} isDark={staffDark} onToggleDark={toggleDark} />;
       default:
         return null;
     }
