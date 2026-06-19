@@ -404,16 +404,14 @@ export default function StaffManagement({ session, plan = "starter", onBack }) {
       { staff_id: staffId, module: "print-data",    can_view: perms["print-data"]?.can_view    || false, can_create: false },
     ];
     await supabase.from("staff_permissions").upsert(permRows, { onConflict: "staff_id,module" });
-    // Instant push to staff portal (no table replication needed)
-    try {
-      const ch = supabase.channel(`perms_${userId}`);
-      await ch.subscribe((s) => {
-        if (s === "SUBSCRIBED") {
-          ch.send({ type: "broadcast", event: "permissions_changed", payload: { staffId } });
-          setTimeout(() => supabase.removeChannel(ch), 1000);
-        }
-      });
-    } catch (_) {}
+    // Instant push to staff portal — subscribe() is NOT async, no await
+    const _bch = supabase.channel(`perms_${userId}`);
+    _bch.subscribe((status) => {
+      if (status === "SUBSCRIBED") {
+        _bch.send({ type: "broadcast", event: "permissions_changed", payload: { staffId } })
+          .finally(() => setTimeout(() => supabase.removeChannel(_bch), 1500));
+      }
+    });
   };
 
   const saveDetail = async () => {

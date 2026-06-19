@@ -294,8 +294,8 @@ export default function StaffDashboard({ session, staff }) {
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("focus", refreshPerms);
 
-    // Poll every 30 s as a reliable fallback (Realtime needs replication enabled on the table)
-    const poll = setInterval(refreshPerms, 30_000);
+    // Poll every 8 s — guaranteed fallback regardless of WebSocket state
+    const poll = setInterval(refreshPerms, 8_000);
 
     // Broadcast channel — owner pushes instant signal when they save permissions
     const broadcast = supabase.channel(`perms_${ownerId}`)
