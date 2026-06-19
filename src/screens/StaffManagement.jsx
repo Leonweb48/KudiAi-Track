@@ -11,19 +11,20 @@ const ROLES = [
 ];
 
 const MODULES = [
-  { id: "transactions", label: "Transactions" },
-  { id: "bills",        label: "Bill Payments"},
-  { id: "credit",       label: "Credit Sales" },
-  { id: "aso",          label: "Aso Savings"  },
-  { id: "insights",     label: "Insights"     },
+  { id: "transactions", label: "Transactions"     },
+  { id: "bills",        label: "Bill Payments"    },
+  { id: "credit",       label: "Credit Sales"     },
+  { id: "aso",          label: "Ajo Savings"      },
+  { id: "inventory",    label: "Stock / Inventory"},
+  { id: "insights",     label: "Insights"         },
 ];
 
 const ROLE_DEFAULTS = {
   cashier:        ["transactions", "bills"],
-  sales_officer:  ["transactions", "bills", "credit"],
+  sales_officer:  ["transactions", "bills", "credit", "inventory"],
   credit_officer: ["credit"],
   aso_collector:  ["aso"],
-  manager:        ["transactions", "bills", "credit", "aso", "insights"],
+  manager:        ["transactions", "bills", "credit", "aso", "inventory", "insights"],
 };
 
 const ROLE_COLORS = {
@@ -67,7 +68,7 @@ function PermToggle({ checked, onChange, label }) {
   );
 }
 
-export default function StaffManagement({ session, onBack }) {
+export default function StaffManagement({ session, plan = "starter", onBack }) {
   const userId = session.user.id;
 
   const [staffList,   setStaffList]   = useState([]);
@@ -149,6 +150,8 @@ export default function StaffManagement({ session, onBack }) {
     MODULES.forEach(m => {
       p[m.id] = { can_view: defaults.includes(m.id), can_create: defaults.includes(m.id) };
     });
+    p["print-airtime"] = { can_view: false, can_create: false };
+    p["print-data"]    = { can_view: false, can_create: false };
     setPerms(p);
   };
 
@@ -176,6 +179,10 @@ export default function StaffManagement({ session, onBack }) {
       const existing = (s.staff_permissions || []).find(sp => sp.module === m.id);
       p[m.id] = { can_view: existing?.can_view || false, can_create: existing?.can_create || false };
     });
+    const pa = (s.staff_permissions || []).find(sp => sp.module === "print-airtime");
+    const pd = (s.staff_permissions || []).find(sp => sp.module === "print-data");
+    p["print-airtime"] = { can_view: pa?.can_view || false, can_create: false };
+    p["print-data"]    = { can_view: pd?.can_view || false, can_create: false };
     setPerms(p);
     setLoginPassword("");
     setConfirmPassword("");
@@ -237,9 +244,17 @@ export default function StaffManagement({ session, onBack }) {
   };
 
   const provisionLogin = async (staffRecord, password) => {
+    // Get a fresh access token — auto-injection can use a stale one, causing 401
+    const { data: sessData } = await supabase.auth.getSession();
+    const token = sessData?.session?.access_token;
+    if (!token) throw new Error("Session expired. Please log out and log in again.");
+
     const { data, error: functionError } = await supabase.functions.invoke(
       "manage-staff-account",
-      { body: { staffId: staffRecord.id, password } },
+      {
+        body: { staffId: staffRecord.id, password },
+        headers: { Authorization: `Bearer ${token}` },
+      },
     );
 
     if (!functionError) {
@@ -342,12 +357,16 @@ export default function StaffManagement({ session, onBack }) {
       staffRow = createdStaff;
 
       // Insert permissions
-      const permRows = MODULES.map(m => ({
-        staff_id:   staffRow.id,
-        module:     m.id,
-        can_view:   perms[m.id]?.can_view   || false,
-        can_create: perms[m.id]?.can_create || false,
-      }));
+      const permRows = [
+        ...MODULES.map(m => ({
+          staff_id:   staffRow.id,
+          module:     m.id,
+          can_view:   perms[m.id]?.can_view   || false,
+          can_create: perms[m.id]?.can_create || false,
+        })),
+        { staff_id: staffRow.id, module: "print-airtime", can_view: perms["print-airtime"]?.can_view || false, can_create: false },
+        { staff_id: staffRow.id, module: "print-data",    can_view: perms["print-data"]?.can_view    || false, can_create: false },
+      ];
       const { error: permError } = await supabase.from("staff_permissions").insert(permRows);
       if (permError) throw permError;
 
@@ -374,14 +393,27 @@ export default function StaffManagement({ session, onBack }) {
   };
 
   const updatePermissions = async (staffId) => {
-    const permRows = MODULES.map(m => ({
-      staff_id:   staffId,
-      module:     m.id,
-      can_view:   perms[m.id]?.can_view   || false,
-      can_create: perms[m.id]?.can_create || false,
-    }));
-    // Upsert permissions
+    const permRows = [
+      ...MODULES.map(m => ({
+        staff_id:   staffId,
+        module:     m.id,
+        can_view:   perms[m.id]?.can_view   || false,
+        can_create: perms[m.id]?.can_create || false,
+      })),
+      { staff_id: staffId, module: "print-airtime", can_view: perms["print-airtime"]?.can_view || false, can_create: false },
+      { staff_id: staffId, module: "print-data",    can_view: perms["print-data"]?.can_view    || false, can_create: false },
+    ];
     await supabase.from("staff_permissions").upsert(permRows, { onConflict: "staff_id,module" });
+    // Instant push to staff portal (no table replication needed)
+    try {
+      const ch = supabase.channel(`perms_${userId}`);
+      await ch.subscribe((s) => {
+        if (s === "SUBSCRIBED") {
+          ch.send({ type: "broadcast", event: "permissions_changed", payload: { staffId } });
+          setTimeout(() => supabase.removeChannel(ch), 1000);
+        }
+      });
+    } catch (_) {}
   };
 
   const saveDetail = async () => {
@@ -741,7 +773,11 @@ export default function StaffManagement({ session, onBack }) {
                       <div className="flex gap-4">
                         <PermToggle
                           checked={perms[m.id]?.can_view || false}
-                          onChange={v => setPerms(p => ({ ...p, [m.id]: { ...p[m.id], can_view: v, can_create: v ? p[m.id]?.can_create : false } }))}
+                          onChange={v => setPerms(p => ({
+                            ...p,
+                            [m.id]: { ...p[m.id], can_view: v, can_create: v ? p[m.id]?.can_create : false },
+                            ...(m.id === "bills" && !v ? { "print-airtime": { can_view: false, can_create: false }, "print-data": { can_view: false, can_create: false } } : {}),
+                          }))}
                           label="View"
                         />
                         <PermToggle
@@ -750,6 +786,27 @@ export default function StaffManagement({ session, onBack }) {
                           label="Create"
                         />
                       </div>
+                      {m.id === "bills" && perms["bills"]?.can_view && (
+                        <div className="mt-2 ml-1 pl-3 border-l-2 border-slate-200 dark:border-slate-700 space-y-2">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Print Features</p>
+                          {plan === "enterprise" ? (
+                            <>
+                              <PermToggle
+                                checked={perms["print-airtime"]?.can_view || false}
+                                onChange={v => setPerms(p => ({ ...p, "print-airtime": { can_view: v, can_create: false } }))}
+                                label="Print Airtime"
+                              />
+                              <PermToggle
+                                checked={perms["print-data"]?.can_view || false}
+                                onChange={v => setPerms(p => ({ ...p, "print-data": { can_view: v, can_create: false } }))}
+                                label="Print Data"
+                              />
+                            </>
+                          ) : (
+                            <p className="text-[10px] text-amber-500 font-semibold">Enterprise plan required to enable print features</p>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1028,7 +1085,11 @@ export default function StaffManagement({ session, onBack }) {
                       <div className="flex gap-4">
                         <PermToggle
                           checked={perms[m.id]?.can_view || false}
-                          onChange={v => setPerms(p => ({ ...p, [m.id]: { ...p[m.id], can_view: v, can_create: v ? p[m.id]?.can_create : false } }))}
+                          onChange={v => setPerms(p => ({
+                            ...p,
+                            [m.id]: { ...p[m.id], can_view: v, can_create: v ? p[m.id]?.can_create : false },
+                            ...(m.id === "bills" && !v ? { "print-airtime": { can_view: false, can_create: false }, "print-data": { can_view: false, can_create: false } } : {}),
+                          }))}
                           label="View"
                         />
                         <PermToggle
@@ -1037,6 +1098,27 @@ export default function StaffManagement({ session, onBack }) {
                           label="Create"
                         />
                       </div>
+                      {m.id === "bills" && perms["bills"]?.can_view && (
+                        <div className="mt-2 ml-1 pl-3 border-l-2 border-slate-200 dark:border-slate-700 space-y-2">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Print Features</p>
+                          {plan === "enterprise" ? (
+                            <>
+                              <PermToggle
+                                checked={perms["print-airtime"]?.can_view || false}
+                                onChange={v => setPerms(p => ({ ...p, "print-airtime": { can_view: v, can_create: false } }))}
+                                label="Print Airtime"
+                              />
+                              <PermToggle
+                                checked={perms["print-data"]?.can_view || false}
+                                onChange={v => setPerms(p => ({ ...p, "print-data": { can_view: v, can_create: false } }))}
+                                label="Print Data"
+                              />
+                            </>
+                          ) : (
+                            <p className="text-[10px] text-amber-500 font-semibold">Enterprise plan required to enable print features</p>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

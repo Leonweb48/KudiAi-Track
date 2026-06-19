@@ -297,7 +297,14 @@ export default function StaffDashboard({ session, staff }) {
     // Poll every 30 s as a reliable fallback (Realtime needs replication enabled on the table)
     const poll = setInterval(refreshPerms, 30_000);
 
-    // Realtime as a fast path if replication is enabled
+    // Broadcast channel — owner pushes instant signal when they save permissions
+    const broadcast = supabase.channel(`perms_${ownerId}`)
+      .on("broadcast", { event: "permissions_changed" }, ({ payload }) => {
+        if (payload?.staffId === staffId) refreshPerms();
+      })
+      .subscribe();
+
+    // Realtime postgres_changes as fast path if table replication is enabled
     const ch = supabase.channel(`staff_live_${staffId}`)
       .on("postgres_changes", {
         event: "*", schema: "public", table: "staff_permissions",
@@ -315,9 +322,10 @@ export default function StaffDashboard({ session, staff }) {
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("focus", refreshPerms);
       clearInterval(poll);
+      supabase.removeChannel(broadcast);
       supabase.removeChannel(ch);
     };
-  }, [staffId]);
+  }, [staffId, ownerId]);
 
   // Compute allowed nav modules from live permissions
   const PRINT_MODULES = ["print-airtime", "print-data"];
