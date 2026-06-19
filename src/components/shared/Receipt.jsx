@@ -13,7 +13,7 @@ const NAV2 = "#0F1D42";
 const GRN  = "#16a34a";
 const GRN2 = "#22c55e";
 const YEAR = new Date().getFullYear();
-const SUPPORT_EMAIL = "support@kudiaitrack.biz";
+const SUPPORT_EMAIL = "support@kudiai.app";
 
 const refNo = (id) =>
   id ? `KT-${id.toString().replace(/-/g, "").slice(0, 8).toUpperCase()}`
