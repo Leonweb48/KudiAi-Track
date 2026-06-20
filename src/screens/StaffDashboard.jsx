@@ -819,12 +819,7 @@ function StaffRecords({ store, staff, livePerms, initialSub, plan }) {
           </div>
         )}
         {sub === "ajo" && ajoOnPlan && (
-          allowed.includes("aso")
-            ? <div className="h-full overflow-y-auto pb-4"><Aso store={store} plan="starter" staffId={staff?.id} /></div>
-            : <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-8">
-                <p className="text-base font-bold text-slate-600 dark:text-slate-400">Ajo not enabled</p>
-                <p className="text-sm text-slate-400">Contact your manager to enable the Ajo module.</p>
-              </div>
+          <div className="h-full overflow-y-auto pb-4"><Aso store={store} plan={plan} staffId={staff?.id} /></div>
         )}
       </div>
     </div>
