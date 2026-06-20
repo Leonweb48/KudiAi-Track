@@ -29,7 +29,7 @@ import AIChatWidget         from "./components/AIChatWidget";
 import Loyalty               from "./screens/Loyalty";
 import Branches              from "./screens/Branches";
 import ManagerDashboard from "./screens/ManagerDashboard";
-import AjoClientPortal       from "./screens/AjoClientPortal";
+import AjoMemberPortal       from "./screens/AjoMemberPortal";
 import CoopList              from "./screens/CoopList";
 import CoopDashboard         from "./screens/CoopDashboard";
 import CoopMemberPortal, { CoopMemberFirstLogin } from "./screens/CoopMemberPortal";
@@ -190,7 +190,7 @@ export default function App() {
   if (status === "ajo_client_setup" || status === "ajo_client") {
     return (
       <>
-        <AjoClientPortal session={session} ajoClient={ajoClient} />
+        <AjoMemberPortal session={session} ajoClient={ajoClient} />
         <AIChatWidget />
       </>
     );
