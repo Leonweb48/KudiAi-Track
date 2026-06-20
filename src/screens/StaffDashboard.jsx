@@ -638,15 +638,17 @@ function StaffHome({ staff, store, inventory, plan, onGoTo, onVoiceOpen, onAddCa
    SALES TAB
 ═══════════════════════════════════════════════════════════════════ */
 function StaffSales({ store, staff, session, livePerms, initialSub, initialData, onVoiceOpen, inventory, onAddCash, plan }) {
-  const [sub,      setSub]     = useState(initialSub || "cash");
-  const [receipt,  setReceipt] = useState(initialData);
-  const [search,   setSearch]  = useState("");
-  const [period,   setPeriod]  = useState("all");
+  const [sub,        setSub]       = useState(initialSub || "cash");
+  const [receipt,    setReceipt]   = useState(initialData);
+  const [search,     setSearch]    = useState("");
+  const [period,     setPeriod]    = useState("all");
+  const [typeFilter, setTypeFilter] = useState("all");
   const { transactions = [], loading } = store;
   const allowed = livePerms.filter(p => p.can_view).map(p => p.module);
 
   useEffect(() => { if (initialSub) setSub(initialSub); }, [initialSub]);
   useEffect(() => { if (initialData) setReceipt(initialData); }, [initialData]);
+  useEffect(() => { setTypeFilter("all"); }, [sub]);
 
   const cutoff   = dateRange(period);
   const filtered = transactions.filter(t => {
@@ -654,9 +656,16 @@ function StaffSales({ store, staff, session, livePerms, initialSub, initialData,
     const inSearch = !search || [t.item_name, t.customer_name, t.category].some(v => (v || "").toLowerCase().includes(search.toLowerCase()));
     return inPeriod && inSearch;
   });
-  const cashOnly = filtered.filter(t => !(t.category || "").toLowerCase().includes("bill"));
+  const cashOnly = filtered.filter(t => t.payment_type !== "bill_payment");
   const cashIn   = cashOnly.filter(t => t.type === "in").reduce((s, t) => s + t.amount, 0);
   const cashOut  = cashOnly.filter(t => t.type === "out").reduce((s, t) => s + t.amount, 0);
+
+  const allHistory = (() => {
+    if (typeFilter === "in")    return filtered.filter(t => t.type === "in"  && t.payment_type !== "bill_payment");
+    if (typeFilter === "out")   return filtered.filter(t => t.type === "out" && t.payment_type !== "bill_payment");
+    if (typeFilter === "bills") return filtered.filter(t => t.payment_type === "bill_payment");
+    return filtered;
+  })();
 
   return (
     <div className="h-full flex flex-col">
@@ -717,6 +726,16 @@ function StaffSales({ store, staff, session, livePerms, initialSub, initialData,
                 Mic Sale
               </button>
             </div>
+            {sub === "all" && (
+              <div className="flex gap-2 overflow-x-auto no-scrollbar">
+                {[["all","All"],["in","Cash In"],["out","Cash Out"],["bills","Bills"]].map(([v, l]) => (
+                  <button key={v} onClick={() => setTypeFilter(v)}
+                    className={`flex-shrink-0 px-3 py-1.5 rounded-xl text-[11px] font-bold transition ${typeFilter === v ? "bg-slate-700 dark:bg-slate-200 text-white dark:text-slate-900" : "bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400"}`}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+            )}
             {/* Cash In / Cash Out add buttons */}
             <div className="flex gap-2">
               <button onClick={() => onAddCash("in")}
@@ -732,7 +751,7 @@ function StaffSales({ store, staff, session, livePerms, initialSub, initialData,
             </div>
           </div>
           <div className="flex-shrink-0 grid grid-cols-3 gap-px bg-slate-100 dark:bg-slate-700/50 border-y border-slate-100 dark:border-slate-700/50">
-            {[["Cash In", fmt(cashIn), "text-green-600"],["Cash Out", fmt(cashOut), "text-red-500"],["Count", (sub === "cash" ? cashOnly : filtered).length + " txns", "text-slate-700 dark:text-slate-200"]].map(([l, v, c]) => (
+            {[["Cash In", fmt(cashIn), "text-green-600"],["Cash Out", fmt(cashOut), "text-red-500"],["Count", (sub === "cash" ? cashOnly : allHistory).length + " txns", "text-slate-700 dark:text-slate-200"]].map(([l, v, c]) => (
               <div key={l} className="bg-white dark:bg-slate-800 px-3 py-2.5 text-center">
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{l}</p>
                 <p className={`text-sm font-extrabold tabular mt-0.5 ${c}`}>{v}</p>
@@ -741,9 +760,9 @@ function StaffSales({ store, staff, session, livePerms, initialSub, initialData,
           </div>
           <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2 pb-4">
             {loading ? [1,2,3,4].map(i => <div key={i} className="h-[72px] bg-slate-100 dark:bg-slate-700/60 rounded-2xl animate-pulse" />) :
-             (sub === "cash" ? cashOnly : filtered).length === 0
+             (sub === "cash" ? cashOnly : allHistory).length === 0
               ? <p className="text-center text-sm text-slate-400 py-12">No transactions found</p>
-              : (sub === "cash" ? cashOnly : filtered).map((t, i) => (
+              : (sub === "cash" ? cashOnly : allHistory).map((t, i) => (
                   <TxRow key={t.id || i} t={t} onClick={() => setReceipt(t)} />
                 ))
             }

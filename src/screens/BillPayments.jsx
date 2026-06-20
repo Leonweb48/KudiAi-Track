@@ -1230,6 +1230,8 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
   const [pins,          setPins]          = useState(null);
   const [pointsBalance, setPointsBalance] = useState(0);
   const [usePoints,     setUsePoints]     = useState(false);
+  const [histCat,       setHistCat]       = useState("all");
+  const [histStatus,    setHistStatus]    = useState("all");
   const pointsBalanceRef = useRef(0);
 
   // Detect Paystack return on first render so overlay appears immediately (no flash)
@@ -1269,6 +1271,20 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
     () => transactions.filter(t => t.payment_type === "bill_payment"),
     [transactions]
   );
+
+  const usedBillCats = useMemo(() => {
+    const ids = [...new Set(bills.map(b => b.category))];
+    return ids.map(id => CATS.find(c => c.id === id)).filter(Boolean);
+  }, [bills]);
+
+  const filteredBills = useMemo(() => {
+    let r = bills;
+    if (histCat    !== "all") r = r.filter(b => b.category === histCat);
+    if (histStatus !== "all") r = histStatus === "failed"
+      ? r.filter(b => b.bill_status === "failed")
+      : r.filter(b => b.bill_status !== "failed");
+    return r;
+  }, [bills, histCat, histStatus]);
 
   const resetVerify = () => { setVerifyStatus("idle"); setVerifyName(""); };
 
@@ -1872,7 +1888,7 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
         <div>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-[13px] font-bold text-slate-700 dark:text-slate-300 tracking-wide">
-              History {bills.length > 0 && <span className="text-slate-400 font-normal">({bills.length})</span>}
+              History {bills.length > 0 && <span className="text-slate-400 font-normal">({filteredBills.length}{filteredBills.length !== bills.length ? `/${bills.length}` : ""})</span>}
             </h2>
             {bills.length > 0 && (
               <button onClick={() => setShowStatement(true)}
@@ -1882,6 +1898,38 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
               </button>
             )}
           </div>
+
+          {bills.length > 0 && (
+            <>
+              <div className="flex gap-2 mb-2.5 overflow-x-auto no-scrollbar">
+                {[["all","All"],["ok","Successful"],["failed","Failed"]].map(([v,l]) => (
+                  <button key={v} onClick={() => setHistStatus(v)}
+                    className={`flex-shrink-0 px-3 py-1.5 rounded-full text-[11px] font-bold transition-colors ${
+                      histStatus === v
+                        ? v === "failed" ? "bg-red-500 text-white" : "bg-slate-800 dark:bg-white text-white dark:text-slate-900"
+                        : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
+                    }`}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+              {usedBillCats.length > 1 && (
+                <div className="flex gap-2 mb-3 overflow-x-auto no-scrollbar">
+                  {[{ id: "all", label: "All Services" }, ...usedBillCats].map(c => (
+                    <button key={c.id} onClick={() => setHistCat(c.id)}
+                      className={`flex-shrink-0 px-3 py-1.5 rounded-full text-[11px] font-bold transition-colors ${
+                        histCat === c.id
+                          ? "bg-[#1B2A5E] text-white"
+                          : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
+                      }`}>
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
           {bills.length === 0 ? (
             <div className="text-center py-12 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700/50">
               <div className="w-14 h-14 bg-slate-100 dark:bg-slate-700 rounded-full flex items-center justify-center mx-auto mb-3">
@@ -1890,9 +1938,17 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
               <p className="text-slate-500 dark:text-slate-400 text-sm font-semibold">No bills paid yet</p>
               <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Tap a service above to get started</p>
             </div>
+          ) : filteredBills.length === 0 ? (
+            <div className="text-center py-10 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700/50">
+              <p className="text-slate-500 dark:text-slate-400 text-sm font-semibold">No matching transactions</p>
+              <button onClick={() => { setHistCat("all"); setHistStatus("all"); }}
+                className="text-xs font-bold text-brand-600 dark:text-brand-400 mt-1.5">
+                Clear filters
+              </button>
+            </div>
           ) : (
             <div className="space-y-2">
-              {bills.map(b => (
+              {filteredBills.map(b => (
                 <BillRow key={b.id || b.item_name + b.created_at} bill={b}
                   onOpen={() => setReceipt(billToReceipt(b, profile, staffName))} />
               ))}

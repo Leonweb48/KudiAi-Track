@@ -236,7 +236,10 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
   }, [autoOpen, autoType, onAutoOpened, txLimitReached]);
 
   const filtered = transactions.filter(t => {
-    if (filter !== "all" && t.type !== filter) return false;
+    if (filter === "in")     { if (t.type !== "in"  || t.payment_type === "bill_payment") return false; }
+    else if (filter === "out")    { if (t.type !== "out" || t.payment_type === "bill_payment") return false; }
+    else if (filter === "bills")  { if (t.payment_type !== "bill_payment") return false; }
+    else if (filter === "credit") { if (t.category !== "credit sale" && t.category !== "debt repayment") return false; }
     if (search && !t.item_name?.toLowerCase().includes(search.toLowerCase()) &&
         !t.customer_name?.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
@@ -313,15 +316,21 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
       </div>
 
       {/* Filter chips */}
-      <div className="flex gap-2 mb-3">
-        {["all","in","out"].map(f => (
-          <button key={f} onClick={() => setFilter(f)}
-            className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-colors ${
-              filter === f
+      <div className="flex gap-2 mb-3 overflow-x-auto no-scrollbar pb-0.5">
+        {[
+          { id: "all",    label: t("txn.all") },
+          { id: "in",     label: t("txn.cashIn") },
+          { id: "out",    label: t("txn.cashOut") },
+          { id: "bills",  label: "Bills" },
+          { id: "credit", label: "Credit" },
+        ].map(opt => (
+          <button key={opt.id} onClick={() => setFilter(opt.id)}
+            className={`flex-shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold transition-colors ${
+              filter === opt.id
                 ? "bg-slate-800 dark:bg-white text-white dark:text-slate-900"
                 : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
             }`}>
-            {f === "all" ? t("txn.all") : f === "in" ? t("txn.cashIn") : t("txn.cashOut")}
+            {opt.label}
           </button>
         ))}
       </div>
