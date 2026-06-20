@@ -627,7 +627,7 @@ function StaffHome({ staff, store, inventory, plan, onGoTo, onVoiceOpen, onAddCa
 /* ═══════════════════════════════════════════════════════════════════
    SALES TAB
 ═══════════════════════════════════════════════════════════════════ */
-function StaffSales({ store, staff, session, livePerms, initialSub, initialData, onVoiceOpen, inventory, onAddCash }) {
+function StaffSales({ store, staff, session, livePerms, initialSub, initialData, onVoiceOpen, inventory, onAddCash, plan }) {
   const [sub,      setSub]     = useState(initialSub || "cash");
   const [receipt,  setReceipt] = useState(initialData);
   const [search,   setSearch]  = useState("");
@@ -669,8 +669,16 @@ function StaffSales({ store, staff, session, livePerms, initialSub, initialData,
                 <p className="text-sm text-slate-400">Contact your manager to enable bill payments.</p>
               </div>
             : <div className="h-full overflow-y-auto pb-4">
-                <BillPayments store={store} staffName={staff?.full_name}
-                  staffEmail={session?.user?.email || staff?.email || ""} businessName={staff?.business_name} />
+                <BillPayments
+                  store={store}
+                  plan={plan}
+                  markup={1.098}
+                  airtimeDiscount={0.01}
+                  pointsEnabled
+                  staffName={staff?.full_name}
+                  staffEmail={session?.user?.email || staff?.email || ""}
+                  businessName={staff?.business_name || store.profile?.business_name}
+                />
               </div>
           }
         </div>
@@ -1093,8 +1101,20 @@ function StaffMe({ staff, session, store, inventory, livePerms, staffId, lock, p
    MAIN STAFF DASHBOARD
 ═══════════════════════════════════════════════════════════════════ */
 export default function StaffDashboard({ session, staff }) {
-  const [tab,        setTab]       = useState("home");
-  const [subNav,     setSubNav]    = useState(null);
+  const [tab,        setTab]       = useState(() => {
+    const p = new URLSearchParams(window.location.search);
+    const ref = p.get("bill_ref") || p.get("trxref") || p.get("reference");
+    if (ref && localStorage.getItem(`ck_bill_pending_${ref}`)) return "sales";
+    if (Object.keys(localStorage).some(k => k.startsWith("ck_bill_pending_"))) return "sales";
+    return "home";
+  });
+  const [subNav,     setSubNav]    = useState(() => {
+    const p = new URLSearchParams(window.location.search);
+    const ref = p.get("bill_ref") || p.get("trxref") || p.get("reference");
+    if (ref && localStorage.getItem(`ck_bill_pending_${ref}`)) return "bills";
+    if (Object.keys(localStorage).some(k => k.startsWith("ck_bill_pending_"))) return "bills";
+    return null;
+  });
   const [subData,    setSubData]   = useState(null);
   const [livePerms,  setLivePerms] = useState(staff?.staff_permissions || []);
   const [voiceOpen,  setVoiceOpen] = useState(false);
@@ -1210,7 +1230,7 @@ export default function StaffDashboard({ session, staff }) {
   function renderContent() {
     switch (tab) {
       case "home":    return <StaffHome    staff={staff} store={store} inventory={inventory} plan={plan} onGoTo={goTo} onVoiceOpen={() => setVoiceOpen(true)} onAddCash={openAddTxn} />;
-      case "sales":   return <StaffSales   store={store} staff={staff} session={session} livePerms={livePerms} initialSub={subNav} initialData={subData} onVoiceOpen={() => setVoiceOpen(true)} inventory={inventory} onAddCash={openAddTxn} />;
+      case "sales":   return <StaffSales   store={store} staff={staff} session={session} livePerms={livePerms} initialSub={subNav} initialData={subData} onVoiceOpen={() => setVoiceOpen(true)} inventory={inventory} onAddCash={openAddTxn} plan={plan} />;
       case "records": return <StaffRecords store={store} staff={staff} livePerms={livePerms} initialSub={subNav} plan={plan} />;
       case "stock":   return <StaffStock   inventory={inventory} staff={staff} livePerms={livePerms} plan={plan} />;
       case "me":      return <StaffMe      staff={staff} session={session} store={store} inventory={inventory} livePerms={livePerms} staffId={staffId} lock={lock} plan={plan} initialView={subNav} />;
