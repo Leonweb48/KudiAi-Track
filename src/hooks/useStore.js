@@ -420,16 +420,17 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
           action:  `Credit client added: ${c.customer_name}`,
           module:  "credit",
           details: `₦${parseFloat(c.total_amount || 0).toLocaleString()} outstanding${due}` });
-        fireEmailTrigger("credit_added", {
-          owner_id:      userId,
-          staff_id:      staffId,
-          staff_name:    staffName || "",
-          business_name: profile.business_name || "",
-          customer_name: c.customer_name || "",
-          total_amount:  parseFloat(c.total_amount || 0),
-          due_date:      c.due_date || null,
-        });
       }
+      fireEmailTrigger("credit_added", {
+        owner_id:       userId,
+        staff_id:       staffId  || null,
+        staff_name:     staffName || "",
+        business_name:  profile.business_name || "",
+        customer_name:  c.customer_name || "",
+        customer_email: c.email  || "",
+        total_amount:   parseFloat(c.total_amount || 0),
+        due_date:       c.due_date || null,
+      });
       return { data, error: null };
     }
   };
