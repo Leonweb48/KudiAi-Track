@@ -61,9 +61,10 @@ function isOk(data: Record<string, unknown>): boolean {
 }
 
 function errMsg(data: Record<string, unknown>, fallback: string): string {
-  // Prefer the human-readable status message from ClubKonnect
   const raw = data?.status ?? data?.Status ?? data?.message ?? data?.Message ??
-              data?.description ?? data?.Description ?? data?._raw ?? fallback;
+              data?.description ?? data?.Description ?? data?.Response ?? data?.response ??
+              data?.StatusMessage ?? data?.statusmessage ?? data?.error ?? data?.Error ??
+              data?._raw ?? fallback;
   return String(raw);
 }
 
@@ -103,13 +104,24 @@ serve(async (req) => {
       if (data?.status && String(data.status).includes("INVALID")) return json({ error: `Data API key error: ${data.status}`, plans: [] });
 
       // Response format: { MOBILE_NETWORK: { MTN: [{ ID, PRODUCT: [{PRODUCT_CODE, PRODUCT_NAME, PRODUCT_AMOUNT}] }] } }
-      const NET_KEY: Record<string, string> = { MTN: "MTN", Glo: "GLO", "9mobile": "9MOBILE", Airtel: "AIRTEL" };
+      // Key names vary by API version (e.g. "Airtel" vs "AIRTEL"), so match case-insensitively
       const mobileNet = data?.MOBILE_NETWORK as Record<string, Record<string, unknown>[]> | undefined;
       let plans: { plan_id: string; plan_name: string; plan_amount: number }[] = [];
 
+      // 9mobile is sometimes labelled "Etisalat" (former name) in CK responses
+      const ALIASES: Record<string, string[]> = {
+        "9mobile": ["9mobile","9MOBILE","m_9mobile","M_9MOBILE","etisalat","ETISALAT","Etisalat","emts","EMTS"],
+      };
+
       if (mobileNet) {
-        const netKey = NET_KEY[network] ?? "MTN";
-        const groups = mobileNet[netKey] ?? [];
+        const allKeys = Object.keys(mobileNet);
+        const matchedKey = allKeys.find(k => k.toUpperCase() === network.toUpperCase())
+          ?? allKeys.find(k => k.replace(/\W/g,"").toUpperCase() === network.replace(/\W/g,"").toUpperCase())
+          ?? (ALIASES[network] ?? []).reduce<string|undefined>(
+               (found, alias) => found ?? allKeys.find(k => k.toLowerCase() === alias.toLowerCase()),
+               undefined
+             );
+        const groups = (matchedKey ? mobileNet[matchedKey] : []) ?? [];
         for (const group of groups) {
           const products = (group?.PRODUCT ?? []) as Record<string, unknown>[];
           for (const p of products) {
@@ -132,7 +144,10 @@ serve(async (req) => {
         })).filter(p => p.plan_id && p.plan_id !== "undefined");
       }
 
-      if (!plans.length) return json({ plans: [], error: `No plans returned: ${JSON.stringify(data).slice(0, 200)}` });
+      if (!plans.length) {
+        const availableKeys = mobileNet ? Object.keys(mobileNet).join(", ") : "none";
+        return json({ plans: [], error: `No plans for "${network}". API keys: [${availableKeys}]. Raw: ${JSON.stringify(data).slice(0,150)}` });
+      }
       return json({ plans, _count: plans.length });
     }
 
@@ -146,7 +161,7 @@ serve(async (req) => {
         APIKey: DATA_K, MobileNetwork: netId, DataPlan: planId,
         MobileNumber: phone.replace(/\D/g, ""), RequestID: reqId(), CallBackURL: "https://kudiai.app/",
       });
-      if (!isOk(data)) return json({ error: errMsg(data, "Data purchase failed"), _raw: data });
+      if (!isOk(data)) return json({ error: `${errMsg(data, "Data purchase failed")} [net:${netId} plan:${planId}]`, _raw: data });
       return json({ status: "SUCCESS", reference: String(data.orderid ?? data.requestid ?? ""), message: String(data.status ?? "ORDER_RECEIVED") });
     }
 
@@ -257,6 +272,14 @@ serve(async (req) => {
         MeterNo: meterNo, Amount: String(amount), PhoneNo: phone.replace(/\D/g, ""),
         RequestID: reqId(), CallBackURL: "https://kudiai.app/",
       });
+      // TXN_HISTORY means ClubKonnect already has this transaction recorded —
+      // the token may already have been dispensed to the meter.
+      const rawStat = String(data?.status ?? data?.Status ?? "").toUpperCase();
+      if (rawStat.includes("TXN_HISTORY")) {
+        const token = String(data?.token ?? data?.Token ?? "");
+        const ref   = String(data?.orderid ?? data?.requestid ?? "");
+        return json({ status: "TXN_HISTORY", reference: ref, token, message: "TXN_HISTORY" });
+      }
       if (!isOk(data)) return json({ error: errMsg(data, "Electricity purchase failed"), _raw: data });
       return json({ status: "SUCCESS", reference: String(data.orderid ?? data.requestid ?? ""), token: String(data.token ?? data.Token ?? ""), message: String(data.status ?? "ORDER_RECEIVED") });
     }
@@ -426,6 +449,7 @@ serve(async (req) => {
 
     // ── Print Airtime EPIN (Enterprise only — gated in UI) ────────────────────
     if (action === "print-airtime") {
+      if (!PRINT_AIRTIME_K) return json({ error: "Print Airtime API key not configured. Add CK_PRINT_AIRTIME_KEY to your Supabase secrets." });
       const { network, value, quantity } = body as { network: string; value: string; quantity: string };
       if (!network || !value || !quantity) return json({ error: "network, value and quantity required" });
       const netId = NET_ID[network];
@@ -437,13 +461,14 @@ serve(async (req) => {
         APIKey: PRINT_AIRTIME_K, MobileNetwork: netId, Value: String(value),
         Quantity: String(qty), RequestID: reqId(), CallBackURL: "https://kudiai.app/",
       });
-      if (!isOk(data)) return json({ error: errMsg(data, "Print airtime failed"), _raw: data });
       const pins = (data?.TXN_EPIN ?? []) as Record<string, unknown>[];
-      return json({ status: "SUCCESS", reference: String(data.orderid ?? data.requestid ?? ""), pins, message: String(data.status ?? "ORDER_RECEIVED") });
+      if (!pins.length && !isOk(data)) return json({ error: errMsg(data, "Print airtime failed"), _raw: data });
+      return json({ status: "SUCCESS", reference: String(data?.batchno ?? data?.orderid ?? data?.requestid ?? ""), pins, message: "ORDER_RECEIVED" });
     }
 
     // ── Print Data EPIN (Enterprise only — gated in UI) ───────────────────────
     if (action === "print-data") {
+      if (!PRINT_DATA_K) return json({ error: "Print Data API key not configured. Add CK_PRINT_DATA_KEY to your Supabase secrets." });
       const { network, planId, quantity } = body as { network: string; planId: string; quantity: string };
       if (!network || !planId || !quantity) return json({ error: "network, planId and quantity required" });
       const netId = NET_ID[network];
@@ -454,9 +479,9 @@ serve(async (req) => {
         APIKey: PRINT_DATA_K, MobileNetwork: netId, DataPlan: planId,
         Quantity: String(qty), RequestID: reqId(), CallBackURL: "https://kudiai.app/",
       });
-      if (!isOk(data)) return json({ error: errMsg(data, "Print data failed"), _raw: data });
       const pins = (data?.TXN_EPIN_DATABUNDLE ?? []) as Record<string, unknown>[];
-      return json({ status: "SUCCESS", reference: String(data.orderid ?? data.requestid ?? ""), pins, message: String(data.status ?? "ORDER_RECEIVED") });
+      if (!pins.length && !isOk(data)) return json({ error: errMsg(data, "Print data failed"), _raw: data });
+      return json({ status: "SUCCESS", reference: String(data?.batchno ?? data?.orderid ?? data?.requestid ?? ""), pins, message: "ORDER_RECEIVED" });
     }
 
     // ── Shared email helper ───────────────────────────────────────────────────────
@@ -480,6 +505,29 @@ serve(async (req) => {
       });
     };
 
+    // ── Branded email layout helper (shared by all bill email templates) ──────
+    const billEmailHtml = (opts: { accentColor: string; icon?: string; title: string; subtitle?: string; body: string }) =>
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f8fafc;padding:16px;">
+        <div style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.08);">
+          <div style="background:linear-gradient(135deg,#0F1D42 0%,#1B2A5E 100%);padding:24px;text-align:center;">
+            <img src="https://kudiai.app/logo.png" alt="KudiAI Track" width="52" style="display:block;margin:0 auto 12px;border-radius:10px;box-shadow:0 4px 14px rgba(0,0,0,0.3);"/>
+            <h1 style="color:#fff;margin:0 0 2px;font-size:20px;font-weight:900;letter-spacing:-0.3px;">KudiAI Track</h1>
+            <p style="color:rgba(255,255,255,0.45);margin:0;font-size:10px;letter-spacing:2px;text-transform:uppercase;">Business Management Platform</p>
+          </div>
+          <div style="background:${opts.accentColor};padding:16px 24px;text-align:center;">
+            ${opts.icon ? `<p style="margin:0 0 6px;font-size:26px;">${opts.icon}</p>` : ""}
+            <h2 style="color:#fff;margin:0 0 3px;font-size:19px;font-weight:800;">${opts.title}</h2>
+            ${opts.subtitle ? `<p style="color:rgba(255,255,255,0.85);margin:0;font-size:13px;">${opts.subtitle}</p>` : ""}
+          </div>
+          <div style="padding:26px 24px;background:#fff;">${opts.body}</div>
+          <div style="background:#f8fafc;padding:18px 24px;text-align:center;border-top:1px solid #e2e8f0;">
+            <p style="margin:0 0 5px;color:#64748b;font-size:11px;line-height:1.5;">For support reach out to: <a href="mailto:support@kudiai.app" style="color:#4f46e5;text-decoration:none;font-weight:600;">support@kudiai.app</a></p>
+            <p style="margin:0 0 3px;color:#94a3b8;font-size:11px;line-height:1.5;">A product of AMAYA &amp; Co. Technologies — all rights reserved &copy; ${new Date().getFullYear()}</p>
+            <p style="margin:0;color:#cbd5e1;font-size:10px;line-height:1.5;">This is an automated message — please do not reply directly to this email.</p>
+          </div>
+        </div>
+      </div>`;
+
     // ── Bill failure alert — create critical support ticket + email admins & user ─
     if (action === "bill-failure-alert") {
       const { user_id, user_email, user_name, service, amount, ps_ref, ck_error } = body as {
@@ -490,15 +538,15 @@ serve(async (req) => {
         const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
         // Create a critical support ticket so admin/finance see it immediately
-        const ticketSubject = `BILLING FAILURE: ${service} — Paystack paid, ClubKonnect failed`;
+        const ticketSubject = `BILLING FAILURE: ${service} — Paystack paid, service delivery failed`;
         const description =
           `A customer paid successfully via Paystack but bill delivery failed.\n\n` +
           `User: ${user_name || "Unknown"} (${user_email || "N/A"})\n` +
           `Service: ${service}\n` +
           `Amount: ₦${amount?.toLocaleString() || "?"}\n` +
           `Paystack Reference: ${ps_ref}\n` +
-          `ClubKonnect Error: ${ck_error}\n\n` +
-          `ACTION REQUIRED: Verify ClubKonnect wallet balance and manually fulfill or refund.`;
+          `Provider Error: ${ck_error}\n\n` +
+          `ACTION REQUIRED: Verify provider wallet balance and manually fulfill or refund.`;
 
         await sb.from("support_tickets").insert({
           subject:    ticketSubject,
@@ -512,8 +560,8 @@ serve(async (req) => {
         });
 
         await sb.from("admin_tasks").insert({
-          title:       `ClubKonnect wallet failure — ${service}`,
-          description: `Paystack ref ${ps_ref} was charged ₦${amount?.toLocaleString() || "?"} but ClubKonnect returned: "${ck_error}". Check wallet balance and fulfill manually.`,
+          title:       `Service wallet failure — ${service}`,
+          description: `Paystack ref ${ps_ref} was charged ₦${amount?.toLocaleString() || "?"} but provider returned: "${ck_error}". Check wallet balance and fulfill manually.`,
           priority: "critical",
           status:   "pending",
         });
@@ -526,26 +574,24 @@ serve(async (req) => {
           .eq("is_active", true)
           .not("email", "is", null);
 
-        const adminEmailHtml = `
-          <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
-            <div style="background:#dc2626;padding:20px 24px;border-radius:12px 12px 0 0">
-              <h1 style="color:#fff;margin:0;font-size:20px">⚠ Bill Payment Failure Alert</h1>
-            </div>
-            <div style="background:#fff;padding:24px;border:1px solid #fca5a5;border-top:none;border-radius:0 0 12px 12px">
-              <p style="margin:0 0 16px;color:#374151">A customer paid via Paystack but <strong>ClubKonnect failed to deliver</strong> the service.</p>
-              <table style="width:100%;border-collapse:collapse;font-size:14px">
-                <tr><td style="padding:8px 0;color:#6b7280;width:140px">User</td><td style="padding:8px 0;font-weight:600;color:#111827">${user_name || "Unknown"} (${user_email || "N/A"})</td></tr>
-                <tr style="background:#fef2f2"><td style="padding:8px;color:#6b7280">Service</td><td style="padding:8px;font-weight:600;color:#111827">${service}</td></tr>
-                <tr><td style="padding:8px 0;color:#6b7280">Amount Paid</td><td style="padding:8px 0;font-weight:600;color:#111827">₦${amount?.toLocaleString() || "?"}</td></tr>
-                <tr style="background:#fef2f2"><td style="padding:8px;color:#6b7280">Paystack Ref</td><td style="padding:8px;font-family:monospace;color:#111827">${ps_ref}</td></tr>
-                <tr><td style="padding:8px 0;color:#6b7280">Error</td><td style="padding:8px 0;font-weight:600;color:#dc2626">${ck_error}</td></tr>
-              </table>
-              <div style="margin-top:20px;padding:16px;background:#fef9c3;border:1px solid #fde68a;border-radius:8px">
-                <p style="margin:0;font-weight:700;color:#92400e">ACTION REQUIRED</p>
-                <p style="margin:8px 0 0;color:#92400e;font-size:14px">Check ClubKonnect wallet balance and manually fulfill or refund this customer immediately.</p>
-              </div>
-            </div>
-          </div>`;
+        const adminEmailHtml = billEmailHtml({
+          accentColor: "linear-gradient(135deg,#dc2626,#b91c1c)",
+          icon: "⚠",
+          title: "Bill Payment Failure Alert",
+          subtitle: "Action Required — Paystack paid, delivery failed",
+          body: `<p style="margin:0 0 16px;color:#374151;font-size:14px;">A customer paid successfully via Paystack but <strong>the provider failed to deliver</strong> the service. Immediate action is required.</p>
+            <table style="width:100%;border-collapse:collapse;font-size:14px;margin:0 0 16px;">
+              <tr><td style="padding:7px 0;color:#6b7280;width:140px;font-weight:600;">User</td><td style="padding:7px 0;font-weight:700;color:#111827;">${user_name || "Unknown"} (${user_email || "N/A"})</td></tr>
+              <tr style="background:#fef2f2;"><td style="padding:7px 8px;color:#6b7280;font-weight:600;">Service</td><td style="padding:7px 8px;font-weight:700;color:#111827;">${service}</td></tr>
+              <tr><td style="padding:7px 0;color:#6b7280;font-weight:600;">Amount Paid</td><td style="padding:7px 0;font-weight:700;color:#111827;">₦${amount?.toLocaleString() || "?"}</td></tr>
+              <tr style="background:#fef2f2;"><td style="padding:7px 8px;color:#6b7280;font-weight:600;">Paystack Ref</td><td style="padding:7px 8px;font-family:monospace;color:#111827;">${ps_ref}</td></tr>
+              <tr><td style="padding:7px 0;color:#6b7280;font-weight:600;">Error</td><td style="padding:7px 0;font-weight:700;color:#dc2626;">${ck_error}</td></tr>
+            </table>
+            <div style="padding:14px 16px;background:#fef9c3;border:1px solid #fde68a;border-radius:8px;">
+              <p style="margin:0;font-weight:700;color:#92400e;font-size:14px;">ACTION REQUIRED</p>
+              <p style="margin:8px 0 0;color:#92400e;font-size:13px;">Check provider wallet balance and manually fulfill or refund this customer immediately.</p>
+            </div>`,
+        });
 
         for (const admin of (admins || [])) {
           if (admin.email) {
@@ -556,27 +602,25 @@ serve(async (req) => {
 
         // Email the business user
         if (user_email) {
-          const userEmailHtml = `
-            <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
-              <div style="background:#1e293b;padding:20px 24px;border-radius:12px 12px 0 0">
-                <h1 style="color:#fff;margin:0;font-size:20px">KudiTrack — Bill Payment Update</h1>
+          const userEmailHtml = billEmailHtml({
+            accentColor: "linear-gradient(135deg,#dc2626,#b91c1c)",
+            icon: "⚠",
+            title: "Bill Payment Update",
+            subtitle: `${service} — Delivery Issue`,
+            body: `<p style="margin:0 0 14px;color:#374151;font-size:14px;">Dear <strong>${user_name || "Valued Customer"}</strong>,</p>
+              <p style="margin:0 0 18px;color:#374151;font-size:14px;line-height:1.6;">Your Paystack payment of <strong>₦${amount?.toLocaleString() || "?"}</strong> for <strong>${service}</strong> was received successfully. However, we encountered a temporary issue delivering the service.</p>
+              <div style="padding:14px 16px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;margin-bottom:14px;">
+                <p style="margin:0;font-weight:700;color:#dc2626;font-size:14px;">Delivery issue detected</p>
+                <p style="margin:8px 0 0;color:#dc2626;font-size:13px;">${ck_error}</p>
               </div>
-              <div style="background:#fff;padding:24px;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 12px 12px">
-                <p style="margin:0 0 12px;color:#374151">Dear ${user_name || "Valued Customer"},</p>
-                <p style="margin:0 0 16px;color:#374151">Your Paystack payment of <strong>₦${amount?.toLocaleString() || "?"}</strong> for <strong>${service}</strong> was received successfully. However, we encountered a temporary issue delivering the service.</p>
-                <div style="padding:16px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;margin-bottom:16px">
-                  <p style="margin:0;font-weight:700;color:#dc2626">Delivery issue detected</p>
-                  <p style="margin:8px 0 0;color:#dc2626;font-size:14px">${ck_error}</p>
-                </div>
-                <div style="padding:16px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px">
-                  <p style="margin:0;font-weight:600;color:#92400e">Your money is safe</p>
-                  <p style="margin:8px 0 0;color:#92400e;font-size:14px">Our team has been automatically alerted and will resolve this immediately. Keep your payment reference below for follow-up:</p>
-                  <p style="margin:12px 0 0;font-family:monospace;font-size:16px;font-weight:700;color:#1e293b">${ps_ref}</p>
-                </div>
-                <p style="margin:16px 0 0;color:#6b7280;font-size:13px">If you do not receive your service within 2 hours, please contact our support team with the reference above.</p>
+              <div style="padding:14px 16px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;margin-bottom:14px;">
+                <p style="margin:0;font-weight:700;color:#92400e;font-size:14px;">Your money is safe</p>
+                <p style="margin:8px 0 0;color:#92400e;font-size:13px;line-height:1.6;">Our team has been automatically alerted and will resolve this immediately. Keep your payment reference for follow-up:</p>
+                <p style="margin:10px 0 0;font-family:monospace;font-size:15px;font-weight:800;color:#1e293b;">${ps_ref}</p>
               </div>
-            </div>`;
-          try { await sendEmail(sb, { to: user_email, subject: `KudiTrack: Action needed on your ${service} payment`, html: userEmailHtml }); }
+              <p style="margin:0;color:#6b7280;font-size:13px;line-height:1.5;">If you do not receive your service within 2 hours, please contact our support team with the reference above.</p>`,
+          });
+          try { await sendEmail(sb, { to: user_email, subject: `KudiAI Track: Action needed on your ${service} payment`, html: userEmailHtml }); }
           catch (e) { console.error("User failure email failed:", (e as Error).message); }
         }
 
@@ -600,32 +644,104 @@ serve(async (req) => {
         const detailRows = (detail || "").split(" | ").filter(Boolean).map(d => {
           const [k, ...rest] = d.split(": ");
           return rest.length
-            ? `<tr><td style="padding:6px 0;color:#6b7280;width:120px">${k}</td><td style="padding:6px 0;font-weight:600;color:#111827">${rest.join(": ")}</td></tr>`
-            : `<tr><td colspan="2" style="padding:6px 0;color:#374151">${d}</td></tr>`;
+            ? `<tr><td style="padding:6px 0;color:#6b7280;width:120px;font-size:13px;">${k}</td><td style="padding:6px 0;font-weight:600;color:#111827;font-size:13px;">${rest.join(": ")}</td></tr>`
+            : `<tr><td colspan="2" style="padding:6px 0;color:#374151;font-size:13px;">${d}</td></tr>`;
         }).join("");
-        const html = `
-          <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
-            <div style="background:linear-gradient(135deg,#059669,#047857);padding:28px 24px;border-radius:12px 12px 0 0;text-align:center">
-              <div style="width:56px;height:56px;background:rgba(255,255,255,0.2);border-radius:50%;margin:0 auto 12px;display:flex;align-items:center;justify-content:center">
-                <span style="color:#fff;font-size:28px">✓</span>
-              </div>
-              <h1 style="color:#fff;margin:0;font-size:22px">Bill Payment Successful</h1>
-              <p style="color:rgba(255,255,255,0.8);margin:6px 0 0;font-size:15px">${service}</p>
+        const html = billEmailHtml({
+          accentColor: "linear-gradient(135deg,#059669,#047857)",
+          icon: "✓",
+          title: "Bill Payment Successful",
+          subtitle: service || "Payment Confirmed",
+          body: `<p style="margin:0 0 14px;color:#374151;font-size:14px;">Dear <strong>${user_name || "Valued Customer"}</strong>,</p>
+            <p style="margin:0 0 18px;color:#374151;font-size:14px;line-height:1.6;">Your <strong>${service}</strong> payment of <strong>₦${amount?.toLocaleString() || "?"}</strong> was processed successfully.</p>
+            ${detailRows ? `<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">${detailRows}</table>` : ""}
+            <div style="padding:12px 16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;margin-bottom:14px;">
+              <p style="margin:0;font-size:13px;color:#166534;">Payment Ref: <strong style="font-family:monospace;">${reference}</strong></p>
             </div>
-            <div style="background:#fff;padding:24px;border:1px solid #d1fae5;border-top:none;border-radius:0 0 12px 12px">
-              <p style="margin:0 0 16px;color:#374151">Dear ${user_name || "Valued Customer"},</p>
-              <p style="margin:0 0 20px;color:#374151">Your <strong>${service}</strong> payment of <strong>₦${amount?.toLocaleString() || "?"}</strong> was processed successfully.</p>
-              ${detailRows ? `<table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:16px">${detailRows}</table>` : ""}
-              <div style="padding:12px 16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px">
-                <p style="margin:0;font-size:13px;color:#166534">Payment Ref: <strong style="font-family:monospace">${reference}</strong></p>
-              </div>
-              <p style="margin:16px 0 0;color:#6b7280;font-size:13px">Thank you for using KudiTrack. Keep this email as proof of your transaction.</p>
-            </div>
-          </div>`;
-        await sendEmail(sb, { to: user_email, subject: `KudiTrack: ${service} payment confirmed ✓`, html });
+            <p style="margin:0;color:#6b7280;font-size:13px;">Thank you for using KudiAI Track. Keep this email as proof of your transaction.</p>`,
+        });
+        await sendEmail(sb, { to: user_email, subject: `KudiAI Track: ${service} payment confirmed ✓`, html });
         return json({ ok: true });
       } catch (e) {
         console.error("bill-success-email error:", e);
+        return json({ ok: false, error: (e as Error).message });
+      }
+    }
+
+    // ── Bill cancelled/disrupted email — payment not completed, user not charged ──
+    if (action === "bill-cancelled-email") {
+      const { user_email, user_name, service, reference, reason } = body as {
+        user_email?: string; user_name?: string; service?: string;
+        reference?: string; reason?: string;
+      };
+      if (!user_email) return json({ ok: false, error: "user_email required" });
+      try {
+        const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+        const html = billEmailHtml({
+          accentColor: "linear-gradient(135deg,#d97706,#b45309)",
+          icon: "⚠",
+          title: "Payment Not Completed",
+          subtitle: service || "Bill Payment",
+          body: `<p style="margin:0 0 14px;color:#374151;font-size:14px;">Dear <strong>${user_name || "Valued Customer"}</strong>,</p>
+            <p style="margin:0 0 18px;color:#374151;font-size:14px;line-height:1.6;">Your <strong>${service || "bill"}</strong> payment was <strong>not completed</strong>. ${reason ? reason : "The payment session ended before it was confirmed."}</p>
+            <div style="padding:14px 16px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;margin-bottom:14px;">
+              <p style="margin:0;font-weight:700;color:#92400e;font-size:14px;">You were not charged</p>
+              <p style="margin:6px 0 0;color:#92400e;font-size:13px;">No money was deducted from your account. You can safely retry your payment.</p>
+            </div>
+            ${reference ? `<div style="padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;margin-bottom:14px;"><p style="margin:0;font-size:12px;color:#64748b;">Reference: <strong style="font-family:monospace;">${reference}</strong></p></div>` : ""}
+            <p style="margin:0;color:#6b7280;font-size:13px;">If you believe this is an error or need assistance, please contact our support team.</p>`,
+        });
+        await sendEmail(sb, { to: user_email, subject: `KudiAI Track: ${service || "Bill"} payment not completed`, html });
+        return json({ ok: true });
+      } catch (e) {
+        console.error("bill-cancelled-email error:", e);
+        return json({ ok: false, error: (e as Error).message });
+      }
+    }
+
+    // ── Bill staff notification — notify staff member of bill outcome ──────────
+    if (action === "bill-staff-email") {
+      const { staff_email, staff_name, business_name, service, amount, reference, detail, outcome } = body as {
+        staff_email?: string; staff_name?: string; business_name?: string;
+        service?: string; amount?: number; reference?: string; detail?: string;
+        outcome?: "success" | "failed" | "cancelled";
+      };
+      if (!staff_email) return json({ ok: false, error: "staff_email required" });
+      try {
+        const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+        const isSuccess = outcome === "success";
+        const isFailed  = outcome === "failed";
+        const headerBg  = isSuccess ? "linear-gradient(135deg,#059669,#047857)" : isFailed ? "linear-gradient(135deg,#dc2626,#b91c1c)" : "linear-gradient(135deg,#0F1D42,#1B2A5E)";
+        const icon      = isSuccess ? "✓" : isFailed ? "✕" : "⚠";
+        const iconBg    = isSuccess ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.15)";
+        const title     = isSuccess ? "Bill Payment Successful" : isFailed ? "Bill Payment Failed" : "Payment Not Completed";
+        const detailRows = (detail || "").split(" | ").filter(Boolean).map(d => {
+          const [k, ...rest] = d.split(": ");
+          return rest.length
+            ? `<tr><td style="padding:5px 0;color:#6b7280;width:120px;font-size:13px;">${k}</td><td style="padding:5px 0;font-weight:600;color:#111827;font-size:13px;">${rest.join(": ")}</td></tr>`
+            : `<tr><td colspan="2" style="padding:5px 0;color:#374151;font-size:13px;">${d}</td></tr>`;
+        }).join("");
+        const html = billEmailHtml({
+          accentColor: headerBg,
+          icon,
+          title,
+          subtitle: `${service || ""} — Staff Notification`,
+          body: `<p style="margin:0 0 12px;color:#374151;font-size:14px;">Hi <strong>${staff_name || "Staff"}</strong>,</p>
+            <p style="margin:0 0 16px;color:#374151;font-size:14px;line-height:1.6;">
+              ${isSuccess
+                ? `You successfully processed a <strong>${service}</strong> bill payment of <strong>₦${amount?.toLocaleString() || "?"}</strong> for <strong>${business_name || "the business"}</strong>.`
+                : isFailed
+                  ? `A <strong>${service}</strong> bill payment of <strong>₦${amount?.toLocaleString() || "?"}</strong> you initiated for <strong>${business_name || "the business"}</strong> could not be delivered.`
+                  : `A <strong>${service}</strong> bill payment you initiated for <strong>${business_name || "the business"}</strong> was not completed. No charge was made.`
+              }
+            </p>
+            ${detailRows ? `<table style="width:100%;border-collapse:collapse;margin-bottom:14px;">${detailRows}</table>` : ""}
+            ${reference ? `<div style="padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;"><p style="margin:0;font-size:12px;color:#64748b;">Payment Ref: <strong style="font-family:monospace;">${reference}</strong></p></div>` : ""}`,
+        });
+        await sendEmail(sb, { to: staff_email, subject: `KudiAI Track: ${service} bill ${outcome === "success" ? "delivered ✓" : outcome === "failed" ? "failed ✕" : "not completed"}`, html });
+        return json({ ok: true });
+      } catch (e) {
+        console.error("bill-staff-email error:", e);
         return json({ ok: false, error: (e as Error).message });
       }
     }
@@ -646,6 +762,7 @@ serve(async (req) => {
         !!(d?.MOBILE_NETWORK ?? d?.TV_ID ?? d?.Networks ?? d?.Packages ?? d?.packages ??
            d?.Plans ?? d?.plans ?? d?.DataBundlePlans ?? d?.CardDetails ?? d?.card_details);
       const ping = async (label: string, path: string, params: Record<string, string>) => {
+        if (!params["APIKey"]) return { label, ok: false, detail: "Not configured — add key to Supabase secrets", raw: "" };
         try {
           const d = await ck(path, params);
           const raw = JSON.stringify(d).slice(0, 150);
@@ -666,14 +783,14 @@ serve(async (req) => {
         ping("Spectranet",    "APISpectranetPackagesV2.asp", { APIKey: SPECTRANET_K }),
         ping("Smile",         "APISmilePackagesV2.asp",      { APIKey: SMILE_K }),
         ping("Print Airtime", "APIEPINDiscountV2.asp",       { APIKey: PRINT_AIRTIME_K }),
-        ping("Print Data",    "APIDatabundleEPINV1.asp",     { APIKey: PRINT_DATA_K, MobileNetwork: "01", DataPlan: "test", Quantity: "1", RequestID: "HEALTHCHECK", CallBackURL: "https://kudiai.app/" }),
+        ping("Print Data",    "APIDatabundlePlansV2.asp",    { APIKey: PRINT_DATA_K, MobileNetwork: "01" }),
       ]);
       return json({ results });
     }
 
     return json({ error: `Unknown action: ${action}` });
   } catch (e) {
-    console.error("clubkonnect error:", e);
+    console.error("bill service error:", e);
     return json({ error: (e as Error).message });
   }
 });

@@ -959,8 +959,55 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
         </div>
       )}
 
+      {/* ── TXN_HISTORY pending — token may already be at meter ── */}
+      {fulfillResult?.ok && fulfillResult?.txnHistoryPending && (
+        <div className="flex-1 overflow-y-auto px-5 py-6 flex flex-col gap-4">
+          <div className="flex flex-col items-center gap-3 pt-2">
+            <div className="relative">
+              <div className="absolute inset-0 rounded-full blur-xl" style={{ background: "rgba(245,158,11,0.3)", transform: "scale(1.4)" }} />
+              <div className="relative w-20 h-20 rounded-full shadow-xl flex items-center justify-center"
+                style={{ background: "linear-gradient(135deg,#fef3c7,#fde68a)" }}>
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2.5" strokeLinecap="round">
+                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+              </div>
+            </div>
+            <div className="text-center">
+              <p className="text-xl font-black text-slate-800">Check Your Meter</p>
+              <p className="text-xs text-slate-400 mt-1 leading-relaxed">Payment received · Token may already be dispensed</p>
+            </div>
+          </div>
+          <div className="rounded-2xl overflow-hidden shadow-sm" style={{ border: "1.5px solid #fde68a" }}>
+            <div className="px-4 py-2.5" style={{ background: "#fef3c7" }}>
+              <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: "#92400e" }}>What Happened</p>
+            </div>
+            <div className="bg-white px-4 py-3 space-y-2">
+              <p className="text-sm text-slate-700 leading-relaxed">
+                Your payment was successful. The electricity provider recorded this transaction but did not return a token number. <strong>The token may already be loaded on your meter</strong> — please check before retrying.
+              </p>
+            </div>
+          </div>
+          <div className="rounded-2xl overflow-hidden shadow-sm" style={{ border: "1px solid #bbf7d0" }}>
+            <div className="px-4 py-2.5" style={{ background: "#f0fdf4" }}>
+              <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: "#15803d" }}>Payment Reference · Keep This</p>
+            </div>
+            <div className="bg-white px-4 py-3 space-y-1">
+              <p className="font-mono text-sm font-black break-all" style={{ color: "#15803d" }}>{fulfillResult.psRef}</p>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                If the token is not on your meter within 30 minutes, contact support with this reference.
+              </p>
+            </div>
+          </div>
+          <button onClick={onDone}
+            className="w-full py-4 font-black rounded-xl text-sm text-white shadow-lg active:scale-[0.98] transition-transform"
+            style={{ background: "linear-gradient(135deg,#1B2A5E,#2d4a8a)" }}>
+            Done
+          </button>
+        </div>
+      )}
+
       {/* ── Success ── */}
-      {fulfillResult?.ok && (
+      {fulfillResult?.ok && !fulfillResult?.txnHistoryPending && (
         <div className="flex-1 overflow-y-auto">
           {/* Amount hero */}
           <div className="bg-white border-b border-slate-100 px-5 py-7 flex flex-col items-center text-center">
@@ -1574,7 +1621,7 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
       }
 
       const { cat, form: f, verifyName: vName, paidAmount, baseAmount, pointsDiscount: redeemedPoints = 0 } = pending;
-      let apiRef = "", note = "", itemName = "", customerRef = "", cardDetails = "", pinsArr = null;
+      let apiRef = "", note = "", itemName = "", customerRef = "", cardDetails = "", pinsArr = null, txnHistoryPending = false;
       const amount = parseFloat(f.amount) || 0;
 
       if (cat === "airtime") {
@@ -1600,7 +1647,16 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
         const compName = ELECTRICITY_COMPANIES.find(c => c.code === f.company)?.name || f.company;
         const mTypeName = f.meterType === "01" ? "Prepaid" : "Postpaid";
         itemName = `${compName} ${mTypeName}`; customerRef = f.meterNo;
-        note = r.token ? `Token: ${r.token} | Meter: ${f.meterNo} | ${vName}${apiRef ? ` | Ref: ${apiRef}` : ""}` : `Meter: ${f.meterNo} | ${vName}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
+        if (r.status === "TXN_HISTORY") {
+          if (r.token) {
+            note = `Token: ${r.token} | Meter: ${f.meterNo} | ${vName}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
+          } else {
+            txnHistoryPending = true;
+            note = `Meter: ${f.meterNo} | ${vName} | Check meter — token may already be dispensed${apiRef ? ` | Ref: ${apiRef}` : ""}`;
+          }
+        } else {
+          note = r.token ? `Token: ${r.token} | Meter: ${f.meterNo} | ${vName}${apiRef ? ` | Ref: ${apiRef}` : ""}` : `Meter: ${f.meterNo} | ${vName}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
+        }
 
       } else if (cat === "betting") {
         const r = await clubkonnect("betting", { company: f.company, customerId: f.customerId, amount: String(f.amount) });
@@ -1706,7 +1762,7 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
 
       localStorage.removeItem(BILL_PENDING_PREFIX + ref);
       setSaving(false);
-      setFulfillResult({ ok: true, label: itemName, detail: note, pinsArr: pinsArr || [], psRef: ref, apiRef, cardDetails, cat, amount: totalAmount || amount, earnedPts });
+      setFulfillResult({ ok: true, label: itemName, detail: note, pinsArr: pinsArr || [], psRef: ref, apiRef, cardDetails, cat, amount: totalAmount || amount, earnedPts, txnHistoryPending });
 
       // Send success confirmation emails (best-effort)
       const svcLabel = CATS.find(c => c.id === cat)?.label || cat;
