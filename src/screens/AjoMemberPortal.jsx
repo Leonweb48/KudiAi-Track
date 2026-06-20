@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../utils/supabase";
-import { peyflex } from "../utils/peyflex";
+import BillPayments from "./BillPayments";
 import { fmt } from "../utils/helpers";
 import AppLogo from "../components/AppLogo";
 import Icon from "../components/Icon";
@@ -40,6 +40,7 @@ const TICKET_TYPES = [
 
 const NAV = [
   { id: "home",    icon: "home",  label: "Home"    },
+  { id: "bills",   icon: "bills", label: "Bills"   },
   { id: "history", icon: "txn",   label: "History" },
   { id: "me",      icon: "user",  label: "Me"      },
 ];
@@ -539,343 +540,30 @@ function PayContributionModal({ client, onClose, onSuccess }) {
   );
 }
 
-// ── Bill constants ────────────────────────────────────────────────────────
-const NET_MAP = { MTN: "mtn", Airtel: "airtel", Glo: "glo", "9mobile": "9mobile" };
-const NET_CONFIG = {
-  MTN:      { bg: "#FFC300", fg: "#000" },
-  Airtel:   { bg: "#EF3340", fg: "#fff" },
-  Glo:      { bg: "#007838", fg: "#fff" },
-  "9mobile":{ bg: "#006B54", fg: "#fff" },
-};
-const CABLE_CONFIG = {
-  DSTV:      { bg: "#0066B2", fg: "#fff" },
-  GOtv:      { bg: "#E87722", fg: "#fff" },
-  StarTimes: { bg: "#E50914", fg: "#fff" },
-};
-const BETTING_PROVIDERS = [
-  { id: "bet9ja",    name: "Bet9ja",    bg: "#1a8b2d" },
-  { id: "sportybet", name: "SportyBet", bg: "#0d47a1" },
-  { id: "nairabet",  name: "NairaBet",  bg: "#e55c00" },
-  { id: "betking",   name: "BetKing",   bg: "#8B0000" },
-  { id: "merrybet",  name: "MerryBet",  bg: "#1c5a8a" },
-  { id: "paripesa",  name: "Paripesa",  bg: "#214d2e" },
-];
-const DISCOS = [
-  { code: "ikeja-electric", name: "Ikeja"         },
-  { code: "eko-electric",   name: "Eko (Lagos)"   },
-  { code: "phed",           name: "Port Harcourt" },
-  { code: "aedc",           name: "Abuja"         },
-  { code: "ibedc",          name: "Ibadan"        },
-  { code: "eedc",           name: "Enugu"         },
-  { code: "kano-electric",  name: "Kano"          },
-  { code: "bedc",           name: "Benin"         },
-  { code: "kedco",          name: "Kaduna"        },
-  { code: "jos-electric",   name: "Jos"           },
-];
-const CATS = [
-  { id: "airtime",   label: "Airtime",     emoji: "📱", color: "#16a34a", desc: "Top up any network"      },
-  { id: "data",      label: "Data",        emoji: "📡", color: "#2563eb", desc: "Internet bundles"        },
-  { id: "electric",  label: "Electricity", emoji: "⚡", color: "#d97706", desc: "PHCN token & bill"       },
-  { id: "cable",     label: "Cable TV",    emoji: "📺", color: "#dc2626", desc: "DStv · GOtv · Star"      },
-  { id: "betting",   label: "Betting",     emoji: "🎰", color: "#7c3aed", desc: "Fund betting wallet"     },
-  { id: "internet",  label: "Internet",    emoji: "🌐", color: "#0891b2", desc: "Broadband & fibre"       },
-  { id: "water",     label: "Water",       emoji: "💧", color: "#0284c7", desc: "Water utility bill"      },
-  { id: "insurance", label: "Insurance",   emoji: "🛡️",  color: "#be185d", desc: "Protect what matters"   },
-  { id: "education", label: "Education",   emoji: "🎓", color: "#4f46e5", desc: "WAEC, JAMB, school fees" },
-];
-
-function detectNetwork(phone) {
-  const p = phone.replace(/\D/g, "").replace(/^234/, "0");
-  const pfx = p.slice(0, 4);
-  const mtn = ["0703","0706","0803","0806","0810","0813","0814","0816","0903","0906","0913","0916"];
-  const air = ["0701","0708","0802","0808","0812","0901","0902","0904","0907","0911","0912","0917"];
-  const glo = ["0705","0805","0807","0811","0815","0905","0915"];
-  const nin = ["0809","0817","0818","0908","0909","0919"];
-  if (mtn.includes(pfx)) return "MTN";
-  if (air.includes(pfx)) return "Airtel";
-  if (glo.includes(pfx)) return "Glo";
-  if (nin.includes(pfx)) return "9mobile";
-  return null;
-}
-
-// ── Network selector ──────────────────────────────────────────────────────
-function NetworkSelector({ value, onChange, detected }) {
+// ── Quick Actions (Staff Portal style) ────────────────────────────────────
+function ActionBtn({ label, icon, bg, onClick }) {
   return (
-    <div className="grid grid-cols-4 gap-1.5">
-      {Object.entries(NET_CONFIG).map(([name, cfg]) => {
-        const sel = value === name;
-        return (
-          <button key={name} onClick={() => onChange(name)}
-            className={`relative py-2.5 rounded-xl text-xs font-black transition active:scale-95 border-2 ${
-              sel ? "" : "bg-transparent text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600"
-            }`}
-            style={sel ? { background: cfg.bg, color: cfg.fg, borderColor: cfg.bg } : undefined}>
-            {name === "9mobile" ? "9MOB" : name.slice(0, 3).toUpperCase()}
-            {detected === name && (
-              <span className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-slate-800" />
-            )}
-          </button>
-        );
-      })}
-    </div>
+    <button onClick={onClick}
+      className="flex flex-col items-center gap-2 active:scale-90 transition-transform duration-150">
+      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-md ${bg}`}>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          {icon.split("|").map((d, i) => <path key={i} d={d} />)}
+        </svg>
+      </div>
+      <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 text-center leading-tight max-w-[60px]">{label}</span>
+    </button>
   );
 }
 
-// ── Bill payment bottom sheet ─────────────────────────────────────────────
-function BillSheet({ cat, onClose }) {
-  const [form, setForm] = useState({
-    phone: "", network: "MTN", amount: "", plan: "",
-    disco: "ikeja-electric", meter: "", meterType: "prepaid",
-    cableProvider: "DSTV", smartcard: "", catvPlan: "",
-    bettingId: "bet9ja", betAccount: "",
-    notes: "",
-  });
-  const [detectedNet, setDetectedNet] = useState(null);
-  const [loading,     setLoading]     = useState(false);
-  const [result,      setResult]      = useState(null);
-  const [cablePlans,  setCablePlans]  = useState([]);
-  const [dataPlans,   setDataPlans]   = useState([]);
-
-  const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
-  const iCls = "w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-400";
-
-  const handlePhoneChange = (v) => {
-    set("phone", v);
-    const net = detectNetwork(v);
-    if (net) { setDetectedNet(net); set("network", net); }
-    else setDetectedNet(null);
-  };
-
-  useEffect(() => {
-    if (cat.id !== "data") return;
-    peyflex("data-plans", { network: NET_MAP[form.network] || "mtn" })
-      .then(r => { if (r?.plans) setDataPlans(r.plans); })
-      .catch(() => {});
-  }, [cat.id, form.network]);
-
-  useEffect(() => {
-    if (cat.id !== "cable") return;
-    peyflex("cabletv-plans", { provider: form.cableProvider.toLowerCase() })
-      .then(r => { if (r?.plans) setCablePlans(r.plans); })
-      .catch(() => {});
-  }, [cat.id, form.cableProvider]);
-
-  const handlePay = async () => {
-    setLoading(true); setResult(null);
-    try {
-      let res;
-      const netKey = NET_MAP[form.network] || "mtn";
-      if (cat.id === "airtime") {
-        if (!form.phone || !form.amount) throw new Error("Enter phone and amount");
-        res = await peyflex("airtime", { phone: form.phone, amount: form.amount, network: netKey });
-      } else if (cat.id === "data") {
-        if (!form.phone || !form.plan) throw new Error("Select a data plan");
-        const pl = dataPlans.find(p => p.plan_id === form.plan);
-        res = await peyflex("data", { phone: form.phone, plan: form.plan, amount: String(pl?.plan_amount || form.amount), network: netKey });
-      } else if (cat.id === "electric") {
-        if (!form.meter || !form.amount) throw new Error("Enter meter number and amount");
-        res = await peyflex("electricity", { meter: form.meter, plan: form.disco, amount: form.amount, type: form.meterType, phone: form.phone });
-      } else if (cat.id === "cable") {
-        if (!form.smartcard || !form.catvPlan) throw new Error("Enter smartcard and select plan");
-        const pl = cablePlans.find(p => p.plan_id === form.catvPlan);
-        res = await peyflex("cabletv", { smartcard: form.smartcard, plan: form.catvPlan, amount: String(pl?.plan_amount || form.amount), phone: form.phone, provider: form.cableProvider.toLowerCase() });
-      } else if (cat.id === "betting") {
-        if (!form.betAccount || !form.amount) throw new Error("Enter account ID and amount");
-        res = await peyflex("betting", { account: form.betAccount, provider: form.bettingId, amount: form.amount });
-      } else {
-        if (!form.amount) throw new Error("Enter amount");
-        res = { status: "SUCCESS", message: "Recorded. Your agent will process this shortly." };
-      }
-      setResult({ ok: res?.status === "SUCCESS", message: res?.message || "Processed!", token: res?.token });
-    } catch (err) {
-      setResult({ ok: false, message: err.message || "Payment failed" });
-    } finally { setLoading(false); }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-end justify-center" onClick={onClose}>
-      <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-t-3xl px-5 pt-3 pb-8 max-h-[88vh] overflow-y-auto"
-        onClick={e => e.stopPropagation()}>
-        <div className="w-10 h-1 bg-slate-200 dark:bg-slate-700 rounded-full mx-auto mb-4" />
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center text-xl flex-shrink-0"
-            style={{ background: cat.color + "22" }}>{cat.emoji}</div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-extrabold text-slate-800 dark:text-white">{cat.label}</p>
-            <p className="text-[10px] text-slate-400">{cat.desc}</p>
-          </div>
-          <button onClick={onClose}
-            className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center flex-shrink-0">
-            <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 text-slate-500" stroke="currentColor" strokeWidth={2.5}>
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        {result && (
-          <div className={`rounded-xl px-4 py-3 border text-sm font-semibold mb-4 ${
-            result.ok
-              ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-700 dark:text-green-400"
-              : "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-600 dark:text-red-400"
-          }`}>
-            {result.message}
-            {result.token && <p className="text-xs mt-1 font-mono break-all">Token: {result.token}</p>}
-          </div>
-        )}
-
-        <div className="space-y-3">
-          {(cat.id === "airtime" || cat.id === "data") && (
-            <>
-              <NetworkSelector value={form.network} onChange={v => set("network", v)} detected={detectedNet} />
-              <div className="relative">
-                <input type="tel" value={form.phone} onChange={e => handlePhoneChange(e.target.value)}
-                  placeholder="Phone number" className={iCls} />
-                {detectedNet && (
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2 px-2 py-0.5 rounded-full text-[10px] font-black"
-                    style={{ background: NET_CONFIG[detectedNet]?.bg, color: NET_CONFIG[detectedNet]?.fg }}>
-                    {detectedNet}
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-
-          {cat.id === "airtime" && (
-            <input type="number" value={form.amount} onChange={e => set("amount", e.target.value)}
-              placeholder="Amount (₦)" className={iCls} />
-          )}
-
-          {cat.id === "data" && (
-            <select value={form.plan} onChange={e => {
-              const pl = dataPlans.find(p => p.plan_id === e.target.value);
-              set("plan", e.target.value);
-              if (pl) set("amount", String(pl.plan_amount));
-            }} className={iCls}>
-              <option value="">Select data plan</option>
-              {dataPlans.length === 0 && <option disabled>Loading plans…</option>}
-              {dataPlans.map(p => <option key={p.plan_id} value={p.plan_id}>{p.plan_name} — ₦{p.plan_amount}</option>)}
-            </select>
-          )}
-
-          {cat.id === "electric" && (
-            <>
-              <select value={form.disco} onChange={e => set("disco", e.target.value)} className={iCls}>
-                {DISCOS.map(d => <option key={d.code} value={d.code}>{d.name}</option>)}
-              </select>
-              <div className="grid grid-cols-2 gap-2">
-                <select value={form.meterType} onChange={e => set("meterType", e.target.value)} className={iCls}>
-                  <option value="prepaid">Prepaid</option>
-                  <option value="postpaid">Postpaid</option>
-                </select>
-                <input type="number" value={form.amount} onChange={e => set("amount", e.target.value)}
-                  placeholder="₦ Amount" className={iCls} />
-              </div>
-              <input value={form.meter} onChange={e => set("meter", e.target.value)}
-                placeholder="Meter number" className={iCls} />
-              <input type="tel" value={form.phone} onChange={e => set("phone", e.target.value)}
-                placeholder="Phone (for receipt)" className={iCls} />
-            </>
-          )}
-
-          {cat.id === "cable" && (
-            <>
-              <div className="grid grid-cols-3 gap-1.5">
-                {Object.entries(CABLE_CONFIG).map(([name, cfg]) => {
-                  const sel = form.cableProvider === name;
-                  return (
-                    <button key={name} onClick={() => set("cableProvider", name)}
-                      className={`py-2.5 rounded-xl text-xs font-black transition active:scale-95 border-2 ${
-                        sel ? "" : "bg-transparent text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600"
-                      }`}
-                      style={sel ? { background: cfg.bg, color: cfg.fg, borderColor: cfg.bg } : undefined}>
-                      {name}
-                    </button>
-                  );
-                })}
-              </div>
-              <input value={form.smartcard} onChange={e => set("smartcard", e.target.value)}
-                placeholder="Smartcard / IUC number" className={iCls} />
-              <select value={form.catvPlan} onChange={e => {
-                const pl = cablePlans.find(p => p.plan_id === e.target.value);
-                set("catvPlan", e.target.value);
-                if (pl) set("amount", String(pl.plan_amount));
-              }} className={iCls}>
-                <option value="">Select package</option>
-                {cablePlans.length === 0 && <option disabled>Loading packages…</option>}
-                {cablePlans.map(p => <option key={p.plan_id} value={p.plan_id}>{p.plan_name} — ₦{p.plan_amount}</option>)}
-              </select>
-              <input type="tel" value={form.phone} onChange={e => set("phone", e.target.value)}
-                placeholder="Phone" className={iCls} />
-            </>
-          )}
-
-          {cat.id === "betting" && (
-            <>
-              <div className="grid grid-cols-3 gap-1.5">
-                {BETTING_PROVIDERS.map(b => {
-                  const sel = form.bettingId === b.id;
-                  return (
-                    <button key={b.id} onClick={() => set("bettingId", b.id)}
-                      className={`py-2.5 rounded-xl text-[10px] font-black transition active:scale-95 border-2 ${
-                        sel ? "" : "bg-transparent text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600"
-                      }`}
-                      style={sel ? { background: b.bg, color: "#fff", borderColor: b.bg } : undefined}>
-                      {b.name}
-                    </button>
-                  );
-                })}
-              </div>
-              <input value={form.betAccount} onChange={e => set("betAccount", e.target.value)}
-                placeholder="Account ID / Username" className={iCls} />
-              <input type="number" value={form.amount} onChange={e => set("amount", e.target.value)}
-                placeholder="Amount (₦)" className={iCls} />
-            </>
-          )}
-
-          {["internet", "water", "insurance", "education"].includes(cat.id) && (
-            <>
-              <input value={form.notes} onChange={e => set("notes", e.target.value)}
-                placeholder={`${cat.label} details / reference`} className={iCls} />
-              <input type="number" value={form.amount} onChange={e => set("amount", e.target.value)}
-                placeholder="Amount (₦)" className={iCls} />
-            </>
-          )}
-
-          <button onClick={handlePay} disabled={loading}
-            className="w-full py-3.5 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] disabled:opacity-50 shadow-sm"
-            style={{ background: loading ? "#a78bfa" : cat.color }}>
-            {loading ? "Processing…" : `Pay — ${cat.label}`}
-          </button>
-          <p className="text-[10px] text-center text-slate-400">Powered by VTpass · via KudiTrack</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Bills grid for overview ───────────────────────────────────────────────
-function BillsSection() {
-  const [activeCat, setActiveCat] = useState(null);
-  return (
-    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4">
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-sm font-extrabold text-slate-800 dark:text-white">Pay Bills</p>
-        <span className="text-[10px] bg-violet-50 dark:bg-violet-900/20 text-violet-600 dark:text-violet-400 px-2 py-0.5 rounded-full font-semibold">9 services</span>
-      </div>
-      <div className="grid grid-cols-3 gap-2">
-        {CATS.map(cat => (
-          <button key={cat.id} onClick={() => setActiveCat(cat)}
-            className="rounded-2xl p-3 border border-slate-100 dark:border-slate-700 text-left active:scale-95 transition bg-slate-50 dark:bg-slate-700/50">
-            <div className="w-8 h-8 rounded-xl flex items-center justify-center text-base mb-1.5"
-              style={{ background: cat.color + "22" }}>{cat.emoji}</div>
-            <p className="text-[11px] font-extrabold text-slate-700 dark:text-slate-200 leading-tight">{cat.label}</p>
-          </button>
-        ))}
-      </div>
-      {activeCat && <BillSheet cat={activeCat} onClose={() => setActiveCat(null)} />}
-    </div>
-  );
-}
+// ── Bill service tiles for Quick Services grid ─────────────────────────────
+const QUICK_SERVICES = [
+  { id: "airtime",     label: "Airtime",     g1: "#ef4444", g2: "#dc2626", d: "M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81 19.79 19.79 0 01.25 2.18 2 2 0 012.22 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" },
+  { id: "data",        label: "Data Bundle", g1: "#3b82f6", g2: "#1d4ed8", d: "M1 6l11-4 11 4|M1 12l11-4 11 4|M1 18l11-4 11 4" },
+  { id: "electricity", label: "Electricity", g1: "#f59e0b", g2: "#d97706", d: "M13 2L3 14h9l-1 8 10-12h-9l1-8z" },
+  { id: "cable",       label: "Cable TV",    g1: "#8b5cf6", g2: "#6d28d9", d: "M2 7a2 2 0 012-2h16a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V7z|M12 19v3|M8 22h8" },
+  { id: "betting",     label: "Betting",     g1: "#10b981", g2: "#059669", d: "M12 2a10 10 0 100 20A10 10 0 0012 2z|M12 8v4l3 3" },
+  { id: "more",        label: "More Bills",  g1: "#6366f1", g2: "#4f46e5", d: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2|M9 5a2 2 0 002 2h2a2 2 0 002-2|M9 5a2 2 0 012-2h2a2 2 0 012 2|M9 13h6|M9 17h4" },
+];
 
 // ── Contribution calendar ─────────────────────────────────────────────────
 function ContribCalendar({ contributions }) {
@@ -1173,7 +861,7 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
 }
 
 // ── Overview tab ──────────────────────────────────────────────────────────
-function OverviewTab({ client, contributions, onWithdrawClick, onPayClick, ownerInfo, withdrawRequests = [] }) {
+function OverviewTab({ client, contributions, onWithdrawClick, onPayClick, ownerInfo, withdrawRequests = [], onBillsClick }) {
   const [goal,      setGoal]      = useState(() => parseFloat(localStorage.getItem(`ajo_goal_${client?.id}`) || "0"));
   const [editGoal,  setEditGoal]  = useState(false);
   const [goalInput, setGoalInput] = useState("");
@@ -1228,7 +916,10 @@ function OverviewTab({ client, contributions, onWithdrawClick, onPayClick, owner
     <div className="px-4 pt-5 pb-28 space-y-4">
       {/* Greeting */}
       <div>
-        <p className="text-sm text-slate-400 dark:text-slate-500 font-medium">{greetingText()} 👋</p>
+        <p className="text-sm text-slate-400 dark:text-slate-500 font-medium">{greetingText()}</p>
+        <h1 className="text-2xl font-black text-slate-800 dark:text-white leading-tight">
+          {(client?.full_name || "").split(" ")[0] || "Member"} 👋
+        </h1>
         <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{fmtDate()}</p>
       </div>
 
@@ -1384,25 +1075,32 @@ function OverviewTab({ client, contributions, onWithdrawClick, onPayClick, owner
         </button>
       )}
 
-      {/* Pay Contribution button */}
-      {client?.contribution_amount > 0 && (
-        <button onClick={onPayClick}
-          className="w-full py-4 bg-green-600 hover:bg-green-700 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] shadow-md flex items-center justify-center gap-2">
-          <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-            <rect x="1" y="4" width="22" height="16" rx="2" /><line x1="1" y1="10" x2="23" y2="10" />
-          </svg>
-          Pay Contribution · ₦{fmt(client.contribution_amount)}
-        </button>
-      )}
-
-      {/* Withdrawal request button */}
-      <button onClick={onWithdrawClick}
-        className="w-full py-4 bg-violet-600 hover:bg-violet-700 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] shadow-md flex items-center justify-center gap-2">
-        <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-          <path d="M12 19V5M5 12l7 7 7-7" />
-        </svg>
-        Request Withdrawal
-      </button>
+      {/* Quick Actions */}
+      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4 shadow-sm">
+        <p className="text-sm font-extrabold text-slate-800 dark:text-white mb-4">Quick Actions</p>
+        <div className={`grid gap-4 ${client?.contribution_amount > 0 ? "grid-cols-3" : "grid-cols-2"}`}>
+          {client?.contribution_amount > 0 && (
+            <ActionBtn
+              label="Pay Contribution"
+              icon="M1 4h22|M1 10h22|M3 20h18a1 1 0 001-1V5a1 1 0 00-1-1H3a1 1 0 00-1 1v14a1 1 0 001 1z"
+              bg="bg-gradient-to-br from-green-500 to-green-600"
+              onClick={onPayClick}
+            />
+          )}
+          <ActionBtn
+            label="Withdraw"
+            icon="M12 19V5|M5 12l7 7 7-7"
+            bg="bg-gradient-to-br from-violet-500 to-violet-700"
+            onClick={onWithdrawClick}
+          />
+          <ActionBtn
+            label="Pay Bills"
+            icon="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2|M9 5a2 2 0 002 2h2a2 2 0 002-2|M9 13h6|M9 17h4"
+            bg="bg-gradient-to-br from-blue-500 to-blue-600"
+            onClick={onBillsClick}
+          />
+        </div>
+      </div>
 
       {/* Pending withdrawal requests */}
       {withdrawRequests.filter(r => r.status === "pending").length > 0 && (
@@ -1435,8 +1133,28 @@ function OverviewTab({ client, contributions, onWithdrawClick, onPayClick, owner
         <ContribCalendar contributions={contributions} />
       </div>
 
-      {/* Bills */}
-      <BillsSection />
+      {/* Quick Services */}
+      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4 shadow-sm">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm font-extrabold text-slate-800 dark:text-white">Quick Services</p>
+          <button onClick={onBillsClick}
+            className="text-[11px] text-violet-600 dark:text-violet-400 font-bold">View all</button>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          {QUICK_SERVICES.map(s => (
+            <button key={s.id} onClick={onBillsClick}
+              className="flex flex-col items-center gap-1.5 active:scale-95 transition-transform">
+              <div className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm"
+                style={{ background: `linear-gradient(135deg,${s.g1},${s.g2})` }}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  {s.d.split("|").map((p, i) => <path key={i} d={p} />)}
+                </svg>
+              </div>
+              <span className="text-[10px] font-semibold text-slate-600 dark:text-slate-400 text-center leading-tight">{s.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* Recent activity */}
       {recent.length > 0 && (
@@ -1963,7 +1681,19 @@ export default function AjoMemberPortal({ session, ajoClient }) {
               onPayClick={() => setShowPay(true)}
               ownerInfo={ownerInfo}
               withdrawRequests={withdrawRequests}
+              onBillsClick={() => setTab("bills")}
             />
+          )}
+          {tab === "bills" && (
+            <div className="h-full overflow-y-auto">
+              <BillPayments
+                store={{ transactions: [], addTransaction: () => Promise.resolve(), profile: { business_name: ownerInfo?.business_name || "" } }}
+                plan="basic"
+                staffName={client?.full_name || null}
+                staffEmail={session?.user?.email || null}
+                businessName={ownerInfo?.business_name || ""}
+              />
+            </div>
           )}
           {tab === "history" && (
             <HistoryTab
