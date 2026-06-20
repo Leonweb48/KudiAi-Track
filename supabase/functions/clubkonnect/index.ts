@@ -261,42 +261,108 @@ serve(async (req) => {
     }
 
     // ── Electricity purchase ──────────────────────────────────────────────────
+    // ── Electricity token extraction helper (shared by purchase + query) ─────────
+    function extractElecToken(d: Record<string, unknown>): string {
+      const candidates = [
+        d.token, d.Token, d.metertoken, d.MeterToken, d.meter_token,
+        d.electricity_token, d.ElectricityToken, d.tokencode, d.TokenCode,
+        d.units, d.Units, d.pin, d.Pin, d.vend_token, d.VendToken,
+        d.receipt_no, d.ReceiptNo, d.receiptno, d.Receiptno,
+      ];
+      const found = candidates.find(v =>
+        v != null && String(v).trim() !== "" &&
+        String(v).toLowerCase() !== "null" &&
+        String(v).toLowerCase() !== "undefined"
+      );
+      return found ? String(found).trim() : "";
+    }
+
+    function elecStatusCode(d: Record<string, unknown>): string {
+      return String(d?.statuscode ?? d?.StatusCode ?? "").trim();
+    }
+    function elecStat(d: Record<string, unknown>): string {
+      return String(d?.status ?? d?.Status ?? "").toUpperCase().trim();
+    }
+
     if (action === "electricity") {
       const { company, meterType, meterNo, amount, phone } = body as { company: string; meterType: string; meterNo: string; amount: string; phone: string };
       if (!company || !meterType || !meterNo || !amount || !phone) return json({ error: "All electricity fields required" });
       const amt = parseFloat(amount);
       if (amt < 1000) return json({ error: "Minimum electricity amount is ₦1,000" });
       if (amt > 200000) return json({ error: "Maximum electricity amount is ₦200,000" });
+
       const data = await ck("APIElectricityV1.asp", {
         APIKey: ELECTRICITY_K, ElectricCompany: company, MeterType: meterType,
         MeterNo: meterNo, Amount: String(amount), PhoneNo: phone.replace(/\D/g, ""),
         RequestID: reqId(), CallBackURL: "https://kudiai.app/",
       });
-      // Log full response so we can diagnose token field name
-      console.log("electricity full response:", JSON.stringify(data));
+      console.log("electricity purchase response:", JSON.stringify(data));
 
-      // Extract token — ClubKonnect uses different field names across DisCos
-      function extractElecToken(d: Record<string, unknown>): string {
-        const candidates = [
-          d.token, d.Token, d.metertoken, d.MeterToken, d.meter_token,
-          d.electricity_token, d.ElectricityToken, d.tokencode, d.TokenCode,
-          d.units, d.Units, d.pin, d.Pin, d.vend_token, d.VendToken,
-          d.receipt_no, d.ReceiptNo, d.receiptno,
-        ];
-        const found = candidates.find(v => v != null && String(v).trim() !== "" && String(v).toLowerCase() !== "null" && String(v).toLowerCase() !== "undefined");
-        return found ? String(found).trim() : "";
+      // Hard failure
+      if (!isOk(data) && !elecStat(data).includes("TXN_HISTORY")) {
+        return json({ error: errMsg(data, "Electricity purchase failed"), _raw: data });
       }
 
-      const rawStat = String(data?.status ?? data?.Status ?? "").toUpperCase();
-      if (rawStat.includes("TXN_HISTORY")) {
-        const token = extractElecToken(data);
-        const ref   = String(data?.orderid ?? data?.requestid ?? "");
-        return json({ status: "TXN_HISTORY", reference: ref, token, message: "TXN_HISTORY" });
+      const orderId = String(data.orderid ?? data.OrderID ?? data.requestid ?? "");
+
+      // TXN_HISTORY on the initial purchase — order already exists, query it
+      if (elecStat(data).includes("TXN_HISTORY")) {
+        console.log("electricity TXN_HISTORY on purchase, orderId:", orderId);
+        if (orderId) {
+          const q = await ck("APIQueryV1.asp", { OrderID: orderId });
+          console.log("electricity TXN_HISTORY query response:", JSON.stringify(q));
+          const token = extractElecToken(q);
+          if (elecStatusCode(q) === "200" || elecStat(q) === "ORDER_COMPLETED") {
+            return json({ status: "SUCCESS", reference: orderId, token, message: "ORDER_COMPLETED" });
+          }
+        }
+        // Can't recover token — return pending so frontend can show check-meter state
+        return json({ status: "TXN_HISTORY", reference: orderId, token: extractElecToken(data), message: "TXN_HISTORY" });
       }
-      if (!isOk(data)) return json({ error: errMsg(data, "Electricity purchase failed"), _raw: data });
-      const elecToken = extractElecToken(data);
-      const elecRef   = String(data.orderid ?? data.requestid ?? data.OrderID ?? data.RequestID ?? "");
-      return json({ status: "SUCCESS", reference: elecRef, token: elecToken, message: String(data.status ?? "ORDER_RECEIVED") });
+
+      // ORDER_RECEIVED / ORDER_PROCESSED — poll until ORDER_COMPLETED (max 50s)
+      // ClubKonnect processes asynchronously; token only appears in ORDER_COMPLETED response
+      let polledToken = extractElecToken(data);
+      if (!polledToken && orderId) {
+        for (let i = 0; i < 12; i++) {
+          await new Promise(r => setTimeout(r, 4000));
+          const q = await ck("APIQueryV1.asp", { OrderID: orderId });
+          const qCode = elecStatusCode(q);
+          const qStat = elecStat(q);
+          console.log(`electricity poll #${i + 1}: code=${qCode} status=${qStat} body=${JSON.stringify(q).slice(0, 200)}`);
+
+          if (qCode === "200" || qStat === "ORDER_COMPLETED") {
+            polledToken = extractElecToken(q);
+            return json({ status: "SUCCESS", reference: orderId, token: polledToken, message: "ORDER_COMPLETED" });
+          }
+          if (qCode.startsWith("5") || qStat === "ORDER_CANCELLED") {
+            return json({ error: errMsg(q, "Electricity order cancelled by provider"), _raw: q });
+          }
+          // ORDER_RECEIVED (100), ORDER_PROCESSED (300), ORDER_ONHOLD (6xx) → keep polling
+        }
+        // Still pending after 48s — return PENDING so frontend can keep polling
+        return json({ status: "PENDING", reference: orderId, token: "", message: "ORDER_RECEIVED" });
+      }
+
+      return json({ status: "SUCCESS", reference: orderId, token: polledToken, message: String(data.status ?? "ORDER_RECEIVED") });
+    }
+
+    // ── Electricity status query (frontend polls this when status=PENDING) ────────
+    if (action === "electricity-query") {
+      const { orderId } = body as { orderId: string };
+      if (!orderId) return json({ error: "orderId required" });
+      const q = await ck("APIQueryV1.asp", { OrderID: orderId });
+      console.log("electricity-query response:", JSON.stringify(q));
+      const qCode = elecStatusCode(q);
+      const qStat = elecStat(q);
+      const token = extractElecToken(q);
+      if (qCode === "200" || qStat === "ORDER_COMPLETED") {
+        return json({ status: "SUCCESS", reference: orderId, token, message: "ORDER_COMPLETED" });
+      }
+      if (qCode.startsWith("5") || qStat === "ORDER_CANCELLED") {
+        return json({ status: "CANCELLED", reference: orderId, token: "", message: errMsg(q, "Order cancelled") });
+      }
+      return json({ status: "PENDING", reference: orderId, token: "", message: qStat });
     }
 
     // ── Betting providers ─────────────────────────────────────────────────────

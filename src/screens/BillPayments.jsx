@@ -1026,9 +1026,13 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
             <p className="text-sm text-slate-500 mt-2 font-semibold">{fulfillResult.label}</p>
             {/* Chip */}
             <div className="mt-3 inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-black"
-              style={{ background: "#f0fdf4", color: "#15803d", border: "1.5px solid #bbf7d0" }}>
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-              DELIVERED SUCCESSFULLY
+              style={fulfillResult.elecOrderId
+                ? { background: "#fffbeb", color: "#b45309", border: "1.5px solid #fde68a" }
+                : { background: "#f0fdf4", color: "#15803d", border: "1.5px solid #bbf7d0" }}>
+              {fulfillResult.elecOrderId
+                ? <><div className="w-2.5 h-2.5 rounded-full border-2 border-transparent border-t-amber-500 animate-spin" />PAYMENT RECEIVED · FETCHING TOKEN</>
+                : <><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>DELIVERED SUCCESSFULLY</>
+              }
             </div>
             {fulfillResult.earnedPts > 0 && (
               <div className="mt-2 inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-black"
@@ -1072,29 +1076,42 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
           </div>
 
           {/* ── Electricity Token — prominent box ── */}
-          {fulfillResult.elecToken && (
+          {(fulfillResult.elecToken || fulfillResult.elecOrderId) && fulfillResult.cat === "electricity" && (
             <div className="mx-4 mt-4 rounded-2xl overflow-hidden shadow-sm" style={{ border: "2px solid #fbbf24" }}>
               <div className="px-4 py-3 flex items-center gap-2" style={{ background: "linear-gradient(135deg,#fef3c7,#fde68a)" }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2.5" strokeLinecap="round">
                   <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
                 </svg>
-                <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: "#92400e" }}>Electricity Token — Save This!</p>
-              </div>
-              <div className="bg-white px-4 py-4 flex flex-col items-center gap-3">
-                <p className="font-mono text-2xl font-black tracking-widest text-center break-all" style={{ color: "#1e293b" }}>
-                  {fulfillResult.elecToken}
+                <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: "#92400e" }}>
+                  {fulfillResult.elecToken ? "Electricity Token — Save This!" : "Getting Your Token..."}
                 </p>
-                <button
-                  onClick={() => { try { navigator.clipboard.writeText(fulfillResult.elecToken); } catch (_) {} }}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black active:scale-95 transition-transform"
-                  style={{ background: "#fef3c7", color: "#92400e", border: "1.5px solid #fde68a" }}>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                    <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
-                  </svg>
-                  Copy Token
-                </button>
-                <p className="text-[10px] text-slate-400 text-center">Enter this token on your prepaid meter to load your units</p>
               </div>
+              {fulfillResult.elecToken ? (
+                <div className="bg-white px-4 py-4 flex flex-col items-center gap-3">
+                  <p className="font-mono text-2xl font-black tracking-widest text-center break-all" style={{ color: "#1e293b" }}>
+                    {fulfillResult.elecToken}
+                  </p>
+                  <button
+                    onClick={() => { try { navigator.clipboard.writeText(fulfillResult.elecToken); } catch (_) {} }}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black active:scale-95 transition-transform"
+                    style={{ background: "#fef3c7", color: "#92400e", border: "1.5px solid #fde68a" }}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                      <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+                    </svg>
+                    Copy Token
+                  </button>
+                  <p className="text-[10px] text-slate-400 text-center">Enter this token on your prepaid meter to load your units</p>
+                </div>
+              ) : (
+                <div className="bg-white px-4 py-6 flex flex-col items-center gap-3">
+                  <div className="relative w-10 h-10">
+                    <div className="absolute inset-0 rounded-full border-4 border-amber-100" />
+                    <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-amber-400 animate-spin" />
+                  </div>
+                  <p className="text-xs font-semibold text-slate-500 text-center">Retrieving your token from provider...</p>
+                  <p className="text-[10px] text-slate-400 text-center">This can take up to 90 seconds. Please do not close this screen.</p>
+                </div>
+              )}
             </div>
           )}
 
@@ -1435,6 +1452,44 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Poll for electricity token when edge function returned PENDING (async processing)
+  useEffect(() => {
+    const orderId = fulfillResult?.elecOrderId;
+    if (!orderId) return;
+    let cancelled = false;
+    let attempts  = 0;
+    const MAX     = 18; // 18 × 5s = 90s max frontend polling
+    const poll    = async () => {
+      if (cancelled || attempts >= MAX) {
+        if (!cancelled) {
+          setFulfillResult(prev => prev ? { ...prev, elecOrderId: "", txnHistoryPending: true } : prev);
+        }
+        return;
+      }
+      attempts++;
+      try {
+        const q = await clubkonnect("electricity-query", { orderId });
+        if (cancelled) return;
+        if (q.status === "SUCCESS" && q.token) {
+          const tok = q.token;
+          setFulfillResult(prev => {
+            if (!prev) return prev;
+            const newNote = prev.detail.replace(" | Token loading...", "").replace("Token loading... | ", "").replace("Token loading...", "");
+            return { ...prev, elecToken: tok, elecOrderId: "", detail: `Token: ${tok} | ${newNote}`.replace(" |  | ", " | ") };
+          });
+          return;
+        }
+        if (q.status === "CANCELLED") {
+          setFulfillResult(prev => prev ? { ...prev, elecOrderId: "", txnHistoryPending: true } : prev);
+          return;
+        }
+      } catch (_) {}
+      setTimeout(poll, 5000);
+    };
+    const timer = setTimeout(poll, 5000);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [fulfillResult?.elecOrderId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const closeSheet = () => { setSelectedCat(null); setForm({}); setError(""); resetVerify(); setUsePoints(false); };
 
   const loadPlans = async (action, extra) => {
@@ -1648,7 +1703,7 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
       }
 
       const { cat, form: f, verifyName: vName, paidAmount, baseAmount, pointsDiscount: redeemedPoints = 0 } = pending;
-      let apiRef = "", note = "", itemName = "", customerRef = "", cardDetails = "", pinsArr = null, txnHistoryPending = false, elecToken = "";
+      let apiRef = "", note = "", itemName = "", customerRef = "", cardDetails = "", pinsArr = null, txnHistoryPending = false, elecToken = "", elecOrderId = "";
       const amount = parseFloat(f.amount) || 0;
 
       if (cat === "airtime") {
@@ -1675,7 +1730,11 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
         const mTypeName = f.meterType === "01" ? "Prepaid" : "Postpaid";
         itemName = `${compName} ${mTypeName}`; customerRef = f.meterNo;
         elecToken = r.token || "";
-        if (r.status === "TXN_HISTORY") {
+        if (r.status === "PENDING") {
+          // Edge function polled but token not yet ready — frontend will continue polling
+          elecOrderId = r.reference || apiRef;
+          note = `Meter: ${f.meterNo} | ${vName} | Token loading...${apiRef ? ` | Ref: ${apiRef}` : ""}`;
+        } else if (r.status === "TXN_HISTORY") {
           if (elecToken) {
             note = `Token: ${elecToken} | Meter: ${f.meterNo} | ${vName}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
           } else {
@@ -1790,7 +1849,7 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
 
       localStorage.removeItem(BILL_PENDING_PREFIX + ref);
       setSaving(false);
-      setFulfillResult({ ok: true, label: itemName, detail: note, pinsArr: pinsArr || [], psRef: ref, apiRef, cardDetails, cat, amount: totalAmount || amount, earnedPts, txnHistoryPending, elecToken });
+      setFulfillResult({ ok: true, label: itemName, detail: note, pinsArr: pinsArr || [], psRef: ref, apiRef, cardDetails, cat, amount: totalAmount || amount, earnedPts, txnHistoryPending, elecToken, elecOrderId });
 
       // Send success confirmation emails (best-effort)
       const svcLabel = CATS.find(c => c.id === cat)?.label || cat;
