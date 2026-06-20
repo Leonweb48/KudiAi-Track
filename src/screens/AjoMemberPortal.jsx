@@ -1,8 +1,13 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../utils/supabase";
 import { peyflex } from "../utils/peyflex";
 import { fmt } from "../utils/helpers";
 import AppLogo from "../components/AppLogo";
+import Icon from "../components/Icon";
+import Modal from "../components/shared/Modal";
+import { useBiometricLock } from "../hooks/useBiometricLock";
+import { useNotifications } from "../hooks/useNotifications";
+import NotificationCenter, { NotificationBell } from "../components/NotificationCenter";
 import { AjoTxReceipt } from "../components/shared/Receipt";
 
 async function ajoFn(action, body = {}) {
@@ -19,6 +24,352 @@ async function ajoFn(action, body = {}) {
   }
   if (data?.error) throw new Error(data.error);
   return data;
+}
+
+// ── Constants ─────────────────────────────────────────────────────────────
+const ADMIN_URL = "https://admin.kudiai.app";
+const YEAR      = new Date().getFullYear();
+
+const TICKET_TYPES = [
+  { value: "account",     label: "Account / Login"     },
+  { value: "transaction", label: "Transaction Issue"   },
+  { value: "technical",   label: "Technical Problem"   },
+  { value: "savings",     label: "Savings / Ajo Group" },
+  { value: "general",     label: "General Enquiry"     },
+];
+
+const NAV = [
+  { id: "home",    icon: "home",  label: "Home"    },
+  { id: "history", icon: "txn",   label: "History" },
+  { id: "me",      icon: "user",  label: "Me"      },
+];
+
+function greetingText() {
+  const h = new Date().getHours();
+  return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
+}
+function fmtDate() {
+  return new Date().toLocaleDateString("en-NG", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+}
+async function uploadAjoAvatar(file, clientId) {
+  const ext  = file.name.split(".").pop();
+  const path = `ajo/${clientId}/avatar.${ext}`;
+  await supabase.storage.from("avatars").upload(path, file, { upsert: true, contentType: file.type });
+  const base = supabase.storage.from("avatars").getPublicUrl(path).data.publicUrl;
+  return `${base}?v=${Date.now()}`;
+}
+
+// ── Micro-components ──────────────────────────────────────────────────────
+function Svg({ d, size = 18, color = "currentColor", sw = 2 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke={color} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round">
+      {d.split("|").map((p, i) => <path key={i} d={p} />)}
+    </svg>
+  );
+}
+
+const P = {
+  in:     "M12 19V5|M5 12l7-7 7 7",
+  out:    "M12 5v14|M19 12l-7 7-7-7",
+  lock:   "M19 11H5a2 2 0 00-2 2v7a2 2 0 002 2h14a2 2 0 002-2v-7a2 2 0 00-2-2z|M7 11V7a5 5 0 0110 0v4",
+  shield: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z",
+  back:   "M19 12H5|M12 19l-7-7 7-7",
+  cam:    "M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z|M12 17a4 4 0 100-8 4 4 0 000 8",
+  pen:    "M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7|M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z",
+  check:  "M20 6L9 17l-5-5",
+  sun:    "M12 1v2|M12 21v2|M4.22 4.22l1.42 1.42|M18.36 18.36l1.42 1.42|M1 12h2|M21 12h2|M4.22 19.78l1.42-1.42|M18.36 5.64l1.42-1.42|M12 5a7 7 0 100 14A7 7 0 0012 5z",
+  moon:   "M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z",
+  out2:   "M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4|M16 17l5-5-5-5|M21 12H9",
+  faq:    "M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z|M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3|M12 17h.01",
+  person: "M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2|M12 11a4 4 0 100-8 4 4 0 000 8",
+  finger: "M12 10a2 2 0 00-2 2v4a2 2 0 004 0v-4a2 2 0 00-2-2z|M12 4a8 8 0 018 8|M4 12a8 8 0 018-8",
+  alert:  "M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z|M12 9v4|M12 17h.01",
+  help:   "M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3|M12 17h.01",
+};
+
+function SectionLabel({ children }) {
+  return <p className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1">{children}</p>;
+}
+
+function SettingsCard({ children }) {
+  return (
+    <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-100 dark:border-slate-700 shadow-sm divide-y divide-slate-100 dark:divide-slate-700/80 mb-5">
+      {children}
+    </div>
+  );
+}
+
+function Row({ icon, label, sub, onClick, right }) {
+  return (
+    <button onClick={onClick}
+      className="w-full flex items-center gap-3.5 px-4 py-[14px] text-left active:bg-slate-50 dark:active:bg-slate-700/40 transition-colors">
+      <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center flex-shrink-0">
+        {icon}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="font-semibold text-[15px] leading-snug text-slate-800 dark:text-slate-100">{label}</p>
+        {sub && <p className="text-[12px] text-slate-400 dark:text-slate-500 mt-0.5">{sub}</p>}
+      </div>
+      {right !== undefined ? right : (
+        <Svg d="M9 18l6-6-6-6" size={16} color="#cbd5e1" />
+      )}
+    </button>
+  );
+}
+
+function RowIcon({ d }) {
+  return <Svg d={d} size={20} color="#64748b" />;
+}
+
+// ── PIN setup modal ────────────────────────────────────────────────────────
+function PinSetupModal({ onDone, onClose }) {
+  const [step,  setStep]  = useState(1);
+  const [pin1,  setPin1]  = useState("");
+  const [pin2,  setPin2]  = useState("");
+  const [error, setError] = useState("");
+
+  const active    = step === 1 ? pin1 : pin2;
+  const setActive = step === 1 ? setPin1 : setPin2;
+
+  const handleDigit = (d) => {
+    if (active.length >= 4) return;
+    const next = active + d;
+    setActive(next);
+    setError("");
+    if (next.length === 4) {
+      if (step === 1) {
+        setTimeout(() => setStep(2), 250);
+      } else {
+        if (pin1 === next) { onDone(pin1); }
+        else { setError("PINs don't match. Try again."); setPin2(""); setPin1(""); setTimeout(() => setStep(1), 800); }
+      }
+    }
+  };
+
+  const handleDel = () => { setActive(v => v.slice(0, -1)); setError(""); };
+
+  return (
+    <Modal title={step === 1 ? "Set App PIN" : "Confirm PIN"} onClose={onClose}>
+      <div className="flex flex-col items-center gap-6 py-2">
+        <p className="text-sm text-slate-500 dark:text-slate-400 text-center">
+          {step === 1 ? "Choose a 4-digit PIN to protect your app" : "Enter your PIN again to confirm"}
+        </p>
+        <div className="flex gap-4">
+          {[0, 1, 2, 3].map(i => (
+            <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all ${active.length > i ? "bg-violet-500 border-violet-500 scale-110" : "border-slate-300 dark:border-slate-600"}`} />
+          ))}
+        </div>
+        {error && <p className="text-xs text-red-500 font-semibold -mt-2">{error}</p>}
+        <div className="grid grid-cols-3 gap-3 w-full max-w-[240px]">
+          {[1,2,3,4,5,6,7,8,9].map(n => (
+            <button key={n} onClick={() => handleDigit(String(n))}
+              className="h-14 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-800 dark:text-white text-lg font-bold transition active:scale-95">
+              {n}
+            </button>
+          ))}
+          <div />
+          <button onClick={() => handleDigit("0")}
+            className="h-14 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-800 dark:text-white text-lg font-bold transition active:scale-95">
+            0
+          </button>
+          <button onClick={handleDel}
+            className="h-14 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 flex items-center justify-center transition active:scale-95">
+            <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+              <path d="M21 4H8l-7 8 7 8h13a2 2 0 002-2V6a2 2 0 00-2-2z" />
+              <line x1="18" y1="9" x2="13" y2="14" /><line x1="13" y1="9" x2="18" y2="14" />
+            </svg>
+          </button>
+        </div>
+        <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center px-4">
+          Your PIN is stored securely on this device only
+        </p>
+      </div>
+    </Modal>
+  );
+}
+
+// ── Lock screen ────────────────────────────────────────────────────────────
+function LockScreen({ lock }) {
+  const [pin,    setPin]    = useState("");
+  const [error,  setError]  = useState("");
+  const [bioErr, setBioErr] = useState("");
+  const [trying, setTrying] = useState(false);
+
+  const handleDigit = async (d) => {
+    if (trying) return;
+    const next = pin + d;
+    if (next.length > 4) return;
+    setPin(next);
+    setError("");
+    if (next.length === 4) {
+      setTrying(true);
+      const ok = await lock.unlockWithPIN(next);
+      if (!ok) { setError("Incorrect PIN"); setPin(""); }
+      setTrying(false);
+    }
+  };
+
+  const handleBio = async () => {
+    setTrying(true); setBioErr("");
+    const ok = await lock.unlockWithBiometric();
+    if (!ok) setBioErr("Biometric failed. Use your PIN.");
+    setTrying(false);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] bg-slate-900 flex flex-col items-center justify-center px-8">
+      <div className="flex flex-col items-center gap-3 mb-10">
+        <div className="w-16 h-16 rounded-2xl bg-violet-600/20 flex items-center justify-center">
+          <Svg d={P.lock} size={32} color="#7c3aed" sw={1.5} />
+        </div>
+        <p className="text-white font-extrabold text-xl">KudiAI Track</p>
+        <p className="text-slate-400 text-sm">Enter your PIN to continue</p>
+      </div>
+      <div className="flex gap-4 mb-6">
+        {[0, 1, 2, 3].map(i => (
+          <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all ${pin.length > i ? "bg-violet-500 border-violet-500 scale-110" : "border-slate-600"}`} />
+        ))}
+      </div>
+      {(error || bioErr) && <p className="text-red-400 text-sm font-semibold mb-4">{error || bioErr}</p>}
+      <div className="grid grid-cols-3 gap-3 w-full max-w-[260px]">
+        {[1,2,3,4,5,6,7,8,9].map(n => (
+          <button key={n} onClick={() => handleDigit(String(n))} disabled={trying}
+            className="h-14 rounded-2xl bg-slate-800 text-white text-xl font-bold transition active:scale-90 disabled:opacity-50">
+            {n}
+          </button>
+        ))}
+        <div />
+        <button onClick={() => handleDigit("0")} disabled={trying}
+          className="h-14 rounded-2xl bg-slate-800 text-white text-xl font-bold transition active:scale-90 disabled:opacity-50">
+          0
+        </button>
+        <button onClick={() => { setPin(p => p.slice(0, -1)); setError(""); }}
+          className="h-14 rounded-2xl bg-slate-800 text-slate-400 flex items-center justify-center transition active:scale-90">
+          <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+            <path d="M21 4H8l-7 8 7 8h13a2 2 0 002-2V6a2 2 0 00-2-2z" />
+            <line x1="18" y1="9" x2="13" y2="14" /><line x1="13" y1="9" x2="18" y2="14" />
+          </svg>
+        </button>
+      </div>
+      {lock.hasBiometric && (
+        <button onClick={handleBio} disabled={trying}
+          className="mt-6 flex items-center gap-2 text-violet-400 text-sm font-semibold active:opacity-70 transition">
+          <Svg d={P.finger} size={18} color="#a78bfa" />
+          Use Fingerprint / Face ID
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ── Support ticket modal ───────────────────────────────────────────────────
+function SupportModal({ onClose, clientName, clientEmail }) {
+  const [form, setForm]      = useState({ subject: "", description: "", type: "general", priority: "medium", user_name: clientName || "", user_email: clientEmail || "" });
+  const [submitting, setSub] = useState(false);
+  const [done, setDone]      = useState(null);
+  const [err, setErr]        = useState("");
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!form.subject.trim() || !form.user_email.trim()) { setErr("Subject and email are required."); return; }
+    setSub(true); setErr("");
+    try {
+      const res = await fetch(`${ADMIN_URL}/api/public/support`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...form, source: "ajo_client", submitter_type: "ajo_client" }),
+      });
+      const d = await res.json();
+      if (!res.ok) { setErr(d.error || "Failed to submit ticket"); return; }
+      setDone(d.ticket_no);
+    } catch { setErr("Network error. Please try again."); }
+    finally { setSub(false); }
+  };
+
+  return (
+    <Modal title="Help & Support" onClose={onClose}>
+      {done ? (
+        <div className="flex flex-col items-center gap-4 py-4 text-center">
+          <div className="w-14 h-14 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
+            <Svg d={P.check} size={24} color="#10b981" sw={2.5} />
+          </div>
+          <div>
+            <p className="text-base font-bold text-slate-800 dark:text-slate-100">Ticket Submitted!</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Your ticket number is <span className="font-bold text-violet-600 dark:text-violet-400">#{done}</span></p>
+            <p className="text-xs text-slate-400 mt-2">Our team will respond to {form.user_email} shortly.</p>
+          </div>
+          <button onClick={onClose} className="mt-2 w-full py-3 bg-violet-600 text-white rounded-xl font-bold text-sm transition">Close</button>
+        </div>
+      ) : (
+        <form onSubmit={submit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            {[["Your Name","user_name","text","Your name"],["Email *","user_email","email","your@email.com"]].map(([l, k, t, ph]) => (
+              <div key={k}>
+                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">{l}</label>
+                <input type={t} placeholder={ph} value={form[k]} onChange={e => setForm(f => ({...f, [k]: e.target.value}))}
+                  className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
+              </div>
+            ))}
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">Category</label>
+            <select value={form.type} onChange={e => setForm(f => ({...f, type: e.target.value}))}
+              className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 focus:outline-none">
+              {TICKET_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">Subject *</label>
+            <input placeholder="Brief summary of your issue" value={form.subject} onChange={e => setForm(f => ({...f, subject: e.target.value}))} required
+              className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">Description</label>
+            <textarea placeholder="Describe the problem in detail…" value={form.description} onChange={e => setForm(f => ({...f, description: e.target.value}))} rows={3}
+              className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30 resize-none" />
+          </div>
+          {err && <p className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 px-3 py-2 rounded-xl">⚠ {err}</p>}
+          <button type="submit" disabled={submitting}
+            className="w-full py-3 bg-violet-600 disabled:opacity-50 text-white rounded-xl font-bold text-sm transition flex items-center justify-center gap-2">
+            {submitting && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+            {submitting ? "Submitting…" : "Submit Ticket"}
+          </button>
+        </form>
+      )}
+    </Modal>
+  );
+}
+
+// ── FAQ ────────────────────────────────────────────────────────────────────
+const FAQS = [
+  { q: "How do I pay my contribution?",          a: "On the Home tab, tap the green 'Pay Contribution' button. You'll be redirected to a secure Paystack payment page." },
+  { q: "How do I check my savings balance?",     a: "Your current balance is shown on the Home tab in the hero card at the top of the screen." },
+  { q: "How do I request a withdrawal?",         a: "On the Home tab, tap 'Request Withdrawal'. Enter the amount and submit — your savings agent will review and approve it." },
+  { q: "How do I view my contribution history?", a: "Tap the History tab at the bottom. You can filter by contributions or withdrawals." },
+  { q: "What is the contribution calendar?",     a: "The calendar on the Home tab shows your activity for the last 90 days — each purple square is a day you contributed." },
+  { q: "What fees apply to withdrawals?",        a: "Check the fee info card on your Home tab. First withdrawals may have a registration fee; subsequent ones may have a percentage fee." },
+  { q: "What is the PIN lock for?",              a: "The PIN lock protects your portal when you step away. Go to Me → Security to set it up." },
+  { q: "How do I update my profile photo?",      a: "Go to Me → Edit Profile, then tap the camera icon on your avatar." },
+  { q: "How do I change my password?",           a: "Go to the Me tab and tap 'Change Password' at the bottom of the page." },
+];
+
+function FAQ() {
+  const [open, setOpen] = useState(null);
+  return (
+    <div className="space-y-2">
+      {FAQS.map((f, i) => (
+        <div key={i} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700/50 shadow-sm overflow-hidden">
+          <button onClick={() => setOpen(open === i ? null : i)}
+            className="w-full flex items-center justify-between px-4 py-4 text-left gap-3">
+            <span className="text-sm font-semibold text-slate-700 dark:text-slate-200 flex-1">{f.q}</span>
+            <Svg d={open === i ? "M18 15l-6-6-6 6" : "M6 9l6 6 6-6"} size={16} color="#94a3b8" />
+          </button>
+          {open === i && <div className="px-4 pb-4"><p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">{f.a}</p></div>}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 // ── Pay Contribution modal ────────────────────────────────────────────────
@@ -817,6 +1168,12 @@ function OverviewTab({ client, contributions, onWithdrawClick, onPayClick, owner
 
   return (
     <div className="px-4 pt-5 pb-28 space-y-4">
+      {/* Greeting */}
+      <div>
+        <p className="text-sm text-slate-400 dark:text-slate-500 font-medium">{greetingText()} 👋</p>
+        <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{fmtDate()}</p>
+      </div>
+
       {/* Hero savings card */}
       <div className="rounded-3xl px-5 py-5 text-white relative overflow-hidden shadow-lg"
         style={{ background: "linear-gradient(145deg,#7c3aed 0%,#6d28d9 55%,#4c1d95 100%)" }}>
@@ -1130,196 +1487,274 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
   );
 }
 
-// ── Profile tab ───────────────────────────────────────────────────────────
-function ProfileTab({ client, ownerInfo, onChangePwdClick, onLogout, isDark, onToggleDark }) {
-  const [expanded, setExpanded] = useState(false);
-  const initials = (client.full_name || "?").split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+// ── Me tab (Staff Portal structure) ───────────────────────────────────────
+function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick }) {
+  const [view,         setView]        = useState("menu");
+  const [editForm,     setEditForm]    = useState({ full_name: client?.full_name || "", phone: client?.phone || "" });
+  const [photoFile,    setPhotoFile]   = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(null);
+  const [saving,       setSaving]      = useState(false);
+  const [saveMsg,      setSaveMsg]     = useState("");
+  const [showSupport,  setShowSupport] = useState(false);
+  const [lockBusy,     setLockBusy]    = useState(false);
+  const [showPinSetup, setShowPinSetup] = useState(false);
+  const [isDark,       setIsDark]      = useState(() => localStorage.getItem("kuditrack_dark") === "1");
+  const fileRef = useRef(null);
 
-  return (
-    <div className="px-4 pt-5 pb-28 space-y-4">
+  const initials = (client?.full_name || "M").split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
 
-      {/* KudiAI branding header card */}
-      <div className="rounded-3xl px-5 py-5 relative overflow-hidden shadow-lg"
-        style={{ background: "linear-gradient(135deg,#7c3aed 0%,#4c1d95 100%)" }}>
-        <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full bg-white/5 pointer-events-none" />
-        <div className="absolute -bottom-10 -left-6 w-40 h-40 rounded-full bg-white/5 pointer-events-none" />
-        <div className="relative flex items-center gap-4">
-          {/* Actual KudiAI Track logo on white pill */}
-          <div className="bg-white/90 rounded-2xl p-2 flex-shrink-0 shadow-lg">
-            <AppLogo className="h-10 w-auto" />
-          </div>
-          <div>
-            <p className="text-white font-extrabold text-lg leading-tight tracking-wide">KudiAI Track</p>
-            <p className="text-white/70 text-[11px] mt-1">Smart Savings Intelligence Platform</p>
-            <p className="text-white/50 text-[10px] mt-0.5">Empowering your financial journey.</p>
-          </div>
-        </div>
-      </div>
+  const toggleDark = () => {
+    const next = !isDark;
+    setIsDark(next);
+    localStorage.setItem("kuditrack_dark", next ? "1" : "0");
+    document.documentElement.classList.toggle("dark", next);
+  };
 
-      {/* Client membership card */}
-      <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700 overflow-hidden shadow-sm">
-        <div className="px-5 py-4 flex items-center gap-4">
-          <div className="w-16 h-16 rounded-2xl overflow-hidden flex-shrink-0 border-2 border-violet-100 dark:border-violet-900">
-            {client.profile_image_url
-              ? <img src={client.profile_image_url} alt={client.full_name} className="w-full h-full object-cover" />
-              : <div className="w-full h-full bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center text-violet-700 dark:text-violet-300 font-black text-2xl">{initials}</div>
-            }
-          </div>
-          <div className="flex-1 min-w-0">
-            <h2 className="text-base font-extrabold text-slate-800 dark:text-white leading-tight">{client.full_name}</h2>
-            <p className="text-xs font-mono font-bold text-violet-600 dark:text-violet-400 mt-0.5">{client.membership_number}</p>
-            <div className="flex items-center gap-2 mt-1.5">
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${
-                client.status === "active"
-                  ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
-                  : "bg-slate-100 dark:bg-slate-700 text-slate-500"
-              }`}>{client.status}</span>
-              <span className="text-[10px] text-slate-400 capitalize">{client.contribution_frequency} savings</span>
+  const saveProfile = async () => {
+    setSaving(true); setSaveMsg("");
+    try {
+      let photoUrl = client?.profile_image_url;
+      if (photoFile) photoUrl = await uploadAjoAvatar(photoFile, clientId);
+      await supabase.from("aso_clients").update({ full_name: editForm.full_name, phone: editForm.phone, profile_image_url: photoUrl }).eq("id", clientId);
+      setSaveMsg("Profile saved!");
+      setTimeout(() => { setSaveMsg(""); setView("menu"); }, 1500);
+    } catch { setSaveMsg("Save failed. Please try again."); }
+    setSaving(false);
+  };
+
+  const SubHeader = ({ title }) => (
+    <div className="flex items-center gap-3 px-4 py-4 border-b border-slate-100 dark:border-slate-700/50 flex-shrink-0 bg-white dark:bg-slate-900">
+      <button onClick={() => setView("menu")} className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center active:scale-90 transition">
+        <Svg d={P.back} size={18} color="#64748b" />
+      </button>
+      <p className="text-base font-extrabold text-slate-800 dark:text-slate-100">{title}</p>
+    </div>
+  );
+
+  if (view === "edit") return (
+    <div className="h-full flex flex-col">
+      <SubHeader title="Edit Profile" />
+      <div className="flex-1 overflow-y-auto px-4 py-5 space-y-5 pb-6">
+        <div className="flex flex-col items-center gap-3">
+          <div className="relative">
+            <div className="w-24 h-24 rounded-3xl bg-violet-600 flex items-center justify-center shadow-lg overflow-hidden">
+              {photoPreview ? <img src={photoPreview} alt="" className="w-full h-full object-cover" />
+                : client?.profile_image_url ? <img src={client.profile_image_url} alt="" className="w-full h-full object-cover" />
+                : <span className="text-2xl font-black text-white">{initials}</span>}
             </div>
+            <button onClick={() => fileRef.current?.click()}
+              className="absolute -bottom-1 -right-1 w-9 h-9 rounded-full bg-violet-600 border-2 border-white dark:border-slate-900 flex items-center justify-center shadow-md active:scale-90 transition">
+              <Svg d={P.cam} size={15} color="#fff" />
+            </button>
           </div>
-          <div className="text-right flex-shrink-0">
-            <p className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider">Balance</p>
-            <p className="text-sm font-extrabold text-violet-600 dark:text-violet-400">{fmt(client.current_balance || 0)}</p>
-          </div>
+          <p className="text-[12px] text-slate-400">Tap camera to change photo</p>
+          <input ref={fileRef} type="file" accept="image/*" className="hidden"
+            onChange={e => { const f = e.target.files?.[0]; if (!f) return; setPhotoFile(f); setPhotoPreview(URL.createObjectURL(f)); }} />
         </div>
-
-        {/* Summary stats */}
-        <div className="grid grid-cols-3 border-t border-slate-100 dark:border-slate-700 divide-x divide-slate-100 dark:divide-slate-700">
-          {[
-            { label: "Total Saved",  value: fmt(client.total_saved    || 0), color: "text-green-600 dark:text-green-400" },
-            { label: "Withdrawn",    value: fmt(client.total_withdrawn || 0), color: "text-red-500"                       },
-            { label: "Per Period",   value: fmt(client.contribution_amount || 0), color: "text-slate-700 dark:text-slate-200" },
-          ].map(item => (
-            <div key={item.label} className="px-3 py-2.5 text-center">
-              <p className={`text-xs font-extrabold ${item.color}`}>{item.value}</p>
-              <p className="text-[9px] text-slate-400 mt-0.5">{item.label}</p>
+        <div className="space-y-3">
+          {[["Full Name","full_name","text"],["Phone","phone","tel"]].map(([l, k, t]) => (
+            <div key={k}>
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">{l}</p>
+              <input type={t} value={editForm[k]} onChange={e => setEditForm(p => ({...p, [k]: e.target.value}))}
+                className="w-full h-12 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
             </div>
           ))}
+          <div>
+            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Email</p>
+            <input disabled value={client?.email || session?.user?.email || "—"}
+              className="w-full h-12 rounded-xl border border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-4 text-sm text-slate-400 cursor-not-allowed" />
+          </div>
         </div>
-
-        {/* View more toggle */}
-        <button onClick={() => setExpanded(v => !v)}
-          className="w-full flex items-center justify-center gap-1.5 py-3 border-t border-slate-100 dark:border-slate-700 text-violet-600 dark:text-violet-400 text-xs font-bold transition">
-          {expanded ? "View Less" : "View More Details"}
-          <svg viewBox="0 0 24 24" fill="none" className={`w-3.5 h-3.5 transition-transform ${expanded ? "rotate-180" : ""}`}
-            stroke="currentColor" strokeWidth={2.5}><path d="M6 9l6 6 6-6" /></svg>
-        </button>
-
-        {expanded && (
-          <div className="divide-y divide-slate-100 dark:divide-slate-700 border-t border-slate-100 dark:border-slate-700">
-            {[
-              { label: "Phone",        value: client.phone },
-              { label: "Email",        value: client.email },
-              { label: "Address",      value: [client.address, client.lga, client.state].filter(Boolean).join(", ") },
-              { label: "Occupation",   value: client.occupation },
-              { label: "Member Since", value: client.registration_date },
-              { label: "Frequency",    value: client.contribution_frequency, cap: true },
-              { label: "Next Due",     value: client.next_contribution_date },
-            ].filter(f => f.value).map(f => (
-              <div key={f.label} className="flex justify-between px-4 py-2.5 gap-4">
-                <p className="text-xs text-slate-400 font-semibold shrink-0">{f.label}</p>
-                <p className={`text-xs font-semibold text-right text-slate-700 dark:text-slate-200 ${f.cap ? "capitalize" : ""}`}>{f.value}</p>
-              </div>
-            ))}
+        {saveMsg && (
+          <div className={`flex items-center gap-2 px-4 py-3 rounded-xl ${saveMsg.includes("saved") ? "bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400" : "bg-red-50 dark:bg-red-900/30 text-red-600"}`}>
+            <Svg d={saveMsg.includes("saved") ? P.check : P.alert} size={16} color="currentColor" />
+            <p className="text-sm font-semibold">{saveMsg}</p>
           </div>
         )}
+        <button onClick={saveProfile} disabled={saving}
+          className="w-full h-12 rounded-2xl bg-violet-600 text-white font-bold text-sm flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50">
+          {saving ? "Saving…" : "Save Changes"}
+        </button>
+      </div>
+    </div>
+  );
+
+  const Toggle = (
+    <button onClick={e => { e.stopPropagation(); toggleDark(); }}
+      className={`w-12 h-6 rounded-full transition-colors duration-200 relative flex-shrink-0 ${isDark ? "bg-violet-600" : "bg-slate-200 dark:bg-slate-600"}`}>
+      <span className="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all duration-200"
+        style={{ left: isDark ? "calc(100% - 22px)" : "2px" }} />
+    </button>
+  );
+
+  return (
+    <div className="h-full overflow-y-auto pb-4">
+      {/* Profile card */}
+      <div className="mx-4 mt-5 mb-5">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700/50 p-5 flex items-center gap-4">
+          <div className="w-16 h-16 rounded-2xl bg-violet-600 flex items-center justify-center shadow-lg flex-shrink-0 overflow-hidden">
+            {client?.profile_image_url
+              ? <img src={client.profile_image_url} alt="" className="w-full h-full object-cover" />
+              : <span className="text-xl font-black text-white">{initials}</span>}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-base font-extrabold text-slate-800 dark:text-slate-100 truncate">{client?.full_name || "Member"}</p>
+            <p className="text-[12px] font-bold text-violet-600 dark:text-violet-400 capitalize mt-0.5">{client?.contribution_frequency || ""} savings</p>
+            <p className="text-[11px] text-slate-400 mt-0.5 font-mono">{client?.membership_number || "—"}</p>
+          </div>
+          <button onClick={() => setView("edit")}
+            className="w-9 h-9 rounded-xl bg-violet-50 dark:bg-violet-900/30 flex items-center justify-center active:scale-90 transition flex-shrink-0">
+            <Svg d={P.pen} size={16} color="#7c3aed" />
+          </button>
+        </div>
       </div>
 
-      {/* Assigned staff card */}
-      {ownerInfo?.staff && (
-        <div>
-          <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">Assigned Staff</p>
-          <div className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 border border-slate-100 dark:border-slate-700 flex items-center gap-3">
-            <div className="w-11 h-11 rounded-xl bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center flex-shrink-0 overflow-hidden border border-violet-100 dark:border-violet-800">
-              {ownerInfo.staff.profile_image_url
-                ? <img src={ownerInfo.staff.profile_image_url} alt="" className="w-full h-full object-cover" />
-                : <span className="text-violet-600 dark:text-violet-400 font-black text-lg">{(ownerInfo.staff.full_name || "?")[0].toUpperCase()}</span>
-              }
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-slate-800 dark:text-white truncate">{ownerInfo.staff.full_name}</p>
-              {ownerInfo.staff.phone && <p className="text-xs text-slate-400 mt-0.5">{ownerInfo.staff.phone}</p>}
-              {ownerInfo.staff.role && <p className="text-[10px] text-violet-500 font-semibold capitalize mt-0.5">{ownerInfo.staff.role}</p>}
-            </div>
-            <div className="w-8 h-8 rounded-full bg-violet-50 dark:bg-violet-900/30 flex items-center justify-center flex-shrink-0">
-              <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-violet-500" stroke="currentColor" strokeWidth={2}>
-                <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" /><circle cx="12" cy="7" r="4" />
-              </svg>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Account */}
+      <div className="px-4 mb-5">
+        <SectionLabel>Account</SectionLabel>
+        <SettingsCard>
+          <Row icon={<RowIcon d={P.person} />} label="Edit Profile" sub="Update your name, phone, and photo" onClick={() => setView("edit")} />
+        </SettingsCard>
+      </div>
 
-      {/* Business/agent card */}
-      {ownerInfo?.owner && (
-        <div>
-          <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">Savings Agent</p>
-          <div className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 border border-slate-100 dark:border-slate-700">
-            <p className="text-sm font-bold text-slate-800 dark:text-white">{ownerInfo.owner.business_name || ownerInfo.owner.full_name}</p>
-            {ownerInfo.owner.phone && <p className="text-xs text-slate-400 mt-0.5">{ownerInfo.owner.phone}</p>}
-            {ownerInfo.owner.email && <p className="text-xs text-slate-400">{ownerInfo.owner.email}</p>}
-          </div>
-        </div>
-      )}
-
-      {/* Theme toggle */}
-      <div className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 border border-slate-100 dark:border-slate-700 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center"
-            style={{ background: isDark ? "#1e1b4b" : "#fef3c7" }}>
-            <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2}
-              style={{ color: isDark ? "#818cf8" : "#d97706" }}>
-              {isDark
-                ? <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
-                : <><circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /></>
+      {/* Security */}
+      <div className="px-4 mb-5">
+        <SectionLabel>Security</SectionLabel>
+        <SettingsCard>
+          <Row
+            icon={<RowIcon d={P.lock} />}
+            label="App Lock"
+            sub={lock.enabled ? (lock.hasBiometric ? "Locked · Fingerprint / Face + PIN" : "Locked · PIN only") : lock.hasPIN ? "PIN set but lock is off" : "Protect app when you leave"}
+            onClick={async () => {
+              if (lock.enabled) { lock.disableLock(); }
+              else if (lock.hasPIN) { setLockBusy(true); await lock.enableLock(); setLockBusy(false); }
+              else {
+                const evt = new CustomEvent("ajo_open_pin_setup");
+                window.dispatchEvent(evt);
               }
-            </svg>
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">{isDark ? "Dark Mode" : "Light Mode"}</p>
-            <p className="text-[10px] text-slate-400">Tap to switch</p>
-          </div>
-        </div>
-        <button onClick={onToggleDark}
-          className={`w-12 h-6 rounded-full transition-all relative flex-shrink-0 ${isDark ? "bg-violet-600" : "bg-slate-200"}`}>
-          <div className={`w-5 h-5 rounded-full bg-white shadow-md transition-transform absolute top-0.5 ${isDark ? "translate-x-[26px]" : "translate-x-0.5"}`} />
+            }}
+            right={
+              <button
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  if (lock.enabled) { lock.disableLock(); }
+                  else if (lock.hasPIN) { setLockBusy(true); await lock.enableLock(); setLockBusy(false); }
+                  else {
+                    setShowPinSetup(true);
+                  }
+                }}
+                className={`w-12 h-6 rounded-full transition-colors duration-200 relative flex-shrink-0 ${lock.enabled ? "bg-violet-600" : "bg-slate-200 dark:bg-slate-600"}`}>
+                {lockBusy
+                  ? <span className="absolute inset-0 flex items-center justify-center"><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /></span>
+                  : <span className="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all duration-200" style={{ left: lock.enabled ? "calc(100% - 22px)" : "2px" }} />
+                }
+              </button>
+            }
+          />
+          <Row
+            icon={<RowIcon d={P.shield} />}
+            label={lock.hasPIN ? "Change PIN" : "Set PIN"}
+            sub={lock.hasPIN ? (lock.hasBiometric ? "Biometric registered · tap to change PIN" : "Change your 4-digit unlock PIN") : "Set a 4-digit PIN to enable App Lock"}
+            onClick={() => { const evt = new CustomEvent("ajo_open_pin_setup"); window.dispatchEvent(evt); }}
+          />
+        </SettingsCard>
+      </div>
+
+      {/* Preferences */}
+      <div className="px-4 mb-5">
+        <SectionLabel>Preferences</SectionLabel>
+        <SettingsCard>
+          <Row icon={<RowIcon d={isDark ? P.moon : P.sun} />} label="Dark Mode" onClick={toggleDark} right={Toggle} />
+        </SettingsCard>
+      </div>
+
+      {/* Help & Support */}
+      <div className="px-4 mb-5">
+        <SectionLabel>Help & Support</SectionLabel>
+        <SettingsCard>
+          <Row icon={<RowIcon d={P.faq} />}  label="Frequently Asked Questions" sub="Browse common questions" onClick={() => setView("faq")} />
+          <Row icon={<RowIcon d={P.help} />} label="Contact Support"            sub="Submit a support ticket"  onClick={() => setShowSupport(true)} />
+        </SettingsCard>
+      </div>
+
+      {/* Change Password */}
+      <div className="px-4 mb-3">
+        <button onClick={onChangePwdClick}
+          className="w-full py-[15px] bg-violet-50 dark:bg-violet-950/30 rounded-2xl font-bold text-sm border border-violet-100 dark:border-violet-900/40 active:bg-violet-100 transition-colors flex items-center justify-center gap-2.5 text-violet-600 dark:text-violet-400">
+          <Svg d={P.shield} size={18} color="currentColor" />
+          Change Password
         </button>
       </div>
 
-      <button onClick={onChangePwdClick}
-        className="w-full py-3.5 bg-violet-50 dark:bg-violet-900/20 text-violet-600 dark:text-violet-400 rounded-2xl font-bold text-sm border border-violet-100 dark:border-violet-800 transition active:scale-[0.99]">
-        Change Password
-      </button>
-      <button onClick={onLogout}
-        className="w-full py-3.5 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-2xl font-bold text-sm border border-red-100 dark:border-red-800 transition active:scale-[0.99]">
-        Sign Out
-      </button>
+      {/* Sign Out */}
+      <div className="px-4 mb-4">
+        <button onClick={() => supabase.auth.signOut()}
+          className="w-full py-[15px] bg-red-50 dark:bg-red-950/30 rounded-2xl font-bold text-sm border border-red-100 dark:border-red-900/40 active:bg-red-100 transition-colors flex items-center justify-center gap-2.5 text-red-500 dark:text-red-400">
+          <Svg d={P.out2} size={18} color="currentColor" />
+          Sign Out
+        </button>
+      </div>
+
+      {/* Footer */}
+      <div className="text-center py-4 px-8 space-y-1">
+        <p className="text-[11px] text-slate-400 dark:text-slate-500 font-medium">KudiAI Track · Savings Member Portal</p>
+        <p className="text-[10px] text-slate-300 dark:text-slate-600">Powered by AMAYA &amp; Co. Technologies<br />All rights reserved © {YEAR}</p>
+      </div>
+
+      {/* FAQ inline view */}
+      {view === "faq" && (
+        <div className="fixed inset-0 z-50 bg-slate-50 dark:bg-slate-900 flex flex-col">
+          <div className="flex items-center gap-3 px-4 py-4 border-b border-slate-100 dark:border-slate-700/50 bg-white dark:bg-slate-900">
+            <button onClick={() => setView("menu")} className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center active:scale-90 transition">
+              <Svg d={P.back} size={18} color="#64748b" />
+            </button>
+            <p className="text-base font-extrabold text-slate-800 dark:text-slate-100">Frequently Asked Questions</p>
+          </div>
+          <div className="flex-1 overflow-y-auto px-4 py-4 pb-6"><FAQ /></div>
+        </div>
+      )}
+
+      {/* Support modal */}
+      {showSupport && (
+        <SupportModal
+          onClose={() => setShowSupport(false)}
+          clientName={client?.full_name}
+          clientEmail={client?.email || session?.user?.email || ""}
+        />
+      )}
+
+      {/* PIN setup modal */}
+      {showPinSetup && (
+        <PinSetupModal onClose={() => setShowPinSetup(false)} onDone={async (pin) => {
+          setShowPinSetup(false);
+          await lock.setupPIN(pin);
+          await lock.enableLock();
+        }} />
+      )}
     </div>
   );
 }
 
 // ── Main portal ───────────────────────────────────────────────────────────
 export default function AjoMemberPortal({ session, ajoClient }) {
-  const [isDark,           setIsDark]           = useState(() => localStorage.getItem("kuditrack_ajo_dark") === "1");
   const [client,           setClient]           = useState(ajoClient || null);
   const [contributions,    setContributions]    = useState([]);
   const [ownerInfo,        setOwnerInfo]        = useState(null);
   const [loadingData,      setLoadingData]      = useState(false);
-  const [tab,              setTab]              = useState("overview");
+  const [tab,              setTab]              = useState("home");
   const [showWithdraw,     setShowWithdraw]     = useState(false);
   const [showPay,          setShowPay]          = useState(false);
   const [withdrawRequests, setWithdrawRequests] = useState([]);
   const [showPwdModal,     setShowPwdModal]     = useState(false);
 
+  const lock  = useBiometricLock(ajoClient?.id);
+  const notif = useNotifications(ajoClient?.id);
+
   const mustChange = session?.user?.user_metadata?.must_change_password === true;
 
   useEffect(() => {
-    document.documentElement.classList.toggle("dark", isDark);
-    localStorage.setItem("kuditrack_ajo_dark", isDark ? "1" : "0");
-  }, [isDark]);
-
-  const toggleDark = useCallback(() => setIsDark(v => !v), []);
-  const handleLogout = useCallback(() => supabase.auth.signOut(), []);
+    document.documentElement.classList.toggle("dark", localStorage.getItem("kuditrack_dark") === "1");
+  }, []);
 
   const refreshWithdrawRequests = useCallback(async () => {
     if (!ajoClient?.id) return;
@@ -1376,44 +1811,40 @@ export default function AjoMemberPortal({ session, ajoClient }) {
 
   if (mustChange) return <AjoMemberFirstLogin ajoClient={ajoClient} />;
 
-  const NAV = [
-    { id: "overview", label: "Overview", icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" },
-    { id: "history",  label: "History",  icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" },
-    { id: "profile",  label: "Profile",  icon: "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7" },
-  ];
+  const clientId      = ajoClient?.id;
+  const avatarInitial = (client?.full_name || ajoClient?.full_name || "M")[0].toUpperCase();
 
   return (
-    <div className="h-screen overflow-hidden bg-slate-50 dark:bg-slate-900 flex justify-center">
-      <div className="w-full max-w-md relative flex flex-col h-screen overflow-hidden">
+    <div className="h-[100dvh] bg-slate-50 dark:bg-slate-900 flex justify-center transition-colors duration-200">
+      <div className="w-full max-w-md flex flex-col h-full relative">
+
+        {/* Lock screen */}
+        {lock.locked && <LockScreen lock={lock} />}
 
         {/* Header */}
-        <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 py-3 flex items-center gap-2">
-          {/* KudiAI Track logo */}
-          <AppLogo className="h-7 w-auto flex-shrink-0" />
-          <div className="h-4 w-px bg-slate-200 dark:bg-slate-700 mx-1 flex-shrink-0" />
-          <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold truncate flex-1 min-w-0">
-            {client?.full_name || ajoClient?.full_name}
-          </p>
-          <button onClick={toggleDark}
-            className="w-8 h-8 rounded-full flex items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition flex-shrink-0">
-            <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2}>
-              {isDark
-                ? <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
-                : <><circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /></>
-              }
-            </svg>
-          </button>
-          {loadingData && (
-            <div className="w-4 h-4 border-2 border-violet-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
-          )}
-          <span className="text-[10px] bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 font-mono font-bold px-2 py-1 rounded-full flex-shrink-0">
-            {ajoClient?.membership_number}
-          </span>
-        </div>
+        <header className="flex-none z-30 h-14 flex items-center justify-between px-4 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shadow-sm">
+          <AppLogo className="h-8 w-8" />
+          <div className="flex items-baseline gap-0.5 select-none">
+            <span className="text-[17px] font-black tracking-tight text-slate-800 dark:text-white leading-none">Kudi</span>
+            <span className="text-[17px] font-black tracking-tight leading-none"
+              style={{ background: "linear-gradient(135deg,#7c3aed,#6d28d9)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>AI</span>
+            <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 tracking-widest uppercase leading-none ml-1">Track</span>
+          </div>
+          <div className="flex items-center gap-2">
+            {loadingData && <div className="w-3.5 h-3.5 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />}
+            <NotificationBell unreadCount={notif.unreadCount} onClick={() => notif.setOpen(true)} />
+            <button onClick={() => setTab("me")}
+              className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500 to-violet-700 flex items-center justify-center border-2 border-slate-100 dark:border-slate-700 shadow-sm active:scale-90 transition-transform overflow-hidden">
+              {client?.profile_image_url
+                ? <img src={client.profile_image_url} alt="" className="w-9 h-9 object-cover" />
+                : <span className="text-sm font-black text-white">{avatarInitial}</span>}
+            </button>
+          </div>
+        </header>
 
-        {/* Tab content */}
-        <main className="flex-1 overflow-y-auto pb-20">
-          {tab === "overview" && client && (
+        {/* Content */}
+        <main className="flex-1 min-h-0 overflow-y-auto">
+          {tab === "home" && client && (
             <OverviewTab
               client={client}
               contributions={contributions}
@@ -1423,39 +1854,55 @@ export default function AjoMemberPortal({ session, ajoClient }) {
               withdrawRequests={withdrawRequests}
             />
           )}
-          {tab === "history" && <HistoryTab contributions={contributions} withdrawRequests={withdrawRequests} client={client} ownerInfo={ownerInfo} />}
-          {tab === "profile" && client && (
-            <ProfileTab
+          {tab === "history" && (
+            <HistoryTab
+              contributions={contributions}
+              withdrawRequests={withdrawRequests}
               client={client}
               ownerInfo={ownerInfo}
-              onChangePwdClick={() => setShowPwdModal(true)}
-              onLogout={handleLogout}
-              isDark={isDark}
-              onToggleDark={toggleDark}
             />
           )}
-          {!client && (
+          {tab === "me" && (
+            <AjoMemberMe
+              client={client || ajoClient}
+              session={session}
+              clientId={clientId}
+              lock={lock}
+              onChangePwdClick={() => setShowPwdModal(true)}
+            />
+          )}
+          {!client && tab !== "me" && (
             <div className="flex items-center justify-center py-20">
               <div className="w-8 h-8 border-[3px] border-violet-500 border-t-transparent rounded-full animate-spin" />
             </div>
           )}
         </main>
 
-        {/* Bottom nav — fixed so it never scrolls away */}
-        <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md z-20 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900"
-          style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
-          <div className="flex">
-            {NAV.map(n => (
-              <button key={n.id} onClick={() => setTab(n.id)}
-                className={`flex-1 flex flex-col items-center py-2.5 gap-1 transition-colors ${tab === n.id ? "text-violet-600 dark:text-violet-400" : "text-slate-400 dark:text-slate-500"}`}>
-                <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-                  <path d={n.icon} />
-                </svg>
-                <span className="text-[9px] font-semibold leading-none">{n.label}</span>
-              </button>
-            ))}
+        {/* Bottom nav */}
+        <nav className="flex-none z-40 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 shadow-sm">
+          <div className="flex items-stretch h-[60px]">
+            {NAV.map(n => {
+              const active = tab === n.id;
+              return (
+                <button key={n.id} onClick={() => setTab(n.id)}
+                  className="flex-1 flex flex-col items-center justify-center gap-0.5 relative focus-visible:outline-none">
+                  {active && <span className="absolute top-0 left-1/2 -translate-x-1/2 w-5 h-0.5 rounded-full bg-violet-600 dark:bg-violet-400" />}
+                  <div className={`transition-all duration-200 ${active ? "scale-110" : "scale-100"}`}>
+                    <Icon name={n.icon} size={21} className={active ? "text-violet-600 dark:text-violet-400" : "text-slate-400 dark:text-slate-500"} />
+                  </div>
+                  <span className={`text-[8px] font-bold uppercase tracking-wide leading-none ${active ? "text-violet-600 dark:text-violet-400" : "text-slate-400 dark:text-slate-500"}`}>
+                    {n.label}
+                  </span>
+                </button>
+              );
+            })}
           </div>
+          <div style={{ height: "env(safe-area-inset-bottom, 0px)" }} className="bg-white dark:bg-slate-900" />
         </nav>
+
+        {/* Notification Center */}
+        <NotificationCenter notif={notif} />
+
       </div>
 
       {showPay && client && (
@@ -1464,7 +1911,6 @@ export default function AjoMemberPortal({ session, ajoClient }) {
           onClose={() => setShowPay(false)}
           onSuccess={(ref, updatedClient) => {
             if (updatedClient) setClient(prev => ({ ...prev, ...updatedClient }));
-            // Modal closes when user taps "Done" — don't close it here
           }}
         />
       )}
