@@ -28,7 +28,7 @@ import LockScreen            from "./components/LockScreen";
 import AIChatWidget         from "./components/AIChatWidget";
 import Loyalty               from "./screens/Loyalty";
 import Branches              from "./screens/Branches";
-import BranchManagerDashboard from "./screens/BranchManagerDashboard";
+import ManagerDashboard from "./screens/ManagerDashboard";
 import AjoClientPortal       from "./screens/AjoClientPortal";
 import CoopList              from "./screens/CoopList";
 import CoopDashboard         from "./screens/CoopDashboard";
@@ -208,7 +208,7 @@ export default function App() {
   );
   if (status === "branch_manager") return (
     <>
-      <BranchManagerDashboard session={session} staff={staff} />
+      <ManagerDashboard session={session} staff={staff} />
       <AIChatWidget />
     </>
   );
