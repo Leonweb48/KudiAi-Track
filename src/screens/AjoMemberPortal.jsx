@@ -459,6 +459,68 @@ function PayContributionModal({ client, onClose, onSuccess }) {
     }
   };
 
+  // Full-screen receipt — user must tap Close to dismiss
+  if (status === "done") {
+    const paidAt = new Date().toLocaleString("en-NG", { dateStyle: "medium", timeStyle: "short" });
+    const refShort = (pendingRef || "").slice(-10).toUpperCase();
+    return (
+      <div className="fixed inset-0 z-[100] bg-white dark:bg-slate-900 flex flex-col">
+        {/* Top accent */}
+        <div className="h-1.5 w-full" style={{ background: "linear-gradient(90deg,#7c3aed,#10b981)" }} />
+
+        <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
+          {/* Animated checkmark */}
+          <div className="w-24 h-24 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mb-6 shadow-lg">
+            <svg viewBox="0 0 24 24" fill="none" className="w-12 h-12 text-green-500" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+              <path d="M20 6L9 17l-5-5" />
+            </svg>
+          </div>
+
+          <p className="text-[11px] font-bold text-green-500 uppercase tracking-widest mb-1">Transaction Successful</p>
+          <h2 className="text-3xl font-black text-slate-800 dark:text-white mb-1 tabular">
+            ₦{fmt(client?.contribution_amount || 0)}
+          </h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mb-8 capitalize">
+            {client?.contribution_frequency} contribution · Paid via Paystack
+          </p>
+
+          {/* Receipt card */}
+          <div className="w-full max-w-sm bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-700 text-left mb-8">
+            <div className="flex justify-between px-4 py-3">
+              <span className="text-xs text-slate-400">Recipient</span>
+              <span className="text-xs font-bold text-slate-700 dark:text-slate-200 text-right max-w-[55%] truncate">{client?.full_name || "—"}</span>
+            </div>
+            <div className="flex justify-between px-4 py-3">
+              <span className="text-xs text-slate-400">Reference</span>
+              <span className="text-xs font-mono font-bold text-slate-700 dark:text-slate-200">{refShort || "—"}</span>
+            </div>
+            <div className="flex justify-between px-4 py-3">
+              <span className="text-xs text-slate-400">Date & Time</span>
+              <span className="text-xs font-bold text-slate-700 dark:text-slate-200">{paidAt}</span>
+            </div>
+            <div className="flex justify-between px-4 py-3">
+              <span className="text-xs text-slate-400">Status</span>
+              <span className="text-xs font-bold text-green-600 dark:text-green-400">Confirmed</span>
+            </div>
+          </div>
+
+          <p className="text-[11px] text-slate-400 dark:text-slate-500 mb-2">
+            Your balance has been updated.
+          </p>
+        </div>
+
+        {/* Close — bottom, full width */}
+        <div className="flex-none px-6 pb-10 pt-4">
+          <button
+            onClick={onClose}
+            className="w-full py-4 bg-violet-600 hover:bg-violet-700 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] shadow-md">
+            Close Receipt
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-[100] bg-black/50 flex items-end justify-center">
       <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-t-3xl p-6 shadow-2xl">
@@ -486,55 +548,40 @@ function PayContributionModal({ client, onClose, onSuccess }) {
           <p className="text-[11px] text-slate-400 mt-1 capitalize">{client?.contribution_frequency} contribution</p>
         </div>
 
-        {status === "done" ? (
-          <div className="text-center py-4">
-            <div className="w-14 h-14 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-3">
-              <svg viewBox="0 0 24 24" fill="none" className="w-7 h-7 text-green-600" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
-                <path d="M20 6L9 17l-5-5" />
-              </svg>
-            </div>
-            <p className="font-bold text-slate-800 dark:text-white mb-1">Payment Successful!</p>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400">{message}</p>
-            <button onClick={onClose} className="mt-4 w-full py-3 bg-violet-600 text-white rounded-2xl font-bold text-sm">Done</button>
-          </div>
-        ) : (
-          <>
-            {message && (
-              <p className={`text-xs mb-4 px-3 py-2 rounded-xl ${
-                status === "error" ? "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400"
-                : status === "awaiting" ? "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300"
-                : "bg-slate-50 dark:bg-slate-800 text-slate-500"
-              }`}>
-                {message}
-              </p>
-            )}
-
-            {(status === "awaiting" || status === "verifying") && (
-              <button
-                onClick={() => doVerify(pendingRef)}
-                disabled={status === "verifying"}
-                className="w-full mb-3 py-4 bg-violet-600 hover:bg-violet-700 disabled:opacity-60 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2 shadow-md">
-                {status === "verifying"
-                  ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Verifying…</>
-                  : "I've completed payment — tap to confirm"}
-              </button>
-            )}
-
-            <button
-              onClick={handlePay}
-              disabled={status === "loading" || status === "awaiting" || status === "verifying"}
-              className="w-full py-4 bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2 shadow-md">
-              {status === "loading"
-                ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Opening Paystack…</>
-                : status === "awaiting" ? "Open Paystack again"
-                : <>Pay ₦{fmt(client?.contribution_amount || 0)} now</>}
-            </button>
-            <button onClick={onClose} disabled={status === "loading" || status === "verifying"}
-              className="w-full mt-3 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition text-center py-2">
-              Cancel
-            </button>
-          </>
+        {message && (
+          <p className={`text-xs mb-4 px-3 py-2 rounded-xl ${
+            status === "error" ? "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400"
+            : status === "awaiting" ? "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300"
+            : "bg-slate-50 dark:bg-slate-800 text-slate-500"
+          }`}>
+            {message}
+          </p>
         )}
+
+        {(status === "awaiting" || status === "verifying") && (
+          <button
+            onClick={() => doVerify(pendingRef)}
+            disabled={status === "verifying"}
+            className="w-full mb-3 py-4 bg-violet-600 hover:bg-violet-700 disabled:opacity-60 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2 shadow-md">
+            {status === "verifying"
+              ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Verifying…</>
+              : "I've completed payment — tap to confirm"}
+          </button>
+        )}
+
+        <button
+          onClick={handlePay}
+          disabled={status === "loading" || status === "awaiting" || status === "verifying"}
+          className="w-full py-4 bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2 shadow-md">
+          {status === "loading"
+            ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Opening Paystack…</>
+            : status === "awaiting" ? "Open Paystack again"
+            : <>Pay ₦{fmt(client?.contribution_amount || 0)} now</>}
+        </button>
+        <button onClick={onClose} disabled={status === "loading" || status === "verifying"}
+          className="w-full mt-3 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition text-center py-2">
+          Cancel
+        </button>
       </div>
     </div>
   );
