@@ -4,7 +4,7 @@ import Icon   from "../components/Icon";
 import Modal  from "../components/shared/Modal";
 import Field  from "../components/shared/Field";
 import Badge  from "../components/shared/Badge";
-import { AsoReceipt }    from "../components/shared/Receipt";
+import { AsoReceipt, AjoTxReceipt } from "../components/shared/Receipt";
 import { ClientProfile } from "../components/shared/ClientProfile";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import { supabase } from "../utils/supabase";
@@ -93,6 +93,111 @@ function isGroupAccount(c) {
   return keywords.some(k => name.includes(k));
 }
 
+/* ── Per-client Ajo Contribution History Modal ─────────────────────────── */
+function AsoClientHistoryModal({ client, contributions, businessName, onClose }) {
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [receipt, setReceipt] = useState(null);
+  const fmtCurrency = (n) => `₦${Number(n || 0).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
+
+  const filtered = typeFilter === "all"
+    ? contributions
+    : contributions.filter(c => c.type === typeFilter);
+
+  const FILTERS = [
+    { id: "all", label: "All" },
+    { id: "contribution", label: "Contributions" },
+    { id: "withdrawal", label: "Withdrawals" },
+  ];
+
+  const statusCls = (s) => {
+    if (s === "completed" || s === "approved") return "bg-green-50 text-green-600";
+    if (s === "failed") return "bg-red-50 text-red-500";
+    return "bg-amber-50 text-amber-600";
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex flex-col">
+      {receipt && (
+        <AjoTxReceipt
+          txn={receipt}
+          clientName={client.full_name}
+          businessName={businessName}
+          onClose={() => setReceipt(null)}
+        />
+      )}
+      <div className="bg-white dark:bg-slate-900 flex flex-col h-full max-w-lg w-full mx-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-4 border-b border-slate-100 dark:border-slate-800">
+          <div>
+            <h2 className="text-base font-black text-slate-800 dark:text-white">{client.full_name}</h2>
+            <p className="text-xs text-slate-400 mt-0.5">Ajo Transaction History</p>
+          </div>
+          <button onClick={onClose}
+            className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center active:scale-90 transition">
+            <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+
+        {/* Filter chips */}
+        <div className="flex gap-2 px-4 py-3 overflow-x-auto no-scrollbar">
+          {FILTERS.map(f => (
+            <button key={f.id}
+              onClick={() => setTypeFilter(f.id)}
+              className={`px-4 py-1.5 rounded-full text-xs font-bold flex-shrink-0 transition-colors
+                ${typeFilter === f.id
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300"}`}>
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        {/* List */}
+        <div className="flex-1 overflow-y-auto px-4 pb-8 space-y-2">
+          {filtered.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <p className="text-slate-400 text-sm font-semibold">No records found</p>
+            </div>
+          ) : filtered.map(tx => {
+            const isWithdraw = tx.type === "withdrawal";
+            const dateStr = tx.created_at
+              ? new Date(tx.created_at).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })
+              : tx.date || "";
+            return (
+              <button key={tx.id} onClick={() => setReceipt(tx)}
+                className="w-full text-left bg-white dark:bg-slate-800 rounded-2xl px-4 py-3 border border-slate-100 dark:border-slate-700 active:scale-[0.98] transition-transform">
+                <div className="flex items-start gap-3">
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${isWithdraw ? "bg-red-50 dark:bg-red-900/20" : "bg-green-50 dark:bg-green-900/20"}`}>
+                    <svg viewBox="0 0 24 24" fill="none" className={`w-4 h-4 ${isWithdraw ? "text-red-500" : "text-green-600 dark:text-green-400"}`}
+                      stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                      {isWithdraw ? <path d="M12 19V5M5 12l7 7 7-7"/> : <path d="M12 5v14M5 12l7-7 7 7"/>}
+                    </svg>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={`text-sm font-extrabold tabular ${isWithdraw ? "text-red-500" : "text-green-600 dark:text-green-400"}`}>
+                        {isWithdraw ? "−" : "+"}{fmtCurrency(tx.amount)}
+                      </span>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize flex-shrink-0 ${statusCls(tx.status)}`}>{tx.status || "completed"}</span>
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 capitalize">
+                      {tx.type} · {tx.payment_method || "cash"}
+                    </p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">{dateStr}</p>
+                    {tx.notes && <p className="text-[10px] text-slate-400 italic mt-0.5">"{tx.notes}"</p>}
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, onUpgrade, staffId = null }) {
   const t = useT();
   const [showAdd,      setShowAdd]      = useState(false);
@@ -100,6 +205,8 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [action,       setAction]       = useState(null);
   const [amt,          setAmt]          = useState("");
   const [receipt,      setReceipt]      = useState(null);
+  const [historyFor,   setHistoryFor]   = useState(null); // { client, contributions }
+  const [histLoading,  setHistLoading]  = useState(false);
   const [clientProf,   setClientProf]   = useState(null);
   const [photoFile,    setPhotoFile]    = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
@@ -626,6 +733,24 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       await supabase.from("ajo_withdrawal_requests")
         .update({ status: "rejected", approved_at: new Date().toISOString() })
         .eq("id", req.id);
+      const cl = req.aso_clients || {};
+      fetch("https://admin.kudiai.app/api/public/email-trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+        body: JSON.stringify({
+          event: "ajo_withdrawal_rejected",
+          data: {
+            client_email:  cl.email || "",
+            client_name:   cl.full_name || "",
+            owner_email:   profile?.email || "",
+            owner_name:    profile?.owner_name || profile?.business_name || "",
+            business_name: profile?.business_name || "",
+            amount:        req.amount || 0,
+            group_name:    req.group_name || "",
+            date:          new Date().toLocaleDateString("en-NG"),
+          },
+        }),
+      }).catch(() => null);
       reloadWithdrawalRequests();
     } catch (e) {
       console.error("Reject failed:", e);
@@ -1055,6 +1180,30 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                     <span className="text-[9px] font-black text-violet-600 dark:text-violet-400 uppercase tracking-wide leading-none">Stmt</span>
                   </button>
 
+                  {/* History */}
+                  <button onClick={async () => {
+                    setHistLoading(true);
+                    const { data } = await supabase
+                      .from("ajo_contributions")
+                      .select("*")
+                      .eq("client_id", c.id)
+                      .order("created_at", { ascending: false });
+                    setHistoryFor({ client: c, contributions: data || [] });
+                    setHistLoading(false);
+                  }}
+                    className="flex-1 flex flex-col items-center gap-1 py-2.5 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-200 dark:border-blue-800 active:scale-95 transition"
+                    title="View History">
+                    {histLoading ? (
+                      <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-blue-600 dark:text-blue-400" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="12 8 12 12 14 14"/><path d="M3.05 11a9 9 0 1 0 .5-4.5"/>
+                        <polyline points="3 3 3 7 7 7"/>
+                      </svg>
+                    )}
+                    <span className="text-[9px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-wide leading-none">Hist</span>
+                  </button>
+
                   {/* Edit */}
                   <button onClick={() => setClientProf(c)}
                     className="flex-1 flex flex-col items-center gap-1 py-2.5 bg-slate-50 dark:bg-slate-700/60 rounded-xl border border-slate-200 dark:border-slate-600 active:scale-95 transition"
@@ -1397,6 +1546,21 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       {receipt && (
         <AsoReceipt client={receipt} profile={profile} onClose={() => setReceipt(null)} />
       )}
+
+      {/* ── Per-client Contribution History Modal ────────────────── */}
+      {historyFor && (() => {
+        const { client: hc, contributions: hcons } = historyFor;
+        const bizName = profile?.business_name || profile?.owner_name || "My Business";
+        return (
+          <AsoClientHistoryModal
+            client={hc}
+            contributions={hcons}
+            businessName={bizName}
+            onClose={() => setHistoryFor(null)}
+          />
+        );
+      })()}
+
       {clientProf && (
         <ClientProfile
           record={clientProf}

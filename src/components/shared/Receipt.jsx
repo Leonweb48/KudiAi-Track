@@ -780,6 +780,88 @@ const STMT_PERIODS = [
   {id:"custom",label:"Custom"},
 ];
 
+/* ══════════════════════════════════════════════════════════════════
+   AJO CONTRIBUTION / WITHDRAWAL RECEIPT
+══════════════════════════════════════════════════════════════════ */
+export function AjoTxReceipt({ txn, clientName, businessName, onClose }) {
+  const isWithdraw = txn.type === "withdrawal" || txn.transaction_type === "withdrawal";
+  const dateStr = txn.created_at
+    ? new Date(txn.created_at).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })
+    : txn.date || new Date().toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" });
+  const amtColor = isWithdraw ? "#dc2626" : GRN;
+
+  return (
+    <Overlay onClose={onClose} pdfName={`KudiAITrack_Ajo_${isWithdraw ? "Withdrawal" : "Contribution"}_${dateStr}.pdf`}>
+      <Header
+        title={isWithdraw ? "AJO WITHDRAWAL RECEIPT" : "AJO CONTRIBUTION RECEIPT"}
+        business={businessName || "My Business"}
+        email={SUPPORT_EMAIL}
+        date={dateStr}
+        id={txn.id}
+      />
+
+      <AmountHero
+        label={isWithdraw ? "Amount Withdrawn" : "Amount Contributed"}
+        amount={fmt(txn.amount)}
+        color={amtColor}
+        badge={isWithdraw ? "DEBIT" : "CREDIT"}
+        badgeColor={amtColor}
+      />
+
+      <SectionHead label="Transaction Details" />
+      <Row label="Member"         value={clientName}                        bold />
+      <Row label="Type"           value={isWithdraw ? "Withdrawal" : "Contribution"} />
+      <Row label="Payment Method" value={txn.payment_method || txn.payment_type || "Cash"} />
+      <Row label="Date"           value={dateStr} />
+      <Row label="Notes"          value={txn.notes || txn.note}             last />
+
+      <Footer />
+    </Overlay>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   CREDIT DEBT-PAYMENT RECEIPT
+══════════════════════════════════════════════════════════════════ */
+export function CreditPaymentReceipt({ payment, credit, businessName, onClose }) {
+  const dateStr = payment.created_at
+    ? new Date(payment.created_at).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })
+    : payment.payment_date || new Date().toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" });
+  return (
+    <Overlay onClose={onClose} pdfName={`KudiAITrack_CreditPayment_${dateStr}.pdf`}>
+      <Header
+        title="CREDIT PAYMENT RECEIPT"
+        business={businessName || "My Business"}
+        email={SUPPORT_EMAIL}
+        date={dateStr}
+        id={payment.id}
+      />
+
+      <AmountHero
+        label="Payment Amount"
+        amount={fmt(payment.amount)}
+        color={GRN}
+        badge="PAYMENT RECEIVED"
+        badgeColor={GRN}
+      />
+
+      <SectionHead label="Payment Details" />
+      <Row label="Debtor"         value={credit?.customer_name}             bold />
+      <Row label="Payment Method" value={(payment.payment_method || "Cash").replace(/_/g, " ")} />
+      <Row label="Date Paid"      value={dateStr} />
+      <Row label="Notes"          value={payment.notes}                     last />
+      <Sep />
+      <SectionHead label="Credit Summary" />
+      <Row label="Total Owed"     value={fmt(credit?.total_amount)} />
+      <Row label="Total Paid"     value={fmt(credit?.amount_paid)} color={GRN} bold />
+      <Row label="Outstanding"    value={fmt(credit?.outstanding)} color="#d97706" bold />
+      <Row label="Status"         value={(credit?.status || "active").replace(/_/g, " ").toUpperCase()} last />
+
+      <Footer />
+    </Overlay>
+  );
+}
+
 export function StaffActivityStatement({ store, staffName, businessName, onClose }) {
   const [period,    setPeriod]    = useState("month");
   const [customFrom,setCustomFrom]= useState(stmtTodayStr());

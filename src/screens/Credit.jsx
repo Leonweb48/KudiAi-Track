@@ -3,7 +3,7 @@ import Icon   from "../components/Icon";
 import Modal  from "../components/shared/Modal";
 import Field  from "../components/shared/Field";
 import Badge  from "../components/shared/Badge";
-import { CreditReceipt } from "../components/shared/Receipt";
+import { CreditReceipt, CreditPaymentReceipt } from "../components/shared/Receipt";
 import { ClientProfile }  from "../components/shared/ClientProfile";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import { supabase } from "../utils/supabase";
@@ -53,7 +53,11 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
   const [showAdd,      setShowAdd]      = useState(false);
   const [repaying,     setRepaying]     = useState(null);
   const [repayAmt,     setRepayAmt]     = useState("");
+  const [repayMethod,  setRepayMethod]  = useState("cash");
+  const [repayNote,    setRepayNote]    = useState("");
   const [receipt,      setReceipt]      = useState(null);
+  const [historyFor,   setHistoryFor]   = useState(null); // credit record
+  const [payReceipt,   setPayReceipt]   = useState(null); // { payment, credit }
   const [profile_,     setProfile_]     = useState(null);
   const [photoFile,    setPhotoFile]    = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
@@ -67,7 +71,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
   const [dueBefore,      setDueBefore]      = useState("");
   const [showDateFilter, setShowDateFilter] = useState(false);
 
-  const { credits, addCredit, repayCredit, updateCredit, profile, staffMap = {} } = store;
+  const { credits, addCredit, repayCredit, updateCredit, profile, staffMap = {}, debtPayments = [] } = store;
 
   const [f, setF] = useState(BLANK);
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
@@ -428,6 +432,16 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                     </svg>
                     Statement
                   </button>
+                  {debtPayments.some(p => p.credit_id === c.id) && (
+                    <button onClick={() => setHistoryFor(c)}
+                      className="py-2 px-3 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-xl font-bold text-xs border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition flex items-center gap-1.5 active:scale-[0.99]">
+                      <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                        <polyline points="12 8 12 12 14 14"/><path d="M3.05 11a9 9 0 1 0 .5-4.5"/>
+                        <polyline points="3 3 3 7 7 7"/>
+                      </svg>
+                      Payments
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -528,19 +542,32 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
       {/* Repayment modal */}
       {repaying && (
         <Modal title={`Record Payment — ${repaying.customer_name}`}
-          onClose={() => { setRepaying(null); setRepayAmt(""); }}>
+          onClose={() => { setRepaying(null); setRepayAmt(""); setRepayMethod("cash"); setRepayNote(""); }}>
           <div className="bg-red-50 dark:bg-red-900/20 rounded-xl px-4 py-3 mb-4 border border-red-100 dark:border-red-800/60">
             <p className="text-xs text-slate-500 dark:text-slate-400">Outstanding balance</p>
             <p className="text-xl font-black text-red-500 dark:text-red-400 tabular">{fmt(repaying.outstanding)}</p>
           </div>
           <Field label="Payment Amount (₦)" type="number" inputMode="decimal" value={repayAmt}
             onChange={e => setRepayAmt(e.target.value)} placeholder="Enter amount paid" />
+          <div className="mb-4">
+            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wide">Payment Method</label>
+            <select value={repayMethod} onChange={e => setRepayMethod(e.target.value)}
+              className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-white px-4 py-3 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-green-500">
+              <option value="cash">Cash</option>
+              <option value="bank_transfer">Bank Transfer</option>
+              <option value="pos">POS</option>
+              <option value="online">Online</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <Field label="Notes (optional)" value={repayNote}
+            onChange={e => setRepayNote(e.target.value)} placeholder="e.g. partial payment, bank ref..." />
           <button
             onClick={() => {
               if (!repayAmt) return;
-              repayCredit(repaying.id, parseFloat(repayAmt));
+              repayCredit(repaying.id, parseFloat(repayAmt), repayMethod, repayNote);
               speakConfirmation("creditSaved", getLang());
-              setRepaying(null); setRepayAmt("");
+              setRepaying(null); setRepayAmt(""); setRepayMethod("cash"); setRepayNote("");
             }}
             className="w-full py-3.5 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] shadow-sm">
             Confirm Payment
@@ -615,6 +642,103 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
       {receipt && (
         <CreditReceipt credit={receipt} profile={profile} onClose={() => setReceipt(null)} />
       )}
+
+      {/* Payment receipt overlay */}
+      {payReceipt && (
+        <CreditPaymentReceipt
+          payment={payReceipt.payment}
+          credit={payReceipt.credit}
+          businessName={profile?.business_name || profile?.owner_name || "My Business"}
+          onClose={() => setPayReceipt(null)}
+        />
+      )}
+
+      {/* Payment history overlay */}
+      {historyFor && (() => {
+        const payments = debtPayments.filter(p => p.credit_id === historyFor.id);
+        const bizName  = profile?.business_name || profile?.owner_name || "My Business";
+        return (
+          <div className="fixed inset-0 z-50 bg-black/60 flex flex-col">
+            {payReceipt && (
+              <CreditPaymentReceipt
+                payment={payReceipt.payment}
+                credit={payReceipt.credit}
+                businessName={bizName}
+                onClose={() => setPayReceipt(null)}
+              />
+            )}
+            <div className="bg-white dark:bg-slate-900 flex flex-col h-full max-w-lg w-full mx-auto">
+              {/* Header */}
+              <div className="flex items-center justify-between px-4 py-4 border-b border-slate-100 dark:border-slate-800">
+                <div>
+                  <h2 className="text-base font-black text-slate-800 dark:text-white">{historyFor.customer_name}</h2>
+                  <p className="text-xs text-slate-400 mt-0.5">Payment History · {payments.length} record{payments.length !== 1 ? "s" : ""}</p>
+                </div>
+                <button onClick={() => setHistoryFor(null)}
+                  className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center active:scale-90 transition">
+                  <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
+              </div>
+
+              {/* Credit summary bar */}
+              <div className="px-4 py-3 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-100 dark:border-amber-900/40 flex gap-6">
+                <div>
+                  <p className="text-[10px] text-slate-400 uppercase tracking-wide font-bold">Total Paid</p>
+                  <p className="text-sm font-black text-green-600">{fmt(historyFor.amount_paid)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-400 uppercase tracking-wide font-bold">Outstanding</p>
+                  <p className="text-sm font-black text-red-500">{fmt(historyFor.outstanding)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-400 uppercase tracking-wide font-bold">Status</p>
+                  <p className="text-sm font-black text-amber-600 capitalize">{(historyFor.status || "active").replace(/_/g, " ")}</p>
+                </div>
+              </div>
+
+              {/* Payment list */}
+              <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2">
+                {payments.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 text-center">
+                    <p className="text-slate-400 text-sm font-semibold">No payment records yet</p>
+                    <p className="text-slate-400 text-xs mt-1">Payments recorded going forward will appear here</p>
+                  </div>
+                ) : payments.map(p => {
+                  const dateStr = p.created_at
+                    ? new Date(p.created_at).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })
+                    : p.payment_date || "";
+                  return (
+                    <button key={p.id}
+                      onClick={() => setPayReceipt({ payment: p, credit: historyFor })}
+                      className="w-full text-left bg-white dark:bg-slate-800 rounded-2xl px-4 py-3 border border-slate-100 dark:border-slate-700 active:scale-[0.98] transition-transform">
+                      <div className="flex items-start gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-green-50 dark:bg-green-900/20 flex items-center justify-center flex-shrink-0">
+                          <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-green-600 dark:text-green-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                            <polyline points="20 6 9 17 4 12"/>
+                          </svg>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-sm font-extrabold text-green-600 dark:text-green-400 tabular">+{fmt(p.amount)}</span>
+                            <span className="text-[10px] font-bold text-slate-400">{dateStr}</span>
+                          </div>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 capitalize">
+                            {(p.payment_method || "cash").replace(/_/g, " ")}
+                          </p>
+                          {p.notes && <p className="text-[10px] text-slate-400 italic mt-0.5">"{p.notes}"</p>}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {profile_ && (
         <ClientProfile record={profile_} type="credit" onSave={updateCredit} onClose={() => setProfile_(null)} />
       )}

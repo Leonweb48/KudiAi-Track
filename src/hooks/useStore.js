@@ -10,7 +10,10 @@ function fireEmailTrigger(event, data) {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
     body: JSON.stringify({ event, data }),
-  }).catch(() => null);
+  })
+    .then(r => r.json())
+    .then(res => console.log("[KudiTrack Email]", event, res))
+    .catch(err => console.warn("[KudiTrack Email] fetch failed:", err));
 }
 
 // ── localStorage cache ─────────────────────────────────────────────
@@ -25,6 +28,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
   const [transactions, setTransactions] = useState([]);
   const [credits,      setCredits]      = useState([]);
   const [asoClients,   setAsoClients]   = useState([]);
+  const [debtPayments, setDebtPayments] = useState([]);
   const [profile,      setProfileState] = useState({
     business_name: "", owner_name: "", email: "",
     gender: "", date_of_birth: "", nin: "",
@@ -42,6 +46,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
 
   const syncRunning = useRef(false);
   const hasMounted  = useRef(false);
+  const authEmailRef = useRef("");
 
   // ── Load all data ──────────────────────────────────────────────
   const loadData = useCallback(async () => {
@@ -86,6 +91,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
     let txQ  = supabase.from("transactions").select("*").eq("user_id", userId);
     let crQ  = supabase.from("credits").select("*").eq("user_id", userId);
     let asoQ = supabase.from("aso_clients").select("*").eq("user_id", userId);
+    let dpQ  = supabase.from("debt_payments").select("*").eq("owner_id", userId);
     if (staffId) {
       txQ  = txQ.eq("staff_id",  staffId);
       crQ  = crQ.eq("staff_id",  staffId);
@@ -97,7 +103,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
       asoQ = asoQ.eq("branch_id", branchId);
     }
 
-    const [txRes, crRes, asoRes, profRes, staffRes] = await Promise.all([
+    const [txRes, crRes, asoRes, profRes, staffRes, sessRes, dpRes] = await Promise.all([
       txQ.order("created_at",  { ascending: false }),
       crQ.order("created_at",  { ascending: false }),
       asoQ.order("created_at", { ascending: false }),
@@ -105,11 +111,15 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
       !staffId
         ? supabase.from("staff").select("id, full_name").eq("owner_id", userId)
         : Promise.resolve({ data: null }),
+      supabase.auth.getSession(),
+      dpQ.order("created_at", { ascending: false }),
     ]);
+    authEmailRef.current = sessRes?.data?.session?.user?.email || "";
 
     if (txRes.data)  setTransactions(txRes.data);
     if (crRes.data)  setCredits(crRes.data);
     if (asoRes.data) setAsoClients(asoRes.data);
+    if (dpRes.data)  setDebtPayments(dpRes.data);
 
     // Fire overdue contribution reminders — once per client per calendar day
     if (asoRes.data?.length) {
@@ -296,6 +306,19 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
       await savePendingOp({ local_id: localId, table: "transactions", data: payload, user_id: userId });
       setPendingSync(c => c + 1);
       setDbError("Saved locally — will sync when connection improves");
+      fireEmailTrigger("transaction_failed", {
+        owner_id:      userId,
+        owner_email:   profile.email || "",
+        owner_name:    profile.owner_name || profile.business_name || "",
+        business_name: profile.business_name || "",
+        amount:        String(parseFloat(t.amount) || 0),
+        description:   t.item_name || t.category || "Transaction",
+        type:          t.type || "out",
+        date:          t.transaction_date || today(),
+        staff_id:      staffId || "",
+        staff_name:    staffName || "",
+        error_msg:     error.message || "Failed to save transaction",
+      });
     } else {
       setTransactions(p => p.map(tx => tx.id === tempId ? data : tx));
       const label = t.item_name || t.category || "Transaction";
@@ -330,9 +353,24 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
   };
 
   const deleteTransaction = async (id) => {
+    const txToCancel = transactions.find(tx => tx.id === id);
     setTransactions(p => p.filter(tx => tx.id !== id));
     const { error } = await supabase.from("transactions").delete().eq("id", id);
     if (error) { console.error("deleteTransaction:", error); loadData(); }
+    else if (txToCancel) {
+      fireEmailTrigger("transaction_cancelled", {
+        owner_id:      userId,
+        owner_email:   profile.email || "",
+        owner_name:    profile.owner_name || profile.business_name || "",
+        business_name: profile.business_name || "",
+        amount:        String(txToCancel.amount || 0),
+        description:   txToCancel.item_name || txToCancel.category || "Transaction",
+        type:          txToCancel.type || "out",
+        date:          txToCancel.transaction_date || today(),
+        staff_id:      staffId || txToCancel.staff_id || "",
+        staff_name:    staffName || "",
+      });
+    }
   };
 
   // ── Credits ────────────────────────────────────────────────────
@@ -387,7 +425,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
     }
   };
 
-  const repayCredit = async (id, amount) => {
+  const repayCredit = async (id, amount, paymentMethod = "cash", notes = "") => {
     let updated;
     setCredits(p => p.map(c => {
       if (c.id !== id) return c;
@@ -403,6 +441,20 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
         .eq("id", id);
       if (error) { console.error("repayCredit:", error); loadData(); }
       else {
+        // Record individual payment
+        const paymentPayload = {
+          credit_id:      id,
+          owner_id:       userId,
+          staff_id:       staffId  || null,
+          amount,
+          payment_method: paymentMethod,
+          payment_date:   today(),
+          notes:          notes    || null,
+          recorded_by:    staffId  || null,
+        };
+        const { data: dp } = await supabase.from("debt_payments").insert(paymentPayload).select().single();
+        if (dp) setDebtPayments(prev => [dp, ...prev]);
+
         onNotify?.("payments", "Payment Received", `${fmt(amount)} from ${updated.customer_name}`);
         fireEmailTrigger("credit_repayment", {
           creditor_name:  updated.customer_name || "",
@@ -525,20 +577,19 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
             recorded_by: staffId || null,
           }).catch(console.error);
         }
-        // Rule: always notify business owner + ajo client on contribution
-        // Emails resolved server-side from IDs to guarantee fresh delivery
         fireEmailTrigger("ajo_contribution", {
-          owner_id:               userId,
-          client_id:              id,
+          user_email:    staffId ? (profile.email || "") : (authEmailRef.current || profile.email || ""),
+          user_name:     profile.owner_name || profile.business_name || "",
+          business_name: profile.business_name || "",
+          client_email:  updated.email    || "",
+          client_name:   updated.full_name || "",
+          group_name:    updated.group_name || "",
           amount,
-          balance:                updated.current_balance,
-          next_contribution_date: updated.next_contribution_date || "",
-          group_name:             updated.group_name             || "",
-          reg_fee:                regFee || 0,
-          date:                   today(),
-          business_name:          profile.business_name          || "",
-          staff_id:               staffId  || "",
-          staff_name:             staffName || "",
+          balance:       updated.current_balance,
+          reg_fee:       regFee || 0,
+          date:          today(),
+          staff_email:   staffId ? (authEmailRef.current || "") : "",
+          staff_name:    staffName || "",
         });
         onNotify?.("aso", "Contribution Received", `${fmt(amount)} from ${updated.full_name}`);
       }
@@ -569,19 +620,19 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
           notes: feeAmount > 0 ? `Withdrawal fee deducted: ${fmt(feeAmount)}` : null,
           recorded_by: staffId || null,
         }).catch(console.error);
-        // Rule: always notify business owner + ajo client on withdrawal
-        // Emails resolved server-side from IDs to guarantee fresh delivery
         fireEmailTrigger("ajo_withdrawal", {
-          owner_id:      userId,
-          client_id:     id,
-          group_name:    updated.group_name   || "",
+          user_email:    staffId ? (profile.email || "") : (authEmailRef.current || profile.email || ""),
+          user_name:     profile.owner_name || profile.business_name || "",
+          business_name: profile.business_name || "",
+          client_email:  updated.email    || "",
+          client_name:   updated.full_name || "",
+          group_name:    updated.group_name || "",
           gross_amount:  amount,
           fee_amount:    feeAmount,
           amount:        netAmount,
           balance_after: updated.current_balance,
           date:          today(),
-          business_name: profile.business_name || "",
-          staff_id:      staffId  || "",
+          staff_email:   staffId ? (authEmailRef.current || "") : "",
           staff_name:    staffName || "",
         });
       }
@@ -659,7 +710,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
     addTransaction,
     // Staff cannot delete transactions — only business owners (no staffId) can
     deleteTransaction: staffId ? null : deleteTransaction,
-    addCredit, repayCredit, updateCredit,
+    addCredit, repayCredit, updateCredit, debtPayments,
     addAsoClient, asoContribute, asoWithdraw, updateAsoClient, deleteAsoClient,
   };
 }

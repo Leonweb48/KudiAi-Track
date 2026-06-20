@@ -3,6 +3,7 @@ import { supabase } from "../utils/supabase";
 import { peyflex } from "../utils/peyflex";
 import { fmt } from "../utils/helpers";
 import AppLogo from "../components/AppLogo";
+import { AjoTxReceipt } from "../components/shared/Receipt";
 
 async function ajoFn(action, body = {}) {
   const { data, error } = await supabase.functions.invoke("ajo-portal", {
@@ -994,7 +995,10 @@ function OverviewTab({ client, contributions, onWithdrawClick, onPayClick, owner
 }
 
 // ── History tab ───────────────────────────────────────────────────────────
-function HistoryTab({ contributions, withdrawRequests = [] }) {
+function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo }) {
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [receipt, setReceipt] = useState(null);
+
   const withdrawItems = withdrawRequests.map(r => ({
     _type: "withdrawal_request",
     id: r.id,
@@ -1007,6 +1011,18 @@ function HistoryTab({ contributions, withdrawRequests = [] }) {
   }));
   const contribItems = contributions.map(c => ({ _type: "contribution", ...c, date: c.created_at }));
   const allItems = [...withdrawItems, ...contribItems].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  const filtered = allItems.filter(item => {
+    if (typeFilter === "contributions") return item._type === "contribution" && item.type === "contribution";
+    if (typeFilter === "withdrawals")   return item._type === "withdrawal_request" || item.type === "withdrawal";
+    return true;
+  });
+
+  const FILTERS = [
+    { id: "all", label: "All" },
+    { id: "contributions", label: "Contributions" },
+    { id: "withdrawals", label: "Withdrawals" },
+  ];
 
   if (!allItems.length) {
     return (
@@ -1028,59 +1044,88 @@ function HistoryTab({ contributions, withdrawRequests = [] }) {
     return "bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400";
   };
 
+  const bizName = ownerInfo?.business_name || ownerInfo?.full_name || "My Business";
+
   return (
-    <div className="px-4 pt-5 pb-28 space-y-2">
-      {allItems.map(item => item._type === "withdrawal_request" ? (
-        <div key={`wr-${item.id}`} className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3 border border-slate-100 dark:border-slate-700">
-          <div className="flex items-start gap-3">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-violet-50 dark:bg-violet-900/20">
-              <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-violet-500" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-                <path d="M12 19V5M5 12l7 7 7-7"/>
-              </svg>
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-extrabold tabular text-violet-600 dark:text-violet-400">−{fmt(item.amount)}</span>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize flex-shrink-0 ${statusCls(item.status)}`}>{item.status}</span>
+    <div className="px-4 pt-5 pb-28">
+      {receipt && (
+        <AjoTxReceipt
+          txn={receipt}
+          clientName={client?.full_name || ""}
+          businessName={bizName}
+          onClose={() => setReceipt(null)}
+        />
+      )}
+
+      {/* Type filter chips */}
+      <div className="flex gap-2 overflow-x-auto no-scrollbar mb-4">
+        {FILTERS.map(f => (
+          <button key={f.id}
+            onClick={() => setTypeFilter(f.id)}
+            className={`px-4 py-1.5 rounded-full text-xs font-bold flex-shrink-0 transition-colors
+              ${typeFilter === f.id
+                ? "bg-violet-600 text-white shadow-sm"
+                : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300"}`}>
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="space-y-2">
+        {filtered.map(item => item._type === "withdrawal_request" ? (
+          <button key={`wr-${item.id}`} onClick={() => setReceipt({ ...item, type: "withdrawal" })}
+            className="w-full text-left bg-white dark:bg-slate-800 rounded-2xl px-4 py-3 border border-slate-100 dark:border-slate-700 active:scale-[0.98] transition-transform">
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-violet-50 dark:bg-violet-900/20">
+                <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-violet-500" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                  <path d="M12 19V5M5 12l7 7 7-7"/>
+                </svg>
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Withdrawal request · Net: {fmt(item.net_amount)}
-                {item.fee_amount > 0 && ` · Fee: ${fmt(item.fee_amount)}`}
-              </p>
-              <p className="text-[10px] text-slate-400 mt-0.5">
-                {new Date(item.date).toLocaleString("en-NG", { dateStyle: "medium", timeStyle: "short" })}
-              </p>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div key={`c-${item.id}`} className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3 border border-slate-100 dark:border-slate-700">
-          <div className="flex items-start gap-3">
-            <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${item.type === "contribution" ? "bg-green-50 dark:bg-green-900/20" : "bg-red-50 dark:bg-red-900/20"}`}>
-              <svg viewBox="0 0 24 24" fill="none" className={`w-4 h-4 ${item.type === "contribution" ? "text-green-600 dark:text-green-400" : "text-red-500"}`}
-                stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-                {item.type === "contribution" ? <><path d="M12 5v14M5 12l7-7 7 7" /></> : <><path d="M12 19V5M5 12l7 7 7-7" /></>}
-              </svg>
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between gap-2">
-                <span className={`text-sm font-extrabold tabular ${item.type === "contribution" ? "text-green-600 dark:text-green-400" : "text-red-500"}`}>
-                  {item.type === "contribution" ? "+" : "−"}{fmt(item.amount)}
-                </span>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize flex-shrink-0 ${statusCls(item.status)}`}>{item.status}</span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-extrabold tabular text-violet-600 dark:text-violet-400">−{fmt(item.amount)}</span>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize flex-shrink-0 ${statusCls(item.status)}`}>{item.status}</span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Withdrawal request · Net: {fmt(item.net_amount)}
+                  {item.fee_amount > 0 && ` · Fee: ${fmt(item.fee_amount)}`}
+                </p>
+                <p className="text-[10px] text-slate-400 mt-0.5">
+                  {new Date(item.date).toLocaleString("en-NG", { dateStyle: "medium", timeStyle: "short" })}
+                </p>
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 capitalize">
-                {item.type} · {item.payment_method || "cash"}
-                {item.paystack_ref && ` · Ref: ${item.paystack_ref.slice(-8)}`}
-              </p>
-              <p className="text-[10px] text-slate-400 mt-0.5">
-                {new Date(item.created_at).toLocaleString("en-NG", { dateStyle: "medium", timeStyle: "short" })}
-              </p>
-              {item.notes && <p className="text-[10px] text-slate-400 italic mt-0.5">"{item.notes}"</p>}
             </div>
-          </div>
-        </div>
-      ))}
+          </button>
+        ) : (
+          <button key={`c-${item.id}`} onClick={() => setReceipt(item)}
+            className="w-full text-left bg-white dark:bg-slate-800 rounded-2xl px-4 py-3 border border-slate-100 dark:border-slate-700 active:scale-[0.98] transition-transform">
+            <div className="flex items-start gap-3">
+              <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${item.type === "contribution" ? "bg-green-50 dark:bg-green-900/20" : "bg-red-50 dark:bg-red-900/20"}`}>
+                <svg viewBox="0 0 24 24" fill="none" className={`w-4 h-4 ${item.type === "contribution" ? "text-green-600 dark:text-green-400" : "text-red-500"}`}
+                  stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                  {item.type === "contribution" ? <><path d="M12 5v14M5 12l7-7 7 7" /></> : <><path d="M12 19V5M5 12l7 7 7-7" /></>}
+                </svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                  <span className={`text-sm font-extrabold tabular ${item.type === "contribution" ? "text-green-600 dark:text-green-400" : "text-red-500"}`}>
+                    {item.type === "contribution" ? "+" : "−"}{fmt(item.amount)}
+                  </span>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize flex-shrink-0 ${statusCls(item.status)}`}>{item.status}</span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 capitalize">
+                  {item.type} · {item.payment_method || "cash"}
+                  {item.paystack_ref && ` · Ref: ${item.paystack_ref.slice(-8)}`}
+                </p>
+                <p className="text-[10px] text-slate-400 mt-0.5">
+                  {new Date(item.created_at).toLocaleString("en-NG", { dateStyle: "medium", timeStyle: "short" })}
+                </p>
+                {item.notes && <p className="text-[10px] text-slate-400 italic mt-0.5">"{item.notes}"</p>}
+              </div>
+            </div>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1378,7 +1423,7 @@ export default function AjoClientPortal({ session, ajoClient }) {
               withdrawRequests={withdrawRequests}
             />
           )}
-          {tab === "history" && <HistoryTab contributions={contributions} withdrawRequests={withdrawRequests} />}
+          {tab === "history" && <HistoryTab contributions={contributions} withdrawRequests={withdrawRequests} client={client} ownerInfo={ownerInfo} />}
           {tab === "profile" && client && (
             <ProfileTab
               client={client}
