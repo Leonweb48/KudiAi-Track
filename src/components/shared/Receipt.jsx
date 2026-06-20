@@ -356,15 +356,16 @@ function Overlay({ onClose, pdfName, children }) {
    TRANSACTION RECEIPT
 ══════════════════════════════════════════════════════════════════ */
 export function TransactionReceipt({ txn, profile, onClose }) {
-  const isIn = txn.type === "in";
-  const biz  = profile.business_name || profile.owner_name || "My Business";
-  const amtColor   = isIn ? GRN : "#dc2626";
+  const isIn   = txn.type === "in";
+  const failed = txn.bill_status === "failed";
+  const biz    = profile.business_name || profile.owner_name || "My Business";
+  const amtColor   = failed ? "#dc2626" : isIn ? GRN : "#dc2626";
   const badgeColor = amtColor;
 
   return (
     <Overlay onClose={onClose} pdfName={`KudiAITrack_${isIn ? "CashIn" : "CashOut"}_Receipt_${txn.transaction_date || "today"}.pdf`}>
       <Header
-        title={isIn ? "CASH IN RECEIPT" : "CASH OUT RECEIPT"}
+        title={failed ? "FAILED BILL PAYMENT" : isIn ? "CASH IN RECEIPT" : "CASH OUT RECEIPT"}
         business={biz}
         email={SUPPORT_EMAIL}
         date={txn.transaction_date}
@@ -372,12 +373,20 @@ export function TransactionReceipt({ txn, profile, onClose }) {
       />
 
       <AmountHero
-        label="Transaction Amount"
+        label={failed ? "Amount (Not Collected)" : "Transaction Amount"}
         amount={fmt(txn.amount)}
         color={amtColor}
-        badge={isIn ? "CREDIT" : "DEBIT"}
+        badge={failed ? "FAILED" : isIn ? "CREDIT" : "DEBIT"}
         badgeColor={badgeColor}
       />
+
+      {failed && (
+        <div style={{ margin: "0 16px 12px", padding: "12px 14px", background: "#fef2f2", borderRadius: 12, border: "1px solid #fecaca" }}>
+          <p style={{ fontSize: 11, fontWeight: 700, color: "#b91c1c", margin: 0 }}>
+            This bill payment failed. Your admin team has been alerted and will resolve it shortly.
+          </p>
+        </div>
+      )}
 
       <SectionHead label="Transaction Details" />
       <Row label="Item"      value={txn.item_name}     bold />

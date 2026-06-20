@@ -191,19 +191,29 @@ function ActionBtn({ label, icon, bg, onClick }) {
    TX ROW (business portal style)
 ═══════════════════════════════════════════════════════════════════ */
 function TxRow({ t, onClick }) {
-  const isIn = t.type === "in";
+  const isIn   = t.type === "in";
+  const failed = t.bill_status === "failed";
   return (
     <button onClick={onClick}
-      className="w-full flex items-center gap-3 bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 shadow-card border border-slate-100 dark:border-slate-700/50 active:scale-[.98] transition-all text-left">
-      <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${isIn ? "bg-green-50 dark:bg-green-900/30" : "bg-red-50 dark:bg-red-900/30"}`}>
-        <Svg d={isIn ? P.in : P.out} size={16} color={isIn ? "#16a34a" : "#ef4444"} sw={2.5} />
+      className={`w-full flex items-center gap-3 rounded-2xl px-4 py-3.5 shadow-card border active:scale-[.98] transition-all text-left ${
+        failed
+          ? "bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800/50"
+          : "bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700/50"
+      }`}>
+      <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
+        failed ? "bg-red-100 dark:bg-red-900/30" : isIn ? "bg-green-50 dark:bg-green-900/30" : "bg-red-50 dark:bg-red-900/30"
+      }`}>
+        <Svg d={isIn ? P.in : P.out} size={16} color={failed ? "#dc2626" : isIn ? "#16a34a" : "#ef4444"} sw={2.5} />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate">{t.item_name || "Transaction"}</p>
+        <div className="flex items-center gap-1.5">
+          <p className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate">{t.item_name || "Transaction"}</p>
+          {failed && <span className="flex-shrink-0 text-[9px] font-black bg-red-500 text-white px-1.5 py-0.5 rounded-full">FAILED</span>}
+        </div>
         <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 truncate">{t.category} · {t.payment_type}</p>
       </div>
       <div className="text-right flex-shrink-0">
-        <p className={`text-sm font-extrabold tabular ${isIn ? "text-green-600" : "text-red-500"}`}>
+        <p className={`text-sm font-extrabold tabular ${failed ? "text-red-400 line-through" : isIn ? "text-green-600" : "text-red-500"}`}>
           {isIn ? "+" : "−"}{fmt(t.amount)}
         </p>
         {onClick && <p className="text-[10px] text-slate-300 dark:text-slate-600 mt-0.5">receipt →</p>}
