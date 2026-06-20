@@ -312,8 +312,8 @@ Ajo/savings balance: ₦${fmt(ajoBal)} across ${asoClients.length} clients`;
       });
 
       if (!res.ok) throw new Error("API error");
-      const { reply } = await res.json();
-      setAiInsight(reply || "");
+      const text = await res.text();
+      setAiInsight(text || "");
     } catch {
       setAiError("Could not generate insights. Please check your connection and try again.");
     } finally {

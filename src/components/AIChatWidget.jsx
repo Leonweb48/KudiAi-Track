@@ -67,8 +67,8 @@ export default function AIChatWidget({ store, inventory, branches = [] }) {
 
       let reply = "I couldn't get a response right now. Please try again.";
       if (res.ok) {
-        const data = await res.json();
-        if (data.reply) reply = data.reply;
+        const text = await res.text();
+        if (text) reply = text;
       }
       setMessages(prev => [...prev, { role: "assistant", text: reply }]);
     } catch {
