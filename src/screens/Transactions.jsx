@@ -11,7 +11,7 @@ import { getLang, speakConfirmation } from "../utils/i18n";
 const CATEGORIES   = ["sale", "expense", "stock", "credit sale", "debt repayment", "other"];
 const PAYMENT_TYPES = ["cash", "transfer", "pos", "mobile money"];
 
-function AddTxnModal({ onAdd, onClose, defaultType = "in", inventory = null }) {
+export function AddTxnModal({ onAdd, onClose, defaultType = "in", inventory = null }) {
   const [f, setF] = useState({
     type:             defaultType,
     category:         "sale",

@@ -17,6 +17,7 @@ import Aso                    from "./Aso";
 import Inventory              from "./Inventory";
 import Insights               from "./Insights";
 import StaffReports           from "./StaffReports";
+import { AddTxnModal }        from "./Transactions";
 
 /* ═══════════════════════════════════════════════════════════════════
    CONSTANTS
@@ -626,12 +627,14 @@ function StaffHome({ staff, store, inventory, plan, onGoTo, onVoiceOpen }) {
 /* ═══════════════════════════════════════════════════════════════════
    SALES TAB
 ═══════════════════════════════════════════════════════════════════ */
-function StaffSales({ store, staff, session, livePerms, initialSub, initialData, onVoiceOpen }) {
-  const [sub,     setSub]     = useState(initialSub || "cash");
-  const [receipt, setReceipt] = useState(initialData);
-  const [search,  setSearch]  = useState("");
-  const [period,  setPeriod]  = useState("all");
-  const { transactions = [], loading } = store;
+function StaffSales({ store, staff, session, livePerms, initialSub, initialData, onVoiceOpen, inventory }) {
+  const [sub,      setSub]     = useState(initialSub || "cash");
+  const [receipt,  setReceipt] = useState(initialData);
+  const [search,   setSearch]  = useState("");
+  const [period,   setPeriod]  = useState("all");
+  const [showAdd,  setShowAdd] = useState(false);
+  const [initType, setInitType] = useState("in");
+  const { transactions = [], loading, addTransaction } = store;
   const allowed = livePerms.filter(p => p.can_view).map(p => p.module);
 
   useEffect(() => { if (initialSub) setSub(initialSub); }, [initialSub]);
@@ -698,6 +701,19 @@ function StaffSales({ store, staff, session, livePerms, initialSub, initialData,
                 Mic Sale
               </button>
             </div>
+            {/* Cash In / Cash Out add buttons */}
+            <div className="flex gap-2">
+              <button onClick={() => { setInitType("in"); setShowAdd(true); }}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-green-600 text-white text-xs font-bold active:scale-[0.97] transition">
+                <Svg d="M12 5v14|M5 12h14" size={14} color="white" sw={2.5} />
+                Cash In
+              </button>
+              <button onClick={() => { setInitType("out"); setShowAdd(true); }}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-red-500 text-white text-xs font-bold active:scale-[0.97] transition">
+                <Svg d="M5 12h14" size={14} color="white" sw={2.5} />
+                Cash Out
+              </button>
+            </div>
           </div>
           <div className="flex-shrink-0 grid grid-cols-3 gap-px bg-slate-100 dark:bg-slate-700/50 border-y border-slate-100 dark:border-slate-700/50">
             {[["Cash In", fmt(cashIn), "text-green-600"],["Cash Out", fmt(cashOut), "text-red-500"],["Count", (sub === "cash" ? cashOnly : filtered).length + " txns", "text-slate-700 dark:text-slate-200"]].map(([l, v, c]) => (
@@ -721,6 +737,15 @@ function StaffSales({ store, staff, session, livePerms, initialSub, initialData,
 
       {receipt && (
         <TransactionReceipt txn={receipt} profile={store.profile || { business_name: staff?.business_name }} onClose={() => setReceipt(null)} />
+      )}
+
+      {showAdd && (
+        <AddTxnModal
+          defaultType={initType}
+          onAdd={addTransaction}
+          onClose={() => setShowAdd(false)}
+          inventory={inventory}
+        />
       )}
     </div>
   );
@@ -1193,7 +1218,7 @@ export default function StaffDashboard({ session, staff }) {
   function renderContent() {
     switch (tab) {
       case "home":    return <StaffHome    staff={staff} store={store} inventory={inventory} plan={plan} onGoTo={goTo} onVoiceOpen={() => setVoiceOpen(true)} />;
-      case "sales":   return <StaffSales   store={store} staff={staff} session={session} livePerms={livePerms} initialSub={subNav} initialData={subData} onVoiceOpen={() => setVoiceOpen(true)} />;
+      case "sales":   return <StaffSales   store={store} staff={staff} session={session} livePerms={livePerms} initialSub={subNav} initialData={subData} onVoiceOpen={() => setVoiceOpen(true)} inventory={inventory} />;
       case "records": return <StaffRecords store={store} staff={staff} livePerms={livePerms} initialSub={subNav} plan={plan} />;
       case "stock":   return <StaffStock   inventory={inventory} staff={staff} livePerms={livePerms} plan={plan} />;
       case "me":      return <StaffMe      staff={staff} session={session} store={store} inventory={inventory} livePerms={livePerms} staffId={staffId} lock={lock} plan={plan} initialView={subNav} />;
