@@ -1071,6 +1071,33 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
             ) : null}
           </div>
 
+          {/* ── Electricity Token — prominent box ── */}
+          {fulfillResult.elecToken && (
+            <div className="mx-4 mt-4 rounded-2xl overflow-hidden shadow-sm" style={{ border: "2px solid #fbbf24" }}>
+              <div className="px-4 py-3 flex items-center gap-2" style={{ background: "linear-gradient(135deg,#fef3c7,#fde68a)" }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2.5" strokeLinecap="round">
+                  <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+                </svg>
+                <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: "#92400e" }}>Electricity Token — Save This!</p>
+              </div>
+              <div className="bg-white px-4 py-4 flex flex-col items-center gap-3">
+                <p className="font-mono text-2xl font-black tracking-widest text-center break-all" style={{ color: "#1e293b" }}>
+                  {fulfillResult.elecToken}
+                </p>
+                <button
+                  onClick={() => { try { navigator.clipboard.writeText(fulfillResult.elecToken); } catch (_) {} }}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black active:scale-95 transition-transform"
+                  style={{ background: "#fef3c7", color: "#92400e", border: "1.5px solid #fde68a" }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                    <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+                  </svg>
+                  Copy Token
+                </button>
+                <p className="text-[10px] text-slate-400 text-center">Enter this token on your prepaid meter to load your units</p>
+              </div>
+            </div>
+          )}
+
           {/* PINs / Vouchers */}
           {fulfillResult.pinsArr?.length > 0 && (
             <div className="mx-4 mt-4 rounded-2xl overflow-hidden shadow-sm" style={{ border: "1px solid #e2e8f0" }}>
@@ -1621,7 +1648,7 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
       }
 
       const { cat, form: f, verifyName: vName, paidAmount, baseAmount, pointsDiscount: redeemedPoints = 0 } = pending;
-      let apiRef = "", note = "", itemName = "", customerRef = "", cardDetails = "", pinsArr = null, txnHistoryPending = false;
+      let apiRef = "", note = "", itemName = "", customerRef = "", cardDetails = "", pinsArr = null, txnHistoryPending = false, elecToken = "";
       const amount = parseFloat(f.amount) || 0;
 
       if (cat === "airtime") {
@@ -1647,15 +1674,16 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
         const compName = ELECTRICITY_COMPANIES.find(c => c.code === f.company)?.name || f.company;
         const mTypeName = f.meterType === "01" ? "Prepaid" : "Postpaid";
         itemName = `${compName} ${mTypeName}`; customerRef = f.meterNo;
+        elecToken = r.token || "";
         if (r.status === "TXN_HISTORY") {
-          if (r.token) {
-            note = `Token: ${r.token} | Meter: ${f.meterNo} | ${vName}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
+          if (elecToken) {
+            note = `Token: ${elecToken} | Meter: ${f.meterNo} | ${vName}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
           } else {
             txnHistoryPending = true;
             note = `Meter: ${f.meterNo} | ${vName} | Check meter — token may already be dispensed${apiRef ? ` | Ref: ${apiRef}` : ""}`;
           }
         } else {
-          note = r.token ? `Token: ${r.token} | Meter: ${f.meterNo} | ${vName}${apiRef ? ` | Ref: ${apiRef}` : ""}` : `Meter: ${f.meterNo} | ${vName}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
+          note = elecToken ? `Token: ${elecToken} | Meter: ${f.meterNo} | ${vName}${apiRef ? ` | Ref: ${apiRef}` : ""}` : `Meter: ${f.meterNo} | ${vName}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
         }
 
       } else if (cat === "betting") {
@@ -1762,7 +1790,7 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
 
       localStorage.removeItem(BILL_PENDING_PREFIX + ref);
       setSaving(false);
-      setFulfillResult({ ok: true, label: itemName, detail: note, pinsArr: pinsArr || [], psRef: ref, apiRef, cardDetails, cat, amount: totalAmount || amount, earnedPts, txnHistoryPending });
+      setFulfillResult({ ok: true, label: itemName, detail: note, pinsArr: pinsArr || [], psRef: ref, apiRef, cardDetails, cat, amount: totalAmount || amount, earnedPts, txnHistoryPending, elecToken });
 
       // Send success confirmation emails (best-effort)
       const svcLabel = CATS.find(c => c.id === cat)?.label || cat;

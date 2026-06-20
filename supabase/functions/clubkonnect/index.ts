@@ -272,16 +272,31 @@ serve(async (req) => {
         MeterNo: meterNo, Amount: String(amount), PhoneNo: phone.replace(/\D/g, ""),
         RequestID: reqId(), CallBackURL: "https://kudiai.app/",
       });
-      // TXN_HISTORY means ClubKonnect already has this transaction recorded —
-      // the token may already have been dispensed to the meter.
+      // Log full response so we can diagnose token field name
+      console.log("electricity full response:", JSON.stringify(data));
+
+      // Extract token — ClubKonnect uses different field names across DisCos
+      function extractElecToken(d: Record<string, unknown>): string {
+        const candidates = [
+          d.token, d.Token, d.metertoken, d.MeterToken, d.meter_token,
+          d.electricity_token, d.ElectricityToken, d.tokencode, d.TokenCode,
+          d.units, d.Units, d.pin, d.Pin, d.vend_token, d.VendToken,
+          d.receipt_no, d.ReceiptNo, d.receiptno,
+        ];
+        const found = candidates.find(v => v != null && String(v).trim() !== "" && String(v).toLowerCase() !== "null" && String(v).toLowerCase() !== "undefined");
+        return found ? String(found).trim() : "";
+      }
+
       const rawStat = String(data?.status ?? data?.Status ?? "").toUpperCase();
       if (rawStat.includes("TXN_HISTORY")) {
-        const token = String(data?.token ?? data?.Token ?? "");
+        const token = extractElecToken(data);
         const ref   = String(data?.orderid ?? data?.requestid ?? "");
         return json({ status: "TXN_HISTORY", reference: ref, token, message: "TXN_HISTORY" });
       }
       if (!isOk(data)) return json({ error: errMsg(data, "Electricity purchase failed"), _raw: data });
-      return json({ status: "SUCCESS", reference: String(data.orderid ?? data.requestid ?? ""), token: String(data.token ?? data.Token ?? ""), message: String(data.status ?? "ORDER_RECEIVED") });
+      const elecToken = extractElecToken(data);
+      const elecRef   = String(data.orderid ?? data.requestid ?? data.OrderID ?? data.RequestID ?? "");
+      return json({ status: "SUCCESS", reference: elecRef, token: elecToken, message: String(data.status ?? "ORDER_RECEIVED") });
     }
 
     // ── Betting providers ─────────────────────────────────────────────────────
