@@ -109,7 +109,6 @@ export default function AIAssistant({ store, inventory, branches = [], onClose, 
     try {
       const products = inventory?.products || [];
       const context  = buildContext(store, products, branches);
-      // Pass last 10 messages (skip greeting) as conversation history
       const history  = msgRef.current.slice(1).map(m => ({ role: m.role, text: m.text }));
 
       const res = await fetch(CHAT_URL, {
@@ -118,16 +117,38 @@ export default function AIAssistant({ store, inventory, branches = [], onClose, 
         body:    JSON.stringify({ message: q, lang, businessContext: context, history }),
       });
 
-      let reply = "I couldn't get a response right now. Please check your connection and try again.";
-      if (res.ok) {
-        const data = await res.json();
-        if (data.reply) reply = data.reply;
+      if (!res.ok || !res.body) {
+        setMessages(prev => [...prev, { role: "assistant", text: "I couldn't get a response right now. Please check your connection and try again." }]);
+        return;
       }
 
-      setMessages(prev => [...prev, { role: "assistant", text: reply }]);
-      if (ttsOnRef.current) speakText(reply, lang);
+      // Show empty bubble immediately, hide spinner, stream tokens in
+      setMessages(prev => [...prev, { role: "assistant", text: "" }]);
+      setThinking(false);
+
+      const reader  = res.body.getReader();
+      const decoder = new TextDecoder();
+      let reply = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        reply += decoder.decode(value, { stream: true });
+        const snap = reply;
+        setMessages(prev => {
+          const updated = [...prev];
+          updated[updated.length - 1] = { role: "assistant", text: snap };
+          return updated;
+        });
+      }
+
+      if (ttsOnRef.current && reply) speakText(reply, lang);
     } catch {
-      setMessages(prev => [...prev, { role: "assistant", text: "Network error. Please check your connection and try again." }]);
+      setMessages(prev => {
+        const last = prev[prev.length - 1];
+        if (last?.role === "assistant" && last.text) return prev;
+        return [...prev, { role: "assistant", text: "Network error. Please check your connection and try again." }];
+      });
     } finally {
       setThinking(false);
     }
