@@ -42,7 +42,7 @@ const NAV = [
   { id: "home",    icon: "home",  label: "Home"    },
   { id: "bills",   icon: "bills", label: "Bills"   },
   { id: "history", icon: "txn",   label: "History" },
-  { id: "me",      icon: "user",  label: "Me"      },
+  { id: "me",      icon: "user",  label: "Settings" },
 ];
 
 function greetingText() {
@@ -963,6 +963,56 @@ function OverviewTab({ client, contributions, onWithdrawClick, onPayClick, owner
         </div>
       </div>
 
+      {/* Quick Actions */}
+      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4 shadow-sm">
+        <p className="text-sm font-extrabold text-slate-800 dark:text-white mb-4">Quick Actions</p>
+        <div className={`grid gap-4 ${client?.contribution_amount > 0 ? "grid-cols-3" : "grid-cols-2"}`}>
+          {client?.contribution_amount > 0 && (
+            <ActionBtn
+              label="Pay Contribution"
+              icon="M1 4h22|M1 10h22|M3 20h18a1 1 0 001-1V5a1 1 0 00-1-1H3a1 1 0 00-1 1v14a1 1 0 001 1z"
+              bg="bg-gradient-to-br from-green-500 to-green-600"
+              onClick={onPayClick}
+            />
+          )}
+          <ActionBtn
+            label="Withdraw"
+            icon="M12 19V5|M5 12l7 7 7-7"
+            bg="bg-gradient-to-br from-violet-500 to-violet-700"
+            onClick={onWithdrawClick}
+          />
+          <ActionBtn
+            label="Pay Bills"
+            icon="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2|M9 5a2 2 0 002 2h2a2 2 0 002-2|M9 13h6|M9 17h4"
+            bg="bg-gradient-to-br from-blue-500 to-blue-600"
+            onClick={onBillsClick}
+          />
+        </div>
+      </div>
+
+      {/* Quick Services */}
+      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4 shadow-sm">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm font-extrabold text-slate-800 dark:text-white">Quick Services</p>
+          <button onClick={onBillsClick}
+            className="text-[11px] text-violet-600 dark:text-violet-400 font-bold">View all</button>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          {QUICK_SERVICES.map(s => (
+            <button key={s.id} onClick={onBillsClick}
+              className="flex flex-col items-center gap-1.5 active:scale-95 transition-transform">
+              <div className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm"
+                style={{ background: `linear-gradient(135deg,${s.g1},${s.g2})` }}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  {s.d.split("|").map((p, i) => <path key={i} d={p} />)}
+                </svg>
+              </div>
+              <span className="text-[10px] font-semibold text-slate-600 dark:text-slate-400 text-center leading-tight">{s.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Next due */}
       {client.next_contribution_date && (
         <div className={`rounded-2xl px-4 py-3 border flex items-center gap-3 ${
@@ -1075,33 +1125,6 @@ function OverviewTab({ client, contributions, onWithdrawClick, onPayClick, owner
         </button>
       )}
 
-      {/* Quick Actions */}
-      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4 shadow-sm">
-        <p className="text-sm font-extrabold text-slate-800 dark:text-white mb-4">Quick Actions</p>
-        <div className={`grid gap-4 ${client?.contribution_amount > 0 ? "grid-cols-3" : "grid-cols-2"}`}>
-          {client?.contribution_amount > 0 && (
-            <ActionBtn
-              label="Pay Contribution"
-              icon="M1 4h22|M1 10h22|M3 20h18a1 1 0 001-1V5a1 1 0 00-1-1H3a1 1 0 00-1 1v14a1 1 0 001 1z"
-              bg="bg-gradient-to-br from-green-500 to-green-600"
-              onClick={onPayClick}
-            />
-          )}
-          <ActionBtn
-            label="Withdraw"
-            icon="M12 19V5|M5 12l7 7 7-7"
-            bg="bg-gradient-to-br from-violet-500 to-violet-700"
-            onClick={onWithdrawClick}
-          />
-          <ActionBtn
-            label="Pay Bills"
-            icon="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2|M9 5a2 2 0 002 2h2a2 2 0 002-2|M9 13h6|M9 17h4"
-            bg="bg-gradient-to-br from-blue-500 to-blue-600"
-            onClick={onBillsClick}
-          />
-        </div>
-      </div>
-
       {/* Pending withdrawal requests */}
       {withdrawRequests.filter(r => r.status === "pending").length > 0 && (
         <div>
@@ -1131,29 +1154,6 @@ function OverviewTab({ client, contributions, onWithdrawClick, onPayClick, owner
       {/* Activity calendar */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-4 border border-slate-100 dark:border-slate-700">
         <ContribCalendar contributions={contributions} />
-      </div>
-
-      {/* Quick Services */}
-      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4 shadow-sm">
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-sm font-extrabold text-slate-800 dark:text-white">Quick Services</p>
-          <button onClick={onBillsClick}
-            className="text-[11px] text-violet-600 dark:text-violet-400 font-bold">View all</button>
-        </div>
-        <div className="grid grid-cols-3 gap-3">
-          {QUICK_SERVICES.map(s => (
-            <button key={s.id} onClick={onBillsClick}
-              className="flex flex-col items-center gap-1.5 active:scale-95 transition-transform">
-              <div className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm"
-                style={{ background: `linear-gradient(135deg,${s.g1},${s.g2})` }}>
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  {s.d.split("|").map((p, i) => <path key={i} d={p} />)}
-                </svg>
-              </div>
-              <span className="text-[10px] font-semibold text-slate-600 dark:text-slate-400 text-center leading-tight">{s.label}</span>
-            </button>
-          ))}
-        </div>
       </div>
 
       {/* Recent activity */}
