@@ -477,7 +477,7 @@ function FAQ() {
 /* ═══════════════════════════════════════════════════════════════════
    HOME TAB
 ═══════════════════════════════════════════════════════════════════ */
-function StaffHome({ staff, store, inventory, plan, onGoTo, onVoiceOpen }) {
+function StaffHome({ staff, store, inventory, plan, onGoTo, onVoiceOpen, onAddCash }) {
   const { transactions = [], credits = [], asoClients = [], loading } = store;
   const todayStr     = today();
   const todayTx      = transactions.filter(t => t.transaction_date === todayStr);
@@ -592,8 +592,8 @@ function StaffHome({ staff, store, inventory, plan, onGoTo, onVoiceOpen }) {
       <div className="mb-5">
         <h2 className="text-[13px] font-bold text-slate-700 dark:text-slate-300 mb-3 tracking-wide">Quick Actions</h2>
         <div className="grid grid-cols-3 gap-y-4 gap-x-2">
-          <ActionBtn label="Cash In"   icon={P.in}     bg="bg-gradient-to-br from-green-500 to-emerald-600" onClick={() => onGoTo("sales", "cash")} />
-          <ActionBtn label="Cash Out"  icon={P.out}    bg="bg-gradient-to-br from-red-500 to-red-600"       onClick={() => onGoTo("sales", "cash")} />
+          <ActionBtn label="Cash In"   icon={P.in}     bg="bg-gradient-to-br from-green-500 to-emerald-600" onClick={() => onAddCash("in")} />
+          <ActionBtn label="Cash Out"  icon={P.out}    bg="bg-gradient-to-br from-red-500 to-red-600"       onClick={() => onAddCash("out")} />
           <ActionBtn label="Pay Bills" icon={P.bills}  bg="bg-gradient-to-br from-cyan-500 to-teal-600"     onClick={() => onGoTo("sales", "bills")} />
           <ActionBtn label="Credit"    icon={P.credit} bg="bg-gradient-to-br from-amber-400 to-amber-500"   onClick={() => onGoTo("records", "credit")} />
           {canDo(plan, "aso") && (
@@ -627,14 +627,12 @@ function StaffHome({ staff, store, inventory, plan, onGoTo, onVoiceOpen }) {
 /* ═══════════════════════════════════════════════════════════════════
    SALES TAB
 ═══════════════════════════════════════════════════════════════════ */
-function StaffSales({ store, staff, session, livePerms, initialSub, initialData, onVoiceOpen, inventory }) {
+function StaffSales({ store, staff, session, livePerms, initialSub, initialData, onVoiceOpen, inventory, onAddCash }) {
   const [sub,      setSub]     = useState(initialSub || "cash");
   const [receipt,  setReceipt] = useState(initialData);
   const [search,   setSearch]  = useState("");
   const [period,   setPeriod]  = useState("all");
-  const [showAdd,  setShowAdd] = useState(false);
-  const [initType, setInitType] = useState("in");
-  const { transactions = [], loading, addTransaction } = store;
+  const { transactions = [], loading } = store;
   const allowed = livePerms.filter(p => p.can_view).map(p => p.module);
 
   useEffect(() => { if (initialSub) setSub(initialSub); }, [initialSub]);
@@ -703,12 +701,12 @@ function StaffSales({ store, staff, session, livePerms, initialSub, initialData,
             </div>
             {/* Cash In / Cash Out add buttons */}
             <div className="flex gap-2">
-              <button onClick={() => { setInitType("in"); setShowAdd(true); }}
+              <button onClick={() => onAddCash("in")}
                 className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-green-600 text-white text-xs font-bold active:scale-[0.97] transition">
                 <Svg d="M12 5v14|M5 12h14" size={14} color="white" sw={2.5} />
                 Cash In
               </button>
-              <button onClick={() => { setInitType("out"); setShowAdd(true); }}
+              <button onClick={() => onAddCash("out")}
                 className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-red-500 text-white text-xs font-bold active:scale-[0.97] transition">
                 <Svg d="M5 12h14" size={14} color="white" sw={2.5} />
                 Cash Out
@@ -737,15 +735,6 @@ function StaffSales({ store, staff, session, livePerms, initialSub, initialData,
 
       {receipt && (
         <TransactionReceipt txn={receipt} profile={store.profile || { business_name: staff?.business_name }} onClose={() => setReceipt(null)} />
-      )}
-
-      {showAdd && (
-        <AddTxnModal
-          defaultType={initType}
-          onAdd={addTransaction}
-          onClose={() => setShowAdd(false)}
-          inventory={inventory}
-        />
       )}
     </div>
   );
@@ -1104,11 +1093,14 @@ function StaffMe({ staff, session, store, inventory, livePerms, staffId, lock, p
    MAIN STAFF DASHBOARD
 ═══════════════════════════════════════════════════════════════════ */
 export default function StaffDashboard({ session, staff }) {
-  const [tab,       setTab]       = useState("home");
-  const [subNav,    setSubNav]    = useState(null);
-  const [subData,   setSubData]   = useState(null);
-  const [livePerms, setLivePerms] = useState(staff?.staff_permissions || []);
-  const [voiceOpen, setVoiceOpen] = useState(false);
+  const [tab,        setTab]       = useState("home");
+  const [subNav,     setSubNav]    = useState(null);
+  const [subData,    setSubData]   = useState(null);
+  const [livePerms,  setLivePerms] = useState(staff?.staff_permissions || []);
+  const [voiceOpen,  setVoiceOpen] = useState(false);
+  const [showAddTxn, setShowAddTxn] = useState(false);
+  const [addTxnType, setAddTxnType] = useState("in");
+  const openAddTxn = useCallback((type) => { setAddTxnType(type); setShowAddTxn(true); }, []);
 
   const staffId  = staff?.id;
   const ownerId  = staff?.owner_id;
@@ -1217,8 +1209,8 @@ export default function StaffDashboard({ session, staff }) {
 
   function renderContent() {
     switch (tab) {
-      case "home":    return <StaffHome    staff={staff} store={store} inventory={inventory} plan={plan} onGoTo={goTo} onVoiceOpen={() => setVoiceOpen(true)} />;
-      case "sales":   return <StaffSales   store={store} staff={staff} session={session} livePerms={livePerms} initialSub={subNav} initialData={subData} onVoiceOpen={() => setVoiceOpen(true)} inventory={inventory} />;
+      case "home":    return <StaffHome    staff={staff} store={store} inventory={inventory} plan={plan} onGoTo={goTo} onVoiceOpen={() => setVoiceOpen(true)} onAddCash={openAddTxn} />;
+      case "sales":   return <StaffSales   store={store} staff={staff} session={session} livePerms={livePerms} initialSub={subNav} initialData={subData} onVoiceOpen={() => setVoiceOpen(true)} inventory={inventory} onAddCash={openAddTxn} />;
       case "records": return <StaffRecords store={store} staff={staff} livePerms={livePerms} initialSub={subNav} plan={plan} />;
       case "stock":   return <StaffStock   inventory={inventory} staff={staff} livePerms={livePerms} plan={plan} />;
       case "me":      return <StaffMe      staff={staff} session={session} store={store} inventory={inventory} livePerms={livePerms} staffId={staffId} lock={lock} plan={plan} initialView={subNav} />;
@@ -1282,6 +1274,16 @@ export default function StaffDashboard({ session, staff }) {
           </div>
           <div style={{ height: "env(safe-area-inset-bottom, 0px)" }} className="bg-white dark:bg-slate-900" />
         </nav>
+
+        {/* Add Transaction Modal (dashboard-level so it escapes overflow:hidden on <main>) */}
+        {showAddTxn && (
+          <AddTxnModal
+            defaultType={addTxnType}
+            onAdd={store.addTransaction}
+            onClose={() => setShowAddTxn(false)}
+            inventory={inventory}
+          />
+        )}
 
         {/* Floating KudiAI Chat Widget */}
         <AIChatWidget store={store} inventory={inventory} branches={[]} />
