@@ -3,6 +3,8 @@ import { supabase }           from "../utils/supabase";
 import { useStore }           from "../hooks/useStore";
 import { useInventory }       from "../hooks/useInventory";
 import { useBiometricLock }   from "../hooks/useBiometricLock";
+import { useNotifications }   from "../hooks/useNotifications";
+import NotificationCenter, { NotificationBell } from "../components/NotificationCenter";
 import { fmt, today }         from "../utils/helpers";
 import { canDo, normalizeSlug } from "../utils/plans";
 import AppLogo                from "../components/AppLogo";
@@ -1154,8 +1156,11 @@ export default function StaffDashboard({ session, staff }) {
   const staffId  = staff?.id;
   const ownerId  = staff?.owner_id;
 
-  const store     = useStore(ownerId, staffId, staff?.full_name);
-  const inventory = useInventory(ownerId, staffId, null, staff?.branch_id || null);
+  const notif    = useNotifications(staffId);
+  const { addNotification } = notif;
+
+  const store     = useStore(ownerId, staffId, staff?.full_name, addNotification);
+  const inventory = useInventory(ownerId, staffId, addNotification, staff?.branch_id || null);
   const lock      = useBiometricLock(staffId);
 
   // Fetch the business owner's active subscription plan.
@@ -1283,12 +1288,15 @@ export default function StaffDashboard({ session, staff }) {
               style={{ background: "linear-gradient(135deg,#16a34a,#059669)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>AI</span>
             <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 tracking-widest uppercase leading-none ml-1">Track</span>
           </div>
-          <button onClick={() => goTo("me")}
-            className="w-9 h-9 rounded-full bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center border-2 border-slate-100 dark:border-slate-700 shadow-sm active:scale-90 transition-transform overflow-hidden">
-            {staff?.profile_image_url
-              ? <img src={staff.profile_image_url} alt="" className="w-9 h-9 object-cover" />
-              : <span className="text-sm font-black text-white">{avatarInitial}</span>}
-          </button>
+          <div className="flex items-center gap-2">
+            <NotificationBell unreadCount={notif.unreadCount} onClick={() => notif.setOpen(true)} />
+            <button onClick={() => goTo("me")}
+              className="w-9 h-9 rounded-full bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center border-2 border-slate-100 dark:border-slate-700 shadow-sm active:scale-90 transition-transform overflow-hidden">
+              {staff?.profile_image_url
+                ? <img src={staff.profile_image_url} alt="" className="w-9 h-9 object-cover" />
+                : <span className="text-sm font-black text-white">{avatarInitial}</span>}
+            </button>
+          </div>
         </header>
 
         {/* Content */}
@@ -1341,6 +1349,9 @@ export default function StaffDashboard({ session, staff }) {
         {voiceOpen && (
           <VoiceModal onClose={() => setVoiceOpen(false)} onSave={handleVoiceSave} />
         )}
+
+        {/* Notification Center */}
+        <NotificationCenter notif={notif} />
 
       </div>
     </div>
