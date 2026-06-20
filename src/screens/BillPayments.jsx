@@ -2472,7 +2472,23 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
       )}
 
       {pins && <PinModal pins={pins.list} title={pins.title} onClose={() => setPins(null)} />}
-      {receipt && <BillReceipt bill={receipt} onClose={() => setReceipt(null)} />}
+      {receipt && (
+        <BillReceipt
+          bill={receipt}
+          onClose={() => setReceipt(null)}
+          onRetrieveToken={
+            receipt.category === "electricity" && !receipt.token && receipt.apiRef
+              ? async (orderId) => {
+                  const q = await clubkonnect("electricity-query", { orderId });
+                  if (q.status === "SUCCESS" && q.token) return q.token;
+                  throw new Error(q.status === "CANCELLED"
+                    ? "Order was cancelled by provider. Contact support with your reference."
+                    : "Token not ready yet. Please wait a few minutes and try again.");
+                }
+              : undefined
+          }
+        />
+      )}
       {showStatement && <BillStatementModal bills={bills} profile={profile} onClose={() => setShowStatement(false)} />}
       {showKeyStatus && <KeyStatusPanel onClose={() => setShowKeyStatus(false)} />}
     </div>

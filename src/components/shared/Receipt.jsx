@@ -451,10 +451,31 @@ export function CreditReceipt({ credit, profile, onClose }) {
 /* ══════════════════════════════════════════════════════════════════
    BILL PAYMENT RECEIPT
 ══════════════════════════════════════════════════════════════════ */
-export function BillReceipt({ bill, onClose }) {
+export function BillReceipt({ bill, onClose, onRetrieveToken }) {
+  const [retrieving,     setRetrieving]     = useState(false);
+  const [retrievedToken, setRetrievedToken] = useState(null);
+  const [retrieveError,  setRetrieveError]  = useState("");
+
+  const effectiveToken = retrievedToken || bill.token;
+
+  const handleRetrieve = async () => {
+    if (!onRetrieveToken || retrieving) return;
+    setRetrieving(true); setRetrieveError("");
+    try {
+      const tok = await onRetrieveToken(bill.apiRef);
+      setRetrievedToken(tok);
+    } catch (e) {
+      setRetrieveError(e.message || "Token not found. Try again later.");
+    } finally {
+      setRetrieving(false);
+    }
+  };
+
   const dateStr = bill.created_at
     ? new Date(bill.created_at).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })
     : new Date().toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" });
+
+  const showRetrieveBtn = !!onRetrieveToken && !effectiveToken && !retrieving;
 
   return (
     <Overlay onClose={onClose} pdfName={`KudiAITrack_Bill_Receipt_${dateStr}.pdf`}>
@@ -478,11 +499,59 @@ export function BillReceipt({ bill, onClose }) {
       <Row label="Service"     value={bill.service || bill.category} bold />
       <Row label="Description" value={bill.item_name} />
       <Row label="Beneficiary" value={bill.customer_name} />
-      {bill.token && <Row label="Token / Units" value={bill.token} color="#d97706" bold />}
+      {effectiveToken && <Row label="Token / Units" value={effectiveToken} color="#d97706" bold />}
       <Row label="Receipt No"  value={bill.receiptId || bill.id?.toString().slice(0, 8).toUpperCase()} />
       <Row label="Reference"   value={bill.apiRef} />
       {bill.staffName && <Row label="Processed by" value={bill.staffName} />}
       <Row label="Date"        value={dateStr} last />
+
+      {/* Electricity token retrieval — shown when no token but orderId present */}
+      {(showRetrieveBtn || retrieving || retrieveError || retrievedToken) && (
+        <div style={{ margin: "12px 16px 4px", borderRadius: 12, overflow: "hidden", border: "2px solid #fbbf24" }}>
+          <div style={{ background: "linear-gradient(135deg,#fef3c7,#fde68a)", padding: "10px 14px", display: "flex", alignItems: "center", gap: 8 }}>
+            <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth={2.5} strokeLinecap="round">
+              <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+            </svg>
+            <span style={{ fontSize: 10, fontWeight: 800, color: "#92400e", letterSpacing: 1, textTransform: "uppercase" }}>
+              {retrievedToken ? "Electricity Token" : "Retrieve Token"}
+            </span>
+          </div>
+          <div style={{ background: "white", padding: "14px", display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+            {retrievedToken ? (
+              <>
+                <p style={{ fontFamily: "monospace", fontSize: 22, fontWeight: 900, color: "#1e293b", textAlign: "center", wordBreak: "break-all", margin: 0, letterSpacing: 2 }}>
+                  {retrievedToken}
+                </p>
+                <p style={{ fontSize: 10, color: "#94a3b8", textAlign: "center", margin: 0 }}>
+                  Enter this token on your prepaid meter to load units
+                </p>
+              </>
+            ) : retrieving ? (
+              <>
+                <div style={{ width: 32, height: 32, borderRadius: "50%", border: "3px solid #fef3c7", borderTopColor: "#f59e0b", animation: "spin 0.8s linear infinite" }} />
+                <p style={{ fontSize: 11, color: "#64748b", textAlign: "center", margin: 0 }}>Querying provider for token...</p>
+              </>
+            ) : (
+              <>
+                {retrieveError && (
+                  <p style={{ fontSize: 11, color: "#b91c1c", textAlign: "center", margin: "0 0 6px", fontWeight: 600 }}>{retrieveError}</p>
+                )}
+                <button
+                  onClick={handleRetrieve}
+                  style={{ background: "#fef3c7", color: "#92400e", border: "1.5px solid #fde68a", borderRadius: 10, padding: "8px 20px", fontSize: 12, fontWeight: 800, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+                  <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+                    <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                  </svg>
+                  {retrieveError ? "Try Again" : "Retrieve Electricity Token"}
+                </button>
+                <p style={{ fontSize: 10, color: "#94a3b8", textAlign: "center", margin: 0 }}>
+                  Token may still be available from the provider
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       <Footer />
     </Overlay>
