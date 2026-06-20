@@ -122,6 +122,24 @@ function RowIcon({ d }) {
   return <Svg d={d} size={20} color="#64748b" />;
 }
 
+// ── Skeleton loader ────────────────────────────────────────────────────────
+function SkeletonHome() {
+  const S = ({ w = "w-full", h = "h-4", r = "rounded-xl" }) => (
+    <div className={`${w} ${h} ${r} bg-slate-200 dark:bg-slate-700 animate-pulse`} />
+  );
+  return (
+    <div className="px-4 pt-5 pb-28 space-y-4">
+      <S w="w-36" h="h-3" r="rounded-full" />
+      <S w="w-48" h="h-3" r="rounded-full" />
+      <S h="h-[130px]" r="rounded-3xl" />
+      <S h="h-[52px]" />
+      <S h="h-14" />
+      <S h="h-14" />
+      <S h="h-14" />
+    </div>
+  );
+}
+
 // ── PIN setup modal ────────────────────────────────────────────────────────
 function PinSetupModal({ onDone, onClose }) {
   const [step,  setStep]  = useState(1);
@@ -1156,9 +1174,49 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
 
 // ── Overview tab ──────────────────────────────────────────────────────────
 function OverviewTab({ client, contributions, onWithdrawClick, onPayClick, ownerInfo, withdrawRequests = [] }) {
+  const [goal,      setGoal]      = useState(() => parseFloat(localStorage.getItem(`ajo_goal_${client?.id}`) || "0"));
+  const [editGoal,  setEditGoal]  = useState(false);
+  const [goalInput, setGoalInput] = useState("");
+
+  const nowKey      = new Date().toISOString().slice(0, 7);
+  const prevKey     = (() => { const d = new Date(); d.setMonth(d.getMonth() - 1); return d.toISOString().slice(0, 7); })();
+
   const totalThisMonth = contributions
-    .filter(c => c.type === "contribution" && (c.created_at || "").startsWith(new Date().toISOString().slice(0, 7)))
+    .filter(c => c.type === "contribution" && (c.created_at || "").startsWith(nowKey))
     .reduce((s, c) => s + (c.amount || 0), 0);
+  const totalLastMonth = contributions
+    .filter(c => c.type === "contribution" && (c.created_at || "").startsWith(prevKey))
+    .reduce((s, c) => s + (c.amount || 0), 0);
+
+  const streak = (() => {
+    const months = [...new Set(
+      contributions.filter(c => c.type === "contribution" && c.status === "confirmed")
+        .map(c => c.created_at?.slice(0, 7)).filter(Boolean)
+    )].sort().reverse();
+    let s = 0;
+    for (let i = 0; i < months.length; i++) {
+      const d = new Date(); d.setMonth(d.getMonth() - i);
+      if (months[i] === d.toISOString().slice(0, 7)) s++; else break;
+    }
+    return s;
+  })();
+
+  const healthScore = (() => {
+    if (!contributions.length) return 0;
+    const confirmed = contributions.filter(c => c.type === "contribution" && c.status === "confirmed").length;
+    return Math.min(
+      Math.round((confirmed / Math.max(contributions.length, 1)) * 60) + Math.min(streak * 5, 30) + (client.current_balance > 0 ? 10 : 0),
+      100
+    );
+  })();
+
+  const insight = streak >= 3
+    ? `🔥 ${streak}-month savings streak! You're on fire!`
+    : totalLastMonth > 0 && totalThisMonth > totalLastMonth
+      ? `📈 You saved ${Math.round(((totalThisMonth - totalLastMonth) / totalLastMonth) * 100)}% more than last month!`
+      : healthScore >= 80
+        ? `⭐ Your savings health score is ${healthScore}/100 — excellent!`
+        : `💡 ${fmt(client.total_saved || 0)} saved so far. Keep it up!`;
 
   const daysUntilDue = client.next_contribution_date
     ? Math.ceil((new Date(client.next_contribution_date) - new Date()) / 86400000)
@@ -1174,6 +1232,11 @@ function OverviewTab({ client, contributions, onWithdrawClick, onPayClick, owner
         <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{fmtDate()}</p>
       </div>
 
+      {/* AI insight card */}
+      <div className="bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800/50 rounded-2xl px-4 py-3">
+        <p className="text-[13px] font-semibold text-violet-800 dark:text-violet-200">{insight}</p>
+      </div>
+
       {/* Hero savings card */}
       <div className="rounded-3xl px-5 py-5 text-white relative overflow-hidden shadow-lg"
         style={{ background: "linear-gradient(145deg,#7c3aed 0%,#6d28d9 55%,#4c1d95 100%)" }}>
@@ -1181,7 +1244,17 @@ function OverviewTab({ client, contributions, onWithdrawClick, onPayClick, owner
         <div className="absolute -bottom-10 -left-6 w-40 h-40 rounded-full bg-white/5 pointer-events-none" />
         <div className="relative">
           <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-0.5">Current Balance</p>
-          <p className="text-4xl font-black tabular mb-4">{fmt(client.current_balance || 0)}</p>
+          <p className="text-4xl font-black tabular mb-3">{fmt(client.current_balance || 0)}</p>
+          <div className="flex items-center gap-2 mb-4">
+            {streak > 0 && (
+              <span className="bg-white/15 backdrop-blur-sm rounded-full px-2.5 py-1 text-[11px] font-bold text-white">
+                🔥 {streak}mo streak
+              </span>
+            )}
+            <span className="bg-white/15 backdrop-blur-sm rounded-full px-2.5 py-1 text-[11px] font-bold text-white">
+              ⭐ {healthScore}/100
+            </span>
+          </div>
           <div className="grid grid-cols-3 divide-x divide-white/20">
             <div className="pr-3">
               <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">Total Saved</p>
@@ -1271,6 +1344,44 @@ function OverviewTab({ client, contributions, onWithdrawClick, onPayClick, owner
             ) : null}
           </div>
         </div>
+      )}
+
+      {/* Savings goal */}
+      {(goal > 0 || editGoal) ? (
+        <div className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-4 border border-slate-100 dark:border-slate-700 shadow-sm">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Savings Goal</p>
+            <button onClick={() => { setEditGoal(true); setGoalInput(String(goal)); }} className="text-[11px] text-violet-600 dark:text-violet-400 font-bold">Edit</button>
+          </div>
+          {editGoal ? (
+            <div className="flex gap-2">
+              <input type="number" value={goalInput} onChange={e => setGoalInput(e.target.value)}
+                placeholder="Target amount (₦)"
+                className="flex-1 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-400" />
+              <button onClick={() => { const g = parseFloat(goalInput) || 0; setGoal(g); localStorage.setItem(`ajo_goal_${client?.id}`, g); setEditGoal(false); }}
+                className="px-3 py-2 bg-violet-600 text-white rounded-xl text-sm font-bold">Save</button>
+            </div>
+          ) : (
+            <>
+              <div className="flex justify-between text-xs mb-1.5">
+                <span className="font-semibold text-slate-700 dark:text-slate-300">{fmt(client.current_balance || 0)}</span>
+                <span className="text-slate-400 dark:text-slate-500">{fmt(goal)}</span>
+              </div>
+              <div className="h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                <div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-violet-400 transition-all duration-700"
+                  style={{ width: `${Math.min(((client.current_balance || 0) / goal) * 100, 100).toFixed(1)}%` }} />
+              </div>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5">
+                {Math.round(((client.current_balance || 0) / goal) * 100)}% of your goal reached
+              </p>
+            </>
+          )}
+        </div>
+      ) : (
+        <button onClick={() => setEditGoal(true)}
+          className="w-full py-3 border-2 border-dashed border-violet-200 dark:border-violet-800/50 rounded-2xl text-sm font-semibold text-violet-500 dark:text-violet-400 flex items-center justify-center gap-2">
+          🎯 Set a Savings Goal
+        </button>
       )}
 
       {/* Pay Contribution button */}
@@ -1871,11 +1982,7 @@ export default function AjoMemberPortal({ session, ajoClient }) {
               onChangePwdClick={() => setShowPwdModal(true)}
             />
           )}
-          {!client && tab !== "me" && (
-            <div className="flex items-center justify-center py-20">
-              <div className="w-8 h-8 border-[3px] border-violet-500 border-t-transparent rounded-full animate-spin" />
-            </div>
-          )}
+          {!client && tab !== "me" && <SkeletonHome />}
         </main>
 
         {/* Bottom nav */}
