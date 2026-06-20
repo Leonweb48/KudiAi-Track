@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { supabase } from "../utils/supabase";
+import { useTheme } from "../hooks/useTheme";
 import BillPayments from "./BillPayments";
 import GroupChat from "./GroupChat";
 
@@ -24,7 +25,7 @@ const fmtDate = d => d ? new Date(d).toLocaleDateString("en-NG", { day: "numeric
 const fmtDT   = d => d ? new Date(d).toLocaleString("en-NG", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
 
 const ROLE_COLORS = {
-  admin: "bg-violet-100 text-violet-700", president: "bg-amber-100 text-amber-700",
+  admin: "bg-green-100 text-green-700", president: "bg-amber-100 text-amber-700",
   chairman: "bg-amber-100 text-amber-700", vice_chairman: "bg-orange-100 text-orange-700",
   treasurer: "bg-green-100 text-green-700", secretary: "bg-blue-100 text-blue-700",
   officer: "bg-pink-100 text-pink-700", welfare_officer: "bg-rose-100 text-rose-700",
@@ -39,7 +40,7 @@ const ROLE_LABELS = {
 const ALL_ROLES = ["member","officer","secretary","treasurer","president","chairman","vice_chairman","welfare_officer","auditor","patron","admin"];
 const STATUS_COL = {
   active: "text-green-600", suspended: "text-amber-500", removed: "text-red-500",
-  pending: "text-amber-500", approved: "text-blue-600", disbursed: "text-violet-600",
+  pending: "text-amber-500", approved: "text-blue-600", disbursed: "text-green-600",
   repaid: "text-green-600", rejected: "text-red-500", defaulted: "text-red-700",
   scheduled: "text-blue-600", ongoing: "text-green-600", completed: "text-slate-500", cancelled: "text-red-500",
 };
@@ -54,7 +55,7 @@ const FREQ_LABELS = {
   quarterly: "Quarterly", annual: "Annual", one_time: "One-time",
 };
 
-const input = "w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-violet-400";
+const input = "w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-green-400";
 const ModalWrap = ({ children, onClose }) => (
   <div className="fixed inset-0 z-[75] bg-black/60 flex items-end justify-center" onClick={onClose}>
     <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-t-3xl px-5 py-6 max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
@@ -104,10 +105,10 @@ function OverviewTab({ org, wallet, programs, announcements, members = [], loans
       bg:"#ea580c", tab:"loans",
       icon:"M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" },
     { label:"Messages",         value: announcements.length, sub:`${announcements.filter(a=>a.is_pinned).length} pinned`,
-      bg:"#2563eb", tab:"messages",
+      bg:"#00A651", tab:"messages",
       icon:"M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" },
-    { label:"Org Meetings",     value: "—",                  sub:"view calendar",
-      bg:"#0f766e", tab:"meetings",
+    { label:"Broadcast",        value: "—",                  sub:"meetings, events & more",
+      bg:"#0f766e", tab:"broadcast",
       icon:"M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" },
   ];
 
@@ -118,7 +119,7 @@ function OverviewTab({ org, wallet, programs, announcements, members = [], loans
       <div className="mx-4 mt-5 rounded-3xl overflow-hidden shadow-2xl"
         style={{ background: "linear-gradient(145deg, #0f0a1e 0%, #2e1065 45%, #6d28d9 100%)" }}>
         <div className="px-6 pt-7 pb-6">
-          <p className="text-[10px] font-extrabold text-violet-300 uppercase tracking-[0.25em] mb-3">Organisation Wallet</p>
+          <p className="text-[10px] font-extrabold text-green-300 uppercase tracking-[0.25em] mb-3">Organisation Wallet</p>
           <p className="text-[44px] font-black text-white leading-none tabular-nums">{fmt(org.wallet_balance)}</p>
           <div className="flex items-center gap-0 mt-6 pt-5 border-t border-white/10">
             {[
@@ -133,7 +134,7 @@ function OverviewTab({ org, wallet, programs, announcements, members = [], loans
             ))}
           </div>
         </div>
-        <div className="h-1 w-full" style={{ background: "linear-gradient(90deg, #7c3aed, #ec4899, #3b82f6)" }} />
+        <div className="h-1 w-full" style={{ background: "linear-gradient(90deg, #0D2040, #00A651, #0D2040)" }} />
       </div>
 
       {/* ── Quick Services (org portal only) ── */}
@@ -141,7 +142,7 @@ function OverviewTab({ org, wallet, programs, announcements, members = [], loans
         <div className="px-4">
           <div className="flex justify-between items-center mb-4">
             <p className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em]">Quick Services</p>
-            {onNavigate && <button onClick={() => onNavigate("bills")} className="text-[10px] font-bold text-violet-600 dark:text-violet-400">View All →</button>}
+            {onNavigate && <button onClick={() => onNavigate("bills")} className="text-[10px] font-bold text-green-600 dark:text-green-400">View All →</button>}
           </div>
           <div className="grid grid-cols-4 gap-3">
             {OV_QUICK.map(s => (
@@ -186,7 +187,7 @@ function OverviewTab({ org, wallet, programs, announcements, members = [], loans
         <div className="px-4">
           <div className="flex justify-between items-center mb-3">
             <p className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em]">Recent Activity</p>
-            {onNavigate && <button onClick={() => onNavigate("finance")} className="text-[10px] font-bold text-violet-600 dark:text-violet-400">See All →</button>}
+            {onNavigate && <button onClick={() => onNavigate("finance")} className="text-[10px] font-bold text-green-600 dark:text-green-400">See All →</button>}
           </div>
           <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700/60 shadow-sm overflow-hidden">
             {recentTxns.map((t, i) => {
@@ -217,7 +218,7 @@ function OverviewTab({ org, wallet, programs, announcements, members = [], loans
         <div className="px-4">
           <div className="flex justify-between items-center mb-3">
             <p className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em]">Announcements</p>
-            {onNavigate && <button onClick={() => onNavigate("messages")} className="text-[10px] font-bold text-violet-600 dark:text-violet-400">View All →</button>}
+            {onNavigate && <button onClick={() => onNavigate("messages")} className="text-[10px] font-bold text-green-600 dark:text-green-400">View All →</button>}
           </div>
           <div className="flex flex-col gap-2">
             {visibleAnns.map(a => (
@@ -379,9 +380,9 @@ function MembersTab({ org, members, onRefresh }) {
             <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
           </svg>
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search members…"
-            className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-400" />
+            className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-400" />
         </div>
-        <button onClick={() => setAddStep("form")} className="px-4 py-2.5 bg-violet-600 text-white rounded-xl text-xs font-bold flex-shrink-0">+ Add</button>
+        <button onClick={() => setAddStep("form")} className="px-4 py-2.5 bg-green-600 text-white rounded-xl text-xs font-bold flex-shrink-0">+ Add</button>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 pb-24">
@@ -392,7 +393,7 @@ function MembersTab({ org, members, onRefresh }) {
             {filtered.map(m => (
               <button key={m.id} onClick={() => setSelected(m)}
                 className="bg-white dark:bg-slate-800 rounded-xl p-3 border border-slate-100 dark:border-slate-700 flex items-center gap-3 text-left w-full">
-                <div className="w-10 h-10 rounded-xl bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center text-sm font-extrabold text-violet-600 flex-shrink-0">
+                <div className="w-10 h-10 rounded-xl bg-green-100 dark:bg-green-900/30 flex items-center justify-center text-sm font-extrabold text-green-600 flex-shrink-0">
                   {m.full_name?.charAt(0).toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -418,8 +419,8 @@ function MembersTab({ org, members, onRefresh }) {
         <ModalWrap onClose={closeAddFlow}>
           {/* Step indicator */}
           <div className="flex items-center gap-2 mb-4">
-            <div className="flex items-center justify-center w-6 h-6 rounded-full bg-violet-600 text-white text-[10px] font-black">1</div>
-            <div className="flex-1 h-0.5 bg-violet-200 dark:bg-violet-800" />
+            <div className="flex items-center justify-center w-6 h-6 rounded-full bg-green-600 text-white text-[10px] font-black">1</div>
+            <div className="flex-1 h-0.5 bg-green-200 dark:bg-green-800" />
             <div className="flex items-center justify-center w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-600 text-slate-400 text-[10px] font-black">2</div>
           </div>
           <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">Register Member</h3>
@@ -469,7 +470,7 @@ function MembersTab({ org, members, onRefresh }) {
           </div>
           <div className="flex gap-2 mt-5">
             <button onClick={closeAddFlow} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Cancel</button>
-            <button onClick={handleAdd} disabled={loading} className="flex-1 py-3 bg-violet-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">{loading ? "Creating…" : "Continue →"}</button>
+            <button onClick={handleAdd} disabled={loading} className="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">{loading ? "Creating…" : "Continue →"}</button>
           </div>
         </ModalWrap>
       )}
@@ -478,23 +479,23 @@ function MembersTab({ org, members, onRefresh }) {
         <ModalWrap onClose={closeAddFlow}>
           {/* Step indicator */}
           <div className="flex items-center gap-2 mb-4">
-            <div className="flex items-center justify-center w-6 h-6 rounded-full bg-violet-200 dark:bg-violet-800 text-violet-500 text-[10px] font-black">✓</div>
-            <div className="flex-1 h-0.5 bg-violet-600" />
-            <div className="flex items-center justify-center w-6 h-6 rounded-full bg-violet-600 text-white text-[10px] font-black">2</div>
+            <div className="flex items-center justify-center w-6 h-6 rounded-full bg-green-200 dark:bg-green-800 text-green-500 text-[10px] font-black">✓</div>
+            <div className="flex-1 h-0.5 bg-green-600" />
+            <div className="flex items-center justify-center w-6 h-6 rounded-full bg-green-600 text-white text-[10px] font-black">2</div>
           </div>
           <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">Verify Email</h3>
           <p className="text-xs text-slate-400 mb-4">A 6-digit code was sent to the member's email. Enter it below to complete registration.</p>
 
           {/* Credentials display */}
-          <div className="bg-violet-50 dark:bg-violet-900/20 rounded-2xl p-4 mb-4">
-            <p className="text-[10px] font-bold text-violet-500 uppercase tracking-wider mb-3">Member Login Credentials</p>
+          <div className="bg-green-50 dark:bg-green-900/20 rounded-2xl p-4 mb-4">
+            <p className="text-[10px] font-bold text-green-500 uppercase tracking-wider mb-3">Member Login Credentials</p>
             <div className="flex justify-between items-center mb-2">
               <span className="text-xs text-slate-400">Email</span>
               <span className="text-xs font-bold text-slate-800 dark:text-white break-all text-right max-w-[65%]">{pendingReg.email}</span>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-xs text-slate-400">Temp Password</span>
-              <span className="text-base font-extrabold text-violet-600 font-mono tracking-wider">{pendingReg.temp_password}</span>
+              <span className="text-base font-extrabold text-green-600 font-mono tracking-wider">{pendingReg.temp_password}</span>
             </div>
           </div>
 
@@ -510,7 +511,7 @@ function MembersTab({ org, members, onRefresh }) {
               value={otpInput}
               onChange={e => { setOtpInput(e.target.value.replace(/\D/g, "").slice(0, 6)); setOtpError(""); }}
               placeholder="000000"
-              className="w-full text-center text-3xl font-mono font-extrabold tracking-[0.5em] py-4 rounded-2xl border-2 border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200 dark:focus:ring-violet-900/40 transition"
+              className="w-full text-center text-3xl font-mono font-extrabold tracking-[0.5em] py-4 rounded-2xl border-2 border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-200 dark:focus:ring-green-900/40 transition"
             />
           </div>
 
@@ -521,7 +522,7 @@ function MembersTab({ org, members, onRefresh }) {
           )}
 
           <button onClick={handleVerifyOtp} disabled={verifying || otpInput.length < 6}
-            className="w-full py-3.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white font-bold rounded-2xl text-sm transition mb-2">
+            className="w-full py-3.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-bold rounded-2xl text-sm transition mb-2">
             {verifying ? "Verifying…" : "Verify & Complete Registration →"}
           </button>
           <button onClick={handleResendOtp} disabled={resending}
@@ -529,7 +530,7 @@ function MembersTab({ org, members, onRefresh }) {
             {resending ? "Sending…" : "Resend code to " + pendingReg.email}
           </button>
           <button onClick={() => navigator.clipboard?.writeText(`Email: ${pendingReg.email}\nPassword: ${pendingReg.temp_password}`)}
-            className="w-full mt-2 py-2 text-violet-600 dark:text-violet-400 text-xs font-semibold">
+            className="w-full mt-2 py-2 text-green-600 dark:text-green-400 text-xs font-semibold">
             Copy credentials
           </button>
         </ModalWrap>
@@ -552,14 +553,14 @@ function MembersTab({ org, members, onRefresh }) {
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-xs text-slate-400">Temp Password</span>
-                <span className="text-sm font-extrabold text-violet-600 font-mono tracking-wider">{pendingReg.temp_password}</span>
+                <span className="text-sm font-extrabold text-green-600 font-mono tracking-wider">{pendingReg.temp_password}</span>
               </div>
             </div>
             <button onClick={() => navigator.clipboard?.writeText(`Email: ${pendingReg.email}\nPassword: ${pendingReg.temp_password}`)}
-              className="w-full py-2.5 border border-violet-200 dark:border-violet-800 text-violet-600 dark:text-violet-400 rounded-xl font-bold text-sm mb-2">
+              className="w-full py-2.5 border border-green-200 dark:border-green-800 text-green-600 dark:text-green-400 rounded-xl font-bold text-sm mb-2">
               Copy Credentials
             </button>
-            <button onClick={closeAddFlow} className="w-full py-3 bg-violet-600 text-white rounded-xl font-bold text-sm">Done</button>
+            <button onClick={closeAddFlow} className="w-full py-3 bg-green-600 text-white rounded-xl font-bold text-sm">Done</button>
           </div>
         </ModalWrap>
       )}
@@ -575,22 +576,22 @@ function MembersTab({ org, members, onRefresh }) {
             </div>
             <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">Password Reset!</h3>
             <p className="text-xs text-slate-400 mb-5">Share these new credentials with {creds.name}</p>
-            <div className="bg-violet-50 dark:bg-violet-900/20 rounded-2xl p-4 mb-3 text-left">
-              <p className="text-[10px] font-bold text-violet-500 uppercase tracking-wider mb-3">Login Credentials</p>
+            <div className="bg-green-50 dark:bg-green-900/20 rounded-2xl p-4 mb-3 text-left">
+              <p className="text-[10px] font-bold text-green-500 uppercase tracking-wider mb-3">Login Credentials</p>
               <div className="flex justify-between items-center mb-2">
                 <span className="text-xs text-slate-400">Email</span>
                 <span className="text-xs font-bold text-slate-800 dark:text-white break-all text-right max-w-[65%]">{creds.email}</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-xs text-slate-400">Temp Password</span>
-                <span className="text-base font-extrabold text-violet-600 font-mono tracking-wider">{creds.temp_password}</span>
+                <span className="text-base font-extrabold text-green-600 font-mono tracking-wider">{creds.temp_password}</span>
               </div>
             </div>
             <button onClick={() => navigator.clipboard?.writeText(`Email: ${creds.email}\nPassword: ${creds.temp_password}`)}
-              className="w-full py-2.5 border border-violet-200 dark:border-violet-800 text-violet-600 dark:text-violet-400 rounded-xl font-bold text-sm mb-2">
+              className="w-full py-2.5 border border-green-200 dark:border-green-800 text-green-600 dark:text-green-400 rounded-xl font-bold text-sm mb-2">
               Copy Credentials
             </button>
-            <button onClick={() => setCreds(null)} className="w-full py-2.5 bg-violet-600 text-white rounded-xl font-bold text-sm">Done</button>
+            <button onClick={() => setCreds(null)} className="w-full py-2.5 bg-green-600 text-white rounded-xl font-bold text-sm">Done</button>
           </div>
         </ModalWrap>
       )}
@@ -599,7 +600,7 @@ function MembersTab({ org, members, onRefresh }) {
       {selected && !editing && (
         <ModalWrap onClose={() => { setSelected(null); setError(""); }}>
           <div className="flex items-center gap-3 mb-4">
-            <div className="w-12 h-12 rounded-xl bg-violet-100 flex items-center justify-center text-xl font-extrabold text-violet-600">{selected.full_name?.charAt(0)}</div>
+            <div className="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center text-xl font-extrabold text-green-600">{selected.full_name?.charAt(0)}</div>
             <div>
               <p className="text-base font-extrabold text-slate-800 dark:text-white">{selected.full_name}</p>
               <p className="text-xs text-slate-400 font-mono">{selected.membership_id}</p>
@@ -681,7 +682,7 @@ function MembersTab({ org, members, onRefresh }) {
           </div>
           <div className="flex gap-2 mt-5">
             <button onClick={() => { setEditing(false); setError(""); }} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Cancel</button>
-            <button onClick={handleEdit} disabled={saving} className="flex-1 py-3 bg-violet-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">{saving ? "Saving…" : "Save Changes"}</button>
+            <button onClick={handleEdit} disabled={saving} className="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">{saving ? "Saving…" : "Save Changes"}</button>
           </div>
         </ModalWrap>
       )}
@@ -751,18 +752,18 @@ function ProgramsTab({ org, onRefresh }) {
       <div className="px-4 pt-4 pb-2 flex justify-between items-center">
         <p className="text-xs font-bold text-slate-500 dark:text-slate-400">{programs.filter(p => p.status === "active").length} active programs</p>
         <button onClick={() => { resetForm(); setEditing(null); setShowAdd(true); }}
-          className="px-4 py-2.5 bg-violet-600 text-white rounded-xl text-xs font-bold">+ New Program</button>
+          className="px-4 py-2.5 bg-green-600 text-white rounded-xl text-xs font-bold">+ New Program</button>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 pb-24">
         {loading ? (
-          <div className="flex justify-center py-10"><div className="w-6 h-6 border-[3px] border-violet-500 border-t-transparent rounded-full animate-spin" /></div>
+          <div className="flex justify-center py-10"><div className="w-6 h-6 border-[3px] border-green-500 border-t-transparent rounded-full animate-spin" /></div>
         ) : programs.length === 0 ? (
           <div className="flex flex-col items-center py-16 text-center px-6">
             <span className="text-4xl mb-3">📋</span>
             <p className="text-base font-extrabold text-slate-700 dark:text-slate-200 mb-2">No Programs Yet</p>
             <p className="text-sm text-slate-400 mb-5">Create contribution programs like Welfare Fund, Development Levy, Building Fund etc.</p>
-            <button onClick={() => setShowAdd(true)} className="px-5 py-2.5 bg-violet-600 text-white rounded-xl font-bold text-sm">Create Program</button>
+            <button onClick={() => setShowAdd(true)} className="px-5 py-2.5 bg-green-600 text-white rounded-xl font-bold text-sm">Create Program</button>
           </div>
         ) : (
           <div className="flex flex-col gap-3 mt-2">
@@ -778,7 +779,7 @@ function ProgramsTab({ org, onRefresh }) {
                     <div className="flex gap-2 mt-1 flex-wrap">
                       <span className="text-[10px] bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-lg capitalize">{FREQ_LABELS[p.frequency]}</span>
                       <span className="text-[10px] bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-lg capitalize">{p.contribution_type}</span>
-                      {p.contribution_type === "fixed" && <span className="text-[10px] bg-violet-50 text-violet-600 px-2 py-0.5 rounded-lg">{fmt(p.amount)}</span>}
+                      {p.contribution_type === "fixed" && <span className="text-[10px] bg-green-50 text-green-600 px-2 py-0.5 rounded-lg">{fmt(p.amount)}</span>}
                     </div>
                   </div>
                   <div className="text-right ml-3 flex-shrink-0">
@@ -851,7 +852,7 @@ function ProgramsTab({ org, onRefresh }) {
           </div>
           <div className="flex gap-2 mt-5">
             <button onClick={() => { setShowAdd(false); setEditing(null); setError(""); }} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Cancel</button>
-            <button onClick={handleSave} disabled={saving} className="flex-1 py-3 bg-violet-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">{saving ? "Saving…" : editing ? "Save Changes" : "Create Program"}</button>
+            <button onClick={handleSave} disabled={saving} className="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">{saving ? "Saving…" : editing ? "Save Changes" : "Create Program"}</button>
           </div>
         </ModalWrap>
       )}
@@ -935,7 +936,7 @@ function FinanceTab({ org, members, programs, onRefresh }) {
           const pendingCount = id === "requests" ? wdRequests.filter(r => r.status === "pending").length : 0;
           return (
             <button key={id} onClick={() => setSubTab(id)} className="relative">
-              <span className={`flex-1 block py-2 px-2 rounded-xl text-xs font-bold transition ${subTab === id ? "bg-violet-600 text-white" : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400"}`}>
+              <span className={`flex-1 block py-2 px-2 rounded-xl text-xs font-bold transition ${subTab === id ? "bg-green-600 text-white" : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400"}`}>
                 {label}
                 {pendingCount > 0 && <span className="ml-1 inline-flex items-center justify-center w-4 h-4 rounded-full bg-amber-500 text-white text-[9px] font-black">{pendingCount}</span>}
               </span>
@@ -960,7 +961,7 @@ function FinanceTab({ org, members, programs, onRefresh }) {
                   <div key={s.id} className="bg-white dark:bg-slate-800 rounded-xl p-3 border border-slate-100 dark:border-slate-700 flex justify-between items-start">
                     <div>
                       <p className="text-xs font-bold text-slate-800 dark:text-white">{s.org_members?.full_name || "—"}</p>
-                      {s.org_contribution_programs?.name && <p className="text-[10px] text-violet-500 font-semibold">{s.org_contribution_programs.name}</p>}
+                      {s.org_contribution_programs?.name && <p className="text-[10px] text-green-500 font-semibold">{s.org_contribution_programs.name}</p>}
                       <p className="text-[10px] text-slate-400">{fmtDT(s.created_at)} · {s.payment_method}</p>
                     </div>
                     <div className="text-right">
@@ -1308,7 +1309,7 @@ function LoansTab({ org, members, onRefresh }) {
           )}
           {selected.status === "approved" && (
             <button onClick={() => handleLoanAction(selected, "disbursed", { repayment_months: selected.repayment_months })} disabled={saving}
-              className="w-full py-2.5 bg-violet-600 text-white rounded-xl font-bold text-sm mb-3">Disburse Loan</button>
+              className="w-full py-2.5 bg-green-600 text-white rounded-xl font-bold text-sm mb-3">Disburse Loan</button>
           )}
           {selected.status === "disbursed" && selected.outstanding_balance > 0 && (
             <div className="mb-3">
@@ -1328,160 +1329,370 @@ function LoansTab({ org, members, onRefresh }) {
 }
 
 // ═══════════════════════════════════════════════════
-//  MEETINGS TAB (enhanced)
+//  BROADCAST STATION TAB (org dashboard)
 // ═══════════════════════════════════════════════════
-function MeetingsTab({ org, members }) {
-  const [meetings,   setMeetings]   = useState([]);
-  const [loading,    setLoading]    = useState(true);
-  const [showCreate, setShowCreate] = useState(false);
-  const [selected,   setSelected]   = useState(null);
-  const [present,    setPresent]    = useState(new Set());
-  const [saving,     setSaving]     = useState(false);
-  const [form,       setForm]       = useState({ title: "", description: "", meeting_type: "general", format: "physical", scheduled_at: "", location: "", meeting_link: "", agenda: "" });
-  const [error,      setError]      = useState("");
+function BroadcastTab({ org, members }) {
+  const [broadcasts,       setBroadcasts]       = useState([]);
+  const [loading,          setLoading]          = useState(true);
+  const [filter,           setFilter]           = useState("all");
+  const [showTypePicker,   setShowTypePicker]   = useState(false);
+  const [createType,       setCreateType]       = useState(null);
+  const [form,             setForm]             = useState({});
+  const [saving,           setSaving]           = useState(false);
+  const [error,            setError]            = useState("");
+  const [attendanceTarget, setAttendanceTarget] = useState(null);
+  const [present,          setPresent]          = useState(new Set());
+  const [savingAttendance, setSavingAttendance] = useState(false);
+  const [pollOptions,      setPollOptions]      = useState(["", ""]);
 
-  const load = useCallback(() => {
-    coopFn("get-meetings", { org_id: org.id }).then(r => setMeetings(r.meetings || [])).finally(() => setLoading(false));
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [mtgR, annR, evtR, pollR] = await Promise.all([
+        coopFn("get-meetings",      { org_id: org.id }),
+        coopFn("get-announcements", { org_id: org.id }),
+        coopFn("get-events",        { org_id: org.id }),
+        coopFn("get-polls",         { org_id: org.id }),
+      ]);
+      const items = [
+        ...(mtgR.meetings      || []).map(m => ({ ...m, _type: "meeting",      _date: m.scheduled_at })),
+        ...(annR.announcements || []).map(a => ({ ...a, _type: "announcement", _date: a.created_at   })),
+        ...(evtR.events        || []).map(e => ({ ...e, _type: "event",        _date: e.event_date   })),
+        ...(pollR.polls        || []).map(p => ({ ...p, _type: "poll",         _date: p.created_at   })),
+      ].sort((a, b) => new Date(b._date) - new Date(a._date));
+      setBroadcasts(items);
+    } finally { setLoading(false); }
   }, [org.id]);
   useEffect(() => { load(); }, [load]);
 
-  const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
+  const setF = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
+
+  const FILTER_TABS = [
+    { id: "all",          label: "All"           },
+    { id: "meeting",      label: "Meetings"      },
+    { id: "announcement", label: "Announcements" },
+    { id: "event",        label: "Events"        },
+    { id: "poll",         label: "Polls"         },
+  ];
+  const TYPE_OPTIONS = [
+    { id: "meeting",      label: "Meeting",      icon: "📅", desc: "Schedule a meeting"    },
+    { id: "announcement", label: "Announcement", icon: "📢", desc: "Send an announcement"  },
+    { id: "event",        label: "Event",        icon: "🎉", desc: "Create an event"       },
+    { id: "poll",         label: "Poll",         icon: "📊", desc: "Run a poll"            },
+  ];
+  const TYPE_COLORS = {
+    meeting:      { bg: "bg-[#0D2040]", text: "text-white", label: "Meeting"      },
+    announcement: { bg: "bg-amber-500",  text: "text-white", label: "Announcement" },
+    event:        { bg: "bg-[#00A651]",  text: "text-white", label: "Event"        },
+    poll:         { bg: "bg-purple-600", text: "text-white", label: "Poll"         },
+  };
+
+  const openCreate = (type) => {
+    setCreateType(type); setShowTypePicker(false); setError("");
+    if (type === "meeting")      setForm({ title: "", description: "", meeting_type: "general", format: "physical", scheduled_at: "", location: "", meeting_link: "", agenda: "" });
+    else if (type === "announcement") setForm({ type: "announcement", title: "", body: "" });
+    else if (type === "event")   setForm({ title: "", description: "", event_type: "event", event_date: "", end_date: "", location: "", event_link: "" });
+    else if (type === "poll")  { setForm({ question: "", closes_at: "" }); setPollOptions(["", ""]); }
+  };
 
   const handleCreate = async () => {
-    if (!form.title || !form.scheduled_at) { setError("Title and date required"); return; }
     setSaving(true); setError("");
     try {
-      await coopFn("create-meeting", { org_id: org.id, ...form });
-      setShowCreate(false); setForm({ title: "", description: "", meeting_type: "general", format: "physical", scheduled_at: "", location: "", meeting_link: "", agenda: "" }); load();
+      if (createType === "meeting") {
+        if (!form.title || !form.scheduled_at) { setError("Title and date required"); setSaving(false); return; }
+        await coopFn("create-meeting", { org_id: org.id, ...form });
+      } else if (createType === "announcement") {
+        if (!form.title || !form.body) { setError("Title and content required"); setSaving(false); return; }
+        await coopFn("send-announcement", { org_id: org.id, ...form });
+      } else if (createType === "event") {
+        if (!form.title || !form.event_date) { setError("Title and date required"); setSaving(false); return; }
+        await coopFn("create-event", { org_id: org.id, ...form });
+      } else if (createType === "poll") {
+        const opts = pollOptions.filter(o => o.trim());
+        if (!form.question || opts.length < 2) { setError("Question and at least 2 options required"); setSaving(false); return; }
+        await coopFn("create-poll", { org_id: org.id, question: form.question, options: opts, closes_at: form.closes_at || null });
+      }
+      setCreateType(null); load();
     } catch (e) { setError(e.message); }
     finally { setSaving(false); }
   };
 
-  const openMeeting = async (meeting) => {
-    setSelected(meeting);
+  const openAttendance = async (meeting) => {
+    setAttendanceTarget(meeting);
     const { attendance: att } = await coopFn("get-attendance", { meeting_id: meeting.id });
-    const presentSet = new Set((att || []).filter(a => a.status === "present").map(a => a.member_id));
-    setPresent(presentSet);
+    setPresent(new Set((att || []).filter(a => a.status === "present").map(a => a.member_id)));
   };
-
-  const togglePresence = (id) => setPresent(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
-
+  const togglePresence = id => setPresent(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const submitAttendance = async () => {
-    setSaving(true);
+    setSavingAttendance(true);
     const activeIds = members.filter(m => m.status === "active").map(m => m.id);
-    await coopFn("bulk-attendance", { meeting_id: selected.id, org_id: org.id,
-      present_ids: activeIds.filter(id => present.has(id)), absent_ids: activeIds.filter(id => !present.has(id)) });
-    setSelected(null); load();
-    setSaving(false);
+    await coopFn("bulk-attendance", { meeting_id: attendanceTarget.id, org_id: org.id,
+      present_ids: activeIds.filter(id =>  present.has(id)),
+      absent_ids:  activeIds.filter(id => !present.has(id)) });
+    setAttendanceTarget(null); load(); setSavingAttendance(false);
   };
 
-  const FORMAT_BADGE = { physical: "bg-green-100 text-green-700", virtual: "bg-blue-100 text-blue-700", hybrid: "bg-violet-100 text-violet-700" };
   const activeMembers = members.filter(m => m.status === "active");
+  const visible = filter === "all" ? broadcasts : broadcasts.filter(b => b._type === filter);
 
   return (
     <div className="flex flex-col h-full">
+      {/* Header */}
       <div className="px-4 pt-4 pb-2 flex justify-between items-center">
-        <p className="text-xs font-bold text-slate-500 dark:text-slate-400">{meetings.length} meeting{meetings.length !== 1 ? "s" : ""}</p>
-        <button onClick={() => setShowCreate(true)} className="px-4 py-2.5 bg-blue-600 text-white rounded-xl text-xs font-bold">+ Schedule</button>
-      </div>
-      <div className="flex-1 overflow-y-auto px-4 pb-24">
-        {loading ? <div className="flex justify-center py-10"><div className="w-6 h-6 border-[3px] border-blue-500 border-t-transparent rounded-full animate-spin" /></div>
-          : meetings.length === 0 ? <div className="text-center py-12 text-slate-400 text-sm">No meetings yet</div>
-          : (
-            <div className="flex flex-col gap-2">
-              {meetings.map(m => (
-                <button key={m.id} onClick={() => openMeeting(m)}
-                  className="bg-white dark:bg-slate-800 rounded-xl p-3 border border-slate-100 dark:border-slate-700 text-left w-full">
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-slate-800 dark:text-white">{m.title}</p>
-                      <p className="text-[10px] text-slate-400 mt-0.5">{fmtDT(m.scheduled_at)}</p>
-                      {m.location && <p className="text-[10px] text-slate-400">📍 {m.location}</p>}
-                      {m.meeting_link && <p className="text-[10px] text-blue-500">🔗 Virtual link available</p>}
-                    </div>
-                    <div className="text-right ml-2 flex-shrink-0">
-                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full capitalize ${FORMAT_BADGE[m.format] || FORMAT_BADGE.physical}`}>{m.format}</span>
-                      <p className="text-[9px] text-slate-400 mt-1 capitalize">{STATUS_COL[m.status] ? m.status : m.status}</p>
-                      {m.rsvp_counts && (
-                        <p className="text-[9px] text-green-600 mt-0.5">✓ {m.rsvp_counts.attending}</p>
-                      )}
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
+        <p className="text-xs font-bold text-slate-500 dark:text-slate-400">{visible.length} item{visible.length !== 1 ? "s" : ""}</p>
+        <button onClick={() => setShowTypePicker(true)} className="px-4 py-2.5 rounded-xl text-xs font-bold text-white" style={{ background: "#00A651" }}>+ Broadcast</button>
       </div>
 
-      {showCreate && (
-        <ModalWrap onClose={() => { setShowCreate(false); setError(""); }}>
-          <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-4">Schedule Meeting</h3>
-          {error && <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-3 text-xs text-red-600">{error}</div>}
-          <div className="flex flex-col gap-3">
-            <div>
-              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Title *</label>
-              <input className={input} value={form.title} onChange={set("title")} placeholder="Monthly General Meeting" />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Type</label>
-                <select className={input} value={form.meeting_type} onChange={set("meeting_type")}>
-                  {["general","board","special","agm"].map(t => <option key={t} value={t}>{t.toUpperCase()}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Format</label>
-                <select className={input} value={form.format} onChange={set("format")}>
-                  <option value="physical">Physical</option>
-                  <option value="virtual">Virtual</option>
-                  <option value="hybrid">Hybrid</option>
-                </select>
-              </div>
-            </div>
-            <div>
-              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Date & Time *</label>
-              <input className={input} type="datetime-local" value={form.scheduled_at} onChange={set("scheduled_at")} />
-            </div>
-            {(form.format === "physical" || form.format === "hybrid") && (
-              <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Venue</label>
-                <input className={input} value={form.location} onChange={set("location")} placeholder="Community Hall" />
-              </div>
-            )}
-            {(form.format === "virtual" || form.format === "hybrid") && (
-              <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Meeting Link</label>
-                <input className={input} value={form.meeting_link} onChange={set("meeting_link")} placeholder="https://meet.google.com/..." type="url" />
-              </div>
-            )}
-            <div>
-              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Agenda</label>
-              <textarea className={input} rows={3} value={form.agenda} onChange={set("agenda")} placeholder="1. Call to order&#10;2. Review of last minutes&#10;3. New business" />
-            </div>
+      {/* Filter tabs */}
+      <div className="px-4 pb-2 flex gap-2 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
+        {FILTER_TABS.map(f => (
+          <button key={f.id} onClick={() => setFilter(f.id)}
+            className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-bold transition ${filter === f.id ? "text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"}`}
+            style={filter === f.id ? { background: "#0D2040" } : {}}>{f.label}</button>
+        ))}
+      </div>
+
+      {/* List */}
+      <div className="flex-1 overflow-y-auto px-4 pb-24">
+        {loading ? (
+          <div className="flex justify-center py-10"><div className="w-6 h-6 border-[3px] border-t-transparent rounded-full animate-spin" style={{ borderColor: "#00A651", borderTopColor: "transparent" }} /></div>
+        ) : visible.length === 0 ? (
+          <div className="flex flex-col items-center py-20 text-center">
+            <span className="text-5xl mb-4">📡</span>
+            <p className="text-base font-extrabold text-slate-700 dark:text-slate-200 mb-2">No broadcasts yet</p>
+            <p className="text-sm text-slate-400">Tap "+ Broadcast" to publish something.</p>
           </div>
-          <div className="flex gap-2 mt-4">
-            <button onClick={() => { setShowCreate(false); setError(""); }} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Cancel</button>
-            <button onClick={handleCreate} disabled={saving} className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">{saving ? "Creating…" : "Schedule"}</button>
+        ) : (
+          <div className="flex flex-col gap-2 pt-1">
+            {visible.map(item => {
+              const tc = TYPE_COLORS[item._type];
+              return (
+                <div key={item.id} className="bg-white dark:bg-slate-800 rounded-2xl p-3.5 border border-slate-100 dark:border-slate-700">
+                  <div className="flex items-start gap-2 mb-1">
+                    <span className={`flex-shrink-0 text-[9px] font-extrabold px-2 py-0.5 rounded-full mt-0.5 ${tc.bg} ${tc.text}`}>{tc.label}</span>
+                    <p className="text-sm font-bold text-slate-800 dark:text-white leading-snug">{item.title || item.question}</p>
+                  </div>
+                  <p className="text-[10px] text-slate-400 mb-1.5">{fmtDT(item._date)}</p>
+
+                  {item._type === "meeting" && item.location    && <p className="text-[10px] text-slate-400">📍 {item.location}</p>}
+                  {item._type === "meeting" && item.meeting_link && <p className="text-[10px] text-green-500">🔗 Virtual link</p>}
+                  {item._type === "event"   && item.location    && <p className="text-[10px] text-slate-400">📍 {item.location}</p>}
+                  {item._type === "event"   && item.end_date    && <p className="text-[10px] text-slate-400">Until {fmtDT(item.end_date)}</p>}
+                  {item._type === "announcement" && item.body && (
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">{item.body}</p>
+                  )}
+
+                  {item._type === "poll" && (
+                    <div className="mt-1.5 flex flex-col gap-1">
+                      {(item.options || []).map((opt, i) => {
+                        const votes = (item.vote_counts || {})[i] || 0;
+                        const total = item.total_votes || 0;
+                        const pct   = total > 0 ? Math.round(votes / total * 100) : 0;
+                        return (
+                          <div key={i} className="relative bg-slate-100 dark:bg-slate-700 rounded-lg overflow-hidden">
+                            <div className="absolute inset-0 rounded-lg" style={{ width: `${pct}%`, background: "#00A65125" }} />
+                            <div className="relative px-2.5 py-1.5 flex justify-between">
+                              <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">{opt}</span>
+                              <span className="text-[10px] text-slate-400">{pct}% ({votes})</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <p className="text-[10px] text-slate-400 mt-0.5">{item.total_votes || 0} votes · {item.is_active ? "Active" : "Closed"}</p>
+                    </div>
+                  )}
+
+                  {item._type === "meeting" && (
+                    <div className="mt-2.5 flex gap-2">
+                      <button onClick={() => openAttendance(item)}
+                        className="flex-1 py-1.5 rounded-xl text-[10px] font-bold text-white" style={{ background: "#0D2040" }}>
+                        Mark Attendance
+                      </button>
+                      {item.meeting_link && (
+                        <a href={item.meeting_link} target="_blank" rel="noreferrer"
+                          className="px-3 py-1.5 rounded-xl text-[10px] font-bold text-white" style={{ background: "#00A651" }}>Join</a>
+                      )}
+                    </div>
+                  )}
+                  {item._type === "event" && (
+                    <button onClick={async () => { try { await coopFn("delete-event", { org_id: org.id, event_id: item.id }); load(); } catch (e) { alert(e.message); } }}
+                      className="mt-2 text-[10px] font-bold text-red-400">Delete event</button>
+                  )}
+                  {item._type === "poll" && (
+                    <button onClick={async () => { try { await coopFn("delete-poll", { org_id: org.id, poll_id: item.id }); load(); } catch (e) { alert(e.message); } }}
+                      className="mt-2 text-[10px] font-bold text-red-400">Delete poll</button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Type picker sheet */}
+      {showTypePicker && (
+        <ModalWrap onClose={() => setShowTypePicker(false)}>
+          <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-4">What would you like to broadcast?</h3>
+          <div className="grid grid-cols-2 gap-3">
+            {TYPE_OPTIONS.map(t => (
+              <button key={t.id} onClick={() => openCreate(t.id)}
+                className="flex flex-col items-center gap-2 p-4 rounded-2xl border-2 border-slate-100 dark:border-slate-700 hover:border-green-400 transition">
+                <span className="text-3xl">{t.icon}</span>
+                <p className="text-sm font-extrabold text-slate-800 dark:text-white">{t.label}</p>
+                <p className="text-[10px] text-slate-400 text-center">{t.desc}</p>
+              </button>
+            ))}
           </div>
         </ModalWrap>
       )}
 
-      {selected && (
+      {/* Create form */}
+      {createType && (
+        <ModalWrap onClose={() => { setCreateType(null); setError(""); }}>
+          <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-4">
+            {createType === "meeting" ? "Schedule Meeting" : createType === "announcement" ? "Send Announcement" : createType === "event" ? "Create Event" : "Create Poll"}
+          </h3>
+          {error && <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-3 text-xs text-red-600">{error}</div>}
+          <div className="flex flex-col gap-3 max-h-[55vh] overflow-y-auto">
+
+            {createType === "meeting" && (<>
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Title *</label>
+                <input className={input} value={form.title||""} onChange={setF("title")} placeholder="Monthly General Meeting" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Type</label>
+                  <select className={input} value={form.meeting_type||"general"} onChange={setF("meeting_type")}>
+                    {["general","board","special","agm"].map(t => <option key={t} value={t}>{t.toUpperCase()}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Format</label>
+                  <select className={input} value={form.format||"physical"} onChange={setF("format")}>
+                    <option value="physical">Physical</option><option value="virtual">Virtual</option><option value="hybrid">Hybrid</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Date & Time *</label>
+                <input className={input} type="datetime-local" value={form.scheduled_at||""} onChange={setF("scheduled_at")} />
+              </div>
+              {(form.format==="physical"||form.format==="hybrid") && (
+                <div>
+                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Venue</label>
+                  <input className={input} value={form.location||""} onChange={setF("location")} placeholder="Community Hall" />
+                </div>
+              )}
+              {(form.format==="virtual"||form.format==="hybrid") && (
+                <div>
+                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Meeting Link</label>
+                  <input className={input} type="url" value={form.meeting_link||""} onChange={setF("meeting_link")} placeholder="https://meet.google.com/..." />
+                </div>
+              )}
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Agenda</label>
+                <textarea className={input} rows={3} value={form.agenda||""} onChange={setF("agenda")} placeholder={"1. Call to order\n2. Review minutes\n3. New business"} />
+              </div>
+            </>)}
+
+            {createType === "announcement" && (<>
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Title *</label>
+                <input className={input} value={form.title||""} onChange={setF("title")} placeholder="Important Notice" />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Type</label>
+                <select className={input} value={form.type||"announcement"} onChange={setF("type")}>
+                  <option value="announcement">Announcement</option>
+                  <option value="notice">Notice</option>
+                  <option value="circular">Circular</option>
+                  <option value="emergency">Emergency</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Content *</label>
+                <textarea className={input} rows={4} value={form.body||""} onChange={setF("body")} placeholder="Write your announcement here..." />
+              </div>
+            </>)}
+
+            {createType === "event" && (<>
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Title *</label>
+                <input className={input} value={form.title||""} onChange={setF("title")} placeholder="Annual General Meeting 2026" />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Event Type</label>
+                <select className={input} value={form.event_type||"event"} onChange={setF("event_type")}>
+                  {["event","workshop","training","social","fundraiser"].map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase()+t.slice(1)}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Description</label>
+                <textarea className={input} rows={3} value={form.description||""} onChange={setF("description")} placeholder="Tell members what to expect..." />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Start Date *</label>
+                  <input className={input} type="datetime-local" value={form.event_date||""} onChange={setF("event_date")} />
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">End Date</label>
+                  <input className={input} type="datetime-local" value={form.end_date||""} onChange={setF("end_date")} />
+                </div>
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Location</label>
+                <input className={input} value={form.location||""} onChange={setF("location")} placeholder="Community Hall / Online" />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Event Link</label>
+                <input className={input} type="url" value={form.event_link||""} onChange={setF("event_link")} placeholder="https://..." />
+              </div>
+            </>)}
+
+            {createType === "poll" && (<>
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Question *</label>
+                <input className={input} value={form.question||""} onChange={setF("question")} placeholder="What day works best for our meeting?" />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Options (min 2) *</label>
+                {pollOptions.map((opt, i) => (
+                  <div key={i} className="flex gap-2 mb-2">
+                    <input className={`${input} flex-1`} value={opt} onChange={e => { const a = [...pollOptions]; a[i] = e.target.value; setPollOptions(a); }} placeholder={`Option ${i+1}`} />
+                    {pollOptions.length > 2 && (
+                      <button onClick={() => setPollOptions(p => p.filter((_, j) => j !== i))} className="px-2 text-red-400 font-bold text-lg">×</button>
+                    )}
+                  </div>
+                ))}
+                {pollOptions.length < 6 && (
+                  <button onClick={() => setPollOptions(p => [...p, ""])} className="text-[11px] font-bold text-green-600 mt-1">+ Add option</button>
+                )}
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Closes At (optional)</label>
+                <input className={input} type="datetime-local" value={form.closes_at||""} onChange={setF("closes_at")} />
+              </div>
+            </>)}
+
+          </div>
+          <div className="flex gap-2 mt-4">
+            <button onClick={() => { setCreateType(null); setError(""); }} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Cancel</button>
+            <button onClick={handleCreate} disabled={saving} className="flex-1 py-3 text-white rounded-xl font-bold text-sm disabled:opacity-50" style={{ background: "#00A651" }}>
+              {saving ? "Publishing…" : "Publish"}
+            </button>
+          </div>
+        </ModalWrap>
+      )}
+
+      {/* Attendance sheet */}
+      {attendanceTarget && (
         <div className="fixed inset-0 z-[75] bg-slate-900/80 flex items-end justify-center">
           <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-t-3xl px-5 py-6 max-h-[90vh] flex flex-col">
             <div className="w-10 h-1 bg-slate-200 rounded-full mx-auto mb-4" />
-            <p className="text-base font-extrabold text-slate-800 dark:text-white mb-0.5">{selected.title}</p>
-            <p className="text-xs text-slate-400 mb-1">{fmtDT(selected.scheduled_at)}</p>
-            {selected.agenda && (
-              <div className="bg-slate-50 dark:bg-slate-700 rounded-xl px-3 py-2 mb-3">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Agenda</p>
-                <p className="text-xs text-slate-600 dark:text-slate-300 whitespace-pre-line">{selected.agenda}</p>
-              </div>
-            )}
-            {selected.meeting_link && (
-              <a href={selected.meeting_link} target="_blank" rel="noreferrer"
-                className="block mb-3 px-3 py-2 bg-blue-50 text-blue-600 rounded-xl text-xs font-bold text-center">🔗 Join Virtual Meeting</a>
-            )}
+            <p className="text-base font-extrabold text-slate-800 dark:text-white mb-0.5">{attendanceTarget.title}</p>
+            <p className="text-xs text-slate-400 mb-3">{fmtDT(attendanceTarget.scheduled_at)}</p>
             <p className="text-xs text-slate-400 mb-2">Tap to mark present/absent</p>
             <div className="flex-1 overflow-y-auto">
               {activeMembers.map(m => (
@@ -1498,8 +1709,10 @@ function MeetingsTab({ org, members }) {
             <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-700 flex justify-between items-center">
               <p className="text-xs text-slate-500">{present.size} present / {activeMembers.length - present.size} absent</p>
               <div className="flex gap-2">
-                <button onClick={() => setSelected(null)} className="px-4 py-2.5 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Cancel</button>
-                <button onClick={submitAttendance} disabled={saving} className="px-4 py-2.5 bg-blue-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">{saving ? "Saving…" : "Submit"}</button>
+                <button onClick={() => setAttendanceTarget(null)} className="px-4 py-2.5 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Cancel</button>
+                <button onClick={submitAttendance} disabled={savingAttendance} className="px-4 py-2.5 text-white rounded-xl font-bold text-sm disabled:opacity-50" style={{ background: "#0D2040" }}>
+                  {savingAttendance ? "Saving…" : "Submit"}
+                </button>
               </div>
             </div>
           </div>
@@ -1619,7 +1832,7 @@ function OrgBankSetupSection({ org, onRefresh }) {
         <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Paystack Bank Account</p>
         {hasBank && (
           <button onClick={() => { setShowBankForm(v => !v); setBankError(""); setBankSuccess(""); setResolvedName(""); }}
-            className="text-[10px] font-bold text-violet-600 bg-violet-50 dark:bg-violet-900/20 px-2 py-1 rounded-lg">
+            className="text-[10px] font-bold text-green-600 bg-green-50 dark:bg-green-900/20 px-2 py-1 rounded-lg">
             {showBankForm ? "Cancel" : "Update"}
           </button>
         )}
@@ -1673,7 +1886,7 @@ function OrgBankSetupSection({ org, onRefresh }) {
             </div>
           )}
           <button onClick={handleSetupBank} disabled={creating || !resolvedName}
-            className="w-full py-3 bg-violet-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">
+            className="w-full py-3 bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">
             {creating ? "Linking…" : hasBank ? "Update Bank Account" : "Link Bank Account"}
           </button>
         </div>
@@ -1682,7 +1895,7 @@ function OrgBankSetupSection({ org, onRefresh }) {
   );
 }
 
-function SettingsTab({ org, onRefresh, onBack, isOrgPortal = false }) {
+function SettingsTab({ org, onRefresh, onBack, isOrgPortal = false, isDark = false, onToggleDark }) {
   const [leaders,       setLeaders]       = useState([]);
   const [form,          setForm]          = useState({ name: org.name || "", email: org.email || "", phone: org.phone || "", address: org.address || "", state_name: org.state_name || "", lga: org.lga || "", purpose: org.purpose || "", vision: org.vision || "", mission: org.mission || "", website: org.website || "", social_instagram: org.social_instagram || "", social_facebook: org.social_facebook || "", social_twitter: org.social_twitter || "", date_established: org.date_established || "", logo_url: org.logo_url || "" });
   const [logoUploading, setLogoUploading] = useState(false);
@@ -1755,6 +1968,51 @@ function SettingsTab({ org, onRefresh, onBack, isOrgPortal = false }) {
 
   return (
     <div className="flex-1 overflow-y-auto px-4 pt-4 pb-24 flex flex-col gap-5">
+      {/* Account */}
+      <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-100 dark:border-slate-700 flex items-center gap-3">
+        {org.logo_url
+          ? <img src={org.logo_url} alt="" className="w-12 h-12 rounded-xl object-cover ring-2 ring-green-200 flex-shrink-0" />
+          : <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl flex-shrink-0"
+              style={{ background: "linear-gradient(145deg,#00A651,#0D2040)" }}>
+              <span>{org.type === "cooperative" ? "🤝" : "🏢"}</span>
+            </div>
+        }
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-extrabold text-slate-800 dark:text-white truncate">{org.name}</p>
+          <p className="text-[10px] text-slate-400 font-mono">{org.reg_number}</p>
+        </div>
+        <button onClick={onBack}
+          className="flex-shrink-0 flex items-center gap-1.5 text-[11px] font-bold text-red-500 border border-red-200 dark:border-red-800 px-3 py-1.5 rounded-xl active:opacity-75 transition-opacity">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="w-3.5 h-3.5">
+            <path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+          </svg>
+          Sign Out
+        </button>
+      </div>
+      {/* Theme toggle */}
+      <div className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 border border-slate-100 dark:border-slate-700 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+            style={{ background: isDark ? "#0D2040" : "#f0fdf4" }}>
+            <svg viewBox="0 0 24 24" fill="none" className="w-4.5 h-4.5" stroke={isDark ? "#00A651" : "#0D2040"} strokeWidth={2} strokeLinecap="round">
+              {isDark
+                ? <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
+                : <><circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /></>
+              }
+            </svg>
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">{isDark ? "Dark Mode" : "Light Mode"}</p>
+            <p className="text-[10px] text-slate-400">Tap to switch</p>
+          </div>
+        </div>
+        <button onClick={onToggleDark}
+          className="w-12 h-6 rounded-full transition-all relative flex-shrink-0"
+          style={{ background: isDark ? "#00A651" : "#e2e8f0" }}>
+          <div className={`w-5 h-5 rounded-full bg-white shadow-md transition-transform absolute top-0.5 ${isDark ? "translate-x-[26px]" : "translate-x-0.5"}`} />
+        </button>
+      </div>
+
       {/* Org Profile */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-100 dark:border-slate-700">
         <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-4">Organisation Profile</p>
@@ -1794,7 +2052,7 @@ function SettingsTab({ org, onRefresh, onBack, isOrgPortal = false }) {
             <div className="flex items-center gap-4">
               {form.logo_url
                 ? <img src={form.logo_url} alt="logo" className="w-16 h-16 rounded-xl object-cover border border-slate-200 flex-shrink-0" />
-                : <div className="w-16 h-16 rounded-xl bg-violet-50 border border-slate-200 flex items-center justify-center text-2xl flex-shrink-0">
+                : <div className="w-16 h-16 rounded-xl bg-green-50 border border-slate-200 flex items-center justify-center text-2xl flex-shrink-0">
                     {org.type === "cooperative" ? "🤝" : "🏢"}
                   </div>
               }
@@ -1840,7 +2098,7 @@ function SettingsTab({ org, onRefresh, onBack, isOrgPortal = false }) {
             ))}
           </div>
         </div>
-        <button onClick={handleSaveOrg} disabled={saving} className="w-full mt-4 py-3 bg-violet-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">{saving ? "Saving…" : "Save Profile"}</button>
+        <button onClick={handleSaveOrg} disabled={saving} className="w-full mt-4 py-3 bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">{saving ? "Saving…" : "Save Profile"}</button>
       </div>
 
       {/* Key Leaders */}
@@ -1848,7 +2106,7 @@ function SettingsTab({ org, onRefresh, onBack, isOrgPortal = false }) {
         <div className="flex justify-between items-center mb-4">
           <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Key Leaders & Executives</p>
           <button onClick={() => { setLForm({ name: "", position: "", phone: "", email: "", sort_order: String(leaders.length) }); setEditL(null); setShowAddL(true); }}
-            className="px-3 py-1.5 bg-violet-600 text-white rounded-lg text-xs font-bold">+ Add</button>
+            className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-bold">+ Add</button>
         </div>
         {leaders.length === 0 ? (
           <p className="text-xs text-slate-400 text-center py-4">No leaders added yet</p>
@@ -1856,7 +2114,7 @@ function SettingsTab({ org, onRefresh, onBack, isOrgPortal = false }) {
           <div className="flex flex-col gap-2">
             {leaders.map(l => (
               <div key={l.id} className="flex items-center gap-3 py-2 border-b border-slate-100 dark:border-slate-700 last:border-0">
-                <div className="w-9 h-9 rounded-xl bg-violet-100 flex items-center justify-center text-sm font-extrabold text-violet-600 flex-shrink-0">{l.name?.charAt(0)}</div>
+                <div className="w-9 h-9 rounded-xl bg-green-100 flex items-center justify-center text-sm font-extrabold text-green-600 flex-shrink-0">{l.name?.charAt(0)}</div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold text-slate-800 dark:text-white truncate">{l.name}</p>
                   <p className="text-[10px] text-slate-400">{l.position}</p>
@@ -1896,17 +2154,17 @@ function SettingsTab({ org, onRefresh, onBack, isOrgPortal = false }) {
               </div>
             )}
             {portalResult && (
-              <div className="bg-violet-50 border border-violet-200 rounded-2xl p-4 mb-3">
-                <p className="text-[11px] font-bold text-violet-400 uppercase tracking-wider mb-2">Portal Created ✓</p>
+              <div className="bg-green-50 border border-green-200 rounded-2xl p-4 mb-3">
+                <p className="text-[11px] font-bold text-green-400 uppercase tracking-wider mb-2">Portal Created ✓</p>
                 <p className="text-xs text-slate-600 mb-1">Send these credentials to the organisation:</p>
-                <div className="bg-white rounded-xl p-3 border border-violet-100 flex flex-col gap-1">
+                <div className="bg-white rounded-xl p-3 border border-green-100 flex flex-col gap-1">
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] text-slate-400 font-bold w-20">Email</span>
                     <span className="text-xs font-mono text-slate-800">{portalResult.email}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] text-slate-400 font-bold w-20">Temp Password</span>
-                    <span className="text-xs font-mono font-bold text-violet-700 bg-violet-50 px-2 py-0.5 rounded-lg">{portalResult.temp_password}</span>
+                    <span className="text-xs font-mono font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded-lg">{portalResult.temp_password}</span>
                   </div>
                 </div>
                 <p className="text-[10px] text-slate-400 mt-2">A welcome email has been sent. They'll be prompted to change their password on first login.</p>
@@ -1922,7 +2180,7 @@ function SettingsTab({ org, onRefresh, onBack, isOrgPortal = false }) {
                 finally { setPortalSaving(false); }
               }}
               disabled={portalSaving}
-              className="w-full py-3 bg-violet-600 text-white rounded-xl font-bold text-sm disabled:opacity-50"
+              className="w-full py-3 bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-50"
             >
               {portalSaving ? "Setting up…" : org.portal_user_id ? "Reset Portal Login" : "Setup Portal Login"}
             </button>
@@ -1956,7 +2214,7 @@ function SettingsTab({ org, onRefresh, onBack, isOrgPortal = false }) {
           </div>
           <div className="flex gap-2 mt-5">
             <button onClick={() => { setShowAddL(false); setEditL(null); setError(""); }} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Cancel</button>
-            <button onClick={handleSaveLeader} disabled={lSaving} className="flex-1 py-3 bg-violet-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">{lSaving ? "Saving…" : editL ? "Save" : "Add Leader"}</button>
+            <button onClick={handleSaveLeader} disabled={lSaving} className="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">{lSaving ? "Saving…" : editL ? "Save" : "Add Leader"}</button>
           </div>
         </ModalWrap>
       )}
@@ -1967,7 +2225,7 @@ function SettingsTab({ org, onRefresh, onBack, isOrgPortal = false }) {
 // ═══════════════════════════════════════════════════
 //  BILLS TAB (org portal only — no print services)
 // ═══════════════════════════════════════════════════
-function BillsTab({ org, autoService = null, onAutoOpened = null }) {
+function BillsTab({ org, autoService = null, onAutoOpened = null, adminEmail = null }) {
   const [bills, setBills] = useState([]);
   const [loadingBills, setLoadingBills] = useState(true);
 
@@ -1996,7 +2254,7 @@ function BillsTab({ org, autoService = null, onAutoOpened = null }) {
   if (loadingBills) {
     return (
       <div className="flex justify-center py-16">
-        <div className="w-6 h-6 border-[3px] border-violet-500 border-t-transparent rounded-full animate-spin" />
+        <div className="w-6 h-6 border-[3px] border-green-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -2005,8 +2263,12 @@ function BillsTab({ org, autoService = null, onAutoOpened = null }) {
     <BillPayments
       store={store}
       plan=""
+      markup={1.098}
+      cashback={10}
+      pointsEnabled
       excludeCats={["print-airtime", "print-data"]}
       businessName={org.name}
+      staffEmail={adminEmail || undefined}
       autoService={autoService}
       onAutoOpened={onAutoOpened}
     />
@@ -2029,8 +2291,8 @@ const MAIN_TABS = [
 // "More" sheet tabs (org portal)
 const MORE_TABS = [
   { id: "programs",  label: "Programs",  icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2",          color: "#059669" },
-  { id: "meetings",  label: "Meetings",  icon: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z",                                                   color: "#0f766e" },
-  { id: "bills",     label: "Bills",     icon: "M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z",                                                   color: "#7c3aed", orgOnly: true },
+  { id: "broadcast", label: "Broadcast", icon: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z",                                                   color: "#0f766e" },
+  { id: "bills",     label: "Bills",     icon: "M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z",                                                   color: "#00A651", orgOnly: true },
   { id: "settings",  label: "Settings",  icon: "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z|M15 12a3 3 0 11-6 0 3 3 0 016 0z", color: "#64748b" },
 ];
 
@@ -2041,7 +2303,7 @@ const TABS = [
   { id: "programs",  label: "Programs",  icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" },
   { id: "finance",   label: "Finance",   icon: "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" },
   { id: "loans",     label: "Loans",     icon: "M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" },
-  { id: "meetings",  label: "Meetings",  icon: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" },
+  { id: "broadcast", label: "Broadcast", icon: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" },
   { id: "messages",  label: "Messages",  icon: "M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" },
   { id: "settings",  label: "Settings",  icon: "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z" },
   { id: "bills",     label: "Bills",     icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2M9 14l2 2 4-4", orgOnly: true },
@@ -2052,8 +2314,15 @@ const ORG_TYPE_ICONS = { cooperative:"🤝", market_association:"🏪", church:"
 // ═══════════════════════════════════════════════════
 //  MAIN DASHBOARD
 // ═══════════════════════════════════════════════════
-export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = false }) {
-  const [tab,           setTab]           = useState("overview");
+export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = false, adminEmail = null }) {
+  const { isDark, toggle: toggleDark } = useTheme();
+  const [tab,           setTab]           = useState(() => {
+    const p = new URLSearchParams(window.location.search);
+    const ref = p.get("bill_ref") || p.get("trxref") || p.get("reference");
+    if (ref && localStorage.getItem(`ck_bill_pending_${ref}`)) return "bills";
+    if (Object.keys(localStorage).some(k => k.startsWith("ck_bill_pending_"))) return "bills";
+    return "overview";
+  });
   const [org,           setOrg]           = useState(initialOrg);
   const [members,       setMembers]       = useState([]);
   const [wallet,        setWallet]        = useState(null);
@@ -2111,10 +2380,10 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
     programs: <ProgramsTab org={org} onRefresh={loadAll} />,
     finance:  <FinanceTab  org={org} members={members} programs={programs} onRefresh={loadAll} />,
     loans:    <LoansTab    org={org} members={members} onRefresh={loadAll} />,
-    meetings: <MeetingsTab org={org} members={members} />,
+    broadcast: <BroadcastTab org={org} members={members} />,
     messages: <GroupChat orgId={org.id} myName={org.owner_name || "Admin"} myRole="admin" orgName={org.name} org={org} onBack={() => setTab("overview")} />,
-    settings: <SettingsTab org={org} onRefresh={loadAll} onBack={onBack} isOrgPortal={isOrgPortal} />,
-    bills:    <BillsTab    org={org} autoService={billsAutoSvc} onAutoOpened={() => setBillsAutoSvc(null)} />,
+    settings: <SettingsTab org={org} onRefresh={loadAll} onBack={onBack} isOrgPortal={isOrgPortal} isDark={isDark} onToggleDark={toggleDark} />,
+    bills:    <BillsTab    org={org} autoService={billsAutoSvc} onAutoOpened={() => setBillsAutoSvc(null)} adminEmail={adminEmail} />,
   };
 
   const isMoreTab = MORE_TABS.some(t => t.id === tab);
@@ -2127,22 +2396,25 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
         <div className="w-full max-w-md flex flex-col h-full">
 
           {/* ── Top Header ── */}
-          <div className="sticky top-0 z-20 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 py-3 flex items-center gap-3">
-            {org.logo_url
-              ? <img src={org.logo_url} alt="" className="w-9 h-9 rounded-xl object-cover ring-2 ring-violet-200 flex-shrink-0" />
-              : <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg flex-shrink-0"
-                  style={{ background: "linear-gradient(145deg,#7c3aed,#4c1d95)" }}>
-                  <span>{ORG_TYPE_ICONS[org.type] || "🏢"}</span>
-                </div>
-            }
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-extrabold text-slate-800 dark:text-white truncate leading-tight">{org.name}</p>
-              <p className="text-[9px] text-slate-400 font-mono tracking-wider">{org.reg_number}</p>
+          <div className="sticky top-0 z-20 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 py-3 flex items-center justify-between relative">
+            {/* KudiAi Track brand — centered */}
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none">
+              <span className="text-sm font-black tracking-tight leading-none">
+                <span style={{ background: "linear-gradient(135deg,#0D2040,#00A651)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>KudiAi</span>
+                <span className="text-[#0D2040] dark:text-[#00A651] font-bold"> Track</span>
+              </span>
             </div>
-            {loading && <div className="w-4 h-4 border-2 border-violet-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />}
-            <button onClick={onBack}
-              className="text-[10px] font-extrabold text-red-500 border border-red-200 dark:border-red-800 px-2.5 py-1 rounded-lg">
-              Sign Out
+            {/* Left: KudiAi Track logo */}
+            <img src="/logo.png" alt="KudiAi Track" className="h-9 w-auto flex-shrink-0 object-contain" />
+            {/* Right: org logo — taps open Settings */}
+            <button onClick={() => navigateTo("settings")} className="flex-shrink-0 active:opacity-75 transition-opacity">
+              {org.logo_url
+                ? <img src={org.logo_url} alt="" className="w-9 h-9 rounded-xl object-cover ring-2 ring-green-200" />
+                : <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg"
+                    style={{ background: "linear-gradient(145deg,#00A651,#0D2040)" }}>
+                    <span>{ORG_TYPE_ICONS[org.type] || "🏢"}</span>
+                  </div>
+              }
             </button>
           </div>
 
@@ -2163,13 +2435,13 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
                       <button key={t.id} onClick={() => { setTab(t.id); setShowMore(false); }}
                         className="flex flex-col items-center gap-1 px-3 py-1.5 min-w-[52px] relative">
                         {active && (
-                          <span className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full bg-violet-600" />
+                          <span className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full bg-green-600" />
                         )}
                         <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5"
-                          stroke={active ? "#7c3aed" : "#94a3b8"} strokeWidth={active ? 2.5 : 2} strokeLinecap="round" strokeLinejoin="round">
+                          stroke={active ? "#00A651" : "#94a3b8"} strokeWidth={active ? 2.5 : 2} strokeLinecap="round" strokeLinejoin="round">
                           <path d={t.icon} />
                         </svg>
-                        <span className={`text-[9px] font-bold ${active ? "text-violet-600" : "text-slate-400 dark:text-slate-500"}`}>{t.label}</span>
+                        <span className={`text-[9px] font-bold ${active ? "text-green-600" : "text-slate-400 dark:text-slate-500"}`}>{t.label}</span>
                       </button>
                     );
                   })}
@@ -2177,13 +2449,13 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
                   <button onClick={() => setShowMore(p => !p)}
                     className="flex flex-col items-center gap-1 px-3 py-1.5 min-w-[52px] relative">
                     {isMoreTab && (
-                      <span className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full bg-violet-600" />
+                      <span className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full bg-green-600" />
                     )}
                     <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5"
-                      stroke={isMoreTab || showMore ? "#7c3aed" : "#94a3b8"} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                      stroke={isMoreTab || showMore ? "#00A651" : "#94a3b8"} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                       <path d="M5 12h.01M12 12h.01M19 12h.01" />
                     </svg>
-                    <span className={`text-[9px] font-bold ${isMoreTab || showMore ? "text-violet-600" : "text-slate-400 dark:text-slate-500"}`}>More</span>
+                    <span className={`text-[9px] font-bold ${isMoreTab || showMore ? "text-green-600" : "text-slate-400 dark:text-slate-500"}`}>More</span>
                   </button>
                 </div>
               </div>
@@ -2204,15 +2476,15 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
                     const active = tab === t.id;
                     return (
                       <button key={t.id} onClick={() => navigateTo(t.id)}
-                        className={`flex flex-col items-center gap-2.5 py-4 rounded-2xl transition-all active:scale-95 ${active ? "bg-violet-50 dark:bg-violet-900/30" : "bg-slate-50 dark:bg-slate-800"}`}>
+                        className={`flex flex-col items-center gap-2.5 py-4 rounded-2xl transition-all active:scale-95 ${active ? "bg-green-50 dark:bg-green-900/30" : "bg-slate-50 dark:bg-slate-800"}`}>
                         <div className="w-11 h-11 rounded-xl flex items-center justify-center"
                           style={{ background: (t.color || "#64748b") + "18" }}>
                           <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                            style={{ stroke: active ? "#7c3aed" : (t.color || "#64748b") }}>
+                            style={{ stroke: active ? "#00A651" : (t.color || "#64748b") }}>
                             {t.icon.split("|").map((p, i) => <path key={i} d={p} />)}
                           </svg>
                         </div>
-                        <span className={`text-[10px] font-bold ${active ? "text-violet-600" : "text-slate-600 dark:text-slate-300"}`}>{t.label}</span>
+                        <span className={`text-[10px] font-bold ${active ? "text-green-600" : "text-slate-600 dark:text-slate-300"}`}>{t.label}</span>
                       </button>
                     );
                   })}
@@ -2240,14 +2512,14 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
             <p className="text-sm font-extrabold text-slate-800 dark:text-white truncate">{org.name}</p>
             <p className="text-[10px] text-slate-400 font-mono">{org.reg_number}</p>
           </div>
-          {loading && <div className="w-4 h-4 border-2 border-violet-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />}
+          {loading && <div className="w-4 h-4 border-2 border-green-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />}
         </div>
 
         <div className="bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 overflow-x-auto">
           <div className="flex min-w-max">
             {TABS.filter(t => !t.orgOnly).map(t => (
               <button key={t.id} onClick={() => setTab(t.id)}
-                className={`flex flex-col items-center gap-0.5 px-3.5 py-2.5 border-b-2 transition-colors ${tab === t.id ? "border-violet-600 text-violet-600" : "border-transparent text-slate-400 dark:text-slate-500"}`}>
+                className={`flex flex-col items-center gap-0.5 px-3.5 py-2.5 border-b-2 transition-colors ${tab === t.id ? "border-green-600 text-green-600" : "border-transparent text-slate-400 dark:text-slate-500"}`}>
                 <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 flex-shrink-0" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                   {t.icon.split("|").map((p, i) => <path key={i} d={p} />)}
                 </svg>

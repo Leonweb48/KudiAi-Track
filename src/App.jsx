@@ -264,6 +264,8 @@ export default function App() {
                     onUpgrade={openUpgrade}
                     branches={branchesHook.branches} />,
     bills:        <BillPayments store={store} plan={plan} markup={1.098} airtimeDiscount={0.01} pointsEnabled
+                    staffEmail={session?.user?.email}
+                    staffName={store.profile?.owner_name || store.profile?.business_name}
                     autoService={autoAdd?.tab === "bills" ? autoAdd?.type : null}
                     onAutoOpened={clearAutoAdd} />,
     insights:     <Insights
@@ -410,6 +412,7 @@ export default function App() {
         <CoopDashboard
           org={coopOrg}
           onBack={() => setCoopOrg(null)}
+          adminEmail={session?.user?.email}
         />
       )}
 
