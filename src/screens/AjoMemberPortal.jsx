@@ -1738,7 +1738,7 @@ export default function AjoMemberPortal({ session, ajoClient }) {
         </nav>
 
         {/* Notification Center */}
-        <NotificationCenter notif={notif} />
+        <NotificationCenter notif={notif} allowedTypeKeys={["aso", "bills", "system"]} />
 
       </div>
 

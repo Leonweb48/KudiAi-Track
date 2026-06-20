@@ -61,7 +61,7 @@ function Toggle({ checked, onChange, disabled }) {
 }
 
 /* ── Settings Panel ──────────────────────────────────────────────── */
-function SettingsView({ settings, updateSetting, requestPush, speak, onBack }) {
+function SettingsView({ settings, updateSetting, requestPush, speak, onBack, allowedTypeKeys }) {
   const [pushStatus, setPushStatus] = useState(null);
 
   const handlePushToggle = async (val) => {
@@ -75,7 +75,7 @@ function SettingsView({ settings, updateSetting, requestPush, speak, onBack }) {
   const pushSupported = "Notification" in window;
   const pushDenied    = pushSupported && Notification.permission === "denied";
 
-  const TYPE_SETTINGS = [
+  const ALL_TYPE_SETTINGS = [
     { key: "sales",    label: "Sales & Expenses",  icon: "💰", desc: "Every recorded sale and expense" },
     { key: "credits",  label: "Credit Alerts",     icon: "👥", desc: "New credits and overdue alerts"  },
     { key: "payments", label: "Payments Received", icon: "✅", desc: "When a debtor makes a payment"   },
@@ -84,6 +84,9 @@ function SettingsView({ settings, updateSetting, requestPush, speak, onBack }) {
     { key: "aso",      label: "Ajo Reminders",     icon: "🏦", desc: "Contributions and missed payments"},
     { key: "system",   label: "System Alerts",     icon: "🔔", desc: "App-level alerts and summaries"  },
   ];
+  const TYPE_SETTINGS = allowedTypeKeys
+    ? ALL_TYPE_SETTINGS.filter(t => allowedTypeKeys.includes(t.key))
+    : ALL_TYPE_SETTINGS;
 
   return (
     <div className="flex flex-col h-full">
@@ -217,7 +220,7 @@ function NotifItem({ n, onRead }) {
 }
 
 /* ── Notification list view ──────────────────────────────────────── */
-function NotifList({ notifications, unreadCount, markRead, markAllRead, clearAll, onSettings }) {
+function NotifList({ notifications, unreadCount, markRead, markAllRead, clearAll, onSettings, allowedTypeKeys }) {
   const [activeFilter, setActiveFilter] = useState("all");
 
   const filtered = activeFilter === "unread"
@@ -226,7 +229,7 @@ function NotifList({ notifications, unreadCount, markRead, markAllRead, clearAll
     ? notifications
     : notifications.filter(n => n.type === activeFilter);
 
-  const FILTERS = [
+  const ALL_FILTERS = [
     { key: "all",      label: "All" },
     { key: "unread",   label: `Unread${unreadCount > 0 ? ` (${unreadCount})` : ""}` },
     { key: "sales",    label: "Sales"    },
@@ -235,6 +238,9 @@ function NotifList({ notifications, unreadCount, markRead, markAllRead, clearAll
     { key: "bills",    label: "Bills"    },
     { key: "aso",      label: "Ajo"      },
   ];
+  const FILTERS = allowedTypeKeys
+    ? ALL_FILTERS.filter(f => ["all", "unread"].includes(f.key) || allowedTypeKeys.includes(f.key))
+    : ALL_FILTERS;
 
   return (
     <div className="flex flex-col h-full">
@@ -330,7 +336,7 @@ export function NotificationBell({ unreadCount = 0, onClick }) {
 }
 
 /* ── Main panel (full-screen overlay, rendered in App.jsx) ───────── */
-export default function NotificationCenter({ notif }) {
+export default function NotificationCenter({ notif, allowedTypeKeys }) {
   const {
     notifications, settings, unreadCount,
     open, setOpen, showSettings, setShowSettings,
@@ -364,6 +370,7 @@ export default function NotificationCenter({ notif }) {
               requestPush={requestPush}
               speak={speak}
               onBack={() => setShowSettings(false)}
+              allowedTypeKeys={allowedTypeKeys}
             />
           ) : (
             <NotifList
@@ -373,6 +380,7 @@ export default function NotificationCenter({ notif }) {
               markAllRead={markAllRead}
               clearAll={clearAll}
               onSettings={() => setShowSettings(true)}
+              allowedTypeKeys={allowedTypeKeys}
             />
           )}
         </div>
