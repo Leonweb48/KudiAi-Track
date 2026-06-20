@@ -16,6 +16,7 @@ import Credit                 from "./Credit";
 import Aso                    from "./Aso";
 import Inventory              from "./Inventory";
 import Insights               from "./Insights";
+import StaffReports           from "./StaffReports";
 
 /* ═══════════════════════════════════════════════════════════════════
    CONSTANTS
@@ -814,17 +815,18 @@ function StaffStock({ inventory, staff, livePerms, plan }) {
    ME TAB
 ═══════════════════════════════════════════════════════════════════ */
 function StaffMe({ staff, session, store, inventory, livePerms, staffId, lock, plan, initialView }) {
-  const [view,         setView]         = useState(initialView || "menu");
-  const [isDark,       setIsDark]       = useState(() => localStorage.getItem("kuditrack_dark") === "1");
-  const [editForm,     setEditForm]     = useState({ full_name: staff?.full_name || "", phone: staff?.phone || "" });
-  const [photoFile,    setPhotoFile]    = useState(null);
-  const [photoPreview, setPhotoPreview] = useState(null);
-  const [saving,       setSaving]       = useState(false);
-  const [saveMsg,      setSaveMsg]      = useState("");
-  const [showPinSetup, setShowPinSetup] = useState(false);
-  const [showSupport,  setShowSupport]  = useState(false);
-  const [showStatement,setShowStatement]= useState(false);
-  const [lockBusy,     setLockBusy]     = useState(false);
+  const [view,          setView]          = useState(initialView || "menu");
+  const [isDark,        setIsDark]        = useState(() => localStorage.getItem("kuditrack_dark") === "1");
+  const [editForm,      setEditForm]      = useState({ full_name: staff?.full_name || "", phone: staff?.phone || "" });
+  const [photoFile,     setPhotoFile]     = useState(null);
+  const [photoPreview,  setPhotoPreview]  = useState(null);
+  const [saving,        setSaving]        = useState(false);
+  const [saveMsg,       setSaveMsg]       = useState("");
+  const [showPinSetup,  setShowPinSetup]  = useState(false);
+  const [showSupport,   setShowSupport]   = useState(false);
+  const [showStatement, setShowStatement] = useState(false);
+  const [showReports,   setShowReports]   = useState(false);
+  const [lockBusy,      setLockBusy]      = useState(false);
   const fileRef = useRef(null);
 
   useEffect(() => { if (initialView) setView(initialView); }, [initialView]);
@@ -862,9 +864,24 @@ function StaffMe({ staff, session, store, inventory, livePerms, staffId, lock, p
   /* Reports sub-view */
   if (view === "reports") return (
     <div className="h-full flex flex-col">
+      {showReports && (
+        <StaffReports
+          store={store}
+          inventory={inventory}
+          staffName={staff?.full_name}
+          businessName={staff?.business_name || store.profile?.business_name}
+          onClose={() => setShowReports(false)}
+        />
+      )}
       <SubHeader title="Reports & Insights" />
       <div className="flex-1 overflow-y-auto pb-4">
-        <Insights store={store} inventory={inventory} plan={plan || "starter"} onUpgrade={null} />
+        <Insights
+          store={store}
+          inventory={inventory}
+          plan={plan || "starter"}
+          onUpgrade={null}
+          onReports={() => setShowReports(true)}
+        />
       </div>
     </div>
   );
