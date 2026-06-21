@@ -17,77 +17,63 @@ function errorMessage(err, res) {
 
 export async function askGemini({
   message,
-  context    = "",
-  history    = [],
-  lang       = "en",
+  context     = "",
+  history     = [],
+  lang        = "en",
   onChunk,
-  timeout    = 20000,
-  maxAttempts = 2,
+  timeout     = 30000,
+  maxAttempts = 3,
 }) {
   let lastErr = null;
   let lastRes = null;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    if (attempt > 0) {
-      await new Promise(r => setTimeout(r, attempt === 1 ? 1000 : 2000));
-    }
+    if (attempt > 0) await new Promise(r => setTimeout(r, attempt === 1 ? 1000 : 2000));
 
-    const controller = new AbortController();
-    const timeoutId  = setTimeout(() => controller.abort(), timeout);
+    // A timer promise that always rejects after `timeout` ms so Promise.race
+    // can never hang forever regardless of fetch/body-read behaviour.
+    let rejectTimer;
+    const timerPromise = new Promise((_, reject) => {
+      rejectTimer = setTimeout(
+        () => reject(Object.assign(new Error("timeout"), { name: "AbortError" })),
+        timeout,
+      );
+    });
 
     try {
-      const res = await fetch(CHAT_URL, {
-        method:  "POST",
-        headers: {
-          "Content-Type":     "application/json",
-          "x-trigger-secret": SECRET,
-        },
-        body:   JSON.stringify({ message, lang, businessContext: context, history }),
-        signal: controller.signal,
-      });
-      // Keep timeout active — clear it only once the first data chunk arrives
-      // (guards against server returning 200 headers but hanging before sending body)
-      lastRes = res;
+      const text = await Promise.race([
+        (async () => {
+          const res = await fetch(CHAT_URL, {
+            method:  "POST",
+            headers: {
+              "Content-Type":     "application/json",
+              "x-trigger-secret": SECRET,
+            },
+            body: JSON.stringify({ message, lang, businessContext: context, history }),
+          });
+          lastRes = res;
 
-      if (!res.ok) {
-        clearTimeout(timeoutId);
-        lastErr = new Error(`HTTP ${res.status}`);
-        if (res.status === 401 || res.status === 403 || res.status === 429) break;
-        continue;
-      }
-
-      if (res.body) {
-        const reader  = res.body.getReader();
-        const decoder = new TextDecoder();
-        let full    = "";
-        let gotData = false;
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          const chunk = decoder.decode(value, { stream: true });
-          if (!gotData) {
-            gotData = true;
-            clearTimeout(timeoutId); // first chunk received — disable the abort guard
+          if (!res.ok) {
+            const e = Object.assign(new Error(`HTTP ${res.status}`), { status: res.status });
+            throw e;
           }
-          full += chunk;
-          if (onChunk) onChunk(chunk);
-        }
-        if (!gotData) clearTimeout(timeoutId); // empty body — still clear
-        return full;
-      }
 
-      // Non-streaming fallback
-      const text = await res.text();
-      clearTimeout(timeoutId);
-      if (onChunk && text) onChunk(text);
+          return await res.text();
+        })(),
+        timerPromise,
+      ]);
+
+      clearTimeout(rejectTimer);
+      if (text && onChunk) onChunk(text);
       return text || "";
 
     } catch (e) {
-      clearTimeout(timeoutId);
+      clearTimeout(rejectTimer);
       lastErr = e;
+      // Don't retry on timeout, offline, or auth/rate-limit errors
       if (e?.name === "AbortError") break;
       if (typeof navigator !== "undefined" && !navigator.onLine) break;
+      if (e?.status === 401 || e?.status === 403 || e?.status === 429) break;
     }
   }
 
