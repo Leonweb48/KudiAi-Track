@@ -576,6 +576,34 @@ serve(async (req) => {
         })
         .select("*").single();
       if (error) return json({ error: error.message }, 400);
+
+      // Notify org owner + all active members about the new program
+      const { data: progOrg } = await sb.from("organizations").select("name,owner_id").eq("id", org_id).maybeSingle();
+      const { data: progMembers } = await sb.from("org_members")
+        .select("full_name,email").eq("org_id", org_id).eq("status", "active");
+      let progOwnerEmail = "";
+      if (progOrg?.owner_id) {
+        const { data: ownerP } = await sb.from("profiles").select("email").eq("id", progOrg.owner_id).maybeSingle();
+        progOwnerEmail = ownerP?.email || "";
+      }
+      const emailPayload = {
+        org_name:          progOrg?.name || "",
+        owner_email:       progOwnerEmail,
+        program_name:      String(name),
+        description:       String(description || ""),
+        contribution_type: String(contribution_type || "fixed"),
+        amount:            parseFloat(String(amount || 0)),
+        frequency:         String(frequency || "monthly"),
+        due_day:           due_day ? parseInt(String(due_day)) : null,
+        target_amount:     target_amount ? parseFloat(String(target_amount)) : null,
+        members:           (progMembers || []).map((m: { full_name: string; email: string }) => ({ name: m.full_name, email: m.email })),
+      };
+      fetch("https://admin.kudiai.app/api/public/email-trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+        body: JSON.stringify({ event: "org_new_program", data: emailPayload }),
+      }).catch(() => null);
+
       return json({ program });
     }
 
