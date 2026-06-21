@@ -62,9 +62,10 @@ export default function AIChatWidget({
   async function runAI(userMsg) {
     let context = "";
     let history = [];
+    let lang    = "en";
     try {
-      const lang     = getLang();
-      const products = inventory?.products || [];
+      lang               = getLang();
+      const products     = inventory?.products || [];
       context = portalContext ?? buildContext(store, products, branches);
       history = msgRef.current
         .slice(1)
