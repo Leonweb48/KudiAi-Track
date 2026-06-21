@@ -6,6 +6,7 @@ import GroupChat from "./GroupChat";
 import AIChatWidget from "../components/AIChatWidget";
 import { buildCoopMemberContext } from "../utils/buildContext";
 import { CoopSavingReceipt, CoopWithdrawalRequestReceipt } from "../components/shared/Receipt";
+import { CoopNotificationBell } from "../components/shared/CoopNotifications";
 
 const coopFn = async (action, body = {}) => {
   const r = await supabase.functions.invoke("coop-portal", { body: { action, ...body } });
@@ -1498,19 +1499,27 @@ export default function CoopMemberPortal({ member: initialMember }) {
           </div>
           {/* Left: KudiAi Track logo */}
           <img src="/logo.png" alt="KudiAi Track" className="h-9 w-auto flex-shrink-0 object-contain" />
-          {/* Right: member avatar — taps open profile editor */}
-          <button onClick={() => setShowProfile(true)} className="flex-shrink-0 active:opacity-75 transition-opacity relative">
-            {member.avatar_url
-              ? <img src={member.avatar_url} alt="" className="w-9 h-9 rounded-xl object-cover ring-2 ring-green-200" />
-              : <div className="w-9 h-9 rounded-xl flex items-center justify-center text-base font-extrabold text-white"
-                  style={{ background: "linear-gradient(145deg,#00A651,#0D2040)" }}>
-                  {member.full_name?.charAt(0).toUpperCase()}
-                </div>
-            }
-            <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-green-600 rounded-full border-2 border-white flex items-center justify-center">
-              <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={3} className="w-2 h-2"><path d="M12 5v14M5 12h14"/></svg>
-            </span>
-          </button>
+          {/* Right: notification bell + member avatar */}
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <CoopNotificationBell
+              orgId={org.id}
+              recipientId={member.id}
+              recipientType="member"
+              onNavigate={navigateTo}
+            />
+            <button onClick={() => setShowProfile(true)} className="active:opacity-75 transition-opacity relative">
+              {member.avatar_url
+                ? <img src={member.avatar_url} alt="" className="w-9 h-9 rounded-xl object-cover ring-2 ring-green-200" />
+                : <div className="w-9 h-9 rounded-xl flex items-center justify-center text-base font-extrabold text-white"
+                    style={{ background: "linear-gradient(145deg,#00A651,#0D2040)" }}>
+                    {member.full_name?.charAt(0).toUpperCase()}
+                  </div>
+              }
+              <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-green-600 rounded-full border-2 border-white flex items-center justify-center">
+                <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={3} className="w-2 h-2"><path d="M12 5v14M5 12h14"/></svg>
+              </span>
+            </button>
+          </div>
         </div>
 
         {/* ── Main Content ── */}

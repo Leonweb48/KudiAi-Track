@@ -41,6 +41,24 @@ serve(async (req) => {
   try { body = await req.json(); } catch { return json({ error: "Invalid JSON" }, 400); }
   const { action } = body;
 
+  // Fire-and-forget in-app notification insert (bypasses RLS via service role)
+  const insertNotif = (
+    orgId: string,
+    recipientType: "member" | "org",
+    type: "info" | "success" | "warning" | "error" | "alert",
+    category: string,
+    title: string,
+    bodyText: string,
+    actionTab?: string | null,
+    recipientId?: string | null,
+  ) => {
+    sb.from("coop_notifications").insert({
+      org_id: orgId, recipient_id: recipientId || null,
+      recipient_type: recipientType, type, category,
+      title, body: bodyText, action_tab: actionTab || null,
+    }).then(() => null).catch(() => null);
+  };
+
   try {
 
     // ══════════════════════════════════════════════════
@@ -580,7 +598,7 @@ serve(async (req) => {
       // Notify org owner + all active members about the new program
       const { data: progOrg } = await sb.from("organizations").select("name,owner_id").eq("id", org_id).maybeSingle();
       const { data: progMembers } = await sb.from("org_members")
-        .select("full_name,email").eq("org_id", org_id).eq("status", "active");
+        .select("id,full_name,email").eq("org_id", org_id).eq("status", "active");
       let progOwnerEmail = "";
       if (progOrg?.owner_id) {
         const { data: ownerP } = await sb.from("profiles").select("email").eq("id", progOrg.owner_id).maybeSingle();
@@ -596,13 +614,25 @@ serve(async (req) => {
         frequency:         String(frequency || "monthly"),
         due_day:           due_day ? parseInt(String(due_day)) : null,
         target_amount:     target_amount ? parseFloat(String(target_amount)) : null,
-        members:           (progMembers || []).map((m: { full_name: string; email: string }) => ({ name: m.full_name, email: m.email })),
+        members:           (progMembers || []).map((m: { id: string; full_name: string; email: string }) => ({ name: m.full_name, email: m.email })),
       };
       fetch("https://admin.kudiai.app/api/public/email-trigger", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
         body: JSON.stringify({ event: "org_new_program", data: emailPayload }),
       }).catch(() => null);
+      // In-app: notify each active member
+      const progAmtStr = contribution_type === "fixed"
+        ? `₦${Number(amount || 0).toLocaleString("en-NG")} required`
+        : "Voluntary contributions";
+      const freqLabel = ({ daily:"Daily", weekly:"Weekly", monthly:"Monthly", quarterly:"Quarterly", annual:"Annual", one_time:"One-time" } as Record<string, string>)[String(frequency)] || String(frequency);
+      for (const m of (progMembers || []) as Array<{ id: string; full_name: string; email: string }>) {
+        if (!m.id) continue;
+        insertNotif(String(org_id), "member", "info", "program",
+          `New Program: ${String(name)}`,
+          `${freqLabel} — ${progAmtStr}${description ? ". " + String(description).slice(0, 60) : ""}`,
+          "contributions", m.id);
+      }
 
       return json({ program });
     }
@@ -874,6 +904,11 @@ serve(async (req) => {
         })
         .select("*, org_members(full_name,membership_id)").single();
       if (error) return json({ error: error.message }, 400);
+      // In-app: notify org about new loan request
+      insertNotif(String(org_id), "org", "info", "loan",
+        "New Loan Request",
+        `${(loan.org_members as Record<string,string>)?.full_name || "A member"} applied for a loan of ₦${Number(principal).toLocaleString("en-NG")}`,
+        "loans");
       // Email org about new loan request
       const { data: loanOrg } = await sb.from("organizations").select("name,owner_id").eq("id", org_id).maybeSingle();
       if (loanOrg?.owner_id) {
@@ -922,6 +957,11 @@ serve(async (req) => {
         // Email member: approved
         const memberEmail = (existingLoan.org_members as Record<string, string>)?.email;
         const memberName  = (existingLoan.org_members as Record<string, string>)?.full_name;
+        // In-app: notify member
+        insertNotif(existingLoan.org_id, "member", "success", "loan",
+          "Loan Approved! 🎉",
+          `Your loan of ₦${Number(principal).toLocaleString("en-NG")} is approved. Monthly installment: ₦${Number(monthlyInstallment).toLocaleString("en-NG")} × ${months} months`,
+          "loans", existingLoan.member_id);
         if (memberEmail) {
           const { data: approvedOrg } = await sb.from("organizations").select("name").eq("id", existingLoan.org_id).maybeSingle();
           fetch("https://admin.kudiai.app/api/public/email-trigger", {
@@ -936,6 +976,11 @@ serve(async (req) => {
       }
 
       if (status === "rejected") {
+        // In-app: notify member
+        insertNotif(existingLoan.org_id, "member", "error", "loan",
+          "Loan Request Declined",
+          `Your loan request of ₦${Number(existingLoan.amount_requested).toLocaleString("en-NG")} was not approved${rejection_reason ? ": " + String(rejection_reason).slice(0, 80) : ""}`,
+          "loans", existingLoan.member_id);
         // Email member: rejected
         const memberEmail = (existingLoan.org_members as Record<string, string>)?.email;
         const memberName  = (existingLoan.org_members as Record<string, string>)?.full_name;
@@ -980,6 +1025,12 @@ serve(async (req) => {
             notes: `Loan disbursement — ${loan_id}`, balance_after: newSavBal,
           });
         }
+        // In-app: notify member of disbursement
+        const disbAmt = existingLoan.amount_approved || existingLoan.amount_requested;
+        insertNotif(existingLoan.org_id, "member", "success", "loan",
+          "Loan Disbursed! 💰",
+          `₦${Number(disbAmt).toLocaleString("en-NG")} has been credited to your account. Repay by ${String(update.due_date || "due date")}`,
+          "loans", existingLoan.member_id);
         // Email member: disbursed
         const memberEmail = (existingLoan.org_members as Record<string, string>)?.email;
         const memberName  = (existingLoan.org_members as Record<string, string>)?.full_name;
@@ -1048,6 +1099,17 @@ serve(async (req) => {
         paystack_ref: paystack_ref || null, balance_after: newBal,
       });
 
+      // In-app: notify org of repayment received
+      const repayMemberName = (loan.org_members as Record<string,string>)?.full_name || "A member";
+      insertNotif(loan.org_id, "org", "success", "loan",
+        "Loan Repayment Received 💳",
+        `${repayMemberName} paid ₦${Number(amt).toLocaleString("en-NG")}${newOutstanding === 0 ? " — fully repaid!" : `. Balance: ₦${Number(newOutstanding).toLocaleString("en-NG")}`}`,
+        "loans");
+      // In-app: notify member of repayment confirmed
+      insertNotif(loan.org_id, "member", "success", "loan",
+        newOutstanding === 0 ? "Loan Fully Repaid! 🎉" : "Repayment Recorded",
+        `₦${Number(amt).toLocaleString("en-NG")} received${newOutstanding === 0 ? " — your loan is fully settled!" : `. Outstanding: ₦${Number(newOutstanding).toLocaleString("en-NG")}`}`,
+        "loans", loan.member_id);
       // Emails: member + org
       const memberEmail = (loan.org_members as Record<string, string>)?.email;
       const memberName  = (loan.org_members as Record<string, string>)?.full_name;
@@ -1133,6 +1195,17 @@ serve(async (req) => {
           method: "POST", headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
           body: JSON.stringify({ event: "org_loan_overdue", data: payload }),
         }).catch(() => null);
+        // In-app: alert both member and org
+        if (ol.member_id) {
+          insertNotif(String(ol.org_id || org_id), "member", "alert", "loan",
+            "⚠️ Loan Payment Overdue",
+            `Your loan repayment is overdue. Outstanding balance: ₦${Number(ol.outstanding_balance || 0).toLocaleString("en-NG")}. Please make a payment now.`,
+            "loans", String(ol.member_id));
+        }
+        insertNotif(String(ol.org_id || org_id), "org", "alert", "loan",
+          "Overdue Loan Alert",
+          `${memberName || "A member"}'s loan payment is overdue. Balance: ₦${Number(ol.outstanding_balance || 0).toLocaleString("en-NG")}`,
+          "loans");
       }
       return json({ overdue: overdueLoans.length });
     }
@@ -1154,7 +1227,7 @@ serve(async (req) => {
         .select("*").single();
       if (error) return json({ error: error.message }, 400);
       const { data: mtgOrg } = await sb.from("organizations").select("name,owner_id").eq("id", org_id).single();
-      const { data: mtgMems } = await sb.from("org_members").select("full_name,email").eq("org_id", org_id).eq("status", "active");
+      const { data: mtgMems } = await sb.from("org_members").select("id,full_name,email").eq("org_id", org_id).eq("status", "active");
       if (mtgOrg) {
         let ownerEmail = "";
         if (mtgOrg.owner_id) {
@@ -1164,7 +1237,7 @@ serve(async (req) => {
         const recipients = [
           ...(ownerEmail ? [{ email: ownerEmail, name: "Admin", is_org: true }] : []),
           ...(mtgMems || []).filter((m: { email?: string }) => m.email)
-            .map((m: { full_name: string; email: string }) => ({ email: m.email, name: m.full_name, is_org: false })),
+            .map((m: { id: string; full_name: string; email: string }) => ({ email: m.email, name: m.full_name, is_org: false })),
         ];
         for (const r of recipients) {
           fetch("https://admin.kudiai.app/api/public/email-trigger", {
@@ -1178,6 +1251,16 @@ serve(async (req) => {
               meeting_link: meeting_link || "", agenda: agenda || "",
             }}),
           }).catch(() => null);
+        }
+        // In-app: notify each member
+        const fmtLabel: Record<string,string> = { physical:"In-person", virtual:"Virtual", hybrid:"Hybrid" };
+        const mtgDateStr = scheduled_at ? new Date(scheduled_at).toLocaleDateString("en-NG", { day:"numeric", month:"short" }) : "";
+        for (const m of (mtgMems || []) as Array<{ id: string; full_name: string; email: string }>) {
+          if (!m.id) continue;
+          insertNotif(org_id, "member", "info", "broadcast",
+            `📅 ${title}`,
+            `${fmtLabel[format] || "Meeting"} meeting${mtgDateStr ? " · " + mtgDateStr : ""}${location ? " @ " + location : ""}`,
+            "broadcast", m.id);
         }
       }
       return json({ meeting });
@@ -1284,7 +1367,7 @@ serve(async (req) => {
         }).select("*").single();
       if (error) return json({ error: error.message }, 400);
       const { data: annOrg } = await sb.from("organizations").select("name,owner_id").eq("id", org_id as string).single();
-      const { data: annMems } = await sb.from("org_members").select("full_name,email").eq("org_id", org_id as string).eq("status", "active");
+      const { data: annMems } = await sb.from("org_members").select("id,full_name,email").eq("org_id", org_id as string).eq("status", "active");
       if (annOrg) {
         let ownerEmail = "";
         if (annOrg.owner_id) {
@@ -1295,7 +1378,7 @@ serve(async (req) => {
         const recipients = [
           ...(ownerEmail ? [{ email: ownerEmail, name: "Admin", is_org: true }] : []),
           ...(annMems || []).filter((m: { email?: string }) => m.email)
-            .map((m: { full_name: string; email: string }) => ({ email: m.email, name: m.full_name, is_org: false })),
+            .map((m: { id: string; full_name: string; email: string }) => ({ email: m.email, name: m.full_name, is_org: false })),
         ];
         for (const r of recipients) {
           fetch("https://admin.kudiai.app/api/public/email-trigger", {
@@ -1308,6 +1391,16 @@ serve(async (req) => {
               author_name: String(author_name || "Admin"),
             }}),
           }).catch(() => null);
+        }
+        // In-app: notify each member
+        const notifType = type === "emergency" ? "alert" as const : "info" as const;
+        const annIcon = type === "emergency" ? "🚨" : type === "notice" ? "📋" : type === "circular" ? "📄" : "📢";
+        for (const m of (annMems || []) as Array<{ id: string; full_name: string; email: string }>) {
+          if (!m.id) continue;
+          insertNotif(String(org_id), "member", notifType, "broadcast",
+            `${annIcon} ${String(title)}`,
+            `${String(msgBody).slice(0, 100)}${String(msgBody).length > 100 ? "…" : ""}`,
+            "broadcast", m.id);
         }
       }
       return json({ announcement: ann });
@@ -1720,6 +1813,11 @@ serve(async (req) => {
         .insert({ org_id, member_id, amount: amt, reason: reason || null })
         .select("*").single();
       if (reqErr) return json({ error: reqErr.message }, 400);
+      // In-app: notify org of withdrawal request
+      insertNotif(String(org_id), "org", "info", "finance",
+        "Withdrawal Request",
+        `${mem.full_name || "A member"} is requesting a withdrawal of ₦${Number(amt).toLocaleString("en-NG")}`,
+        "finance");
 
       // Notify org owner
       const { data: orgFull } = await sb.from("organizations")
@@ -1811,6 +1909,11 @@ serve(async (req) => {
           reference_id: saving?.id, balance_after: newWal,
         });
 
+        // In-app: notify member approved
+        insertNotif(req.org_id, "member", "success", "finance",
+          "Withdrawal Approved ✅",
+          `Your withdrawal request of ₦${Number(req.amount).toLocaleString("en-NG")} has been approved${admin_notes ? ". " + String(admin_notes).slice(0, 60) : ""}`,
+          "contributions", req.member_id);
         if (mem.email) {
           fetch("https://admin.kudiai.app/api/public/email-trigger", {
             method: "POST",
@@ -1831,6 +1934,11 @@ serve(async (req) => {
         // Rejected — notify member, no balance change
         const { data: mem } = await sb.from("org_members")
           .select("full_name, email").eq("id", req.member_id).maybeSingle();
+        // In-app: notify member rejected
+        insertNotif(req.org_id, "member", "error", "finance",
+          "Withdrawal Declined",
+          `Your withdrawal of ₦${Number(req.amount).toLocaleString("en-NG")} was not approved${admin_notes ? ". " + String(admin_notes).slice(0, 60) : ""}`,
+          "contributions", req.member_id);
         if (mem?.email) {
           fetch("https://admin.kudiai.app/api/public/email-trigger", {
             method: "POST",
@@ -1940,7 +2048,7 @@ serve(async (req) => {
         .select("*").single();
       if (error) return json({ error: error.message }, 400);
       const { data: evtOrg } = await sb.from("organizations").select("name,owner_id").eq("id", org_id).single();
-      const { data: evtMems } = await sb.from("org_members").select("full_name,email").eq("org_id", org_id).eq("status", "active");
+      const { data: evtMems } = await sb.from("org_members").select("id,full_name,email").eq("org_id", org_id).eq("status", "active");
       if (evtOrg) {
         let ownerEmail = "";
         if (evtOrg.owner_id) {
@@ -1950,7 +2058,7 @@ serve(async (req) => {
         const recipients = [
           ...(ownerEmail ? [{ email: ownerEmail, name: "Admin", is_org: true }] : []),
           ...(evtMems || []).filter((m: { email?: string }) => m.email)
-            .map((m: { full_name: string; email: string }) => ({ email: m.email, name: m.full_name, is_org: false })),
+            .map((m: { id: string; full_name: string; email: string }) => ({ email: m.email, name: m.full_name, is_org: false })),
         ];
         for (const r of recipients) {
           fetch("https://admin.kudiai.app/api/public/email-trigger", {
@@ -1963,6 +2071,15 @@ serve(async (req) => {
               location: location || "", event_link: event_link || "",
             }}),
           }).catch(() => null);
+        }
+        // In-app: notify each member
+        const evtDateStr = event_date ? new Date(event_date).toLocaleDateString("en-NG", { day:"numeric", month:"short" }) : "";
+        for (const m of (evtMems || []) as Array<{ id: string; full_name: string; email: string }>) {
+          if (!m.id) continue;
+          insertNotif(org_id, "member", "info", "broadcast",
+            `🎉 ${title}`,
+            `${evtDateStr ? evtDateStr + " · " : ""}${location || (event_link ? "Online" : "See details")}`,
+            "broadcast", m.id);
         }
       }
       return json({ event });
@@ -1997,7 +2114,7 @@ serve(async (req) => {
         .select("*").single();
       if (error) return json({ error: error.message }, 400);
       const { data: pollOrg } = await sb.from("organizations").select("name,owner_id").eq("id", org_id as string).single();
-      const { data: pollMems } = await sb.from("org_members").select("full_name,email").eq("org_id", org_id as string).eq("status", "active");
+      const { data: pollMems } = await sb.from("org_members").select("id,full_name,email").eq("org_id", org_id as string).eq("status", "active");
       if (pollOrg) {
         let ownerEmail = "";
         if (pollOrg.owner_id) {
@@ -2007,7 +2124,7 @@ serve(async (req) => {
         const recipients = [
           ...(ownerEmail ? [{ email: ownerEmail, name: "Admin", is_org: true }] : []),
           ...(pollMems || []).filter((m: { email?: string }) => m.email)
-            .map((m: { full_name: string; email: string }) => ({ email: m.email, name: m.full_name, is_org: false })),
+            .map((m: { id: string; full_name: string; email: string }) => ({ email: m.email, name: m.full_name, is_org: false })),
         ];
         for (const r of recipients) {
           fetch("https://admin.kudiai.app/api/public/email-trigger", {
@@ -2019,6 +2136,15 @@ serve(async (req) => {
               poll_options: options as string[], closes_at: closes_at ? String(closes_at) : "",
             }}),
           }).catch(() => null);
+        }
+        // In-app: notify each member
+        const optCount = Array.isArray(options) ? (options as string[]).length : 0;
+        for (const m of (pollMems || []) as Array<{ id: string; full_name: string; email: string }>) {
+          if (!m.id) continue;
+          insertNotif(String(org_id), "member", "info", "broadcast",
+            `📊 Poll: ${String(question).slice(0, 60)}`,
+            `${optCount} options to vote on${closes_at ? ". Closes " + new Date(String(closes_at)).toLocaleDateString("en-NG", { day:"numeric", month:"short" }) : ""}`,
+            "broadcast", m.id);
         }
       }
       return json({ poll });

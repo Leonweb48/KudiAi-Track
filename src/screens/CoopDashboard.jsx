@@ -4,6 +4,7 @@ import { useTheme } from "../hooks/useTheme";
 import BillPayments from "./BillPayments";
 import GroupChat from "./GroupChat";
 import { CoopSavingReceipt, CoopBulkWithdrawalReceipt, CoopWithdrawalRequestReceipt } from "../components/shared/Receipt";
+import { CoopNotificationBell } from "../components/shared/CoopNotifications";
 
 const coopFn = async (action, body = {}) => {
   const r = await supabase.functions.invoke("coop-portal", { body: { action, ...body } });
@@ -2600,16 +2601,23 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
                 style={{ background: "linear-gradient(135deg,#00A651,#059669)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>AI</span>
               <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 tracking-widest uppercase leading-none ml-1">Track</span>
             </div>
-            <button onClick={() => navigateTo("settings")}
-              className="flex-shrink-0 active:scale-90 transition-transform">
-              {org.logo_url
-                ? <img src={org.logo_url} alt="" className="w-9 h-9 rounded-full object-cover border-2 border-slate-100 dark:border-slate-700 shadow-sm" />
-                : <div className="w-9 h-9 rounded-full flex items-center justify-center text-base border-2 border-slate-100 dark:border-slate-700 shadow-sm"
-                    style={{ background: "linear-gradient(145deg,#00A651,#0D2040)" }}>
-                    <span>{ORG_TYPE_ICONS[org.type] || "🏢"}</span>
-                  </div>
-              }
-            </button>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <CoopNotificationBell
+                orgId={org.id}
+                recipientType="org"
+                onNavigate={navigateTo}
+              />
+              <button onClick={() => navigateTo("settings")}
+                className="active:scale-90 transition-transform">
+                {org.logo_url
+                  ? <img src={org.logo_url} alt="" className="w-9 h-9 rounded-full object-cover border-2 border-slate-100 dark:border-slate-700 shadow-sm" />
+                  : <div className="w-9 h-9 rounded-full flex items-center justify-center text-base border-2 border-slate-100 dark:border-slate-700 shadow-sm"
+                      style={{ background: "linear-gradient(145deg,#00A651,#0D2040)" }}>
+                      <span>{ORG_TYPE_ICONS[org.type] || "🏢"}</span>
+                    </div>
+                }
+              </button>
+            </div>
           </header>
 
           {/* ── Main Content ── */}
