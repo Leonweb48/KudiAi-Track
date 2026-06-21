@@ -60,13 +60,21 @@ export default function AIChatWidget({
   }, [open]);
 
   async function runAI(userMsg) {
-    const lang     = getLang();
-    const products = inventory?.products || [];
-    const context  = portalContext ?? buildContext(store, products, branches);
-    const history  = msgRef.current
-      .slice(1)
-      .filter(m => !m.isError)
-      .map(m => ({ role: m.role, text: m.text }));
+    let context = "";
+    let history = [];
+    try {
+      const lang     = getLang();
+      const products = inventory?.products || [];
+      context = portalContext ?? buildContext(store, products, branches);
+      history = msgRef.current
+        .slice(1)
+        .filter(m => !m.isError)
+        .map(m => ({ role: m.role, text: m.text }));
+    } catch {
+      setThinking(false);
+      setMessages(prev => [...prev, { role: "assistant", text: "Couldn't load your data. Please refresh and try again.", isError: true }]);
+      return;
+    }
 
     let firstChunk = true;
 

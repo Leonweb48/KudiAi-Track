@@ -179,39 +179,19 @@ export default function App() {
   // Org member — email OTP verification then password change on first login
   if (status === "org_member_otp")   return <OrgMemberOtpVerify member={orgMember} />;
   if (status === "org_member_setup") return <CoopMemberFirstLogin member={orgMember} />;
-  if (status === "org_member") return (
-    <>
-      <CoopMemberPortal member={orgMember} />
-      <AIChatWidget />
-    </>
-  );
+  if (status === "org_member") return <CoopMemberPortal member={orgMember} />;
 
   // Ajo client login — route to dedicated client portal
   if (status === "ajo_client_setup" || status === "ajo_client") {
-    return (
-      <>
-        <AjoMemberPortal session={session} ajoClient={ajoClient} />
-        <AIChatWidget />
-      </>
-    );
+    return <AjoMemberPortal session={session} ajoClient={ajoClient} />;
   }
 
   if (status === "unauthenticated") return <Auth />;
 
   if (status === "onboarding")      return <Onboarding session={session} onComplete={refetch} />;
   if (status === "subscribing")     return <SubscriptionPlan session={session} onComplete={setReady} />;
-  if (status === "staff_setup" || status === "staff") return (
-    <>
-      <StaffDashboard session={session} staff={staff} />
-      <AIChatWidget />
-    </>
-  );
-  if (status === "branch_manager") return (
-    <>
-      <ManagerDashboard session={session} staff={staff} />
-      <AIChatWidget />
-    </>
-  );
+  if (status === "staff_setup" || status === "staff") return <StaffDashboard session={session} staff={staff} />;
+  if (status === "branch_manager") return <ManagerDashboard session={session} staff={staff} />;
   if (status === "marketer_setup")  return <MarketerFirstLogin marketer={marketer} />;
   if (status === "marketer")        return <MarketerDashboard marketer={marketer} />;
 
