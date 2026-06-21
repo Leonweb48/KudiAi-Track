@@ -15,19 +15,6 @@ function errorMessage(err, res) {
   return "Couldn't connect to AI. Please check your connection and try again.";
 }
 
-/**
- * Sends a message to KudiAI (Gemini) with automatic retry and streaming.
- *
- * @param {Object}   opts
- * @param {string}   opts.message   - User's message
- * @param {string}  [opts.context]  - Portal context string (user data summary)
- * @param {Array}   [opts.history]  - Prior messages [{role, text}]
- * @param {string}  [opts.lang]     - Language code, default "en"
- * @param {Function}[opts.onChunk]  - Called with each streamed text chunk
- * @param {number}  [opts.timeout]  - Per-attempt timeout ms, default 20000
- * @param {number}  [opts.maxAttempts] - Total attempts, default 2
- * @returns {Promise<string>}       - Full reply text
- */
 export async function askGemini({
   message,
   context    = "",
@@ -58,12 +45,13 @@ export async function askGemini({
         body:   JSON.stringify({ message, lang, businessContext: context, history }),
         signal: controller.signal,
       });
-      clearTimeout(timeoutId);
+      // Keep timeout active — clear it only once the first data chunk arrives
+      // (guards against server returning 200 headers but hanging before sending body)
       lastRes = res;
 
       if (!res.ok) {
+        clearTimeout(timeoutId);
         lastErr = new Error(`HTTP ${res.status}`);
-        // Don't retry on auth errors or rate-limit
         if (res.status === 401 || res.status === 403 || res.status === 429) break;
         continue;
       }
@@ -71,20 +59,27 @@ export async function askGemini({
       if (res.body) {
         const reader  = res.body.getReader();
         const decoder = new TextDecoder();
-        let full = "";
+        let full    = "";
+        let gotData = false;
 
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
           const chunk = decoder.decode(value, { stream: true });
+          if (!gotData) {
+            gotData = true;
+            clearTimeout(timeoutId); // first chunk received — disable the abort guard
+          }
           full += chunk;
           if (onChunk) onChunk(chunk);
         }
+        if (!gotData) clearTimeout(timeoutId); // empty body — still clear
         return full;
       }
 
       // Non-streaming fallback
       const text = await res.text();
+      clearTimeout(timeoutId);
       if (onChunk && text) onChunk(text);
       return text || "";
 
