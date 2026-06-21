@@ -1,16 +1,16 @@
 const CHAT_URL = "https://admin.kudiai.app/api/public/chat";
 const SECRET   = "kuditrack-email-trigger-2026-amaya";
 
-function errorMessage(err, res) {
+function errorMessage(err, status) {
   if (typeof navigator !== "undefined" && !navigator.onLine)
     return "No internet connection. Please check your network and try again.";
   if (err?.name === "AbortError")
     return "Request timed out. Please try again.";
-  if (res?.status === 401 || res?.status === 403)
+  if (status === 401 || status === 403)
     return "Authentication error. Please refresh the page and try again.";
-  if (res?.status === 429)
+  if (status === 429)
     return "Too many requests. Please wait a moment and try again.";
-  if (res?.status === 502 || res?.status === 503)
+  if (status === 502 || status === 503)
     return "AI service is temporarily unavailable. Please try again in a minute.";
   return "Couldn't connect to AI. Please check your connection and try again.";
 }
@@ -24,8 +24,8 @@ export async function askGemini({
   timeout     = 30000,
   maxAttempts = 3,
 }) {
-  let lastErr = null;
-  let lastRes = null;
+  let lastErr    = null;
+  let lastStatus = null;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     if (attempt > 0) await new Promise(r => setTimeout(r, attempt === 1 ? 1000 : 2000));
@@ -51,11 +51,9 @@ export async function askGemini({
             },
             body: JSON.stringify({ message, lang, businessContext: context, history }),
           });
-          lastRes = res;
 
           if (!res.ok) {
-            const e = Object.assign(new Error(`HTTP ${res.status}`), { status: res.status });
-            throw e;
+            throw Object.assign(new Error(`HTTP ${res.status}`), { status: res.status });
           }
 
           return await res.text();
@@ -70,6 +68,7 @@ export async function askGemini({
     } catch (e) {
       clearTimeout(rejectTimer);
       lastErr = e;
+      if (e?.status) lastStatus = e.status;
       // Don't retry on timeout, offline, or auth/rate-limit errors
       if (e?.name === "AbortError") break;
       if (typeof navigator !== "undefined" && !navigator.onLine) break;
@@ -77,5 +76,5 @@ export async function askGemini({
     }
   }
 
-  throw new Error(errorMessage(lastErr, lastRes));
+  throw new Error(errorMessage(lastErr, lastStatus));
 }
