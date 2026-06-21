@@ -156,6 +156,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
       const darkFromDb = p.dark_mode != null ? p.dark_mode : (localStorage.getItem("kuditrack_dark") === "1");
       localStorage.setItem("kuditrack_dark", darkFromDb ? "1" : "0");
       setProfileState({
+        id:                p.id                || "",
         business_name:     p.business_name     || "",
         owner_name:        p.full_name         || "",
         email:             p.email             || "",
