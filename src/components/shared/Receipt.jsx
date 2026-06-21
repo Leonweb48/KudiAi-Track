@@ -890,6 +890,89 @@ export function AjoTxReceipt({ txn, clientName, businessName, onClose }) {
 }
 
 /* ══════════════════════════════════════════════════════════════════
+   COOP SAVINGS / CONTRIBUTION RECEIPT
+══════════════════════════════════════════════════════════════════ */
+export function CoopSavingReceipt({ saving, orgName, onClose }) {
+  const isWd    = saving.type === "withdrawal";
+  const dateStr = saving.created_at
+    ? new Date(saving.created_at).toLocaleString("en-NG", { day:"numeric", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" })
+    : "—";
+  const color = isWd ? "#dc2626" : GRN;
+  return (
+    <Overlay onClose={onClose} pdfName={`KudiAITrack_${isWd ? "Withdrawal" : "Contribution"}_${(saving.id||"").slice(0,8)}.pdf`}>
+      <Header
+        title={isWd ? "WITHDRAWAL RECEIPT" : "CONTRIBUTION RECEIPT"}
+        business={orgName || "Organisation"} email={SUPPORT_EMAIL} date={dateStr} id={saving.id}
+      />
+      <AmountHero label={isWd ? "Amount Withdrawn" : "Amount Contributed"} amount={fmt(saving.amount)}
+        color={color} badge={isWd ? "DEBIT" : "CREDIT"} badgeColor={color} />
+      <SectionHead label="Transaction Details" />
+      <Row label="Member"         value={saving.org_members?.full_name}          bold />
+      <Row label="Membership ID"  value={saving.org_members?.membership_id} />
+      <Row label="Type"           value={isWd ? "Withdrawal" : "Contribution"} />
+      <Row label="Program"        value={saving.org_contribution_programs?.name} />
+      <Row label="Payment Method" value={saving.payment_method} />
+      <Row label="Balance After"  value={saving.balance_after != null ? fmt(saving.balance_after) : undefined} />
+      <Row label="Notes"          value={saving.notes} />
+      <Row label="Date & Time"    value={dateStr} last />
+      <Footer />
+    </Overlay>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   COOP BULK WITHDRAWAL RECEIPT
+══════════════════════════════════════════════════════════════════ */
+export function CoopBulkWithdrawalReceipt({ withdrawal, orgName, onClose }) {
+  const dateStr = withdrawal.created_at
+    ? new Date(withdrawal.created_at).toLocaleString("en-NG", { day:"numeric", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" })
+    : "—";
+  return (
+    <Overlay onClose={onClose} pdfName={`KudiAITrack_BulkWithdrawal_${(withdrawal.id||"").slice(0,8)}.pdf`}>
+      <Header title="BULK WITHDRAWAL RECEIPT" business={orgName || "Organisation"}
+        email={SUPPORT_EMAIL} date={dateStr} id={withdrawal.id} />
+      <AmountHero label="Total Amount Withdrawn" amount={fmt(withdrawal.total_amount)}
+        color="#dc2626" badge="DEBIT" badgeColor="#dc2626" />
+      <SectionHead label="Withdrawal Details" />
+      <Row label="Purpose"          value={withdrawal.purpose}                                                        bold />
+      <Row label="Method"           value={withdrawal.method === "equal" ? "Equal deduction" : "Custom amounts"} />
+      <Row label="Members Affected" value={withdrawal.member_count} />
+      {withdrawal.per_member_amount > 0 && <Row label="Per Member" value={fmt(withdrawal.per_member_amount)} />}
+      <Row label="Authorized By"    value={withdrawal.authorized_by} />
+      <Row label="Notes"            value={withdrawal.notes} />
+      <Row label="Date"             value={dateStr} last />
+      <Footer />
+    </Overlay>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   COOP WITHDRAWAL REQUEST RECEIPT
+══════════════════════════════════════════════════════════════════ */
+export function CoopWithdrawalRequestReceipt({ request, orgName, memberName, onClose }) {
+  const dateStr = request.created_at
+    ? new Date(request.created_at).toLocaleString("en-NG", { day:"numeric", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" })
+    : "—";
+  const statusColor = request.status === "approved" ? GRN : request.status === "rejected" ? "#dc2626" : "#f59e0b";
+  return (
+    <Overlay onClose={onClose} pdfName={`KudiAITrack_WithdrawalRequest_${(request.id||"").slice(0,8)}.pdf`}>
+      <Header title="WITHDRAWAL REQUEST" business={orgName || "Organisation"}
+        email={SUPPORT_EMAIL} date={dateStr} id={request.id} />
+      <AmountHero label="Amount Requested" amount={fmt(request.amount)}
+        color={statusColor} badge={(request.status || "pending").toUpperCase()} badgeColor={statusColor} />
+      <SectionHead label="Request Details" />
+      <Row label="Member"      value={memberName || request.org_members?.full_name} bold />
+      <Row label="Membership"  value={request.org_members?.membership_id} />
+      <Row label="Reason"      value={request.reason} />
+      <Row label="Status"      value={request.status}  color={statusColor} bold />
+      <Row label="Admin Notes" value={request.admin_notes} />
+      <Row label="Requested"   value={dateStr} last />
+      <Footer />
+    </Overlay>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════
    CREDIT DEBT-PAYMENT RECEIPT
 ══════════════════════════════════════════════════════════════════ */
 export function CreditPaymentReceipt({ payment, credit, businessName, onClose }) {

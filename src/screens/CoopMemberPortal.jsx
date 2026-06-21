@@ -5,6 +5,7 @@ import BillPayments from "./BillPayments";
 import GroupChat from "./GroupChat";
 import AIChatWidget from "../components/AIChatWidget";
 import { buildCoopMemberContext } from "../utils/buildContext";
+import { CoopSavingReceipt, CoopWithdrawalRequestReceipt } from "../components/shared/Receipt";
 
 const coopFn = async (action, body = {}) => {
   const r = await supabase.functions.invoke("coop-portal", { body: { action, ...body } });
@@ -456,13 +457,15 @@ function RequestWithdrawalModal({ member, org, onClose, onSuccess }) {
 //  CONTRIBUTIONS TAB
 // ═══════════════════════════════════════════════════
 function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
-  const [member,      setMember]      = useState(initialMember);
-  const [programs,    setPrograms]    = useState([]);
-  const [history,     setHistory]     = useState([]);
-  const [wdRequests,  setWdRequests]  = useState([]);
-  const [loading,     setLoading]     = useState(true);
-  const [showPay,     setShowPay]     = useState(false);
-  const [showWdReq,   setShowWdReq]   = useState(false);
+  const [member,          setMember]          = useState(initialMember);
+  const [programs,        setPrograms]        = useState([]);
+  const [history,         setHistory]         = useState([]);
+  const [wdRequests,      setWdRequests]      = useState([]);
+  const [loading,         setLoading]         = useState(true);
+  const [showPay,         setShowPay]         = useState(false);
+  const [showWdReq,       setShowWdReq]       = useState(false);
+  const [selectedHistory, setSelectedHistory] = useState(null);
+  const [selectedRequest, setSelectedRequest] = useState(null);
 
   useEffect(() => { setMember(initialMember); }, [initialMember]);
 
@@ -547,9 +550,16 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
                   {r.reason && <p className="text-[10px] text-slate-400 line-clamp-1">{r.reason}</p>}
                   <p className="text-[10px] text-slate-400">{fmtDate(r.created_at)}</p>
                 </div>
-                <span className={`text-[10px] font-bold capitalize px-2 py-0.5 rounded-full ${r.status === "pending" ? "bg-amber-50 text-amber-600" : r.status === "approved" ? "bg-green-50 text-green-600" : "bg-red-50 text-red-500"}`}>
-                  {r.status}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className={`text-[10px] font-bold capitalize px-2 py-0.5 rounded-full ${r.status === "pending" ? "bg-amber-50 text-amber-600" : r.status === "approved" ? "bg-green-50 text-green-600" : "bg-red-50 text-red-500"}`}>
+                    {r.status}
+                  </span>
+                  {r.status !== "pending" && (
+                    <button onClick={() => setSelectedRequest(r)} className="text-[10px] font-bold text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/20 px-2 py-0.5 rounded-full">
+                      Receipt
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -563,7 +573,7 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
         ) : (
           <div className="flex flex-col gap-2">
             {history.map(h => (
-              <div key={h.id} className="bg-white dark:bg-slate-800 rounded-xl px-3 py-2.5 border border-slate-100 dark:border-slate-700 flex justify-between items-start">
+              <button key={h.id} onClick={() => setSelectedHistory(h)} className="bg-white dark:bg-slate-800 rounded-xl px-3 py-2.5 border border-slate-100 dark:border-slate-700 flex justify-between items-start w-full text-left active:scale-[0.98] transition-transform">
                 <div>
                   <p className="text-xs font-bold text-slate-700 dark:text-slate-200 capitalize">{h.type}</p>
                   {h.org_contribution_programs?.name && <p className="text-[10px] text-green-500 font-semibold">{h.org_contribution_programs.name}</p>}
@@ -575,7 +585,7 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
                   </p>
                   <p className="text-[10px] text-slate-400">Bal: {fmt(h.balance_after)}</p>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         )}
@@ -592,6 +602,21 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
           member={member} org={org}
           onClose={() => setShowWdReq(false)}
           onSuccess={() => { setShowWdReq(false); load(); }}
+        />
+      )}
+      {selectedHistory && (
+        <CoopSavingReceipt
+          saving={{ ...selectedHistory, org_members: { full_name: member.full_name, membership_id: member.membership_id } }}
+          orgName={org.name}
+          onClose={() => setSelectedHistory(null)}
+        />
+      )}
+      {selectedRequest && (
+        <CoopWithdrawalRequestReceipt
+          request={selectedRequest}
+          orgName={org.name}
+          memberName={member.full_name}
+          onClose={() => setSelectedRequest(null)}
         />
       )}
     </div>

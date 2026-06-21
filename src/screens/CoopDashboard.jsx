@@ -3,6 +3,7 @@ import { supabase } from "../utils/supabase";
 import { useTheme } from "../hooks/useTheme";
 import BillPayments from "./BillPayments";
 import GroupChat from "./GroupChat";
+import { CoopSavingReceipt, CoopBulkWithdrawalReceipt, CoopWithdrawalRequestReceipt } from "../components/shared/Receipt";
 
 const coopFn = async (action, body = {}) => {
   const r = await supabase.functions.invoke("coop-portal", { body: { action, ...body } });
@@ -870,6 +871,9 @@ function FinanceTab({ org, members, programs, onRefresh }) {
   const [saving,       setSaving]       = useState(false);
   const [handlingReq,  setHandlingReq]  = useState(null);
   const [error,        setError]        = useState("");
+  const [viewSaving,   setViewSaving]   = useState(null);
+  const [viewWd,       setViewWd]       = useState(null);
+  const [viewReq,      setViewReq]      = useState(null);
 
   const set  = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
   const setW = k => e => setWdForm(p => ({ ...p, [k]: e.target.value }));
@@ -952,7 +956,8 @@ function FinanceTab({ org, members, programs, onRefresh }) {
             ) : (
               <div className="flex flex-col gap-2">
                 {savings.map(s => (
-                  <div key={s.id} className="bg-white dark:bg-slate-800 rounded-xl p-3 border border-slate-100 dark:border-slate-700 flex justify-between items-start">
+                  <button key={s.id} onClick={() => setViewSaving(s)}
+                    className="bg-white dark:bg-slate-800 rounded-xl p-3 border border-slate-100 dark:border-slate-700 flex justify-between items-start w-full text-left active:scale-[0.98] transition-transform">
                     <div>
                       <p className="text-xs font-bold text-slate-800 dark:text-white">{s.org_members?.full_name || "—"}</p>
                       {s.org_contribution_programs?.name && <p className="text-[10px] text-green-500 font-semibold">{s.org_contribution_programs.name}</p>}
@@ -964,7 +969,7 @@ function FinanceTab({ org, members, programs, onRefresh }) {
                       </p>
                       <p className="text-[10px] text-slate-400">Bal: {fmt(s.balance_after)}</p>
                     </div>
-                  </div>
+                  </button>
                 ))}
               </div>
             )}
@@ -985,7 +990,8 @@ function FinanceTab({ org, members, programs, onRefresh }) {
             ) : (
               <div className="flex flex-col gap-2">
                 {withdrawals.map(w => (
-                  <div key={w.id} className="bg-white dark:bg-slate-800 rounded-xl p-3 border border-slate-100 dark:border-slate-700">
+                  <button key={w.id} onClick={() => setViewWd(w)}
+                    className="bg-white dark:bg-slate-800 rounded-xl p-3 border border-slate-100 dark:border-slate-700 w-full text-left active:scale-[0.98] transition-transform">
                     <div className="flex justify-between items-start">
                       <div>
                         <p className="text-xs font-bold text-slate-800 dark:text-white">{w.purpose}</p>
@@ -994,7 +1000,7 @@ function FinanceTab({ org, members, programs, onRefresh }) {
                       </div>
                       <p className="text-sm font-extrabold text-red-500">−{fmt(w.total_amount)}</p>
                     </div>
-                  </div>
+                  </button>
                 ))}
               </div>
             )}
@@ -1026,7 +1032,7 @@ function FinanceTab({ org, members, programs, onRefresh }) {
                       </span>
                     </div>
                   </div>
-                  {r.status === "pending" && (
+                  {r.status === "pending" ? (
                     <div className="flex gap-2 mt-2">
                       <button
                         onClick={() => handleRequest(r, "reject")}
@@ -1041,6 +1047,11 @@ function FinanceTab({ org, members, programs, onRefresh }) {
                         {handlingReq === r.id ? "Processing…" : "Approve"}
                       </button>
                     </div>
+                  ) : (
+                    <button onClick={() => setViewReq(r)}
+                      className="w-full mt-2 py-2 rounded-xl text-xs font-bold border border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400 active:scale-[0.98] transition-transform">
+                      View Receipt
+                    </button>
                   )}
                   {r.admin_notes && (
                     <p className="text-[10px] text-slate-400 mt-1.5">Note: {r.admin_notes}</p>
@@ -1151,6 +1162,10 @@ function FinanceTab({ org, members, programs, onRefresh }) {
           </div>
         </ModalWrap>
       )}
+
+      {viewSaving && <CoopSavingReceipt saving={viewSaving} orgName={org.name} onClose={() => setViewSaving(null)} />}
+      {viewWd && <CoopBulkWithdrawalReceipt withdrawal={viewWd} orgName={org.name} onClose={() => setViewWd(null)} />}
+      {viewReq && <CoopWithdrawalRequestReceipt request={viewReq} orgName={org.name} onClose={() => setViewReq(null)} />}
     </div>
   );
 }
