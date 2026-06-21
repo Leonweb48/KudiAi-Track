@@ -1387,7 +1387,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
 }
 
 // ── Me tab (Staff Portal structure) ───────────────────────────────────────
-function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick }) {
+function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProfileUpdate }) {
   const [view,         setView]        = useState("menu");
   const [editForm,     setEditForm]    = useState({ full_name: client?.full_name || "", phone: client?.phone || "" });
   const [photoFile,    setPhotoFile]   = useState(null);
@@ -1415,6 +1415,7 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick }) {
       let photoUrl = client?.profile_image_url;
       if (photoFile) photoUrl = await uploadAjoAvatar(photoFile, clientId);
       await supabase.from("aso_clients").update({ full_name: editForm.full_name, phone: editForm.phone, profile_image_url: photoUrl }).eq("id", clientId);
+      onProfileUpdate?.({ full_name: editForm.full_name, phone: editForm.phone, profile_image_url: photoUrl });
       setSaveMsg("Profile saved!");
       setTimeout(() => { setSaveMsg(""); setView("menu"); }, 1500);
     } catch { setSaveMsg("Save failed. Please try again."); }
@@ -1788,6 +1789,7 @@ export default function AjoMemberPortal({ session, ajoClient }) {
               clientId={clientId}
               lock={lock}
               onChangePwdClick={() => setShowPwdModal(true)}
+              onProfileUpdate={updates => setClient(prev => ({ ...prev, ...updates }))}
             />
           )}
           {!client && tab !== "me" && <SkeletonHome />}
