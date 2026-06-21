@@ -356,16 +356,8 @@ serve(async (req) => {
         return json({ error: "Code has expired. Tap 'Resend' to get a new one." }, 400);
       }
 
-      await sb.from("org_members").update({ otp_code: null, otp_expires_at: null }).eq("id", member.id);
-
-      if (member.user_id) {
-        const { data: authUser } = await sb.auth.admin.getUserById(member.user_id as string);
-        const existingMeta = authUser?.user?.user_metadata || {};
-        await sb.auth.admin.updateUserById(member.user_id as string, {
-          user_metadata: { ...existingMeta, email_verified: true },
-        });
-      }
-
+      // Admin-side check: just confirm the code is correct. Do NOT mark email_verified or
+      // clear the OTP — the member must verify themselves on their first login.
       return json({ success: true });
     }
 
@@ -491,6 +483,11 @@ serve(async (req) => {
       // Fetch current metadata to preserve account_type and email_verified
       const { data: authUser } = await sb.auth.admin.getUserById(m.user_id as string);
       const existingMeta = authUser?.user?.user_metadata || {};
+      // Generate a fresh OTP so the member must verify email before accessing the portal
+      const resetOtp = String(Math.floor(100000 + Math.random() * 900000));
+      const resetOtpExpiry = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+      await sb.from("org_members").update({ otp_code: resetOtp, otp_expires_at: resetOtpExpiry }).eq("id", member_id);
+
       const { error } = await sb.auth.admin.updateUserById(m.user_id as string, {
         password: temp_password,
         email_confirm: true,
@@ -498,11 +495,21 @@ serve(async (req) => {
           ...existingMeta,
           account_type: "org_member",
           must_change_password: true,
-          // Preserve email_verified if already true; if undefined/false, require re-verification
-          email_verified: existingMeta.email_verified === true,
+          email_verified: false, // force OTP re-verification on next login
         },
       });
       if (error) return json({ error: error.message }, 400);
+
+      // Send OTP to member's email
+      fetch("https://admin.kudiai.app/api/public/email-trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+        body: JSON.stringify({
+          event: "org_member_otp_resend",
+          data: { member_name: m.full_name, member_email: m.email, otp_code: resetOtp },
+        }),
+      }).catch(() => null);
+
       return json({ temp_password, email: m.email });
     }
 
