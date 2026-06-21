@@ -671,13 +671,30 @@ serve(async (req) => {
 
     if (action === "get-savings") {
       const { org_id, member_id, program_id } = body as Record<string, string>;
+      // Join org_members inline; skip org_contribution_programs join (FK may not exist)
+      // and enrich program name via a separate lookup to avoid blanking the list.
       let q = sb.from("org_savings")
-        .select("*, org_members(full_name,membership_id), org_contribution_programs(name,frequency)");
-      if (org_id)    q = q.eq("org_id", org_id);
-      if (member_id) q = q.eq("member_id", member_id);
+        .select("*, org_members(full_name,membership_id)");
+      if (org_id)     q = q.eq("org_id", org_id);
+      if (member_id)  q = q.eq("member_id", member_id);
       if (program_id) q = q.eq("program_id", program_id);
-      const { data: savings } = await q.order("created_at", { ascending: false }).limit(100);
-      return json({ savings: savings || [] });
+      const { data: savings, error: savErr } = await q.order("created_at", { ascending: false }).limit(100);
+      if (savErr) return json({ savings: [] });
+      // Enrich with program names
+      const progIds = [...new Set((savings || []).map((s: Record<string, unknown>) => s.program_id).filter(Boolean))];
+      const progMap: Record<string, string> = {};
+      if (progIds.length > 0) {
+        const { data: progs } = await sb.from("org_contribution_programs")
+          .select("id,name,frequency").in("id", progIds as string[]);
+        (progs || []).forEach((p: { id: string; name: string; frequency?: string }) => {
+          progMap[p.id] = p.name;
+        });
+      }
+      const enriched = (savings || []).map((s: Record<string, unknown>) => ({
+        ...s,
+        org_contribution_programs: s.program_id ? { name: progMap[s.program_id as string] || null } : null,
+      }));
+      return json({ savings: enriched });
     }
 
     // ══════════════════════════════════════════════════
