@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "../utils/supabase";
 
 const coopFn = async (action, body = {}) => {
@@ -18,11 +18,20 @@ const coopFn = async (action, body = {}) => {
 };
 
 export default function OrgMemberOtpVerify({ member }) {
-  const [otp,       setOtp]       = useState("");
-  const [loading,   setLoading]   = useState(false);
-  const [error,     setError]     = useState("");
-  const [resending, setResending] = useState(false);
-  const [resent,    setResent]    = useState(false);
+  const [otp,         setOtp]         = useState("");
+  const [loading,     setLoading]     = useState(false);
+  const [error,       setError]       = useState("");
+  const [resending,   setResending]   = useState(false);
+  const [resent,      setResent]      = useState(false);
+  const [tempPwd,     setTempPwd]     = useState("");
+  const [showTempPwd, setShowTempPwd] = useState(false);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      const tp = data?.user?.user_metadata?.temp_password;
+      if (tp) setTempPwd(tp);
+    });
+  }, []);
 
   const verify = async () => {
     if (otp.trim().length < 6) { setError("Please enter the 6-digit code"); return; }
@@ -75,6 +84,34 @@ export default function OrgMemberOtpVerify({ member }) {
       </div>
 
       <div className="flex-1 px-5 pt-8 pb-10 space-y-5">
+
+        {/* Temp password reminder */}
+        {tempPwd && (
+          <div className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Your Login Credentials</p>
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-xs text-slate-500 dark:text-slate-400">Email</span>
+              <span className="text-xs font-bold text-slate-800 dark:text-white">{email}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-xs text-slate-500 dark:text-slate-400">Temp Password</span>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-extrabold text-violet-600 dark:text-violet-400 font-mono">
+                  {showTempPwd ? tempPwd : "••••••••••"}
+                </span>
+                <button onClick={() => setShowTempPwd(v => !v)}
+                  className="text-[10px] font-bold text-slate-400 border border-slate-200 dark:border-slate-600 rounded-lg px-2 py-1 active:scale-95 transition-transform">
+                  {showTempPwd ? "Hide" : "Show"}
+                </button>
+                <button onClick={() => navigator.clipboard?.writeText(tempPwd)}
+                  className="text-[10px] font-bold text-violet-600 border border-violet-200 dark:border-violet-700 rounded-lg px-2 py-1 active:scale-95 transition-transform">
+                  Copy
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div>
           <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2 uppercase tracking-wide">
             Verification Code

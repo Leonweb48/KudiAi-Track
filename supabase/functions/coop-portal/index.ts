@@ -248,6 +248,7 @@ serve(async (req) => {
           must_change_password: true,
           email_verified: false,
           full_name: b.full_name,
+          temp_password, // shown on OTP screen; cleared after email verification
         },
         email_confirm: true,
       });
@@ -327,11 +328,11 @@ serve(async (req) => {
         return json({ error: "Code has expired. Tap 'Resend' to get a new one." }, 400);
       }
 
-      // Clear OTP and mark email as verified
+      // Clear OTP and mark email as verified; also remove temp_password from metadata
       await sb.from("org_members").update({ otp_code: null, otp_expires_at: null }).eq("id", member.id);
-      const existingMeta = user.user_metadata || {};
+      const { temp_password: _tp, ...restMeta } = user.user_metadata || {};
       await sb.auth.admin.updateUserById(user.id, {
-        user_metadata: { ...existingMeta, email_verified: true },
+        user_metadata: { ...restMeta, email_verified: true },
       });
 
       return json({ success: true });
@@ -496,6 +497,7 @@ serve(async (req) => {
           account_type: "org_member",
           must_change_password: true,
           email_verified: false, // force OTP re-verification on next login
+          temp_password, // shown on OTP screen; cleared after email verification
         },
       });
       if (error) return json({ error: error.message }, 400);
