@@ -87,28 +87,29 @@ function OverviewTab({ org, wallet, programs, announcements, members = [], loans
 
   const STATS = [
     { label:"Members",         value: members.length,       sub:`${activeMembers.length} active`,
-      bg:"#6d28d9", tab:"members",
+      iconBg:"bg-purple-100 dark:bg-purple-900/40", iconColor:"#7c3aed", tab:"members",
       icon:"M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" },
     { label:"Active Programs",  value: activePrograms.length, sub:`${programs.length} total`,
-      bg:"#059669", tab:"programs",
+      iconBg:"bg-green-100 dark:bg-green-900/40", iconColor:"#059669", tab:"programs",
       icon:"M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" },
     { label:"Contributions",    value: fmt(org.total_savings), sub:"total collected",
-      bg:"#0891b2", tab:"finance",
+      iconBg:"bg-cyan-100 dark:bg-cyan-900/40", iconColor:"#0891b2", tab:"finance",
       icon:"M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" },
     { label:"Withdrawals",      value: fmt(org.total_loans_out), sub:"total disbursed",
-      bg:"#dc2626", tab:"finance",
+      iconBg:"bg-red-100 dark:bg-red-900/40", iconColor:"#dc2626", tab:"finance",
       icon:"M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" },
     { label:"Member Requests",  value: pendingReqs.length,   sub: pendingReqs.length > 0 ? "need attention" : "all clear",
-      bg: pendingReqs.length > 0 ? "#d97706" : "#64748b", tab:"finance",
+      iconBg: pendingReqs.length > 0 ? "bg-amber-100 dark:bg-amber-900/40" : "bg-slate-100 dark:bg-slate-700/40",
+      iconColor: pendingReqs.length > 0 ? "#d97706" : "#64748b", tab:"finance",
       icon:"M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" },
     { label:"Active Loans",     value: activeLoans.length,   sub: fmt(activeLoans.reduce((s,l) => s+(l.outstanding_balance||0), 0)) + " out",
-      bg:"#ea580c", tab:"loans",
+      iconBg:"bg-orange-100 dark:bg-orange-900/40", iconColor:"#ea580c", tab:"loans",
       icon:"M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" },
     { label:"Messages",         value: announcements.length, sub:`${announcements.filter(a=>a.is_pinned).length} pinned`,
-      bg:"#00A651", tab:"messages",
-      icon:"M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" },
+      iconBg:"bg-green-100 dark:bg-green-900/40", iconColor:"#00A651", tab:"messages",
+      icon:"M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" },
     { label:"Broadcast",        value: "—",                  sub:"meetings, events & more",
-      bg:"#0f766e", tab:"broadcast",
+      iconBg:"bg-teal-100 dark:bg-teal-900/40", iconColor:"#0f766e", tab:"broadcast",
       icon:"M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" },
   ];
 
@@ -116,25 +117,31 @@ function OverviewTab({ org, wallet, programs, announcements, members = [], loans
     <div className="pb-8 space-y-6">
 
       {/* ── Hero Balance Card ── */}
-      <div className="mx-4 mt-5 rounded-3xl overflow-hidden shadow-2xl"
-        style={{ background: "linear-gradient(145deg, #0f0a1e 0%, #2e1065 45%, #6d28d9 100%)" }}>
-        <div className="px-6 pt-7 pb-6">
-          <p className="text-[10px] font-extrabold text-green-300 uppercase tracking-[0.25em] mb-3">Organisation Wallet</p>
-          <p className="text-[44px] font-black text-white leading-none tabular-nums">{fmt(org.wallet_balance)}</p>
-          <div className="flex items-center gap-0 mt-6 pt-5 border-t border-white/10">
-            {[
-              { label:"Total Savings", value: fmt(org.total_savings), color:"#a78bfa" },
-              { label:"Loans Out",     value: fmt(org.total_loans_out), color:"#f9a8d4" },
-              { label:"Members",       value: String(org.member_count||0), color:"#6ee7b7" },
-            ].map((item, i) => (
-              <div key={item.label} className={`flex-1 ${i > 0 ? "border-l border-white/10 pl-4 ml-4" : ""}`}>
-                <p className="text-sm font-extrabold text-white tabular-nums">{item.value}</p>
-                <p className="text-[10px] mt-0.5" style={{ color: item.color }}>{item.label}</p>
-              </div>
-            ))}
+      <div className="mx-4 mt-5 rounded-3xl px-6 py-6 text-white relative overflow-hidden shadow-hero"
+        style={{ background: "linear-gradient(145deg,#059669 0%,#047857 55%,#065f46 100%)" }}>
+        <div className="absolute -top-12 -right-12 w-40 h-40 rounded-full bg-white/5 pointer-events-none" />
+        <div className="absolute -bottom-14 -left-10 w-48 h-48 rounded-full bg-white/5 pointer-events-none" />
+        <div className="absolute top-6 right-24 w-14 h-14 rounded-full bg-white/5 pointer-events-none" />
+        <div className="relative">
+          <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest">Organisation Wallet</p>
+          <p className="text-4xl font-black tracking-tight mt-1.5 mb-5 tabular">{fmt(org.wallet_balance)}</p>
+          <div className="flex gap-5">
+            <div>
+              <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">Total Savings</p>
+              <p className="text-base font-bold tabular">{fmt(org.total_savings)}</p>
+            </div>
+            <div className="w-px bg-white/20 self-stretch" />
+            <div>
+              <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">Loans Out</p>
+              <p className="text-base font-bold tabular">{fmt(org.total_loans_out)}</p>
+            </div>
+            <div className="w-px bg-white/20 self-stretch" />
+            <div>
+              <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">Members</p>
+              <p className="text-base font-bold tabular">{org.member_count || 0}</p>
+            </div>
           </div>
         </div>
-        <div className="h-1 w-full" style={{ background: "linear-gradient(90deg, #0D2040, #00A651, #0D2040)" }} />
       </div>
 
       {/* ── Quick Services (org portal only) ── */}
@@ -167,16 +174,17 @@ function OverviewTab({ org, wallet, programs, announcements, members = [], loans
         <div className="grid grid-cols-2 gap-3">
           {STATS.map(s => (
             <button key={s.label} onClick={() => onNavigate?.(s.tab)}
-              className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-100 dark:border-slate-700/60 shadow-sm text-left active:scale-[0.97] transition-all">
-              <div className="w-10 h-10 rounded-xl mb-3 flex items-center justify-center"
-                style={{ background: s.bg + "18" }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ stroke: s.bg }}>
-                  {s.icon.split("|").map((p,i) => <path key={i} d={p} />)}
-                </svg>
+              className="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-card border border-slate-100 dark:border-slate-700/50 text-left active:scale-95 transition-all duration-150 w-full">
+              <div className="flex items-center gap-2.5 mb-3">
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${s.iconBg}`}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ stroke: s.iconColor }}>
+                    {s.icon.split("|").map((p,i) => <path key={i} d={p} />)}
+                  </svg>
+                </div>
+                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 leading-tight">{s.label}</span>
               </div>
-              <p className="text-2xl font-black text-slate-800 dark:text-white leading-none tabular-nums">{s.value}</p>
-              <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mt-1.5">{s.label}</p>
-              {s.sub && <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">{s.sub}</p>}
+              <p className="text-lg font-extrabold text-slate-800 dark:text-slate-100 tabular leading-tight">{s.value}</p>
+              {s.sub && <p className="text-[11px] font-medium text-slate-400 dark:text-slate-500 mt-1">{s.sub}</p>}
             </button>
           ))}
         </div>
