@@ -2388,86 +2388,82 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
 
   const isMoreTab = MORE_TABS.some(t => t.id === tab);
 
-  // ─── ORG PORTAL LAYOUT (premium, bottom nav) ───
+  // ─── ORG PORTAL LAYOUT (staff-portal look & feel) ───
   if (isOrgPortal) {
     const visibleMoreTabs = MORE_TABS.filter(t => !t.orgOnly || isOrgPortal);
     return (
-      <div className="fixed inset-0 z-[65] bg-slate-50 dark:bg-slate-900 flex justify-center">
-        <div className="w-full max-w-md flex flex-col h-full">
+      <div className="h-[100dvh] bg-slate-50 dark:bg-slate-900 flex justify-center transition-colors duration-200">
+        <div className="w-full max-w-md flex flex-col h-full relative">
 
-          {/* ── Top Header ── */}
-          <div className="sticky top-0 z-20 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 py-3 flex items-center justify-between relative">
-            {/* KudiAi Track brand — centered */}
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none">
-              <span className="text-sm font-black tracking-tight leading-none">
-                <span style={{ background: "linear-gradient(135deg,#0D2040,#00A651)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>KudiAi</span>
-                <span className="text-[#0D2040] dark:text-[#00A651] font-bold"> Track</span>
-              </span>
+          {/* ── Header ── */}
+          <header className="flex-none z-30 h-14 flex items-center justify-between px-4 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shadow-sm">
+            <img src="/logo.png" alt="KudiAi" className="h-8 w-8 object-contain flex-shrink-0" />
+            <div className="flex items-baseline gap-0.5 select-none">
+              <span className="text-[17px] font-black tracking-tight text-slate-800 dark:text-white leading-none">Kudi</span>
+              <span className="text-[17px] font-black tracking-tight leading-none"
+                style={{ background: "linear-gradient(135deg,#00A651,#059669)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>AI</span>
+              <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 tracking-widest uppercase leading-none ml-1">Track</span>
             </div>
-            {/* Left: KudiAi Track logo */}
-            <img src="/logo.png" alt="KudiAi Track" className="h-9 w-auto flex-shrink-0 object-contain" />
-            {/* Right: org logo — taps open Settings */}
-            <button onClick={() => navigateTo("settings")} className="flex-shrink-0 active:opacity-75 transition-opacity">
+            <button onClick={() => navigateTo("settings")}
+              className="flex-shrink-0 active:scale-90 transition-transform">
               {org.logo_url
-                ? <img src={org.logo_url} alt="" className="w-9 h-9 rounded-xl object-cover ring-2 ring-green-200" />
-                : <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg"
+                ? <img src={org.logo_url} alt="" className="w-9 h-9 rounded-full object-cover border-2 border-slate-100 dark:border-slate-700 shadow-sm" />
+                : <div className="w-9 h-9 rounded-full flex items-center justify-center text-base border-2 border-slate-100 dark:border-slate-700 shadow-sm"
                     style={{ background: "linear-gradient(145deg,#00A651,#0D2040)" }}>
                     <span>{ORG_TYPE_ICONS[org.type] || "🏢"}</span>
                   </div>
               }
             </button>
-          </div>
+          </header>
 
           {/* ── Main Content ── */}
-          <main className="flex-1 overflow-y-auto pb-[68px]">
+          <main className="flex-1 min-h-0 overflow-y-auto">
             {tabContent[tab]}
           </main>
 
           {/* ── Bottom Navigation ── */}
-          <div className="fixed bottom-0 left-0 right-0 z-20 flex justify-center pointer-events-none">
-            <div className="w-full max-w-md pointer-events-auto">
-              <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200/80 dark:border-slate-800 px-2 pt-2 pb-safe"
-                style={{ paddingBottom: "max(8px, env(safe-area-inset-bottom))" }}>
-                <div className="flex items-end justify-around">
-                  {MAIN_TABS.map(t => {
-                    const active = tab === t.id;
-                    return (
-                      <button key={t.id} onClick={() => { setTab(t.id); setShowMore(false); }}
-                        className="flex flex-col items-center gap-1 px-3 py-1.5 min-w-[52px] relative">
-                        {active && (
-                          <span className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full bg-green-600" />
-                        )}
-                        <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5"
-                          stroke={active ? "#00A651" : "#94a3b8"} strokeWidth={active ? 2.5 : 2} strokeLinecap="round" strokeLinejoin="round">
-                          <path d={t.icon} />
-                        </svg>
-                        <span className={`text-[9px] font-bold ${active ? "text-green-600" : "text-slate-400 dark:text-slate-500"}`}>{t.label}</span>
-                      </button>
-                    );
-                  })}
-                  {/* Hamburger / More button */}
-                  <button onClick={() => setShowMore(p => !p)}
-                    className="flex flex-col items-center gap-1 px-3 py-1.5 min-w-[52px] relative">
-                    {isMoreTab && (
-                      <span className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full bg-green-600" />
-                    )}
-                    <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5"
-                      stroke={isMoreTab || showMore ? "#00A651" : "#94a3b8"} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M4 6h16M4 12h16M4 18h16" />
-                    </svg>
-                    <span className={`text-[9px] font-bold ${isMoreTab || showMore ? "text-green-600" : "text-slate-400 dark:text-slate-500"}`}>Menu</span>
+          <nav className="flex-none z-40 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 shadow-float">
+            <div className="flex items-stretch h-[60px]">
+              {MAIN_TABS.map(t => {
+                const active = tab === t.id;
+                return (
+                  <button key={t.id} onClick={() => { setTab(t.id); setShowMore(false); }}
+                    className="flex-1 flex flex-col items-center justify-center gap-0.5 relative focus-visible:outline-none">
+                    {active && <span className="absolute top-0 left-1/2 -translate-x-1/2 w-5 h-0.5 rounded-full bg-[#00A651] dark:bg-green-400" />}
+                    <div className={`relative transition-all duration-200 ${active ? "scale-110" : "scale-100"}`}>
+                      <svg viewBox="0 0 24 24" fill="none" className="w-[21px] h-[21px]"
+                        stroke={active ? "#00A651" : "#94a3b8"} strokeWidth={active ? 2.5 : 2} strokeLinecap="round" strokeLinejoin="round">
+                        <path d={t.icon} />
+                      </svg>
+                    </div>
+                    <span className={`text-[8px] font-bold uppercase tracking-wide leading-none ${active ? "text-[#00A651] dark:text-green-400" : "text-slate-400 dark:text-slate-500"}`}>
+                      {t.label}
+                    </span>
                   </button>
+                );
+              })}
+              {/* Hamburger / Menu */}
+              <button onClick={() => setShowMore(p => !p)}
+                className="flex-1 flex flex-col items-center justify-center gap-0.5 relative focus-visible:outline-none">
+                {isMoreTab && <span className="absolute top-0 left-1/2 -translate-x-1/2 w-5 h-0.5 rounded-full bg-[#00A651] dark:bg-green-400" />}
+                <div className={`relative transition-all duration-200 ${showMore ? "scale-110" : "scale-100"}`}>
+                  <svg viewBox="0 0 24 24" fill="none" className="w-[21px] h-[21px]"
+                    stroke={isMoreTab || showMore ? "#00A651" : "#94a3b8"} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M4 6h16M4 12h16M4 18h16" />
+                  </svg>
                 </div>
-              </div>
+                <span className={`text-[8px] font-bold uppercase tracking-wide leading-none ${isMoreTab || showMore ? "text-[#00A651] dark:text-green-400" : "text-slate-400 dark:text-slate-500"}`}>
+                  Menu
+                </span>
+              </button>
             </div>
-          </div>
+            <div style={{ height: "env(safe-area-inset-bottom, 0px)" }} className="bg-white dark:bg-slate-900" />
+          </nav>
 
           {/* ── Side Drawer (X-app style) ── */}
           {showMore && (
-            <div className="fixed inset-0 z-30 flex" onClick={() => setShowMore(false)}>
+            <div className="fixed inset-0 z-50 flex" onClick={() => setShowMore(false)}>
               <div className="absolute inset-0 bg-black/50 backdrop-blur-[2px]" />
-
-              {/* Drawer panel slides in from the left */}
               <div
                 className="relative flex flex-col h-full bg-white dark:bg-slate-900 shadow-2xl overflow-hidden"
                 style={{ width: "75%", maxWidth: 280 }}
@@ -2486,33 +2482,28 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
                   <p className="text-[10px] text-slate-400 mt-0.5">{org.reg_number || org.type}</p>
                 </div>
 
-                {/* Navigation list — straight vertical line */}
+                {/* Navigation list */}
                 <div className="flex-1 overflow-y-auto py-2">
-                  {/* Main tabs */}
                   {MAIN_TABS.map(t => {
                     const active = tab === t.id;
                     return (
                       <button key={t.id} onClick={() => navigateTo(t.id)}
-                        className={`w-full flex items-center gap-4 px-5 py-3.5 transition-colors ${active ? "text-green-600" : "text-slate-700 dark:text-slate-200"}`}>
+                        className={`w-full flex items-center gap-4 px-5 py-3.5 transition-colors ${active ? "text-[#00A651]" : "text-slate-700 dark:text-slate-200"}`}>
                         <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 flex-shrink-0"
                           stroke={active ? "#00A651" : "currentColor"} strokeWidth={active ? 2.5 : 2} strokeLinecap="round" strokeLinejoin="round">
                           <path d={t.icon} />
                         </svg>
                         <span className={`text-sm ${active ? "font-extrabold" : "font-semibold"}`}>{t.label}</span>
-                        {active && <div className="ml-auto w-1 h-5 bg-green-600 rounded-full" />}
+                        {active && <div className="ml-auto w-1 h-5 bg-[#00A651] rounded-full" />}
                       </button>
                     );
                   })}
-
-                  {/* Divider */}
                   <div className="mx-5 my-2 border-t border-slate-100 dark:border-slate-800" />
-
-                  {/* More tabs */}
                   {visibleMoreTabs.map(t => {
                     const active = tab === t.id;
                     return (
                       <button key={t.id} onClick={() => navigateTo(t.id)}
-                        className={`w-full flex items-center gap-4 px-5 py-3.5 transition-colors ${active ? "text-green-600" : "text-slate-700 dark:text-slate-200"}`}>
+                        className={`w-full flex items-center gap-4 px-5 py-3.5 transition-colors ${active ? "text-[#00A651]" : "text-slate-700 dark:text-slate-200"}`}>
                         <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
                           style={{ background: (t.color || "#64748b") + "18" }}>
                           <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
@@ -2521,16 +2512,16 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
                           </svg>
                         </div>
                         <span className={`text-sm ${active ? "font-extrabold" : "font-semibold"}`}>{t.label}</span>
-                        {active && <div className="ml-auto w-1 h-5 bg-green-600 rounded-full" />}
+                        {active && <div className="ml-auto w-1 h-5 bg-[#00A651] rounded-full" />}
                       </button>
                     );
                   })}
                 </div>
 
-                {/* Footer — sign out / back */}
+                {/* Sign out */}
                 <div className="px-5 py-4 border-t border-slate-100 dark:border-slate-800 flex-shrink-0">
                   <button onClick={onBack}
-                    className="flex items-center gap-3 text-slate-500 dark:text-slate-400 text-sm font-semibold">
+                    className="flex items-center gap-3 text-slate-500 dark:text-slate-400 text-sm font-semibold active:opacity-70 transition-opacity">
                     <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                       <path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                     </svg>
@@ -2540,6 +2531,7 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
               </div>
             </div>
           )}
+
         </div>
       </div>
     );
