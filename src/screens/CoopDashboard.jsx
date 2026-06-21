@@ -126,7 +126,7 @@ function OverviewTab({ org, wallet, programs, announcements, members = [], loans
         <div className="relative">
           <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest">Organisation Wallet</p>
           <p className="text-4xl font-black tracking-tight mt-1.5 mb-5 tabular">{fmt(org.wallet_balance)}</p>
-          <div className="flex gap-5">
+          <div className="flex gap-4 flex-wrap">
             <div>
               <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">Total Savings</p>
               <p className="text-base font-bold tabular">{fmt(org.total_savings)}</p>
@@ -141,6 +141,15 @@ function OverviewTab({ org, wallet, programs, announcements, members = [], loans
               <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">Members</p>
               <p className="text-base font-bold tabular">{org.member_count || 0}</p>
             </div>
+            {(org.interest_earned > 0) && (
+              <>
+                <div className="w-px bg-white/20 self-stretch" />
+                <div>
+                  <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">Interest Earned</p>
+                  <p className="text-base font-bold tabular text-amber-300">{fmt(org.interest_earned)}</p>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -1171,44 +1180,80 @@ function FinanceTab({ org, members, programs, onRefresh }) {
 }
 
 // ═══════════════════════════════════════════════════
-//  LOANS TAB (unchanged)
+//  LOANS TAB
 // ═══════════════════════════════════════════════════
+function calcLoan(principal, rate, months) {
+  const totalInterest     = principal * (rate / 100);
+  const totalRepayable    = principal + totalInterest;
+  const monthlyInstallment = totalRepayable / Math.max(1, months);
+  return { totalInterest, totalRepayable, monthlyInstallment };
+}
+
 function LoansTab({ org, members, onRefresh }) {
-  const [loans,     setLoans]     = useState([]);
-  const [loading,   setLoading]   = useState(true);
-  const [showApply, setShowApply] = useState(false);
-  const [selected,  setSelected]  = useState(null);
-  const [repayForm, setRepayForm] = useState({ amount: "", payment_method: "cash" });
-  const [form,      setForm]      = useState({ member_id: "", amount_requested: "", interest_rate: "0", loan_purpose: "", repayment_months: "1" });
-  const [saving,    setSaving]    = useState(false);
-  const [error,     setError]     = useState("");
+  const defaultRate    = org.default_loan_interest_rate ?? 10;
+  const [loans,        setLoans]        = useState([]);
+  const [repayments,   setRepayments]   = useState([]);
+  const [loading,      setLoading]      = useState(true);
+  const [showApply,    setShowApply]    = useState(false);
+  const [selected,     setSelected]     = useState(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [showReject,   setShowReject]   = useState(false);
+  const [repayForm,    setRepayForm]    = useState({ amount: "", payment_method: "cash" });
+  const [rateEdit,     setRateEdit]     = useState(false);
+  const [rateVal,      setRateVal]      = useState(String(defaultRate));
+  const [form, setForm] = useState({
+    member_id: "", amount_requested: "", interest_rate: String(defaultRate),
+    loan_purpose: "", repayment_months: "12",
+  });
+  const [saving, setSaving] = useState(false);
+  const [error,  setError]  = useState("");
 
   const load = useCallback(() => {
-    coopFn("get-loans", { org_id: org.id }).then(r => setLoans(r.loans || [])).finally(() => setLoading(false));
+    coopFn("get-loans", { org_id: org.id })
+      .then(r => setLoans(r.loans || []))
+      .finally(() => setLoading(false));
   }, [org.id]);
   useEffect(() => { load(); }, [load]);
 
-  const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
+  const loadRepayments = useCallback((loanId) => {
+    coopFn("get-repayments", { loan_id: loanId }).then(r => setRepayments(r.repayments || []));
+  }, []);
+
+  const set  = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
   const setR = k => e => setRepayForm(p => ({ ...p, [k]: e.target.value }));
+
+  // Live preview calculation in form
+  const principal = parseFloat(form.amount_requested) || 0;
+  const rate      = parseFloat(form.interest_rate) || 0;
+  const months    = parseInt(form.repayment_months) || 1;
+  const preview   = calcLoan(principal, rate, months);
+
+  const handleSaveRate = async () => {
+    await coopFn("update-loan-settings", { org_id: org.id, default_loan_interest_rate: parseFloat(rateVal) || 0 });
+    setRateEdit(false); onRefresh();
+  };
 
   const handleApply = async () => {
     if (!form.member_id || !form.amount_requested) { setError("Member and amount required"); return; }
     setSaving(true); setError("");
     try {
-      await coopFn("apply-loan", { org_id: org.id, ...form });
-      setShowApply(false); setForm({ member_id: "", amount_requested: "", interest_rate: "0", loan_purpose: "", repayment_months: "1" });
+      await coopFn("apply-loan", { org_id: org.id, ...form, applied_by: "admin" });
+      setShowApply(false);
+      setForm({ member_id: "", amount_requested: "", interest_rate: String(defaultRate), loan_purpose: "", repayment_months: "12" });
       load();
     } catch (e) { setError(e.message || "Failed"); }
     finally { setSaving(false); }
   };
 
   const handleLoanAction = async (loan, newStatus, extra = {}) => {
-    setSaving(true);
+    setSaving(true); setError("");
     try {
-      await coopFn("update-loan", { loan_id: loan.id, org_id: org.id, status: newStatus,
-        amount_approved: loan.amount_approved || loan.amount_requested, ...extra });
-      setSelected(null); load(); onRefresh();
-    } catch (e) { alert(e.message); }
+      await coopFn("update-loan", {
+        loan_id: loan.id, org_id: org.id, status: newStatus,
+        amount_approved: loan.amount_requested, approved_by_name: "Admin", ...extra,
+      });
+      setSelected(null); setShowReject(false); setRejectReason(""); load(); onRefresh();
+    } catch (e) { setError(e.message || "Failed"); }
     finally { setSaving(false); }
   };
 
@@ -1216,44 +1261,105 @@ function LoansTab({ org, members, onRefresh }) {
     if (!repayForm.amount) { setError("Amount required"); return; }
     setSaving(true); setError("");
     try {
-      await coopFn("record-repayment", { org_id: org.id, loan_id: selected.id, member_id: selected.member_id,
-        amount: parseFloat(repayForm.amount), payment_method: repayForm.payment_method });
-      setSelected(null); load(); onRefresh();
-    } catch (e) { setError(e.message); }
+      await coopFn("record-repayment", {
+        org_id: org.id, loan_id: selected.id, member_id: selected.member_id,
+        amount: parseFloat(repayForm.amount), payment_method: repayForm.payment_method,
+      });
+      setRepayForm({ amount: "", payment_method: "cash" });
+      load(); onRefresh();
+      loadRepayments(selected.id);
+      setSelected(prev => prev ? { ...prev, outstanding_balance: Math.max(0, (prev.outstanding_balance || 0) - parseFloat(repayForm.amount)) } : null);
+    } catch (e) { setError(e.message || "Failed"); }
     finally { setSaving(false); }
   };
 
+  const handleCheckOverdue = async () => {
+    try { await coopFn("check-overdue-loans", { org_id: org.id }); }
+    catch { /* silent */ }
+  };
+
+  const openLoan = (l) => { setSelected(l); setRepayForm({ amount: "", payment_method: "cash" }); setError(""); loadRepayments(l.id); };
+  const closeSelected = () => { setSelected(null); setRepayments([]); setError(""); setShowReject(false); setRejectReason(""); };
+
   const activeMembers = members.filter(m => m.status === "active");
+  const pendingLoans  = loans.filter(l => l.status === "pending");
+  const activeLoans   = loans.filter(l => l.status === "disbursed");
+  const today         = new Date().toISOString().slice(0, 10);
 
   return (
     <div className="flex flex-col h-full">
+      {/* Header */}
       <div className="px-4 pt-4 pb-2 flex justify-between items-center">
-        <p className="text-xs font-bold text-slate-500 dark:text-slate-400">{loans.filter(l => l.status === "pending").length} pending · {loans.filter(l => l.status === "disbursed").length} active</p>
-        <button onClick={() => setShowApply(true)} className="px-4 py-2.5 bg-amber-500 text-white rounded-xl text-xs font-bold">+ New Loan</button>
+        <p className="text-xs font-bold text-slate-500 dark:text-slate-400">
+          {pendingLoans.length} pending · {activeLoans.length} active
+        </p>
+        <div className="flex gap-2">
+          <button onClick={handleCheckOverdue} title="Send overdue alerts"
+            className="px-3 py-2 bg-red-50 dark:bg-red-900/20 text-red-600 border border-red-200 dark:border-red-800 rounded-xl text-xs font-bold">
+            ⚠ Overdue
+          </button>
+          <button onClick={() => setShowApply(true)} className="px-4 py-2.5 bg-amber-500 text-white rounded-xl text-xs font-bold">+ New Loan</button>
+        </div>
       </div>
+
+      {/* Default interest rate setting */}
+      <div className="mx-4 mb-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-3 py-2.5 flex items-center justify-between gap-2">
+        <div>
+          <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider">Default Interest Rate</p>
+          {rateEdit ? (
+            <div className="flex items-center gap-2 mt-1">
+              <input value={rateVal} onChange={e => setRateVal(e.target.value)} type="number" min="0" step="0.5"
+                className="w-20 px-2 py-1 rounded-lg border border-amber-300 text-sm font-bold bg-white dark:bg-slate-700 text-slate-800 dark:text-white" />
+              <span className="text-sm font-bold text-amber-700">%</span>
+              <button onClick={handleSaveRate} className="px-3 py-1 bg-amber-500 text-white rounded-lg text-xs font-bold">Save</button>
+              <button onClick={() => setRateEdit(false)} className="px-2 py-1 text-slate-500 text-xs">Cancel</button>
+            </div>
+          ) : (
+            <p className="text-sm font-extrabold text-amber-700 dark:text-amber-300">{defaultRate}% per loan</p>
+          )}
+        </div>
+        {!rateEdit && (
+          <button onClick={() => { setRateEdit(true); setRateVal(String(defaultRate)); }}
+            className="text-[10px] font-bold text-amber-600 dark:text-amber-400 border border-amber-300 dark:border-amber-700 rounded-lg px-2 py-1">
+            Edit
+          </button>
+        )}
+      </div>
+
+      {/* Loan list */}
       <div className="flex-1 overflow-y-auto px-4 pb-24">
-        {loading ? <div className="flex justify-center py-10"><div className="w-6 h-6 border-[3px] border-amber-500 border-t-transparent rounded-full animate-spin" /></div>
-          : loans.length === 0 ? <div className="text-center py-12 text-slate-400 text-sm">No loans yet</div>
-          : (
-            <div className="flex flex-col gap-2">
-              {loans.map(l => (
-                <button key={l.id} onClick={() => setSelected(l)}
-                  className="bg-white dark:bg-slate-800 rounded-xl p-3 border border-slate-100 dark:border-slate-700 flex justify-between items-start text-left w-full">
+        {loading ? (
+          <div className="flex justify-center py-10"><div className="w-6 h-6 border-[3px] border-amber-500 border-t-transparent rounded-full animate-spin" /></div>
+        ) : loans.length === 0 ? (
+          <div className="text-center py-12 text-slate-400 text-sm">No loans yet</div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {loans.map(l => {
+              const isOverdue = l.status === "disbursed" && l.due_date && l.due_date < today;
+              return (
+                <button key={l.id} onClick={() => openLoan(l)}
+                  className={`bg-white dark:bg-slate-800 rounded-xl p-3 border flex justify-between items-start text-left w-full ${isOverdue ? "border-red-300 dark:border-red-700" : "border-slate-100 dark:border-slate-700"}`}>
                   <div>
                     <p className="text-xs font-bold text-slate-800 dark:text-white">{l.org_members?.full_name || "—"}</p>
                     <p className="text-[10px] text-slate-400">{l.loan_purpose || "General"} · {fmtDate(l.applied_at)}</p>
-                    <span className={`text-[10px] font-bold capitalize ${STATUS_COL[l.status]}`}>● {l.status}</span>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className={`text-[10px] font-bold capitalize ${STATUS_COL[l.status]}`}>● {l.status}</span>
+                      {isOverdue && <span className="text-[9px] font-black text-red-500 bg-red-50 px-1.5 py-0.5 rounded-full">OVERDUE</span>}
+                    </div>
                   </div>
                   <div className="text-right">
                     <p className="text-sm font-extrabold text-amber-600">{fmt(l.amount_requested)}</p>
-                    {l.outstanding_balance > 0 && <p className="text-[10px] text-red-500">Out: {fmt(l.outstanding_balance)}</p>}
+                    {l.outstanding_balance > 0 && <p className="text-[10px] text-red-500">Due: {fmt(l.outstanding_balance)}</p>}
+                    {(l.monthly_installment > 0) && <p className="text-[10px] text-slate-400">{fmt(l.monthly_installment)}/mo</p>}
                   </div>
                 </button>
-              ))}
-            </div>
-          )}
+              );
+            })}
+          </div>
+        )}
       </div>
 
+      {/* New loan modal */}
       {showApply && (
         <ModalWrap onClose={() => { setShowApply(false); setError(""); }}>
           <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-4">New Loan Application</h3>
@@ -1273,19 +1379,32 @@ function LoansTab({ org, members, onRefresh }) {
               </div>
               <div>
                 <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Interest (%)</label>
-                <input className={input} type="number" value={form.interest_rate} onChange={set("interest_rate")} placeholder="0" />
+                <input className={input} type="number" value={form.interest_rate} onChange={set("interest_rate")} placeholder="0" step="0.5" />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Repay Months</label>
-                <input className={input} type="number" value={form.repayment_months} onChange={set("repayment_months")} placeholder="1" min="1" />
+                <input className={input} type="number" value={form.repayment_months} onChange={set("repayment_months")} placeholder="12" min="1" />
               </div>
               <div>
                 <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Purpose</label>
                 <input className={input} value={form.loan_purpose} onChange={set("loan_purpose")} placeholder="Business…" />
               </div>
             </div>
+            {principal > 0 && (
+              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl p-3">
+                <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider mb-2">Loan Summary</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {[["Interest", fmt(preview.totalInterest)], ["Total Repayable", fmt(preview.totalRepayable)], ["Monthly", fmt(preview.monthlyInstallment)]].map(([k, v]) => (
+                    <div key={k} className="text-center">
+                      <p className="text-[9px] text-amber-600 dark:text-amber-500">{k}</p>
+                      <p className="text-xs font-extrabold text-amber-800 dark:text-amber-300">{v}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
           <div className="flex gap-2 mt-4">
             <button onClick={() => { setShowApply(false); setError(""); }} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Cancel</button>
@@ -1294,42 +1413,109 @@ function LoansTab({ org, members, onRefresh }) {
         </ModalWrap>
       )}
 
+      {/* Loan detail modal */}
       {selected && (
-        <ModalWrap onClose={() => { setSelected(null); setError(""); setRepayForm({ amount: "", payment_method: "cash" }); }}>
+        <ModalWrap onClose={closeSelected}>
           <div className="flex justify-between mb-3">
             <div>
               <p className="text-base font-extrabold text-slate-800 dark:text-white">{selected.org_members?.full_name}</p>
               <p className="text-xs text-slate-400">{selected.loan_purpose || "General loan"}</p>
             </div>
-            <span className={`text-xs font-bold capitalize ${STATUS_COL[selected.status]}`}>{selected.status}</span>
+            <span className={`text-xs font-bold capitalize px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-700 ${STATUS_COL[selected.status]}`}>{selected.status}</span>
           </div>
-          <div className="bg-slate-50 dark:bg-slate-700 rounded-xl p-3 mb-4 grid grid-cols-2 gap-2">
-            {[["Requested", fmt(selected.amount_requested)], ["Outstanding", fmt(selected.outstanding_balance)],
-              ["Interest", `${selected.interest_rate}%`], ["Due Date", fmtDate(selected.due_date)]].map(([k, v]) => (
-              <div key={k}><p className="text-[10px] text-slate-400">{k}</p><p className="text-xs font-bold text-slate-800 dark:text-white">{v}</p></div>
+
+          {/* Loan breakdown */}
+          <div className="bg-slate-50 dark:bg-slate-700/60 rounded-xl p-3 mb-3 grid grid-cols-2 gap-2">
+            {[
+              ["Principal", fmt(selected.amount_requested)],
+              ["Interest", `${selected.interest_rate}% (${fmt(selected.total_interest || 0)})`],
+              ["Total Repayable", fmt(selected.total_repayable || selected.amount_requested)],
+              ["Monthly Install.", fmt(selected.monthly_installment || 0)],
+              ["Outstanding", fmt(selected.outstanding_balance)],
+              ["Due Date", fmtDate(selected.due_date)],
+            ].map(([k, v]) => (
+              <div key={k}>
+                <p className="text-[9px] text-slate-400 uppercase tracking-wider">{k}</p>
+                <p className="text-xs font-bold text-slate-800 dark:text-white">{v}</p>
+              </div>
             ))}
           </div>
+
           {error && <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-3 text-xs text-red-600">{error}</div>}
-          {selected.status === "pending" && (
+
+          {/* Actions by status */}
+          {selected.status === "pending" && !showReject && (
             <div className="flex gap-2 mb-3">
-              <button onClick={() => handleLoanAction(selected, "approved", { approved_by_name: "Admin" })} disabled={saving} className="flex-1 py-2.5 bg-green-50 text-green-700 border border-green-200 rounded-xl font-bold text-sm">Approve</button>
-              <button onClick={() => handleLoanAction(selected, "rejected")} disabled={saving} className="flex-1 py-2.5 bg-red-50 text-red-600 border border-red-200 rounded-xl font-bold text-sm">Reject</button>
+              <button onClick={() => handleLoanAction(selected, "approved")} disabled={saving}
+                className="flex-1 py-2.5 bg-green-50 text-green-700 border border-green-200 rounded-xl font-bold text-sm">✓ Approve</button>
+              <button onClick={() => setShowReject(true)} disabled={saving}
+                className="flex-1 py-2.5 bg-red-50 text-red-600 border border-red-200 rounded-xl font-bold text-sm">✕ Reject</button>
             </div>
           )}
-          {selected.status === "approved" && (
-            <button onClick={() => handleLoanAction(selected, "disbursed", { repayment_months: selected.repayment_months })} disabled={saving}
-              className="w-full py-2.5 bg-green-600 text-white rounded-xl font-bold text-sm mb-3">Disburse Loan</button>
-          )}
-          {selected.status === "disbursed" && selected.outstanding_balance > 0 && (
+          {selected.status === "pending" && showReject && (
             <div className="mb-3">
-              <p className="text-xs font-bold text-slate-500 mb-2">Record Repayment</p>
+              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Rejection Reason</label>
+              <textarea value={rejectReason} onChange={e => setRejectReason(e.target.value)} rows={2}
+                placeholder="Reason for rejection…"
+                className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm resize-none mb-2" />
               <div className="flex gap-2">
-                <input value={repayForm.amount} onChange={setR("amount")} type="number" placeholder="Amount" className="flex-1 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm" />
-                <button onClick={handleRepay} disabled={saving} className="px-4 py-2 bg-amber-500 text-white rounded-xl font-bold text-sm">{saving ? "…" : "Pay"}</button>
+                <button onClick={() => setShowReject(false)} className="flex-1 py-2 border border-slate-200 dark:border-slate-600 text-slate-600 rounded-xl font-bold text-sm">Back</button>
+                <button onClick={() => handleLoanAction(selected, "rejected", { rejection_reason: rejectReason })} disabled={saving}
+                  className="flex-1 py-2 bg-red-500 text-white rounded-xl font-bold text-sm disabled:opacity-50">{saving ? "…" : "Confirm Reject"}</button>
               </div>
             </div>
           )}
-          <button onClick={() => { setSelected(null); setError(""); setRepayForm({ amount: "", payment_method: "cash" }); }}
+
+          {selected.status === "approved" && (
+            <div className="mb-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-3">
+              <p className="text-xs font-bold text-blue-700 dark:text-blue-400 mb-2">Disburse funds to member</p>
+              <p className="text-[11px] text-blue-600 dark:text-blue-400 mb-3">
+                Disbursing will deduct <strong>{fmt(selected.amount_approved || selected.amount_requested)}</strong> from the org wallet and credit it to the member's savings account.
+              </p>
+              <button onClick={() => handleLoanAction(selected, "disbursed", { repayment_months: selected.repayment_months })} disabled={saving}
+                className="w-full py-2.5 bg-blue-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">{saving ? "Processing…" : "Disburse Loan →"}</button>
+            </div>
+          )}
+
+          {selected.status === "disbursed" && selected.outstanding_balance > 0 && (
+            <div className="mb-3">
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Record Repayment (Cash/Bank)</p>
+              <div className="flex gap-2 mb-2">
+                <input value={repayForm.amount} onChange={setR("amount")} type="number" placeholder={`e.g. ${fmt(selected.monthly_installment || 0)}`}
+                  className="flex-1 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm" />
+                <select value={repayForm.payment_method} onChange={setR("payment_method")}
+                  className="px-2 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-xs">
+                  <option value="cash">Cash</option>
+                  <option value="bank_transfer">Bank</option>
+                  <option value="paystack">Paystack</option>
+                </select>
+                <button onClick={handleRepay} disabled={saving} className="px-4 py-2 bg-amber-500 text-white rounded-xl font-bold text-sm">{saving ? "…" : "Pay"}</button>
+              </div>
+              <p className="text-[10px] text-slate-400">Monthly target: {fmt(selected.monthly_installment || 0)} · Pay any amount, meet target by month end</p>
+            </div>
+          )}
+
+          {/* Repayment history */}
+          {repayments.length > 0 && (
+            <div className="mb-3">
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Repayment History</p>
+              <div className="flex flex-col gap-1.5 max-h-40 overflow-y-auto">
+                {repayments.map(r => (
+                  <div key={r.id} className="flex justify-between items-center bg-slate-50 dark:bg-slate-700 rounded-lg px-2.5 py-1.5">
+                    <div>
+                      <p className="text-xs font-bold text-green-600">{fmt(r.amount)}</p>
+                      <p className="text-[10px] text-slate-400">{fmtDT(r.created_at)} · {r.payment_method}</p>
+                    </div>
+                    {r.interest_portion > 0 && (
+                      <p className="text-[10px] text-amber-600">+{fmt(r.interest_portion)} interest</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <button onClick={closeSelected}
             className="w-full py-2.5 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Close</button>
         </ModalWrap>
       )}

@@ -549,7 +549,7 @@ serve(async (req) => {
       const { data: programs } = await sb.from("org_contribution_programs").select("*")
         .eq("org_id", org_id).order("created_at", { ascending: false });
 
-      const result = await Promise.all((programs || []).map(async (p) => {
+      const result = await Promise.all((programs || []).map(async (p: Record<string, unknown>) => {
         const { data: stats } = await sb.from("org_savings")
           .select("amount")
           .eq("org_id", org_id)
@@ -818,91 +818,239 @@ serve(async (req) => {
     //  LOANS
     // ══════════════════════════════════════════════════
 
-    if (action === "apply-loan") {
-      const { org_id, member_id, amount_requested, interest_rate, loan_purpose, repayment_months, notes } =
+    // Helper: compute loan totals
+    function calcLoan(principal: number, interestRate: number, months: number) {
+      const totalInterest = principal * (interestRate / 100);
+      const totalRepayable = principal + totalInterest;
+      const monthlyInstallment = totalRepayable / Math.max(1, months);
+      return { totalInterest, totalRepayable, monthlyInstallment };
+    }
+
+    // Apply for a loan (admin on behalf of member, or member self-apply)
+    if (action === "apply-loan" || action === "member-apply-loan") {
+      const { org_id, member_id, amount_requested, interest_rate, loan_purpose, repayment_months, notes, applied_by } =
         body as Record<string, unknown>;
       if (!org_id || !member_id || !amount_requested) return json({ error: "Required fields missing" }, 400);
+      const principal = parseFloat(String(amount_requested));
+      const rate      = parseFloat(String(interest_rate || 0));
+      const months    = parseInt(String(repayment_months || 1));
+      const { totalInterest, totalRepayable, monthlyInstallment } = calcLoan(principal, rate, months);
       const { data: loan, error } = await sb.from("org_loans")
-        .insert({ org_id, member_id, amount_requested: parseFloat(String(amount_requested)),
-          interest_rate: parseFloat(String(interest_rate || 0)),
-          loan_purpose, repayment_months: parseInt(String(repayment_months || 1)), notes: notes || null })
+        .insert({
+          org_id, member_id, amount_requested: principal,
+          interest_rate: rate, loan_purpose: loan_purpose || null,
+          repayment_months: months, notes: notes || null,
+          total_interest: totalInterest, total_repayable: totalRepayable,
+          monthly_installment: monthlyInstallment,
+          applied_by: String(applied_by || "admin"),
+        })
         .select("*, org_members(full_name,membership_id)").single();
       if (error) return json({ error: error.message }, 400);
+      // Email org about new loan request
+      const { data: loanOrg } = await sb.from("organizations").select("name,owner_id").eq("id", org_id).maybeSingle();
+      if (loanOrg?.owner_id) {
+        const { data: ownerProf } = await sb.from("profiles").select("email").eq("id", loanOrg.owner_id).maybeSingle();
+        if (ownerProf?.email) {
+          fetch("https://admin.kudiai.app/api/public/email-trigger", {
+            method: "POST", headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+            body: JSON.stringify({ event: "org_loan_request", data: {
+              owner_email: ownerProf.email, org_name: loanOrg.name,
+              member_name: (loan as Record<string, { full_name?: string }>).org_members?.full_name || "",
+              amount: principal, interest_rate: rate, months,
+              monthly_installment: monthlyInstallment, total_repayable: totalRepayable,
+              loan_purpose: loan_purpose || "", loan_id: loan.id,
+            }}),
+          }).catch(() => null);
+        }
+      }
       return json({ loan });
     }
 
+    // Update loan status (approve / reject / disburse)
     if (action === "update-loan") {
-      const { loan_id, org_id, status, amount_approved, approved_by_name, notes, repayment_months } =
+      const { loan_id, org_id, status, amount_approved, approved_by_name, notes, repayment_months, rejection_reason } =
         body as Record<string, unknown>;
       const update: Record<string, unknown> = {};
       if (status)           update.status = status;
       if (amount_approved)  update.amount_approved = parseFloat(String(amount_approved));
       if (approved_by_name) update.approved_by_name = approved_by_name;
       if (notes !== undefined) update.notes = notes;
+
+      const { data: existingLoan } = await sb.from("org_loans")
+        .select("*, org_members(full_name,email,membership_id)")
+        .eq("id", loan_id).maybeSingle();
+      if (!existingLoan) return json({ error: "Loan not found" }, 404);
+
       if (status === "approved") {
         update.approved_at = new Date().toISOString();
-        update.outstanding_balance = update.amount_approved || parseFloat(String(amount_approved || 0));
+        const principal = parseFloat(String(update.amount_approved || existingLoan.amount_approved || existingLoan.amount_requested));
+        const rate    = existingLoan.interest_rate || 0;
+        const months  = existingLoan.repayment_months || 1;
+        const { totalInterest, totalRepayable, monthlyInstallment } = calcLoan(principal, rate, months);
+        update.total_interest = totalInterest;
+        update.total_repayable = totalRepayable;
+        update.monthly_installment = monthlyInstallment;
+        update.outstanding_balance = totalRepayable;
+        // Email member: approved
+        const memberEmail = (existingLoan.org_members as Record<string, string>)?.email;
+        const memberName  = (existingLoan.org_members as Record<string, string>)?.full_name;
+        if (memberEmail) {
+          const { data: approvedOrg } = await sb.from("organizations").select("name").eq("id", existingLoan.org_id).maybeSingle();
+          fetch("https://admin.kudiai.app/api/public/email-trigger", {
+            method: "POST", headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+            body: JSON.stringify({ event: "org_loan_approved", data: {
+              member_email: memberEmail, member_name: memberName, org_name: approvedOrg?.name || "",
+              amount: principal, interest_rate: rate, months, monthly_installment: monthlyInstallment,
+              total_repayable: totalRepayable,
+            }}),
+          }).catch(() => null);
+        }
       }
+
+      if (status === "rejected") {
+        // Email member: rejected
+        const memberEmail = (existingLoan.org_members as Record<string, string>)?.email;
+        const memberName  = (existingLoan.org_members as Record<string, string>)?.full_name;
+        if (memberEmail) {
+          const { data: rejOrg } = await sb.from("organizations").select("name").eq("id", existingLoan.org_id).maybeSingle();
+          fetch("https://admin.kudiai.app/api/public/email-trigger", {
+            method: "POST", headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+            body: JSON.stringify({ event: "org_loan_rejected", data: {
+              member_email: memberEmail, member_name: memberName, org_name: rejOrg?.name || "",
+              amount: existingLoan.amount_requested,
+              reason: String(rejection_reason || notes || "No reason provided"),
+            }}),
+          }).catch(() => null);
+        }
+      }
+
       if (status === "disbursed") {
         update.disbursed_at = new Date().toISOString();
-        const months = parseInt(String(repayment_months || 1));
+        const months = parseInt(String(repayment_months || existingLoan.repayment_months || 1));
         const due = new Date(); due.setMonth(due.getMonth() + months);
         update.due_date = due.toISOString().slice(0, 10);
-        const amt = parseFloat(String(update.amount_approved || amount_approved || 0));
+        const amt = existingLoan.amount_approved || existingLoan.amount_requested;
         if (amt > 0) {
+          // Deduct from org wallet
           const { data: orgW } = await sb.from("organizations")
             .select("wallet_balance,total_loans_out").eq("id", org_id).single();
           const newBal = Math.max(0, (orgW?.wallet_balance || 0) - amt);
           await sb.from("organizations").update({
-            wallet_balance: newBal,
-            total_loans_out: (orgW?.total_loans_out || 0) + amt,
+            wallet_balance: newBal, total_loans_out: (orgW?.total_loans_out || 0) + amt,
           }).eq("id", org_id);
           await sb.from("org_wallet_txns").insert({
             org_id, type: "loan_disbursement", amount: amt,
             description: `Loan disbursement — ${loan_id}`, reference_id: loan_id, balance_after: newBal,
           });
+          // Credit member savings account
+          const { data: mem } = await sb.from("org_members").select("savings_balance").eq("id", existingLoan.member_id).single();
+          const newSavBal = (mem?.savings_balance || 0) + amt;
+          await sb.from("org_members").update({ savings_balance: newSavBal }).eq("id", existingLoan.member_id);
+          await sb.from("org_savings").insert({
+            org_id: existingLoan.org_id, member_id: existingLoan.member_id,
+            amount: amt, type: "deposit", payment_method: "loan_disbursement",
+            notes: `Loan disbursement — ${loan_id}`, balance_after: newSavBal,
+          });
+        }
+        // Email member: disbursed
+        const memberEmail = (existingLoan.org_members as Record<string, string>)?.email;
+        const memberName  = (existingLoan.org_members as Record<string, string>)?.full_name;
+        if (memberEmail) {
+          const { data: disbOrg } = await sb.from("organizations").select("name").eq("id", existingLoan.org_id).maybeSingle();
+          fetch("https://admin.kudiai.app/api/public/email-trigger", {
+            method: "POST", headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+            body: JSON.stringify({ event: "org_loan_disbursed", data: {
+              member_email: memberEmail, member_name: memberName, org_name: disbOrg?.name || "",
+              amount: amt, due_date: update.due_date,
+              monthly_installment: existingLoan.monthly_installment || 0,
+            }}),
+          }).catch(() => null);
         }
       }
+
       const { data: loan, error } = await sb.from("org_loans").update(update)
-        .eq("id", loan_id).select("*, org_members(full_name,membership_id)").single();
+        .eq("id", loan_id).select("*, org_members(full_name,membership_id,email)").single();
       if (error) return json({ error: error.message }, 400);
       return json({ loan });
     }
 
+    // Record a loan repayment (admin cash entry or Paystack callback)
     if (action === "record-repayment") {
       const { org_id, loan_id, member_id, amount, payment_method, paystack_ref, notes } =
         body as Record<string, unknown>;
       const amt = parseFloat(String(amount));
       if (!loan_id || !amt) return json({ error: "loan_id and amount required" }, 400);
-      const { data: loan } = await sb.from("org_loans").select("outstanding_balance").eq("id", loan_id).single();
+      const { data: loan } = await sb.from("org_loans")
+        .select("outstanding_balance,total_repayable,total_interest,amount_approved,amount_requested,org_id,member_id,repayment_months,loan_purpose,org_members(full_name,email)")
+        .eq("id", loan_id).single();
       if (!loan) return json({ error: "Loan not found" }, 404);
       const newOutstanding = Math.max(0, (loan.outstanding_balance || 0) - amt);
+
+      // Split payment into principal vs interest proportionally
+      const totalRepayable = loan.total_repayable || (loan.amount_approved || loan.amount_requested);
+      const totalInterest  = loan.total_interest || 0;
+      const interestRatio  = totalRepayable > 0 ? (totalInterest / totalRepayable) : 0;
+      const interestPortion   = parseFloat((amt * interestRatio).toFixed(2));
+      const principalPortion  = parseFloat((amt - interestPortion).toFixed(2));
+
       const { data: repayment, error } = await sb.from("org_loan_repayments")
-        .insert({ org_id, loan_id, member_id, amount: amt,
-          payment_method: payment_method || "cash", paystack_ref: paystack_ref || null, notes: notes || null })
+        .insert({ org_id: loan.org_id, loan_id, member_id: loan.member_id,
+          amount: amt, payment_method: payment_method || "cash",
+          paystack_ref: paystack_ref || null, notes: notes || null,
+          principal_portion: principalPortion, interest_portion: interestPortion })
         .select("*").single();
       if (error) return json({ error: error.message }, 400);
+
       await sb.from("org_loans").update({
         outstanding_balance: newOutstanding, status: newOutstanding === 0 ? "repaid" : "disbursed",
       }).eq("id", loan_id);
+
       const { data: orgW } = await sb.from("organizations")
-        .select("wallet_balance,total_loans_out").eq("id", org_id).single();
+        .select("wallet_balance,total_loans_out,interest_earned").eq("id", loan.org_id).single();
       const newBal = (orgW?.wallet_balance || 0) + amt;
       await sb.from("organizations").update({
         wallet_balance: newBal,
         total_loans_out: Math.max(0, (orgW?.total_loans_out || 0) - amt),
-      }).eq("id", org_id);
+        interest_earned: (orgW?.interest_earned || 0) + interestPortion,
+      }).eq("id", loan.org_id);
+
       await sb.from("org_wallet_txns").insert({
-        org_id, type: "loan_repayment", amount: amt,
+        org_id: loan.org_id, type: "loan_repayment", amount: amt,
         description: `Loan repayment — ${loan_id}`, reference_id: repayment.id,
         paystack_ref: paystack_ref || null, balance_after: newBal,
       });
+
+      // Emails: member + org
+      const memberEmail = (loan.org_members as Record<string, string>)?.email;
+      const memberName  = (loan.org_members as Record<string, string>)?.full_name;
+      const { data: repayOrg } = await sb.from("organizations").select("name,owner_id").eq("id", loan.org_id).maybeSingle();
+      const emailData = {
+        member_name: memberName || "", member_email: memberEmail || "",
+        org_name: repayOrg?.name || "", amount: amt,
+        outstanding_balance: newOutstanding, is_fully_repaid: newOutstanding === 0,
+        loan_purpose: loan.loan_purpose || "",
+      };
+      if (memberEmail) {
+        fetch("https://admin.kudiai.app/api/public/email-trigger", {
+          method: "POST", headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+          body: JSON.stringify({ event: "org_loan_repayment", data: { ...emailData, send_to: "member" } }),
+        }).catch(() => null);
+      }
+      if (repayOrg?.owner_id) {
+        const { data: ownerP } = await sb.from("profiles").select("email").eq("id", repayOrg.owner_id).maybeSingle();
+        if (ownerP?.email) {
+          fetch("https://admin.kudiai.app/api/public/email-trigger", {
+            method: "POST", headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+            body: JSON.stringify({ event: "org_loan_repayment", data: { ...emailData, send_to: "org", owner_email: ownerP.email } }),
+          }).catch(() => null);
+        }
+      }
       return json({ repayment, outstanding_balance: newOutstanding });
     }
 
     if (action === "get-loans") {
       const { org_id, member_id } = body as { org_id?: string; member_id?: string };
-      let q = sb.from("org_loans").select("*, org_members(full_name,membership_id)");
+      let q = sb.from("org_loans").select("*, org_members(full_name,membership_id,email)");
       if (org_id)    q = q.eq("org_id", org_id);
       if (member_id) q = q.eq("member_id", member_id);
       const { data: loans } = await q.order("created_at", { ascending: false });
@@ -916,6 +1064,49 @@ serve(async (req) => {
       if (org_id)  q = q.eq("org_id", org_id);
       const { data: repayments } = await q.order("created_at", { ascending: false });
       return json({ repayments: repayments || [] });
+    }
+
+    // Update org default loan interest rate
+    if (action === "update-loan-settings") {
+      const { org_id, default_loan_interest_rate } = body as Record<string, unknown>;
+      if (!org_id) return json({ error: "org_id required" }, 400);
+      const rate = parseFloat(String(default_loan_interest_rate ?? 10));
+      await sb.from("organizations").update({ default_loan_interest_rate: rate }).eq("id", org_id);
+      return json({ ok: true, default_loan_interest_rate: rate });
+    }
+
+    // Check for overdue loans and send alerts
+    if (action === "check-overdue-loans") {
+      const { org_id } = body as { org_id: string };
+      const today = new Date().toISOString().slice(0, 10);
+      const { data: overdueLoans } = await sb.from("org_loans")
+        .select("*, org_members(full_name,email)")
+        .eq("org_id", org_id).eq("status", "disbursed")
+        .lt("due_date", today);
+      if (!overdueLoans?.length) return json({ overdue: 0 });
+
+      const { data: orgInfo } = await sb.from("organizations").select("name,owner_id").eq("id", org_id).maybeSingle();
+      let ownerEmail = "";
+      if (orgInfo?.owner_id) {
+        const { data: ownerP } = await sb.from("profiles").select("email").eq("id", orgInfo.owner_id).maybeSingle();
+        ownerEmail = ownerP?.email || "";
+      }
+
+      for (const ol of overdueLoans as Array<Record<string, unknown>>) {
+        const memberEmail = (ol.org_members as Record<string, string>)?.email;
+        const memberName  = (ol.org_members as Record<string, string>)?.full_name;
+        const payload = {
+          org_name: orgInfo?.name || "", member_name: memberName || "",
+          member_email: memberEmail || "", owner_email: ownerEmail,
+          amount_outstanding: ol.outstanding_balance, due_date: ol.due_date,
+          loan_purpose: ol.loan_purpose || "",
+        };
+        fetch("https://admin.kudiai.app/api/public/email-trigger", {
+          method: "POST", headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+          body: JSON.stringify({ event: "org_loan_overdue", data: payload }),
+        }).catch(() => null);
+      }
+      return json({ overdue: overdueLoans.length });
     }
 
     // ══════════════════════════════════════════════════

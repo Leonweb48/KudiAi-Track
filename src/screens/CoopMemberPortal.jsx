@@ -626,53 +626,252 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
 // ═══════════════════════════════════════════════════
 //  LOANS TAB
 // ═══════════════════════════════════════════════════
+const LOAN_STATUS_COL = {
+  pending: "text-amber-500", approved: "text-blue-600", disbursed: "text-green-600",
+  repaid: "text-slate-400", rejected: "text-red-500", defaulted: "text-red-700",
+};
+
+function calcLoanPreview(principal, rate, months) {
+  const totalInterest      = principal * (rate / 100);
+  const totalRepayable     = principal + totalInterest;
+  const monthlyInstallment = totalRepayable / Math.max(1, months);
+  return { totalInterest, totalRepayable, monthlyInstallment };
+}
+
 function LoansTab({ member, org }) {
-  const [loans,   setLoans]   = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loans,      setLoans]      = useState([]);
+  const [repayments, setRepayments] = useState([]);
+  const [loading,    setLoading]    = useState(true);
+  const [selected,   setSelected]   = useState(null);
+  const [showApply,  setShowApply]  = useState(false);
+  const [saving,     setSaving]     = useState(false);
+  const [error,      setError]      = useState("");
+  const defaultRate  = org.default_loan_interest_rate ?? 10;
+  const [form, setForm] = useState({
+    amount_requested: "", interest_rate: String(defaultRate),
+    loan_purpose: "", repayment_months: "12",
+  });
 
   const load = useCallback(() => {
-    coopFn("member-get-loans", { member_id: member.id, org_id: org.id })
+    coopFn("get-loans", { org_id: org.id, member_id: member.id })
       .then(r => setLoans(r.loans || []))
       .finally(() => setLoading(false));
   }, [member.id, org.id]);
   useEffect(() => { load(); }, [load]);
 
-  const STATUS_COL = {
-    pending: "text-amber-500", approved: "text-green-600", disbursed: "text-green-600",
-    repaid: "text-green-600", rejected: "text-red-500", defaulted: "text-red-700",
+  const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
+
+  const principal = parseFloat(form.amount_requested) || 0;
+  const rate      = parseFloat(form.interest_rate) || 0;
+  const months    = parseInt(form.repayment_months) || 1;
+  const preview   = calcLoanPreview(principal, rate, months);
+
+  const handleApply = async () => {
+    if (!form.amount_requested) { setError("Amount required"); return; }
+    setSaving(true); setError("");
+    try {
+      await coopFn("apply-loan", { org_id: org.id, member_id: member.id, ...form, applied_by: "member" });
+      setShowApply(false);
+      setForm({ amount_requested: "", interest_rate: String(defaultRate), loan_purpose: "", repayment_months: "12" });
+      load();
+    } catch (e) { setError(e.message || "Failed"); }
+    finally { setSaving(false); }
+  };
+
+  const openLoan = (l) => {
+    setSelected(l); setError("");
+    coopFn("get-repayments", { loan_id: l.id }).then(r => setRepayments(r.repayments || []));
+  };
+
+  const handlePaystackRepay = (loan) => {
+    if (!org.paystack_subaccount_code) { alert("Organisation has not configured Paystack"); return; }
+    const amountKobo = Math.round((loan.monthly_installment || loan.outstanding_balance) * 100);
+    const ref        = `loan_${loan.id}_${Date.now()}`;
+    const handler    = window.PaystackPop?.setup({
+      key: process.env.REACT_APP_PAYSTACK_PUBLIC_KEY || "",
+      email: member.email,
+      amount: amountKobo,
+      ref,
+      subaccount: org.paystack_subaccount_code,
+      bearer: "subaccount",
+      metadata: { loan_id: loan.id, member_id: member.id, org_id: org.id, type: "loan_repayment" },
+      callback: async (response) => {
+        try {
+          await coopFn("record-repayment", {
+            org_id: org.id, loan_id: loan.id, member_id: member.id,
+            amount: (loan.monthly_installment || loan.outstanding_balance),
+            payment_method: "paystack", paystack_ref: response.reference,
+          });
+          load();
+          if (selected) openLoan({ ...selected, outstanding_balance: Math.max(0, (selected.outstanding_balance || 0) - (loan.monthly_installment || loan.outstanding_balance)) });
+        } catch (e) { alert("Payment recorded but update failed: " + e.message); }
+      },
+      onClose: () => {},
+    });
+    handler?.openIframe();
   };
 
   if (loading) return <div className="flex justify-center py-16"><div className="w-8 h-8 border-[3px] border-amber-500 border-t-transparent rounded-full animate-spin" /></div>;
 
+  const today = new Date().toISOString().slice(0, 10);
+
   return (
     <div className="p-4 pb-28 flex flex-col gap-3">
+      <button onClick={() => setShowApply(true)}
+        className="w-full py-3 bg-amber-500 text-white rounded-2xl font-bold text-sm flex items-center justify-center gap-2">
+        <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" d="M12 4v16m8-8H4" /></svg>
+        Apply for a Loan
+      </button>
+
       {loans.length === 0 ? (
-        <div className="flex flex-col items-center py-20 text-center">
-          <span className="text-5xl mb-4">🏦</span>
-          <p className="text-base font-extrabold text-slate-700 dark:text-slate-200 mb-2">No Loans</p>
-          <p className="text-sm text-slate-400">You don't have any loan applications yet. Contact your organisation admin to apply.</p>
+        <div className="flex flex-col items-center py-16 text-center">
+          <p className="text-base font-extrabold text-slate-700 dark:text-slate-200 mb-2">No Loans Yet</p>
+          <p className="text-sm text-slate-400">Submit an application above and your organisation will review it.</p>
         </div>
       ) : (
-        loans.map(l => (
-          <div key={l.id} className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-100 dark:border-slate-700">
-            <div className="flex justify-between items-start mb-2">
+        loans.map(l => {
+          const isOverdue = l.status === "disbursed" && l.due_date && l.due_date < today;
+          return (
+            <button key={l.id} onClick={() => openLoan(l)}
+              className={`bg-white dark:bg-slate-800 rounded-2xl p-4 border text-left w-full ${isOverdue ? "border-red-300 dark:border-red-700" : "border-slate-100 dark:border-slate-700"}`}>
+              <div className="flex justify-between items-start mb-2">
+                <div>
+                  <p className="text-sm font-extrabold text-slate-800 dark:text-white">{l.loan_purpose || "General Loan"}</p>
+                  <p className="text-[10px] text-slate-400">{fmtDate(l.applied_at)}</p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className={`text-xs font-bold capitalize ${LOAN_STATUS_COL[l.status] || "text-slate-500"}`}>● {l.status}</span>
+                    {isOverdue && <span className="text-[9px] font-black text-red-500 bg-red-50 px-1.5 py-0.5 rounded-full">OVERDUE</span>}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-extrabold text-amber-600">{fmt(l.amount_requested)}</p>
+                  {l.outstanding_balance > 0 && <p className="text-xs text-red-500 font-bold">Owed: {fmt(l.outstanding_balance)}</p>}
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100 dark:border-slate-700">
+                {[["Interest", `${l.interest_rate}%`], ["Monthly", fmt(l.monthly_installment || 0)], ["Due", fmtDate(l.due_date)]].map(([k, v]) => (
+                  <div key={k}><p className="text-[10px] text-slate-400">{k}</p><p className="text-xs font-bold text-slate-700 dark:text-slate-200">{v || "—"}</p></div>
+                ))}
+              </div>
+            </button>
+          );
+        })
+      )}
+
+      {/* Loan application modal */}
+      {showApply && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center p-4">
+          <div className="bg-white dark:bg-slate-800 rounded-3xl w-full max-w-sm p-5 max-h-[85vh] overflow-y-auto">
+            <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-4">Apply for a Loan</h3>
+            {error && <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-3 text-xs text-red-600">{error}</div>}
+            <div className="flex flex-col gap-3">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Amount (₦) *</label>
+                  <input value={form.amount_requested} onChange={set("amount_requested")} type="number" placeholder="0"
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm" />
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Months</label>
+                  <input value={form.repayment_months} onChange={set("repayment_months")} type="number" min="1"
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm" />
+                </div>
+              </div>
               <div>
-                <p className="text-sm font-extrabold text-slate-800 dark:text-white">{l.loan_purpose || "General Loan"}</p>
-                <p className="text-[10px] text-slate-400">{fmtDate(l.applied_at)}</p>
-                <span className={`text-xs font-bold capitalize ${STATUS_COL[l.status] || "text-slate-500"}`}>● {l.status}</span>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Purpose</label>
+                <input value={form.loan_purpose} onChange={set("loan_purpose")} placeholder="What's it for?"
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm" />
               </div>
-              <div className="text-right">
-                <p className="text-sm font-extrabold text-amber-600">{fmt(l.amount_requested)}</p>
-                {l.outstanding_balance > 0 && <p className="text-xs text-red-500 font-bold">Owed: {fmt(l.outstanding_balance)}</p>}
-              </div>
+              {principal > 0 && (
+                <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl p-3">
+                  <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider mb-2">Estimated Repayment</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[["Interest ({rate}%)".replace("{rate}", String(rate)), fmt(preview.totalInterest)],
+                      ["Total", fmt(preview.totalRepayable)],
+                      ["Per Month", fmt(preview.monthlyInstallment)]].map(([k, v]) => (
+                      <div key={k} className="text-center">
+                        <p className="text-[9px] text-amber-600">{k}</p>
+                        <p className="text-xs font-extrabold text-amber-800 dark:text-amber-300">{v}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-            <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100 dark:border-slate-700">
-              {[["Interest", `${l.interest_rate}%`], ["Months", l.repayment_months], ["Due", fmtDate(l.due_date)]].map(([k, v]) => (
-                <div key={k}><p className="text-[10px] text-slate-400">{k}</p><p className="text-xs font-bold text-slate-700 dark:text-slate-200">{v || "—"}</p></div>
-              ))}
+            <div className="flex gap-2 mt-4">
+              <button onClick={() => { setShowApply(false); setError(""); }} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Cancel</button>
+              <button onClick={handleApply} disabled={saving} className="flex-1 py-3 bg-amber-500 text-white rounded-xl font-bold text-sm disabled:opacity-50">{saving ? "Submitting…" : "Submit"}</button>
             </div>
           </div>
-        ))
+        </div>
+      )}
+
+      {/* Loan detail sheet */}
+      {selected && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center p-4">
+          <div className="bg-white dark:bg-slate-800 rounded-3xl w-full max-w-sm p-5 max-h-[85vh] overflow-y-auto">
+            <div className="flex justify-between items-start mb-3">
+              <div>
+                <p className="text-base font-extrabold text-slate-800 dark:text-white">{selected.loan_purpose || "General Loan"}</p>
+                <p className="text-[10px] text-slate-400">{fmtDate(selected.applied_at)}</p>
+              </div>
+              <span className={`text-xs font-bold capitalize px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-700 ${LOAN_STATUS_COL[selected.status]}`}>{selected.status}</span>
+            </div>
+
+            <div className="bg-slate-50 dark:bg-slate-700/60 rounded-xl p-3 mb-3 grid grid-cols-2 gap-2">
+              {[
+                ["Amount", fmt(selected.amount_requested)],
+                ["Interest", `${selected.interest_rate}%`],
+                ["Total Repayable", fmt(selected.total_repayable || selected.amount_requested)],
+                ["Monthly Install.", fmt(selected.monthly_installment || 0)],
+                ["Outstanding", fmt(selected.outstanding_balance)],
+                ["Due Date", fmtDate(selected.due_date)],
+              ].map(([k, v]) => (
+                <div key={k}>
+                  <p className="text-[9px] text-slate-400 uppercase tracking-wider">{k}</p>
+                  <p className="text-xs font-bold text-slate-800 dark:text-white">{v}</p>
+                </div>
+              ))}
+            </div>
+
+            {selected.status === "disbursed" && selected.outstanding_balance > 0 && org.paystack_subaccount_code && (
+              <button onClick={() => handlePaystackRepay(selected)}
+                className="w-full py-3 bg-green-600 text-white rounded-2xl font-bold text-sm mb-3 flex items-center justify-center gap-2">
+                <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
+                Pay via Paystack — {fmt(selected.monthly_installment || selected.outstanding_balance)}
+              </button>
+            )}
+
+            {selected.status === "pending" && (
+              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl p-3 mb-3 text-center">
+                <p className="text-sm font-bold text-amber-700 dark:text-amber-400">Awaiting Review</p>
+                <p className="text-[11px] text-amber-600 dark:text-amber-500 mt-1">Your application is being reviewed by the admin.</p>
+              </div>
+            )}
+
+            {repayments.length > 0 && (
+              <div className="mb-3">
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Repayment History</p>
+                <div className="flex flex-col gap-1.5 max-h-36 overflow-y-auto">
+                  {repayments.map(r => (
+                    <div key={r.id} className="flex justify-between items-center bg-slate-50 dark:bg-slate-700 rounded-lg px-2.5 py-1.5">
+                      <div>
+                        <p className="text-xs font-bold text-green-600">{fmt(r.amount)}</p>
+                        <p className="text-[10px] text-slate-400">{fmtDT(r.created_at)} · {r.payment_method}</p>
+                      </div>
+                      {r.interest_portion > 0 && (
+                        <p className="text-[10px] text-amber-600">+{fmt(r.interest_portion)} interest</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <button onClick={() => { setSelected(null); setRepayments([]); setError(""); }}
+              className="w-full py-2.5 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Close</button>
+          </div>
+        </div>
       )}
     </div>
   );
