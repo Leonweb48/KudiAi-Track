@@ -862,7 +862,7 @@ function ManagerStock({ inventory, staff, livePerms, plan }) {
 /* ═══════════════════════════════════════════════════════════════════
    ME TAB
 ═══════════════════════════════════════════════════════════════════ */
-function ManagerMe({ staff, session, store, inventory, livePerms, staffId, lock, plan, initialView }) {
+function ManagerMe({ staff, session, store, inventory, livePerms, staffId, lock, plan, initialView, onStaffUpdate }) {
   const [view,          setView]          = useState(initialView || "menu");
   const [isDark,        setIsDark]        = useState(() => localStorage.getItem("kuditrack_dark") === "1");
   const [editForm,      setEditForm]      = useState({ full_name: staff?.full_name || "", phone: staff?.phone || "" });
@@ -894,6 +894,9 @@ function ManagerMe({ staff, session, store, inventory, livePerms, staffId, lock,
       let photoUrl = staff?.profile_image_url;
       if (photoFile) photoUrl = await uploadAvatar(photoFile, staffId);
       await supabase.from("staff").update({ full_name: editForm.full_name, phone: editForm.phone, profile_image_url: photoUrl }).eq("id", staffId);
+      setPhotoFile(null);
+      setPhotoPreview(null);
+      onStaffUpdate?.({ full_name: editForm.full_name, phone: editForm.phone, profile_image_url: photoUrl });
       setSaveMsg("Profile saved!");
       setTimeout(() => { setSaveMsg(""); setView("menu"); }, 1500);
     } catch { setSaveMsg("Save failed. Please try again."); }
@@ -1126,7 +1129,9 @@ function ManagerMe({ staff, session, store, inventory, livePerms, staffId, lock,
 /* ═══════════════════════════════════════════════════════════════════
    MAIN STAFF DASHBOARD
 ═══════════════════════════════════════════════════════════════════ */
-export default function ManagerDashboard({ session, staff }) {
+export default function ManagerDashboard({ session, staff: staffProp }) {
+  const [staffPatch, setStaffPatch] = useState({});
+  const staff = { ...staffProp, ...staffPatch };
   const [tab,        setTab]       = useState(() => {
     const p = new URLSearchParams(window.location.search);
     const ref = p.get("bill_ref") || p.get("trxref") || p.get("reference");
@@ -1262,7 +1267,7 @@ export default function ManagerDashboard({ session, staff }) {
       case "sales":   return <ManagerSales   store={store} staff={staff} session={session} livePerms={livePerms} initialSub={subNav} initialData={subData} onVoiceOpen={() => setVoiceOpen(true)} inventory={inventory} onAddCash={openAddTxn} plan={plan} />;
       case "records": return <ManagerRecords store={store} staff={staff} livePerms={livePerms} initialSub={subNav} plan={plan} />;
       case "stock":   return <ManagerStock   inventory={inventory} staff={staff} livePerms={livePerms} plan={plan} />;
-      case "me":      return <ManagerMe      staff={staff} session={session} store={store} inventory={inventory} livePerms={livePerms} staffId={staffId} lock={lock} plan={plan} initialView={subNav} />;
+      case "me":      return <ManagerMe      staff={staff} session={session} store={store} inventory={inventory} livePerms={livePerms} staffId={staffId} lock={lock} plan={plan} initialView={subNav} onStaffUpdate={p => setStaffPatch(prev => ({ ...prev, ...p }))} />;
       default:        setTab("home"); return null;
     }
   }
