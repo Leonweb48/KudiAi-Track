@@ -1153,20 +1153,29 @@ serve(async (req) => {
         })
         .select("*").single();
       if (error) return json({ error: error.message }, 400);
-      const { data: mtgOrg } = await sb.from("organizations").select("name").eq("id", org_id).single();
-      const { data: mtgMems } = await sb.from("org_members").select("full_name, email").eq("org_id", org_id).eq("status", "active");
-      if (mtgOrg && mtgMems) {
-        const dtStr = new Date(scheduled_at).toLocaleString("en-NG", { dateStyle: "medium", timeStyle: "short" });
-        for (const m of mtgMems as { full_name: string; email: string }[]) {
-          if (!m.email) continue;
+      const { data: mtgOrg } = await sb.from("organizations").select("name,owner_id").eq("id", org_id).single();
+      const { data: mtgMems } = await sb.from("org_members").select("full_name,email").eq("org_id", org_id).eq("status", "active");
+      if (mtgOrg) {
+        let ownerEmail = "";
+        if (mtgOrg.owner_id) {
+          const { data: ownerP } = await sb.from("profiles").select("email").eq("id", mtgOrg.owner_id).maybeSingle();
+          ownerEmail = ownerP?.email || "";
+        }
+        const recipients = [
+          ...(ownerEmail ? [{ email: ownerEmail, name: "Admin", is_org: true }] : []),
+          ...(mtgMems || []).filter((m: { email?: string }) => m.email)
+            .map((m: { full_name: string; email: string }) => ({ email: m.email, name: m.full_name, is_org: false })),
+        ];
+        for (const r of recipients) {
           fetch("https://admin.kudiai.app/api/public/email-trigger", {
             method: "POST",
             headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
             body: JSON.stringify({ event: "org_broadcast", data: {
-              email: m.email, member_name: m.full_name, org_name: mtgOrg.name,
+              email: r.email, member_name: r.name, is_org: r.is_org, org_name: mtgOrg.name,
               broadcast_type: "Meeting", title,
-              description: description || "",
-              detail: `${format || "physical"} meeting on ${dtStr}${location ? ` at ${location}` : ""}`,
+              description: description || "", meeting_type: meeting_type || "general",
+              format: format || "physical", scheduled_at, location: location || "",
+              meeting_link: meeting_link || "", agenda: agenda || "",
             }}),
           }).catch(() => null);
         }
@@ -1274,19 +1283,29 @@ serve(async (req) => {
           is_pinned: is_pinned || false,
         }).select("*").single();
       if (error) return json({ error: error.message }, 400);
-      const { data: annOrg } = await sb.from("organizations").select("name").eq("id", org_id as string).single();
-      const { data: annMems } = await sb.from("org_members").select("full_name, email").eq("org_id", org_id as string).eq("status", "active");
-      if (annOrg && annMems) {
+      const { data: annOrg } = await sb.from("organizations").select("name,owner_id").eq("id", org_id as string).single();
+      const { data: annMems } = await sb.from("org_members").select("full_name,email").eq("org_id", org_id as string).eq("status", "active");
+      if (annOrg) {
+        let ownerEmail = "";
+        if (annOrg.owner_id) {
+          const { data: ownerP } = await sb.from("profiles").select("email").eq("id", annOrg.owner_id).maybeSingle();
+          ownerEmail = ownerP?.email || "";
+        }
         const btype = type === "emergency" ? "Emergency Alert" : type === "notice" ? "Notice" : type === "circular" ? "Circular" : "Announcement";
-        for (const m of annMems as { full_name: string; email: string }[]) {
-          if (!m.email) continue;
+        const recipients = [
+          ...(ownerEmail ? [{ email: ownerEmail, name: "Admin", is_org: true }] : []),
+          ...(annMems || []).filter((m: { email?: string }) => m.email)
+            .map((m: { full_name: string; email: string }) => ({ email: m.email, name: m.full_name, is_org: false })),
+        ];
+        for (const r of recipients) {
           fetch("https://admin.kudiai.app/api/public/email-trigger", {
             method: "POST",
             headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
             body: JSON.stringify({ event: "org_broadcast", data: {
-              email: m.email, member_name: m.full_name, org_name: annOrg.name,
-              broadcast_type: btype, title, description: String(msgBody),
-              detail: is_pinned ? "📌 Pinned" : "",
+              email: r.email, member_name: r.name, is_org: r.is_org, org_name: annOrg.name,
+              broadcast_type: btype, ann_type: String(type || "announcement"),
+              title, description: String(msgBody), is_pinned: is_pinned || false,
+              author_name: String(author_name || "Admin"),
             }}),
           }).catch(() => null);
         }
@@ -1920,19 +1939,28 @@ serve(async (req) => {
           event_date, end_date: end_date || null, location: location || null, event_link: event_link || null })
         .select("*").single();
       if (error) return json({ error: error.message }, 400);
-      // Email all active members
-      const { data: org } = await sb.from("organizations").select("name").eq("id", org_id).single();
-      const { data: members } = await sb.from("org_members").select("full_name, email").eq("org_id", org_id).eq("status", "active");
-      if (org && members) {
-        for (const m of members) {
-          if (!m.email) continue;
+      const { data: evtOrg } = await sb.from("organizations").select("name,owner_id").eq("id", org_id).single();
+      const { data: evtMems } = await sb.from("org_members").select("full_name,email").eq("org_id", org_id).eq("status", "active");
+      if (evtOrg) {
+        let ownerEmail = "";
+        if (evtOrg.owner_id) {
+          const { data: ownerP } = await sb.from("profiles").select("email").eq("id", evtOrg.owner_id).maybeSingle();
+          ownerEmail = ownerP?.email || "";
+        }
+        const recipients = [
+          ...(ownerEmail ? [{ email: ownerEmail, name: "Admin", is_org: true }] : []),
+          ...(evtMems || []).filter((m: { email?: string }) => m.email)
+            .map((m: { full_name: string; email: string }) => ({ email: m.email, name: m.full_name, is_org: false })),
+        ];
+        for (const r of recipients) {
           fetch("https://admin.kudiai.app/api/public/email-trigger", {
             method: "POST",
             headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
             body: JSON.stringify({ event: "org_broadcast", data: {
-              email: m.email, member_name: m.full_name, org_name: org.name,
+              email: r.email, member_name: r.name, is_org: r.is_org, org_name: evtOrg.name,
               broadcast_type: "Event", title, description: description || "",
-              detail: `${event_type || "Event"} on ${new Date(event_date).toLocaleString("en-NG", { dateStyle: "medium", timeStyle: "short" })}${location ? ` at ${location}` : ""}`,
+              event_type: event_type || "event", event_date, end_date: end_date || "",
+              location: location || "", event_link: event_link || "",
             }}),
           }).catch(() => null);
         }
@@ -1968,20 +1996,27 @@ serve(async (req) => {
         .insert({ org_id, question, options, closes_at: closes_at || null })
         .select("*").single();
       if (error) return json({ error: error.message }, 400);
-      // Email all active members
-      const { data: org } = await sb.from("organizations").select("name").eq("id", org_id as string).single();
-      const { data: members } = await sb.from("org_members").select("full_name, email").eq("org_id", org_id as string).eq("status", "active");
-      if (org && members) {
-        for (const m of members) {
-          if (!m.email) continue;
+      const { data: pollOrg } = await sb.from("organizations").select("name,owner_id").eq("id", org_id as string).single();
+      const { data: pollMems } = await sb.from("org_members").select("full_name,email").eq("org_id", org_id as string).eq("status", "active");
+      if (pollOrg) {
+        let ownerEmail = "";
+        if (pollOrg.owner_id) {
+          const { data: ownerP } = await sb.from("profiles").select("email").eq("id", pollOrg.owner_id).maybeSingle();
+          ownerEmail = ownerP?.email || "";
+        }
+        const recipients = [
+          ...(ownerEmail ? [{ email: ownerEmail, name: "Admin", is_org: true }] : []),
+          ...(pollMems || []).filter((m: { email?: string }) => m.email)
+            .map((m: { full_name: string; email: string }) => ({ email: m.email, name: m.full_name, is_org: false })),
+        ];
+        for (const r of recipients) {
           fetch("https://admin.kudiai.app/api/public/email-trigger", {
             method: "POST",
             headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
             body: JSON.stringify({ event: "org_broadcast", data: {
-              email: m.email, member_name: m.full_name, org_name: org.name,
+              email: r.email, member_name: r.name, is_org: r.is_org, org_name: pollOrg.name,
               broadcast_type: "Poll", title: question,
-              description: `Options: ${(options as string[]).join(" / ")}`,
-              detail: closes_at ? `Closes ${new Date(closes_at as string).toLocaleDateString("en-NG", { dateStyle: "medium" })}` : "Open-ended poll",
+              poll_options: options as string[], closes_at: closes_at ? String(closes_at) : "",
             }}),
           }).catch(() => null);
         }
