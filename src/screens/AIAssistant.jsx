@@ -1,9 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { getLang } from "../utils/i18n";
 import { buildContext } from "../utils/buildContext";
-
-const CHAT_URL = "https://admin.kudiai.app/api/public/chat";
-const SECRET   = "kuditrack-email-trigger-2026-amaya";
+import { askGemini } from "../utils/gemini";
 
 const SPEECH_LANG = { en: "en-NG", pidgin: "en-NG", ha: "ha-NG", ig: "ig-NG", yo: "yo-NG" };
 
@@ -106,51 +104,54 @@ export default function AIAssistant({ store, inventory, branches = [], onClose, 
     setInput("");
     setThinking(true);
 
-    try {
-      const products = inventory?.products || [];
-      const context  = buildContext(store, products, branches);
-      const history  = msgRef.current.slice(1).map(m => ({ role: m.role, text: m.text }));
+    const products = inventory?.products || [];
+    const context  = buildContext(store, products, branches);
+    const history  = msgRef.current.slice(1).filter(m => !m.isError).map(m => ({ role: m.role, text: m.text }));
 
-      const res = await fetch(CHAT_URL, {
-        method:  "POST",
-        headers: { "Content-Type": "application/json", "x-trigger-secret": SECRET },
-        body:    JSON.stringify({ message: q, lang, businessContext: context, history }),
+    let fullReply  = "";
+    let firstChunk = true;
+
+    try {
+      await askGemini({
+        message: q,
+        context,
+        history,
+        lang,
+        maxAttempts: 3,
+        timeout: 30000,
+        onChunk: (chunk) => {
+          if (firstChunk) {
+            firstChunk = false;
+            setThinking(false);
+            setMessages(prev => [...prev, { role: "assistant", text: chunk }]);
+          } else {
+            setMessages(prev => {
+              const updated = [...prev];
+              updated[updated.length - 1] = { role: "assistant", text: updated[updated.length - 1].text + chunk };
+              return updated;
+            });
+          }
+          fullReply += chunk;
+        },
       });
 
-      if (!res.ok || !res.body) {
-        setMessages(prev => [...prev, { role: "assistant", text: "I couldn't get a response right now. Please check your connection and try again." }]);
-        return;
+      if (firstChunk) {
+        setThinking(false);
+        setMessages(prev => [...prev, { role: "assistant", text: "No response received. Please try again.", isError: true }]);
+      } else if (ttsOnRef.current && fullReply) {
+        speakText(fullReply, lang);
       }
-
-      // Show empty bubble immediately, hide spinner, stream tokens in
-      setMessages(prev => [...prev, { role: "assistant", text: "" }]);
+    } catch (err) {
       setThinking(false);
-
-      const reader  = res.body.getReader();
-      const decoder = new TextDecoder();
-      let reply = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        reply += decoder.decode(value, { stream: true });
-        const snap = reply;
+      if (firstChunk) {
+        setMessages(prev => [...prev, { role: "assistant", text: err.message, isError: true }]);
+      } else {
         setMessages(prev => {
           const updated = [...prev];
-          updated[updated.length - 1] = { role: "assistant", text: snap };
+          updated[updated.length - 1] = { role: "assistant", text: err.message, isError: true };
           return updated;
         });
       }
-
-      if (ttsOnRef.current && reply) speakText(reply, lang);
-    } catch {
-      setMessages(prev => {
-        const last = prev[prev.length - 1];
-        if (last?.role === "assistant" && last.text) return prev;
-        return [...prev, { role: "assistant", text: "Network error. Please check your connection and try again." }];
-      });
-    } finally {
-      setThinking(false);
     }
   }
 

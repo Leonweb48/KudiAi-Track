@@ -9,6 +9,8 @@ import { useBiometricLock } from "../hooks/useBiometricLock";
 import { useNotifications } from "../hooks/useNotifications";
 import NotificationCenter, { NotificationBell } from "../components/NotificationCenter";
 import { AjoTxReceipt } from "../components/shared/Receipt";
+import AIChatWidget from "../components/AIChatWidget";
+import { buildAjoMemberContext } from "../utils/buildContext";
 
 async function ajoFn(action, body = {}) {
   const { data, error } = await supabase.functions.invoke("ajo-portal", {
@@ -1840,6 +1842,21 @@ export default function AjoMemberPortal({ session, ajoClient }) {
       )}
       {showPwdModal && (
         <ChangePasswordModal onClose={() => setShowPwdModal(false)} />
+      )}
+
+      {client && (
+        <AIChatWidget
+          portalContext={buildAjoMemberContext(client, contributions, ownerInfo)}
+          greeting={`Hi${client.full_name ? ` ${client.full_name.split(" ")[0]}` : ""}! I'm **KudiAI**, your Ajo savings assistant.\n\nI know your balance, contributions, and savings history. Ask me anything!`}
+          quickChips={[
+            { label: "My Balance",       q: "What is my current savings balance?" },
+            { label: "Next Contribution", q: "When is my next contribution due?" },
+            { label: "Contribution History", q: "Show my recent contribution history" },
+            { label: "Savings Goal",     q: "How am I doing with my savings goal?" },
+            { label: "Savings Tips",     q: "Give me tips to save more consistently" },
+          ]}
+          inputPlaceholder="Ask about your savings…"
+        />
       )}
     </div>
   );

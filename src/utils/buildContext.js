@@ -1,5 +1,61 @@
 import { today, fmt } from "./helpers";
 
+export function buildAjoMemberContext(client = {}, contributions = [], ownerInfo = {}) {
+  if (!client || !client.full_name) return "Ajo Member Portal | Member data is still loading.";
+
+  const now  = new Date();
+  const cm   = now.getMonth();
+  const cy   = now.getFullYear();
+
+  const mContribs   = contributions.filter(c => {
+    const d = new Date(c.transaction_date || c.date || 0);
+    return d.getMonth() === cm && d.getFullYear() === cy;
+  });
+  const monthlyTotal = mContribs.reduce((s, c) => s + Number(c.amount || 0), 0);
+
+  const isOverdue = client.next_contribution_date && new Date() > new Date(client.next_contribution_date);
+
+  const recentLines = contributions.slice(0, 10).map(c =>
+    `  • ₦${fmt(c.amount || 0)} on ${c.transaction_date || c.date || "unknown"} — ${c.transaction_type || c.type || "contribution"}`
+  );
+
+  return [
+    `AJO SAVINGS MEMBER PORTAL | Member: ${client.full_name} | Today: ${today()}`,
+    `SAVINGS BALANCE: ₦${fmt(client.current_balance || 0)} | Total Saved: ₦${fmt(client.total_saved || 0)} | Total Withdrawn: ₦${fmt(client.total_withdrawn || 0)}`,
+    `CONTRIBUTION PLAN: ₦${fmt(client.contribution_amount || 0)} ${client.contribution_frequency || ""} | Next Due: ${client.next_contribution_date || "N/A"}${isOverdue ? " [OVERDUE]" : ""}`,
+    `STATUS: ${client.status || "active"} | Group: ${client.group_name || client.ajo_group || "No group"}`,
+    `THIS MONTH: ₦${fmt(monthlyTotal)} contributed across ${mContribs.length} transaction(s)`,
+    `TOTAL CONTRIBUTION RECORDS: ${contributions.length}`,
+    contributions.length > 0 ? `RECENT TRANSACTIONS:\n${recentLines.join("\n")}` : "RECENT TRANSACTIONS: None yet",
+    ownerInfo?.business_name ? `MANAGED BY: ${ownerInfo.business_name} | Contact: ${ownerInfo.phone || ownerInfo.owner_phone || "N/A"}` : "",
+  ].filter(Boolean).join("\n");
+}
+
+export function buildCoopMemberContext(member = {}, loans = [], org = {}) {
+  if (!member || !member.full_name) return "Cooperative Member Portal | Member data is still loading.";
+
+  const orgName   = org?.name || member?.org?.name || member?.organizations?.name || "Unknown Co-op";
+  const orgType   = org?.type || member?.org?.type || member?.organizations?.type || "";
+
+  const activeLoans  = loans.filter(l => l.status === "active" || l.status === "approved");
+  const pendingLoans = loans.filter(l => l.status === "pending");
+  const totalDebt    = activeLoans.reduce((s, l) => s + Number(l.remaining_balance || l.amount || 0), 0);
+
+  const loanLines = loans.slice(0, 5).map(l =>
+    `  • ₦${fmt(l.amount || 0)} — ${l.status} | Monthly: ₦${fmt(l.monthly_payment || 0)} | Remaining: ₦${fmt(l.remaining_balance || 0)}`
+  );
+
+  return [
+    `COOPERATIVE MEMBER PORTAL | Member: ${member.full_name} | Today: ${today()}`,
+    `ORGANIZATION: ${orgName}${orgType ? ` (${orgType})` : ""}`,
+    `MEMBER CODE: ${member.member_code || "N/A"} | Status: ${member.status || "active"}`,
+    `SAVINGS BALANCE: ₦${fmt(member.savings_balance || member.balance || 0)}`,
+    `LOANS: ${activeLoans.length} active | ${pendingLoans.length} pending | Total Debt: ₦${fmt(totalDebt)}`,
+    loans.length > 0 ? `LOAN DETAILS:\n${loanLines.join("\n")}` : "LOANS: No loans on record",
+    `CONTACT: ${member.email || "N/A"} | ${member.phone || "N/A"}`,
+  ].filter(Boolean).join("\n");
+}
+
 export function buildContext(store, products, branches = []) {
   const { profile = {}, transactions = [], credits = [], asoClients = [], staffMap = {} } = store;
   const todayStr = today();

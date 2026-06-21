@@ -1,11 +1,9 @@
 import { useState, useRef, useEffect } from "react";
 import { getLang } from "../utils/i18n";
 import { buildContext } from "../utils/buildContext";
+import { askGemini } from "../utils/gemini";
 
-const CHAT_URL = "https://admin.kudiai.app/api/public/chat";
-const SECRET   = "kuditrack-email-trigger-2026-amaya";
-
-const QUICK = [
+const DEFAULT_QUICK = [
   { label: "Today's Sales",    q: "How were today's sales?"                                   },
   { label: "Total Profit",     q: "What is my total profit?"                                  },
   { label: "Outstanding",      q: "Who owes me money and how much in total?"                  },
@@ -14,7 +12,7 @@ const QUICK = [
   { label: "Monthly Report",   q: "Give me a full monthly business report"                    },
 ];
 
-const GREETING = "Hi! I'm **KudiAI**, your AI business assistant powered by Gemini.\n\nAsk me anything about your sales, credit, stock, Ajo savings, staff, or branches — I know your real data!";
+const DEFAULT_GREETING = "Hi! I'm **KudiAI**, your AI business assistant powered by Gemini.\n\nAsk me anything about your sales, credit, stock, Ajo savings, staff, or branches — I know your real data!";
 
 function FormattedText({ text }) {
   return text.split("\n").map((line, i) => (
@@ -27,15 +25,30 @@ function FormattedText({ text }) {
   ));
 }
 
-export default function AIChatWidget({ store, inventory, branches = [] }) {
+/**
+ * Floating AI chat widget.
+ *
+ * Business-owner mode: pass store + inventory + branches.
+ * Portal override mode: pass portalContext (pre-built string), quickChips, greeting, inputPlaceholder.
+ */
+export default function AIChatWidget({
+  // Business owner mode
+  store, inventory, branches = [],
+  // Portal override mode
+  portalContext, quickChips, greeting: greetingProp, inputPlaceholder,
+}) {
+  const effectiveQuick    = quickChips    || DEFAULT_QUICK;
+  const effectiveGreeting = greetingProp  || DEFAULT_GREETING;
+
   const [open,     setOpen]     = useState(false);
-  const [messages, setMessages] = useState([{ role: "assistant", text: GREETING }]);
+  const [messages, setMessages] = useState([{ role: "assistant", text: effectiveGreeting }]);
   const [input,    setInput]    = useState("");
   const [thinking, setThinking] = useState(false);
 
-  const listRef  = useRef(null);
-  const inputRef = useRef(null);
-  const msgRef   = useRef(messages);
+  const listRef        = useRef(null);
+  const inputRef       = useRef(null);
+  const msgRef         = useRef(messages);
+  const lastUserMsgRef = useRef("");
   msgRef.current = messages;
 
   useEffect(() => {
@@ -46,36 +59,79 @@ export default function AIChatWidget({ store, inventory, branches = [] }) {
     if (open && inputRef.current) setTimeout(() => inputRef.current?.focus(), 150);
   }, [open]);
 
+  async function runAI(userMsg) {
+    const lang     = getLang();
+    const products = inventory?.products || [];
+    const context  = portalContext ?? buildContext(store, products, branches);
+    const history  = msgRef.current
+      .slice(1)
+      .filter(m => !m.isError)
+      .map(m => ({ role: m.role, text: m.text }));
+
+    let firstChunk = true;
+
+    try {
+      await askGemini({
+        message: userMsg,
+        context,
+        history,
+        lang,
+        onChunk: (chunk) => {
+          if (firstChunk) {
+            firstChunk = false;
+            setThinking(false);
+            setMessages(prev => [...prev, { role: "assistant", text: chunk }]);
+          } else {
+            setMessages(prev => {
+              const updated = [...prev];
+              updated[updated.length - 1] = {
+                ...updated[updated.length - 1],
+                text: updated[updated.length - 1].text + chunk,
+              };
+              return updated;
+            });
+          }
+        },
+      });
+
+      if (firstChunk) {
+        setThinking(false);
+        setMessages(prev => [...prev, { role: "assistant", text: "No response received. Please try again.", isError: true }]);
+      }
+    } catch (err) {
+      setThinking(false);
+      if (firstChunk) {
+        setMessages(prev => [...prev, { role: "assistant", text: err.message, isError: true }]);
+      } else {
+        setMessages(prev => {
+          const updated = [...prev];
+          updated[updated.length - 1] = { role: "assistant", text: err.message, isError: true };
+          return updated;
+        });
+      }
+    }
+  }
+
   async function ask(query) {
     const q = query.trim();
     if (!q || thinking) return;
+    lastUserMsgRef.current = q;
     setMessages(prev => [...prev, { role: "user", text: q }]);
     setInput("");
     setThinking(true);
+    await runAI(q);
+  }
 
-    try {
-      const lang     = getLang();
-      const products = inventory?.products || [];
-      const context  = buildContext(store, products, branches);
-      const history  = msgRef.current.slice(1).map(m => ({ role: m.role, text: m.text }));
-
-      const res = await fetch(CHAT_URL, {
-        method:  "POST",
-        headers: { "Content-Type": "application/json", "x-trigger-secret": SECRET },
-        body:    JSON.stringify({ message: q, lang, businessContext: context, history }),
-      });
-
-      let reply = "I couldn't get a response right now. Please try again.";
-      if (res.ok) {
-        const text = await res.text();
-        if (text) reply = text;
-      }
-      setMessages(prev => [...prev, { role: "assistant", text: reply }]);
-    } catch {
-      setMessages(prev => [...prev, { role: "assistant", text: "Network error. Please check your connection." }]);
-    } finally {
-      setThinking(false);
-    }
+  async function retry() {
+    const last = lastUserMsgRef.current;
+    if (!last || thinking) return;
+    setMessages(prev => {
+      const updated = [...prev];
+      if (updated[updated.length - 1]?.isError) updated.pop();
+      return updated;
+    });
+    setThinking(true);
+    await runAI(last);
   }
 
   const handleKey = (e) => {
@@ -88,7 +144,7 @@ export default function AIChatWidget({ store, inventory, branches = [] }) {
       {!open && (
         <button
           onClick={() => setOpen(true)}
-          className="fixed bottom-20 right-4 z-[55] w-13 h-13 rounded-full shadow-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-white transition-transform active:scale-90"
+          className="fixed bottom-20 right-4 z-[55] rounded-full shadow-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-white transition-transform active:scale-90"
           style={{ width: 52, height: 52 }}
           aria-label="Open AI Assistant"
         >
@@ -134,9 +190,22 @@ export default function AIChatWidget({ store, inventory, branches = [] }) {
                   <div className={`max-w-[82%] px-3 py-2 rounded-2xl text-xs leading-relaxed ${
                     m.role === "user"
                       ? "bg-brand-500 text-white rounded-br-sm"
-                      : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-bl-sm border border-slate-200 dark:border-slate-700"
+                      : m.isError
+                        ? "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-bl-sm border border-red-200 dark:border-red-800"
+                        : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-bl-sm border border-slate-200 dark:border-slate-700"
                   }`}>
                     <FormattedText text={m.text} />
+                    {m.isError && (
+                      <button
+                        onClick={retry}
+                        className="mt-1.5 flex items-center gap-1 text-[10px] font-semibold text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 transition-colors"
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="w-3 h-3">
+                          <path d="M1 4v6h6" /><path d="M3.51 15a9 9 0 1 0 .49-3.27" />
+                        </svg>
+                        Retry
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -160,7 +229,7 @@ export default function AIChatWidget({ store, inventory, branches = [] }) {
             {messages.length <= 2 && (
               <div className="px-3 py-2 border-t border-slate-100 dark:border-slate-700/60 flex-shrink-0">
                 <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-                  {QUICK.map(({ label, q }) => (
+                  {effectiveQuick.map(({ label, q }) => (
                     <button
                       key={label}
                       onClick={() => ask(q)}
@@ -175,15 +244,17 @@ export default function AIChatWidget({ store, inventory, branches = [] }) {
             )}
 
             {/* Input */}
-            <div className="px-3 py-3 border-t border-slate-100 dark:border-slate-700 flex items-center gap-2 flex-shrink-0"
-              style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom, 0px))" }}>
+            <div
+              className="px-3 py-3 border-t border-slate-100 dark:border-slate-700 flex items-center gap-2 flex-shrink-0"
+              style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom, 0px))" }}
+            >
               <input
                 ref={inputRef}
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={handleKey}
                 disabled={thinking}
-                placeholder={thinking ? "KudiAI is thinking…" : "Ask anything about your business…"}
+                placeholder={inputPlaceholder || (thinking ? "KudiAI is thinking…" : "Ask anything…")}
                 className="flex-1 px-3 py-2 rounded-xl text-xs bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 border border-transparent focus:border-brand-300 dark:focus:border-brand-600 outline-none disabled:opacity-60"
               />
               <button

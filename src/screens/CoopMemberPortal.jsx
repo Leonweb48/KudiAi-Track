@@ -3,6 +3,8 @@ import { supabase } from "../utils/supabase";
 import { useTheme } from "../hooks/useTheme";
 import BillPayments from "./BillPayments";
 import GroupChat from "./GroupChat";
+import AIChatWidget from "../components/AIChatWidget";
+import { buildCoopMemberContext } from "../utils/buildContext";
 
 const coopFn = async (action, body = {}) => {
   const r = await supabase.functions.invoke("coop-portal", { body: { action, ...body } });
@@ -1371,6 +1373,21 @@ export default function CoopMemberPortal({ member: initialMember }) {
             <p className="text-xs text-slate-400 mt-2">Please wait while we confirm your contribution</p>
           </div>
         </div>
+      )}
+
+      {member && (
+        <AIChatWidget
+          portalContext={buildCoopMemberContext(member, loans, org)}
+          greeting={`Hi${member.full_name ? ` ${member.full_name.split(" ")[0]}` : ""}! I'm **KudiAI**, your cooperative assistant.\n\nI know your savings, loans, and membership details — ask me anything!`}
+          quickChips={[
+            { label: "My Savings",     q: "What is my current savings balance?" },
+            { label: "Loan Status",    q: "What are my active loans and remaining balances?" },
+            { label: "Loan Eligibility", q: "Am I eligible for a new loan?" },
+            { label: "Payment Plan",   q: "Show my loan payment schedule" },
+            { label: "Coop Benefits",  q: "What benefits do I get as a cooperative member?" },
+          ]}
+          inputPlaceholder="Ask about your coop account…"
+        />
       )}
 
       {/* Payment result overlay */}
