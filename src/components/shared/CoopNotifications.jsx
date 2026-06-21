@@ -171,6 +171,151 @@ function NotifRow({ notif, onAction }) {
   );
 }
 
+// ── Chat chime (short 700→900 Hz pop, distinct from notification chime) ─
+function playChatChime() {
+  try {
+    const ctx  = new (window.AudioContext || window.webkitAudioContext)();
+    const osc  = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(700, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(900, ctx.currentTime + 0.08);
+    gain.gain.setValueAtTime(0.18, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.28);
+  } catch { /* audio unavailable */ }
+}
+
+// ── Deterministic avatar colour for chat senders ─────────────
+const CHAT_AV_COLORS = ["#FF6B6B","#4ECDC4","#45B7D1","#96CEB4","#F7DC6F","#DDA0DD","#98D8C8","#BB8FCE","#85C1E9","#E59866"];
+function avatarColorChat(name) {
+  let h = 0;
+  for (let i = 0; i < (name || "").length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xFFFFFFFF;
+  return CHAT_AV_COLORS[Math.abs(h) % CHAT_AV_COLORS.length];
+}
+
+// ── Group chat unread hook ────────────────────────────────────
+export function useChatUnread({ orgId, isActive }) {
+  const [chatUnread, setChatUnread] = useState(0);
+  const [chatToasts, setChatToasts] = useState([]);
+  const [myId,       setMyId]       = useState(null);
+  const isActiveRef = useRef(isActive);
+  isActiveRef.current = isActive;
+
+  // Resolve auth UID once
+  useEffect(() => {
+    if (!supabase) return;
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user?.id) setMyId(session.user.id);
+    });
+  }, []);
+
+  // Clear when user enters chat tab
+  useEffect(() => {
+    if (isActive) { setChatUnread(0); setChatToasts([]); }
+  }, [isActive]);
+
+  const dismissChatToast = useCallback((tid) => {
+    setChatToasts(prev => prev.filter(t => t._tid !== tid));
+  }, []);
+
+  useEffect(() => {
+    if (!orgId || !myId || !supabase) return;
+
+    // Initial unread count (messages since last read, not mine, not deleted)
+    supabase.from("org_chat_reads")
+      .select("last_read_at").eq("org_id", orgId).eq("user_id", myId).maybeSingle()
+      .then(({ data }) => {
+        const lastRead = data?.last_read_at || null;
+        let q = supabase.from("org_group_messages")
+          .select("id", { count: "exact", head: true })
+          .eq("org_id", orgId).neq("sender_id", myId).eq("is_deleted", false);
+        if (lastRead) q = q.gt("created_at", lastRead);
+        q.then(({ count }) => { if (count) setChatUnread(count); });
+      });
+
+    // Realtime: new messages from others
+    const ch = supabase
+      .channel(`chat_unread_${orgId}_${myId}`)
+      .on("postgres_changes", {
+        event: "INSERT", schema: "public", table: "org_group_messages",
+        filter: `org_id=eq.${orgId}`,
+      }, ({ new: msg }) => {
+        if (!msg || msg.sender_id === myId || msg.is_deleted) return;
+        if (isActiveRef.current) return;
+        setChatUnread(prev => prev + 1);
+        playChatChime();
+        setChatToasts(prev => [{
+          id: msg.id,
+          sender_name: msg.sender_name || "Someone",
+          content: msg.content || "",
+          type: msg.type || "text",
+          created_at: msg.created_at,
+          _tid: msg.id + "_ct_" + Date.now(),
+        }, ...prev].slice(0, 3));
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(ch); };
+  }, [orgId, myId]);
+
+  return { chatUnread, chatToasts, dismissChatToast };
+}
+
+// ── WhatsApp-style chat drop-in toast ─────────────────────────
+export function ChatToast({ toast, orgName, onNavigate, onDismiss }) {
+  useEffect(() => {
+    const t = setTimeout(onDismiss, 5000);
+    return () => clearTimeout(t);
+  }, [onDismiss]);
+
+  const preview = toast.type === "voice"    ? "🎤 Voice message"
+    : toast.type === "image"                ? "📷 Photo"
+    : toast.type === "document"             ? "📎 Document"
+    : (toast.content || "").slice(0, 80)  || "New message";
+
+  const initials = (toast.sender_name || "?")
+    .split(" ").slice(0, 2).map(w => w[0] || "").join("").toUpperCase() || "?";
+  const avColor = avatarColorChat(toast.sender_name || "");
+
+  return (
+    <>
+      <style>{`@keyframes coopSlideDown{from{transform:translateY(-16px) scale(.95);opacity:0}to{transform:translateY(0) scale(1);opacity:1}}`}</style>
+      <div
+        className="pointer-events-auto w-full rounded-2xl bg-white dark:bg-slate-800 shadow-2xl overflow-hidden"
+        style={{ animation: "coopSlideDown 0.28s cubic-bezier(.22,.68,0,1.2) both", boxShadow: "0 8px 40px rgba(0,0,0,.18)" }}
+      >
+        {/* WhatsApp-style green header */}
+        <div className="flex items-center gap-2 px-3 py-1.5" style={{ backgroundColor: "#128c7e" }}>
+          <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 flex-shrink-0" stroke="white" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+          </svg>
+          <span className="text-[10px] font-bold text-white/90 flex-1 truncate">{orgName || "Group Chat"}</span>
+          <button onClick={onDismiss} className="text-white/70 text-[11px] leading-none px-0.5 active:scale-90">✕</button>
+        </div>
+        {/* Body — tap to open chat */}
+        <button
+          className="w-full flex items-center gap-3 px-3 py-2.5 text-left active:bg-slate-50 dark:active:bg-slate-700/40 transition-colors"
+          onClick={onNavigate}
+        >
+          <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-[13px] font-bold flex-shrink-0"
+            style={{ backgroundColor: avColor }}>
+            {initials}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[12px] font-extrabold text-slate-800 dark:text-white leading-tight truncate">{toast.sender_name}</p>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">{preview}</p>
+          </div>
+          <span className="text-[9px] text-slate-400 dark:text-slate-600 flex-shrink-0 self-start pt-0.5">{relTime(toast.created_at)}</span>
+        </button>
+      </div>
+    </>
+  );
+}
+
 // ── Main bell component — drop this into any portal header ────
 export function CoopNotificationBell({ orgId, recipientId, recipientType, onNavigate }) {
   const {

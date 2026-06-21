@@ -4,7 +4,7 @@ import { useTheme } from "../hooks/useTheme";
 import BillPayments from "./BillPayments";
 import GroupChat from "./GroupChat";
 import { CoopSavingReceipt, CoopBulkWithdrawalReceipt, CoopWithdrawalRequestReceipt } from "../components/shared/Receipt";
-import { CoopNotificationBell } from "../components/shared/CoopNotifications";
+import { CoopNotificationBell, useChatUnread, ChatToast } from "../components/shared/CoopNotifications";
 
 const coopFn = async (action, body = {}) => {
   const r = await supabase.functions.invoke("coop-portal", { body: { action, ...body } });
@@ -2531,6 +2531,11 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
   const [showMore,      setShowMore]      = useState(false);
   const [billsAutoSvc,  setBillsAutoSvc]  = useState(null);
 
+  const { chatUnread, chatToasts, dismissChatToast } = useChatUnread({
+    orgId: org.id,
+    isActive: tab === "messages",
+  });
+
   const loadAll = useCallback(() => {
     const orgId = org.id;
     const safe = fn => fn.catch(() => ({}));
@@ -2639,6 +2644,11 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
                         stroke={active ? "#00A651" : "#94a3b8"} strokeWidth={active ? 2.5 : 2} strokeLinecap="round" strokeLinejoin="round">
                         <path d={t.icon} />
                       </svg>
+                      {t.id === "messages" && chatUnread > 0 && !active && (
+                        <span className="absolute -top-1 -right-1.5 min-w-[16px] h-4 bg-green-500 text-white text-[9px] font-extrabold rounded-full flex items-center justify-center px-0.5 shadow-sm">
+                          {chatUnread > 99 ? "99+" : chatUnread}
+                        </span>
+                      )}
                     </div>
                     <span className={`text-[8px] font-bold uppercase tracking-wide leading-none ${active ? "text-[#00A651] dark:text-green-400" : "text-slate-400 dark:text-slate-500"}`}>
                       {t.label}
@@ -2663,6 +2673,21 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
             </div>
             <div style={{ height: "env(safe-area-inset-bottom, 0px)" }} className="bg-white dark:bg-slate-900" />
           </nav>
+
+          {/* ── Chat message drop-in toasts ── */}
+          {chatToasts.length > 0 && (
+            <div className="fixed top-[60px] inset-x-0 z-[185] flex flex-col items-center gap-2 px-4 pointer-events-none">
+              {chatToasts.map(ct => (
+                <ChatToast
+                  key={ct._tid}
+                  toast={ct}
+                  orgName={org.name}
+                  onNavigate={() => { setTab("messages"); setShowMore(false); dismissChatToast(ct._tid); }}
+                  onDismiss={() => dismissChatToast(ct._tid)}
+                />
+              ))}
+            </div>
+          )}
 
           {/* ── Side Drawer (X-app style) ── */}
           {showMore && (

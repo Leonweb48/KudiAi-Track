@@ -6,7 +6,7 @@ import GroupChat from "./GroupChat";
 import AIChatWidget from "../components/AIChatWidget";
 import { buildCoopMemberContext } from "../utils/buildContext";
 import { CoopSavingReceipt, CoopWithdrawalRequestReceipt } from "../components/shared/Receipt";
-import { CoopNotificationBell } from "../components/shared/CoopNotifications";
+import { CoopNotificationBell, useChatUnread, ChatToast } from "../components/shared/CoopNotifications";
 
 const coopFn = async (action, body = {}) => {
   const r = await supabase.functions.invoke("coop-portal", { body: { action, ...body } });
@@ -1407,6 +1407,11 @@ export default function CoopMemberPortal({ member: initialMember }) {
 
   const org = member?.org || member?.organizations || {};
 
+  const { chatUnread, chatToasts, dismissChatToast } = useChatUnread({
+    orgId: org.id,
+    isActive: tab === "messages",
+  });
+
   // Detect Paystack return for savings payment
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -1539,10 +1544,17 @@ export default function CoopMemberPortal({ member: initialMember }) {
                     <button key={t.id} onClick={() => { setTab(t.id); setShowMore(false); }}
                       className="flex flex-col items-center gap-1 px-3 py-1.5 min-w-[52px] relative">
                       {active && <span className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full bg-green-600" />}
-                      <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5"
-                        stroke={active ? "#00A651" : "#94a3b8"} strokeWidth={active ? 2.5 : 2} strokeLinecap="round" strokeLinejoin="round">
-                        <path d={t.icon} />
-                      </svg>
+                      <div className="relative">
+                        <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5"
+                          stroke={active ? "#00A651" : "#94a3b8"} strokeWidth={active ? 2.5 : 2} strokeLinecap="round" strokeLinejoin="round">
+                          <path d={t.icon} />
+                        </svg>
+                        {t.id === "messages" && chatUnread > 0 && !active && (
+                          <span className="absolute -top-1 -right-1.5 min-w-[16px] h-4 bg-green-500 text-white text-[9px] font-extrabold rounded-full flex items-center justify-center px-0.5 shadow-sm">
+                            {chatUnread > 99 ? "99+" : chatUnread}
+                          </span>
+                        )}
+                      </div>
                       <span className={`text-[9px] font-bold ${active ? "text-green-600" : "text-slate-400 dark:text-slate-500"}`}>{t.label}</span>
                     </button>
                   );
@@ -1562,6 +1574,21 @@ export default function CoopMemberPortal({ member: initialMember }) {
             </div>
           </div>
         </div>
+
+        {/* ── Chat message drop-in toasts ── */}
+        {chatToasts.length > 0 && (
+          <div className="fixed top-[60px] inset-x-0 z-[185] flex flex-col items-center gap-2 px-4 pointer-events-none">
+            {chatToasts.map(ct => (
+              <ChatToast
+                key={ct._tid}
+                toast={ct}
+                orgName={org.name}
+                onNavigate={() => { navigateTo("messages"); dismissChatToast(ct._tid); }}
+                onDismiss={() => dismissChatToast(ct._tid)}
+              />
+            ))}
+          </div>
+        )}
 
         {/* ── More Sheet ── */}
         {showMore && (
