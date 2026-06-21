@@ -126,11 +126,6 @@ export function useAuth() {
           // New member — must verify email OTP before changing password
           setStatus("org_member_otp");
         } else if (mustChange) {
-          fireWelcomeEmail("org_member_first_login", {
-            name: orgMemberRow.full_name || "",
-            email: email || "",
-            org_name: orgMemberRow.organizations?.name || "",
-          });
           setStatus("org_member_setup");
         } else {
           setStatus("org_member");
@@ -368,11 +363,6 @@ export function useAuth() {
         if (!emailVerified) {
           setStatus("org_member_otp");
         } else if (mustChange) {
-          fireWelcomeEmail("org_member_first_login", {
-            name: orgMemberRow.full_name || "",
-            email: email || "",
-            org_name: orgMemberRow.organizations?.name || "",
-          });
           setStatus("org_member_setup");
         } else {
           setStatus("org_member");

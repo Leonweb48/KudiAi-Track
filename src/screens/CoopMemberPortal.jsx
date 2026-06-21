@@ -52,6 +52,16 @@ export function CoopMemberFirstLogin({ member }) {
       data: { must_change_password: false, account_type: "org_member", email_verified: true },
     });
     if (err) { setError(err.message); setSaving(false); return; }
+    // Fire welcome email now — member has completed full setup and is about to land on portal
+    const memberEmail = member?.email || (await supabase.auth.getUser()).data?.user?.email || "";
+    fetch("https://admin.kudiai.app/api/public/email-trigger", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+      body: JSON.stringify({
+        event: "org_member_first_login",
+        data: { name: member?.full_name || "", email: memberEmail, org_name: member?.org?.name || member?.organizations?.name || "" },
+      }),
+    }).catch(() => null);
     setSuccess(true);
     // onAuthStateChange fires → must_change_password: false → org_member status → CoopMemberPortal
   };
