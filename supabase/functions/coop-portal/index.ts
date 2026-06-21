@@ -2082,6 +2082,13 @@ serve(async (req) => {
             "broadcast", m.id);
         }
       }
+      // Post event to group chat
+      if (evtOrg?.owner_id) {
+        sb.from("org_group_messages").insert({
+          org_id, sender_id: evtOrg.owner_id, sender_name: evtOrg.name || "Group",
+          sender_role: "org", content: title, type: "event", media_name: event?.id || null,
+        }).then(() => null).catch(() => null);
+      }
       return json({ event });
     }
 
@@ -2146,6 +2153,13 @@ serve(async (req) => {
             `${optCount} options to vote on${closes_at ? ". Closes " + new Date(String(closes_at)).toLocaleDateString("en-NG", { day:"numeric", month:"short" }) : ""}`,
             "broadcast", m.id);
         }
+      }
+      // Post poll to group chat
+      if (pollOrg?.owner_id) {
+        sb.from("org_group_messages").insert({
+          org_id: String(org_id), sender_id: pollOrg.owner_id, sender_name: pollOrg.name || "Group",
+          sender_role: "org", content: String(question), type: "poll", media_name: poll?.id || null,
+        }).then(() => null).catch(() => null);
       }
       return json({ poll });
     }

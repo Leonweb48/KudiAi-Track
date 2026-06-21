@@ -2,7 +2,13 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../../utils/supabase";
 const fmtDate = ts => new Date(ts).toLocaleDateString([],{day:"numeric",month:"short",year:"numeric"});
 
-const TABS = ["Overview","Members","Requests","Reports","Invites","Settings"];
+const TABS = [
+  { id:"Overview", label:"Overview", icon:"M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" },
+  { id:"Members",  label:"Members",  icon:"M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" },
+  { id:"Requests", label:"Requests", icon:"M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" },
+  { id:"Reports",  label:"Reports",  icon:"M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" },
+  { id:"Settings", label:"Settings", icon:"M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z" },
+];
 
 const BADGE_COLORS = ["#ef4444","#f97316","#eab308","#22c55e","#06b6d4","#8b5cf6"];
 const AC=["#ef4444","#f97316","#eab308","#22c55e","#06b6d4","#3b82f6","#8b5cf6","#ec4899","#14b8a6","#f43f5e"];
@@ -42,7 +48,6 @@ export default function AdminDashboard({ orgId, orgName, org, members:initMember
   const [members,    setMembers]    = useState(initMembers||[]);
   const [requests,   setRequests]   = useState([]);
   const [reports,    setReports]    = useState([]);
-  const [invites,    setInvites]    = useState([]);
   const [loading,    setLoading]    = useState(false);
   const [actionMsg,  setActionMsg]  = useState("");
   const [memberQ,    setMemberQ]    = useState("");
@@ -60,10 +65,6 @@ export default function AdminDashboard({ orgId, orgName, org, members:initMember
       const {data} = await supabase.from("group_reports")
         .select("*").eq("org_id",orgId).order("created_at",{ascending:false}).limit(50);
       setReports(data||[]);
-    } else if (t === "Invites") {
-      const {data} = await supabase.from("group_invites")
-        .select("*").eq("org_id",orgId).order("created_at",{ascending:false});
-      setInvites(data||[]);
     } else if (t === "Members") {
       const {data} = await supabase.from("org_members")
         .select("*").eq("org_id",orgId).order("reputation_points",{ascending:false});
@@ -137,19 +138,6 @@ export default function AdminDashboard({ orgId, orgName, org, members:initMember
     toast("Report resolved");
   };
 
-  const deactivateInvite = async inv => {
-    await supabase.from("group_invites").update({is_active:false}).eq("id",inv.id);
-    setInvites(is=>is.map(i=>i.id===inv.id?{...i,is_active:false}:i));
-    toast("Invite deactivated");
-  };
-
-  const createInvite = async () => {
-    const {data,error} = await supabase.from("group_invites")
-      .insert({org_id:orgId,created_by:myId,label:"General Invite"})
-      .select().single();
-    if (!error) setInvites(is=>[data,...is]);
-    toast("✅ New invite link created");
-  };
 
   const filtMembers = memberQ.trim()
     ? members.filter(m=>m.full_name?.toLowerCase().includes(memberQ.toLowerCase()))
@@ -174,16 +162,22 @@ export default function AdminDashboard({ orgId, orgName, org, members:initMember
         </div>
       </div>
 
-      {/* Tab bar */}
+      {/* Tab bar — Twitter/X style with icons */}
       <div className="flex-shrink-0 bg-[#075E54] border-t border-white/10">
-        <div className="flex overflow-x-auto">
+        <div className="flex">
           {TABS.map(t=>(
-            <button key={t} onClick={()=>setTab(t)}
-              className={`px-4 py-2.5 text-[12px] font-bold flex-shrink-0 border-b-2 transition-colors
-                ${tab===t?"border-white text-white":"border-transparent text-white/60"}`}>
-              {t}
-              {t==="Requests"&&pendingReqs>0&&<span className="ml-1 bg-red-500 text-white text-[8px] font-bold px-1 rounded-full">{pendingReqs}</span>}
-              {t==="Reports"&&pendingReps>0&&<span className="ml-1 bg-orange-400 text-white text-[8px] font-bold px-1 rounded-full">{pendingReps}</span>}
+            <button key={t.id} onClick={()=>setTab(t.id)}
+              className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 relative transition-colors border-b-2
+                ${tab===t.id?"border-white":"border-transparent"}`}>
+              <div className="relative">
+                <svg viewBox="0 0 24 24" fill="none" strokeLinecap="round" strokeLinejoin="round"
+                  stroke={tab===t.id?"white":"rgba(255,255,255,0.55)"} strokeWidth={tab===t.id?2.5:1.8} className="w-5 h-5">
+                  <path d={t.icon}/>
+                </svg>
+                {t.id==="Requests"&&pendingReqs>0&&<span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-red-500 rounded-full"/>}
+                {t.id==="Reports"&&pendingReps>0&&<span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-orange-400 rounded-full"/>}
+              </div>
+              <span className={`text-[9px] font-bold leading-none ${tab===t.id?"text-white":"text-white/55"}`}>{t.label}</span>
             </button>
           ))}
         </div>
@@ -356,47 +350,6 @@ export default function AdminDashboard({ orgId, orgName, org, members:initMember
           </div>
         )}
 
-        {/* ── INVITES ── */}
-        {tab==="Invites" && (
-          <div>
-            <div className="bg-white border-b border-slate-100 px-4 py-3 flex justify-end">
-              <button onClick={createInvite}
-                className="bg-[#128c7e] text-white text-sm font-bold px-4 py-2 rounded-xl active:opacity-80">
-                + New Link
-              </button>
-            </div>
-            {loading ? <div className="flex justify-center py-10"><div className="w-6 h-6 border-2 border-[#128c7e] border-t-transparent rounded-full animate-spin"/></div>
-            : invites.map((inv,i)=>(
-              <div key={inv.id} className={`bg-white px-4 py-4 ${i>0?"border-t border-slate-50":""}`}>
-                <div className="flex items-center gap-3">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[14px] font-bold text-slate-800 font-mono">{inv.code}</p>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      {inv.use_count} uses{inv.max_uses?` / ${inv.max_uses}`:""}
-                      {inv.expires_at?` · expires ${fmtDate(inv.expires_at)}`:" · no expiry"}
-                    </p>
-                  </div>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${inv.is_active?"bg-green-100 text-green-700":"bg-slate-100 text-slate-500"}`}>
-                    {inv.is_active?"Active":"Inactive"}
-                  </span>
-                  {inv.is_active && (
-                    <button onClick={()=>navigator.clipboard?.writeText(`https://kudiai.app/join/${inv.code}`)}
-                      className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 active:bg-slate-200 text-slate-600 text-xs font-bold">
-                      📋
-                    </button>
-                  )}
-                  {inv.is_active && (
-                    <button onClick={()=>deactivateInvite(inv)}
-                      className="w-8 h-8 flex items-center justify-center rounded-full bg-red-50 active:bg-red-100 text-red-500 text-xs">
-                      ✕
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
         {/* ── SETTINGS ── */}
         {tab==="Settings" && (
           <div className="p-4 flex flex-col gap-3">
@@ -405,12 +358,6 @@ export default function AdminDashboard({ orgId, orgName, org, members:initMember
                 className="w-full flex items-center gap-4 px-5 py-4 border-b border-slate-50 active:bg-slate-50">
                 <span className="text-xl">🔒</span>
                 <div className="flex-1 text-left"><p className="text-[14px] font-semibold text-slate-800">Privacy & Chat Lock</p><p className="text-[11px] text-slate-400">Disappearing messages, slow mode</p></div>
-                <svg viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={2} strokeLinecap="round" className="w-4 h-4"><path d="M9 18l6-6-6-6"/></svg>
-              </button>
-              <button onClick={()=>onNavigate&&onNavigate("invites")}
-                className="w-full flex items-center gap-4 px-5 py-4 active:bg-slate-50">
-                <span className="text-xl">🔗</span>
-                <div className="flex-1 text-left"><p className="text-[14px] font-semibold text-slate-800">Invite Links</p><p className="text-[11px] text-slate-400">Manage invite links & QR codes</p></div>
                 <svg viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={2} strokeLinecap="round" className="w-4 h-4"><path d="M9 18l6-6-6-6"/></svg>
               </button>
             </div>

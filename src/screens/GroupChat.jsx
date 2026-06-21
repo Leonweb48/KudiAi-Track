@@ -251,10 +251,10 @@ function Bubble({ msg, isMe, showName, showAv, myId, lastSeen, memberCount, avat
           id={`msg-${msg.id}`}
           onPointerDown={startPress} onPointerUp={endPress} onPointerMove={onMove}
           className={[
-            "relative rounded-2xl px-3 py-2 shadow-sm select-none transition-colors",
+            `relative rounded-2xl shadow-sm select-none transition-colors ${(msg.type==="poll"||msg.type==="event")?"overflow-hidden":"px-3 py-2"}`,
             isMe
-              ? `bg-[#dcf8c6] text-[#111b21] rounded-br-[5px] ${isPending ? "opacity-70" : ""}`
-              : "bg-white text-slate-800 rounded-bl-[5px]",
+              ? `${(msg.type==="poll"||msg.type==="event")?"":"bg-[#dcf8c6] text-[#111b21]"} rounded-br-[5px] ${isPending ? "opacity-70" : ""}`
+              : `${(msg.type==="poll"||msg.type==="event")?"":"bg-white text-slate-800"} rounded-bl-[5px]`,
             isDeleted ? "opacity-50" : "",
           ].join(" ")}
           style={{ wordBreak: "break-word" }}>
@@ -288,6 +288,10 @@ function Bubble({ msg, isMe, showName, showAv, myId, lastSeen, memberCount, avat
             </div>
           ) : msg.type === "audio" ? (
             <AudioPlayer url={msg.media_url} duration={msg.duration} isMe={isMe} mime={msg.media_mime} />
+          ) : msg.type === "poll" ? (
+            <PollBubble pollId={msg.media_name} myId={myId} isMe={isMe} />
+          ) : msg.type === "event" ? (
+            <EventBubble eventId={msg.media_name} isMe={isMe} />
           ) : (
             <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
           )}
@@ -346,11 +350,13 @@ function Bubble({ msg, isMe, showName, showAv, myId, lastSeen, memberCount, avat
 
 // ─── Context Menu ─────────────────────────────────────────────────────────────
 function CtxMenu({ msg, isMe, isAdmin, onClose, onAction }) {
+  const ageS = (Date.now() - new Date(msg.created_at).getTime()) / 1000;
+  const withinMin = ageS < 60;
   const items = [
     { id:"reply",   emoji:"↩️", label:"Reply" },
     !msg.is_deleted && { id:"copy",    emoji:"📋", label:"Copy text" },
-    !msg.is_deleted && isMe && { id:"edit",    emoji:"✏️", label:"Edit" },
-    !msg.is_deleted && (isMe || isAdmin) && { id:"delete",  emoji:"🗑️", label:"Delete for everyone", danger:true },
+    !msg.is_deleted && isMe && withinMin && { id:"edit",    emoji:"✏️", label:"Edit" },
+    !msg.is_deleted && ((isMe && withinMin) || isAdmin) && { id:"delete",  emoji:"🗑️", label:"Delete for everyone", danger:true },
     isAdmin && { id:"pin",    emoji: msg.pinned ? "📌" : "📍", label: msg.pinned ? "Unpin" : "Pin" },
   ].filter(Boolean);
 
@@ -439,6 +445,180 @@ function EditSettings({ orgId, settings, myId, onSave, onClose }) {
 
 
 
+// ─── Header menu (Twitter/X style) ───────────────────────────────────────────
+function ChatHeaderMenu({ isAdmin, onGroupInfo, onSearch, onEditGroup, onClose }) {
+  const items = [
+    { label: "Group info", icon: "M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z", onClick: onGroupInfo },
+    { label: "Search",     icon: "M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z",                onClick: onSearch    },
+    isAdmin ? { label: "Edit group", icon: "M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z", onClick: onEditGroup } : null,
+  ].filter(Boolean);
+  return (
+    <div className="fixed inset-0 z-[91]" onClick={onClose}>
+      <div
+        className="absolute right-2 bg-white rounded-2xl shadow-2xl overflow-hidden"
+        style={{ top: "max(52px,calc(env(safe-area-inset-top) + 52px))", minWidth: 192 }}
+        onClick={e => e.stopPropagation()}
+      >
+        {items.map((item, i) => (
+          <button key={item.label}
+            onClick={() => { item.onClick(); onClose(); }}
+            className={`w-full flex items-center gap-3.5 px-4 py-3.5 text-left active:bg-slate-50 transition-colors ${i < items.length - 1 ? "border-b border-slate-100" : ""}`}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="#1e293b" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 flex-shrink-0">
+              <path d={item.icon} />
+            </svg>
+            <span className="text-[14px] font-semibold text-slate-800">{item.label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Poll Bubble ──────────────────────────────────────────────────────────────
+function PollBubble({ pollId, myId, isMe }) {
+  const [poll, setPoll] = useState(null);
+  const [myVoteIdx, setMyVoteIdx] = useState(null); // single-choice by option_index
+  const [voteCounts, setVoteCounts] = useState([]);
+  const [totalVotes, setTotalVotes] = useState(0);
+
+  useEffect(() => {
+    if (!pollId) return;
+    supabase.from("org_polls").select("*").eq("id", pollId).single()
+      .then(({ data }) => {
+        if (data) {
+          setPoll(data);
+          setVoteCounts(Array(data.options?.length || 0).fill(0));
+        }
+      });
+    // Fetch vote counts
+    supabase.from("org_poll_votes").select("option_index, user_id").eq("poll_id", pollId)
+      .then(({ data }) => {
+        if (!data) return;
+        // Find my vote
+        const mine = data.find(v => v.user_id === myId);
+        if (mine != null) setMyVoteIdx(mine.option_index);
+        // Count by option
+        const counts = [];
+        data.forEach(v => { counts[v.option_index] = (counts[v.option_index] || 0) + 1; });
+        setVoteCounts(counts);
+        setTotalVotes(data.length);
+      });
+  }, [pollId, myId]);
+
+  const vote = async (idx) => {
+    if (!poll || poll.is_closed) return;
+    if (myVoteIdx === idx) {
+      // Unvote
+      await supabase.from("org_poll_votes").delete().match({ poll_id: pollId, user_id: myId });
+      setVoteCounts(c => { const n=[...c]; n[idx]=Math.max(0,(n[idx]||0)-1); return n; });
+      setTotalVotes(t => Math.max(0, t - 1));
+      setMyVoteIdx(null);
+    } else {
+      const prev = myVoteIdx;
+      await supabase.from("org_poll_votes").upsert(
+        { poll_id: pollId, option_index: idx, user_id: myId, org_id: poll.org_id },
+        { onConflict: "poll_id,user_id" }
+      );
+      setVoteCounts(c => { const n=[...c]; n[idx]=(n[idx]||0)+1; if(prev!==null) n[prev]=Math.max(0,(n[prev]||0)-1); return n; });
+      setTotalVotes(t => prev !== null ? t : t + 1);
+      setMyVoteIdx(idx);
+    }
+  };
+
+  if (!poll) return <div className={`min-w-[200px] rounded-2xl px-3 py-3 shadow-sm ${isMe?"bg-[#dcf8c6]":"bg-white"}`}><p className="text-[12px] text-slate-400">Loading poll…</p></div>;
+
+  const hasVoted = myVoteIdx !== null;
+  const opts = poll.options || [];
+
+  return (
+    <div className={`min-w-[220px] max-w-[280px] rounded-2xl overflow-hidden shadow-sm`} style={{ background: isMe ? "#dcf8c6" : "#fff" }}>
+      <div className={`px-3 pt-3 pb-2 border-b ${isMe?"border-[#b7e8a0]":"border-slate-100"}`}>
+        <div className="flex items-center gap-1.5 mb-1">
+          <svg viewBox="0 0 24 24" fill="none" stroke={isMe?"#128c7e":"#3b82f6"} strokeWidth={2} className="w-3.5 h-3.5 flex-shrink-0"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+          <span className={`text-[10px] font-extrabold uppercase tracking-wider ${isMe?"text-[#128c7e]":"text-blue-500"}`}>Poll</span>
+          {poll.is_closed && <span className="text-[9px] font-bold text-red-500 bg-red-50 px-1.5 py-0.5 rounded-full">Closed</span>}
+        </div>
+        <p className={`text-[13px] font-bold leading-snug ${isMe?"text-[#111b21]":"text-slate-800"}`}>{poll.question}</p>
+        <p className={`text-[10px] mt-0.5 ${isMe?"text-[#128c7e]/70":"text-slate-400"}`}>{totalVotes} vote{totalVotes !== 1 ? "s" : ""}{poll.closes_at && !poll.is_closed ? ` · ends ${new Date(poll.closes_at).toLocaleDateString([], { day:"numeric", month:"short" })}` : ""}</p>
+      </div>
+      <div className="px-3 py-2 flex flex-col gap-1.5">
+        {opts.map((opt, idx) => {
+          const count = voteCounts[idx] || 0;
+          const pct = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
+          const isMine = myVoteIdx === idx;
+          return (
+            <button key={idx} onClick={() => !poll.is_closed && vote(idx)} disabled={poll.is_closed}
+              className={`relative w-full rounded-xl text-left overflow-hidden active:scale-[0.98] transition-transform ${isMine ? (isMe?"ring-2 ring-[#128c7e]/50":"ring-2 ring-blue-400/50") : ""}`}>
+              {hasVoted && (
+                <div className="absolute inset-y-0 left-0 rounded-xl" style={{ width: `${pct}%`, background: isMine ? (isMe?"#25d366":"#3b82f6") : (isMe?"#b7e8a0":"#e2e8f0"), opacity: 0.3 }} />
+              )}
+              <div className={`relative flex items-center justify-between px-3 py-2 rounded-xl border ${isMine ? (isMe?"border-[#25d366]/60 bg-[#25d366]/10":"border-blue-300/60 bg-blue-50/60") : (isMe?"border-[#b7e8a0]/40":"border-slate-100")}`}>
+                <span className={`text-[12px] font-semibold pr-2 ${isMe?"text-[#111b21]":"text-slate-700"}`}>{opt}</span>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  {hasVoted && <span className={`text-[10px] font-bold ${isMine?(isMe?"text-[#128c7e]":"text-blue-600"):"text-slate-400"}`}>{pct}%</span>}
+                  {isMine && <svg viewBox="0 0 24 24" fill="none" stroke={isMe?"#128c7e":"#3b82f6"} strokeWidth={2.5} className="w-3 h-3"><path d="M5 12l5 5L20 7"/></svg>}
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Event Bubble ─────────────────────────────────────────────────────────────
+function EventBubble({ eventId, isMe }) {
+  const [event, setEvent] = useState(null);
+
+  useEffect(() => {
+    if (!eventId) return;
+    supabase.from("org_events").select("*").eq("id", eventId).single()
+      .then(({ data }) => setEvent(data));
+  }, [eventId]);
+
+  if (!event) return <div className={`min-w-[200px] rounded-2xl px-3 py-3 shadow-sm ${isMe?"bg-[#dcf8c6]":"bg-white"}`}><p className="text-[12px] text-slate-400">Loading event…</p></div>;
+
+  const fmtEv = ts => new Date(ts).toLocaleDateString([], { weekday:"short", day:"numeric", month:"short" });
+
+  const isPast = event.event_date && new Date(event.event_date) < new Date();
+
+  return (
+    <div className={`min-w-[220px] max-w-[280px] rounded-2xl overflow-hidden shadow-sm`} style={{ background: isMe ? "#dcf8c6" : "#fff" }}>
+      <div className={`px-3 pt-3 pb-2.5 border-b ${isMe?"border-[#b7e8a0]":"border-slate-100"}`}>
+        <div className="flex items-center gap-1.5 mb-1">
+          <svg viewBox="0 0 24 24" fill="none" stroke={isMe?"#128c7e":"#075E54"} strokeWidth={2} className="w-3.5 h-3.5 flex-shrink-0"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          <span className={`text-[10px] font-extrabold uppercase tracking-wider ${isMe?"text-[#128c7e]":"text-[#075E54]"}`}>Event</span>
+          {isPast && <span className="text-[9px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-full">Ended</span>}
+        </div>
+        <p className={`text-[13px] font-bold leading-snug ${isMe?"text-[#111b21]":"text-slate-800"}`}>{event.title}</p>
+        <div className={`flex items-center gap-1.5 mt-1 ${isMe?"text-[#128c7e]":"text-[#075E54]"}`}>
+          <span className="text-[11px] font-medium">{fmtEv(event.event_date)}</span>
+        </div>
+        {event.location && (
+          <div className="flex items-center gap-1 mt-0.5 text-slate-400">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3 h-3 flex-shrink-0"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            <span className="text-[11px] truncate">{event.location}</span>
+          </div>
+        )}
+        {event.event_link && (
+          <a href={event.event_link} target="_blank" rel="noreferrer"
+            className={`inline-flex items-center gap-1 mt-1.5 text-[11px] font-bold ${isMe?"text-[#128c7e]":"text-blue-500"}`}
+            onClick={e => e.stopPropagation()}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3 h-3"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
+            Join online
+          </a>
+        )}
+      </div>
+      {event.description && (
+        <div className="px-3 py-2">
+          <p className={`text-[11px] leading-relaxed ${isMe?"text-[#111b21]/70":"text-slate-500"}`}>{event.description.slice(0, 100)}{event.description.length > 100 ? "…" : ""}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Typing dots ──────────────────────────────────────────────────────────────
 function TypingDots({ users }) {
   if (!users.length) return null;
@@ -485,6 +665,7 @@ export default function GroupChat({ orgId, myName, myRole = "member", orgName, o
   const [showScrollBtn,setShowScrollBtn]= useState(false);
   const [unread,       setUnread]       = useState(0);
   const [viewProfile,  setViewProfile]  = useState(null);
+  const [showMenu,     setShowMenu]     = useState(false);
 
   const listRef     = useRef(null);
   const bottomRef   = useRef(null);
@@ -972,10 +1153,10 @@ export default function GroupChat({ orgId, myName, myRole = "member", orgName, o
             </div>
           </button>
 
-          <button onClick={() => { setShowSearch(s => !s); setSearchQ(""); }}
+          <button onClick={() => setShowMenu(s => !s)}
             className="w-9 h-9 flex items-center justify-center rounded-full active:bg-white/10 flex-shrink-0">
-            <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2} strokeLinecap="round" className="w-4.5 h-4.5">
-              <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+            <svg viewBox="0 0 24 24" fill="white" className="w-[18px] h-[18px]">
+              <circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/>
             </svg>
           </button>
         </div>
@@ -1227,6 +1408,17 @@ export default function GroupChat({ orgId, myName, myRole = "member", orgName, o
           )}
         </div>
       </div>
+
+      {/* ── Header menu ── */}
+      {showMenu && (
+        <ChatHeaderMenu
+          isAdmin={isAdmin}
+          onGroupInfo={() => setShowInfo(true)}
+          onSearch={() => { setShowSearch(s => !s); setSearchQ(""); }}
+          onEditGroup={() => setEditSettings(true)}
+          onClose={() => setShowMenu(false)}
+        />
+      )}
 
       {/* ── Context menu ── */}
       {ctxMsg && (

@@ -167,8 +167,8 @@ export default function GroupInfoPage({ orgId, orgName, org, settings: initSetti
         {/* ── Cover + Identity ── */}
         <div className="bg-white">
           {/* Cover image */}
-          <div className="relative w-full bg-gradient-to-br from-[#075E54] to-[#128c7e]"
-            style={{height:"160px"}}>
+          <div className="relative w-full"
+            style={{height:200, background:"linear-gradient(135deg,#064e3b 0%,#065f46 40%,#128c7e 100%)"}}>
             {settings?.cover_image_url && (
               <img src={settings.cover_image_url} alt="" className="w-full h-full object-cover" />
             )}
@@ -195,8 +195,8 @@ export default function GroupInfoPage({ orgId, orgName, org, settings: initSetti
           </div>
 
           {/* Avatar + name */}
-          <div className="flex flex-col items-center -mt-10 pb-4 px-5">
-            <div className="w-20 h-20 rounded-full border-4 border-white shadow-md overflow-hidden flex-shrink-0 mb-2"
+          <div className="flex flex-col items-center -mt-11 pb-4 px-5">
+            <div className="w-[88px] h-[88px] rounded-full border-4 border-white shadow-lg overflow-hidden flex-shrink-0 mb-3"
               style={{background:"linear-gradient(145deg,#075E54,#128c7e)"}}>
               {org?.logo_url
                 ? <img src={org.logo_url} alt={displayName} className="w-full h-full object-cover"/>
@@ -269,7 +269,6 @@ export default function GroupInfoPage({ orgId, orgName, org, settings: initSetti
             <ActionBtn icon="🖼️"  label="Media"   onClick={()=>setScreen("media")}       color="#06b6d4"/>
             <ActionBtn icon="🎙️" label="Voice"   onClick={()=>setScreen("voice")}       color="#ef4444"/>
             <ActionBtn icon="🏆" label="Ranks"   onClick={()=>setScreen("leaderboard")} color="#f59e0b"/>
-            <ActionBtn icon="🔗" label="Invite"  onClick={()=>setScreen("invites")}     color="#128c7e"/>
           </div>
         </div>
 
