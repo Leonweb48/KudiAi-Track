@@ -1895,7 +1895,7 @@ function OrgBankSetupSection({ org, onRefresh }) {
   );
 }
 
-function SettingsTab({ org, onRefresh, onBack, isOrgPortal = false, isDark = false, onToggleDark }) {
+function SettingsTab({ org, onRefresh, onOrgUpdate, onBack, isOrgPortal = false, isDark = false, onToggleDark }) {
   const [leaders,       setLeaders]       = useState([]);
   const [form,          setForm]          = useState({ name: org.name || "", email: org.email || "", phone: org.phone || "", address: org.address || "", state_name: org.state_name || "", lga: org.lga || "", purpose: org.purpose || "", vision: org.vision || "", mission: org.mission || "", website: org.website || "", social_instagram: org.social_instagram || "", social_facebook: org.social_facebook || "", social_twitter: org.social_twitter || "", date_established: org.date_established || "", logo_url: org.logo_url || "" });
   const [logoUploading, setLogoUploading] = useState(false);
@@ -1922,7 +1922,8 @@ function SettingsTab({ org, onRefresh, onBack, isOrgPortal = false, isDark = fal
   const handleSaveOrg = async () => {
     setSaving(true); setError(""); setSaved(false);
     try {
-      await coopFn("update-org", { org_id: org.id, ...form });
+      const result = await coopFn("update-org", { org_id: org.id, ...form });
+      if (result?.org) onOrgUpdate?.(result.org);
       setSaved(true); onRefresh();
       setTimeout(() => setSaved(false), 3000);
     } catch (e) { setError(e.message || "Failed"); }
@@ -1970,8 +1971,8 @@ function SettingsTab({ org, onRefresh, onBack, isOrgPortal = false, isDark = fal
     <div className="flex-1 overflow-y-auto px-4 pt-4 pb-24 flex flex-col gap-5">
       {/* Account */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-100 dark:border-slate-700 flex items-center gap-3">
-        {org.logo_url
-          ? <img src={org.logo_url} alt="" className="w-12 h-12 rounded-xl object-cover ring-2 ring-green-200 flex-shrink-0" />
+        {(form.logo_url || org.logo_url)
+          ? <img src={form.logo_url || org.logo_url} alt="" className="w-12 h-12 rounded-xl object-cover ring-2 ring-green-200 flex-shrink-0" />
           : <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl flex-shrink-0"
               style={{ background: "linear-gradient(145deg,#00A651,#0D2040)" }}>
               <span>{org.type === "cooperative" ? "🤝" : "🏢"}</span>
@@ -2382,7 +2383,7 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
     loans:    <LoansTab    org={org} members={members} onRefresh={loadAll} />,
     broadcast: <BroadcastTab org={org} members={members} />,
     messages: <GroupChat orgId={org.id} myName={org.owner_name || "Admin"} myRole="admin" orgName={org.name} org={org} onBack={() => setTab("overview")} />,
-    settings: <SettingsTab org={org} onRefresh={loadAll} onBack={onBack} isOrgPortal={isOrgPortal} isDark={isDark} onToggleDark={toggleDark} />,
+    settings: <SettingsTab org={org} onRefresh={loadAll} onOrgUpdate={setOrg} onBack={onBack} isOrgPortal={isOrgPortal} isDark={isDark} onToggleDark={toggleDark} />,
     bills:    <BillsTab    org={org} autoService={billsAutoSvc} onAutoOpened={() => setBillsAutoSvc(null)} adminEmail={adminEmail} />,
   };
 
