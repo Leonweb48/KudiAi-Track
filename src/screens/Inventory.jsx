@@ -459,10 +459,12 @@ function AnalyticsView({ analytics, products, onClose }) {
 }
 
 /* ── Product Card ─────────────────────────────────────────────── */
-function ProductCard({ product, onView, onSale, onRestock, isOwner, onEdit }) {
+function ProductCard({ product, onView, onSale, onRestock, isOwner, onEdit, staffBranchId }) {
   const m    = margin(product.cost_price, product.selling_price);
   const low  = product.quantity <= product.low_stock_threshold;
   const zero = product.quantity === 0;
+  // Main business stock: product has no branch — branch staff can sell but not restock
+  const isMainStock = Boolean(staffBranchId && !product.branch_id);
 
   return (
     <div onClick={() => onView(product)}
@@ -474,6 +476,7 @@ function ProductCard({ product, onView, onSale, onRestock, isOwner, onEdit }) {
           <div className="flex-1 min-w-0">
             <p className="text-sm font-extrabold text-slate-800 dark:text-white leading-tight truncate">{product.product_name}</p>
             <div className="flex items-center gap-2 mt-1 flex-wrap">
+              {isMainStock && <span className="text-[9px] font-bold px-2 py-0.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full">Business Stock</span>}
               {product.category && <span className="text-[10px] font-bold px-2 py-0.5 bg-violet-50 dark:bg-violet-900/20 text-violet-600 dark:text-violet-400 rounded-full">{product.category}</span>}
               {product.sku && <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500">{product.sku}</span>}
             </div>
@@ -500,12 +503,16 @@ function ProductCard({ product, onView, onSale, onRestock, isOwner, onEdit }) {
           <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
           Sale
         </button>
-        <div className="w-px bg-slate-100 dark:bg-slate-700"/>
-        <button onClick={e => { e.stopPropagation(); onRestock(product); }}
-          className="flex-1 py-2.5 text-xs font-bold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition flex items-center justify-center gap-1.5 active:scale-95">
-          <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M12 5v14M5 12l7-7 7 7"/></svg>
-          Restock
-        </button>
+        {!isMainStock && (
+          <>
+            <div className="w-px bg-slate-100 dark:bg-slate-700"/>
+            <button onClick={e => { e.stopPropagation(); onRestock(product); }}
+              className="flex-1 py-2.5 text-xs font-bold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition flex items-center justify-center gap-1.5 active:scale-95">
+              <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M12 5v14M5 12l7-7 7 7"/></svg>
+              Restock
+            </button>
+          </>
+        )}
         {isOwner && (
           <>
             <div className="w-px bg-slate-100 dark:bg-slate-700"/>
@@ -737,6 +744,7 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
                 key={p.id}
                 product={p}
                 isOwner={isOwner}
+                staffBranchId={staffBranchId}
                 onView={setDetailProd}
                 onEdit={prod => { setEditProd(prod); setShowForm(true); }}
                 onSale={prod => setMovModal({ product: prod, type: "sale" })}

@@ -339,6 +339,20 @@ export default function Onboarding({ session, onComplete }) {
         return;
       }
 
+      // Fire welcome email for the new business user (non-blocking)
+      fetch("https://admin.kudiai.app/api/public/email-trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+        body: JSON.stringify({
+          event: "business_registered",
+          data: {
+            email:         session.user.email,
+            name:          fullName || session.user.user_metadata?.full_name || session.user.email.split("@")[0],
+            business_name: bizName || "",
+          },
+        }),
+      }).catch(() => null);
+
       onComplete();
     } catch (err) {
       setError(err.message || "Something went wrong. Please try again.");

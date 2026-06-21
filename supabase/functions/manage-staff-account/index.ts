@@ -28,16 +28,14 @@ serve(async (req) => {
     }
     if (!authHeader) return json({ error: "Authentication required" }, 401);
 
-    const callerClient = createClient(supabaseUrl, anonKey, {
-      global: { headers: { Authorization: authHeader } },
-      auth: { persistSession: false },
-    });
     const adminClient = createClient(supabaseUrl, serviceRoleKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
+    // Pass the JWT explicitly — getUser() without args uses internal session (null when persistSession:false)
+    const jwt = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : authHeader;
     const { data: userData, error: userError } =
-      await callerClient.auth.getUser();
+      await adminClient.auth.getUser(jwt);
     if (userError || !userData.user) {
       return json({ error: "Invalid or expired session" }, 401);
     }

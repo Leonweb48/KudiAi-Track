@@ -901,6 +901,24 @@ serve(async (req) => {
         })
         .select("*").single();
       if (error) return json({ error: error.message }, 400);
+      const { data: mtgOrg } = await sb.from("organizations").select("name").eq("id", org_id).single();
+      const { data: mtgMems } = await sb.from("org_members").select("full_name, email").eq("org_id", org_id).eq("status", "active");
+      if (mtgOrg && mtgMems) {
+        const dtStr = new Date(scheduled_at).toLocaleString("en-NG", { dateStyle: "medium", timeStyle: "short" });
+        for (const m of mtgMems as { full_name: string; email: string }[]) {
+          if (!m.email) continue;
+          fetch("https://admin.kudiai.app/api/public/email-trigger", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+            body: JSON.stringify({ event: "org_broadcast", data: {
+              email: m.email, member_name: m.full_name, org_name: mtgOrg.name,
+              broadcast_type: "Meeting", title,
+              description: description || "",
+              detail: `${format || "physical"} meeting on ${dtStr}${location ? ` at ${location}` : ""}`,
+            }}),
+          }).catch(() => null);
+        }
+      }
       return json({ meeting });
     }
 
@@ -921,7 +939,7 @@ serve(async (req) => {
       const { data: meetings } = await sb.from("org_meetings").select("*")
         .eq("org_id", org_id).order("scheduled_at", { ascending: false });
 
-      const withRsvp = await Promise.all((meetings || []).map(async (m) => {
+      const withRsvp = await Promise.all((meetings || []).map(async (m: Record<string, unknown>) => {
         const { data: rsvp } = await sb.from("org_meeting_rsvp")
           .select("status").eq("meeting_id", m.id);
         const counts = { attending: 0, maybe: 0, not_attending: 0 };
@@ -1004,6 +1022,23 @@ serve(async (req) => {
           is_pinned: is_pinned || false,
         }).select("*").single();
       if (error) return json({ error: error.message }, 400);
+      const { data: annOrg } = await sb.from("organizations").select("name").eq("id", org_id as string).single();
+      const { data: annMems } = await sb.from("org_members").select("full_name, email").eq("org_id", org_id as string).eq("status", "active");
+      if (annOrg && annMems) {
+        const btype = type === "emergency" ? "Emergency Alert" : type === "notice" ? "Notice" : type === "circular" ? "Circular" : "Announcement";
+        for (const m of annMems as { full_name: string; email: string }[]) {
+          if (!m.email) continue;
+          fetch("https://admin.kudiai.app/api/public/email-trigger", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+            body: JSON.stringify({ event: "org_broadcast", data: {
+              email: m.email, member_name: m.full_name, org_name: annOrg.name,
+              broadcast_type: btype, title, description: String(msgBody),
+              detail: is_pinned ? "📌 Pinned" : "",
+            }}),
+          }).catch(() => null);
+        }
+      }
       return json({ announcement: ann });
     }
 
@@ -1133,8 +1168,8 @@ serve(async (req) => {
       const rsvpMap: Record<string, string> = {};
       (attendance || []).forEach((a: Record<string,string>) => { attMap[a.meeting_id] = a.status; });
       (rsvps || []).forEach((r: Record<string,string>) => { rsvpMap[r.meeting_id] = r.status; });
-      const merged = (meetings || []).map(m => ({
-        ...m, my_attendance: attMap[m.id] || null, my_rsvp: rsvpMap[m.id] || null,
+      const merged = (meetings || []).map((m: Record<string, unknown>) => ({
+        ...m, my_attendance: attMap[m.id as string] || null, my_rsvp: rsvpMap[m.id as string] || null,
       }));
       return json({ meetings: merged });
     }
@@ -1618,6 +1653,183 @@ serve(async (req) => {
         .single();
       if (error) return json({ error: error.message }, 400);
       return json({ bill: data });
+    }
+
+    // ══════════════════════════════════════════════════
+    //  BROADCAST STATION — EVENTS
+    // ══════════════════════════════════════════════════
+
+    if (action === "create-event") {
+      const { org_id, title, description, event_type, event_date, end_date, location, event_link } =
+        body as Record<string, string>;
+      if (!org_id || !title || !event_date) return json({ error: "org_id, title, event_date required" }, 400);
+      const { data: event, error } = await sb.from("org_events")
+        .insert({ org_id, title, description: description || null, event_type: event_type || "event",
+          event_date, end_date: end_date || null, location: location || null, event_link: event_link || null })
+        .select("*").single();
+      if (error) return json({ error: error.message }, 400);
+      // Email all active members
+      const { data: org } = await sb.from("organizations").select("name").eq("id", org_id).single();
+      const { data: members } = await sb.from("org_members").select("full_name, email").eq("org_id", org_id).eq("status", "active");
+      if (org && members) {
+        for (const m of members) {
+          if (!m.email) continue;
+          fetch("https://admin.kudiai.app/api/public/email-trigger", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+            body: JSON.stringify({ event: "org_broadcast", data: {
+              email: m.email, member_name: m.full_name, org_name: org.name,
+              broadcast_type: "Event", title, description: description || "",
+              detail: `${event_type || "Event"} on ${new Date(event_date).toLocaleString("en-NG", { dateStyle: "medium", timeStyle: "short" })}${location ? ` at ${location}` : ""}`,
+            }}),
+          }).catch(() => null);
+        }
+      }
+      return json({ event });
+    }
+
+    if (action === "get-events") {
+      const { org_id } = body as { org_id: string };
+      if (!org_id) return json({ error: "org_id required" }, 400);
+      const { data, error } = await sb.from("org_events").select("*").eq("org_id", org_id).order("event_date", { ascending: false }).limit(50);
+      if (error) return json({ error: error.message }, 400);
+      return json({ events: data });
+    }
+
+    if (action === "delete-event") {
+      const { event_id } = body as { event_id: string };
+      if (!event_id) return json({ error: "event_id required" }, 400);
+      const { error } = await sb.from("org_events").delete().eq("id", event_id);
+      if (error) return json({ error: error.message }, 400);
+      return json({ ok: true });
+    }
+
+    // ══════════════════════════════════════════════════
+    //  BROADCAST STATION — POLLS
+    // ══════════════════════════════════════════════════
+
+    if (action === "create-poll") {
+      const { org_id, question, options, closes_at } = body as Record<string, unknown>;
+      if (!org_id || !question || !Array.isArray(options) || options.length < 2)
+        return json({ error: "org_id, question, and at least 2 options required" }, 400);
+      const { data: poll, error } = await sb.from("org_polls")
+        .insert({ org_id, question, options, closes_at: closes_at || null })
+        .select("*").single();
+      if (error) return json({ error: error.message }, 400);
+      // Email all active members
+      const { data: org } = await sb.from("organizations").select("name").eq("id", org_id as string).single();
+      const { data: members } = await sb.from("org_members").select("full_name, email").eq("org_id", org_id as string).eq("status", "active");
+      if (org && members) {
+        for (const m of members) {
+          if (!m.email) continue;
+          fetch("https://admin.kudiai.app/api/public/email-trigger", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+            body: JSON.stringify({ event: "org_broadcast", data: {
+              email: m.email, member_name: m.full_name, org_name: org.name,
+              broadcast_type: "Poll", title: question,
+              description: `Options: ${(options as string[]).join(" / ")}`,
+              detail: closes_at ? `Closes ${new Date(closes_at as string).toLocaleDateString("en-NG", { dateStyle: "medium" })}` : "Open-ended poll",
+            }}),
+          }).catch(() => null);
+        }
+      }
+      return json({ poll });
+    }
+
+    if (action === "get-polls") {
+      const { org_id } = body as { org_id: string };
+      if (!org_id) return json({ error: "org_id required" }, 400);
+      const { data: polls, error } = await sb.from("org_polls").select("*").eq("org_id", org_id).order("created_at", { ascending: false }).limit(50);
+      if (error) return json({ error: error.message }, 400);
+      // Attach vote counts per option
+      const pollIds = (polls || []).map((p: Record<string,unknown>) => p.id);
+      const { data: votes } = pollIds.length
+        ? await sb.from("org_poll_votes").select("poll_id, option_index").in("poll_id", pollIds)
+        : { data: [] };
+      const voteMap: Record<string, number[]> = {};
+      for (const v of (votes || [])) {
+        if (!voteMap[v.poll_id]) voteMap[v.poll_id] = [];
+        voteMap[v.poll_id].push(v.option_index);
+      }
+      const enriched = (polls || []).map((p: Record<string,unknown>) => ({
+        ...p,
+        vote_counts: ((p.options as unknown[]) || []).map((_: unknown, i: number) =>
+          (voteMap[p.id as string] || []).filter(v => v === i).length
+        ),
+        total_votes: (voteMap[p.id as string] || []).length,
+      }));
+      return json({ polls: enriched });
+    }
+
+    if (action === "delete-poll") {
+      const { poll_id } = body as { poll_id: string };
+      if (!poll_id) return json({ error: "poll_id required" }, 400);
+      const { error } = await sb.from("org_polls").delete().eq("id", poll_id);
+      if (error) return json({ error: error.message }, 400);
+      return json({ ok: true });
+    }
+
+    if (action === "member-submit-poll-vote") {
+      const { poll_id, member_id, option_index } = body as { poll_id: string; member_id: string; option_index: number };
+      if (!poll_id || !member_id || option_index === undefined) return json({ error: "poll_id, member_id, option_index required" }, 400);
+      const { data: poll } = await sb.from("org_polls").select("is_active, closes_at").eq("id", poll_id).single();
+      if (!poll?.is_active) return json({ error: "This poll is closed" }, 400);
+      if (poll.closes_at && new Date(poll.closes_at) < new Date()) return json({ error: "This poll has expired" }, 400);
+      const { error } = await sb.from("org_poll_votes")
+        .upsert({ poll_id, member_id, option_index }, { onConflict: "poll_id,member_id" });
+      if (error) return json({ error: error.message }, 400);
+      return json({ ok: true });
+    }
+
+    if (action === "member-get-broadcasts") {
+      const { member_id, org_id } = body as { member_id: string; org_id: string };
+      if (!org_id || !member_id) return json({ error: "org_id and member_id required" }, 400);
+      const [meetingsR, annR, eventsR, pollsR] = await Promise.all([
+        sb.from("org_meetings").select("id,title,description,meeting_type,format,scheduled_at,location,meeting_link,agenda,status").eq("org_id", org_id).order("scheduled_at", { ascending: false }).limit(20),
+        sb.from("org_announcements").select("id,type,title,body,is_pinned,created_at,author_name").eq("org_id", org_id).order("is_pinned", { ascending: false }).order("created_at", { ascending: false }).limit(30),
+        sb.from("org_events").select("*").eq("org_id", org_id).order("event_date", { ascending: false }).limit(20),
+        sb.from("org_polls").select("*").eq("org_id", org_id).eq("is_active", true).order("created_at", { ascending: false }).limit(10),
+      ]);
+      // Attach RSVP for meetings
+      const meetingIds = (meetingsR.data || []).map((m: Record<string,unknown>) => m.id);
+      const { data: rsvps } = meetingIds.length
+        ? await sb.from("org_meeting_rsvps").select("meeting_id, status").eq("member_id", member_id).in("meeting_id", meetingIds)
+        : { data: [] };
+      const rsvpMap: Record<string, string> = {};
+      for (const r of (rsvps || [])) rsvpMap[r.meeting_id] = r.status;
+      // Attach member poll vote
+      const pollIds = (pollsR.data || []).map((p: Record<string,unknown>) => p.id);
+      const { data: myVotes } = pollIds.length
+        ? await sb.from("org_poll_votes").select("poll_id, option_index").eq("member_id", member_id).in("poll_id", pollIds)
+        : { data: [] };
+      const voteMap: Record<string, number> = {};
+      for (const v of (myVotes || [])) voteMap[v.poll_id] = v.option_index;
+      // Vote counts for polls
+      const { data: allVotes } = pollIds.length
+        ? await sb.from("org_poll_votes").select("poll_id, option_index").in("poll_id", pollIds)
+        : { data: [] };
+      const pollVoteMap: Record<string, number[]> = {};
+      for (const v of (allVotes || [])) {
+        if (!pollVoteMap[v.poll_id]) pollVoteMap[v.poll_id] = [];
+        pollVoteMap[v.poll_id].push(v.option_index);
+      }
+      const meetings = (meetingsR.data || []).map((m: Record<string,unknown>) => ({ ...m, _type: "meeting", my_rsvp: rsvpMap[m.id as string] || null }));
+      const announcements = (annR.data || []).map((a: Record<string,unknown>) => ({ ...a, _type: "announcement" }));
+      const events = (eventsR.data || []).map((e: Record<string,unknown>) => ({ ...e, _type: "event" }));
+      const polls = (pollsR.data || []).map((p: Record<string,unknown>) => ({
+        ...p, _type: "poll",
+        my_vote: voteMap[p.id as string] ?? null,
+        vote_counts: ((p.options as unknown[]) || []).map((_: unknown, i: number) => (pollVoteMap[p.id as string] || []).filter(v => v === i).length),
+        total_votes: (pollVoteMap[p.id as string] || []).length,
+      }));
+      // Merge and sort by date descending
+      const all = [...meetings, ...announcements, ...events, ...polls].sort((a: Record<string,unknown>, b: Record<string,unknown>) => {
+        const dateA = (a.scheduled_at || a.event_date || a.created_at) as string;
+        const dateB = (b.scheduled_at || b.event_date || b.created_at) as string;
+        return new Date(dateB).getTime() - new Date(dateA).getTime();
+      });
+      return json({ broadcasts: all });
     }
 
     return json({ error: `Unknown action: ${action}` }, 400);

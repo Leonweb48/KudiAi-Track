@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { supabase } from "../utils/supabase";
+import GroupInfoPage from "./community/GroupInfoPage";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const QUICK_EMOJIS = ["👍","❤️","😂","😮","😢","🙏","🔥","👏","🎉","💯"];
@@ -27,14 +28,6 @@ const fmtDuration = (secs = 0) => {
   return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
 };
 
-const fmtRelTime = ts => {
-  if (!ts) return "never";
-  const diff = Math.floor((Date.now() - new Date(ts)) / 1000);
-  if (diff < 60)  return "just now";
-  if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
-  return new Date(ts).toLocaleDateString([], { day:"numeric", month:"short" });
-};
 
 const avatarColor = (name = "") => {
   const p = ["#ef4444","#f97316","#eab308","#22c55e","#06b6d4","#3b82f6","#8b5cf6","#ec4899","#14b8a6","#f43f5e"];
@@ -60,16 +53,26 @@ function AudioPlayer({ url, duration, isMe }) {
   const [playing, setPlaying] = useState(false);
   const [cur,     setCur]     = useState(0);
   const [dur,     setDur]     = useState(duration || 0);
+  const [errored, setErrored] = useState(false);
   const audioRef              = useRef(null);
 
-  const toggle = () => {
+  const toggle = async () => {
     const a = audioRef.current;
-    if (!a) return;
+    if (!a || errored) return;
     if (playing) {
       a.pause();
       setPlaying(false);
     } else {
-      a.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
+      // Mobile browsers (iOS especially) need load() called before play()
+      // when preload="none" is set or the src was set after mount
+      if (a.readyState < 2) a.load();
+      try {
+        await a.play();
+        setPlaying(true);
+      } catch {
+        setErrored(true);
+        setPlaying(false);
+      }
     }
   };
 
@@ -78,23 +81,28 @@ function AudioPlayer({ url, duration, isMe }) {
 
   return (
     <div className="flex items-center gap-2.5 min-w-[180px] py-0.5">
-      {/* Hidden native audio element — most reliable cross-browser approach */}
+      {/* src set directly (no <source type>) so iOS Safari doesn't reject unknown MIME types */}
       <audio
         ref={audioRef}
         src={url}
-        preload="metadata"
+        preload="none"
+        playsInline
+        crossOrigin="anonymous"
         onEnded={() => { setPlaying(false); setCur(0); }}
         onTimeUpdate={e => setCur(e.target.currentTime)}
         onLoadedMetadata={e => { if (e.target.duration && isFinite(e.target.duration)) setDur(e.target.duration); }}
-        onError={() => setPlaying(false)}
+        onError={() => { setPlaying(false); setErrored(true); }}
         style={{ display: "none" }}
       />
       <button onClick={toggle}
         className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-transform active:scale-90
-          ${isMe ? "bg-white/20 hover:bg-white/30" : "bg-blue-100 hover:bg-blue-200"}`}>
-        {playing
-          ? <svg viewBox="0 0 24 24" fill={isMe ? "white" : "#2563eb"} className="w-4 h-4"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
-          : <svg viewBox="0 0 24 24" fill={isMe ? "white" : "#2563eb"} className="w-4 h-4"><path d="M8 5v14l11-7z"/></svg>}
+          ${errored ? "opacity-50 cursor-not-allowed" : ""}
+          ${isMe ? "bg-[#25d366]/25 hover:bg-[#25d366]/35" : "bg-blue-100 hover:bg-blue-200"}`}>
+        {errored
+          ? <svg viewBox="0 0 24 24" fill="none" stroke={isMe ? "#128c7e" : "#dc2626"} strokeWidth="2" className="w-4 h-4"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg>
+          : playing
+            ? <svg viewBox="0 0 24 24" fill={isMe ? "#128c7e" : "#2563eb"} className="w-4 h-4"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+            : <svg viewBox="0 0 24 24" fill={isMe ? "#128c7e" : "#2563eb"} className="w-4 h-4"><path d="M8 5v14l11-7z"/></svg>}
       </button>
       <div className="flex-1 flex flex-col gap-1.5">
         <div className="flex items-center gap-[2px] h-6">
@@ -102,11 +110,11 @@ function AudioPlayer({ url, duration, isMe }) {
             const filled = (i / BARS.length) * 100 <= pct;
             return (
               <div key={i} className="w-[2.5px] rounded-full flex-shrink-0 transition-all duration-100"
-                style={{ height: `${h * 2.2}px`, background: filled ? (isMe ? "rgba(255,255,255,0.9)" : "#2563eb") : (isMe ? "rgba(255,255,255,0.3)" : "#cbd5e1") }} />
+                style={{ height: `${h * 2.2}px`, background: filled ? (isMe ? "#128c7e" : "#2563eb") : (isMe ? "#b7d4b5" : "#cbd5e1") }} />
             );
           })}
         </div>
-        <span className={`text-[10px] font-medium ${isMe ? "text-white/60" : "text-slate-400"}`}>
+        <span className={`text-[10px] font-medium ${isMe ? "text-[#128c7e]" : "text-slate-400"}`}>
           {fmtDuration(cur)} / {fmtDuration(dur)}
         </span>
       </div>
@@ -245,7 +253,7 @@ function Bubble({ msg, isMe, showName, showAv, myId, lastSeen, memberCount, avat
           className={[
             "relative rounded-2xl px-3 py-2 shadow-sm select-none transition-colors",
             isMe
-              ? `bg-[#1d4ed8] text-white rounded-br-[5px] ${isPending ? "opacity-70" : ""}`
+              ? `bg-[#dcf8c6] text-[#111b21] rounded-br-[5px] ${isPending ? "opacity-70" : ""}`
               : "bg-white text-slate-800 rounded-bl-[5px]",
             isDeleted ? "opacity-50" : "",
           ].join(" ")}
@@ -255,11 +263,11 @@ function Bubble({ msg, isMe, showName, showAv, myId, lastSeen, memberCount, avat
           {msg.reply_to_id && !isDeleted && (
             <button onClick={() => onJumpTo(msg.reply_to_id)}
               className={`mb-2 pl-2.5 border-l-[3px] rounded text-left w-full transition-opacity hover:opacity-80
-                ${isMe ? "border-white/50 bg-white/10" : "border-blue-500 bg-blue-50"}`}>
-              <p className={`text-[10px] font-extrabold truncate ${isMe ? "text-white/80" : "text-blue-600"}`}>
+                ${isMe ? "border-[#25d366]/70 bg-[#25d366]/15" : "border-blue-500 bg-blue-50"}`}>
+              <p className={`text-[10px] font-extrabold truncate ${isMe ? "text-[#128c7e]" : "text-blue-600"}`}>
                 {msg.reply_to_sender}
               </p>
-              <p className={`text-[11px] truncate ${isMe ? "text-white/65" : "text-slate-500"}`}>
+              <p className={`text-[11px] truncate ${isMe ? "text-[#111b21]/65" : "text-slate-500"}`}>
                 {msg.reply_to_content || "Message"}
               </p>
             </button>
@@ -267,7 +275,7 @@ function Bubble({ msg, isMe, showName, showAv, myId, lastSeen, memberCount, avat
 
           {/* Content */}
           {isDeleted ? (
-            <p className={`text-sm italic flex items-center gap-1.5 ${isMe ? "text-white/50" : "text-slate-400"}`}>
+            <p className={`text-sm italic flex items-center gap-1.5 ${isMe ? "text-[#111b21]/50" : "text-slate-400"}`}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-4 h-4 flex-shrink-0"><path d="M12 2a10 10 0 110 20A10 10 0 0112 2zm0 6v4m0 4h.01"/></svg>
               This message was deleted
             </p>
@@ -279,7 +287,7 @@ function Bubble({ msg, isMe, showName, showAv, myId, lastSeen, memberCount, avat
               {msg.content && <p className="text-sm mt-1">{msg.content}</p>}
             </div>
           ) : msg.type === "audio" ? (
-            <AudioPlayer url={msg.media_url} duration={msg.duration} isMe={isMe} />
+            <AudioPlayer url={msg.media_url} duration={msg.duration} isMe={isMe} mime={msg.media_mime} />
           ) : (
             <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
           )}
@@ -288,29 +296,29 @@ function Bubble({ msg, isMe, showName, showAv, myId, lastSeen, memberCount, avat
           {!isDeleted && (
             <div className={`flex items-center gap-1 mt-0.5 ${isMe ? "justify-end" : "justify-end"}`}>
               {msg.is_edited && (
-                <span className={`text-[9px] italic ${isMe ? "text-white/40" : "text-slate-400"}`}>edited</span>
+                <span className={`text-[9px] italic ${isMe ? "text-[#111b21]/40" : "text-slate-400"}`}>edited</span>
               )}
-              <span className={`text-[10px] ${isMe ? "text-white/55" : "text-slate-400"}`}>
+              <span className={`text-[10px] ${isMe ? "text-[#111b21]/55" : "text-slate-400"}`}>
                 {fmtTime(msg.created_at)}
               </span>
               {isMe && !isPending && (
                 <svg viewBox="0 0 18 13" fill="none" className="w-[18px] h-3 flex-shrink-0">
                   {readBy > 0 ? (
                     <>
-                      <path d="M1 6.5L5.5 11L15 2" stroke="#93c5fd" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
-                      <path d="M5 6.5L9.5 11" stroke="#93c5fd" strokeWidth="1.7" strokeLinecap="round"/>
+                      <path d="M1 6.5L5.5 11L15 2" stroke="#34b7f1" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M5 6.5L9.5 11" stroke="#34b7f1" strokeWidth="1.7" strokeLinecap="round"/>
                     </>
                   ) : (
                     <>
-                      <path d="M1 6.5L5.5 11L15 2" stroke="rgba(255,255,255,0.55)" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
-                      <path d="M5 6.5L9.5 11" stroke="rgba(255,255,255,0.55)" strokeWidth="1.7" strokeLinecap="round"/>
+                      <path d="M1 6.5L5.5 11L15 2" stroke="#8e9cad" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M5 6.5L9.5 11" stroke="#8e9cad" strokeWidth="1.7" strokeLinecap="round"/>
                     </>
                   )}
                 </svg>
               )}
               {isMe && isPending && (
                 <svg viewBox="0 0 18 13" fill="none" className="w-[18px] h-3 flex-shrink-0">
-                  <path d="M4 6.5L8.5 11L16 2" stroke="rgba(255,255,255,0.4)" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M4 6.5L8.5 11L16 2" stroke="#8e9cad" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
               )}
             </div>
@@ -420,7 +428,7 @@ function EditSettings({ orgId, settings, myId, onSave, onClose }) {
         </div>
         <div className="px-5 py-4 border-t border-slate-100 flex gap-2 flex-shrink-0">
           <button onClick={onClose} className="flex-1 py-3 border border-slate-200 text-slate-600 rounded-xl font-bold text-sm">Cancel</button>
-          <button onClick={submit} disabled={saving} className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">
+          <button onClick={submit} disabled={saving} className="flex-1 py-3 bg-[#128c7e] text-white rounded-xl font-bold text-sm disabled:opacity-50">
             {saving ? "Saving…" : "Save changes"}
           </button>
         </div>
@@ -429,93 +437,7 @@ function EditSettings({ orgId, settings, myId, onSave, onClose }) {
   );
 }
 
-// ─── Group Info Sheet ─────────────────────────────────────────────────────────
-function GroupInfo({ orgId, orgName, org, settings, members, onlineIds, lastSeen, isAdmin, myId, onClose, onEdit }) {
-  const displayName = settings?.chat_name || `${orgName} Group`;
-  const total       = members.length + 1;
 
-  return (
-    <div className="fixed inset-0 z-[120] flex justify-center items-end" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-[2px]" />
-      <div className="relative w-full max-w-md bg-white rounded-t-3xl overflow-hidden flex flex-col"
-        style={{ maxHeight: "88vh" }} onClick={e => e.stopPropagation()}>
-        <div className="w-10 h-1 bg-slate-200 rounded-full mx-auto mt-3 mb-1 flex-shrink-0" />
-
-        {/* Group header */}
-        <div className="flex flex-col items-center py-5 px-5 flex-shrink-0">
-          <div className="w-20 h-20 rounded-full flex items-center justify-center text-4xl mb-3 shadow-lg"
-            style={{ background: "linear-gradient(145deg,#1d4ed8,#1e3a8a)" }}>
-            <span>{settings?.emoji || "💬"}</span>
-          </div>
-          <p className="text-lg font-extrabold text-slate-800 text-center">{displayName}</p>
-          <p className="text-xs text-slate-400 mt-0.5">Group · {total} participant{total !== 1 ? "s" : ""}</p>
-          {isAdmin && (
-            <button onClick={onEdit}
-              className="mt-3 px-4 py-1.5 bg-blue-50 border border-blue-200 text-blue-600 text-xs font-bold rounded-full active:bg-blue-100">
-              ✏️ Edit group info
-            </button>
-          )}
-        </div>
-
-        <div className="flex-1 overflow-y-auto">
-          {/* Description */}
-          {settings?.description && (
-            <div className="mx-4 mb-3 p-3.5 bg-slate-50 rounded-2xl">
-              <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1">About</p>
-              <p className="text-sm text-slate-600 leading-relaxed">{settings.description}</p>
-            </div>
-          )}
-
-          {/* Rules */}
-          {settings?.rules && (
-            <div className="mx-4 mb-4 p-3.5 bg-amber-50 border border-amber-100 rounded-2xl">
-              <p className="text-[10px] font-extrabold text-amber-600 uppercase tracking-wider mb-1">📋 Rules</p>
-              <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap">{settings.rules}</p>
-            </div>
-          )}
-
-          {/* Members */}
-          <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-[0.18em] px-5 pb-2">
-            {total} Participants
-          </p>
-
-          {/* Admin row */}
-          <div className="flex items-center gap-3 px-4 py-3">
-            <Av name={org?.owner_name || orgName} size={44} online url={org?.logo_url} />
-            <div className="flex-1 min-w-0">
-              <p className="text-[14px] font-bold text-slate-800 truncate">{org?.owner_name || orgName}</p>
-              <p className="text-[11px] text-blue-500 font-semibold">Admin · online</p>
-            </div>
-          </div>
-
-          {members.map(m => {
-            const online = onlineIds.includes(m.user_id);
-            const seen   = lastSeen[m.user_id];
-            return (
-              <div key={m.id} className="flex items-center gap-3 px-4 py-3">
-                <Av name={m.full_name} size={44} online={online} url={m.avatar_url} />
-                <div className="flex-1 min-w-0">
-                  <p className="text-[14px] font-bold text-slate-800 truncate">{m.full_name}</p>
-                  <p className={`text-[11px] font-medium ${online ? "text-green-500" : "text-slate-400"}`}>
-                    {online ? "online" : `last seen ${fmtRelTime(seen)}`}
-                  </p>
-                </div>
-              </div>
-            );
-          })}
-          <div className="h-4" />
-        </div>
-
-        <div className="px-4 py-4 border-t border-slate-100 flex-shrink-0">
-          <button onClick={onClose}
-            className="w-full py-3 bg-slate-100 rounded-2xl text-sm font-bold text-slate-600 active:bg-slate-200">
-            Close
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ─── Typing dots ──────────────────────────────────────────────────────────────
 function TypingDots({ users }) {
@@ -577,6 +499,8 @@ export default function GroupChat({ orgId, myName, myRole = "member", orgName, o
   const typingTimer = useRef(null);
   const atBottom    = useRef(true);
   const oldestTs    = useRef(null);
+  const latestTs    = useRef(null);
+  const chState     = useRef("init"); // tracks realtime channel health
 
   const isAdmin = myRole === "admin" || myRole === "org";
 
@@ -607,12 +531,15 @@ export default function GroupChat({ orgId, myName, myRole = "member", orgName, o
 
     Promise.all([
       fetchPage(),
-      supabase.from("org_members").select("id,full_name,user_id,role,status,avatar_url,phone,joined_date").eq("org_id", orgId).eq("status", "active"),
+      supabase.from("org_members").select("id,full_name,user_id,role,status,avatar_url,profile_image_url,phone,joined_date").eq("org_id", orgId).eq("status", "active"),
       supabase.from("org_chat_settings").select("*").eq("org_id", orgId).maybeSingle(),
       supabase.from("org_chat_reads").select("user_id,last_read_at").eq("org_id", orgId),
     ]).then(([msgs, memR, setR, readsR]) => {
       setMessages(msgs);
-      if (msgs.length > 0) oldestTs.current = msgs[0].created_at;
+      if (msgs.length > 0) {
+        oldestTs.current = msgs[0].created_at;
+        latestTs.current = msgs[msgs.length - 1].created_at;
+      }
       if (msgs.length < PAGE_SIZE) setHasMore(false);
       setMembers(memR.data || []);
       setSettings(setR.data || null);
@@ -648,6 +575,7 @@ export default function GroupChat({ orgId, myName, myRole = "member", orgName, o
     ch
       // New message
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "org_group_messages", filter: `org_id=eq.${orgId}` }, ({ new: m }) => {
+        if (m.created_at) latestTs.current = m.created_at;
         setMessages(prev => {
           // If we have a pending temp with same content + sender, replace it
           const tempIdx = prev.findIndex(x => x._pending && x.sender_id === m.sender_id && x.content === m.content);
@@ -658,7 +586,19 @@ export default function GroupChat({ orgId, myName, myRole = "member", orgName, o
           }
           // Already have it by id?
           if (prev.find(x => x.id === m.id)) return prev;
-          // New message from someone else
+          // New message from someone else — notify if tab not focused
+          if (m.sender_id !== myIdRef.current) {
+            if (document.visibilityState !== "visible" || !document.hasFocus()) {
+              if (Notification.permission === "granted") {
+                new Notification(m.sender_name || "New message", {
+                  body: m.type === "audio" ? "🎤 Voice message" : m.type === "image" ? "📷 Photo" : m.content || "New message",
+                  icon: "/favicon.ico",
+                  tag: `msg-${orgId}`,
+                  renotify: true,
+                });
+              }
+            }
+          }
           if (atBottom.current) {
             setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 60);
             markRead();
@@ -700,6 +640,7 @@ export default function GroupChat({ orgId, myName, myRole = "member", orgName, o
         setTypingUsers(users.filter(u => u.typing && u.user_id !== myIdRef.current).map(u => u.user_name));
       })
       .subscribe(async status => {
+        chState.current = status;
         if (status === "SUBSCRIBED" && myIdRef.current) {
           await ch.track({ user_id: myIdRef.current, user_name: myName, typing: false, role: myRole });
         }
@@ -707,6 +648,61 @@ export default function GroupChat({ orgId, myName, myRole = "member", orgName, o
 
     return () => { supabase.removeChannel(ch); };
   }, [orgId, myName, myRole, markRead]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Notification permission ────────────────────────────────────────────────
+  useEffect(() => {
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+  }, []);
+
+  // ── Sync missed messages + reconnect on tab focus ──────────────────────────
+  useEffect(() => {
+    if (!orgId) return;
+
+    const handleVisibility = async () => {
+      if (document.visibilityState !== "visible") return;
+
+      // Fetch any messages that arrived while the tab was in the background
+      const since = latestTs.current;
+      if (since) {
+        const { data } = await supabase
+          .from("org_group_messages")
+          .select("*, reactions:org_message_reactions(*)")
+          .eq("org_id", orgId)
+          .gt("created_at", since)
+          .order("created_at", { ascending: true });
+
+        if (data?.length) {
+          latestTs.current = data[data.length - 1].created_at;
+          setMessages(prev => {
+            const existingIds = new Set(prev.map(m => m.id));
+            const fresh = data
+              .filter(m => !existingIds.has(m.id))
+              .map(m => ({ ...m, reactions: m.reactions || [] }));
+            if (!fresh.length) return prev;
+            setTimeout(() => {
+              if (atBottom.current) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+              else setUnread(c => c + fresh.length);
+            }, 40);
+            return [...prev, ...fresh];
+          });
+        }
+      }
+
+      // Reconnect realtime channel if it dropped while backgrounded
+      if (chState.current !== "SUBSCRIBED" && channelRef.current) {
+        supabase.removeChannel(channelRef.current).then(() => {
+          // The realtime useEffect will re-run and create a fresh channel
+          // when orgId/myName/myRole haven't changed — force it by touching channelRef
+          channelRef.current = null;
+        });
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [orgId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Load more ─────────────────────────────────────────────────────────────
   const loadMore = useCallback(async () => {
@@ -792,6 +788,7 @@ export default function GroupChat({ orgId, myName, myRole = "member", orgName, o
     }).select("*").single();
 
     if (data) {
+      if (data.created_at) latestTs.current = data.created_at;
       setMessages(prev => prev.map(m => m.id === tempId ? { ...data, reactions: [] } : m));
     } else {
       setMessages(prev => prev.filter(m => m.id !== tempId));
@@ -922,28 +919,38 @@ export default function GroupChat({ orgId, myName, myRole = "member", orgName, o
   const displayName = settings?.chat_name || `${orgName} Group`;
   const canSend     = text.trim().length > 0 || !!mediaPreview;
 
-  // Map user_id → avatar_url for quick lookup in message bubbles
+  // Map sender_id / sender_name → avatar_url for message bubbles.
+  // Keyed by user_id (primary) AND full_name (fallback for members whose user_id
+  // is not yet set in org_members).
   const avatarMap = useMemo(() => {
     const m = {};
-    for (const mem of members) if (mem.avatar_url) m[mem.user_id] = mem.avatar_url;
-    if (org?.logo_url) m["__org__"] = org.logo_url;
+    for (const mem of members) {
+      const url = mem.avatar_url || mem.profile_image_url;
+      if (!url) continue;
+      if (mem.user_id) m[mem.user_id] = url;
+      m[`n:${mem.full_name}`] = url;
+    }
+    if (org?.logo_url) {
+      if (org?.owner_id) m[org.owner_id] = org.logo_url;
+      m["__org__"] = org.logo_url;
+    }
     return m;
   }, [members, org]);
 
   // ─────────────────────────────────────────────────────────────────────────
   if (loading) return (
-    <div className="fixed inset-0 z-[80] bg-[#e8edf2] flex items-center justify-center">
-      <div className="w-9 h-9 border-[3px] border-blue-600 border-t-transparent rounded-full animate-spin" />
+    <div className="fixed inset-0 z-[80] bg-[#e5ddd5] flex items-center justify-center">
+      <div className="w-9 h-9 border-[3px] border-[#128c7e] border-t-transparent rounded-full animate-spin" />
     </div>
   );
 
   return (
-    <div className="fixed inset-0 z-[80] flex justify-center bg-[#e8edf2]">
+    <div className="fixed inset-0 z-[80] flex justify-center bg-[#e5ddd5]">
       <div className="w-full max-w-md flex flex-col h-full">
 
         {/* ── Header ── */}
         <div className="flex-shrink-0 flex items-center gap-2.5 px-3 py-2.5"
-          style={{ background: "linear-gradient(135deg,#1e40af,#1d4ed8)", paddingTop: "max(10px,env(safe-area-inset-top))" }}>
+          style={{ background: "#075E54", paddingTop: "max(10px,env(safe-area-inset-top))" }}>
           <button onClick={onBack}
             className="w-9 h-9 flex items-center justify-center rounded-full active:bg-white/10 transition-colors flex-shrink-0">
             <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.5} strokeLinecap="round" className="w-5 h-5">
@@ -957,7 +964,7 @@ export default function GroupChat({ orgId, myName, myRole = "member", orgName, o
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-[15px] font-extrabold text-white truncate leading-tight">{displayName}</p>
-              <p className="text-[10px] text-blue-200 truncate">
+              <p className="text-[10px] text-white/65 truncate">
                 {typingUsers.length > 0
                   ? `${typingUsers.slice(0, 2).join(", ")} typing…`
                   : `${members.length + 1} members · ${onlineIds.length} online`}
@@ -975,7 +982,7 @@ export default function GroupChat({ orgId, myName, myRole = "member", orgName, o
 
         {/* ── Search ── */}
         {showSearch && (
-          <div className="flex-shrink-0 px-3 py-2 bg-[#1d4ed8]">
+          <div className="flex-shrink-0 px-3 py-2 bg-[#075E54]">
             <div className="flex items-center gap-2 bg-white/20 rounded-xl px-3 py-2">
               <svg viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth={2} strokeLinecap="round" className="w-4 h-4 flex-shrink-0">
                 <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
@@ -996,9 +1003,9 @@ export default function GroupChat({ orgId, myName, myRole = "member", orgName, o
         {pinnedMsg && !pinnedMsg.is_deleted && !showSearch && (
           <button onClick={() => jumpTo(pinnedMsg.id)}
             className="flex-shrink-0 flex items-center gap-2.5 px-4 py-2 bg-white/80 backdrop-blur-sm border-b border-slate-200 text-left">
-            <div className="w-0.5 h-8 bg-blue-500 rounded-full flex-shrink-0" />
+            <div className="w-0.5 h-8 bg-[#128c7e] rounded-full flex-shrink-0" />
             <div className="flex-1 min-w-0">
-              <p className="text-[9px] font-extrabold text-blue-500 uppercase tracking-wider">📌 Pinned</p>
+              <p className="text-[9px] font-extrabold text-[#128c7e] uppercase tracking-wider">📌 Pinned</p>
               <p className="text-xs text-slate-700 truncate font-medium">
                 {pinnedMsg.type === "audio" ? "🎤 Voice message" : pinnedMsg.type === "image" ? "📷 Photo" : pinnedMsg.content}
               </p>
@@ -1009,7 +1016,7 @@ export default function GroupChat({ orgId, myName, myRole = "member", orgName, o
         {/* ── Messages ── */}
         <div ref={listRef} onScroll={onScroll}
           className="flex-1 overflow-y-auto overscroll-none"
-          style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Crect width='80' height='80' fill='%23e8edf2'/%3E%3Ccircle cx='40' cy='40' r='1' fill='%23d1d8e0' opacity='0.6'/%3E%3C/svg%3E\")" }}>
+          style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Crect width='80' height='80' fill='%23e5ddd5'/%3E%3Ccircle cx='40' cy='40' r='1' fill='%23c9c0b5' opacity='0.6'/%3E%3C/svg%3E\")" }}>
 
           {loadingMore && (
             <div className="flex justify-center py-3">
@@ -1019,7 +1026,7 @@ export default function GroupChat({ orgId, myName, myRole = "member", orgName, o
           {hasMore && !loadingMore && (
             <div className="flex justify-center pt-2 pb-1">
               <button onClick={loadMore}
-                className="text-xs text-blue-600 font-bold bg-white/90 px-4 py-1.5 rounded-full shadow-sm active:bg-blue-50">
+                className="text-xs text-[#128c7e] font-bold bg-white/90 px-4 py-1.5 rounded-full shadow-sm active:bg-[#e8f5f3]">
                 Load earlier
               </button>
             </div>
@@ -1060,13 +1067,14 @@ export default function GroupChat({ orgId, myName, myRole = "member", orgName, o
                   <Bubble
                     msg={msg} isMe={isMe} showName={!grouped} showAv={showAv}
                     myId={myIdRef.current || myId} lastSeen={lastSeen} memberCount={members.length}
-                    avatarUrl={avatarMap[msg.sender_id] || null}
+                    avatarUrl={avatarMap[msg.sender_id] || avatarMap[`n:${msg.sender_name}`] || null}
                     onLongPress={m => setCtxMsg(m)}
                     onReact={(m, e) => doAction("react", m, e)}
                     onJumpTo={jumpTo}
                     onAvatarTap={m => {
-                      const mem = members.find(x => x.user_id === m.sender_id);
-                      if (mem) { setViewProfile(mem); return; }
+                      const mem = members.find(x => x.user_id === m.sender_id)
+                               || members.find(x => x.full_name === m.sender_name);
+                      if (mem) { setViewProfile({ ...mem, avatar_url: mem.avatar_url || mem.profile_image_url }); return; }
                       if (m.sender_role === "admin" || m.sender_role === "org") {
                         setViewProfile({ full_name: m.sender_name, role: "admin", avatar_url: org?.logo_url, joined_date: null, phone: null });
                       }
@@ -1086,7 +1094,7 @@ export default function GroupChat({ orgId, myName, myRole = "member", orgName, o
           <button onClick={() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); setUnread(0); }}
             className="absolute right-4 bottom-[76px] z-10 w-10 h-10 bg-white rounded-full shadow-xl flex items-center justify-center border border-slate-200">
             {unread > 0 && (
-              <span className="absolute -top-1.5 -right-1 min-w-[18px] h-[18px] bg-blue-600 text-white text-[9px] font-bold rounded-full flex items-center justify-center px-1">
+              <span className="absolute -top-1.5 -right-1 min-w-[18px] h-[18px] bg-[#25d366] text-white text-[9px] font-bold rounded-full flex items-center justify-center px-1">
                 {unread > 99 ? "99+" : unread}
               </span>
             )}
@@ -1117,9 +1125,9 @@ export default function GroupChat({ orgId, myName, myRole = "member", orgName, o
         {/* ── Reply banner ── */}
         {replyTo && !mediaPreview && (
           <div className="flex-shrink-0 flex items-center gap-2.5 px-4 py-2 bg-white border-t border-slate-200">
-            <div className="w-0.5 h-8 bg-blue-500 rounded-full flex-shrink-0" />
+            <div className="w-0.5 h-8 bg-[#128c7e] rounded-full flex-shrink-0" />
             <div className="flex-1 min-w-0">
-              <p className="text-[11px] font-extrabold text-blue-600">{replyTo.sender_name}</p>
+              <p className="text-[11px] font-extrabold text-[#128c7e]">{replyTo.sender_name}</p>
               <p className="text-xs text-slate-500 truncate">
                 {replyTo.type === "audio" ? "🎤 Voice" : replyTo.type === "image" ? "📷 Photo" : replyTo.content?.slice(0, 60)}
               </p>
@@ -1160,7 +1168,7 @@ export default function GroupChat({ orgId, myName, myRole = "member", orgName, o
                 <span className="text-xs text-slate-400">Recording…</span>
               </div>
               <button onClick={stopRec}
-                className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center flex-shrink-0 shadow-md active:scale-90 transition-transform">
+                className="w-10 h-10 rounded-full bg-[#128c7e] text-white flex items-center justify-center flex-shrink-0 shadow-md active:scale-90 transition-transform">
                 <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
               </button>
             </div>
@@ -1199,7 +1207,7 @@ export default function GroupChat({ orgId, myName, myRole = "member", orgName, o
               {canSend || editMsg ? (
                 <button onClick={() => editMsg ? submitEdit() : mediaPreview ? sendImage() : sendMsg()}
                   disabled={sending}
-                  className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center shadow-md flex-shrink-0 mb-0.5 disabled:opacity-50 active:scale-90 transition-transform">
+                  className="w-10 h-10 rounded-full bg-[#128c7e] flex items-center justify-center shadow-md flex-shrink-0 mb-0.5 disabled:opacity-50 active:scale-90 transition-transform">
                   {sending
                     ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                     : editMsg
@@ -1208,7 +1216,7 @@ export default function GroupChat({ orgId, myName, myRole = "member", orgName, o
                 </button>
               ) : (
                 <button onClick={startRec}
-                  className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center shadow-md flex-shrink-0 mb-0.5 active:scale-90 transition-transform">
+                  className="w-10 h-10 rounded-full bg-[#128c7e] flex items-center justify-center shadow-md flex-shrink-0 mb-0.5 active:scale-90 transition-transform">
                   <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2} strokeLinecap="round" className="w-5 h-5">
                     <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/>
                     <path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/>
@@ -1231,14 +1239,13 @@ export default function GroupChat({ orgId, myName, myRole = "member", orgName, o
         />
       )}
 
-      {/* ── Group info sheet ── */}
+      {/* ── Group info page ── */}
       {showInfo && (
-        <GroupInfo
+        <GroupInfoPage
           orgId={orgId} orgName={orgName} org={org} settings={settings}
           members={members} onlineIds={onlineIds} lastSeen={lastSeen}
           isAdmin={isAdmin} myId={myIdRef.current || myId}
           onClose={() => setShowInfo(false)}
-          onEdit={() => { setShowInfo(false); setEditSettings(true); }}
         />
       )}
 

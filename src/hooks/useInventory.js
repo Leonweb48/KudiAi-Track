@@ -14,7 +14,8 @@ export function useInventory(userId, staffId = null, onNotify = null, branchId =
   const loadData = useCallback(async () => {
     if (!userId || !supabase) { setLoading(false); return; }
     let pQ = supabase.from("products").select("*").eq("user_id", userId).order("product_name");
-    if (branchId) pQ = pQ.eq("branch_id", branchId);
+    // Branch staff see their branch stock + main business stock (no branch), so they can sell from either
+    if (branchId) pQ = pQ.or(`branch_id.eq.${branchId},branch_id.is.null`);
     const [pRes, mRes] = await Promise.all([
       pQ,
       supabase.from("stock_movements").select("*").eq("user_id", userId)

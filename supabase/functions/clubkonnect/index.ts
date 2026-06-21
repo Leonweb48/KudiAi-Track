@@ -869,6 +869,39 @@ serve(async (req) => {
       return json({ results });
     }
 
+    // ── Wallet balance + commission (admin dashboard) ──────────────────────────
+    if (action === "wallet-balance") {
+      const useKey = AIRTIME_K || DATA_K || ELECTRICITY_K || CABLETV_K;
+      if (!USER_ID || !useKey)
+        return json({ error: "CK credentials not configured", balance: null, commission: null });
+      const data = await ck("APICheckWalletBalancev1.asp", { APIKey: useKey });
+      console.log("wallet-balance raw:", JSON.stringify(data));
+
+      // Strip currency symbols / commas before parsing — CK sometimes returns "₦26.00"
+      const parseAmt = (v: unknown): number | null => {
+        if (v === null || v === undefined || v === "") return null;
+        const n = Number(String(v).replace(/[^0-9.]/g, ""));
+        return isNaN(n) ? null : n;
+      };
+
+      const BALANCE_FIELDS    = ["WalletBalance","walletbalance","wallet_balance","Balance","balance","AccountBalance","Wallet_Balance","WALLETBALANCE","available_balance","AvailableBalance"];
+      const COMMISSION_FIELDS = ["TotalCommission","Commission","commission","total_commission","CommissionBalance","CommissionEarned","commission_balance","commission_earned"];
+
+      let balance: number | null = null;
+      for (const f of BALANCE_FIELDS) {
+        const v = parseAmt(data[f]);
+        if (v !== null) { balance = v; break; }
+      }
+
+      let commission: number | null = null;
+      for (const f of COMMISSION_FIELDS) {
+        const v = parseAmt(data[f]);
+        if (v !== null) { commission = v; break; }
+      }
+
+      return json({ balance, commission, raw: data });
+    }
+
     return json({ error: `Unknown action: ${action}` });
   } catch (e) {
     console.error("bill service error:", e);

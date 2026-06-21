@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { supabase } from "../utils/supabase";
+import { useTheme } from "../hooks/useTheme";
 import BillPayments from "./BillPayments";
 import GroupChat from "./GroupChat";
 
@@ -17,7 +18,7 @@ const fmtDate = d => d ? new Date(d).toLocaleDateString("en-NG", { day: "numeric
 const fmtDT   = d => d ? new Date(d).toLocaleString("en-NG", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
 
 const ANN_COLORS = {
-  announcement: "bg-blue-50 text-blue-700 border-blue-200",
+  announcement: "bg-green-50 text-green-700 border-green-200",
   notice:       "bg-amber-50 text-amber-700 border-amber-200",
   circular:     "bg-green-50 text-green-700 border-green-200",
   emergency:    "bg-red-50 text-red-700 border-red-300",
@@ -38,7 +39,7 @@ export function CoopMemberFirstLogin({ member }) {
   const [success,  setSuccess]  = useState(false);
 
   const score = [/.{8,}/, /[A-Z]/, /[0-9]/, /[^A-Za-z0-9]/].filter(r => r.test(password)).length;
-  const colors = ["", "bg-red-400", "bg-amber-400", "bg-blue-500", "bg-green-500"];
+  const colors = ["", "bg-red-400", "bg-amber-400", "bg-green-500", "bg-green-500"];
 
   const submit = async () => {
     if (password.length < 8) { setError("Minimum 8 characters"); return; }
@@ -56,14 +57,14 @@ export function CoopMemberFirstLogin({ member }) {
   if (success) return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center px-6">
       <div className="text-center">
-        <div className="w-20 h-20 bg-violet-100 dark:bg-violet-900/30 rounded-full flex items-center justify-center mx-auto mb-5">
-          <svg viewBox="0 0 24 24" fill="none" className="w-10 h-10 text-violet-600" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+        <div className="w-20 h-20 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-5">
+          <svg viewBox="0 0 24 24" fill="none" className="w-10 h-10 text-green-600" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
             <path d="M20 6L9 17l-5-5" />
           </svg>
         </div>
         <h2 className="text-xl font-extrabold text-slate-800 dark:text-white mb-2">Password set!</h2>
         <p className="text-sm text-slate-500 dark:text-slate-400">Taking you to your portal…</p>
-        <div className="mt-6 w-8 h-8 border-[3px] border-violet-500 border-t-transparent rounded-full animate-spin mx-auto" />
+        <div className="mt-6 w-8 h-8 border-[3px] border-green-500 border-t-transparent rounded-full animate-spin mx-auto" />
       </div>
     </div>
   );
@@ -71,7 +72,7 @@ export function CoopMemberFirstLogin({ member }) {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col">
       <div className="bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 px-5 pt-14 pb-5">
-        <div className="w-12 h-12 bg-violet-600 rounded-2xl flex items-center justify-center mb-4">
+        <div className="w-12 h-12 bg-green-600 rounded-2xl flex items-center justify-center mb-4">
           <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6 text-white" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
           </svg>
@@ -88,9 +89,9 @@ export function CoopMemberFirstLogin({ member }) {
             <input type={showPwd ? "text" : "password"} value={password}
               onChange={e => { setPassword(e.target.value); setError(""); }}
               placeholder="Minimum 8 characters"
-              className="w-full border border-slate-200 dark:border-slate-700 rounded-xl pl-4 pr-14 py-3 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500" />
+              className="w-full border border-slate-200 dark:border-slate-700 rounded-xl pl-4 pr-14 py-3 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500" />
             <button type="button" onClick={() => setShowPwd(v => !v)}
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-violet-600 dark:text-violet-400">
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-green-600 dark:text-green-400">
               {showPwd ? "Hide" : "Show"}
             </button>
           </div>
@@ -107,12 +108,12 @@ export function CoopMemberFirstLogin({ member }) {
           <input type={showPwd ? "text" : "password"} value={confirm}
             onChange={e => { setConfirm(e.target.value); setError(""); }}
             placeholder="Repeat your password"
-            className={`w-full border rounded-xl px-4 py-3 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500 ${confirm && confirm !== password ? "border-red-400 dark:border-red-600" : "border-slate-200 dark:border-slate-700"}`} />
+            className={`w-full border rounded-xl px-4 py-3 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500 ${confirm && confirm !== password ? "border-red-400 dark:border-red-600" : "border-slate-200 dark:border-slate-700"}`} />
           {confirm && confirm !== password && <p className="text-[10px] text-red-500 mt-1 font-medium">Passwords don't match</p>}
         </div>
         {error && <p className="text-xs text-red-500 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/40 rounded-xl px-4 py-2.5">{error}</p>}
         <button onClick={submit} disabled={saving || password.length < 8 || password !== confirm}
-          className="w-full bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white font-bold rounded-2xl py-4 text-sm transition">
+          className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-bold rounded-2xl py-4 text-sm transition">
           {saving ? "Saving…" : "Set Password & Enter Portal →"}
         </button>
         <button onClick={() => supabase.auth.signOut()} className="w-full text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition text-center">
@@ -153,7 +154,7 @@ function HomeTab({ member, org, announcements, loans = [], wdRequests = [], onQu
       icon:"M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" },
     { label:"Messages",         value: announcements.length,
       sub: pinnedAnns.length > 0 ? `${pinnedAnns.length} pinned` : "from organisation",
-      bg:"#2563eb", tab:"messages",
+      bg:"#00A651", tab:"messages",
       icon:"M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" },
   ];
 
@@ -170,35 +171,35 @@ function HomeTab({ member, org, announcements, loans = [], wdRequests = [], onQu
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-white font-extrabold text-[15px] leading-tight truncate">{member.full_name}</p>
-              <p className="text-blue-200 text-[10px] font-mono truncate">{member.membership_id}</p>
-              <p className="text-blue-200 text-[10px] capitalize truncate">{member.role} · {org.name}</p>
+              <p className="text-green-200 text-[10px] font-mono truncate">{member.membership_id}</p>
+              <p className="text-green-200 text-[10px] capitalize truncate">{member.role} · {org.name}</p>
             </div>
           </div>
-          <p className="text-[10px] font-extrabold text-blue-300 uppercase tracking-[0.25em] mb-1.5">Savings Balance</p>
+          <p className="text-[10px] font-extrabold text-green-300 uppercase tracking-[0.25em] mb-1.5">Savings Balance</p>
           <p className="text-[34px] font-black text-white leading-none tabular-nums break-all">{fmt(member.savings_balance)}</p>
           <div className="flex items-center mt-5 pt-4 border-t border-white/10">
             <div className="flex-1">
               <p className="text-sm font-extrabold text-white">{fmtDate(member.joined_date)}</p>
-              <p className="text-[10px] mt-0.5 text-blue-300">Member since</p>
+              <p className="text-[10px] mt-0.5 text-green-300">Member since</p>
             </div>
             <div className="border-l border-white/10 pl-4 ml-4 flex-1">
               <p className="text-sm font-extrabold text-white capitalize">{member.role}</p>
-              <p className="text-[10px] mt-0.5 text-blue-300">Role</p>
+              <p className="text-[10px] mt-0.5 text-green-300">Role</p>
             </div>
             <div className="border-l border-white/10 pl-4 ml-4 flex-1">
               <p className="text-sm font-extrabold text-white capitalize">{member.status || "active"}</p>
-              <p className="text-[10px] mt-0.5 text-blue-300">Status</p>
+              <p className="text-[10px] mt-0.5 text-green-300">Status</p>
             </div>
           </div>
         </div>
-        <div className="h-1 w-full" style={{ background: "linear-gradient(90deg, #2563eb, #06b6d4, #8b5cf6)" }} />
+        <div className="h-1 w-full" style={{ background: "linear-gradient(90deg, #00A651, #06b6d4, #8b5cf6)" }} />
       </div>
 
       {/* ── Quick Services ── */}
       <div className="px-4">
         <div className="flex justify-between items-center mb-4">
           <p className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em]">Quick Services</p>
-          {onNavigate && <button onClick={() => onNavigate("bills")} className="text-[10px] font-bold text-blue-600 dark:text-blue-400">View All →</button>}
+          {onNavigate && <button onClick={() => onNavigate("bills")} className="text-[10px] font-bold text-green-600 dark:text-green-400">View All →</button>}
         </div>
         <div className="grid grid-cols-4 gap-2">
           {MBR_QUICK.map(s => (
@@ -242,7 +243,7 @@ function HomeTab({ member, org, announcements, loans = [], wdRequests = [], onQu
         <p className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em] mb-3">Organisation</p>
         <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700/60 shadow-sm overflow-hidden">
           <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-50 dark:border-slate-700/40">
-            <div className="w-10 h-10 rounded-xl bg-violet-50 dark:bg-violet-900/20 flex items-center justify-center text-lg">
+            <div className="w-10 h-10 rounded-xl bg-green-50 dark:bg-green-900/20 flex items-center justify-center text-lg">
               {ORG_TYPE_ICONS[org.type] || "🏢"}
             </div>
             <div>
@@ -267,7 +268,7 @@ function HomeTab({ member, org, announcements, loans = [], wdRequests = [], onQu
         <div className="px-4">
           <div className="flex justify-between items-center mb-3">
             <p className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em]">Announcements</p>
-            {onNavigate && <button onClick={() => onNavigate("messages")} className="text-[10px] font-bold text-blue-600 dark:text-blue-400">View All →</button>}
+            {onNavigate && <button onClick={() => onNavigate("messages")} className="text-[10px] font-bold text-green-600 dark:text-green-400">View All →</button>}
           </div>
           <div className="flex flex-col gap-2">
             {visibleAnns.map(a => (
@@ -337,13 +338,13 @@ function PayOrgModal({ member, org, onClose }) {
             <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Amount (₦) *</label>
             <input type="number" value={amount} onChange={e => setAmount(e.target.value)}
               placeholder="Enter amount" disabled={loading}
-              className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 disabled:opacity-50" />
+              className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-green-400 disabled:opacity-50" />
           </div>
           {programs.length > 0 && (
             <div>
               <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Program (Optional)</label>
               <select value={programId} onChange={e => setProgramId(e.target.value)} disabled={loading}
-                className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 disabled:opacity-50">
+                className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-green-400 disabled:opacity-50">
                 <option value="">— General contribution —</option>
                 {programs.map(p => <option key={p.id} value={p.id}>{p.name}{p.contribution_type === "fixed" ? ` (${fmt(p.amount)})` : ""}</option>)}
               </select>
@@ -356,7 +357,7 @@ function PayOrgModal({ member, org, onClose }) {
         )}
 
         <button onClick={handlePay} disabled={loading || !amount}
-          className="w-full py-4 bg-violet-600 text-white font-bold rounded-2xl text-sm disabled:opacity-60">
+          className="w-full py-4 bg-green-600 text-white font-bold rounded-2xl text-sm disabled:opacity-60">
           {loading
             ? <span className="flex items-center justify-center gap-2"><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Preparing payment…</span>
             : "Pay with Paystack →"}
@@ -405,7 +406,7 @@ function RequestWithdrawalModal({ member, org, onClose, onSuccess }) {
             </div>
             <p className="text-base font-extrabold text-slate-800 dark:text-white mb-1">Request Submitted</p>
             <p className="text-xs text-slate-400 mb-6">Your withdrawal request is pending approval from {org.name}.</p>
-            <button onClick={onClose} className="w-full py-3 bg-violet-600 text-white font-bold rounded-2xl text-sm">Done</button>
+            <button onClick={onClose} className="w-full py-3 bg-green-600 text-white font-bold rounded-2xl text-sm">Done</button>
           </div>
         ) : (
           <>
@@ -417,12 +418,12 @@ function RequestWithdrawalModal({ member, org, onClose, onSuccess }) {
                 <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Amount (₦) *</label>
                 <input type="number" value={amount} onChange={e => { setAmount(e.target.value); setError(""); }}
                   placeholder="Enter amount"
-                  className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" />
+                  className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
               </div>
               <div>
                 <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Reason (Optional)</label>
                 <textarea value={reason} onChange={e => setReason(e.target.value)} rows={2} placeholder="Why do you need this withdrawal?"
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-violet-400" />
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-green-400" />
               </div>
             </div>
             <div className="flex gap-2 mt-4">
@@ -466,7 +467,7 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
   }, [member.id, org.id]);
   useEffect(() => { load(); }, [load]);
 
-  if (loading) return <div className="flex justify-center py-16"><div className="w-8 h-8 border-[3px] border-violet-500 border-t-transparent rounded-full animate-spin" /></div>;
+  if (loading) return <div className="flex justify-center py-16"><div className="w-8 h-8 border-[3px] border-green-500 border-t-transparent rounded-full animate-spin" /></div>;
 
   const totalContributed = history.filter(h => h.type === "deposit").reduce((sum, h) => sum + Number(h.amount), 0);
   const hasPaystack = !!org.paystack_subaccount_code;
@@ -480,7 +481,7 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
           <p className="text-[10px] text-slate-400 mt-0.5">Current Balance</p>
         </div>
         <div className="bg-white dark:bg-slate-800 rounded-2xl p-3 border border-slate-100 dark:border-slate-700 text-center">
-          <p className="text-lg font-extrabold text-violet-600 tabular">{fmt(totalContributed)}</p>
+          <p className="text-lg font-extrabold text-green-600 tabular">{fmt(totalContributed)}</p>
           <p className="text-[10px] text-slate-400 mt-0.5">Total Contributions</p>
         </div>
       </div>
@@ -489,7 +490,7 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
       <div className="flex gap-2">
         {hasPaystack && (
           <button onClick={() => setShowPay(true)}
-            className="flex-1 py-3 bg-violet-600 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5">
+            className="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5">
             <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
               <path d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
             </svg>
@@ -514,7 +515,7 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
               <p className="text-sm font-extrabold text-slate-800 dark:text-white">{p.name}</p>
               {p.description && <p className="text-[11px] text-slate-400 mt-0.5 line-clamp-1">{p.description}</p>}
               <div className="flex gap-1.5 mt-1.5 flex-wrap">
-                <span className="text-[10px] bg-violet-50 dark:bg-violet-900/20 text-violet-600 px-2 py-0.5 rounded-lg">{FREQ_LABELS[p.frequency]}</span>
+                <span className="text-[10px] bg-green-50 dark:bg-green-900/20 text-green-600 px-2 py-0.5 rounded-lg">{FREQ_LABELS[p.frequency]}</span>
                 {p.contribution_type === "fixed" && <span className="text-[10px] bg-green-50 text-green-600 px-2 py-0.5 rounded-lg">{fmt(p.amount)}</span>}
                 {p.contribution_type === "voluntary" && <span className="text-[10px] bg-slate-100 dark:bg-slate-700 text-slate-500 px-2 py-0.5 rounded-lg">Voluntary</span>}
               </div>
@@ -553,7 +554,7 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
               <div key={h.id} className="bg-white dark:bg-slate-800 rounded-xl px-3 py-2.5 border border-slate-100 dark:border-slate-700 flex justify-between items-start">
                 <div>
                   <p className="text-xs font-bold text-slate-700 dark:text-slate-200 capitalize">{h.type}</p>
-                  {h.org_contribution_programs?.name && <p className="text-[10px] text-violet-500 font-semibold">{h.org_contribution_programs.name}</p>}
+                  {h.org_contribution_programs?.name && <p className="text-[10px] text-green-500 font-semibold">{h.org_contribution_programs.name}</p>}
                   <p className="text-[10px] text-slate-400">{fmtDT(h.created_at)} · {h.payment_method}</p>
                 </div>
                 <div className="text-right">
@@ -600,7 +601,7 @@ function LoansTab({ member, org }) {
   useEffect(() => { load(); }, [load]);
 
   const STATUS_COL = {
-    pending: "text-amber-500", approved: "text-blue-600", disbursed: "text-violet-600",
+    pending: "text-amber-500", approved: "text-green-600", disbursed: "text-green-600",
     repaid: "text-green-600", rejected: "text-red-500", defaulted: "text-red-700",
   };
 
@@ -641,97 +642,186 @@ function LoansTab({ member, org }) {
 }
 
 // ═══════════════════════════════════════════════════
-//  MEETINGS TAB (with RSVP)
+//  BROADCAST STATION TAB (member portal)
 // ═══════════════════════════════════════════════════
-function MeetingsTab({ member, org }) {
-  const [meetings, setMeetings] = useState([]);
-  const [loading,  setLoading]  = useState(true);
-  const [rsvping,  setRsvping]  = useState(null);
+function MemberBroadcastTab({ member, org }) {
+  const [broadcasts, setBroadcasts] = useState([]);
+  const [loading,    setLoading]    = useState(true);
+  const [filter,     setFilter]     = useState("all");
+  const [rsvping,    setRsvping]    = useState(null);
+  const [voting,     setVoting]     = useState(null);
 
   const load = useCallback(() => {
-    coopFn("member-get-meetings", { member_id: member.id, org_id: org.id })
-      .then(r => setMeetings(r.meetings || []))
+    coopFn("member-get-broadcasts", { member_id: member.id, org_id: org.id })
+      .then(r => setBroadcasts(r.broadcasts || []))
       .finally(() => setLoading(false));
   }, [member.id, org.id]);
   useEffect(() => { load(); }, [load]);
 
   const handleRsvp = async (meetingId, status) => {
     setRsvping(meetingId);
-    try {
-      await coopFn("set-rsvp", { meeting_id: meetingId, member_id: member.id, org_id: org.id, status });
-      load();
-    } catch (e) { alert(e.message); }
+    try { await coopFn("set-rsvp", { meeting_id: meetingId, member_id: member.id, org_id: org.id, status }); load(); }
+    catch (e) { alert(e.message); }
     finally { setRsvping(null); }
   };
 
-  const RSVP_OPTIONS = [
-    { status: "attending",     label: "Attending",  color: "bg-green-500 text-white" },
-    { status: "maybe",         label: "Maybe",      color: "bg-amber-400 text-white" },
-    { status: "not_attending", label: "Can't Go",   color: "bg-slate-400 text-white" },
-  ];
-  const FORMAT_BADGE = { physical: "bg-green-100 text-green-700", virtual: "bg-blue-100 text-blue-700", hybrid: "bg-violet-100 text-violet-700" };
+  const handleVote = async (pollId, optionIndex) => {
+    setVoting(pollId);
+    try { await coopFn("member-submit-poll-vote", { poll_id: pollId, member_id: member.id, option_index: optionIndex }); load(); }
+    catch (e) { alert(e.message); }
+    finally { setVoting(null); }
+  };
 
-  if (loading) return <div className="flex justify-center py-16"><div className="w-8 h-8 border-[3px] border-blue-500 border-t-transparent rounded-full animate-spin" /></div>;
+  const FILTER_TABS = [
+    { id: "all",          label: "All"           },
+    { id: "meeting",      label: "Meetings"      },
+    { id: "announcement", label: "Announcements" },
+    { id: "event",        label: "Events"        },
+    { id: "poll",         label: "Polls"         },
+  ];
+  const RSVP_OPTIONS = [
+    { status: "attending",     label: "Attending", color: "bg-green-500 text-white"  },
+    { status: "maybe",         label: "Maybe",     color: "bg-amber-400 text-white"  },
+    { status: "not_attending", label: "Can't Go",  color: "bg-slate-400 text-white"  },
+  ];
+  const TYPE_COLORS = {
+    meeting:      { bg: "bg-[#0D2040]", text: "text-white", label: "Meeting"      },
+    announcement: { bg: "bg-amber-500",  text: "text-white", label: "Announcement" },
+    event:        { bg: "bg-[#00A651]",  text: "text-white", label: "Event"        },
+    poll:         { bg: "bg-purple-600", text: "text-white", label: "Poll"         },
+  };
+
+  const visible = filter === "all" ? broadcasts : broadcasts.filter(b => b._type === filter);
+
+  if (loading) return (
+    <div className="flex justify-center py-16">
+      <div className="w-8 h-8 border-[3px] border-t-transparent rounded-full animate-spin" style={{ borderColor: "#00A651", borderTopColor: "transparent" }} />
+    </div>
+  );
 
   return (
-    <div className="p-4 pb-28 flex flex-col gap-3">
-      {meetings.length === 0 ? (
-        <div className="flex flex-col items-center py-20 text-center">
-          <span className="text-5xl mb-4">📅</span>
-          <p className="text-base font-extrabold text-slate-700 dark:text-slate-200 mb-2">No Meetings</p>
-          <p className="text-sm text-slate-400">No meetings have been scheduled yet.</p>
-        </div>
-      ) : (
-        meetings.map(m => (
-          <div key={m.id} className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-100 dark:border-slate-700">
-            <div className="flex justify-between items-start mb-2">
-              <div className="flex-1 min-w-0 mr-2">
-                <p className="text-sm font-extrabold text-slate-800 dark:text-white">{m.title}</p>
-                <p className="text-[11px] text-slate-400 mt-0.5">{fmtDT(m.scheduled_at)}</p>
-                {m.location && <p className="text-[11px] text-slate-400">📍 {m.location}</p>}
-                {m.meeting_link && (
-                  <a href={m.meeting_link} target="_blank" rel="noreferrer"
-                    className="inline-block mt-1 text-[10px] font-bold text-blue-500 bg-blue-50 px-2 py-0.5 rounded-lg">🔗 Join Online</a>
-                )}
+    <div className="flex flex-col h-full">
+      {/* Filter tabs */}
+      <div className="px-4 pt-4 pb-2 flex gap-2 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
+        {FILTER_TABS.map(f => (
+          <button key={f.id} onClick={() => setFilter(f.id)}
+            className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-bold transition ${filter === f.id ? "text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"}`}
+            style={filter === f.id ? { background: "#0D2040" } : {}}>
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-4 pb-28 flex flex-col gap-3 pt-2">
+        {visible.length === 0 ? (
+          <div className="flex flex-col items-center py-20 text-center">
+            <span className="text-5xl mb-4">📡</span>
+            <p className="text-base font-extrabold text-slate-700 dark:text-slate-200 mb-2">Nothing here yet</p>
+            <p className="text-sm text-slate-400">Your organisation's broadcasts will appear here.</p>
+          </div>
+        ) : visible.map(item => {
+          const tc = TYPE_COLORS[item._type];
+          return (
+            <div key={item.id} className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-100 dark:border-slate-700">
+              <div className="flex items-start gap-2 mb-1.5">
+                <span className={`flex-shrink-0 text-[9px] font-extrabold px-2 py-0.5 rounded-full mt-0.5 ${tc.bg} ${tc.text}`}>{tc.label}</span>
+                <p className="text-sm font-extrabold text-slate-800 dark:text-white leading-snug">{item.title || item.question}</p>
               </div>
-              <div className="text-right flex-shrink-0">
-                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full capitalize ${FORMAT_BADGE[m.format] || FORMAT_BADGE.physical}`}>{m.format}</span>
-                {m.my_attendance && (
-                  <p className={`text-[10px] font-bold mt-1 ${m.my_attendance === "present" ? "text-green-600" : "text-red-500"}`}>
-                    {m.my_attendance === "present" ? "✓ Present" : "✗ Absent"}
+              <p className="text-[11px] text-slate-400 mb-2">{fmtDT(item.scheduled_at || item.event_date || item.created_at)}</p>
+
+              {/* Meeting */}
+              {item._type === "meeting" && (<>
+                {item.location && <p className="text-[11px] text-slate-400 mb-1">📍 {item.location}</p>}
+                {item.meeting_link && (
+                  <a href={item.meeting_link} target="_blank" rel="noreferrer"
+                    className="inline-block mb-2 text-[10px] font-bold text-green-500 bg-green-50 dark:bg-green-900/20 px-2.5 py-1 rounded-lg">🔗 Join Online</a>
+                )}
+                {item.agenda && (
+                  <div className="bg-slate-50 dark:bg-slate-700 rounded-xl px-3 py-2 mb-3">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Agenda</p>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-300 whitespace-pre-line line-clamp-4">{item.agenda}</p>
+                  </div>
+                )}
+                {item.my_attendance && (
+                  <p className={`text-[10px] font-bold mb-2 ${item.my_attendance === "present" ? "text-green-600" : "text-red-500"}`}>
+                    {item.my_attendance === "present" ? "✓ You were marked present" : "✗ You were marked absent"}
                   </p>
                 )}
-              </div>
+                {item.rsvp_counts && (
+                  <div className="flex gap-2 text-[10px] text-slate-400 mb-2">
+                    <span className="text-green-600 font-bold">✓ {item.rsvp_counts.attending}</span>
+                    <span>·</span>
+                    <span className="text-amber-500 font-bold">? {item.rsvp_counts.maybe}</span>
+                    <span>·</span>
+                    <span className="text-slate-400 font-bold">✗ {item.rsvp_counts.not_attending}</span>
+                  </div>
+                )}
+                <div className="flex gap-1.5">
+                  {RSVP_OPTIONS.map(opt => {
+                    const isActive = item.my_rsvp === opt.status;
+                    return (
+                      <button key={opt.status} onClick={() => handleRsvp(item.id, opt.status)} disabled={rsvping === item.id}
+                        className={`flex-1 py-1.5 rounded-xl text-[10px] font-bold border transition disabled:opacity-50 ${isActive ? opt.color + " border-transparent" : "border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400 bg-transparent"}`}>
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>)}
+
+              {/* Announcement */}
+              {item._type === "announcement" && item.body && (
+                <p className="text-sm text-slate-600 dark:text-slate-300 whitespace-pre-line">{item.body}</p>
+              )}
+
+              {/* Event */}
+              {item._type === "event" && (<>
+                {item.description && <p className="text-sm text-slate-600 dark:text-slate-300 mb-2">{item.description}</p>}
+                {item.location    && <p className="text-[11px] text-slate-400">📍 {item.location}</p>}
+                {item.end_date    && <p className="text-[11px] text-slate-400">Until {fmtDT(item.end_date)}</p>}
+                {item.event_link  && (
+                  <a href={item.event_link} target="_blank" rel="noreferrer"
+                    className="inline-block mt-2 text-[10px] font-bold text-green-500 bg-green-50 dark:bg-green-900/20 px-2.5 py-1 rounded-lg">🔗 More info</a>
+                )}
+              </>)}
+
+              {/* Poll */}
+              {item._type === "poll" && (<>
+                <div className="flex flex-col gap-1.5 mb-2">
+                  {(item.options || []).map((opt, i) => {
+                    const votes   = (item.vote_counts || {})[i] || 0;
+                    const total   = item.total_votes || 0;
+                    const pct     = total > 0 ? Math.round(votes / total * 100) : 0;
+                    const isMyVote = item.my_vote === i;
+                    const hasVoted = item.my_vote != null;
+                    return (
+                      <button key={i}
+                        onClick={() => !hasVoted && item.is_active && handleVote(item.id, i)}
+                        disabled={hasVoted || !item.is_active || voting === item.id}
+                        className={`relative rounded-xl overflow-hidden text-left border-2 transition ${isMyVote ? "border-green-400" : "border-slate-200 dark:border-slate-600"}`}>
+                        <div className="absolute inset-0" style={{ width: `${pct}%`, background: isMyVote ? "#00A65120" : "#00000008" }} />
+                        <div className="relative px-3 py-2 flex justify-between items-center">
+                          <span className={`text-[11px] font-semibold ${isMyVote ? "text-green-700 dark:text-green-300" : "text-slate-700 dark:text-slate-200"}`}>
+                            {isMyVote && "✓ "}{opt}
+                          </span>
+                          <span className="text-[10px] text-slate-400 ml-2">{pct}%</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[10px] text-slate-400">
+                  {item.total_votes || 0} votes · {item.is_active ? "Poll open" : "Poll closed"}
+                  {item.closes_at && item.is_active ? ` · Closes ${fmtDT(item.closes_at)}` : ""}
+                </p>
+                {item.my_vote == null && item.is_active && (
+                  <p className="text-[10px] font-bold mt-1" style={{ color: "#00A651" }}>Tap an option to vote</p>
+                )}
+              </>)}
             </div>
-            {m.agenda && (
-              <div className="bg-slate-50 dark:bg-slate-700 rounded-xl px-3 py-2 mb-3">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Agenda</p>
-                <p className="text-[11px] text-slate-600 dark:text-slate-300 whitespace-pre-line line-clamp-4">{m.agenda}</p>
-              </div>
-            )}
-            {m.rsvp_counts && (
-              <div className="flex gap-2 text-[10px] text-slate-400 mb-3">
-                <span className="text-green-600 font-bold">✓ {m.rsvp_counts.attending}</span>
-                <span>·</span>
-                <span className="text-amber-500 font-bold">? {m.rsvp_counts.maybe}</span>
-                <span>·</span>
-                <span className="text-slate-400 font-bold">✗ {m.rsvp_counts.not_attending}</span>
-              </div>
-            )}
-            <div className="flex gap-1.5">
-              {RSVP_OPTIONS.map(opt => {
-                const isActive = m.my_rsvp === opt.status;
-                return (
-                  <button key={opt.status} onClick={() => handleRsvp(m.id, opt.status)} disabled={rsvping === m.id}
-                    className={`flex-1 py-1.5 rounded-xl text-[10px] font-bold border transition disabled:opacity-50 ${isActive ? opt.color + " border-transparent" : "border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400 bg-transparent"}`}>
-                    {opt.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        ))
-      )}
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -739,7 +829,7 @@ function MeetingsTab({ member, org }) {
 // ═══════════════════════════════════════════════════
 //  DIRECTORY TAB
 // ═══════════════════════════════════════════════════
-function DirectoryTab({ member: selfMember, org }) {
+function DirectoryTab({ member: selfMember, org, isDark = false, onToggleDark }) {
   const [directory, setDirectory] = useState([]);
   const [loading,   setLoading]   = useState(true);
   const [search,    setSearch]    = useState("");
@@ -768,8 +858,8 @@ function DirectoryTab({ member: selfMember, org }) {
   };
 
   const ROLE_COLORS = {
-    admin: "bg-violet-100 text-violet-700", president: "bg-amber-100 text-amber-700",
-    treasurer: "bg-green-100 text-green-700", secretary: "bg-blue-100 text-blue-700",
+    admin: "bg-green-100 text-green-700", president: "bg-amber-100 text-amber-700",
+    treasurer: "bg-green-100 text-green-700", secretary: "bg-green-100 text-green-700",
     officer: "bg-pink-100 text-pink-700", member: "bg-slate-100 text-slate-600",
   };
 
@@ -783,7 +873,7 @@ function DirectoryTab({ member: selfMember, org }) {
       <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-100 dark:border-slate-700">
         <div className="flex justify-between items-center mb-2">
           <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">My Privacy Settings</p>
-          {savingP && <div className="w-4 h-4 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />}
+          {savingP && <div className="w-4 h-4 border-2 border-green-400 border-t-transparent rounded-full animate-spin" />}
         </div>
         {[
           ["privacy_balance",        "Hide my balance from directory"],
@@ -793,7 +883,7 @@ function DirectoryTab({ member: selfMember, org }) {
           <label key={key} className="flex items-center justify-between py-2 cursor-pointer">
             <span className="text-xs text-slate-600 dark:text-slate-300">{label}</span>
             <div onClick={() => handlePrivacy(key, !privacy[key])}
-              className={`w-10 h-6 rounded-full relative transition-colors cursor-pointer ${privacy[key] ? "bg-violet-500" : "bg-slate-200 dark:bg-slate-600"}`}>
+              className={`w-10 h-6 rounded-full relative transition-colors cursor-pointer ${privacy[key] ? "bg-green-500" : "bg-slate-200 dark:bg-slate-600"}`}>
               <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${privacy[key] ? "translate-x-5" : "translate-x-1"}`} />
             </div>
           </label>
@@ -805,16 +895,16 @@ function DirectoryTab({ member: selfMember, org }) {
           <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
         </svg>
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search members…"
-          className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-400" />
+          className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-400" />
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-10"><div className="w-8 h-8 border-[3px] border-violet-500 border-t-transparent rounded-full animate-spin" /></div>
+        <div className="flex justify-center py-10"><div className="w-8 h-8 border-[3px] border-green-500 border-t-transparent rounded-full animate-spin" /></div>
       ) : (
         <div className="grid grid-cols-2 gap-2">
           {filtered.map(m => (
             <div key={m.id} className="bg-white dark:bg-slate-800 rounded-2xl p-3 border border-slate-100 dark:border-slate-700">
-              <div className="w-10 h-10 rounded-xl bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center text-base font-extrabold text-violet-600 mb-2">
+              <div className="w-10 h-10 rounded-xl bg-green-100 dark:bg-green-900/30 flex items-center justify-center text-base font-extrabold text-green-600 mb-2">
                 {m.full_name?.charAt(0).toUpperCase()}
               </div>
               <p className="text-xs font-extrabold text-slate-800 dark:text-white leading-tight mb-0.5">{m.full_name}</p>
@@ -825,6 +915,52 @@ function DirectoryTab({ member: selfMember, org }) {
           ))}
         </div>
       )}
+
+      {/* Theme toggle */}
+      <div className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 border border-slate-100 dark:border-slate-700 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+            style={{ background: isDark ? "#0D2040" : "#f0fdf4" }}>
+            <svg viewBox="0 0 24 24" fill="none" className="w-4.5 h-4.5" stroke={isDark ? "#00A651" : "#0D2040"} strokeWidth={2} strokeLinecap="round">
+              {isDark
+                ? <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
+                : <><circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /></>
+              }
+            </svg>
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">{isDark ? "Dark Mode" : "Light Mode"}</p>
+            <p className="text-[10px] text-slate-400">Tap to switch</p>
+          </div>
+        </div>
+        <button onClick={onToggleDark}
+          className="w-12 h-6 rounded-full transition-all relative flex-shrink-0"
+          style={{ background: isDark ? "#00A651" : "#e2e8f0" }}>
+          <div className={`w-5 h-5 rounded-full bg-white shadow-md transition-transform absolute top-0.5 ${isDark ? "translate-x-[26px]" : "translate-x-0.5"}`} />
+        </button>
+      </div>
+
+      {/* Account / Sign Out */}
+      <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-100 dark:border-slate-700 flex items-center gap-3">
+        {selfMember.avatar_url
+          ? <img src={selfMember.avatar_url} alt="" className="w-11 h-11 rounded-xl object-cover ring-2 ring-green-200 flex-shrink-0" />
+          : <div className="w-11 h-11 rounded-xl flex items-center justify-center text-lg font-extrabold text-white flex-shrink-0"
+              style={{ background: "linear-gradient(145deg,#00A651,#0D2040)" }}>
+              {selfMember.full_name?.charAt(0).toUpperCase()}
+            </div>
+        }
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-extrabold text-slate-800 dark:text-white truncate">{selfMember.full_name}</p>
+          <p className="text-[10px] text-slate-400 font-mono">{selfMember.membership_id} · {org?.name}</p>
+        </div>
+        <button onClick={() => supabase.auth.signOut()}
+          className="flex-shrink-0 flex items-center gap-1.5 text-[11px] font-bold text-red-500 border border-red-200 dark:border-red-800 px-3 py-1.5 rounded-xl active:opacity-75 transition-opacity">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="w-3.5 h-3.5">
+            <path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+          </svg>
+          Sign Out
+        </button>
+      </div>
     </div>
   );
 }
@@ -858,12 +994,15 @@ function MemberBillsTab({ member, org, autoService = null, onAutoOpened = null }
     profile: { email: member.email, owner_name: member.full_name, business_name: org.name, id: member.id },
   }), [bills, addTransaction, member.email, member.full_name, org.name, member.id]);
 
-  if (loading) return <div className="flex justify-center py-16"><div className="w-6 h-6 border-[3px] border-blue-500 border-t-transparent rounded-full animate-spin" /></div>;
+  if (loading) return <div className="flex justify-center py-16"><div className="w-6 h-6 border-[3px] border-green-500 border-t-transparent rounded-full animate-spin" /></div>;
 
   return (
     <BillPayments
       store={store}
       plan=""
+      markup={1.098}
+      cashback={10}
+      pointsEnabled
       excludeCats={["print-airtime", "print-data"]}
       businessName={org.name}
       autoService={autoService}
@@ -884,8 +1023,8 @@ const MAIN_TABS = [
 
 const MORE_TABS = [
   { id: "bills",     label: "Bills",     color:"#7c3aed", icon:"M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" },
-  { id: "meetings",  label: "Meetings",  color:"#0f766e", icon:"M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" },
-  { id: "directory", label: "Directory", color:"#2563eb", icon:"M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" },
+  { id: "broadcast", label: "Broadcast", color:"#0f766e", icon:"M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" },
+  { id: "directory", label: "Directory", color:"#00A651", icon:"M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" },
 ];
 
 // ─── Member Profile Sheet ─────────────────────────────────────────────────────
@@ -918,9 +1057,11 @@ function ProfileSheet({ member, onClose, onSave }) {
         const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(data.path);
         avatar_url = publicUrl;
       }
-      const { error: dbErr } = await supabase.from("org_members")
-        .update({ full_name: form.full_name.trim(), phone: form.phone.trim() || null, avatar_url })
-        .eq("id", member.id);
+      const { error: dbErr } = await supabase.rpc("update_my_member_profile", {
+        p_full_name:  form.full_name.trim(),
+        p_phone:      form.phone.trim() || null,
+        p_avatar_url: avatar_url,
+      });
       if (dbErr) throw dbErr;
       onSave({ full_name: form.full_name.trim(), phone: form.phone.trim() || null, avatar_url });
       onClose();
@@ -928,7 +1069,7 @@ function ProfileSheet({ member, onClose, onSave }) {
     setSaving(false);
   };
 
-  const inp = "w-full bg-slate-100 rounded-xl px-4 py-3 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-blue-400";
+  const inp = "w-full bg-slate-100 rounded-xl px-4 py-3 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-green-400";
   const fmtDate = d => d ? new Date(d).toLocaleDateString("en-NG", { day:"numeric", month:"short", year:"numeric" }) : "—";
 
   return (
@@ -949,13 +1090,13 @@ function ProfileSheet({ member, onClose, onSave }) {
           <div className="flex flex-col items-center gap-2 pb-4 border-b border-slate-100">
             <button onClick={() => fileRef.current?.click()} className="relative group active:scale-95 transition-transform">
               {preview
-                ? <img src={preview} alt="" className="w-24 h-24 rounded-full object-cover ring-4 ring-blue-100 shadow-xl" />
-                : <div className="w-24 h-24 rounded-full flex items-center justify-center text-3xl font-black text-white shadow-xl ring-4 ring-blue-100"
-                    style={{ background: "linear-gradient(145deg,#2563eb,#1e3a8a)" }}>
+                ? <img src={preview} alt="" className="w-24 h-24 rounded-full object-cover ring-4 ring-green-100 shadow-xl" />
+                : <div className="w-24 h-24 rounded-full flex items-center justify-center text-3xl font-black text-white shadow-xl ring-4 ring-green-100"
+                    style={{ background: "linear-gradient(145deg,#00A651,#0D2040)" }}>
                     {member.full_name?.charAt(0).toUpperCase()}
                   </div>
               }
-              <div className="absolute bottom-0 right-0 w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center border-2 border-white shadow-md">
+              <div className="absolute bottom-0 right-0 w-8 h-8 bg-green-600 rounded-full flex items-center justify-center border-2 border-white shadow-md">
                 <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.5} className="w-4 h-4"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
               </div>
             </button>
@@ -990,7 +1131,7 @@ function ProfileSheet({ member, onClose, onSave }) {
         <div className="px-5 py-4 border-t border-slate-100 flex gap-2 flex-shrink-0">
           <button onClick={onClose} className="flex-1 py-3 border border-slate-200 text-slate-600 rounded-xl font-bold text-sm active:bg-slate-50">Cancel</button>
           <button onClick={save} disabled={saving}
-            className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold text-sm disabled:opacity-50 active:bg-blue-700">
+            className="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-50 active:bg-green-700">
             {saving ? "Saving…" : "Save Changes"}
           </button>
         </div>
@@ -1000,8 +1141,15 @@ function ProfileSheet({ member, onClose, onSave }) {
 }
 
 export default function CoopMemberPortal({ member: initialMember }) {
+  const { isDark, toggle: toggleDark } = useTheme();
   const [member,        setMember]        = useState(initialMember);
-  const [tab,           setTab]           = useState("home");
+  const [tab,           setTab]           = useState(() => {
+    const p = new URLSearchParams(window.location.search);
+    const ref = p.get("bill_ref") || p.get("trxref") || p.get("reference");
+    if (ref && localStorage.getItem(`ck_bill_pending_${ref}`)) return "bills";
+    if (Object.keys(localStorage).some(k => k.startsWith("ck_bill_pending_"))) return "bills";
+    return "home";
+  });
   const [announcements, setAnnouncements] = useState([]);
   const [loans,         setLoans]         = useState([]);
   const [wdRequests,    setWdRequests]    = useState([]);
@@ -1052,14 +1200,6 @@ export default function CoopMemberPortal({ member: initialMember }) {
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Detect Paystack return for bill payment — switch to bills tab so BillPayments handles it
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const billRef = params.get("bill_ref") || params.get("trxref");
-    if (billRef && localStorage.getItem(`ck_bill_pending_${billRef}`)) {
-      setTab("bills");
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load announcements + summary counts for dashboard
   useEffect(() => {
@@ -1098,8 +1238,8 @@ export default function CoopMemberPortal({ member: initialMember }) {
     contributions: <ContributionsTab member={member} org={org} onMemberUpdate={handleMemberUpdate} />,
     loans:         <LoansTab member={member} org={org} />,
     bills:         <MemberBillsTab member={member} org={org} autoService={billsAutoSvc} onAutoOpened={() => setBillsAutoSvc(null)} />,
-    meetings:      <MeetingsTab member={member} org={org} />,
-    directory:     <DirectoryTab member={member} org={org} />,
+    broadcast:     <MemberBroadcastTab member={member} org={org} />,
+    directory:     <DirectoryTab member={member} org={org} isDark={isDark} onToggleDark={toggleDark} />,
     messages:      <GroupChat orgId={org.id} myName={member.full_name} myRole="member" orgName={org.name} org={org} onBack={() => navigateTo("home")} />,
   };
 
@@ -1112,33 +1252,29 @@ export default function CoopMemberPortal({ member: initialMember }) {
       <div className="w-full max-w-md flex flex-col overflow-hidden" style={{ height: "100dvh" }}>
 
         {/* ── Top Header ── */}
-        <div className="sticky top-0 z-20 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 py-3 flex items-center gap-3">
+        <div className="sticky top-0 z-20 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 py-3 flex items-center justify-between relative">
+          {/* KudiAi Track brand — centered */}
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none">
+            <span className="text-sm font-black tracking-tight leading-none">
+              <span style={{ background: "linear-gradient(135deg,#0D2040,#00A651)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>KudiAi</span>
+              <span className="text-[#0D2040] dark:text-[#00A651] font-bold"> Track</span>
+            </span>
+          </div>
+          {/* Left: KudiAi Track logo */}
+          <img src="/logo.png" alt="KudiAi Track" className="h-9 w-auto flex-shrink-0 object-contain" />
+          {/* Right: member avatar — taps open profile editor */}
           <button onClick={() => setShowProfile(true)} className="flex-shrink-0 active:opacity-75 transition-opacity relative">
             {member.avatar_url
-              ? <img src={member.avatar_url} alt="" className="w-9 h-9 rounded-xl object-cover ring-2 ring-blue-200" />
+              ? <img src={member.avatar_url} alt="" className="w-9 h-9 rounded-xl object-cover ring-2 ring-green-200" />
               : <div className="w-9 h-9 rounded-xl flex items-center justify-center text-base font-extrabold text-white"
-                  style={{ background: "linear-gradient(145deg,#2563eb,#1e3a8a)" }}>
+                  style={{ background: "linear-gradient(145deg,#00A651,#0D2040)" }}>
                   {member.full_name?.charAt(0).toUpperCase()}
                 </div>
             }
-            <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-blue-600 rounded-full border-2 border-white flex items-center justify-center">
+            <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-green-600 rounded-full border-2 border-white flex items-center justify-center">
               <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={3} className="w-2 h-2"><path d="M12 5v14M5 12h14"/></svg>
             </span>
           </button>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-extrabold text-slate-800 dark:text-white truncate leading-tight">{member.full_name}</p>
-            <p className="text-[9px] text-slate-400 font-mono truncate">{member.membership_id} · {org?.name}</p>
-          </div>
-          <div className="flex items-center gap-3 flex-shrink-0">
-            <div className="text-right">
-              <p className="text-sm font-extrabold text-green-600">{fmt(member.savings_balance)}</p>
-              <p className="text-[9px] text-slate-400">savings</p>
-            </div>
-            <button onClick={() => supabase.auth.signOut()}
-              className="text-[10px] font-extrabold text-red-500 border border-red-200 dark:border-red-800 px-2.5 py-1 rounded-lg">
-              Sign Out
-            </button>
-          </div>
         </div>
 
         {/* ── Main Content ── */}
@@ -1157,25 +1293,25 @@ export default function CoopMemberPortal({ member: initialMember }) {
                   return (
                     <button key={t.id} onClick={() => { setTab(t.id); setShowMore(false); }}
                       className="flex flex-col items-center gap-1 px-3 py-1.5 min-w-[52px] relative">
-                      {active && <span className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full bg-blue-600" />}
+                      {active && <span className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full bg-green-600" />}
                       <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5"
-                        stroke={active ? "#2563eb" : "#94a3b8"} strokeWidth={active ? 2.5 : 2} strokeLinecap="round" strokeLinejoin="round">
+                        stroke={active ? "#00A651" : "#94a3b8"} strokeWidth={active ? 2.5 : 2} strokeLinecap="round" strokeLinejoin="round">
                         <path d={t.icon} />
                       </svg>
-                      <span className={`text-[9px] font-bold ${active ? "text-blue-600" : "text-slate-400 dark:text-slate-500"}`}>{t.label}</span>
+                      <span className={`text-[9px] font-bold ${active ? "text-green-600" : "text-slate-400 dark:text-slate-500"}`}>{t.label}</span>
                     </button>
                   );
                 })}
                 {/* More button */}
                 <button onClick={() => setShowMore(p => !p)}
                   className="flex flex-col items-center gap-1 px-3 py-1.5 min-w-[52px] relative">
-                  {isMoreTab && <span className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full bg-blue-600" />}
+                  {isMoreTab && <span className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full bg-green-600" />}
                   {emergencyCount > 0 && <span className="absolute top-1 right-2 w-2 h-2 bg-red-500 rounded-full" />}
                   <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5"
-                    stroke={isMoreTab || showMore ? "#2563eb" : "#94a3b8"} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                    stroke={isMoreTab || showMore ? "#00A651" : "#94a3b8"} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                     <path d="M5 12h.01M12 12h.01M19 12h.01" />
                   </svg>
-                  <span className={`text-[9px] font-bold ${isMoreTab || showMore ? "text-blue-600" : "text-slate-400 dark:text-slate-500"}`}>More</span>
+                  <span className={`text-[9px] font-bold ${isMoreTab || showMore ? "text-green-600" : "text-slate-400 dark:text-slate-500"}`}>More</span>
                 </button>
               </div>
             </div>
@@ -1196,18 +1332,18 @@ export default function CoopMemberPortal({ member: initialMember }) {
                   const active = tab === t.id;
                   return (
                     <button key={t.id} onClick={() => navigateTo(t.id)}
-                      className={`flex flex-col items-center gap-2.5 py-5 rounded-2xl transition-all active:scale-95 relative ${active ? "bg-blue-50 dark:bg-blue-900/30" : "bg-slate-50 dark:bg-slate-800"}`}>
+                      className={`flex flex-col items-center gap-2.5 py-5 rounded-2xl transition-all active:scale-95 relative ${active ? "bg-green-50 dark:bg-green-900/30" : "bg-slate-50 dark:bg-slate-800"}`}>
                       <div className="w-11 h-11 rounded-xl flex items-center justify-center"
                         style={{ background: (t.color || "#64748b") + "18" }}>
                         <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                          style={{ stroke: active ? "#2563eb" : (t.color || "#64748b") }}>
+                          style={{ stroke: active ? "#00A651" : (t.color || "#64748b") }}>
                           {t.icon.split("|").map((p, i) => <path key={i} d={p} />)}
                         </svg>
                       </div>
                       {t.id === "messages" && emergencyCount > 0 && (
                         <span className="absolute top-3 right-3 w-2 h-2 bg-red-500 rounded-full" />
                       )}
-                      <span className={`text-[11px] font-bold ${active ? "text-blue-600" : "text-slate-600 dark:text-slate-300"}`}>{t.label}</span>
+                      <span className={`text-[11px] font-bold ${active ? "text-green-600" : "text-slate-600 dark:text-slate-300"}`}>{t.label}</span>
                     </button>
                   );
                 })}
@@ -1230,7 +1366,7 @@ export default function CoopMemberPortal({ member: initialMember }) {
       {processingPayment && (
         <div className="fixed inset-0 z-[200] bg-black/80 flex items-center justify-center px-6">
           <div className="bg-white dark:bg-slate-800 rounded-3xl p-8 text-center max-w-xs w-full">
-            <div className="w-16 h-16 border-4 border-violet-500 border-t-transparent rounded-full animate-spin mx-auto mb-5" />
+            <div className="w-16 h-16 border-4 border-green-500 border-t-transparent rounded-full animate-spin mx-auto mb-5" />
             <p className="text-base font-extrabold text-slate-800 dark:text-white">Verifying payment…</p>
             <p className="text-xs text-slate-400 mt-2">Please wait while we confirm your contribution</p>
           </div>
@@ -1252,7 +1388,7 @@ export default function CoopMemberPortal({ member: initialMember }) {
                 <p className="text-3xl font-black text-green-600 mt-3 mb-1">{fmt(paymentResult.amount)}</p>
                 <p className="text-xs text-slate-400 mb-8">added to your savings balance</p>
                 <button onClick={() => setPaymentResult(null)}
-                  className="w-full py-4 bg-violet-600 text-white font-bold rounded-2xl text-sm">
+                  className="w-full py-4 bg-green-600 text-white font-bold rounded-2xl text-sm">
                   View Savings
                 </button>
               </>
