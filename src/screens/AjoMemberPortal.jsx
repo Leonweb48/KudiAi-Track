@@ -1617,7 +1617,15 @@ export default function AjoMemberPortal({ session, ajoClient }) {
   const [contributions,    setContributions]    = useState([]);
   const [ownerInfo,        setOwnerInfo]        = useState(null);
   const [loadingData,      setLoadingData]      = useState(false);
-  const [tab,              setTab]              = useState("home");
+  const [tab,              setTab]              = useState(() => {
+    // Auto-open Bills tab if returning from a Paystack bill payment redirect
+    const p   = new URLSearchParams(window.location.search);
+    const ref = p.get("bill_ref") || p.get("trxref") || p.get("reference");
+    if (ref && localStorage.getItem("ck_bill_pending_" + ref)) return "bills";
+    // Also cover bfcache / in-app-browser close without redirect
+    if (Object.keys(localStorage).some(k => k.startsWith("ck_bill_pending_"))) return "bills";
+    return "home";
+  });
   const [showWithdraw,     setShowWithdraw]     = useState(false);
   const [showPay,          setShowPay]          = useState(false);
   const [withdrawRequests, setWithdrawRequests] = useState([]);
