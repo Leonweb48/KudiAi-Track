@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { supabase }           from "../utils/supabase";
 import { useStore }           from "../hooks/useStore";
 import { useInventory }       from "../hooks/useInventory";
@@ -1131,7 +1131,7 @@ function ManagerMe({ staff, session, store, inventory, livePerms, staffId, lock,
 ═══════════════════════════════════════════════════════════════════ */
 export default function ManagerDashboard({ session, staff: staffProp }) {
   const [staffPatch, setStaffPatch] = useState({});
-  const staff = { ...staffProp, ...staffPatch };
+  const staff = useMemo(() => ({ ...staffProp, ...staffPatch }), [staffProp, staffPatch]);
   const [tab,        setTab]       = useState(() => {
     const p = new URLSearchParams(window.location.search);
     const ref = p.get("bill_ref") || p.get("trxref") || p.get("reference");
