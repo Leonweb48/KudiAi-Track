@@ -396,6 +396,8 @@ function PayContributionModal({ client, onClose, onSuccess }) {
   const [status,     setStatus]    = useState("idle"); // idle | loading | awaiting | verifying | done | error
   const [message,    setMessage]   = useState("");
   const [pendingRef, setPendingRef] = useState(null);
+  const [paidAmt,    setPaidAmt]   = useState(0);
+  const [customAmt,  setCustomAmt] = useState(String(client?.contribution_amount || ""));
 
   const doVerify = useCallback(async (ref) => {
     if (!ref) return;
@@ -413,11 +415,13 @@ function PayContributionModal({ client, onClose, onSuccess }) {
   }, [client.id, onSuccess]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePay = async () => {
-    if (!client?.contribution_amount) { setMessage("No contribution amount set by your savings agent."); return; }
+    const amt = parseFloat(customAmt);
+    if (!amt || amt <= 0) { setMessage("Please enter a valid amount."); return; }
     setStatus("loading"); setMessage(""); setPendingRef(null);
+    setPaidAmt(amt);
 
     try {
-      const res = await ajoFn("initialize-payment", { client_id: client.id });
+      const res = await ajoFn("initialize-payment", { client_id: client.id, amount: amt });
       if (!res.authorization_url) throw new Error("Payment initialization failed");
 
       const ref = res.reference;
@@ -478,7 +482,7 @@ function PayContributionModal({ client, onClose, onSuccess }) {
 
           <p className="text-[11px] font-bold text-green-500 uppercase tracking-widest mb-1">Transaction Successful</p>
           <h2 className="text-3xl font-black text-slate-800 dark:text-white mb-1 tabular">
-            ₦{fmt(client?.contribution_amount || 0)}
+            ₦{fmt(paidAmt || client?.contribution_amount || 0)}
           </h2>
           <p className="text-sm text-slate-500 dark:text-slate-400 mb-8 capitalize">
             {client?.contribution_frequency} contribution · Paid via Paystack
@@ -542,9 +546,28 @@ function PayContributionModal({ client, onClose, onSuccess }) {
         </div>
 
         {/* Amount */}
-        <div className="bg-violet-50 dark:bg-violet-900/20 rounded-2xl px-4 py-4 mb-5 text-center">
-          <p className="text-[10px] font-bold text-violet-500 dark:text-violet-400 uppercase tracking-wider mb-1">Amount Due</p>
-          <p className="text-3xl font-black text-violet-700 dark:text-violet-300 tabular">₦{fmt(client?.contribution_amount || 0)}</p>
+        <div className="bg-violet-50 dark:bg-violet-900/20 rounded-2xl px-4 py-4 mb-5">
+          <p className="text-[10px] font-bold text-violet-500 dark:text-violet-400 uppercase tracking-wider mb-2">Amount to Contribute</p>
+          <div className="flex items-center gap-2">
+            <span className="text-2xl font-black text-violet-700 dark:text-violet-300">₦</span>
+            <input
+              type="number"
+              inputMode="numeric"
+              min="1"
+              value={customAmt}
+              onChange={e => setCustomAmt(e.target.value)}
+              disabled={status === "loading" || status === "awaiting" || status === "verifying"}
+              placeholder="Enter amount"
+              className="flex-1 bg-transparent text-2xl font-black text-violet-700 dark:text-violet-300 outline-none placeholder:text-violet-300 dark:placeholder:text-violet-600 tabular [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+            />
+          </div>
+          {client?.contribution_amount > 0 && Number(customAmt) !== client.contribution_amount && (
+            <button
+              onClick={() => setCustomAmt(String(client.contribution_amount))}
+              className="mt-2 text-[10px] text-violet-500 dark:text-violet-400 underline underline-offset-2">
+              Reset to default (₦{fmt(client.contribution_amount)})
+            </button>
+          )}
           <p className="text-[11px] text-slate-400 mt-1 capitalize">{client?.contribution_frequency} contribution</p>
         </div>
 
@@ -576,7 +599,7 @@ function PayContributionModal({ client, onClose, onSuccess }) {
           {status === "loading"
             ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Opening Paystack…</>
             : status === "awaiting" ? "Open Paystack again"
-            : <>Pay ₦{fmt(client?.contribution_amount || 0)} now</>}
+            : <>Pay ₦{fmt(parseFloat(customAmt) || 0)} now</>}
         </button>
         <button onClick={onClose} disabled={status === "loading" || status === "verifying"}
           className="w-full mt-3 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition text-center py-2">

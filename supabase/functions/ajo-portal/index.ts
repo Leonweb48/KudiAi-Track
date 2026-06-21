@@ -401,7 +401,7 @@ serve(async (req) => {
 
     // ── Initialize a Paystack contribution payment (client self-pay) ─────
     if (action === "initialize-payment") {
-      const { client_id } = body as { client_id: string };
+      const { client_id, amount: requestedAmount } = body as { client_id: string; amount?: number };
       if (!client_id) return json({ error: "client_id required" }, 400);
       if (!PAYSTACK_SECRET) return json({ error: "Paystack not configured" }, 503);
 
@@ -413,7 +413,6 @@ serve(async (req) => {
 
       if (clErr) return json({ error: `DB error fetching client: ${clErr.message}` }, 500);
       if (!cl) return json({ error: "Client not found" }, 404);
-      if (!cl.contribution_amount) return json({ error: "No contribution amount set. Ask your savings agent to set your contribution amount." }, 422);
       if (!cl.email) {
         return json({ error: "Your account has no email address. Ask your savings agent to add one." }, 422);
       }
@@ -421,7 +420,11 @@ serve(async (req) => {
       const ownerId = cl.user_id;
       if (!ownerId) return json({ error: "Could not resolve business owner. Contact support." }, 422);
 
-      const amount         = Number(cl.contribution_amount);
+      // Use caller-supplied amount if valid, otherwise fall back to the client's default
+      const amount = (requestedAmount && requestedAmount > 0)
+        ? Number(requestedAmount)
+        : Number(cl.contribution_amount);
+      if (!amount || amount <= 0) return json({ error: "Enter an amount to contribute." }, 422);
       const ref            = genRef("AJO");
       // Each client has their own subaccount created at registration
       const subaccountCode = cl.paystack_subaccount_code ?? undefined;
