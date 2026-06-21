@@ -517,11 +517,18 @@ serve(async (req) => {
 
     if (action === "delete-member") {
       const { member_id, org_id } = body as { member_id: string; org_id: string };
+      // Fetch user_id before removal so we can delete the auth account
+      const { data: memberRow } = await sb.from("org_members")
+        .select("user_id").eq("id", member_id).eq("org_id", org_id).maybeSingle();
       await sb.from("org_members").update({ status: "removed", removed_at: new Date().toISOString() })
         .eq("id", member_id).eq("org_id", org_id);
       const { count } = await sb.from("org_members").select("id", { count: "exact", head: true })
         .eq("org_id", org_id).eq("status", "active");
       await sb.from("organizations").update({ member_count: count || 0 }).eq("id", org_id);
+      // Delete the Supabase Auth account so the member can no longer sign in
+      if (memberRow?.user_id) {
+        await sb.auth.admin.deleteUser(memberRow.user_id as string).catch(() => null);
+      }
       return json({ success: true });
     }
 
