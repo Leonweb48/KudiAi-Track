@@ -846,7 +846,7 @@ export default function AdminDashboard({ session, adminUser }) {
         )}
 
         {/* Main Content */}
-        <main className="flex-1 overflow-y-auto p-4 md:p-6 max-w-4xl">
+        <main className="flex-1 overflow-y-auto overscroll-contain p-4 md:p-6 max-w-4xl">
           {content[activeTab]}
         </main>
       </div>

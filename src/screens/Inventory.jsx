@@ -757,7 +757,7 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
 
       {/* DB error */}
       {dbError && (
-        <div className="fixed bottom-24 left-4 right-4 max-w-md mx-auto z-50 bg-red-600 text-white rounded-2xl px-4 py-3 shadow-lg flex items-start gap-3">
+        <div className="fixed bottom-28 left-4 right-4 max-w-md mx-auto z-50 bg-red-600 text-white rounded-2xl px-4 py-3 shadow-lg flex items-start gap-3">
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold">Error</p>
             <p className="text-xs opacity-80 mt-0.5 break-words">{dbError}</p>
@@ -826,7 +826,7 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
 
       {/* Adjustment shortcut (owner only) */}
       {isOwner && detailProd && !showForm && !movModal && !confirmDel && (
-        <div className="fixed bottom-24 right-4 z-50">
+        <div className="fixed bottom-28 right-4 z-50">
           <button onClick={() => setMovModal({ product: detailProd, type: "adjustment" })}
             className="text-xs font-bold bg-slate-800 dark:bg-slate-700 text-white px-3 py-2 rounded-xl shadow-lg active:scale-95">
             Adjust Stock

@@ -8,15 +8,21 @@
   box-sizing: border-box;
 }
 
-html { -webkit-text-size-adjust: 100%; }
+html {
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior: none;
+  height: 100%;
+}
 
 body {
   margin: 0;
+  height: 100%;
   font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
   background: #F5F7FA;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overscroll-behavior: none;
+  touch-action: pan-y;
 }
 
 /* ── Scrollbar ────────────────────────────────────────────────────── */

@@ -289,7 +289,7 @@ export default function App() {
             </div>
           )}
 
-          <main className="flex-1 overflow-y-auto">
+          <main className="flex-1 overflow-y-auto overscroll-contain">
             {SCREENS[tab]}
           </main>
 
@@ -312,7 +312,7 @@ export default function App() {
           />
 
           {store.dbError && (
-            <div className="fixed bottom-24 left-4 right-4 max-w-md mx-auto z-[58] bg-red-600 text-white rounded-2xl px-4 py-3 shadow-lg flex items-start gap-3 fade-in" role="alert">
+            <div className="fixed bottom-28 left-4 right-4 max-w-md mx-auto z-[58] bg-red-600 text-white rounded-2xl px-4 py-3 shadow-lg flex items-start gap-3 fade-in" role="alert">
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold">Save failed</p>
                 <p className="text-xs opacity-80 mt-0.5 break-words">{store.dbError}</p>

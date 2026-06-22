@@ -210,8 +210,8 @@ export default function BranchManagerDashboard({ session, staff }) {
   return (
     <LanguageProvider>
     <div className={isDark ? "dark" : ""}>
-      <div className="h-screen bg-slate-50 dark:bg-slate-900 flex justify-center">
-        <div className="w-full max-w-md relative flex flex-col h-screen">
+      <div className="h-[100dvh] bg-slate-50 dark:bg-slate-900 flex justify-center">
+        <div className="w-full max-w-md relative flex flex-col h-[100dvh]">
           <SyncBar isOnline={store.isOnline} pending={store.pendingSync} isSyncing={store.isSyncing} onSync={store.runSync} />
 
           {/* Header */}
@@ -228,7 +228,7 @@ export default function BranchManagerDashboard({ session, staff }) {
             </span>
           </div>
 
-          <main className="flex-1 overflow-y-auto">
+          <main className="flex-1 overflow-y-auto overscroll-contain">
             {SCREENS[tab]}
           </main>
 

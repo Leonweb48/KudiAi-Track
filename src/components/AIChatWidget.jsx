@@ -153,8 +153,8 @@ export default function AIChatWidget({
       {!open && (
         <button
           onClick={() => setOpen(true)}
-          className="fixed bottom-20 right-4 z-[55] rounded-full shadow-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-white transition-transform active:scale-90"
-          style={{ width: 52, height: 52 }}
+          className="fixed right-4 z-[55] rounded-full shadow-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-white transition-transform active:scale-90"
+          style={{ width: 52, height: 52, bottom: "calc(env(safe-area-inset-bottom, 0px) + 72px)" }}
           aria-label="Open AI Assistant"
         >
           <span className="text-xl leading-none">🤖</span>
