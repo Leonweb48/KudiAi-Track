@@ -3,7 +3,6 @@ import { supabase } from "../../utils/supabase";
 import { calcLevel } from "../../utils/communityTypes";
 import AdminDashboard  from "./AdminDashboard";
 import MediaHub        from "./MediaHub";
-import GroupPolls      from "./GroupPolls";
 import GroupEvents     from "./GroupEvents";
 import VoiceRoom       from "./VoiceRoom";
 import PrivacySettings from "./PrivacySettings";
@@ -65,7 +64,6 @@ const TABS = [
   { id:"members", label:"Members" },
   { id:"media",   label:"Media"   },
   { id:"events",  label:"Events"  },
-  { id:"polls",   label:"Polls"   },
 ];
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
@@ -122,7 +120,6 @@ export default function GroupInfoPage({ orgId, orgName, org, settings: initSetti
   // ── Sub-screens ───────────────────────────────────────────────────────────
   if (screen==="search")      return <GroupSearch    orgId={orgId} members={members} onBack={back}/>;
   if (screen==="media")       return <MediaHub        orgId={orgId} onBack={back}/>;
-  if (screen==="polls")       return <GroupPolls  orgId={orgId} myId={myId} isAdmin={isAdmin} myName={myMember?.full_name || orgName || "Admin"} myRole={isAdmin ? "admin" : "member"} onBack={back}/>;
   if (screen==="events")      return <GroupEvents orgId={orgId} myId={myId} isAdmin={isAdmin} myName={myMember?.full_name || orgName || "Admin"} myRole={isAdmin ? "admin" : "member"} onBack={back}/>;
   if (screen==="voice")       return <VoiceRoom       orgId={orgId} myId={myId} myName={myMember?.full_name||"Member"} avatarUrl={myMember?.avatar_url} isAdmin={isAdmin} onBack={back}/>;
   if (screen==="leaderboard") return <Leaderboard     orgId={orgId} myId={myId} onBack={back}/>;
