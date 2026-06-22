@@ -233,7 +233,7 @@ export default function BranchManagerDashboard({ session, staff }) {
           </main>
 
           {/* Bottom nav */}
-          <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 z-30 safe-bottom">
+          <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 z-30" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
             <div className="flex">
               {allTabs.map(n => (
                 <button key={n.id} onClick={() => setTab(n.id)}
