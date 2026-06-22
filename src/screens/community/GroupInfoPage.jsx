@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "../../utils/supabase";
 import { calcLevel } from "../../utils/communityTypes";
 import AdminDashboard   from "./AdminDashboard";
@@ -91,11 +91,9 @@ function StatChip({ label, value, icon }) {
 export default function GroupInfoPage({ orgId, orgName, org, settings: initSettings, members: initMembers,
   onlineIds, lastSeen, isAdmin, myId, onClose }) {
 
-  const [screen,         setScreen]       = useState("info");
-  const [settings,       setSettings]     = useState(initSettings);
-  const [members] = useState(initMembers || []);
-  const [coverUploading, setCoverUploading] = useState(false);
-  const coverFileRef = useRef(null);
+  const [screen,   setScreen] = useState("info");
+  const [settings]            = useState(initSettings);
+  const [members]             = useState(initMembers || []);
   const [analytics,    setAnalytics]    = useState(null);
   const [showFullDesc, setShowFullDesc] = useState(false);
   const [memberSearch, setMemberSearch] = useState("");
@@ -133,25 +131,6 @@ export default function GroupInfoPage({ orgId, orgName, org, settings: initSetti
 
   const myLevel = calcLevel(myMember?.reputation_points || 0);
 
-  const handleCoverUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file || !isAdmin) return;
-    setCoverUploading(true);
-    try {
-      const ext  = file.name.split(".").pop();
-      const path = `org-covers/${orgId}/cover_${Date.now()}.${ext}`;
-      const { error: upErr } = await supabase.storage.from("chat-media").upload(path, file, { upsert: true });
-      if (upErr) throw upErr;
-      const { data: { publicUrl } } = supabase.storage.from("chat-media").getPublicUrl(path);
-      await supabase.from("org_chat_settings").upsert({ org_id: orgId, cover_image_url: publicUrl }, { onConflict: "org_id" });
-      setSettings(s => ({ ...s, cover_image_url: publicUrl }));
-    } catch (err) {
-      console.error("Cover upload failed:", err);
-    }
-    setCoverUploading(false);
-    e.target.value = "";
-  };
-
   // ── Sub-screen navigation ──────────────────────────────────────────────────
   if (screen === "search")   return <GroupSearch   orgId={orgId} members={members} onBack={()=>setScreen("info")} />;
   if (screen === "media")    return <MediaHub       orgId={orgId} onBack={()=>setScreen("info")} />;
@@ -185,42 +164,10 @@ export default function GroupInfoPage({ orgId, orgName, org, settings: initSetti
 
       <div className="flex-1 overflow-y-auto">
 
-        {/* ── Cover + Identity ── */}
+        {/* ── Identity ── */}
         <div className="bg-white">
-          {/* Cover image */}
-          <div className="relative w-full"
-            style={{height:200, background:"linear-gradient(135deg,#064e3b 0%,#065f46 40%,#128c7e 100%)"}}>
-            {settings?.cover_image_url && (
-              <img src={settings.cover_image_url} alt="" className="w-full h-full object-cover" />
-            )}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent"/>
-            {/* Badges top-right */}
-            <div className="absolute top-3 right-3 flex gap-1.5">
-              {settings?.is_private && (
-                <span className="flex items-center gap-1 text-[10px] font-bold text-white bg-black/40 backdrop-blur-sm px-2 py-0.5 rounded-full">
-                  🔒 Private
-                </span>
-              )}
-              {settings?.is_verified && (
-                <span className="flex items-center gap-1 text-[10px] font-bold text-white bg-[#25d366]/70 backdrop-blur-sm px-2 py-0.5 rounded-full">
-                  ✓ Verified
-                </span>
-              )}
-            </div>
-            {isAdmin && (
-              <button onClick={() => coverFileRef.current?.click()} disabled={coverUploading}
-                className="absolute bottom-3 right-3 w-8 h-8 bg-black/40 backdrop-blur-sm rounded-full flex items-center justify-center active:scale-90 disabled:opacity-60">
-                {coverUploading
-                  ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"/>
-                  : <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2} strokeLinecap="round" className="w-4 h-4"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                }
-              </button>
-            )}
-            <input ref={coverFileRef} type="file" accept="image/*" className="hidden" onChange={handleCoverUpload} />
-          </div>
-
           {/* Avatar + name */}
-          <div className="flex flex-col items-center -mt-11 pb-4 px-5">
+          <div className="flex flex-col items-center pt-6 pb-4 px-5">
             <div className="w-[88px] h-[88px] rounded-full border-4 border-white shadow-lg overflow-hidden flex-shrink-0 mb-3"
               style={{background:"linear-gradient(145deg,#075E54,#128c7e)"}}>
               {org?.logo_url
@@ -228,10 +175,16 @@ export default function GroupInfoPage({ orgId, orgName, org, settings: initSetti
                 : <div className="w-full h-full flex items-center justify-center text-3xl">{settings?.emoji||"💬"}</div>}
             </div>
             <p className="text-[22px] font-extrabold text-slate-900 text-center leading-tight">{displayName}</p>
-            <div className="flex items-center gap-2 mt-1">
+            <div className="flex items-center gap-2 mt-1 flex-wrap justify-center">
               <p className="text-[13px] text-[#128c7e] font-medium">Group · {total} members</p>
               {settings?.category && (
                 <span className="text-[10px] font-bold bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">{settings.category}</span>
+              )}
+              {settings?.is_private && (
+                <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">🔒 Private</span>
+              )}
+              {settings?.is_verified && (
+                <span className="text-[10px] font-bold text-[#065f46] bg-[#d1fae5] px-2 py-0.5 rounded-full">✓ Verified</span>
               )}
             </div>
           </div>
