@@ -122,8 +122,8 @@ export default function GroupInfoPage({ orgId, orgName, org, settings: initSetti
   // ── Sub-screens ───────────────────────────────────────────────────────────
   if (screen==="search")      return <GroupSearch    orgId={orgId} members={members} onBack={back}/>;
   if (screen==="media")       return <MediaHub        orgId={orgId} onBack={back}/>;
-  if (screen==="polls")       return <GroupPolls      orgId={orgId} myId={myId} isAdmin={isAdmin} onBack={back}/>;
-  if (screen==="events")      return <GroupEvents     orgId={orgId} myId={myId} isAdmin={isAdmin} onBack={back}/>;
+  if (screen==="polls")       return <GroupPolls  orgId={orgId} myId={myId} isAdmin={isAdmin} myName={myMember?.full_name || orgName || "Admin"} myRole={isAdmin ? "admin" : "member"} onBack={back}/>;
+  if (screen==="events")      return <GroupEvents orgId={orgId} myId={myId} isAdmin={isAdmin} myName={myMember?.full_name || orgName || "Admin"} myRole={isAdmin ? "admin" : "member"} onBack={back}/>;
   if (screen==="voice")       return <VoiceRoom       orgId={orgId} myId={myId} myName={myMember?.full_name||"Member"} avatarUrl={myMember?.avatar_url} isAdmin={isAdmin} onBack={back}/>;
   if (screen==="leaderboard") return <Leaderboard     orgId={orgId} myId={myId} onBack={back}/>;
   if (screen==="privacy")     return <PrivacySettings orgId={orgId} isAdmin={isAdmin} onBack={back}/>;

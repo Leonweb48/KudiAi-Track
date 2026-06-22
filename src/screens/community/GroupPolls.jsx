@@ -91,7 +91,7 @@ function PollCard({ poll, myId, onVote, onClose, isAdmin }) {
   );
 }
 
-function CreatePollSheet({ orgId, myId, onCreated, onClose }) {
+function CreatePollSheet({ orgId, myId, myName, myRole, onCreated, onClose }) {
   const [question, setQuestion]   = useState("");
   const [options,  setOptions]    = useState(["","","",""]);
   const [multi,    setMulti]      = useState(false);
@@ -117,10 +117,10 @@ function CreatePollSheet({ orgId, myId, onCreated, onClose }) {
       await supabase.from("group_poll_options").insert(
         validOpts.map((t,i)=>({poll_id:poll.id,org_id:orgId,text:t.trim(),sort_order:i}))
       );
-      // Send as a message too
       await supabase.from("org_group_messages").insert({
-        org_id:orgId, sender_id:myId, sender_name:"Poll",
-        content:`📊 ${question.trim()}`, type:"system",
+        org_id:orgId, sender_id:myId,
+        sender_name:myName||"Admin", sender_role:myRole||"admin",
+        type:"poll", media_name:poll.id, content:question.trim(),
       });
       onCreated();
     }
@@ -198,7 +198,7 @@ function CreatePollSheet({ orgId, myId, onCreated, onClose }) {
   );
 }
 
-export default function GroupPolls({ orgId, myId, isAdmin, onBack }) {
+export default function GroupPolls({ orgId, myId, myName, myRole, isAdmin, onBack }) {
   const [polls,      setPolls]      = useState([]);
   const [loading,    setLoading]    = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -257,7 +257,7 @@ export default function GroupPolls({ orgId, myId, isAdmin, onBack }) {
       </div>
 
       {showCreate && (
-        <CreatePollSheet orgId={orgId} myId={myId} onCreated={load} onClose={()=>setShowCreate(false)}/>
+        <CreatePollSheet orgId={orgId} myId={myId} myName={myName} myRole={myRole} onCreated={load} onClose={()=>setShowCreate(false)}/>
       )}
     </div>
   );

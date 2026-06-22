@@ -576,51 +576,51 @@ function ChatHeaderMenu({ isAdmin, onGroupInfo, onSearch, onEditGroup, onClose }
 // ─── Poll Bubble ──────────────────────────────────────────────────────────────
 function PollBubble({ pollId, myId, isMe }) {
   const [poll,       setPoll]       = useState(null);
-  const [myVoteIdx,  setMyVoteIdx]  = useState(null);
-  const [voteCounts, setVoteCounts] = useState([]);
+  const [myVoteIds,  setMyVoteIds]  = useState(new Set());
+  const [localOpts,  setLocalOpts]  = useState([]);
   const [totalVotes, setTotalVotes] = useState(0);
   const [voting,     setVoting]     = useState(false);
 
   useEffect(() => {
     if (!pollId) return;
-    supabase.from("org_polls").select("*").eq("id", pollId).single()
-      .then(({ data }) => {
-        if (data) {
-          setPoll(data);
-          setVoteCounts(Array(data.options?.length || 0).fill(0));
-        }
-      });
-    supabase.from("org_poll_votes").select("option_index, user_id").eq("poll_id", pollId)
+    supabase.from("group_polls")
+      .select("*, options:group_poll_options(id, text, vote_count, sort_order)")
+      .eq("id", pollId).single()
       .then(({ data }) => {
         if (!data) return;
-        const mine = data.find(v => v.user_id === myId);
-        if (mine != null) setMyVoteIdx(mine.option_index);
-        const counts = [];
-        data.forEach(v => { counts[v.option_index] = (counts[v.option_index] || 0) + 1; });
-        setVoteCounts(counts);
-        setTotalVotes(data.length);
+        const opts = (data.options || []).sort((a, b) => a.sort_order - b.sort_order);
+        setPoll(data);
+        setLocalOpts(opts);
+        setTotalVotes(opts.reduce((s, o) => s + (o.vote_count || 0), 0));
       });
+    if (!myId) return;
+    supabase.from("group_poll_votes").select("option_id").eq("poll_id", pollId).eq("user_id", myId)
+      .then(({ data }) => { if (data?.length) setMyVoteIds(new Set(data.map(v => v.option_id))); });
   }, [pollId, myId]);
 
-  const vote = async (idx) => {
+  const vote = async (opt) => {
     if (!poll || voting) return;
-    const isClosed = !poll.is_active || (poll.closes_at && new Date(poll.closes_at) < new Date());
+    const isClosed = poll.is_closed || (poll.expires_at && new Date(poll.expires_at) < new Date());
     if (isClosed) return;
     setVoting(true);
-    if (myVoteIdx === idx) {
-      await supabase.from("org_poll_votes").delete().match({ poll_id: pollId, user_id: myId });
-      setVoteCounts(c => { const n = [...c]; n[idx] = Math.max(0, (n[idx] || 0) - 1); return n; });
+    const already = myVoteIds.has(opt.id);
+    if (already) {
+      await supabase.from("group_poll_votes").delete().match({ poll_id: pollId, option_id: opt.id, user_id: myId });
+      setMyVoteIds(p => { const n = new Set(p); n.delete(opt.id); return n; });
+      setLocalOpts(os => os.map(o => o.id === opt.id ? { ...o, vote_count: Math.max(0, (o.vote_count || 0) - 1) } : o));
       setTotalVotes(t => Math.max(0, t - 1));
-      setMyVoteIdx(null);
     } else {
-      const prev = myVoteIdx;
-      await supabase.from("org_poll_votes").upsert(
-        { poll_id: pollId, option_index: idx, user_id: myId, org_id: poll.org_id },
-        { onConflict: "poll_id,user_id" }
-      );
-      setVoteCounts(c => { const n = [...c]; n[idx] = (n[idx] || 0) + 1; if (prev !== null) n[prev] = Math.max(0, (n[prev] || 0) - 1); return n; });
-      setTotalVotes(t => prev !== null ? t : t + 1);
-      setMyVoteIdx(idx);
+      if (!poll.allows_multiple && myVoteIds.size > 0) {
+        const [prevId] = myVoteIds;
+        await supabase.from("group_poll_votes").delete().match({ poll_id: pollId, option_id: prevId, user_id: myId });
+        setMyVoteIds(new Set());
+        setLocalOpts(os => os.map(o => o.id === prevId ? { ...o, vote_count: Math.max(0, (o.vote_count || 0) - 1) } : o));
+        setTotalVotes(t => Math.max(0, t - 1));
+      }
+      await supabase.from("group_poll_votes").insert({ poll_id: pollId, option_id: opt.id, org_id: poll.org_id, user_id: myId });
+      setMyVoteIds(p => new Set([...p, opt.id]));
+      setLocalOpts(os => os.map(o => o.id === opt.id ? { ...o, vote_count: (o.vote_count || 0) + 1 } : o));
+      setTotalVotes(t => t + 1);
     }
     setVoting(false);
   };
@@ -631,9 +631,8 @@ function PollBubble({ pollId, myId, isMe }) {
     </div>
   );
 
-  const isClosed = !poll.is_active || (poll.closes_at && new Date(poll.closes_at) < new Date());
-  const hasVoted = myVoteIdx !== null;
-  const opts     = poll.options || [];
+  const isClosed = poll.is_closed || (poll.expires_at && new Date(poll.expires_at) < new Date());
+  const hasVoted = myVoteIds.size > 0;
 
   return (
     <div className="min-w-[220px] max-w-[280px] rounded-2xl overflow-hidden shadow-sm" style={{ background: isMe ? "#dcf8c6" : "#fff" }}>
@@ -644,27 +643,28 @@ function PollBubble({ pollId, myId, isMe }) {
           </svg>
           <span className={`text-[10px] font-extrabold uppercase tracking-wider ${isMe ? "text-[#128c7e]" : "text-blue-500"}`}>Poll</span>
           {isClosed && <span className="text-[9px] font-bold text-red-500 bg-red-50 px-1.5 py-0.5 rounded-full">Closed</span>}
+          {poll.allows_multiple && <span className="text-[9px] font-bold text-blue-400 bg-blue-50 px-1.5 py-0.5 rounded-full">Multi</span>}
         </div>
         <p className={`text-[13px] font-bold leading-snug ${isMe ? "text-[#111b21]" : "text-slate-800"}`}>{poll.question}</p>
         <p className={`text-[10px] mt-0.5 ${isMe ? "text-[#128c7e]/70" : "text-slate-400"}`}>
           {totalVotes} vote{totalVotes !== 1 ? "s" : ""}
-          {poll.closes_at && !isClosed ? ` · ends ${new Date(poll.closes_at).toLocaleDateString([], { day: "numeric", month: "short" })}` : ""}
+          {poll.expires_at && !isClosed ? ` · ends ${new Date(poll.expires_at).toLocaleDateString([], { day: "numeric", month: "short" })}` : ""}
         </p>
       </div>
       <div className="px-3 py-2 flex flex-col gap-1.5">
-        {opts.map((opt, idx) => {
-          const count = voteCounts[idx] || 0;
+        {localOpts.map(opt => {
+          const count = opt.vote_count || 0;
           const pct   = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
-          const isMine = myVoteIdx === idx;
+          const isMine = myVoteIds.has(opt.id);
           return (
-            <button key={idx} onClick={() => vote(idx)} disabled={isClosed || voting}
+            <button key={opt.id} onClick={() => vote(opt)} disabled={isClosed || voting}
               className={`relative w-full rounded-xl text-left overflow-hidden transition-transform ${!isClosed && !voting ? "active:scale-[0.98]" : "opacity-70"} ${isMine ? (isMe ? "ring-2 ring-[#128c7e]/50" : "ring-2 ring-blue-400/50") : ""}`}>
               {hasVoted && (
                 <div className="absolute inset-y-0 left-0 rounded-xl transition-all"
                   style={{ width: `${pct}%`, background: isMine ? (isMe ? "#25d366" : "#3b82f6") : (isMe ? "#b7e8a0" : "#e2e8f0"), opacity: 0.3 }} />
               )}
               <div className={`relative flex items-center justify-between px-3 py-2 rounded-xl border ${isMine ? (isMe ? "border-[#25d366]/60 bg-[#25d366]/10" : "border-blue-300/60 bg-blue-50/60") : (isMe ? "border-[#b7e8a0]/40" : "border-slate-100")}`}>
-                <span className={`text-[12px] font-semibold pr-2 ${isMe ? "text-[#111b21]" : "text-slate-700"}`}>{opt}</span>
+                <span className={`text-[12px] font-semibold pr-2 ${isMe ? "text-[#111b21]" : "text-slate-700"}`}>{opt.text}</span>
                 <div className="flex items-center gap-1 flex-shrink-0">
                   {hasVoted && <span className={`text-[10px] font-bold ${isMine ? (isMe ? "text-[#128c7e]" : "text-blue-600") : "text-slate-400"}`}>{pct}%</span>}
                   {isMine && <svg viewBox="0 0 24 24" fill="none" stroke={isMe ? "#128c7e" : "#3b82f6"} strokeWidth={2.5} className="w-3 h-3"><path d="M5 12l5 5L20 7"/></svg>}
@@ -687,15 +687,15 @@ function EventBubble({ eventId, myId, isMe }) {
 
   useEffect(() => {
     if (!eventId) return;
-    supabase.from("org_events").select("*").eq("id", eventId).single()
+    supabase.from("group_events").select("*").eq("id", eventId).single()
       .then(({ data }) => setEvent(data));
   }, [eventId]);
 
   useEffect(() => {
     if (!eventId || !myId) return;
-    supabase.from("org_event_rsvps").select("status").eq("event_id", eventId).eq("user_id", myId).maybeSingle()
+    supabase.from("group_event_rsvps").select("status").eq("event_id", eventId).eq("user_id", myId).maybeSingle()
       .then(({ data }) => { if (data) setMyRsvp(data.status); });
-    supabase.from("org_event_rsvps").select("status").eq("event_id", eventId)
+    supabase.from("group_event_rsvps").select("status").eq("event_id", eventId)
       .then(({ data }) => {
         if (!data) return;
         const c = { going: 0, maybe: 0, not_going: 0 };
@@ -709,11 +709,11 @@ function EventBubble({ eventId, myId, isMe }) {
     setRsvpBusy(true);
     const prev = myRsvp;
     if (status === myRsvp) {
-      await supabase.from("org_event_rsvps").delete().match({ event_id: eventId, user_id: myId });
+      await supabase.from("group_event_rsvps").delete().match({ event_id: eventId, user_id: myId });
       setMyRsvp(null);
       setRsvpCounts(c => ({ ...c, [status]: Math.max(0, c[status] - 1) }));
     } else {
-      await supabase.from("org_event_rsvps").upsert(
+      await supabase.from("group_event_rsvps").upsert(
         { event_id: eventId, org_id: event.org_id, user_id: myId, status },
         { onConflict: "event_id,user_id" }
       );
@@ -734,7 +734,7 @@ function EventBubble({ eventId, myId, isMe }) {
   );
 
   const fmtEv  = ts => new Date(ts).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" });
-  const isPast = event.event_date && new Date(event.event_date) < new Date();
+  const isPast = event.start_time && new Date(event.start_time) < new Date();
 
   const RSVP_OPTIONS = [
     { s: "going",     label: "Going",  icon: "M5 13l4 4L19 7",                          activeBg: "#dcf8c6", activeBorder: "#25d366", activeText: "#128c7e" },
@@ -761,7 +761,7 @@ function EventBubble({ eventId, myId, isMe }) {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3 h-3 flex-shrink-0">
             <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
           </svg>
-          <span className="text-[11px] font-semibold">{fmtEv(event.event_date)}</span>
+          <span className="text-[11px] font-semibold">{fmtEv(event.start_time)}</span>
         </div>
         {event.location && (
           <div className="flex items-center gap-1 mt-0.5 text-slate-400">

@@ -104,7 +104,7 @@ function EventCard({ event, myId, isAdmin, onDelete }) {
   );
 }
 
-function CreateEventSheet({ orgId, myId, onCreated, onClose }) {
+function CreateEventSheet({ orgId, myId, myName, myRole, onCreated, onClose }) {
   const [title,    setTitle]    = useState("");
   const [desc,     setDesc]     = useState("");
   const [location, setLocation] = useState("");
@@ -115,12 +115,19 @@ function CreateEventSheet({ orgId, myId, onCreated, onClose }) {
   const submit = async () => {
     if(!title.trim()||!start) return;
     setSaving(true);
-    await supabase.from("group_events").insert({
+    const {data:event} = await supabase.from("group_events").insert({
       org_id:orgId, created_by:myId,
       title:title.trim(), description:desc.trim()||null,
       location:location.trim()||null,
       start_time:start, end_time:end||null,
-    });
+    }).select().single();
+    if(event) {
+      await supabase.from("org_group_messages").insert({
+        org_id:orgId, sender_id:myId,
+        sender_name:myName||"Admin", sender_role:myRole||"admin",
+        type:"event", media_name:event.id, content:title.trim(),
+      });
+    }
     onCreated();
     setSaving(false);
     onClose();
@@ -177,7 +184,7 @@ function CreateEventSheet({ orgId, myId, onCreated, onClose }) {
   );
 }
 
-export default function GroupEvents({ orgId, myId, isAdmin, onBack }) {
+export default function GroupEvents({ orgId, myId, myName, myRole, isAdmin, onBack }) {
   const [events,     setEvents]     = useState([]);
   const [loading,    setLoading]    = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -236,7 +243,7 @@ export default function GroupEvents({ orgId, myId, isAdmin, onBack }) {
         <div className="h-6"/>
       </div>
 
-      {showCreate && <CreateEventSheet orgId={orgId} myId={myId} onCreated={load} onClose={()=>setShowCreate(false)}/>}
+      {showCreate && <CreateEventSheet orgId={orgId} myId={myId} myName={myName} myRole={myRole} onCreated={load} onClose={()=>setShowCreate(false)}/>}
     </div>
   );
 }
