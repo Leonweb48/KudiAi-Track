@@ -1,17 +1,17 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../../utils/supabase";
 import { calcLevel } from "../../utils/communityTypes";
-import AdminDashboard   from "./AdminDashboard";
-import MediaHub         from "./MediaHub";
-import GroupPolls       from "./GroupPolls";
-import GroupEvents      from "./GroupEvents";
-import VoiceRoom        from "./VoiceRoom";
-import PrivacySettings  from "./PrivacySettings";
-import InviteManager    from "./InviteManager";
-import GroupSearch      from "./GroupSearch";
-import Leaderboard      from "./Leaderboard";
+import AdminDashboard  from "./AdminDashboard";
+import MediaHub        from "./MediaHub";
+import GroupPolls      from "./GroupPolls";
+import GroupEvents     from "./GroupEvents";
+import VoiceRoom       from "./VoiceRoom";
+import PrivacySettings from "./PrivacySettings";
+import InviteManager   from "./InviteManager";
+import GroupSearch     from "./GroupSearch";
+import Leaderboard     from "./Leaderboard";
 
-// ─── Shared Avatar ────────────────────────────────────────────────────────────
+// ─── Avatar ───────────────────────────────────────────────────────────────────
 const AC = ["#ef4444","#f97316","#eab308","#22c55e","#06b6d4","#3b82f6","#8b5cf6","#ec4899","#14b8a6","#f43f5e"];
 function ac(name=""){let h=0;for(const c of name)h=(h*31+c.charCodeAt(0))|0;return AC[Math.abs(h)%AC.length];}
 function Av({ name="?", size=40, url, online }) {
@@ -27,14 +27,14 @@ function Av({ name="?", size=40, url, online }) {
   );
 }
 
-// ─── Role badge chip ──────────────────────────────────────────────────────────
+// ─── Role badge ───────────────────────────────────────────────────────────────
 const ROLE_STYLE = {
-  owner:     { bg:"#fef3c7", text:"#92400e", label:"Owner"     },
-  admin:     { bg:"#ede9fe", text:"#6d28d9", label:"Admin"     },
-  moderator: { bg:"#dbeafe", text:"#1d4ed8", label:"Mod"       },
-  verified:  { bg:"#d1fae5", text:"#065f46", label:"Verified"  },
-  premium:   { bg:"#fce7f3", text:"#9d174d", label:"Premium"   },
-  member:    { bg:"#f1f5f9", text:"#475569", label:"Member"    },
+  owner:     { bg:"#fef3c7", text:"#92400e", label:"Owner"    },
+  admin:     { bg:"#ede9fe", text:"#6d28d9", label:"Admin"    },
+  moderator: { bg:"#dbeafe", text:"#1d4ed8", label:"Mod"      },
+  verified:  { bg:"#d1fae5", text:"#065f46", label:"Verified" },
+  premium:   { bg:"#fce7f3", text:"#9d174d", label:"Premium"  },
+  member:    { bg:"#f1f5f9", text:"#475569", label:"Member"   },
 };
 function RoleBadge({ role }) {
   const s = ROLE_STYLE[role] ?? ROLE_STYLE.member;
@@ -42,12 +42,12 @@ function RoleBadge({ role }) {
 }
 
 // ─── Level ring ───────────────────────────────────────────────────────────────
-function LevelRing({ points=0, size=56 }) {
+function LevelRing({ points=0, size=52 }) {
   const {level,progress} = calcLevel(points);
   const r = (size-8)/2, circ = 2*Math.PI*r;
   return (
     <div className="relative flex-shrink-0" style={{width:size,height:size}}>
-      <svg width={size} height={size} className="-rotate-90" style={{position:'absolute',top:0,left:0}}>
+      <svg width={size} height={size} className="-rotate-90" style={{position:"absolute",top:0,left:0}}>
         <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#e2e8f0" strokeWidth="4"/>
         <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#25d366" strokeWidth="4"
           strokeDasharray={circ} strokeDashoffset={circ*(1-progress/100)} strokeLinecap="round"/>
@@ -60,51 +60,32 @@ function LevelRing({ points=0, size=56 }) {
   );
 }
 
-// ─── Action button ────────────────────────────────────────────────────────────
-function ActionBtn({ icon, label, badge, onClick, color="#075E54" }) {
-  return (
-    <button onClick={onClick}
-      className="flex flex-col items-center gap-1.5 active:opacity-70 transition-opacity min-w-[56px]">
-      <div className="w-12 h-12 rounded-full flex items-center justify-center shadow-sm" style={{background:color+"18"}}>
-        <span className="text-xl">{icon}</span>
-        {badge > 0 && (
-          <span className="absolute -top-1 -right-1 min-w-[16px] h-4 bg-red-500 text-white text-[8px] font-bold rounded-full flex items-center justify-center px-1">{badge}</span>
-        )}
-      </div>
-      <span className="text-[10px] font-semibold text-slate-600 leading-tight text-center">{label}</span>
-    </button>
-  );
-}
+// ─── Tabs ─────────────────────────────────────────────────────────────────────
+const TABS = [
+  { id:"members", label:"Members" },
+  { id:"media",   label:"Media"   },
+  { id:"events",  label:"Events"  },
+  { id:"polls",   label:"Polls"   },
+];
 
-// ─── Stat chip ────────────────────────────────────────────────────────────────
-function StatChip({ label, value, icon }) {
-  return (
-    <div className="flex flex-col items-center bg-white rounded-2xl px-4 py-3 shadow-sm min-w-[80px]">
-      <span className="text-lg">{icon}</span>
-      <span className="text-[16px] font-extrabold text-slate-800 leading-tight">{value}</span>
-      <span className="text-[9px] text-slate-400 uppercase tracking-wide mt-0.5">{label}</span>
-    </div>
-  );
-}
-
-// ─── Main GroupInfoPage ───────────────────────────────────────────────────────
+// ─── Main ─────────────────────────────────────────────────────────────────────
 export default function GroupInfoPage({ orgId, orgName, org, settings: initSettings, members: initMembers,
   onlineIds, lastSeen, isAdmin, myId, onClose }) {
 
-  const [screen,   setScreen] = useState("info");
-  const [settings]            = useState(initSettings);
-  const [members]             = useState(initMembers || []);
+  const [screen,       setScreen]       = useState("info");
+  const [activeTab,    setActiveTab]    = useState("members");
+  const [settings]                      = useState(initSettings);
+  const [members]                       = useState(initMembers || []);
   const [analytics,    setAnalytics]    = useState(null);
   const [showFullDesc, setShowFullDesc] = useState(false);
   const [memberSearch, setMemberSearch] = useState("");
-  const [showMSearch,  setShowMSearch]  = useState(false);
   const [pendingReqs,  setPendingReqs]  = useState(0);
   const [pendingReps,  setPendingReps]  = useState(0);
   const [myMember,     setMyMember]     = useState(null);
 
   const displayName = settings?.chat_name || `${orgName} Group`;
-  const total = members.length + 1;
-  const desc  = settings?.description || "";
+  const total       = members.length + 1;
+  const desc        = settings?.description || "";
 
   useEffect(() => {
     if (!orgId || !isAdmin) return;
@@ -125,231 +106,307 @@ export default function GroupInfoPage({ orgId, orgName, org, settings: initSetti
       .then(({data}) => setMyMember(data));
   }, [myId, orgId]);
 
+  const back = () => { setScreen("info"); setActiveTab("members"); };
+
+  const handleTab = (id) => {
+    if (id === "members") { setActiveTab("members"); return; }
+    setScreen(id);
+  };
+
   const filteredMembers = memberSearch.trim()
     ? members.filter(m => m.full_name?.toLowerCase().includes(memberSearch.toLowerCase()))
     : members;
 
   const myLevel = calcLevel(myMember?.reputation_points || 0);
 
-  // ── Sub-screen navigation ──────────────────────────────────────────────────
-  if (screen === "search")   return <GroupSearch   orgId={orgId} members={members} onBack={()=>setScreen("info")} />;
-  if (screen === "media")    return <MediaHub       orgId={orgId} onBack={()=>setScreen("info")} />;
-  if (screen === "polls")    return <GroupPolls     orgId={orgId} myId={myId} isAdmin={isAdmin} onBack={()=>setScreen("info")} />;
-  if (screen === "events")   return <GroupEvents    orgId={orgId} myId={myId} isAdmin={isAdmin} onBack={()=>setScreen("info")} />;
-  if (screen === "voice")    return <VoiceRoom      orgId={orgId} myId={myId} myName={myMember?.full_name||"Member"} avatarUrl={myMember?.avatar_url} isAdmin={isAdmin} onBack={()=>setScreen("info")} />;
-  if (screen === "leaderboard") return <Leaderboard orgId={orgId} myId={myId} onBack={()=>setScreen("info")} />;
-  if (screen === "privacy")  return <PrivacySettings orgId={orgId} isAdmin={isAdmin} onBack={()=>setScreen("info")} />;
-  if (screen === "invites")  return <InviteManager  orgId={orgId} myId={myId} onBack={()=>setScreen("info")} />;
-  if (screen === "admin")    return <AdminDashboard  orgId={orgId} orgName={orgName} org={org} members={members}
+  // ── Sub-screens ───────────────────────────────────────────────────────────
+  if (screen==="search")      return <GroupSearch    orgId={orgId} members={members} onBack={back}/>;
+  if (screen==="media")       return <MediaHub        orgId={orgId} onBack={back}/>;
+  if (screen==="polls")       return <GroupPolls      orgId={orgId} myId={myId} isAdmin={isAdmin} onBack={back}/>;
+  if (screen==="events")      return <GroupEvents     orgId={orgId} myId={myId} isAdmin={isAdmin} onBack={back}/>;
+  if (screen==="voice")       return <VoiceRoom       orgId={orgId} myId={myId} myName={myMember?.full_name||"Member"} avatarUrl={myMember?.avatar_url} isAdmin={isAdmin} onBack={back}/>;
+  if (screen==="leaderboard") return <Leaderboard     orgId={orgId} myId={myId} onBack={back}/>;
+  if (screen==="privacy")     return <PrivacySettings orgId={orgId} isAdmin={isAdmin} onBack={back}/>;
+  if (screen==="invites")     return <InviteManager   orgId={orgId} myId={myId} onBack={back}/>;
+  if (screen==="admin")       return <AdminDashboard  orgId={orgId} orgName={orgName} org={org} members={members}
     onlineIds={onlineIds} lastSeen={lastSeen} myId={myId} analytics={analytics}
     pendingReqs={pendingReqs} pendingReps={pendingReps}
-    onNavigate={setScreen} onClose={()=>setScreen("info")} />;
+    onNavigate={setScreen} onClose={back}/>;
 
-  // ── INFO screen ────────────────────────────────────────────────────────────
+  // ── Info screen ───────────────────────────────────────────────────────────
   return (
-    <div className="fixed inset-0 z-[120] flex flex-col bg-[#f0f2f5]">
+    <div className="fixed inset-0 z-[120] flex flex-col bg-white">
 
-      {/* Header */}
-      <div className="flex-shrink-0 flex items-center gap-2 px-2"
-        style={{background:"#075E54",paddingTop:"max(10px,env(safe-area-inset-top))",paddingBottom:"10px"}}>
-        <button onClick={onClose}
-          className="w-9 h-9 flex items-center justify-center rounded-full active:bg-white/10 flex-shrink-0">
+      {/* Floating header — overlays the banner */}
+      <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-3 pointer-events-none"
+        style={{paddingTop:"max(10px,env(safe-area-inset-top))",paddingBottom:"8px"}}>
+        <button onClick={onClose} className="pointer-events-auto w-9 h-9 rounded-full bg-black/45 backdrop-blur-md flex items-center justify-center active:bg-black/65 transition-colors">
           <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.5} strokeLinecap="round" className="w-5 h-5"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
         </button>
-        <span className="flex-1 text-[17px] font-bold text-white">Group info</span>
-        <button onClick={()=>setScreen("search")} className="w-9 h-9 flex items-center justify-center rounded-full active:bg-white/10">
-          <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2} strokeLinecap="round" className="w-4.5 h-4.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-        </button>
+        <div className="flex gap-2 pointer-events-auto">
+          <button onClick={()=>setScreen("search")} className="w-9 h-9 rounded-full bg-black/45 backdrop-blur-md flex items-center justify-center active:bg-black/65 transition-colors">
+            <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2} strokeLinecap="round" className="w-4 h-4"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+          </button>
+          {isAdmin && (
+            <button onClick={()=>setScreen("admin")} className="w-9 h-9 rounded-full bg-black/45 backdrop-blur-md flex items-center justify-center active:bg-black/65 transition-colors">
+              <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2} strokeLinecap="round" className="w-4 h-4">
+                <circle cx="12" cy="5" r="1.5" fill="white"/><circle cx="12" cy="12" r="1.5" fill="white"/><circle cx="12" cy="19" r="1.5" fill="white"/>
+              </svg>
+            </button>
+          )}
+        </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      {/* Scrollable body */}
+      <div className="flex-1 overflow-y-auto overscroll-none">
 
-        {/* ── Identity ── */}
-        <div className="bg-white">
-          {/* Avatar + name */}
-          <div className="flex flex-col items-center pt-6 pb-4 px-5">
-            <div className="w-[88px] h-[88px] rounded-full border-4 border-white shadow-lg overflow-hidden flex-shrink-0 mb-3"
+        {/* ── Banner ── */}
+        <div className="relative flex-shrink-0"
+          style={{height:140,background:"linear-gradient(135deg,#064e3b 0%,#065f46 45%,#128c7e 100%)"}}>
+          {/* decorative dots */}
+          <div className="absolute inset-0 opacity-10"
+            style={{backgroundImage:"radial-gradient(circle,white 1px,transparent 1px)",backgroundSize:"24px 24px"}}/>
+          {settings?.is_private && (
+            <span className="absolute top-3 right-3 text-[10px] font-extrabold text-white bg-black/30 backdrop-blur-sm px-2 py-1 rounded-full">🔒 Private</span>
+          )}
+        </div>
+
+        {/* ── Profile card ── */}
+        <div className="bg-white px-4 pb-2">
+
+          {/* Avatar row: overlaps banner */}
+          <div className="flex items-end justify-between" style={{marginTop:-46}}>
+            <div className="w-[92px] h-[92px] rounded-full border-4 border-white shadow-lg overflow-hidden flex-shrink-0"
               style={{background:"linear-gradient(145deg,#075E54,#128c7e)"}}>
               {org?.logo_url
                 ? <img src={org.logo_url} alt={displayName} className="w-full h-full object-cover"/>
                 : <div className="w-full h-full flex items-center justify-center text-3xl">{settings?.emoji||"💬"}</div>}
             </div>
-            <p className="text-[22px] font-extrabold text-slate-900 text-center leading-tight">{displayName}</p>
-            <div className="flex items-center gap-2 mt-1 flex-wrap justify-center">
-              <p className="text-[13px] text-[#128c7e] font-medium">Group · {total} members</p>
-              {settings?.category && (
-                <span className="text-[10px] font-bold bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">{settings.category}</span>
+
+            {/* Action buttons */}
+            <div className="flex gap-2 items-center pb-2">
+              {isAdmin && (
+                <button onClick={()=>setScreen("privacy")}
+                  className="px-4 py-1.5 border-2 border-slate-300 rounded-full text-[13px] font-extrabold text-slate-700 active:bg-slate-50 transition-colors">
+                  Settings
+                </button>
               )}
-              {settings?.is_private && (
-                <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">🔒 Private</span>
-              )}
-              {settings?.is_verified && (
-                <span className="text-[10px] font-bold text-[#065f46] bg-[#d1fae5] px-2 py-0.5 rounded-full">✓ Verified</span>
-              )}
+              <button onClick={()=>setScreen("invites")}
+                className="px-5 py-1.5 bg-slate-900 rounded-full text-[13px] font-extrabold text-white active:bg-slate-700 transition-colors">
+                Invite
+              </button>
             </div>
           </div>
 
-          {/* Description */}
-          {desc && (
-            <div className="px-5 pb-4 border-t border-slate-50 pt-3">
-              <p className="text-sm text-slate-700 leading-relaxed">
-                {showFullDesc || desc.length <= 120 ? desc : desc.slice(0,120)+"…"}
-                {desc.length > 120 && (
-                  <button onClick={()=>setShowFullDesc(s=>!s)} className="text-[#128c7e] font-semibold ml-1">
-                    {showFullDesc?"Read less":"Read more"}
-                  </button>
+          {/* Name + verified */}
+          <div className="mt-3 flex items-start gap-2">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <h1 className="text-[21px] font-extrabold text-slate-900 leading-tight">{displayName}</h1>
+                {settings?.is_verified && (
+                  <svg viewBox="0 0 24 24" className="w-5 h-5 flex-shrink-0" fill="#128c7e">
+                    <path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                  </svg>
                 )}
+              </div>
+              <p className="text-[14px] text-slate-500 mt-0.5 leading-snug">
+                Group · {total} members
+                {settings?.category ? ` · ${settings.category}` : ""}
               </p>
+            </div>
+          </div>
+
+          {/* Bio / description */}
+          {desc && (
+            <p className="text-[14px] text-slate-800 leading-relaxed mt-3">
+              {showFullDesc || desc.length <= 160 ? desc : desc.slice(0,160)+"…"}
+              {desc.length > 160 && (
+                <button onClick={()=>setShowFullDesc(s=>!s)} className="text-[#128c7e] font-semibold ml-1">
+                  {showFullDesc?"less":"more"}
+                </button>
+              )}
+            </p>
+          )}
+
+          {/* Meta row */}
+          {(org?.address || org?.website || settings?.created_at) && (
+            <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
+              {org?.address && (
+                <span className="flex items-center gap-1 text-[13px] text-slate-500">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" className="w-3.5 h-3.5">
+                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>
+                  </svg>
+                  {org.address}
+                </span>
+              )}
+              {org?.website && (
+                <a href={org.website} target="_blank" rel="noreferrer"
+                  className="flex items-center gap-1 text-[13px] text-[#128c7e] font-medium">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" className="w-3.5 h-3.5">
+                    <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/>
+                  </svg>
+                  {org.website.replace(/^https?:\/\//, "")}
+                </a>
+              )}
             </div>
           )}
 
-          {/* My level card (if member) */}
+          {/* Stats row (X-style inline numbers) */}
+          <div className="flex items-center gap-5 mt-3 flex-wrap">
+            <button onClick={()=>setActiveTab("members")} className="flex items-baseline gap-1 active:opacity-70">
+              <span className="text-[15px] font-extrabold text-slate-900">{total}</span>
+              <span className="text-[14px] text-slate-500">Members</span>
+            </button>
+            <div className="flex items-baseline gap-1">
+              <span className="text-[15px] font-extrabold text-slate-900">{onlineIds.length}</span>
+              <span className="text-[14px] text-slate-500">Online</span>
+            </div>
+            {analytics && (
+              <>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-[15px] font-extrabold text-slate-900">{analytics.total_messages ?? 0}</span>
+                  <span className="text-[14px] text-slate-500">Posts</span>
+                </div>
+                {analytics.events_created > 0 && (
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-[15px] font-extrabold text-slate-900">{analytics.events_created}</span>
+                    <span className="text-[14px] text-slate-500">Events</span>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* My level card */}
           {myMember && (
-            <div className="mx-4 mb-4 p-3 bg-gradient-to-r from-[#f0fdf4] to-[#dcfce7] rounded-2xl border border-[#bbf7d0] flex items-center gap-3">
+            <div className="mt-4 p-3 bg-gradient-to-r from-[#f0fdf4] to-[#dcfce7] rounded-2xl border border-[#bbf7d0] flex items-center gap-3">
               <LevelRing points={myMember.reputation_points} size={52}/>
               <div className="flex-1 min-w-0">
                 <p className="text-[13px] font-extrabold text-slate-800">{myLevel.title}</p>
                 <p className="text-[11px] text-slate-500">{myMember.reputation_points} pts · {myLevel.pointsToNext} to next level</p>
                 <div className="mt-1.5 h-1.5 bg-white/70 rounded-full overflow-hidden">
-                  <div className="h-full bg-[#25d366] rounded-full transition-all" style={{width:`${myLevel.progress}%`}}/>
+                  <div className="h-full bg-[#25d366] rounded-full" style={{width:`${myLevel.progress}%`}}/>
                 </div>
               </div>
-              <button onClick={()=>setScreen("leaderboard")} className="text-[11px] font-bold text-[#128c7e] bg-white px-3 py-1.5 rounded-xl shadow-sm active:bg-[#f0fdf4]">
+              <button onClick={()=>setScreen("leaderboard")}
+                className="text-[11px] font-extrabold text-[#128c7e] bg-white px-3 py-1.5 rounded-xl shadow-sm active:bg-[#f0fdf4]">
                 Rank
               </button>
             </div>
           )}
-        </div>
 
-        {/* ── Stats row ── */}
-        {analytics && (
-          <>
-            <div className="h-3 bg-[#f0f2f5]"/>
-            <div className="bg-white px-4 py-4">
-              <div className="flex gap-3 overflow-x-auto pb-1">
-                <StatChip icon="👥" label="Members"   value={analytics.total_members}    />
-                <StatChip icon="💬" label="Messages"  value={analytics.total_messages}   />
-                <StatChip icon="🔴" label="Online"    value={onlineIds.length}           />
-                <StatChip icon="📊" label="Polls"     value={analytics.polls_created}    />
-                <StatChip icon="📅" label="Events"    value={analytics.events_created}   />
-                <StatChip icon="🎙️" label="Voices"    value={analytics.voice_sessions}   />
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* ── Action grid ── */}
-        <div className="h-3 bg-[#f0f2f5]"/>
-        <div className="bg-white px-4 py-4">
-          <div className="flex flex-wrap gap-4 justify-around">
-            <ActionBtn icon="📅" label="Events"   onClick={()=>setScreen("events")}      color="#f59e0b"/>
-            <ActionBtn icon="📊" label="Polls"    onClick={()=>setScreen("polls")}       color="#8b5cf6"/>
-            <ActionBtn icon="🖼️"  label="Media"   onClick={()=>setScreen("media")}       color="#06b6d4"/>
-            <ActionBtn icon="🎙️" label="Voice"   onClick={()=>setScreen("voice")}       color="#ef4444"/>
-            <ActionBtn icon="🏆" label="Ranks"   onClick={()=>setScreen("leaderboard")} color="#f59e0b"/>
-          </div>
-        </div>
-
-        {/* ── Admin section ── */}
-        {isAdmin && (
-          <>
-            <div className="h-3 bg-[#f0f2f5]"/>
-            <div className="bg-white">
+          {/* Admin quick-row */}
+          {isAdmin && (
+            <div className="mt-3 flex gap-2">
               <button onClick={()=>setScreen("admin")}
-                className="w-full flex items-center gap-4 px-5 py-4 border-b border-slate-50 active:bg-slate-50">
-                <div className="w-10 h-10 rounded-full bg-violet-100 flex items-center justify-center flex-shrink-0">
-                  <span className="text-xl">⚙️</span>
-                </div>
-                <div className="flex-1 text-left">
-                  <p className="text-[14px] font-semibold text-slate-800">Admin Dashboard</p>
-                  <p className="text-[11px] text-slate-400">Members, analytics, reports</p>
-                </div>
-                {(pendingReqs+pendingReps)>0 && (
-                  <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">{pendingReqs+pendingReps}</span>
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-slate-50 hover:bg-slate-100 rounded-2xl border border-slate-200 active:bg-slate-100 transition-colors">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#6d28d9" strokeWidth={2} strokeLinecap="round" className="w-4 h-4 flex-shrink-0">
+                  <path d="M12 2a10 10 0 110 20A10 10 0 0112 2zm0 6v4m0 4h.01"/>
+                </svg>
+                <span className="text-[13px] font-bold text-slate-700">Dashboard</span>
+                {(pendingReqs+pendingReps) > 0 && (
+                  <span className="bg-red-500 text-white text-[9px] font-extrabold w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0">
+                    {pendingReqs+pendingReps}
+                  </span>
                 )}
-                <svg viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={2} strokeLinecap="round" className="w-4 h-4 flex-shrink-0"><path d="M9 18l6-6-6-6"/></svg>
               </button>
-              <button onClick={()=>setScreen("privacy")}
-                className="w-full flex items-center gap-4 px-5 py-4 active:bg-slate-50">
-                <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center flex-shrink-0">
-                  <span className="text-xl">🔒</span>
-                </div>
-                <div className="flex-1 text-left">
-                  <p className="text-[14px] font-semibold text-slate-800">Privacy & Settings</p>
-                  <p className="text-[11px] text-slate-400">Disappearing messages, slow mode</p>
-                </div>
-                <svg viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={2} strokeLinecap="round" className="w-4 h-4 flex-shrink-0"><path d="M9 18l6-6-6-6"/></svg>
+              <button onClick={()=>setScreen("voice")}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-slate-50 hover:bg-slate-100 rounded-2xl border border-slate-200 active:bg-slate-100 transition-colors">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth={2} strokeLinecap="round" className="w-4 h-4 flex-shrink-0">
+                  <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/>
+                </svg>
+                <span className="text-[13px] font-bold text-slate-700">Voice Room</span>
               </button>
             </div>
-          </>
-        )}
+          )}
+        </div>
 
-        {/* ── Members list ── */}
-        <div className="h-3 bg-[#f0f2f5]"/>
-        <div className="bg-white">
-          <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100">
-            <span className="text-[15px] font-semibold text-slate-800">{total} participants</span>
-            <button onClick={()=>setShowMSearch(s=>!s)}
-              className="w-8 h-8 flex items-center justify-center rounded-full active:bg-slate-100">
-              <svg viewBox="0 0 24 24" fill="none" stroke="#8a9bb0" strokeWidth={2} strokeLinecap="round" className="w-4 h-4"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-            </button>
+        {/* ── Sticky tab bar ── */}
+        <div className="sticky top-0 z-10 bg-white border-b border-slate-200">
+          <div className="flex">
+            {TABS.map(t => {
+              const active = activeTab === t.id;
+              return (
+                <button key={t.id} onClick={()=>handleTab(t.id)}
+                  className={`flex-1 py-3.5 text-center relative transition-colors
+                    ${active ? "text-slate-900" : "text-slate-500 hover:text-slate-700"}`}>
+                  <span className="text-[14px] font-bold">{t.label}</span>
+                  {active && (
+                    <span className="absolute bottom-0 left-1/2 -translate-x-1/2 h-[3px] w-10 bg-[#128c7e] rounded-full"/>
+                  )}
+                </button>
+              );
+            })}
           </div>
+        </div>
 
-          {showMSearch && (
-            <div className="px-4 py-2.5 border-b border-slate-100 bg-slate-50">
-              <div className="flex items-center gap-2 bg-white rounded-xl px-3 py-2 border border-slate-200">
-                <svg viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={2} strokeLinecap="round" className="w-4 h-4 flex-shrink-0"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-                <input value={memberSearch} onChange={e=>setMemberSearch(e.target.value)} autoFocus
-                  placeholder="Search participants…"
-                  className="flex-1 text-sm text-slate-800 bg-transparent outline-none placeholder-slate-400"/>
+        {/* ── Members tab content ── */}
+        {activeTab === "members" && (
+          <div className="bg-white">
+
+            {/* Search bar */}
+            <div className="px-4 py-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5 bg-slate-100 rounded-full px-4 py-2.5">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={2} strokeLinecap="round" className="w-4 h-4 flex-shrink-0">
+                  <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+                </svg>
+                <input value={memberSearch} onChange={e=>setMemberSearch(e.target.value)}
+                  placeholder="Search members…"
+                  className="flex-1 text-[14px] text-slate-800 bg-transparent outline-none placeholder-slate-400"/>
                 {memberSearch && (
-                  <button onClick={()=>setMemberSearch("")} className="text-slate-400">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                  <button onClick={()=>setMemberSearch("")} className="text-slate-400 flex-shrink-0">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
                   </button>
                 )}
               </div>
             </div>
-          )}
 
-          {/* Org admin row */}
-          <div className="flex items-center gap-3.5 px-4 py-3.5 border-b border-slate-50">
-            <Av name={org?.owner_name||orgName} size={50} online url={org?.logo_url}/>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <p className="text-[14px] font-semibold text-slate-900 truncate">{org?.owner_name||orgName}</p>
-                <RoleBadge role="owner"/>
-              </div>
-              <p className="text-[12px] text-[#128c7e] font-medium">Group admin · online</p>
-            </div>
-          </div>
-
-          {filteredMembers.map((m,idx) => {
-            const online = onlineIds.includes(m.user_id);
-            const {level} = calcLevel(m.reputation_points||0);
-            return (
-              <div key={m.id}
-                className={`flex items-center gap-3.5 px-4 py-3.5 ${idx<filteredMembers.length-1?"border-b border-slate-50":""}`}>
-                <Av name={m.full_name} size={50} online={online} url={m.avatar_url||m.profile_image_url}/>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <p className="text-[14px] font-semibold text-slate-900 truncate">{m.full_name}</p>
-                    <RoleBadge role={m.chat_role||"member"}/>
-                    {m.badge_count>0 && <span className="text-[9px] text-amber-600 font-bold">🏅×{m.badge_count}</span>}
-                  </div>
-                  <p className={`text-[12px] font-medium ${online?"text-[#128c7e]":"text-slate-400"}`}>
-                    {online?"online":`last seen ${lastSeen[m.user_id]?new Date(lastSeen[m.user_id]).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'—'}`}
-                    {m.reputation_points>0 && <span className="ml-2 text-slate-300">· Lv{level}</span>}
-                  </p>
+            {/* Admin row */}
+            <div className="flex items-center gap-3.5 px-4 py-3.5 border-b border-slate-50 active:bg-slate-50 transition-colors">
+              <Av name={org?.owner_name||orgName} size={46} online url={org?.logo_url}/>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <p className="text-[15px] font-bold text-slate-900 truncate">{org?.owner_name||orgName}</p>
+                  <RoleBadge role="owner"/>
                 </div>
+                <p className="text-[12px] text-[#128c7e] font-medium mt-0.5">Group admin · online</p>
               </div>
-            );
-          })}
+            </div>
 
-          {filteredMembers.length===0 && memberSearch && (
-            <div className="px-5 py-8 text-center text-sm text-slate-400">No participants found</div>
-          )}
-        </div>
-        <div className="h-10"/>
+            {/* Members */}
+            {filteredMembers.map((m, idx) => {
+              const online = onlineIds.includes(m.user_id);
+              const {level} = calcLevel(m.reputation_points||0);
+              return (
+                <div key={m.id}
+                  className={`flex items-center gap-3.5 px-4 py-3.5 active:bg-slate-50 transition-colors
+                    ${idx < filteredMembers.length-1 ? "border-b border-slate-50" : ""}`}>
+                  <Av name={m.full_name} size={46} online={online} url={m.avatar_url||m.profile_image_url}/>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <p className="text-[15px] font-bold text-slate-900 truncate">{m.full_name}</p>
+                      <RoleBadge role={m.chat_role||"member"}/>
+                      {m.badge_count > 0 && <span className="text-[9px] text-amber-600 font-bold">🏅×{m.badge_count}</span>}
+                    </div>
+                    <p className={`text-[12px] font-medium mt-0.5 ${online ? "text-[#128c7e]" : "text-slate-400"}`}>
+                      {online
+                        ? "online"
+                        : `last seen ${lastSeen[m.user_id] ? new Date(lastSeen[m.user_id]).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}) : "—"}`}
+                      {m.reputation_points > 0 && <span className="ml-2 text-slate-300">· Lv{level}</span>}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+
+            {filteredMembers.length === 0 && memberSearch && (
+              <div className="py-12 text-center text-sm text-slate-400">No members found</div>
+            )}
+
+            <div className="h-12"/>
+          </div>
+        )}
+
       </div>
     </div>
   );
