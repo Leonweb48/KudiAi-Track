@@ -2629,6 +2629,254 @@ function BillsTab({ org, autoService = null, onAutoOpened = null, adminEmail = n
 }
 
 // ═══════════════════════════════════════════════════
+//  ORG PROFILE TAB (org portal — replaces Settings)
+// ═══════════════════════════════════════════════════
+function OrgProfileTab({ org, onRefresh, onOrgUpdate }) {
+  const [leaders,       setLeaders]       = useState([]);
+  const [form,          setForm]          = useState({ name: org.name || "", email: org.email || "", phone: org.phone || "", address: org.address || "", state_name: org.state_name || "", lga: org.lga || "", purpose: org.purpose || "", vision: org.vision || "", mission: org.mission || "", website: org.website || "", social_instagram: org.social_instagram || "", social_facebook: org.social_facebook || "", social_twitter: org.social_twitter || "", date_established: org.date_established || "", logo_url: org.logo_url || "" });
+  const [logoUploading, setLogoUploading] = useState(false);
+  const logoFileRef                        = useRef(null);
+  const [lForm,    setLForm]    = useState({ name: "", position: "", phone: "", email: "", sort_order: "0" });
+  const [saving,   setSaving]   = useState(false);
+  const [lSaving,  setLSaving]  = useState(false);
+  const [editL,    setEditL]    = useState(null);
+  const [showAddL, setShowAddL] = useState(false);
+  const [saved,    setSaved]    = useState(false);
+  const [error,    setError]    = useState("");
+
+  const set  = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
+  const setL = k => e => setLForm(p => ({ ...p, [k]: e.target.value }));
+
+  const loadLeaders = useCallback(() => {
+    coopFn("get-leaders", { org_id: org.id }).then(r => setLeaders(r.leaders || []));
+  }, [org.id]);
+  useEffect(() => { loadLeaders(); }, [loadLeaders]);
+
+  const handleSaveOrg = async () => {
+    setSaving(true); setError(""); setSaved(false);
+    try {
+      const result = await coopFn("update-org", { org_id: org.id, ...form });
+      if (result?.org) onOrgUpdate?.(result.org);
+      setSaved(true); onRefresh();
+      setTimeout(() => setSaved(false), 3000);
+    } catch (e) { setError(e.message || "Failed"); }
+    finally { setSaving(false); }
+  };
+
+  const handleSaveLeader = async () => {
+    if (!lForm.name.trim() || !lForm.position.trim()) { setError("Name and position required"); return; }
+    setLSaving(true); setError("");
+    try {
+      if (editL) { await coopFn("update-leader", { leader_id: editL.id, ...lForm }); }
+      else        { await coopFn("add-leader",    { org_id: org.id, ...lForm }); }
+      setShowAddL(false); setEditL(null); setLForm({ name: "", position: "", phone: "", email: "", sort_order: "0" }); loadLeaders();
+    } catch (e) { setError(e.message || "Failed"); }
+    finally { setLSaving(false); }
+  };
+
+  const handleDeleteLeader = async (l) => {
+    if (!window.confirm(`Remove ${l.name}?`)) return;
+    await coopFn("delete-leader", { leader_id: l.id }); loadLeaders();
+  };
+
+  const openEditLeader = (l) => {
+    setLForm({ name: l.name, position: l.position, phone: l.phone || "", email: l.email || "", sort_order: String(l.sort_order || 0) });
+    setEditL(l); setShowAddL(true);
+  };
+
+  const handleLogoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setLogoUploading(true);
+    try {
+      const ext  = file.name.split(".").pop() || "jpg";
+      const path = `orgs/${org.id}/${Date.now()}.${ext}`;
+      const { data, error: upErr } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
+      if (upErr) throw upErr;
+      const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(data.path);
+      setForm(p => ({ ...p, logo_url: publicUrl }));
+    } catch (e) { setError(e.message || "Upload failed"); }
+    setLogoUploading(false);
+  };
+
+  return (
+    <div className="flex-1 overflow-y-auto px-4 pt-4 pb-24 flex flex-col gap-5">
+      {/* Org identity */}
+      <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-100 dark:border-slate-700 flex items-center gap-3">
+        {(form.logo_url || org.logo_url)
+          ? <img src={form.logo_url || org.logo_url} alt="" className="w-12 h-12 rounded-xl object-cover ring-2 ring-green-200 flex-shrink-0" />
+          : <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl flex-shrink-0"
+              style={{ background: "linear-gradient(145deg,#00A651,#0D2040)" }}>
+              <span>{org.type === "cooperative" ? "🤝" : "🏢"}</span>
+            </div>
+        }
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-extrabold text-slate-800 dark:text-white truncate">{org.name}</p>
+          <p className="text-[10px] text-slate-400 font-mono">{org.reg_number}</p>
+        </div>
+      </div>
+
+      {/* Org Profile */}
+      <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-100 dark:border-slate-700">
+        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-4">Organisation Profile</p>
+        {error && <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-3 text-xs text-red-600">{error}</div>}
+        {saved && <div className="bg-green-50 border border-green-200 rounded-xl px-3 py-2 mb-3 text-xs text-green-600">✓ Saved successfully</div>}
+        <div className="flex flex-col gap-3">
+          <div>
+            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Organisation Name</label>
+            <input className={input} value={form.name} onChange={set("name")} />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Email</label>
+              <input className={input} type="email" value={form.email} onChange={set("email")} placeholder="org@example.com" />
+            </div>
+            <div>
+              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Phone</label>
+              <input className={input} type="tel" value={form.phone} onChange={set("phone")} placeholder="08000000000" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">State</label>
+              <input className={input} value={form.state_name} onChange={set("state_name")} />
+            </div>
+            <div>
+              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">LGA</label>
+              <input className={input} value={form.lga} onChange={set("lga")} />
+            </div>
+          </div>
+          <div>
+            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Address</label>
+            <input className={input} value={form.address} onChange={set("address")} />
+          </div>
+          <div>
+            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Organisation Logo / Photo</label>
+            <div className="flex items-center gap-4">
+              {form.logo_url
+                ? <img src={form.logo_url} alt="logo" className="w-16 h-16 rounded-xl object-cover border border-slate-200 flex-shrink-0" />
+                : <div className="w-16 h-16 rounded-xl bg-green-50 border border-slate-200 flex items-center justify-center text-2xl flex-shrink-0">
+                    {org.type === "cooperative" ? "🤝" : "🏢"}
+                  </div>
+              }
+              <div className="flex flex-col gap-2">
+                <button onClick={() => logoFileRef.current?.click()} disabled={logoUploading}
+                  className="text-xs font-bold text-blue-600 border border-blue-200 bg-blue-50 px-3 py-2 rounded-xl active:bg-blue-100 disabled:opacity-50">
+                  {logoUploading ? "Uploading…" : "Upload Photo"}
+                </button>
+                {form.logo_url && (
+                  <button onClick={() => setForm(p => ({ ...p, logo_url: "" }))}
+                    className="text-xs text-red-500 font-medium text-left">Remove photo</button>
+                )}
+              </div>
+            </div>
+            <input ref={logoFileRef} type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
+          </div>
+          <div>
+            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Purpose</label>
+            <textarea className={input} rows={2} value={form.purpose} onChange={set("purpose")} placeholder="What does this organisation do?" />
+          </div>
+          <div>
+            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Vision Statement</label>
+            <textarea className={input} rows={2} value={form.vision} onChange={set("vision")} placeholder="Our vision is…" />
+          </div>
+          <div>
+            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Mission Statement</label>
+            <textarea className={input} rows={2} value={form.mission} onChange={set("mission")} placeholder="Our mission is…" />
+          </div>
+          <div>
+            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Date Established</label>
+            <input className={input} type="date" value={form.date_established} onChange={set("date_established")} />
+          </div>
+          <div>
+            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Website</label>
+            <input className={input} value={form.website} onChange={set("website")} placeholder="https://..." type="url" />
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {[["Instagram","social_instagram","@handle"],["Facebook","social_facebook","Page name"],["Twitter","social_twitter","@handle"]].map(([label,key,ph]) => (
+              <div key={key}>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{label}</label>
+                <input className={input} value={form[key]} onChange={set(key)} placeholder={ph} />
+              </div>
+            ))}
+          </div>
+        </div>
+        <button onClick={handleSaveOrg} disabled={saving} className="w-full mt-4 py-3 bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">{saving ? "Saving…" : "Save Profile"}</button>
+      </div>
+
+      {/* Key Leaders */}
+      <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-100 dark:border-slate-700">
+        <div className="flex justify-between items-center mb-4">
+          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Key Leaders & Executives</p>
+          <button onClick={() => { setLForm({ name: "", position: "", phone: "", email: "", sort_order: String(leaders.length) }); setEditL(null); setShowAddL(true); }}
+            className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-bold">+ Add</button>
+        </div>
+        {leaders.length === 0 ? (
+          <p className="text-xs text-slate-400 text-center py-4">No leaders added yet</p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {leaders.map(l => (
+              <div key={l.id} className="flex items-center gap-3 py-2 border-b border-slate-100 dark:border-slate-700 last:border-0">
+                <div className="w-9 h-9 rounded-xl bg-green-100 flex items-center justify-center text-sm font-extrabold text-green-600 flex-shrink-0">{l.name?.charAt(0)}</div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-slate-800 dark:text-white truncate">{l.name}</p>
+                  <p className="text-[10px] text-slate-400">{l.position}</p>
+                  {l.phone && <p className="text-[10px] text-slate-400">{l.phone}</p>}
+                </div>
+                <div className="flex gap-1.5">
+                  <button onClick={() => openEditLeader(l)} className="text-[10px] font-bold text-slate-500 bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-lg">Edit</button>
+                  <button onClick={() => handleDeleteLeader(l)} className="text-[10px] font-bold text-red-500 bg-red-50 px-2 py-1 rounded-lg">Del</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Paystack Bank Account */}
+      <OrgBankSetupSection org={org} onRefresh={onRefresh} />
+
+      {showAddL && (
+        <ModalWrap onClose={() => { setShowAddL(false); setEditL(null); setError(""); }}>
+          <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-4">{editL ? "Edit Leader" : "Add Leader"}</h3>
+          {error && <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-3 text-xs text-red-600">{error}</div>}
+          <div className="flex flex-col gap-3">
+            {[["Full Name *","name","text"],["Position *","position","text"],["Phone","phone","tel"],["Email","email","email"]].map(([label,key,type]) => (
+              <div key={key}>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{label}</label>
+                <input className={input} type={type} value={lForm[key]} onChange={setL(key)} />
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2 mt-5">
+            <button onClick={() => { setShowAddL(false); setEditL(null); setError(""); }} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Cancel</button>
+            <button onClick={handleSaveLeader} disabled={lSaving} className="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">{lSaving ? "Saving…" : editL ? "Save" : "Add Leader"}</button>
+          </div>
+        </ModalWrap>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════
+//  ORG PORTAL SUPPORT TAB
+// ═══════════════════════════════════════════════════
+function OrgPortalSupportTab({ org }) {
+  return (
+    <div className="flex-1 overflow-y-auto pb-24">
+      <div className="px-4 pt-5 pb-2">
+        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Support & FAQ</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Get help or submit a support ticket</p>
+      </div>
+      <div className="px-4">
+        <OrgSupportSection org={org} />
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════
 //  NAVIGATION STRUCTURE
 // ═══════════════════════════════════════════════════
 
@@ -2646,7 +2894,8 @@ const MORE_TABS = [
   { id: "programs",  label: "Programs",  icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2",          color: "#059669" },
   { id: "broadcast", label: "Broadcast", icon: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z",                                                   color: "#0f766e" },
   { id: "bills",     label: "Bills",     icon: "M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z",                                                   color: "#00A651", orgOnly: true },
-  { id: "settings",  label: "Settings",  icon: "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z|M15 12a3 3 0 11-6 0 3 3 0 016 0z", color: "#64748b" },
+  { id: "profile",   label: "Profile",   icon: "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4", color: "#0ea5e9" },
+  { id: "support",   label: "Support",   icon: "M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z", color: "#7c3aed" },
 ];
 
 // Horizontal scroll tabs (non-org-portal view, admin side)
@@ -2742,6 +2991,8 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
     messages: <GroupChat orgId={org.id} myName={org.owner_name || "Admin"} myRole="admin" orgName={org.name} org={org} onBack={() => setTab("overview")} />,
     settings: <SettingsTab org={org} onRefresh={loadAll} onOrgUpdate={setOrg} onBack={onBack} isOrgPortal={isOrgPortal} isDark={isDark} onToggleDark={toggleDark} />,
     bills:    <BillsTab    org={org} autoService={billsAutoSvc} onAutoOpened={() => setBillsAutoSvc(null)} adminEmail={adminEmail} />,
+    profile:  <OrgProfileTab  org={org} onRefresh={loadAll} onOrgUpdate={setOrg} />,
+    support:  <OrgPortalSupportTab org={org} />,
   };
 
   const isMoreTab = MORE_TABS.some(t => t.id === tab);
@@ -2768,7 +3019,7 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
                 recipientType="org"
                 onNavigate={navigateTo}
               />
-              <button onClick={() => navigateTo("settings")}
+              <button onClick={() => navigateTo("profile")}
                 className="active:scale-90 transition-transform">
                 {org.logo_url
                   ? <img src={org.logo_url} alt="" className="w-9 h-9 rounded-full object-cover border-2 border-slate-100 dark:border-slate-700 shadow-sm" />
@@ -2901,6 +3152,28 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
                       </button>
                     );
                   })}
+                </div>
+
+                {/* Dark mode toggle */}
+                <div className="px-5 py-3 border-t border-slate-100 dark:border-slate-800 flex-shrink-0 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+                      style={{ background: isDark ? "#0D204022" : "#f0fdf4" }}>
+                      <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4"
+                        stroke={isDark ? "#00A651" : "#0D2040"} strokeWidth={2} strokeLinecap="round">
+                        {isDark
+                          ? <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
+                          : <><circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /></>
+                        }
+                      </svg>
+                    </div>
+                    <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">{isDark ? "Dark Mode" : "Light Mode"}</span>
+                  </div>
+                  <button onClick={toggleDark}
+                    className="w-11 h-6 rounded-full transition-all relative flex-shrink-0"
+                    style={{ background: isDark ? "#00A651" : "#e2e8f0" }}>
+                    <div className={`w-4.5 h-4.5 rounded-full bg-white shadow-md transition-transform absolute top-[3px] ${isDark ? "translate-x-[22px]" : "translate-x-[3px]"}`} />
+                  </button>
                 </div>
 
                 {/* Sign out */}
