@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "../../utils/supabase";
 import { calcLevel } from "../../utils/communityTypes";
 import AdminDashboard   from "./AdminDashboard";
@@ -91,9 +91,11 @@ function StatChip({ label, value, icon }) {
 export default function GroupInfoPage({ orgId, orgName, org, settings: initSettings, members: initMembers,
   onlineIds, lastSeen, isAdmin, myId, onClose }) {
 
-  const [screen,       setScreen]       = useState("info");
-  const [settings] = useState(initSettings);
+  const [screen,         setScreen]       = useState("info");
+  const [settings,       setSettings]     = useState(initSettings);
   const [members] = useState(initMembers || []);
+  const [coverUploading, setCoverUploading] = useState(false);
+  const coverFileRef = useRef(null);
   const [analytics,    setAnalytics]    = useState(null);
   const [showFullDesc, setShowFullDesc] = useState(false);
   const [memberSearch, setMemberSearch] = useState("");
@@ -130,6 +132,25 @@ export default function GroupInfoPage({ orgId, orgName, org, settings: initSetti
     : members;
 
   const myLevel = calcLevel(myMember?.reputation_points || 0);
+
+  const handleCoverUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !isAdmin) return;
+    setCoverUploading(true);
+    try {
+      const ext  = file.name.split(".").pop();
+      const path = `org-covers/${orgId}/cover_${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from("chat-media").upload(path, file, { upsert: true });
+      if (upErr) throw upErr;
+      const { data: { publicUrl } } = supabase.storage.from("chat-media").getPublicUrl(path);
+      await supabase.from("org_chat_settings").upsert({ org_id: orgId, cover_image_url: publicUrl }, { onConflict: "org_id" });
+      setSettings(s => ({ ...s, cover_image_url: publicUrl }));
+    } catch (err) {
+      console.error("Cover upload failed:", err);
+    }
+    setCoverUploading(false);
+    e.target.value = "";
+  };
 
   // ── Sub-screen navigation ──────────────────────────────────────────────────
   if (screen === "search")   return <GroupSearch   orgId={orgId} members={members} onBack={()=>setScreen("info")} />;
@@ -187,11 +208,15 @@ export default function GroupInfoPage({ orgId, orgName, org, settings: initSetti
               )}
             </div>
             {isAdmin && (
-              <button onClick={()=>setScreen("privacy")}
-                className="absolute bottom-3 right-3 w-8 h-8 bg-black/40 backdrop-blur-sm rounded-full flex items-center justify-center active:scale-90">
-                <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2} strokeLinecap="round" className="w-4 h-4"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              <button onClick={() => coverFileRef.current?.click()} disabled={coverUploading}
+                className="absolute bottom-3 right-3 w-8 h-8 bg-black/40 backdrop-blur-sm rounded-full flex items-center justify-center active:scale-90 disabled:opacity-60">
+                {coverUploading
+                  ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"/>
+                  : <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2} strokeLinecap="round" className="w-4 h-4"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                }
               </button>
             )}
+            <input ref={coverFileRef} type="file" accept="image/*" className="hidden" onChange={handleCoverUpload} />
           </div>
 
           {/* Avatar + name */}
