@@ -214,7 +214,7 @@ export default function AdminDashboard({ orgId, orgName, org, members:initMember
                     <Av name={m.full_name} size={38} url={m.avatar_url}/>
                     <div className="flex-1 min-w-0">
                       <p className="text-[13px] font-semibold text-slate-800 truncate">{m.full_name}</p>
-                      <p className="text-[11px] text-slate-400">{m.reputation_points} pts · Lv{m.level}</p>
+                      <p className="text-[11px] text-slate-400">{m.points ?? m.reputation_points} pts · Lv{m.level}</p>
                     </div>
                     {i===0&&<span className="text-lg">🥇</span>}
                     {i===1&&<span className="text-lg">🥈</span>}
