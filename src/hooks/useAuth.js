@@ -192,7 +192,21 @@ export function useAuth() {
 
     // ── Organisation portal routing ───────────────────────────────────
     if (accountType === "organisation") {
-      const { data: orgRow, error: orgErr } = await supabase.rpc("get_my_org");
+      const isNetErr = (e) => e && (
+        e.message.includes("Load failed") ||
+        e.message.includes("Failed to fetch") ||
+        e.message.includes("NetworkError") ||
+        e.message.includes("network")
+      );
+
+      let { data: orgRow, error: orgErr } = await supabase.rpc("get_my_org");
+
+      // Retry once on transient network errors before giving up
+      if (!orgRow && isNetErr(orgErr)) {
+        await new Promise(r => setTimeout(r, 2000));
+        ({ data: orgRow, error: orgErr } = await supabase.rpc("get_my_org"));
+      }
+
       if (orgRow) {
         if (orgRow.status !== "active") {
           const msg = "Your organisation account is not active. Please contact the business that set up your portal.";
@@ -212,6 +226,16 @@ export function useAuth() {
         }
         return;
       }
+
+      // Network error even after retry: keep session alive so user can reload and retry
+      if (isNetErr(orgErr)) {
+        const msg = "Connection error. Please check your internet connection and try again.";
+        sessionStorage.setItem("auth_block_reason", msg);
+        window.dispatchEvent(new CustomEvent("kuditrack_auth_error", { detail: msg }));
+        setStatus("unauthenticated");
+        return;
+      }
+
       const reason = orgErr
         ? `Organisation login error: ${orgErr.message}`
         : "Organisation not found. Please contact the business that set up your portal.";
