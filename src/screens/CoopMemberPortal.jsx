@@ -347,22 +347,48 @@ function HomeTab({ member, org, announcements, polls = [], events = [], loans = 
 // ═══════════════════════════════════════════════════
 //  PAY VIA PAYSTACK MODAL  (redirect-based)
 // ═══════════════════════════════════════════════════
-function PayOrgModal({ member, org, onClose }) {
+function PayOrgModal({ member, org, preProgram, history, onClose }) {
+  const [programId, setProgramId] = useState(preProgram?.id || "");
+  const [programs,  setPrograms]  = useState(preProgram ? [preProgram] : []);
   const [amount,    setAmount]    = useState("");
-  const [programId, setProgramId] = useState("");
-  const [programs,  setPrograms]  = useState([]);
   const [loading,   setLoading]   = useState(false);
   const [error,     setError]     = useState("");
 
   useEffect(() => {
+    if (preProgram) return;
     coopFn("member-get-programs", { member_id: member.id, org_id: org.id })
       .then(r => setPrograms((r.programs || []).filter(p => p.status === "active")))
       .catch(() => null);
-  }, [member.id, org.id]);
+  }, [member.id, org.id, preProgram]);
+
+  const selectedProg = programs.find(p => p.id === programId) || null;
+  const isFixed      = selectedProg?.contribution_type === "fixed";
+  const required     = isFixed ? Number(selectedProg.amount) : 0;
+
+  const paidThisMonth = useMemo(() => {
+    if (!selectedProg || !history) return 0;
+    const start = new Date(); start.setDate(1); start.setHours(0, 0, 0, 0);
+    return history
+      .filter(h => h.type === "deposit" && h.program_id === selectedProg.id && new Date(h.created_at) >= start)
+      .reduce((s, h) => s + Number(h.amount), 0);
+  }, [selectedProg, history]);
+
+  const remaining = Math.max(0, required - paidThisMonth);
+  const metTarget = isFixed && paidThisMonth >= required;
+  const monthLabel = new Date().toLocaleString("en-NG", { month: "long", year: "numeric" });
+
+  useEffect(() => {
+    if (isFixed && remaining > 0) setAmount(String(remaining));
+    else if (!isFixed) setAmount("");
+  }, [programId, isFixed, remaining]);
 
   const handlePay = async () => {
     const amt = parseFloat(amount);
     if (!amt || amt <= 0) { setError("Enter a valid amount"); return; }
+    if (isFixed && !metTarget && (paidThisMonth + amt) < required) {
+      setError(`Pay at least ${fmt(remaining)} to meet your ${fmt(required)} monthly target`);
+      return;
+    }
     setLoading(true); setError("");
     try {
       const res = await coopFn("initialize-member-payment", {
@@ -387,37 +413,73 @@ function PayOrgModal({ member, org, onClose }) {
       onClick={e => { if (e.target === e.currentTarget && !loading) onClose(); }}>
       <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-t-3xl px-5 py-6 max-h-[90vh] overflow-y-auto">
         <div className="w-10 h-1 bg-slate-200 dark:bg-slate-600 rounded-full mx-auto mb-5" />
-        <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">Pay via Paystack</h3>
-        <p className="text-xs text-slate-400 mb-4">Contribute directly to {org.name}</p>
+        <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-0.5">Monthly Contribution</h3>
+        <p className="text-xs text-slate-400 mb-4">{monthLabel} · {org.name}</p>
 
-        <div className="flex flex-col gap-3 mb-4">
-          <div>
-            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Amount (₦) *</label>
-            <input type="number" value={amount} onChange={e => setAmount(e.target.value)}
-              placeholder="Enter amount" disabled={loading}
-              className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-green-400 disabled:opacity-50" />
+        {/* Program selector — only shown when not pre-selected */}
+        {!preProgram && programs.length > 0 && (
+          <div className="mb-4">
+            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Contribution Program</label>
+            <select value={programId} onChange={e => { setProgramId(e.target.value); setError(""); }} disabled={loading}
+              className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-green-400 disabled:opacity-50">
+              <option value="">— General contribution —</option>
+              {programs.map(p => <option key={p.id} value={p.id}>{p.name}{p.contribution_type === "fixed" ? ` · ${fmt(p.amount)}` : ""}</option>)}
+            </select>
           </div>
-          {programs.length > 0 && (
-            <div>
-              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Program (Optional)</label>
-              <select value={programId} onChange={e => setProgramId(e.target.value)} disabled={loading}
-                className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-green-400 disabled:opacity-50">
-                <option value="">— General contribution —</option>
-                {programs.map(p => <option key={p.id} value={p.id}>{p.name}{p.contribution_type === "fixed" ? ` (${fmt(p.amount)})` : ""}</option>)}
-              </select>
+        )}
+
+        {/* Monthly target status card for fixed programs */}
+        {selectedProg && isFixed && (
+          <div className={`rounded-2xl p-4 mb-4 border ${metTarget ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800" : "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800"}`}>
+            <div className="flex items-center justify-between mb-2.5">
+              <p className="text-xs font-extrabold text-slate-700 dark:text-slate-200">{selectedProg.name}</p>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${metTarget ? "bg-green-500 text-white" : "bg-amber-500 text-white"}`}>
+                {metTarget ? "✓ Target Met" : "Outstanding"}
+              </span>
             </div>
-          )}
+            <div className="h-2.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden mb-2">
+              <div className="h-full rounded-full transition-all"
+                style={{ width: `${Math.min(100, (paidThisMonth / required) * 100)}%`, background: metTarget ? "#16a34a" : "#f59e0b" }} />
+            </div>
+            <div className="flex justify-between text-[10px] font-semibold mb-1">
+              <span className="text-slate-500 dark:text-slate-400">{fmt(paidThisMonth)} paid</span>
+              <span className="text-slate-600 dark:text-slate-300">{fmt(required)} target</span>
+            </div>
+            {!metTarget && (
+              <p className="text-[11px] font-bold text-amber-700 dark:text-amber-400 mt-0.5">
+                {fmt(remaining)} remaining for {monthLabel}
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Voluntary program label */}
+        {preProgram && !isFixed && (
+          <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl px-4 py-3 mb-4">
+            <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{preProgram.name}</p>
+            <p className="text-[10px] text-slate-400 mt-0.5">Voluntary — pay any amount</p>
+          </div>
+        )}
+
+        {/* Amount input */}
+        <div className="mb-4">
+          <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+            {metTarget ? "Extra Contribution (₦)" : `Amount (₦)${isFixed ? ` · Min ${fmt(remaining)}` : ""}`}
+          </label>
+          <input type="number" value={amount} onChange={e => { setAmount(e.target.value); setError(""); }}
+            placeholder={metTarget ? "Top up beyond your target (optional)" : isFixed ? `Min ${fmt(remaining)}` : "Enter amount"}
+            disabled={loading}
+            className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-green-400 disabled:opacity-50" />
+          {metTarget && <p className="text-[10px] text-green-600 dark:text-green-400 mt-1">You've already met your {monthLabel} target. Any extra payment is a bonus contribution.</p>}
         </div>
 
-        {error && (
-          <p className="text-xs px-3 py-2.5 rounded-xl mb-4 border bg-red-50 border-red-200 text-red-600">{error}</p>
-        )}
+        {error && <p className="text-xs px-3 py-2.5 rounded-xl mb-4 border bg-red-50 border-red-200 text-red-600">{error}</p>}
 
         <button onClick={handlePay} disabled={loading || !amount}
           className="w-full py-4 bg-green-600 text-white font-bold rounded-2xl text-sm disabled:opacity-60">
           {loading
             ? <span className="flex items-center justify-center gap-2"><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Preparing payment…</span>
-            : "Pay with Paystack →"}
+            : `Pay ${amount ? fmt(parseFloat(amount) || 0) : ""} via Paystack →`}
         </button>
 
         {!loading && (
@@ -507,6 +569,7 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
   const [wdRequests,      setWdRequests]      = useState([]);
   const [loading,         setLoading]         = useState(true);
   const [showPay,         setShowPay]         = useState(false);
+  const [payProgram,      setPayProgram]      = useState(null);
   const [showWdReq,       setShowWdReq]       = useState(false);
   const [selectedHistory, setSelectedHistory] = useState(null);
   const [selectedRequest, setSelectedRequest] = useState(null);
@@ -531,6 +594,13 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
   const totalContributed = history.filter(h => h.type === "deposit").reduce((sum, h) => sum + Number(h.amount), 0);
   const hasPaystack = !!org.paystack_subaccount_code;
   const pendingWd = wdRequests.filter(r => r.status === "pending").length;
+
+  const getMonthPaid = (programId) => {
+    const start = new Date(); start.setDate(1); start.setHours(0, 0, 0, 0);
+    return history
+      .filter(h => h.type === "deposit" && h.program_id === programId && new Date(h.created_at) >= start)
+      .reduce((s, h) => s + Number(h.amount), 0);
+  };
 
   return (
     <div className="p-4 pb-28 flex flex-col gap-4">
@@ -568,18 +638,53 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
 
       {programs.filter(p => p.status === "active").length > 0 && (
         <div>
-          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Active Programs</p>
-          {programs.filter(p => p.status === "active").map(p => (
-            <div key={p.id} className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-100 dark:border-slate-700 mb-2 last:mb-0">
-              <p className="text-sm font-extrabold text-slate-800 dark:text-white">{p.name}</p>
-              {p.description && <p className="text-[11px] text-slate-400 mt-0.5 line-clamp-1">{p.description}</p>}
-              <div className="flex gap-1.5 mt-1.5 flex-wrap">
-                <span className="text-[10px] bg-green-50 dark:bg-green-900/20 text-green-600 px-2 py-0.5 rounded-lg">{FREQ_LABELS[p.frequency]}</span>
-                {p.contribution_type === "fixed" && <span className="text-[10px] bg-green-50 text-green-600 px-2 py-0.5 rounded-lg">{fmt(p.amount)}</span>}
-                {p.contribution_type === "voluntary" && <span className="text-[10px] bg-slate-100 dark:bg-slate-700 text-slate-500 px-2 py-0.5 rounded-lg">Voluntary</span>}
+          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Contribution Programs</p>
+          {programs.filter(p => p.status === "active").map(p => {
+            const isFixed   = p.contribution_type === "fixed";
+            const required  = isFixed ? Number(p.amount) : 0;
+            const paid      = isFixed ? getMonthPaid(p.id) : 0;
+            const remaining = Math.max(0, required - paid);
+            const metTarget = isFixed && paid >= required;
+            const pct       = isFixed && required > 0 ? Math.min(100, (paid / required) * 100) : 0;
+            const isMonthly = p.frequency === "monthly";
+            return (
+              <div key={p.id} className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-100 dark:border-slate-700 mb-2 last:mb-0">
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-extrabold text-slate-800 dark:text-white leading-snug">{p.name}</p>
+                    {p.description && <p className="text-[10px] text-slate-400 mt-0.5 line-clamp-1">{p.description}</p>}
+                    <div className="flex gap-1.5 mt-1.5 flex-wrap">
+                      <span className="text-[10px] bg-slate-100 dark:bg-slate-700 text-slate-500 px-2 py-0.5 rounded-lg">{FREQ_LABELS[p.frequency]}</span>
+                      {isFixed && <span className="text-[10px] bg-green-50 dark:bg-green-900/20 text-green-600 px-2 py-0.5 rounded-lg">{fmt(p.amount)}</span>}
+                      {!isFixed && <span className="text-[10px] bg-slate-100 dark:bg-slate-700 text-slate-500 px-2 py-0.5 rounded-lg">Voluntary</span>}
+                    </div>
+                  </div>
+                  {hasPaystack && (
+                    <button
+                      onClick={() => { setPayProgram(p); setShowPay(true); }}
+                      className={`flex-shrink-0 px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all active:scale-95 ${metTarget ? "bg-green-50 dark:bg-green-900/20 text-green-600 border border-green-200 dark:border-green-800" : "bg-green-600 text-white"}`}>
+                      {metTarget ? "✓ Paid" : isFixed ? `Pay ${fmt(remaining)}` : "Pay"}
+                    </button>
+                  )}
+                </div>
+                {/* Monthly progress bar for fixed programs */}
+                {isFixed && isMonthly && (
+                  <div>
+                    <div className="h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden mb-1">
+                      <div className="h-full rounded-full transition-all"
+                        style={{ width: `${pct}%`, background: metTarget ? "#16a34a" : "#f59e0b" }} />
+                    </div>
+                    <div className="flex justify-between text-[9px] font-semibold text-slate-400">
+                      <span>{fmt(paid)} paid this month</span>
+                      <span className={metTarget ? "text-green-600 dark:text-green-400" : "text-amber-600 dark:text-amber-400"}>
+                        {metTarget ? "Target met ✓" : `${fmt(remaining)} remaining`}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -638,7 +743,9 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
       {showPay && (
         <PayOrgModal
           member={member} org={org}
-          onClose={() => setShowPay(false)}
+          preProgram={payProgram}
+          history={history}
+          onClose={() => { setShowPay(false); setPayProgram(null); }}
         />
       )}
       {showWdReq && (
