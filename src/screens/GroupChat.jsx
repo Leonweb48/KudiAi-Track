@@ -385,7 +385,7 @@ function Bubble({ msg, isMe, showName, showAv, myId, lastSeen, memberCount, avat
           ) : msg.type === "audio" ? (
             <AudioPlayer url={msg.media_url} duration={msg.duration} isMe={isMe} mime={msg.media_mime} />
           ) : msg.type === "poll" ? (
-            <PollBubble pollId={msg.media_name} myId={myId} isMe={isMe} />
+            <PollBubble pollId={msg.media_name} myId={myId} />
           ) : msg.type === "event" ? (
             <EventBubble eventId={msg.media_name} myId={myId} isMe={isMe} />
           ) : (
@@ -573,8 +573,8 @@ function ChatHeaderMenu({ isAdmin, onGroupInfo, onSearch, onEditGroup, onClose }
   );
 }
 
-// ─── Poll Bubble ──────────────────────────────────────────────────────────────
-function PollBubble({ pollId, myId, isMe }) {
+// ─── Poll Bubble (WhatsApp style) ─────────────────────────────────────────────
+function PollBubble({ pollId, myId }) {
   const [poll,       setPoll]       = useState(null);
   const [myVoteIds,  setMyVoteIds]  = useState(new Set());
   const [localOpts,  setLocalOpts]  = useState([]);
@@ -600,8 +600,8 @@ function PollBubble({ pollId, myId, isMe }) {
 
   const vote = async (opt) => {
     if (!poll || voting) return;
-    const isClosed = poll.is_closed || (poll.expires_at && new Date(poll.expires_at) < new Date());
-    if (isClosed) return;
+    const closed = poll.is_closed || (poll.expires_at && new Date(poll.expires_at) < new Date());
+    if (closed) return;
     setVoting(true);
     const already = myVoteIds.has(opt.id);
     if (already) {
@@ -626,8 +626,8 @@ function PollBubble({ pollId, myId, isMe }) {
   };
 
   if (!poll) return (
-    <div className={`min-w-[200px] rounded-2xl px-3 py-3 shadow-sm ${isMe ? "bg-[#dcf8c6]" : "bg-white"}`}>
-      <p className="text-[12px] text-slate-400">Loading poll…</p>
+    <div className="min-w-[240px] rounded-2xl px-4 py-3 shadow-sm" style={{ background: "#d9fdd3" }}>
+      <p className="text-[12px] text-[#667781]">Loading poll…</p>
     </div>
   );
 
@@ -635,50 +635,63 @@ function PollBubble({ pollId, myId, isMe }) {
   const hasVoted = myVoteIds.size > 0;
 
   return (
-    <div className="min-w-[220px] max-w-[280px] rounded-2xl overflow-hidden shadow-sm" style={{ background: isMe ? "#dcf8c6" : "#fff" }}>
-      <div className={`px-3 pt-3 pb-2 border-b ${isMe ? "border-[#b7e8a0]" : "border-slate-100"}`}>
-        <div className="flex items-center gap-1.5 mb-1">
-          <svg viewBox="0 0 24 24" fill="none" stroke={isMe ? "#128c7e" : "#3b82f6"} strokeWidth={2} className="w-3.5 h-3.5 flex-shrink-0">
-            <path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-          </svg>
-          <span className={`text-[10px] font-extrabold uppercase tracking-wider ${isMe ? "text-[#128c7e]" : "text-blue-500"}`}>Poll</span>
+    <div className="min-w-[240px] max-w-[300px] rounded-2xl overflow-hidden shadow-sm" style={{ background: "#d9fdd3" }}>
+      {/* Header */}
+      <div className="px-4 pt-3.5 pb-2">
+        <div className="flex items-center gap-2 mb-2">
+          <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: "#00a884" }}>
+            <svg viewBox="0 0 24 24" fill="white" className="w-3.5 h-3.5">
+              <path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+            </svg>
+          </div>
+          <span className="text-[12px] font-semibold text-[#667781] flex-1">
+            {poll.allows_multiple ? "Select one or more" : "Select one"}
+          </span>
           {isClosed && <span className="text-[9px] font-bold text-red-500 bg-red-50 px-1.5 py-0.5 rounded-full">Closed</span>}
-          {poll.allows_multiple && <span className="text-[9px] font-bold text-blue-400 bg-blue-50 px-1.5 py-0.5 rounded-full">Multi</span>}
         </div>
-        <p className={`text-[13px] font-bold leading-snug ${isMe ? "text-[#111b21]" : "text-slate-800"}`}>{poll.question}</p>
-        <p className={`text-[10px] mt-0.5 ${isMe ? "text-[#128c7e]/70" : "text-slate-400"}`}>
-          {totalVotes} vote{totalVotes !== 1 ? "s" : ""}
-          {poll.expires_at && !isClosed ? ` · ends ${new Date(poll.expires_at).toLocaleDateString([], { day: "numeric", month: "short" })}` : ""}
-        </p>
+        <p className="text-[14px] font-bold text-[#111b21] leading-snug">{poll.question}</p>
       </div>
-      <div className="px-3 py-2 flex flex-col gap-1.5">
+
+      {/* Options */}
+      <div className="px-4 pb-1 flex flex-col">
         {localOpts.map(opt => {
-          const count = opt.vote_count || 0;
-          const pct   = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
+          const count  = opt.vote_count || 0;
+          const pct    = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
           const isMine = myVoteIds.has(opt.id);
           return (
             <button key={opt.id} onClick={() => vote(opt)} disabled={isClosed || voting}
-              className={`relative w-full rounded-xl text-left overflow-hidden transition-transform ${!isClosed && !voting ? "active:scale-[0.98]" : "opacity-70"} ${isMine ? (isMe ? "ring-2 ring-[#128c7e]/50" : "ring-2 ring-blue-400/50") : ""}`}>
-              {hasVoted && (
-                <div className="absolute inset-y-0 left-0 rounded-xl transition-all"
-                  style={{ width: `${pct}%`, background: isMine ? (isMe ? "#25d366" : "#3b82f6") : (isMe ? "#b7e8a0" : "#e2e8f0"), opacity: 0.3 }} />
-              )}
-              <div className={`relative flex items-center justify-between px-3 py-2 rounded-xl border ${isMine ? (isMe ? "border-[#25d366]/60 bg-[#25d366]/10" : "border-blue-300/60 bg-blue-50/60") : (isMe ? "border-[#b7e8a0]/40" : "border-slate-100")}`}>
-                <span className={`text-[12px] font-semibold pr-2 ${isMe ? "text-[#111b21]" : "text-slate-700"}`}>{opt.text}</span>
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  {hasVoted && <span className={`text-[10px] font-bold ${isMine ? (isMe ? "text-[#128c7e]" : "text-blue-600") : "text-slate-400"}`}>{pct}%</span>}
-                  {isMine && <svg viewBox="0 0 24 24" fill="none" stroke={isMe ? "#128c7e" : "#3b82f6"} strokeWidth={2.5} className="w-3 h-3"><path d="M5 12l5 5L20 7"/></svg>}
+              className="w-full text-left py-2 active:opacity-70 disabled:opacity-60">
+              <div className="flex items-center gap-3">
+                <div className={`w-[18px] h-[18px] rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-colors
+                  ${isMine ? "border-[#00a884] bg-[#00a884]" : "border-[#8696a0] bg-transparent"}`}>
+                  {isMine && <div className="w-2 h-2 rounded-full bg-white" />}
                 </div>
+                <span className={`flex-1 text-[13px] leading-snug ${isMine ? "font-bold text-[#00a884]" : "font-medium text-[#111b21]"}`}>
+                  {opt.text}
+                </span>
+                <span className="text-[12px] text-[#667781] flex-shrink-0 min-w-[20px] text-right">{count}</span>
+              </div>
+              <div className="mt-1.5 ml-[30px] h-[2px] bg-[#8696a0]/25 rounded-full overflow-hidden">
+                <div className="h-full rounded-full transition-all duration-300"
+                  style={{ width: `${hasVoted ? pct : 0}%`, background: isMine ? "#00a884" : "#8696a0", opacity: 0.6 }} />
               </div>
             </button>
           );
         })}
       </div>
+
+      {/* Footer */}
+      <div className="mx-4 mt-1 pt-2.5 pb-3 border-t border-[#8696a0]/20 flex items-center justify-between">
+        <span className="text-[11px] text-[#667781]">{totalVotes} vote{totalVotes !== 1 ? "s" : ""}</span>
+        {poll.expires_at && !isClosed && (
+          <span className="text-[10px] text-[#667781]">ends {new Date(poll.expires_at).toLocaleDateString([], { day:"numeric", month:"short" })}</span>
+        )}
+      </div>
     </div>
   );
 }
 
-// ─── Event Bubble ─────────────────────────────────────────────────────────────
+// ─── Event Bubble (WhatsApp card style) ───────────────────────────────────────
 function EventBubble({ eventId, myId, isMe }) {
   const [event,      setEvent]      = useState(null);
   const [myRsvp,     setMyRsvp]     = useState(null);
@@ -728,95 +741,292 @@ function EventBubble({ eventId, myId, isMe }) {
   };
 
   if (!event) return (
-    <div className={`min-w-[200px] rounded-2xl px-3 py-3 shadow-sm ${isMe ? "bg-[#dcf8c6]" : "bg-white"}`}>
-      <p className="text-[12px] text-slate-400">Loading event…</p>
+    <div className="min-w-[240px] rounded-2xl px-4 py-3 shadow-sm" style={{ background: isMe ? "#d9fdd3" : "#fff" }}>
+      <p className="text-[12px] text-[#667781]">Loading event…</p>
     </div>
   );
 
-  const fmtEv  = ts => new Date(ts).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" });
-  const isPast = event.start_time && new Date(event.start_time) < new Date();
-
-  const RSVP_OPTIONS = [
-    { s: "going",     label: "Going",  icon: "M5 13l4 4L19 7",                          activeBg: "#dcf8c6", activeBorder: "#25d366", activeText: "#128c7e" },
-    { s: "maybe",     label: "Maybe",  icon: "M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z", activeBg: "#fef9c3", activeBorder: "#f59e0b", activeText: "#92400e" },
-    { s: "not_going", label: "No",     icon: "M6 18L18 6M6 6l12 12",                    activeBg: "#fee2e2", activeBorder: "#ef4444", activeText: "#991b1b" },
+  const fmtDate = ts => new Date(ts).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" });
+  const fmtTime = ts => new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const isPast  = event.start_time && new Date(event.start_time) < new Date();
+  const RSVP    = [
+    { s:"going",     label:"Going",  icon:"M5 13l4 4L19 7",         activeBg:"#dcf8c6", activeBorder:"#25d366", activeText:"#128c7e" },
+    { s:"maybe",     label:"Maybe",  icon:"M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z", activeBg:"#fef9c3", activeBorder:"#f59e0b", activeText:"#92400e" },
+    { s:"not_going", label:"Can't",  icon:"M6 18L18 6M6 6l12 12",   activeBg:"#fee2e2", activeBorder:"#ef4444", activeText:"#991b1b" },
   ];
 
-  const totalGoing = rsvpCounts.going;
-
   return (
-    <div className="min-w-[220px] max-w-[280px] rounded-2xl overflow-hidden shadow-sm" style={{ background: isMe ? "#dcf8c6" : "#fff" }}>
+    <div className="min-w-[240px] max-w-[300px] rounded-2xl overflow-hidden shadow-sm"
+      style={{ background: isMe ? "#d9fdd3" : "#fff" }}>
 
-      {/* Header */}
-      <div className={`px-3 pt-3 pb-2.5 border-b ${isMe ? "border-[#b7e8a0]" : "border-slate-100"}`}>
-        <div className="flex items-center gap-1.5 mb-1">
-          <svg viewBox="0 0 24 24" fill="none" stroke={isMe ? "#128c7e" : "#075E54"} strokeWidth={2} className="w-3.5 h-3.5 flex-shrink-0">
-            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-          </svg>
-          <span className={`text-[10px] font-extrabold uppercase tracking-wider ${isMe ? "text-[#128c7e]" : "text-[#075E54]"}`}>Event</span>
-          {isPast && <span className="text-[9px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-full">Ended</span>}
+      {/* Date badge strip */}
+      <div className="flex items-stretch">
+        <div className="flex-shrink-0 w-14 flex flex-col items-center justify-center bg-red-500 py-2">
+          <span className="text-[9px] font-extrabold text-white/80 uppercase">
+            {new Date(event.start_time).toLocaleString([], { month: "short" })}
+          </span>
+          <span className="text-[22px] font-extrabold text-white leading-tight">
+            {new Date(event.start_time).getDate()}
+          </span>
         </div>
-        <p className={`text-[13px] font-bold leading-snug ${isMe ? "text-[#111b21]" : "text-slate-800"}`}>{event.title}</p>
-        <div className={`flex items-center gap-1.5 mt-1 ${isMe ? "text-[#128c7e]" : "text-[#075E54]"}`}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3 h-3 flex-shrink-0">
-            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-          </svg>
-          <span className="text-[11px] font-semibold">{fmtEv(event.start_time)}</span>
+        <div className="flex-1 px-3 py-2.5">
+          <p className="text-[14px] font-bold text-[#111b21] leading-snug">{event.title}</p>
+          <p className="text-[11px] text-[#667781] mt-0.5">{fmtDate(event.start_time)} · {fmtTime(event.start_time)}</p>
+          {event.location && (
+            <div className="flex items-center gap-1 mt-0.5">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#667781" strokeWidth={2} strokeLinecap="round" className="w-2.5 h-2.5 flex-shrink-0">
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>
+              </svg>
+              <span className="text-[11px] text-[#667781] truncate">{event.location}</span>
+            </div>
+          )}
         </div>
-        {event.location && (
-          <div className="flex items-center gap-1 mt-0.5 text-slate-400">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3 h-3 flex-shrink-0">
-              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>
-            </svg>
-            <span className="text-[11px] truncate">{event.location}</span>
+        {isPast && (
+          <div className="flex-shrink-0 self-start m-2">
+            <span className="text-[9px] font-bold text-[#667781] bg-[#f0f2f5] px-1.5 py-0.5 rounded-full">Ended</span>
           </div>
-        )}
-        {event.event_link && (
-          <a href={event.event_link} target="_blank" rel="noreferrer"
-            className={`inline-flex items-center gap-1 mt-1.5 text-[11px] font-bold ${isMe ? "text-[#128c7e]" : "text-blue-500"}`}
-            onClick={e => e.stopPropagation()}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3 h-3">
-              <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
-            </svg>
-            Join online
-          </a>
-        )}
-        {event.description && (
-          <p className={`text-[11px] leading-relaxed mt-1.5 ${isMe ? "text-[#111b21]/65" : "text-slate-500"}`}>
-            {event.description.slice(0, 90)}{event.description.length > 90 ? "…" : ""}
-          </p>
         )}
       </div>
 
-      {/* RSVP section */}
-      <div className={`px-3 py-2.5`}>
-        {totalGoing > 0 && (
-          <p className={`text-[10px] font-semibold mb-1.5 ${isMe ? "text-[#128c7e]/70" : "text-slate-400"}`}>
-            {totalGoing} going{rsvpCounts.maybe > 0 ? ` · ${rsvpCounts.maybe} maybe` : ""}
-          </p>
-        )}
-        {!isPast ? (
-          <div className="flex gap-1.5">
-            {RSVP_OPTIONS.map(({ s, label, icon, activeBg, activeBorder, activeText }) => {
-              const active = myRsvp === s;
-              return (
-                <button key={s} onClick={() => castRsvp(s)} disabled={rsvpBusy}
-                  className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-xl text-[11px] font-bold border transition-all active:scale-95 disabled:opacity-60"
-                  style={active
-                    ? { background: activeBg, borderColor: activeBorder, color: activeText }
-                    : { background: "transparent", borderColor: isMe ? "#b7e8a0" : "#e2e8f0", color: isMe ? "#128c7e" : "#64748b" }
-                  }>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3 flex-shrink-0">
-                    <path d={icon}/>
-                  </svg>
-                  {label}
-                </button>
-              );
-            })}
+      {event.description && (
+        <p className="px-3 pt-0 pb-2 text-[12px] text-[#667781] leading-relaxed">
+          {event.description.slice(0, 100)}{event.description.length > 100 ? "…" : ""}
+        </p>
+      )}
+
+      {/* RSVP buttons */}
+      <div className="border-t border-[#8696a0]/20 px-3 py-2.5 flex gap-1.5">
+        {RSVP.map(({ s, label, icon, activeBg, activeBorder, activeText }) => {
+          const active = myRsvp === s;
+          return (
+            <button key={s} onClick={() => castRsvp(s)} disabled={rsvpBusy || isPast}
+              className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-xl text-[11px] font-bold border transition-all active:scale-95 disabled:opacity-50"
+              style={active
+                ? { background: activeBg, borderColor: activeBorder, color: activeText }
+                : { borderColor: isMe ? "#b7e8a0" : "#e2e8f0", color: "#667781" }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3 flex-shrink-0">
+                <path d={icon}/>
+              </svg>
+              {label}
+            </button>
+          );
+        })}
+      </div>
+
+      {rsvpCounts.going > 0 && (
+        <p className="px-3 pb-2.5 text-[10px] text-[#667781]">
+          {rsvpCounts.going} going{rsvpCounts.maybe > 0 ? ` · ${rsvpCounts.maybe} maybe` : ""}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ─── Attachment Sheet ─────────────────────────────────────────────────────────
+function AttachSheet({ onClose, onPoll, onEvent, onPhoto }) {
+  const ITEMS = [
+    {
+      label: "Photos",
+      onClick: onPhoto,
+      bg: "#dbeafe", color: "#2563eb",
+      icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" className="w-7 h-7"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>,
+    },
+    {
+      label: "Camera",
+      onClick: onClose,
+      bg: "#f1f5f9", color: "#475569",
+      icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" className="w-7 h-7"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>,
+    },
+    {
+      label: "Document",
+      onClick: onClose,
+      bg: "#cffafe", color: "#0891b2",
+      icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" className="w-7 h-7"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>,
+    },
+    {
+      label: "Poll",
+      onClick: onPoll,
+      bg: "#d1fae5", color: "#059669",
+      icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" className="w-7 h-7"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>,
+    },
+    {
+      label: "Event",
+      onClick: onEvent,
+      bg: "#fee2e2", color: "#dc2626",
+      icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" className="w-7 h-7"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>,
+    },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-30 flex items-end" onClick={onClose}>
+      <div className="w-full bg-white rounded-t-3xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="w-10 h-1 bg-slate-200 rounded-full mx-auto mt-3 mb-4" />
+        <div className="grid grid-cols-4 gap-y-5 px-5 pb-8 pt-1">
+          {ITEMS.map(item => (
+            <button key={item.label} onClick={() => { item.onClick(); onClose(); }}
+              className="flex flex-col items-center gap-2 active:opacity-60">
+              <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ background: item.bg, color: item.color }}>
+                {item.icon}
+              </div>
+              <span className="text-[12px] text-slate-600 font-medium">{item.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Inline Poll Creation Sheet ────────────────────────────────────────────────
+function InlinePollSheet({ orgId, myId, sendMsg, onClose }) {
+  const [question, setQuestion] = useState("");
+  const [options,  setOptions]  = useState(["", ""]);
+  const [multi,    setMulti]    = useState(false);
+  const [saving,   setSaving]   = useState(false);
+
+  const addOpt    = () => options.length < 10 && setOptions(o => [...o, ""]);
+  const removeOpt = i  => options.length > 2  && setOptions(o => o.filter((_, idx) => idx !== i));
+  const setOpt    = (i, v) => setOptions(o => o.map((x, idx) => idx === i ? v : x));
+
+  const valid = question.trim() && options.filter(o => o.trim()).length >= 2;
+
+  const submit = async () => {
+    if (!valid || saving) return;
+    setSaving(true);
+    try {
+      const validOpts = options.filter(o => o.trim());
+      const { data: poll } = await supabase.from("group_polls").insert({
+        org_id: orgId, created_by: myId,
+        question: question.trim(), allows_multiple: multi, is_anonymous: false,
+      }).select().single();
+      if (poll) {
+        await supabase.from("group_poll_options").insert(
+          validOpts.map((t, i) => ({ poll_id: poll.id, org_id: orgId, text: t.trim(), sort_order: i }))
+        );
+        await sendMsg({ type: "poll", media_name: poll.id, content: question.trim() });
+      }
+      onClose();
+    } catch (e) { console.error(e); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-40 flex items-end" onClick={onClose}>
+      <div className="w-full bg-white rounded-t-3xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col"
+        onClick={e => e.stopPropagation()}>
+        <div className="w-10 h-1 bg-slate-200 rounded-full mx-auto mt-3 flex-shrink-0" />
+        <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 flex-shrink-0">
+          <button onClick={onClose} className="text-[#128c7e] text-sm font-bold active:opacity-70">Cancel</button>
+          <h3 className="text-[15px] font-extrabold text-slate-800">New Poll</h3>
+          <button onClick={submit} disabled={!valid || saving}
+            className="text-[#128c7e] text-sm font-bold disabled:opacity-40 active:opacity-70">
+            {saving ? "Sending…" : "Send"}
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-4">
+          <div>
+            <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">Question</label>
+            <textarea value={question} onChange={e => setQuestion(e.target.value)} rows={2}
+              placeholder="Ask a question…"
+              className="w-full bg-slate-50 rounded-xl px-3.5 py-3 text-[14px] text-slate-800 outline-none resize-none border border-slate-200 focus:border-[#128c7e]" />
           </div>
-        ) : (
-          totalGoing === 0 && <p className={`text-[10px] ${isMe ? "text-[#128c7e]/50" : "text-slate-400"}`}>Event has ended</p>
-        )}
+          <div>
+            <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block mb-2">Options (min 2)</label>
+            <div className="flex flex-col gap-2">
+              {options.map((o, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <div className="w-4 h-4 rounded-full border-2 border-slate-300 flex-shrink-0" />
+                  <input value={o} onChange={e => setOpt(i, e.target.value)} placeholder={`Option ${i + 1}`}
+                    className="flex-1 bg-slate-50 rounded-xl px-3.5 py-2.5 text-[13px] text-slate-800 outline-none border border-slate-200 focus:border-[#128c7e]" />
+                  {options.length > 2 && (
+                    <button onClick={() => removeOpt(i)} className="text-slate-300 active:text-red-400 flex-shrink-0">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+            {options.length < 10 && (
+              <button onClick={addOpt} className="mt-2.5 text-[13px] font-bold text-[#128c7e] active:opacity-70">+ Add option</button>
+            )}
+          </div>
+          <label className="flex items-center justify-between py-1">
+            <span className="text-[13px] font-medium text-slate-700">Allow multiple votes</span>
+            <button onClick={() => setMulti(m => !m)}
+              className={`w-11 h-6 rounded-full transition-colors ${multi ? "bg-[#128c7e]" : "bg-slate-200"}`}>
+              <div className={`w-5 h-5 bg-white rounded-full shadow transition-transform mx-0.5 ${multi ? "translate-x-5" : "translate-x-0"}`} />
+            </button>
+          </label>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Inline Event Creation Sheet ───────────────────────────────────────────────
+function InlineEventSheet({ orgId, myId, sendMsg, onClose }) {
+  const [title,    setTitle]    = useState("");
+  const [start,    setStart]    = useState("");
+  const [end,      setEnd]      = useState("");
+  const [location, setLocation] = useState("");
+  const [saving,   setSaving]   = useState(false);
+
+  const valid = title.trim() && start;
+
+  const submit = async () => {
+    if (!valid || saving) return;
+    setSaving(true);
+    try {
+      const { data: event } = await supabase.from("group_events").insert({
+        org_id: orgId, created_by: myId,
+        title: title.trim(), location: location.trim() || null,
+        start_time: start, end_time: end || null,
+      }).select().single();
+      if (event) {
+        await sendMsg({ type: "event", media_name: event.id, content: title.trim() });
+      }
+      onClose();
+    } catch (e) { console.error(e); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-40 flex items-end" onClick={onClose}>
+      <div className="w-full bg-white rounded-t-3xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col"
+        onClick={e => e.stopPropagation()}>
+        <div className="w-10 h-1 bg-slate-200 rounded-full mx-auto mt-3 flex-shrink-0" />
+        <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 flex-shrink-0">
+          <button onClick={onClose} className="text-[#128c7e] text-sm font-bold active:opacity-70">Cancel</button>
+          <h3 className="text-[15px] font-extrabold text-slate-800">New Event</h3>
+          <button onClick={submit} disabled={!valid || saving}
+            className="text-[#128c7e] text-sm font-bold disabled:opacity-40 active:opacity-70">
+            {saving ? "Sending…" : "Send"}
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-4">
+          <div>
+            <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">Event Title *</label>
+            <input value={title} onChange={e => setTitle(e.target.value)} placeholder="What's the event?"
+              className="w-full bg-slate-50 rounded-xl px-3.5 py-2.5 text-[14px] text-slate-800 outline-none border border-slate-200 focus:border-[#128c7e]" />
+          </div>
+          <div>
+            <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">Location</label>
+            <input value={location} onChange={e => setLocation(e.target.value)} placeholder="Where? (optional)"
+              className="w-full bg-slate-50 rounded-xl px-3.5 py-2.5 text-[13px] text-slate-800 outline-none border border-slate-200 focus:border-[#128c7e]" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">Starts *</label>
+              <input type="datetime-local" value={start} onChange={e => setStart(e.target.value)}
+                className="w-full bg-slate-50 rounded-xl px-3 py-2.5 text-[12px] text-slate-800 outline-none border border-slate-200 focus:border-[#128c7e]" />
+            </div>
+            <div>
+              <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">Ends</label>
+              <input type="datetime-local" value={end} onChange={e => setEnd(e.target.value)}
+                className="w-full bg-slate-50 rounded-xl px-3 py-2.5 text-[12px] text-slate-800 outline-none border border-slate-200 focus:border-[#128c7e]" />
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -869,6 +1079,9 @@ export default function GroupChat({ orgId, myName, myRole = "member", orgName, o
   const [unread,       setUnread]       = useState(0);
   const [viewProfile,  setViewProfile]  = useState(null);
   const [showMenu,     setShowMenu]     = useState(false);
+  const [showAttach,   setShowAttach]   = useState(false);
+  const [showPollSheet,setShowPollSheet]= useState(false);
+  const [showEvtSheet, setShowEvtSheet] = useState(false);
 
   const listRef     = useRef(null);
   const bottomRef   = useRef(null);
@@ -1570,10 +1783,10 @@ export default function GroupChat({ orgId, myName, myRole = "member", orgName, o
           ) : (
             <div className="flex items-end gap-1.5">
               {!mediaPreview && (
-                <button onClick={() => fileRef.current?.click()}
+                <button onClick={() => setShowAttach(true)}
                   className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-sm active:bg-slate-100 flex-shrink-0 mb-0.5">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth={2} strokeLinecap="round" className="w-5 h-5">
-                    <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth={2.5} strokeLinecap="round" className="w-5 h-5">
+                    <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
                   </svg>
                 </button>
               )}
@@ -1667,6 +1880,34 @@ export default function GroupChat({ orgId, myName, myRole = "member", orgName, o
       {/* ── Sender profile sheet ── */}
       {viewProfile && (
         <SenderProfile member={viewProfile} org={org} isAdmin={isAdmin} onClose={() => setViewProfile(null)} />
+      )}
+
+      {/* ── Attachment sheet ── */}
+      {showAttach && (
+        <AttachSheet
+          onClose={() => setShowAttach(false)}
+          onPhoto={() => { fileRef.current?.click(); }}
+          onPoll={() => { setShowPollSheet(true); setShowAttach(false); }}
+          onEvent={() => { setShowEvtSheet(true); setShowAttach(false); }}
+        />
+      )}
+
+      {/* ── Inline poll creation ── */}
+      {showPollSheet && (
+        <InlinePollSheet
+          orgId={orgId} myId={myIdRef.current || myId}
+          sendMsg={sendMsg}
+          onClose={() => setShowPollSheet(false)}
+        />
+      )}
+
+      {/* ── Inline event creation ── */}
+      {showEvtSheet && (
+        <InlineEventSheet
+          orgId={orgId} myId={myIdRef.current || myId}
+          sendMsg={sendMsg}
+          onClose={() => setShowEvtSheet(false)}
+        />
       )}
     </div>
   );
