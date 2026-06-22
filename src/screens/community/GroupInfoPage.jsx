@@ -162,12 +162,15 @@ export default function GroupInfoPage({ orgId, orgName, org, settings: initSetti
 
         {/* ── Banner ── */}
         <div className="relative flex-shrink-0"
-          style={{height:140,background:"linear-gradient(135deg,#064e3b 0%,#065f46 45%,#128c7e 100%)"}}>
-          {/* decorative dots */}
-          <div className="absolute inset-0 opacity-10"
-            style={{backgroundImage:"radial-gradient(circle,white 1px,transparent 1px)",backgroundSize:"24px 24px"}}/>
+          style={{height:210,background:"linear-gradient(160deg,#022c22 0%,#064e3b 40%,#065f46 70%,#128c7e 100%)"}}>
+          {/* decorative pattern */}
+          <div className="absolute inset-0 opacity-[0.07]"
+            style={{backgroundImage:"radial-gradient(circle,white 1.5px,transparent 1.5px)",backgroundSize:"28px 28px"}}/>
+          {/* subtle glow */}
+          <div className="absolute bottom-0 left-0 right-0 h-20 pointer-events-none"
+            style={{background:"linear-gradient(to top,rgba(0,0,0,0.18),transparent)"}}/>
           {settings?.is_private && (
-            <span className="absolute top-3 right-3 text-[10px] font-extrabold text-white bg-black/30 backdrop-blur-sm px-2 py-1 rounded-full">🔒 Private</span>
+            <span className="absolute top-4 right-4 text-[10px] font-extrabold text-white bg-black/30 backdrop-blur-sm px-2.5 py-1 rounded-full">🔒 Private</span>
           )}
         </div>
 
@@ -175,24 +178,24 @@ export default function GroupInfoPage({ orgId, orgName, org, settings: initSetti
         <div className="bg-white px-4 pb-2">
 
           {/* Avatar row: overlaps banner */}
-          <div className="flex items-end justify-between" style={{marginTop:-46}}>
-            <div className="w-[92px] h-[92px] rounded-full border-4 border-white shadow-lg overflow-hidden flex-shrink-0"
+          <div className="flex items-end justify-between" style={{marginTop:-52}}>
+            <div className="w-[100px] h-[100px] rounded-full border-4 border-white shadow-xl overflow-hidden flex-shrink-0"
               style={{background:"linear-gradient(145deg,#075E54,#128c7e)"}}>
               {org?.logo_url
                 ? <img src={org.logo_url} alt={displayName} className="w-full h-full object-cover"/>
-                : <div className="w-full h-full flex items-center justify-center text-3xl">{settings?.emoji||"💬"}</div>}
+                : <div className="w-full h-full flex items-center justify-center text-4xl">{settings?.emoji||"💬"}</div>}
             </div>
 
             {/* Action buttons */}
-            <div className="flex gap-2 items-center pb-2">
+            <div className="flex gap-2 items-center pb-2 pt-14">
               {isAdmin && (
                 <button onClick={()=>setScreen("privacy")}
-                  className="px-4 py-1.5 border-2 border-slate-300 rounded-full text-[13px] font-extrabold text-slate-700 active:bg-slate-50 transition-colors">
+                  className="px-4 py-1.5 border-2 border-slate-200 rounded-full text-[13px] font-extrabold text-slate-700 bg-white active:bg-slate-50 transition-colors shadow-sm">
                   Settings
                 </button>
               )}
               <button onClick={()=>setScreen("invites")}
-                className="px-5 py-1.5 bg-slate-900 rounded-full text-[13px] font-extrabold text-white active:bg-slate-700 transition-colors">
+                className="px-5 py-1.5 bg-slate-900 rounded-full text-[13px] font-extrabold text-white active:bg-slate-700 transition-colors shadow-sm">
                 Invite
               </button>
             </div>
