@@ -2093,6 +2093,157 @@ function OrgBankSetupSection({ org, onRefresh }) {
   );
 }
 
+const ORG_FAQS = [
+  { q: "How do I add members to my organisation?", a: "Go to Members → tap the '+' button. You can invite members via phone number or email. They'll receive an OTP to join." },
+  { q: "How do savings contributions work?", a: "Create a savings program under Programs. Members enrol and contribute on a schedule (daily/weekly/monthly). Contributions show in Finance → Savings." },
+  { q: "How do loans work for my members?", a: "Members can request loans from the Loans section. You review and approve or reject each request. Repayments track automatically against the balance." },
+  { q: "How do I set up Paystack for online payments?", a: "Go to Settings → scroll to Bank Account Setup. Enter your Paystack subaccount code. Members can then pay contributions and loan repayments online." },
+  { q: "How can members access the member portal?", a: "In Settings, scroll to Member Portal Login and tap 'Setup Portal Login'. This creates a login for members to access their own portal via their phone/email." },
+  { q: "How do I broadcast a message to all members?", a: "Use the Broadcast tab (More menu). Type your message and it's delivered to all active members in-app and optionally via email." },
+  { q: "How do I manage loan applications?", a: "New loan requests appear in the Loans tab with a 'Pending' status. Tap a request to review details, then Approve or Reject. Members are notified instantly." },
+  { q: "How do I create a savings program?", a: "Go to Programs → tap 'New Program'. Set the name, contribution amount, frequency, and duration. Members can then enrol from their portal." },
+];
+
+function OrgSupportSection({ org }) {
+  const [view,       setView]    = useState("menu"); // menu | ticket | faq
+  const [category,   setCategory]= useState("General");
+  const [subject,    setSubject] = useState("");
+  const [message,    setMessage] = useState("");
+  const [saving,     setSaving]  = useState(false);
+  const [ticketRef,  setTicketRef]= useState("");
+  const [error,      setError]   = useState("");
+  const [openFaq,    setOpenFaq] = useState(null);
+
+  const CATEGORIES = ["General", "Billing", "Members", "Loans", "Technical"];
+
+  const submit = async () => {
+    if (!subject.trim() || !message.trim()) { setError("Please fill in subject and message"); return; }
+    setSaving(true); setError("");
+    try {
+      const r = await coopFn("submit-org-support-ticket", { org_id: org.id, category, subject: subject.trim(), message: message.trim() });
+      if (r.error) throw new Error(r.error);
+      setTicketRef(r.ticket_ref);
+      setView("done");
+    } catch (e) { setError(e.message || "Failed to submit ticket"); }
+    setSaving(false);
+  };
+
+  const reset = () => { setView("menu"); setSubject(""); setMessage(""); setCategory("General"); setTicketRef(""); setError(""); };
+
+  return (
+    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 overflow-hidden">
+      {/* Header */}
+      <div className="px-4 pt-4 pb-3 flex items-center gap-3 border-b border-slate-100 dark:border-slate-700">
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: "#f0fdf4" }}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="#00A651" strokeWidth={2} strokeLinecap="round" className="w-4.5 h-4.5">
+            <path d="M18 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V4a2 2 0 00-2-2zM9 9h6M9 13h6M9 17h4"/>
+          </svg>
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-extrabold text-slate-800 dark:text-white">Support & FAQ</p>
+          <p className="text-[11px] text-slate-400">Get help or raise a ticket</p>
+        </div>
+        {view !== "menu" && (
+          <button onClick={reset} className="text-[12px] font-bold text-[#00A651] active:opacity-70">Back</button>
+        )}
+      </div>
+
+      {/* Menu */}
+      {view === "menu" && (
+        <div className="flex divide-x divide-slate-100 dark:divide-slate-700">
+          <button onClick={() => setView("ticket")}
+            className="flex-1 flex flex-col items-center gap-2 py-5 active:bg-slate-50 dark:active:bg-slate-700/50 transition-colors">
+            <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: "#dcfce7" }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="#00A651" strokeWidth={2} strokeLinecap="round" className="w-5 h-5">
+                <path d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/>
+              </svg>
+            </div>
+            <span className="text-[12px] font-bold text-slate-700 dark:text-slate-200">Raise a Ticket</span>
+          </button>
+          <button onClick={() => setView("faq")}
+            className="flex-1 flex flex-col items-center gap-2 py-5 active:bg-slate-50 dark:active:bg-slate-700/50 transition-colors">
+            <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: "#dbeafe" }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth={2} strokeLinecap="round" className="w-5 h-5">
+                <circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3M12 17h.01"/>
+              </svg>
+            </div>
+            <span className="text-[12px] font-bold text-slate-700 dark:text-slate-200">FAQ</span>
+          </button>
+        </div>
+      )}
+
+      {/* Raise Ticket */}
+      {view === "ticket" && (
+        <div className="p-4 flex flex-col gap-3">
+          {error && <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-xl p-3 text-xs text-red-600 dark:text-red-400">{error}</div>}
+          <div>
+            <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">Category</label>
+            <div className="flex flex-wrap gap-2">
+              {CATEGORIES.map(c => (
+                <button key={c} onClick={() => setCategory(c)}
+                  className={`px-3 py-1.5 rounded-full text-[11px] font-bold border transition-colors ${category === c ? "bg-[#00A651] text-white border-[#00A651]" : "bg-slate-50 dark:bg-slate-700 text-slate-500 dark:text-slate-300 border-slate-200 dark:border-slate-600"}`}>
+                  {c}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">Subject</label>
+            <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Brief description of your issue"
+              className="w-full bg-slate-50 dark:bg-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 dark:text-white outline-none border border-slate-200 dark:border-slate-600 focus:border-[#00A651]" />
+          </div>
+          <div>
+            <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">Message</label>
+            <textarea value={message} onChange={e => setMessage(e.target.value)} rows={4} placeholder="Describe your issue in detail…"
+              className="w-full bg-slate-50 dark:bg-slate-700 rounded-xl px-3.5 py-3 text-sm text-slate-800 dark:text-white outline-none resize-none border border-slate-200 dark:border-slate-600 focus:border-[#00A651]" />
+          </div>
+          <button onClick={submit} disabled={saving || !subject.trim() || !message.trim()}
+            className="w-full py-3 bg-[#00A651] text-white rounded-xl font-bold text-sm disabled:opacity-50 active:opacity-80">
+            {saving ? "Submitting…" : "Submit Ticket"}
+          </button>
+        </div>
+      )}
+
+      {/* Success */}
+      {view === "done" && (
+        <div className="p-6 flex flex-col items-center text-center gap-3">
+          <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ background: "#dcfce7" }}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="#00A651" strokeWidth={2.5} strokeLinecap="round" className="w-7 h-7"><path d="M5 13l4 4L19 7"/></svg>
+          </div>
+          <p className="text-base font-extrabold text-slate-800 dark:text-white">Ticket Submitted!</p>
+          <div className="bg-slate-50 dark:bg-slate-700 rounded-xl px-4 py-2.5">
+            <p className="text-[10px] text-slate-400 uppercase tracking-wider font-bold">Reference</p>
+            <p className="text-lg font-extrabold text-[#00A651] tracking-widest">{ticketRef}</p>
+          </div>
+          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">A confirmation has been sent to your email. Our support team will get back to you shortly.</p>
+          <button onClick={reset} className="mt-1 px-5 py-2.5 bg-[#00A651] text-white rounded-xl font-bold text-sm active:opacity-80">Done</button>
+        </div>
+      )}
+
+      {/* FAQ */}
+      {view === "faq" && (
+        <div className="divide-y divide-slate-100 dark:divide-slate-700">
+          {ORG_FAQS.map((item, i) => (
+            <div key={i}>
+              <button onClick={() => setOpenFaq(openFaq === i ? null : i)}
+                className="w-full flex items-center justify-between gap-3 px-4 py-3.5 text-left active:bg-slate-50 dark:active:bg-slate-700/50">
+                <span className="text-[13px] font-semibold text-slate-700 dark:text-slate-200 leading-snug">{item.q}</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"
+                  className={`w-4 h-4 flex-shrink-0 text-slate-400 transition-transform ${openFaq === i ? "rotate-180" : ""}`}>
+                  <path d="M19 9l-7 7-7-7"/>
+                </svg>
+              </button>
+              {openFaq === i && (
+                <p className="px-4 pb-3.5 text-[12px] text-slate-500 dark:text-slate-400 leading-relaxed">{item.a}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SettingsTab({ org, onRefresh, onOrgUpdate, onBack, isOrgPortal = false, isDark = false, onToggleDark }) {
   const [leaders,       setLeaders]       = useState([]);
   const [form,          setForm]          = useState({ name: org.name || "", email: org.email || "", phone: org.phone || "", address: org.address || "", state_name: org.state_name || "", lga: org.lga || "", purpose: org.purpose || "", vision: org.vision || "", mission: org.mission || "", website: org.website || "", social_instagram: org.social_instagram || "", social_facebook: org.social_facebook || "", social_twitter: org.social_twitter || "", date_established: org.date_established || "", logo_url: org.logo_url || "" });
@@ -2389,6 +2540,9 @@ function SettingsTab({ org, onRefresh, onOrgUpdate, onBack, isOrgPortal = false,
 
       {/* Paystack Bank Account */}
       <OrgBankSetupSection org={org} onRefresh={onRefresh} />
+
+      {/* Support & FAQ */}
+      <OrgSupportSection org={org} />
 
       {/* Danger Zone */}
       {!isOrgPortal && <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-red-100 dark:border-red-900/40">

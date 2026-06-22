@@ -1999,6 +1999,54 @@ serve(async (req) => {
       return json({ success: true, ticket_ref: ticketRef });
     }
 
+    // ── Org owner submits a support ticket ────────────────────────────────
+    if (action === "submit-org-support-ticket") {
+      const { org_id, category, subject, message } = body as {
+        org_id: string; category: string; subject: string; message: string;
+      };
+      if (!org_id || !subject?.trim() || !message?.trim())
+        return json({ error: "org_id, subject, message required" }, 400);
+
+      const { data: org } = await sb.from("organizations")
+        .select("name, owner_id, email").eq("id", org_id).maybeSingle();
+
+      const ticketRef = `TKT-${Date.now().toString(36).toUpperCase().slice(-6)}`;
+
+      let ownerEmail = org?.email || "";
+      if (org?.owner_id) {
+        const { data: ownerP } = await sb.from("profiles").select("email").eq("id", org.owner_id).maybeSingle();
+        if (ownerP?.email) ownerEmail = ownerP.email;
+      }
+
+      const ticketData = {
+        ticket_ref:   ticketRef,
+        member_name:  org?.name || "Organisation Owner",
+        member_email: ownerEmail,
+        org_name:     org?.name || "",
+        category:     category  || "General",
+        subject:      subject.trim(),
+        message:      message.trim(),
+        date:         new Date().toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" }),
+      };
+
+      // Confirmation to org owner
+      if (ownerEmail) {
+        fetch("https://admin.kudiai.app/api/public/email-trigger", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+          body: JSON.stringify({ event: "org_member_support_ticket", data: { ...ticketData, send_to: "member" } }),
+        }).catch(() => null);
+      }
+
+      // In-app notification
+      insertNotif(org_id, "org", "info", "support",
+        "Support Ticket Submitted",
+        `Your ticket (${ticketRef}) has been received: ${subject.trim()}`,
+        null);
+
+      return json({ success: true, ticket_ref: ticketRef });
+    }
+
     // ── Member submits a withdrawal request ───────────────────────────────
     if (action === "request-member-withdrawal") {
       const { member_id, org_id, amount, reason } = body as {
