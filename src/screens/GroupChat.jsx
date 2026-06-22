@@ -144,32 +144,128 @@ function Av({ name = "?", size = 32, online, url }) {
 }
 
 // ─── Sender Profile Sheet ─────────────────────────────────────────────────────
-function SenderProfile({ member, onClose }) {
-  const fmt = d => d ? new Date(d).toLocaleDateString([], { day:"numeric", month:"short", year:"numeric" }) : "—";
+function SenderProfile({ member, org, isAdmin, onClose }) {
+  const [savings, setSavings] = useState(null);
+  const [loan,    setLoan]    = useState(null);
+
+  const isOrgUser = member.role === "admin" || member.role === "org";
+  const fmt = d => d ? new Date(d).toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" }) : "—";
+
+  useEffect(() => {
+    if (!member.id || !isAdmin || isOrgUser) return;
+    supabase.from("org_savings").select("amount").eq("member_id", member.id)
+      .then(({ data }) => {
+        if (data?.length) setSavings(data.reduce((s, r) => s + (Number(r.amount) || 0), 0));
+      });
+    supabase.from("org_loans").select("amount_requested, status").eq("member_id", member.id)
+      .then(({ data }) => {
+        if (!data) return;
+        const active = data.find(l => !["repaid", "rejected", "paid", "closed"].includes(l.status));
+        if (active) setLoan(active);
+      });
+  }, [member.id, isAdmin, isOrgUser]);
+
   return (
     <div className="fixed inset-0 z-[130] flex items-end justify-center" onClick={onClose}>
       <div className="absolute inset-0 bg-black/50 backdrop-blur-[2px]" />
       <div className="relative w-full max-w-md bg-white rounded-t-3xl overflow-hidden"
         onClick={e => e.stopPropagation()}>
-        <div className="w-10 h-1 bg-slate-200 rounded-full mx-auto mt-3 mb-2" />
-        <div className="flex flex-col items-center px-5 pt-3 pb-6">
-          <Av name={member.full_name || "?"} size={84} url={member.avatar_url} />
-          <p className="text-lg font-extrabold text-slate-800 mt-3 text-center">{member.full_name}</p>
-          <span className={`mt-1.5 text-[10px] font-bold px-2.5 py-0.5 rounded-full
-            ${(member.role === "admin" || member.role === "org") ? "bg-violet-100 text-violet-600" : "bg-blue-100 text-blue-600"}`}>
-            {(member.role === "admin" || member.role === "org") ? "ADMIN" : "MEMBER"}
+        <div className="w-10 h-1 bg-slate-200 rounded-full mx-auto mt-3" />
+
+        {/* Gradient header */}
+        <div className="flex flex-col items-center pt-5 pb-5 px-5"
+          style={{ background: isOrgUser
+            ? "linear-gradient(135deg,#064e3b 0%,#128c7e 100%)"
+            : "linear-gradient(135deg,#1e40af 0%,#3b82f6 100%)" }}>
+          <Av name={member.full_name || "?"} size={80} url={member.avatar_url} />
+          <p className="text-[18px] font-extrabold text-white mt-3 text-center leading-tight">
+            {member.full_name}
+          </p>
+          <span className="mt-1.5 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-white/20 text-white">
+            {isOrgUser ? "GROUP ADMIN" : "MEMBER"}
           </span>
-          {member.joined_date && (
-            <p className="text-xs text-slate-400 mt-2">Member since {fmt(member.joined_date)}</p>
+          {isOrgUser && org?.name && (
+            <p className="text-[12px] text-white/65 mt-1 text-center">{org.name}</p>
           )}
-          {member.phone && (
-            <a href={`tel:${member.phone}`}
-              className="mt-2 text-sm text-blue-600 font-semibold active:underline">
-              {member.phone}
+        </div>
+
+        {/* Details */}
+        <div className="px-5 py-4 flex flex-col gap-2.5">
+          {/* Phone */}
+          {(member.phone || (isOrgUser && org?.phone)) && (
+            <a href={`tel:${member.phone || org?.phone}`}
+              className="flex items-center gap-3.5 bg-slate-50 rounded-2xl px-4 py-3 active:bg-slate-100">
+              <div className="w-9 h-9 rounded-full bg-[#128c7e]/10 flex items-center justify-center flex-shrink-0">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#128c7e" strokeWidth={2} strokeLinecap="round" className="w-4 h-4">
+                  <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81a19.79 19.79 0 01-3.07-8.63A2 2 0 012 .95h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L6.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/>
+                </svg>
+              </div>
+              <span className="text-[14px] font-semibold text-[#128c7e]">{member.phone || org?.phone}</span>
             </a>
           )}
+
+          {/* Joined date */}
+          {member.joined_date && !isOrgUser && (
+            <div className="flex items-center gap-3.5 bg-slate-50 rounded-2xl px-4 py-3">
+              <div className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center flex-shrink-0">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth={2} strokeLinecap="round" className="w-4 h-4">
+                  <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                </svg>
+              </div>
+              <div>
+                <p className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">Member since</p>
+                <p className="text-[13px] font-semibold text-slate-700">{fmt(member.joined_date)}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Org email */}
+          {isOrgUser && org?.email && (
+            <a href={`mailto:${org.email}`}
+              className="flex items-center gap-3.5 bg-slate-50 rounded-2xl px-4 py-3 active:bg-slate-100">
+              <div className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center flex-shrink-0">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth={2} strokeLinecap="round" className="w-4 h-4">
+                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>
+                </svg>
+              </div>
+              <span className="text-[14px] font-semibold text-slate-700 truncate">{org.email}</span>
+            </a>
+          )}
+
+          {/* Savings (admin viewing member) */}
+          {savings !== null && (
+            <div className="flex items-center gap-3.5 bg-green-50 border border-green-100 rounded-2xl px-4 py-3">
+              <div className="w-9 h-9 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#128c7e" strokeWidth={2} strokeLinecap="round" className="w-4 h-4">
+                  <path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
+                </svg>
+              </div>
+              <div>
+                <p className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">Total Savings</p>
+                <p className="text-[15px] font-extrabold text-[#128c7e]">₦{savings.toLocaleString()}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Active loan (admin viewing member) */}
+          {loan && (
+            <div className="flex items-center gap-3.5 bg-amber-50 border border-amber-100 rounded-2xl px-4 py-3">
+              <div className="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth={2} strokeLinecap="round" className="w-4 h-4">
+                  <path d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z"/>
+                </svg>
+              </div>
+              <div>
+                <p className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">Active Loan</p>
+                <p className="text-[15px] font-extrabold text-amber-600">₦{(loan.amount_requested || 0).toLocaleString()}</p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="px-5 pb-8">
           <button onClick={onClose}
-            className="mt-5 w-full py-3 bg-slate-100 rounded-2xl text-sm font-bold text-slate-600 active:bg-slate-200">
+            className="w-full py-3.5 bg-slate-100 rounded-2xl text-[14px] font-bold text-slate-600 active:bg-slate-200">
             Close
           </button>
         </div>
@@ -237,13 +333,13 @@ function Bubble({ msg, isMe, showName, showAv, myId, lastSeen, memberCount, avat
       <div className={`flex flex-col max-w-[78%] ${isMe ? "items-end" : "items-start"}`}>
 
         {showName && !isMe && (
-          <span className="text-[11px] font-extrabold mb-0.5 ml-0.5 flex items-center gap-1"
-            style={{ color: avatarColor(msg.sender_name) }}>
-            {msg.sender_name}
+          <button onClick={() => onAvatarTap?.(msg)}
+            className="text-[11px] font-extrabold mb-0.5 ml-0.5 flex items-center gap-1 text-left active:opacity-70">
+            <span style={{ color: avatarColor(msg.sender_name) }}>{msg.sender_name}</span>
             {(msg.sender_role === "admin" || msg.sender_role === "org") && (
               <span className="text-[8px] bg-violet-100 text-violet-600 px-1 py-0.5 rounded font-bold">ADMIN</span>
             )}
-          </span>
+          </button>
         )}
 
         {/* Bubble */}
@@ -298,7 +394,10 @@ function Bubble({ msg, isMe, showName, showAv, myId, lastSeen, memberCount, avat
 
           {/* Footer */}
           {!isDeleted && (
-            <div className={`flex items-center gap-1 mt-0.5 ${isMe ? "justify-end" : "justify-end"}`}>
+            <div className={`flex items-center gap-1 mt-0.5 justify-end`}>
+              {msg.pinned && (
+                <span className="text-[10px] opacity-60">📌</span>
+              )}
               {msg.is_edited && (
                 <span className={`text-[9px] italic ${isMe ? "text-[#111b21]/40" : "text-slate-400"}`}>edited</span>
               )}
@@ -1216,7 +1315,8 @@ export default function GroupChat({ orgId, myName, myRole = "member", orgName, o
       m[`n:${mem.full_name}`] = url;
     }
     if (org?.logo_url) {
-      if (org?.owner_id) m[org.owner_id] = org.logo_url;
+      if (org?.owner_id)       m[org.owner_id]       = org.logo_url;
+      if (org?.portal_user_id) m[org.portal_user_id] = org.logo_url;
       m["__org__"] = org.logo_url;
     }
     return m;
@@ -1286,16 +1386,26 @@ export default function GroupChat({ orgId, myName, myRole = "member", orgName, o
 
         {/* ── Pinned banner ── */}
         {pinnedMsg && !pinnedMsg.is_deleted && !showSearch && (
-          <button onClick={() => jumpTo(pinnedMsg.id)}
-            className="flex-shrink-0 flex items-center gap-2.5 px-4 py-2 bg-white/80 backdrop-blur-sm border-b border-slate-200 text-left">
-            <div className="w-0.5 h-8 bg-[#128c7e] rounded-full flex-shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-[9px] font-extrabold text-[#128c7e] uppercase tracking-wider">📌 Pinned</p>
-              <p className="text-xs text-slate-700 truncate font-medium">
-                {pinnedMsg.type === "audio" ? "🎤 Voice message" : pinnedMsg.type === "image" ? "📷 Photo" : pinnedMsg.content}
-              </p>
-            </div>
-          </button>
+          <div className="flex-shrink-0 flex items-center gap-1 px-4 py-2 bg-white/90 backdrop-blur-sm border-b border-slate-200">
+            <button onClick={() => jumpTo(pinnedMsg.id)} className="flex items-center gap-2.5 flex-1 min-w-0 text-left">
+              <div className="w-0.5 h-8 bg-[#128c7e] rounded-full flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-[9px] font-extrabold text-[#128c7e] uppercase tracking-wider">📌 Pinned message</p>
+                <p className="text-xs text-slate-700 truncate font-medium">
+                  {pinnedMsg.type === "audio" ? "🎤 Voice message" : pinnedMsg.type === "image" ? "📷 Photo" : pinnedMsg.content}
+                </p>
+              </div>
+            </button>
+            {isAdmin && (
+              <button onClick={() => doAction("pin", pinnedMsg)}
+                className="w-7 h-7 rounded-full flex items-center justify-center text-slate-400 active:bg-slate-100 flex-shrink-0"
+                title="Unpin">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="w-3.5 h-3.5">
+                  <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+              </button>
+            )}
+          </div>
         )}
 
         {/* ── Messages ── */}
@@ -1556,7 +1666,7 @@ export default function GroupChat({ orgId, myName, myRole = "member", orgName, o
 
       {/* ── Sender profile sheet ── */}
       {viewProfile && (
-        <SenderProfile member={viewProfile} onClose={() => setViewProfile(null)} />
+        <SenderProfile member={viewProfile} org={org} isAdmin={isAdmin} onClose={() => setViewProfile(null)} />
       )}
     </div>
   );
