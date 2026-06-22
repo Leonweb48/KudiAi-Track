@@ -5,6 +5,8 @@ import BillPayments from "./BillPayments";
 import GroupChat from "./GroupChat";
 import { CoopSavingReceipt, CoopBulkWithdrawalReceipt, CoopWithdrawalRequestReceipt } from "../components/shared/Receipt";
 import { CoopNotificationBell, useChatUnread, ChatToast } from "../components/shared/CoopNotifications";
+import AIChatWidget from "../components/AIChatWidget";
+import { buildCoopOrgContext } from "../utils/buildContext";
 
 const coopFn = async (action, body = {}) => {
   const r = await supabase.functions.invoke("coop-portal", { body: { action, ...body } });
@@ -2760,6 +2762,21 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
               </div>
             </div>
           )}
+
+          {/* ── KudiAI Gemini Assistant ── */}
+          <AIChatWidget
+            portalContext={buildCoopOrgContext(org, members, wallet, programs, loans, announcements)}
+            greeting={`Hi${org.owner_name ? ` ${org.owner_name.split(" ")[0]}` : ""}! I'm **KudiAI**, your cooperative assistant powered by Gemini.\n\nI know your members, savings, loans, programs, and wallet — ask me anything!`}
+            quickChips={[
+              { label: "Member Summary",   q: "Give me a summary of all members and their savings balances" },
+              { label: "Active Loans",     q: "List all active loans and total outstanding amount" },
+              { label: "Wallet Balance",   q: "What is the current wallet balance and recent transactions?" },
+              { label: "Pending Requests", q: "Are there any pending withdrawal requests I need to action?" },
+              { label: "Savings Programs", q: "What savings programs are active and how are they performing?" },
+              { label: "Monthly Report",   q: "Give me a full monthly cooperative performance report" },
+            ]}
+            inputPlaceholder="Ask about your cooperative…"
+          />
 
         </div>
       </div>

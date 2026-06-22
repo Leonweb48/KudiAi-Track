@@ -1,5 +1,64 @@
 import { today, fmt } from "./helpers";
 
+export function buildCoopOrgContext(org = {}, members = [], wallet = null, programs = [], loans = [], announcements = []) {
+  if (!org || !org.name) return "Cooperative Organisation Portal | Organisation data is still loading.";
+
+  const todayStr      = today();
+  const activeMembers = members.filter(m => m.status === "active");
+  const suspended     = members.filter(m => m.status === "suspended");
+
+  const activeLoans   = loans.filter(l => ["approved","disbursed","ongoing"].includes(l.status));
+  const pendingLoans  = loans.filter(l => l.status === "pending");
+  const totalDebt     = activeLoans.reduce((s, l) => s + Number(l.outstanding_balance || l.amount || 0), 0);
+
+  const activePrograms = programs.filter(p => p.status === "active");
+
+  const recentTxns = (wallet?.transactions || []).slice(0, 10);
+  const txnLines   = recentTxns.map(t =>
+    `  • ${t.type?.replace(/_/g," ")} — ₦${fmt(t.amount || 0)} (${t.created_at ? new Date(t.created_at).toLocaleDateString("en-NG",{day:"numeric",month:"short"}) : "—"})`
+  );
+
+  const memberLines = members.slice(0, 30).map(m =>
+    `  • ${m.full_name} (${m.role || "member"}) — Savings: ₦${fmt(m.savings_balance || 0)} | Status: ${m.status || "active"}`
+  );
+
+  const loanLines = loans.slice(0, 15).map(l =>
+    `  • ${l.full_name || "Unknown"}: ₦${fmt(l.amount || 0)} — ${l.status} | Outstanding: ₦${fmt(l.outstanding_balance || 0)} | Monthly: ₦${fmt(l.monthly_payment || 0)}`
+  );
+
+  const programLines = programs.map(p =>
+    `  • ${p.name} (${p.type || "savings"}) — ${p.status} | Target: ₦${fmt(p.target_amount || 0)} | Freq: ${p.frequency || "monthly"}`
+  );
+
+  const pinnedAnns = announcements.filter(a => a.is_pinned);
+
+  return [
+    `COOPERATIVE ORGANISATION PORTAL | Org: ${org.name} | Today: ${todayStr}`,
+    `TYPE: ${(org.type || "cooperative").replace(/_/g," ")} | Reg: ${org.reg_number || "N/A"} | Est: ${org.date_established ? new Date(org.date_established).getFullYear() : "N/A"}`,
+    `CONTACT: ${org.email || "N/A"} | ${org.phone || "N/A"} | ${org.address || "N/A"}`,
+    ``,
+    `FINANCIALS:`,
+    `  Wallet Balance: ₦${fmt(org.wallet_balance)}`,
+    `  Total Member Savings: ₦${fmt(org.total_savings)}`,
+    `  Total Loans Disbursed: ₦${fmt(org.total_loans_out)}`,
+    ``,
+    `MEMBERS: ${members.length} total | ${activeMembers.length} active | ${suspended.length} suspended`,
+    members.length > 0 ? `MEMBER DETAILS:\n${memberLines.join("\n")}` : "MEMBERS: None yet",
+    ``,
+    `LOANS: ${loans.length} total | ${activeLoans.length} active | ${pendingLoans.length} pending | Total Outstanding: ₦${fmt(totalDebt)}`,
+    loans.length > 0 ? `LOAN DETAILS:\n${loanLines.join("\n")}` : "LOANS: None on record",
+    ``,
+    `SAVINGS PROGRAMS: ${programs.length} total | ${activePrograms.length} active`,
+    programs.length > 0 ? `PROGRAMS:\n${programLines.join("\n")}` : "PROGRAMS: None set up",
+    ``,
+    recentTxns.length > 0 ? `RECENT WALLET TRANSACTIONS (last ${recentTxns.length}):\n${txnLines.join("\n")}` : "WALLET TRANSACTIONS: None",
+    ``,
+    announcements.length > 0
+      ? `ANNOUNCEMENTS: ${announcements.length} total | ${pinnedAnns.length} pinned\nRECENT TITLES: ${announcements.slice(0,5).map(a=>a.title).join(" | ")}`
+      : "ANNOUNCEMENTS: None",
+  ].filter(Boolean).join("\n");
+}
+
 export function buildAjoMemberContext(client = {}, contributions = [], ownerInfo = {}) {
   if (!client || !client.full_name) return "Ajo Member Portal | Member data is still loading.";
 
