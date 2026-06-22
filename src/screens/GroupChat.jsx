@@ -388,6 +388,8 @@ function Bubble({ msg, isMe, showName, showAv, myId, lastSeen, memberCount, avat
             <PollBubble pollId={msg.media_name} myId={myId} time={fmtTime(msg.created_at)} isMe={isMe} readBy={readBy} isPending={isPending} />
           ) : msg.type === "event" ? (
             <EventBubble eventId={msg.media_name} myId={myId} isMe={isMe} />
+          ) : msg.type === "document" ? (
+            <DocumentBubble url={msg.media_url} name={msg.media_name} isMe={isMe} />
           ) : (
             <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
           )}
@@ -848,8 +850,32 @@ function EventBubble({ eventId, myId, isMe }) {
   );
 }
 
+// ─── Document Bubble ──────────────────────────────────────────────────────────
+function DocumentBubble({ url, name, isMe }) {
+  const ext = (name?.split(".").pop() || "").toLowerCase();
+  const EXT_COLOR = { pdf:"#ef4444", doc:"#2563eb", docx:"#2563eb", xls:"#16a34a", xlsx:"#16a34a", ppt:"#ea580c", pptx:"#ea580c", txt:"#64748b" };
+  const EXT_LABEL = { pdf:"PDF", doc:"DOC", docx:"DOC", xls:"XLS", xlsx:"XLS", ppt:"PPT", pptx:"PPT", txt:"TXT" };
+  const color = EXT_COLOR[ext] || "#64748b";
+  const label = EXT_LABEL[ext] || (ext.toUpperCase() || "FILE");
+  return (
+    <a href={url} target="_blank" rel="noreferrer"
+      className="flex items-center gap-3 min-w-[180px] py-0.5 active:opacity-70">
+      <div className="w-11 h-11 rounded-xl flex flex-col items-center justify-center flex-shrink-0"
+        style={{ background: `${color}18`, border: `1.5px solid ${color}50` }}>
+        <span className="text-[9px] font-extrabold uppercase" style={{ color }}>{label}</span>
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className={`text-[13px] font-semibold leading-snug break-all line-clamp-2 ${isMe ? "text-[#111b21]" : "text-slate-800"}`}>
+          {name || "Document"}
+        </p>
+        <p className={`text-[10px] mt-0.5 ${isMe ? "text-[#128c7e]" : "text-blue-500"}`}>Tap to open</p>
+      </div>
+    </a>
+  );
+}
+
 // ─── Attachment Sheet ─────────────────────────────────────────────────────────
-function AttachSheet({ onClose, onPoll, onEvent, onPhoto }) {
+function AttachSheet({ onClose, onPoll, onEvent, onPhoto, onCamera, onDocument }) {
   const ITEMS = [
     {
       label: "Photos",
@@ -859,13 +885,13 @@ function AttachSheet({ onClose, onPoll, onEvent, onPhoto }) {
     },
     {
       label: "Camera",
-      onClick: onClose,
+      onClick: onCamera,
       bg: "#f1f5f9", color: "#475569",
       icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" className="w-7 h-7"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>,
     },
     {
       label: "Document",
-      onClick: onClose,
+      onClick: onDocument,
       bg: "#cffafe", color: "#0891b2",
       icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" className="w-7 h-7"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>,
     },
@@ -1113,6 +1139,8 @@ export default function GroupChat({ orgId, myName, myRole = "member", orgName, o
   const bottomRef   = useRef(null);
   const inputRef    = useRef(null);
   const fileRef     = useRef(null);
+  const cameraRef   = useRef(null);
+  const docRef      = useRef(null);
   const myIdRef     = useRef(null);
   const channelRef  = useRef(null);
   const recRef      = useRef(null);
@@ -1445,6 +1473,18 @@ export default function GroupChat({ orgId, myName, myRole = "member", orgName, o
       await sendMsg({ type: "image", media_url: url, media_name: mediaPreview.file.name, media_mime: mediaPreview.file.type, content: text });
       setMediaPreview(null);
     } catch (e) { console.error(e); }
+    setSending(false);
+  };
+
+  const onPickDoc = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setSending(true);
+    try {
+      const url = await upload(file);
+      await sendMsg({ type: "document", media_url: url, media_name: file.name, media_mime: file.type });
+    } catch (err) { console.error(err); }
     setSending(false);
   };
 
@@ -1816,7 +1856,9 @@ export default function GroupChat({ orgId, myName, myRole = "member", orgName, o
                   </svg>
                 </button>
               )}
-              <input ref={fileRef} type="file" accept="image/*" onChange={onPickImage} className="hidden" />
+              <input ref={fileRef}   type="file" accept="image/*" onChange={onPickImage} className="hidden" />
+              <input ref={cameraRef} type="file" accept="image/*" capture="environment" onChange={onPickImage} className="hidden" />
+              <input ref={docRef}    type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,text/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation" onChange={onPickDoc} className="hidden" />
 
               <div className="flex-1 bg-white rounded-[20px] shadow-sm flex items-end px-3.5 py-2.5 gap-2 min-h-[42px]">
                 <textarea
@@ -1913,6 +1955,8 @@ export default function GroupChat({ orgId, myName, myRole = "member", orgName, o
         <AttachSheet
           onClose={() => setShowAttach(false)}
           onPhoto={() => { fileRef.current?.click(); }}
+          onCamera={() => { cameraRef.current?.click(); }}
+          onDocument={() => { docRef.current?.click(); }}
           onPoll={() => { setShowPollSheet(true); setShowAttach(false); }}
           onEvent={() => { setShowEvtSheet(true); setShowAttach(false); }}
         />
