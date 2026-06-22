@@ -1862,7 +1862,7 @@ serve(async (req) => {
       }
 
       const { data: loan } = await sb.from("org_loans")
-        .select("outstanding_balance,total_repayable,total_interest,amount_approved,amount_requested,org_id,member_id")
+        .select("outstanding_balance,total_repayable,total_interest,amount_approved,amount_requested,org_id,member_id,loan_purpose")
         .eq("id", loan_id).single();
       if (!loan) return json({ error: "Loan not found" }, 404);
 
@@ -1895,6 +1895,50 @@ serve(async (req) => {
         description: `Loan repayment via Paystack — ${loan_id}`,
         paystack_ref: reference, balance_after: (orgW?.wallet_balance || 0) + paidAmount,
       });
+
+      // Notifications: in-app + email for both member and org
+      const { data: repayMem } = await sb.from("org_members")
+        .select("full_name, email").eq("id", member_id).maybeSingle();
+      const { data: repayOrg } = await sb.from("organizations")
+        .select("name, owner_id").eq("id", org_id).maybeSingle();
+
+      const memberName = repayMem?.full_name || "A member";
+      const fmtAmt = `₦${Number(paidAmount).toLocaleString("en-NG")}`;
+
+      insertNotif(org_id, "org", "success", "loan",
+        "Loan Repayment Received 💳",
+        `${memberName} paid ${fmtAmt} via Paystack${newOutstanding === 0 ? " — fully repaid!" : `. Balance: ₦${Number(newOutstanding).toLocaleString("en-NG")}`}`,
+        "loans");
+      insertNotif(org_id, "member", "success", "loan",
+        newOutstanding === 0 ? "Loan Fully Repaid! 🎉" : "Repayment Confirmed",
+        `${fmtAmt} payment received via Paystack${newOutstanding === 0 ? " — your loan is fully settled!" : `. Outstanding: ₦${Number(newOutstanding).toLocaleString("en-NG")}`}`,
+        "loans", member_id);
+
+      const emailData = {
+        member_name:        memberName,
+        member_email:       repayMem?.email || "",
+        org_name:           repayOrg?.name  || "",
+        amount:             paidAmount,
+        outstanding_balance: newOutstanding,
+        is_fully_repaid:    newOutstanding === 0,
+        loan_purpose:       (loan as Record<string, unknown>).loan_purpose as string || "",
+        payment_method:     "Paystack",
+      };
+      if (repayMem?.email) {
+        fetch("https://admin.kudiai.app/api/public/email-trigger", {
+          method: "POST", headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+          body: JSON.stringify({ event: "org_loan_repayment", data: { ...emailData, send_to: "member" } }),
+        }).catch(() => null);
+      }
+      if (repayOrg?.owner_id) {
+        const { data: ownerP } = await sb.from("profiles").select("email").eq("id", repayOrg.owner_id).maybeSingle();
+        if (ownerP?.email) {
+          fetch("https://admin.kudiai.app/api/public/email-trigger", {
+            method: "POST", headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+            body: JSON.stringify({ event: "org_loan_repayment", data: { ...emailData, send_to: "org", owner_email: ownerP.email } }),
+          }).catch(() => null);
+        }
+      }
 
       return json({ loan: updatedLoan, amount: paidAmount });
     }
