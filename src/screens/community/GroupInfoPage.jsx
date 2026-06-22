@@ -160,34 +160,40 @@ export default function GroupInfoPage({ orgId, orgName, org, settings: initSetti
       {/* Scrollable body */}
       <div className="flex-1 overflow-y-auto overscroll-none">
 
-        {/* ── Banner ── */}
-        <div className="relative flex-shrink-0"
-          style={{height:210,background:"linear-gradient(160deg,#022c22 0%,#064e3b 40%,#065f46 70%,#128c7e 100%)"}}>
-          {/* decorative pattern */}
-          <div className="absolute inset-0 opacity-[0.07]"
-            style={{backgroundImage:"radial-gradient(circle,white 1.5px,transparent 1.5px)",backgroundSize:"28px 28px"}}/>
-          {/* subtle glow */}
-          <div className="absolute bottom-0 left-0 right-0 h-20 pointer-events-none"
-            style={{background:"linear-gradient(to top,rgba(0,0,0,0.18),transparent)"}}/>
-          {settings?.is_private && (
-            <span className="absolute top-4 right-4 text-[10px] font-extrabold text-white bg-black/30 backdrop-blur-sm px-2.5 py-1 rounded-full">🔒 Private</span>
-          )}
-        </div>
+        {/* ── Banner + Avatar hero ── */}
+        <div className="relative bg-white">
 
-        {/* ── Profile card ── */}
-        <div className="bg-white px-4 pb-2">
+          {/* Banner — sits at the back */}
+          <div className="relative"
+            style={{height:190,background:"linear-gradient(160deg,#022c22 0%,#064e3b 40%,#065f46 70%,#128c7e 100%)"}}>
+            <div className="absolute inset-0 opacity-[0.07]"
+              style={{backgroundImage:"radial-gradient(circle,white 1.5px,transparent 1.5px)",backgroundSize:"28px 28px"}}/>
+            <div className="absolute bottom-0 left-0 right-0 h-16 pointer-events-none"
+              style={{background:"linear-gradient(to top,rgba(0,0,0,0.22),transparent)"}}/>
+            {settings?.is_private && (
+              <span className="absolute top-4 right-4 text-[10px] font-extrabold text-white bg-black/30 backdrop-blur-sm px-2.5 py-1 rounded-full">🔒 Private</span>
+            )}
+          </div>
 
-          {/* Avatar row: overlaps banner */}
-          <div className="flex items-end justify-between" style={{marginTop:-52}}>
-            <div className="w-[100px] h-[100px] rounded-full border-4 border-white shadow-xl overflow-hidden flex-shrink-0"
+          {/* Avatar — absolutely on top of the banner, centred at banner's bottom edge */}
+          <div className="absolute z-10" style={{bottom:-50,left:16}}>
+            <div className="w-[100px] h-[100px] rounded-full border-[3.5px] border-white shadow-xl overflow-hidden"
               style={{background:"linear-gradient(145deg,#075E54,#128c7e)"}}>
               {org?.logo_url
                 ? <img src={org.logo_url} alt={displayName} className="w-full h-full object-cover"/>
                 : <div className="w-full h-full flex items-center justify-center text-4xl">{settings?.emoji||"💬"}</div>}
             </div>
+          </div>
+        </div>
 
-            {/* Action buttons */}
-            <div className="flex gap-2 items-center pb-2 pt-14">
+        {/* ── Profile card ── */}
+        <div className="bg-white px-4 pb-2">
+
+          {/* Spacer for the avatar that protrudes 50px below the banner */}
+          <div style={{height:56}} />
+
+          {/* Action buttons — right-aligned, sit beside the avatar space */}
+          <div className="flex gap-2 items-center justify-end pb-2" style={{marginTop:-44}}>
               {isAdmin && (
                 <button onClick={()=>setScreen("privacy")}
                   className="px-4 py-1.5 border-2 border-slate-200 rounded-full text-[13px] font-extrabold text-slate-700 bg-white active:bg-slate-50 transition-colors shadow-sm">
@@ -198,7 +204,6 @@ export default function GroupInfoPage({ orgId, orgName, org, settings: initSetti
                 className="px-5 py-1.5 bg-slate-900 rounded-full text-[13px] font-extrabold text-white active:bg-slate-700 transition-colors shadow-sm">
                 Invite
               </button>
-            </div>
           </div>
 
           {/* Name + verified */}
