@@ -10,12 +10,22 @@ import { CoopNotificationBell, useChatUnread, ChatToast } from "../components/sh
 
 const coopFn = async (action, body = {}) => {
   const r = await supabase.functions.invoke("coop-portal", { body: { action, ...body } });
-  if (r.error) throw r.error;
+  // Check data.error first — Supabase JS populates r.data even on non-2xx in some versions,
+  // and r.error only carries a generic "Edge Function returned a non-2xx" message.
   if (r.data?.error) throw new Error(r.data.error);
+  if (r.error) {
+    // Try to extract a readable message from the error context body
+    const ctx = r.error?.context;
+    const body = ctx ? (await ctx.json?.().catch(() => null)) : null;
+    if (body?.error) throw new Error(body.error);
+    if (body?.message) throw new Error(body.message);
+    throw r.error;
+  }
   return r.data;
 };
 
-const ORG_PAY_PREFIX = "org_member_pending_";
+const ORG_PAY_PREFIX      = "org_member_pending_";
+const ORG_LOAN_PAY_PREFIX = "org_loan_pending_";
 
 const fmt     = n => "₦" + Number(n || 0).toLocaleString("en-NG", { minimumFractionDigits: 0 });
 const fmtDate = d => d ? new Date(d).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" }) : "—";
@@ -835,46 +845,24 @@ function LoansTab({ member, org }) {
     coopFn("get-repayments", { loan_id: l.id }).then(r => setRepayments(r.repayments || []));
   };
 
-  const handlePaystackRepay = (loan) => {
-    if (!org.paystack_subaccount_code) { alert("Organisation has not configured Paystack"); return; }
-
-    const openPopup = () => {
-      const amountKobo = Math.round((loan.monthly_installment || loan.outstanding_balance) * 100);
-      const ref = `loan_${loan.id}_${Date.now()}`;
-      const handler = window.PaystackPop.setup({
-        key: process.env.REACT_APP_PAYSTACK_PUBLIC_KEY || "",
-        email: member.email,
-        amount: amountKobo,
-        ref,
-        subaccount: org.paystack_subaccount_code,
-        bearer: "subaccount",
-        metadata: { loan_id: loan.id, member_id: member.id, org_id: org.id, type: "loan_repayment" },
-        callback: async (response) => {
-          try {
-            await coopFn("record-repayment", {
-              org_id: org.id, loan_id: loan.id, member_id: member.id,
-              amount: (loan.monthly_installment || loan.outstanding_balance),
-              payment_method: "paystack", paystack_ref: response.reference,
-            });
-            load();
-            if (selected) openLoan({ ...selected, outstanding_balance: Math.max(0, (selected.outstanding_balance || 0) - (loan.monthly_installment || loan.outstanding_balance)) });
-          } catch (e) { alert("Payment recorded but update failed: " + e.message); }
-        },
-        onClose: () => { setRepaying(false); },
+  const handlePaystackRepay = async (loan) => {
+    if (!org.paystack_subaccount_code) { setError("Organisation has not configured Paystack payments"); return; }
+    const repayAmt = loan.monthly_installment || loan.outstanding_balance;
+    setRepaying(true); setError("");
+    try {
+      const res = await coopFn("initialize-loan-payment", {
+        member_id: member.id, org_id: org.id,
+        loan_id: loan.id, amount: repayAmt,
+        callback_url: window.location.origin,
       });
-      handler.openIframe();
+      if (!res.authorization_url) throw new Error("Payment initialization failed");
+      localStorage.setItem(`${ORG_LOAN_PAY_PREFIX}${res.reference}`, JSON.stringify({
+        member_id: member.id, org_id: org.id, loan_id: loan.id, amount: repayAmt,
+      }));
+      window.location.href = res.authorization_url;
+    } catch (e) {
       setRepaying(false);
-    };
-
-    setRepaying(true);
-    if (window.PaystackPop) {
-      openPopup();
-    } else {
-      const script = document.createElement("script");
-      script.src = "https://js.paystack.co/v1/inline.js";
-      script.onload = openPopup;
-      script.onerror = () => { setRepaying(false); alert("Failed to load Paystack. Please check your connection."); };
-      document.head.appendChild(script);
+      setError(e.message || "Payment failed. Please try again.");
     }
   };
 
@@ -1001,11 +989,11 @@ function LoansTab({ member, org }) {
               ))}
             </div>
 
-            {selected.status === "disbursed" && selected.outstanding_balance > 0 && org.paystack_subaccount_code && (
+            {selected.status === "disbursed" && selected.outstanding_balance > 0 && (
               <button onClick={() => handlePaystackRepay(selected)} disabled={repaying}
                 className="w-full py-3 bg-green-600 text-white rounded-2xl font-bold text-sm mb-3 flex items-center justify-center gap-2 disabled:opacity-70 active:scale-[0.98] transition-transform">
                 {repaying
-                  ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Loading payment…</>
+                  ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Preparing payment…</>
                   : <><svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>Pay via Paystack — {fmt(selected.monthly_installment || selected.outstanding_balance)}</>}
               </button>
             )}
@@ -1566,9 +1554,11 @@ export default function CoopMemberPortal({ member: initialMember }) {
     const params = new URLSearchParams(window.location.search);
     const ref = params.get("trxref") || params.get("reference");
     if (!ref) return false;
-    const stored = localStorage.getItem(ORG_PAY_PREFIX + ref);
-    if (!stored) return false;
-    try { return JSON.parse(stored).member_id === initialMember?.id; } catch { return false; }
+    const contrib = localStorage.getItem(ORG_PAY_PREFIX + ref);
+    if (contrib) { try { return JSON.parse(contrib).member_id === initialMember?.id; } catch { return false; } }
+    const loan = localStorage.getItem(ORG_LOAN_PAY_PREFIX + ref);
+    if (loan)    { try { return JSON.parse(loan).member_id    === initialMember?.id; } catch { return false; } }
+    return false;
   });
   const [paymentResult, setPaymentResult] = useState(null);
 
@@ -1581,34 +1571,59 @@ export default function CoopMemberPortal({ member: initialMember }) {
     isActive: tab === "messages",
   });
 
-  // Detect Paystack return for savings payment
+  // Detect Paystack return for savings payment OR loan repayment
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const ref = params.get("trxref") || params.get("reference");
     if (!ref) return;
-    const key = ORG_PAY_PREFIX + ref;
-    const stored = localStorage.getItem(key);
-    if (!stored) return;
-    let pending;
-    try { pending = JSON.parse(stored); } catch { return; }
-    if (pending.member_id !== initialMember?.id) return;
 
-    window.history.replaceState({}, "", window.location.pathname);
-    localStorage.removeItem(key);
-    setProcessingPayment(true);
+    // Contribution payment return
+    const contribKey = ORG_PAY_PREFIX + ref;
+    const contribStored = localStorage.getItem(contribKey);
+    if (contribStored) {
+      let pending;
+      try { pending = JSON.parse(contribStored); } catch { return; }
+      if (pending.member_id !== initialMember?.id) return;
+      window.history.replaceState({}, "", window.location.pathname);
+      localStorage.removeItem(contribKey);
+      setProcessingPayment(true);
+      coopFn("confirm-member-payment", {
+        member_id: pending.member_id, org_id: pending.org_id,
+        reference: ref, program_id: pending.program_id || undefined,
+      }).then(res => {
+        if (res.member) setMember(prev => ({ ...prev, ...res.member }));
+        setTab("contributions");
+        setProcessingPayment(false);
+        setPaymentResult({ ok: true, amount: res.amount || pending.amount, ref, type: "contribution" });
+      }).catch(e => {
+        setProcessingPayment(false);
+        setPaymentResult({ ok: false, error: e.message || "Payment verification failed", ref });
+      });
+      return;
+    }
 
-    coopFn("confirm-member-payment", {
-      member_id: pending.member_id, org_id: pending.org_id,
-      reference: ref, program_id: pending.program_id || undefined,
-    }).then(res => {
-      if (res.member) setMember(prev => ({ ...prev, ...res.member }));
-      setTab("contributions");
-      setProcessingPayment(false);
-      setPaymentResult({ ok: true, amount: res.amount || pending.amount, ref });
-    }).catch(e => {
-      setProcessingPayment(false);
-      setPaymentResult({ ok: false, error: e.message || "Payment verification failed", ref });
-    });
+    // Loan repayment return
+    const loanKey = ORG_LOAN_PAY_PREFIX + ref;
+    const loanStored = localStorage.getItem(loanKey);
+    if (loanStored) {
+      let pending;
+      try { pending = JSON.parse(loanStored); } catch { return; }
+      if (pending.member_id !== initialMember?.id) return;
+      window.history.replaceState({}, "", window.location.pathname);
+      localStorage.removeItem(loanKey);
+      setProcessingPayment(true);
+      coopFn("confirm-loan-payment", {
+        member_id: pending.member_id, org_id: pending.org_id,
+        loan_id: pending.loan_id, reference: ref,
+      }).then(res => {
+        setTab("loans");
+        setProcessingPayment(false);
+        setPaymentResult({ ok: true, amount: res.amount || pending.amount, ref, type: "loan" });
+      }).catch(e => {
+        setProcessingPayment(false);
+        setPaymentResult({ ok: false, error: e.message || "Payment verification failed", ref });
+      });
+    }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
 

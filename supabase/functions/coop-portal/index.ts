@@ -1796,6 +1796,109 @@ serve(async (req) => {
       return json({ member: updatedMember, amount: paidAmount });
     }
 
+    // ── Initialize loan repayment via Paystack (redirect flow) ───────────
+    if (action === "initialize-loan-payment") {
+      const { member_id, org_id, loan_id, amount, callback_url } = body as {
+        member_id: string; org_id: string; loan_id: string; amount: number; callback_url?: string;
+      };
+      if (!member_id || !org_id || !loan_id || !amount) return json({ error: "member_id, org_id, loan_id, amount required" }, 400);
+      if (!PAYSTACK_SECRET) return json({ error: "Paystack not configured on this server" }, 503);
+
+      const { data: mem } = await sb.from("org_members")
+        .select("email, full_name").eq("id", member_id).maybeSingle();
+      if (!mem?.email) return json({ error: "Member email not found" }, 404);
+
+      const { data: orgRow } = await sb.from("organizations")
+        .select("name, paystack_subaccount_code").eq("id", org_id).maybeSingle();
+      if (!orgRow) return json({ error: "Organisation not found" }, 404);
+
+      const ref = `LOAN-${loan_id.slice(0, 8).toUpperCase()}-${Date.now()}`;
+
+      const psRes = await fetch("https://api.paystack.co/transaction/initialize", {
+        method: "POST",
+        headers: PS_HEADERS,
+        body: JSON.stringify({
+          email:        mem.email,
+          amount:       Math.round(Number(amount) * 100),
+          reference:    ref,
+          callback_url: callback_url || "https://kudiai.app/",
+          channels:     ["card", "bank", "ussd", "mobile_money", "bank_transfer"],
+          subaccount:   orgRow.paystack_subaccount_code || undefined,
+          bearer:       orgRow.paystack_subaccount_code ? "subaccount" : undefined,
+          metadata: { member_id, org_id, loan_id, member_name: mem.full_name || "", type: "loan_repayment" },
+        }),
+      });
+      const psData = await psRes.json();
+      if (!psData.status || !psData.data?.authorization_url)
+        return json({ error: psData.message || "Payment initialization failed" }, 422);
+
+      return json({ authorization_url: psData.data.authorization_url, reference: ref, amount: Number(amount) });
+    }
+
+    // ── Confirm loan repayment via Paystack (called on return from payment page) ─
+    if (action === "confirm-loan-payment") {
+      const { member_id, org_id, loan_id, reference } = body as {
+        member_id: string; org_id: string; loan_id: string; reference: string;
+      };
+      if (!member_id || !org_id || !loan_id || !reference) return json({ error: "member_id, org_id, loan_id, reference required" }, 400);
+      if (!PAYSTACK_SECRET) return json({ error: "Paystack not configured" }, 503);
+
+      const verRes = await fetch(
+        `https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`,
+        { headers: PS_HEADERS },
+      );
+      const verData = await verRes.json();
+      if (!verData.status || verData.data?.status !== "success")
+        return json({ error: "Payment not confirmed by Paystack" }, 422);
+
+      const paidAmount = Number(verData.data.amount) / 100;
+
+      // Idempotency: only record once
+      const { data: existing } = await sb.from("org_loan_repayments")
+        .select("id").eq("paystack_ref", reference).maybeSingle();
+      if (existing) {
+        const { data: loan } = await sb.from("org_loans").select("*").eq("id", loan_id).single();
+        return json({ loan, amount: paidAmount, already_confirmed: true });
+      }
+
+      const { data: loan } = await sb.from("org_loans")
+        .select("outstanding_balance,total_repayable,total_interest,amount_approved,amount_requested,org_id,member_id")
+        .eq("id", loan_id).single();
+      if (!loan) return json({ error: "Loan not found" }, 404);
+
+      const newOutstanding   = Math.max(0, (loan.outstanding_balance || 0) - paidAmount);
+      const totalRepayable   = loan.total_repayable || (loan.amount_approved || loan.amount_requested);
+      const totalInterest    = loan.total_interest  || 0;
+      const interestRatio    = totalRepayable > 0 ? (totalInterest / totalRepayable) : 0;
+      const interestPortion  = parseFloat((paidAmount * interestRatio).toFixed(2));
+      const principalPortion = parseFloat((paidAmount - interestPortion).toFixed(2));
+
+      await sb.from("org_loan_repayments").insert({
+        org_id, loan_id, member_id,
+        amount: paidAmount, payment_method: "paystack", paystack_ref: reference,
+        principal_portion: principalPortion, interest_portion: interestPortion,
+      });
+
+      const { data: updatedLoan } = await sb.from("org_loans")
+        .update({ outstanding_balance: newOutstanding, status: newOutstanding === 0 ? "repaid" : "disbursed" })
+        .eq("id", loan_id).select("*").single();
+
+      const { data: orgW } = await sb.from("organizations")
+        .select("wallet_balance,total_loans_out,interest_earned").eq("id", org_id).single();
+      await sb.from("organizations").update({
+        wallet_balance:  (orgW?.wallet_balance  || 0) + paidAmount,
+        total_loans_out: Math.max(0, (orgW?.total_loans_out || 0) - paidAmount),
+        interest_earned: (orgW?.interest_earned || 0) + interestPortion,
+      }).eq("id", org_id);
+      await sb.from("org_wallet_txns").insert({
+        org_id, type: "loan_repayment", amount: paidAmount,
+        description: `Loan repayment via Paystack — ${loan_id}`,
+        paystack_ref: reference, balance_after: (orgW?.wallet_balance || 0) + paidAmount,
+      });
+
+      return json({ loan: updatedLoan, amount: paidAmount });
+    }
+
     // ── Member submits a withdrawal request ───────────────────────────────
     if (action === "request-member-withdrawal") {
       const { member_id, org_id, amount, reason } = body as {
