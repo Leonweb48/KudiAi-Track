@@ -1694,7 +1694,7 @@ serve(async (req) => {
           callback_url: callback_url || "https://kudiai.app/",
           channels:     ["card", "bank", "ussd", "mobile_money", "bank_transfer"],
           subaccount:   org.paystack_subaccount_code || undefined,
-          bearer:       org.paystack_subaccount_code ? "subaccount" : undefined,
+          bearer:       org.paystack_subaccount_code ? "account" : undefined,
           metadata: {
             member_id, org_id, member_name: mem.full_name || "",
             type: "org_contribution", program_id: program_id || null,
@@ -1824,7 +1824,7 @@ serve(async (req) => {
           callback_url: callback_url || "https://kudiai.app/",
           channels:     ["card", "bank", "ussd", "mobile_money", "bank_transfer"],
           subaccount:   orgRow.paystack_subaccount_code || undefined,
-          bearer:       orgRow.paystack_subaccount_code ? "subaccount" : undefined,
+          bearer:       orgRow.paystack_subaccount_code ? "account" : undefined,
           metadata: { member_id, org_id, loan_id, member_name: mem.full_name || "", type: "loan_repayment" },
         }),
       });

@@ -989,6 +989,12 @@ function LoansTab({ member, org }) {
               ))}
             </div>
 
+            {error && (
+              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-xl p-3 mb-3">
+                <p className="text-xs font-bold text-red-600 dark:text-red-400">{error}</p>
+              </div>
+            )}
+
             {selected.status === "disbursed" && selected.outstanding_balance > 0 && (
               <button onClick={() => handlePaystackRepay(selected)} disabled={repaying}
                 className="w-full py-3 bg-green-600 text-white rounded-2xl font-bold text-sm mb-3 flex items-center justify-center gap-2 disabled:opacity-70 active:scale-[0.98] transition-transform">
