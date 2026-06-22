@@ -12,7 +12,7 @@ function json(data: unknown, status = 200) {
 const ORG_SELECT = `id, owner_id, portal_user_id, name, type, reg_number, description, purpose, vision, mission,
   address, state_name, lga, phone, email, website, logo_url,
   social_instagram, social_facebook, social_twitter, date_established, registration_fee,
-  wallet_balance, total_savings, total_loans_out, member_count, status, created_at,
+  wallet_balance, total_savings, total_loans_out, interest_earned, member_count, status, created_at,
   bank_code, account_number, account_name, paystack_subaccount_code, paystack_subaccount_id, percentage_charge`;
 
 const MEMBER_SELECT = `id, org_id, membership_id, full_name, email, phone, role, status,
