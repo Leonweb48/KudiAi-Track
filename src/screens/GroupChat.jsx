@@ -385,15 +385,15 @@ function Bubble({ msg, isMe, showName, showAv, myId, lastSeen, memberCount, avat
           ) : msg.type === "audio" ? (
             <AudioPlayer url={msg.media_url} duration={msg.duration} isMe={isMe} mime={msg.media_mime} />
           ) : msg.type === "poll" ? (
-            <PollBubble pollId={msg.media_name} myId={myId} />
+            <PollBubble pollId={msg.media_name} myId={myId} time={fmtTime(msg.created_at)} isMe={isMe} readBy={readBy} isPending={isPending} />
           ) : msg.type === "event" ? (
             <EventBubble eventId={msg.media_name} myId={myId} isMe={isMe} />
           ) : (
             <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
           )}
 
-          {/* Footer */}
-          {!isDeleted && (
+          {/* Footer — hidden for polls (timestamp is rendered inside PollBubble) */}
+          {!isDeleted && msg.type !== "poll" && (
             <div className={`flex items-center gap-1 mt-0.5 justify-end`}>
               {msg.pinned && (
                 <span className="text-[10px] opacity-60">📌</span>
@@ -574,7 +574,7 @@ function ChatHeaderMenu({ isAdmin, onGroupInfo, onSearch, onEditGroup, onClose }
 }
 
 // ─── Poll Bubble (WhatsApp style) ─────────────────────────────────────────────
-function PollBubble({ pollId, myId }) {
+function PollBubble({ pollId, myId, time, isMe, readBy, isPending }) {
   const [poll,       setPoll]       = useState(null);
   const [myVoteIds,  setMyVoteIds]  = useState(new Set());
   const [localOpts,  setLocalOpts]  = useState([]);
@@ -626,7 +626,7 @@ function PollBubble({ pollId, myId }) {
   };
 
   if (!poll) return (
-    <div className="min-w-[240px] rounded-2xl px-4 py-3 shadow-sm" style={{ background: "#d9fdd3" }}>
+    <div className="w-full px-4 py-3" style={{ background: "#d9fdd3" }}>
       <p className="text-[12px] text-[#667781]">Loading poll…</p>
     </div>
   );
@@ -635,7 +635,7 @@ function PollBubble({ pollId, myId }) {
   const hasVoted = myVoteIds.size > 0;
 
   return (
-    <div className="min-w-[240px] max-w-[300px] rounded-2xl overflow-hidden shadow-sm" style={{ background: "#d9fdd3" }}>
+    <div className="w-full" style={{ background: "#d9fdd3" }}>
       {/* Header */}
       <div className="px-4 pt-3.5 pb-2">
         <div className="flex items-center gap-2 mb-2">
@@ -671,7 +671,8 @@ function PollBubble({ pollId, myId }) {
                 </span>
                 <span className="text-[12px] text-[#667781] flex-shrink-0 min-w-[20px] text-right">{count}</span>
               </div>
-              <div className="mt-1.5 ml-[30px] h-[2px] bg-[#8696a0]/25 rounded-full overflow-hidden">
+              {/* Full-width progress bar */}
+              <div className="mt-1 h-[2px] bg-[#8696a0]/25 rounded-full overflow-hidden">
                 <div className="h-full rounded-full transition-all duration-300"
                   style={{ width: `${hasVoted ? pct : 0}%`, background: isMine ? "#00a884" : "#8696a0", opacity: 0.6 }} />
               </div>
@@ -680,12 +681,37 @@ function PollBubble({ pollId, myId }) {
         })}
       </div>
 
-      {/* Footer */}
-      <div className="mx-4 mt-1 pt-2.5 pb-3 border-t border-[#8696a0]/20 flex items-center justify-between">
-        <span className="text-[11px] text-[#667781]">{totalVotes} vote{totalVotes !== 1 ? "s" : ""}</span>
-        {poll.expires_at && !isClosed && (
-          <span className="text-[10px] text-[#667781]">ends {new Date(poll.expires_at).toLocaleDateString([], { day:"numeric", month:"short" })}</span>
-        )}
+      {/* Footer: view votes + timestamp */}
+      <div className="mx-4 mt-0.5 pt-2 pb-3 border-t border-[#8696a0]/20 flex items-center justify-between">
+        <span className="text-[12px] text-[#00a884] font-medium">
+          {totalVotes > 0 ? `${totalVotes} vote${totalVotes !== 1 ? "s" : ""}` : "View votes"}
+        </span>
+        <div className="flex items-center gap-1">
+          {poll.expires_at && !isClosed && (
+            <span className="text-[9px] text-[#667781] mr-1">ends {new Date(poll.expires_at).toLocaleDateString([], { day:"numeric", month:"short" })}</span>
+          )}
+          {time && <span className="text-[10px] text-[#667781]">{time}</span>}
+          {isMe && !isPending && (
+            <svg viewBox="0 0 18 13" fill="none" className="w-[18px] h-3 flex-shrink-0">
+              {readBy > 0 ? (
+                <>
+                  <path d="M1 6.5L5.5 11L15 2" stroke="#34b7f1" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M5 6.5L9.5 11" stroke="#34b7f1" strokeWidth="1.7" strokeLinecap="round"/>
+                </>
+              ) : (
+                <>
+                  <path d="M1 6.5L5.5 11L15 2" stroke="#8e9cad" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M5 6.5L9.5 11" stroke="#8e9cad" strokeWidth="1.7" strokeLinecap="round"/>
+                </>
+              )}
+            </svg>
+          )}
+          {isMe && isPending && (
+            <svg viewBox="0 0 18 13" fill="none" className="w-[18px] h-3 flex-shrink-0">
+              <path d="M4 6.5L8.5 11L16 2" stroke="#8e9cad" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          )}
+        </div>
       </div>
     </div>
   );
