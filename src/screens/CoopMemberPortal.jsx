@@ -796,6 +796,7 @@ function LoansTab({ member, org }) {
   const [selected,   setSelected]   = useState(null);
   const [showApply,  setShowApply]  = useState(false);
   const [saving,     setSaving]     = useState(false);
+  const [repaying,   setRepaying]   = useState(false);
   const [error,      setError]      = useState("");
   const defaultRate  = org.default_loan_interest_rate ?? 10;
   const [form, setForm] = useState({
@@ -836,30 +837,45 @@ function LoansTab({ member, org }) {
 
   const handlePaystackRepay = (loan) => {
     if (!org.paystack_subaccount_code) { alert("Organisation has not configured Paystack"); return; }
-    const amountKobo = Math.round((loan.monthly_installment || loan.outstanding_balance) * 100);
-    const ref        = `loan_${loan.id}_${Date.now()}`;
-    const handler    = window.PaystackPop?.setup({
-      key: process.env.REACT_APP_PAYSTACK_PUBLIC_KEY || "",
-      email: member.email,
-      amount: amountKobo,
-      ref,
-      subaccount: org.paystack_subaccount_code,
-      bearer: "subaccount",
-      metadata: { loan_id: loan.id, member_id: member.id, org_id: org.id, type: "loan_repayment" },
-      callback: async (response) => {
-        try {
-          await coopFn("record-repayment", {
-            org_id: org.id, loan_id: loan.id, member_id: member.id,
-            amount: (loan.monthly_installment || loan.outstanding_balance),
-            payment_method: "paystack", paystack_ref: response.reference,
-          });
-          load();
-          if (selected) openLoan({ ...selected, outstanding_balance: Math.max(0, (selected.outstanding_balance || 0) - (loan.monthly_installment || loan.outstanding_balance)) });
-        } catch (e) { alert("Payment recorded but update failed: " + e.message); }
-      },
-      onClose: () => {},
-    });
-    handler?.openIframe();
+
+    const openPopup = () => {
+      const amountKobo = Math.round((loan.monthly_installment || loan.outstanding_balance) * 100);
+      const ref = `loan_${loan.id}_${Date.now()}`;
+      const handler = window.PaystackPop.setup({
+        key: process.env.REACT_APP_PAYSTACK_PUBLIC_KEY || "",
+        email: member.email,
+        amount: amountKobo,
+        ref,
+        subaccount: org.paystack_subaccount_code,
+        bearer: "subaccount",
+        metadata: { loan_id: loan.id, member_id: member.id, org_id: org.id, type: "loan_repayment" },
+        callback: async (response) => {
+          try {
+            await coopFn("record-repayment", {
+              org_id: org.id, loan_id: loan.id, member_id: member.id,
+              amount: (loan.monthly_installment || loan.outstanding_balance),
+              payment_method: "paystack", paystack_ref: response.reference,
+            });
+            load();
+            if (selected) openLoan({ ...selected, outstanding_balance: Math.max(0, (selected.outstanding_balance || 0) - (loan.monthly_installment || loan.outstanding_balance)) });
+          } catch (e) { alert("Payment recorded but update failed: " + e.message); }
+        },
+        onClose: () => { setRepaying(false); },
+      });
+      handler.openIframe();
+      setRepaying(false);
+    };
+
+    setRepaying(true);
+    if (window.PaystackPop) {
+      openPopup();
+    } else {
+      const script = document.createElement("script");
+      script.src = "https://js.paystack.co/v1/inline.js";
+      script.onload = openPopup;
+      script.onerror = () => { setRepaying(false); alert("Failed to load Paystack. Please check your connection."); };
+      document.head.appendChild(script);
+    }
   };
 
   if (loading) return <div className="flex justify-center py-16"><div className="w-8 h-8 border-[3px] border-amber-500 border-t-transparent rounded-full animate-spin" /></div>;
@@ -986,10 +1002,11 @@ function LoansTab({ member, org }) {
             </div>
 
             {selected.status === "disbursed" && selected.outstanding_balance > 0 && org.paystack_subaccount_code && (
-              <button onClick={() => handlePaystackRepay(selected)}
-                className="w-full py-3 bg-green-600 text-white rounded-2xl font-bold text-sm mb-3 flex items-center justify-center gap-2">
-                <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
-                Pay via Paystack — {fmt(selected.monthly_installment || selected.outstanding_balance)}
+              <button onClick={() => handlePaystackRepay(selected)} disabled={repaying}
+                className="w-full py-3 bg-green-600 text-white rounded-2xl font-bold text-sm mb-3 flex items-center justify-center gap-2 disabled:opacity-70 active:scale-[0.98] transition-transform">
+                {repaying
+                  ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Loading payment…</>
+                  : <><svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>Pay via Paystack — {fmt(selected.monthly_installment || selected.outstanding_balance)}</>}
               </button>
             )}
 
