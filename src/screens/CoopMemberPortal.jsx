@@ -148,11 +148,17 @@ const MBR_QUICK = [
   { id:"cable",       label:"Cable TV",    g1:"#8b5cf6", g2:"#6d28d9", icon:"M2 7a2 2 0 012-2h16a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V7z|M12 19v3|M8 22h8" },
 ];
 
-function HomeTab({ member, org, announcements, loans = [], wdRequests = [], onQuickService, onNavigate }) {
+function HomeTab({ member, org, announcements, polls = [], events = [], loans = [], wdRequests = [], onQuickService, onNavigate }) {
   const activeLoans  = loans.filter(l => ["approved","disbursed","ongoing"].includes(l.status));
   const pendingWd    = wdRequests.filter(r => r.status === "pending");
   const pinnedAnns   = announcements.filter(a => a.is_pinned);
   const visibleAnns  = [...pinnedAnns.slice(0,1), ...announcements.filter(a => !a.is_pinned).slice(0,2)].slice(0,3);
+  const activePolls  = polls.filter(p => !p.closes_at || new Date(p.closes_at) > new Date()).slice(0, 2);
+  const upcomingEvts = events.filter(e => e.event_date && new Date(e.event_date) > new Date()).slice(0, 2);
+  const orgActions   = [
+    ...activePolls.map(p => ({ id: p.id, type:"poll",  label: p.question, sub:"Active poll · Tap to vote" })),
+    ...upcomingEvts.map(e => ({ id: e.id, type:"event", label: e.title,    sub: new Date(e.event_date).toLocaleDateString("en-NG",{weekday:"short",day:"numeric",month:"short"}) + (e.location ? ` · ${e.location}` : "") })),
+  ];
 
   const STATS = [
     { label:"Savings Balance",  value: fmt(member.savings_balance),
@@ -176,37 +182,41 @@ function HomeTab({ member, org, announcements, loans = [], wdRequests = [], onQu
     <div className="pb-8 space-y-6">
 
       {/* ── Hero Balance Card ── */}
-      <div className="mx-4 mt-5 rounded-3xl overflow-hidden shadow-2xl"
-        style={{ background: "linear-gradient(145deg, #0a1628 0%, #1e3a5f 45%, #1d4ed8 100%)" }}>
-        <div className="px-6 pt-7 pb-6">
-          <div className="flex items-center gap-3 mb-5">
-            <div className="w-11 h-11 rounded-2xl bg-white/20 flex items-center justify-center text-xl font-extrabold text-white flex-shrink-0">
+      <div className="mx-4 mt-5 rounded-3xl px-6 py-6 text-white relative overflow-hidden shadow-hero"
+        style={{ background: "linear-gradient(145deg,#059669 0%,#047857 55%,#065f46 100%)" }}>
+        <div className="absolute -top-12 -right-12 w-40 h-40 rounded-full bg-white/5 pointer-events-none" />
+        <div className="absolute -bottom-14 -left-10 w-48 h-48 rounded-full bg-white/5 pointer-events-none" />
+        <div className="absolute top-6 right-24 w-14 h-14 rounded-full bg-white/5 pointer-events-none" />
+        <div className="relative">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center text-lg font-extrabold text-white flex-shrink-0">
               {member.full_name?.charAt(0).toUpperCase()}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-white font-extrabold text-[15px] leading-tight truncate">{member.full_name}</p>
+              <p className="text-white font-extrabold text-sm leading-tight truncate">{member.full_name}</p>
               <p className="text-green-200 text-[10px] font-mono truncate">{member.membership_id}</p>
-              <p className="text-green-200 text-[10px] capitalize truncate">{member.role} · {org.name}</p>
             </div>
+            <span className="flex-shrink-0 text-[10px] font-bold text-white/70 bg-white/10 px-2 py-0.5 rounded-full capitalize">{member.role}</span>
           </div>
-          <p className="text-[10px] font-extrabold text-green-300 uppercase tracking-[0.25em] mb-1.5">Savings Balance</p>
-          <p className="text-[34px] font-black text-white leading-none tabular-nums break-all">{fmt(member.savings_balance)}</p>
-          <div className="flex items-center mt-5 pt-4 border-t border-white/10">
-            <div className="flex-1">
-              <p className="text-sm font-extrabold text-white">{fmtDate(member.joined_date)}</p>
-              <p className="text-[10px] mt-0.5 text-green-300">Member since</p>
+          <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest">Savings Balance</p>
+          <p className="text-4xl font-black tracking-tight mt-1.5 mb-5 tabular-nums">{fmt(member.savings_balance)}</p>
+          <div className="flex gap-4 flex-wrap">
+            <div>
+              <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">Member Since</p>
+              <p className="text-sm font-bold">{fmtDate(member.joined_date)}</p>
             </div>
-            <div className="border-l border-white/10 pl-4 ml-4 flex-1">
-              <p className="text-sm font-extrabold text-white capitalize">{member.role}</p>
-              <p className="text-[10px] mt-0.5 text-green-300">Role</p>
+            <div className="w-px bg-white/20 self-stretch" />
+            <div>
+              <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">Status</p>
+              <p className="text-sm font-bold capitalize">{member.status || "active"}</p>
             </div>
-            <div className="border-l border-white/10 pl-4 ml-4 flex-1">
-              <p className="text-sm font-extrabold text-white capitalize">{member.status || "active"}</p>
-              <p className="text-[10px] mt-0.5 text-green-300">Status</p>
+            <div className="w-px bg-white/20 self-stretch" />
+            <div>
+              <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">Org Members</p>
+              <p className="text-sm font-bold tabular-nums">{org.member_count || 0}</p>
             </div>
           </div>
         </div>
-        <div className="h-1 w-full" style={{ background: "linear-gradient(90deg, #00A651, #06b6d4, #8b5cf6)" }} />
       </div>
 
       {/* ── Quick Services ── */}
@@ -293,6 +303,39 @@ function HomeTab({ member, org, announcements, loans = [], wdRequests = [], onQu
                 </div>
                 <p className="opacity-75 mt-1.5 line-clamp-2 leading-relaxed">{a.body}</p>
               </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── From Organisation (active polls + upcoming events) ── */}
+      {orgActions.length > 0 && (
+        <div className="px-4">
+          <div className="flex justify-between items-center mb-3">
+            <p className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em]">From Organisation</p>
+            <button onClick={() => onNavigate?.("broadcast")} className="text-[10px] font-bold text-green-600 dark:text-green-400">See All →</button>
+          </div>
+          <div className="flex flex-col gap-2">
+            {orgActions.map(item => (
+              <button key={item.id} onClick={() => onNavigate?.("broadcast")}
+                className="w-full bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700/60 shadow-sm px-4 py-3 flex items-center gap-3 text-left active:scale-[0.98] transition-all">
+                <div className={`w-9 h-9 rounded-xl flex-shrink-0 flex items-center justify-center ${item.type === "poll" ? "bg-teal-50 dark:bg-teal-900/20" : "bg-amber-50 dark:bg-amber-900/20"}`}>
+                  <svg viewBox="0 0 24 24" fill="none" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"
+                    stroke={item.type === "poll" ? "#0f766e" : "#d97706"}>
+                    {item.type === "poll"
+                      ? <><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></>
+                      : <><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></>
+                    }
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold text-slate-800 dark:text-white truncate">{item.label}</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">{item.sub}</p>
+                </div>
+                <svg viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={2} strokeLinecap="round" className="w-4 h-4 flex-shrink-0">
+                  <path d="M9 18l6-6-6-6" />
+                </svg>
+              </button>
             ))}
           </div>
         </div>
@@ -1390,6 +1433,8 @@ export default function CoopMemberPortal({ member: initialMember }) {
   const [announcements, setAnnouncements] = useState([]);
   const [loans,         setLoans]         = useState([]);
   const [wdRequests,    setWdRequests]    = useState([]);
+  const [polls,         setPolls]         = useState([]);
+  const [events,        setEvents]        = useState([]);
   const [showMore,      setShowMore]      = useState(false);
   const [showProfile,   setShowProfile]   = useState(false);
   const [billsAutoSvc,  setBillsAutoSvc]  = useState(null);
@@ -1451,10 +1496,14 @@ export default function CoopMemberPortal({ member: initialMember }) {
       coopFn("member-get-announcements",       { member_id: member.id, org_id: org.id }),
       safe(coopFn("member-get-loans",              { member_id: member.id, org_id: org.id })),
       safe(coopFn("get-member-withdrawal-requests", { member_id: member.id })),
-    ]).then(([annR, loanR, wdR]) => {
+      safe(coopFn("get-polls",  { org_id: org.id })),
+      safe(coopFn("get-events", { org_id: org.id })),
+    ]).then(([annR, loanR, wdR, pollR, evtR]) => {
       setAnnouncements(annR.announcements || []);
       setLoans(loanR.loans || []);
       setWdRequests(wdR.requests || []);
+      setPolls(pollR.polls || []);
+      setEvents(evtR.events || []);
     }).catch(console.error);
   }, [member?.id, org?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1476,7 +1525,7 @@ export default function CoopMemberPortal({ member: initialMember }) {
   if (!member) return null;
 
   const tabContent = {
-    home:          <HomeTab member={member} org={org} announcements={announcements} loans={loans} wdRequests={wdRequests} onQuickService={openQuickService} onNavigate={navigateTo} />,
+    home:          <HomeTab member={member} org={org} announcements={announcements} polls={polls} events={events} loans={loans} wdRequests={wdRequests} onQuickService={openQuickService} onNavigate={navigateTo} />,
     contributions: <ContributionsTab member={member} org={org} onMemberUpdate={handleMemberUpdate} />,
     loans:         <LoansTab member={member} org={org} />,
     bills:         <MemberBillsTab member={member} org={org} autoService={billsAutoSvc} onAutoOpened={() => setBillsAutoSvc(null)} />,
@@ -1489,93 +1538,85 @@ export default function CoopMemberPortal({ member: initialMember }) {
   const emergencyCount = announcements.filter(a => a.type === "emergency").length;
 
   return (
-    <div className="fixed inset-x-0 top-0 z-[70] bg-slate-50 dark:bg-slate-900 flex justify-center overflow-hidden"
-      style={{ height: "100dvh" }}>
-      <div className="w-full max-w-md flex flex-col overflow-hidden" style={{ height: "100dvh" }}>
+    <div className="h-[100dvh] bg-slate-50 dark:bg-slate-900 flex justify-center transition-colors duration-200">
+      <div className="w-full max-w-md flex flex-col h-full relative">
 
-        {/* ── Top Header ── */}
-        <div className="sticky top-0 z-20 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 py-3 flex items-center justify-between relative">
-          {/* KudiAi Track brand — centered */}
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none">
-            <span className="text-sm font-black tracking-tight leading-none">
-              <span style={{ background: "linear-gradient(135deg,#0D2040,#00A651)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>KudiAi</span>
-              <span className="text-[#0D2040] dark:text-[#00A651] font-bold"> Track</span>
-            </span>
+        {/* ── Header — matches org portal h-14 ── */}
+        <header className="flex-none z-30 h-14 flex items-center justify-between px-4 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shadow-sm">
+          <img src="/logo.png" alt="KudiAi" className="h-8 w-8 object-contain flex-shrink-0" />
+          <div className="flex items-baseline gap-0.5 select-none">
+            <span className="text-[17px] font-black tracking-tight text-slate-800 dark:text-white leading-none">Kudi</span>
+            <span className="text-[17px] font-black tracking-tight leading-none"
+              style={{ background: "linear-gradient(135deg,#00A651,#059669)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>AI</span>
+            <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 tracking-widest uppercase leading-none ml-1">Track</span>
           </div>
-          {/* Left: KudiAi Track logo */}
-          <img src="/logo.png" alt="KudiAi Track" className="h-9 w-auto flex-shrink-0 object-contain" />
-          {/* Right: notification bell + member avatar */}
-          <div className="flex items-center gap-1.5 flex-shrink-0">
-            <CoopNotificationBell
-              orgId={org.id}
-              recipientId={member.id}
-              recipientType="member"
-              onNavigate={navigateTo}
-            />
-            <button onClick={() => setShowProfile(true)} className="active:opacity-75 transition-opacity relative">
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <CoopNotificationBell orgId={org.id} recipientId={member.id} recipientType="member" onNavigate={navigateTo} />
+            <button onClick={() => setShowProfile(true)} className="active:scale-90 transition-transform">
               {member.avatar_url
-                ? <img src={member.avatar_url} alt="" className="w-9 h-9 rounded-xl object-cover ring-2 ring-green-200" />
-                : <div className="w-9 h-9 rounded-xl flex items-center justify-center text-base font-extrabold text-white"
+                ? <img src={member.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover border-2 border-slate-100 dark:border-slate-700 shadow-sm" />
+                : <div className="w-9 h-9 rounded-full flex items-center justify-center text-base font-extrabold text-white border-2 border-slate-100 dark:border-slate-700 shadow-sm"
                     style={{ background: "linear-gradient(145deg,#00A651,#0D2040)" }}>
                     {member.full_name?.charAt(0).toUpperCase()}
                   </div>
               }
-              <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-green-600 rounded-full border-2 border-white flex items-center justify-center">
-                <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={3} className="w-2 h-2"><path d="M12 5v14M5 12h14"/></svg>
-              </span>
             </button>
           </div>
-        </div>
+        </header>
 
         {/* ── Main Content ── */}
-        <main className="flex-1 overflow-y-auto overflow-x-hidden pb-20 min-h-0">
+        <main className="flex-1 min-h-0 overflow-y-auto">
           {tabContent[tab]}
         </main>
 
-        {/* ── Bottom Navigation ── */}
-        <div className="fixed bottom-0 left-0 right-0 z-20 flex justify-center pointer-events-none">
-          <div className="w-full max-w-md pointer-events-auto">
-            <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200/80 dark:border-slate-800 px-2 pt-2"
-              style={{ paddingBottom: "max(8px, env(safe-area-inset-bottom))" }}>
-              <div className="flex items-end justify-around">
-                {MAIN_TABS.map(t => {
-                  const active = tab === t.id;
-                  return (
-                    <button key={t.id} onClick={() => { setTab(t.id); setShowMore(false); }}
-                      className="flex flex-col items-center gap-1 px-3 py-1.5 min-w-[52px] relative">
-                      {active && <span className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full bg-green-600" />}
-                      <div className="relative">
-                        <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5"
-                          stroke={active ? "#00A651" : "#94a3b8"} strokeWidth={active ? 2.5 : 2} strokeLinecap="round" strokeLinejoin="round">
-                          <path d={t.icon} />
-                        </svg>
-                        {t.id === "messages" && chatUnread > 0 && !active && (
-                          <span className="absolute -top-1 -right-1.5 min-w-[16px] h-4 bg-green-500 text-white text-[9px] font-extrabold rounded-full flex items-center justify-center px-0.5 shadow-sm">
-                            {chatUnread > 99 ? "99+" : chatUnread}
-                          </span>
-                        )}
-                      </div>
-                      <span className={`text-[9px] font-bold ${active ? "text-green-600" : "text-slate-400 dark:text-slate-500"}`}>{t.label}</span>
-                    </button>
-                  );
-                })}
-                {/* More button */}
-                <button onClick={() => setShowMore(p => !p)}
-                  className="flex flex-col items-center gap-1 px-3 py-1.5 min-w-[52px] relative">
-                  {isMoreTab && <span className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full bg-green-600" />}
-                  {emergencyCount > 0 && <span className="absolute top-1 right-2 w-2 h-2 bg-red-500 rounded-full" />}
-                  <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5"
-                    stroke={isMoreTab || showMore ? "#00A651" : "#94a3b8"} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M5 12h.01M12 12h.01M19 12h.01" />
-                  </svg>
-                  <span className={`text-[9px] font-bold ${isMoreTab || showMore ? "text-green-600" : "text-slate-400 dark:text-slate-500"}`}>More</span>
+        {/* ── Bottom Navigation — matches org portal ── */}
+        <nav className="flex-none z-40 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 shadow-float">
+          <div className="flex items-stretch h-[60px]">
+            {MAIN_TABS.map(t => {
+              const active = tab === t.id;
+              return (
+                <button key={t.id} onClick={() => { setTab(t.id); setShowMore(false); }}
+                  className="flex-1 flex flex-col items-center justify-center gap-0.5 relative focus-visible:outline-none">
+                  {active && <span className="absolute top-0 left-1/2 -translate-x-1/2 w-5 h-0.5 rounded-full bg-[#00A651] dark:bg-green-400" />}
+                  <div className={`relative transition-all duration-200 ${active ? "scale-110" : "scale-100"}`}>
+                    <svg viewBox="0 0 24 24" fill="none" className="w-[21px] h-[21px]"
+                      stroke={active ? "#00A651" : "#94a3b8"} strokeWidth={active ? 2.5 : 2} strokeLinecap="round" strokeLinejoin="round">
+                      <path d={t.icon} />
+                    </svg>
+                    {t.id === "messages" && chatUnread > 0 && !active && (
+                      <span className="absolute -top-1 -right-1.5 min-w-[16px] h-4 bg-green-500 text-white text-[9px] font-extrabold rounded-full flex items-center justify-center px-0.5 shadow-sm">
+                        {chatUnread > 99 ? "99+" : chatUnread}
+                      </span>
+                    )}
+                  </div>
+                  <span className={`text-[8px] font-bold uppercase tracking-wide leading-none ${active ? "text-[#00A651] dark:text-green-400" : "text-slate-400 dark:text-slate-500"}`}>
+                    {t.label}
+                  </span>
                 </button>
+              );
+            })}
+            {/* Hamburger / Menu */}
+            <button onClick={() => setShowMore(p => !p)}
+              className="flex-1 flex flex-col items-center justify-center gap-0.5 relative focus-visible:outline-none">
+              {isMoreTab && <span className="absolute top-0 left-1/2 -translate-x-1/2 w-5 h-0.5 rounded-full bg-[#00A651] dark:bg-green-400" />}
+              <div className={`relative transition-all duration-200 ${showMore ? "scale-110" : "scale-100"}`}>
+                <svg viewBox="0 0 24 24" fill="none" className="w-[21px] h-[21px]"
+                  stroke={isMoreTab || showMore ? "#00A651" : "#94a3b8"} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+                {emergencyCount > 0 && !showMore && (
+                  <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full" />
+                )}
               </div>
-            </div>
+              <span className={`text-[8px] font-bold uppercase tracking-wide leading-none ${isMoreTab || showMore ? "text-[#00A651] dark:text-green-400" : "text-slate-400 dark:text-slate-500"}`}>
+                Menu
+              </span>
+            </button>
           </div>
-        </div>
+          <div style={{ height: "env(safe-area-inset-bottom, 0px)" }} className="bg-white dark:bg-slate-900" />
+        </nav>
 
-        {/* ── Chat message drop-in toasts ── */}
+        {/* ── Chat drop-in toasts ── */}
         {chatToasts.length > 0 && (
           <div className="fixed top-[60px] inset-x-0 z-[185] flex flex-col items-center gap-2 px-4 pointer-events-none">
             {chatToasts.map(ct => (
@@ -1590,39 +1631,108 @@ export default function CoopMemberPortal({ member: initialMember }) {
           </div>
         )}
 
-        {/* ── More Sheet ── */}
+        {/* ── Side Drawer — matches org portal ── */}
         {showMore && (
-          <div className="fixed inset-0 z-30 flex justify-center items-end" onClick={() => setShowMore(false)}>
-            <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" />
-            <div className="relative w-full max-w-md bg-white dark:bg-slate-900 rounded-t-3xl overflow-hidden"
-              style={{ paddingBottom: "max(24px, env(safe-area-inset-bottom))" }}
-              onClick={e => e.stopPropagation()}>
-              <div className="w-12 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto mt-3 mb-5" />
-              <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-[0.2em] px-5 mb-4">More</p>
-              <div className="grid grid-cols-2 gap-3 px-4 pb-2">
+          <div className="fixed inset-0 z-50 flex" onClick={() => setShowMore(false)}>
+            <div className="absolute inset-0 bg-black/50 backdrop-blur-[2px]" />
+            <div
+              className="relative flex flex-col h-full bg-white dark:bg-slate-900 shadow-2xl overflow-hidden"
+              style={{ width: "75%", maxWidth: 280 }}
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Member profile header */}
+              <div className="px-5 pt-12 pb-5 border-b border-slate-100 dark:border-slate-800 flex-shrink-0">
+                <button onClick={() => { setShowProfile(true); setShowMore(false); }} className="mb-3 active:opacity-75 transition-opacity">
+                  {member.avatar_url
+                    ? <img src={member.avatar_url} alt="" className="w-12 h-12 rounded-2xl object-cover ring-2 ring-green-200" />
+                    : <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl font-black text-white"
+                        style={{ background: "linear-gradient(145deg,#00A651,#0D2040)" }}>
+                        {member.full_name?.charAt(0).toUpperCase()}
+                      </div>
+                  }
+                </button>
+                <p className="font-extrabold text-slate-800 dark:text-white text-sm leading-tight">{member.full_name}</p>
+                <p className="text-[10px] text-slate-400 mt-0.5 font-mono">{member.membership_id}</p>
+                <p className="text-[10px] text-slate-400 capitalize">{member.role} · {org.name}</p>
+              </div>
+
+              {/* Navigation list */}
+              <div className="flex-1 overflow-y-auto py-2">
+                {MAIN_TABS.map(t => {
+                  const active = tab === t.id;
+                  return (
+                    <button key={t.id} onClick={() => navigateTo(t.id)}
+                      className={`w-full flex items-center gap-4 px-5 py-3.5 transition-colors ${active ? "text-[#00A651]" : "text-slate-700 dark:text-slate-200"}`}>
+                      <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 flex-shrink-0"
+                        stroke={active ? "#00A651" : "currentColor"} strokeWidth={active ? 2.5 : 2} strokeLinecap="round" strokeLinejoin="round">
+                        <path d={t.icon} />
+                      </svg>
+                      <span className={`text-sm ${active ? "font-extrabold" : "font-semibold"}`}>{t.label}</span>
+                      {active && <div className="ml-auto w-1 h-5 bg-[#00A651] rounded-full" />}
+                    </button>
+                  );
+                })}
+                <div className="mx-5 my-2 border-t border-slate-100 dark:border-slate-800" />
                 {MORE_TABS.map(t => {
                   const active = tab === t.id;
                   return (
                     <button key={t.id} onClick={() => navigateTo(t.id)}
-                      className={`flex flex-col items-center gap-2.5 py-5 rounded-2xl transition-all active:scale-95 relative ${active ? "bg-green-50 dark:bg-green-900/30" : "bg-slate-50 dark:bg-slate-800"}`}>
-                      <div className="w-11 h-11 rounded-xl flex items-center justify-center"
+                      className={`w-full flex items-center gap-4 px-5 py-3.5 transition-colors ${active ? "text-[#00A651]" : "text-slate-700 dark:text-slate-200"}`}>
+                      <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
                         style={{ background: (t.color || "#64748b") + "18" }}>
-                        <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                        <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
                           style={{ stroke: active ? "#00A651" : (t.color || "#64748b") }}>
                           {t.icon.split("|").map((p, i) => <path key={i} d={p} />)}
                         </svg>
                       </div>
-                      {t.id === "messages" && emergencyCount > 0 && (
-                        <span className="absolute top-3 right-3 w-2 h-2 bg-red-500 rounded-full" />
+                      <span className={`text-sm ${active ? "font-extrabold" : "font-semibold"}`}>{t.label}</span>
+                      {active && <div className="ml-auto w-1 h-5 bg-[#00A651] rounded-full" />}
+                      {t.id === "broadcast" && emergencyCount > 0 && !active && (
+                        <span className="ml-auto w-2 h-2 bg-red-500 rounded-full" />
                       )}
-                      <span className={`text-[11px] font-bold ${active ? "text-green-600" : "text-slate-600 dark:text-slate-300"}`}>{t.label}</span>
                     </button>
                   );
                 })}
+                <div className="mx-5 my-2 border-t border-slate-100 dark:border-slate-800" />
+                {/* Edit Profile */}
+                <button onClick={() => { setShowProfile(true); setShowMore(false); }}
+                  className="w-full flex items-center gap-4 px-5 py-3.5 text-slate-700 dark:text-slate-200 transition-colors">
+                  <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 bg-slate-50 dark:bg-slate-800">
+                    <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" stroke="#64748b">
+                      <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/>
+                    </svg>
+                  </div>
+                  <span className="text-sm font-semibold">Edit Profile</span>
+                </button>
+                {/* Dark mode toggle */}
+                <button onClick={toggleDark}
+                  className="w-full flex items-center gap-4 px-5 py-3.5 text-slate-700 dark:text-slate-200 transition-colors">
+                  <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 bg-slate-50 dark:bg-slate-800">
+                    <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" stroke="#64748b">
+                      {isDark
+                        ? <><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></>
+                        : <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
+                      }
+                    </svg>
+                  </div>
+                  <span className="text-sm font-semibold">{isDark ? "Light Mode" : "Dark Mode"}</span>
+                </button>
+              </div>
+
+              {/* Sign out */}
+              <div className="px-5 py-4 border-t border-slate-100 dark:border-slate-800 flex-shrink-0">
+                <button onClick={() => supabase.auth.signOut()}
+                  className="flex items-center gap-3 text-slate-500 dark:text-slate-400 text-sm font-semibold active:opacity-70 transition-opacity">
+                  <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                    <path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                  </svg>
+                  Sign Out
+                </button>
               </div>
             </div>
           </div>
         )}
+
       </div>
 
       {/* ── Member profile sheet ── */}
