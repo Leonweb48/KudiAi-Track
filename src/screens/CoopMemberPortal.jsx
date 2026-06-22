@@ -1225,139 +1225,186 @@ function MemberBroadcastTab({ member, org }) {
 }
 
 // ═══════════════════════════════════════════════════
-//  DIRECTORY TAB
+//  SUPPORT TAB
 // ═══════════════════════════════════════════════════
-function DirectoryTab({ member: selfMember, org, isDark = false, onToggleDark }) {
-  const [directory, setDirectory] = useState([]);
-  const [loading,   setLoading]   = useState(true);
-  const [search,    setSearch]    = useState("");
-  const [privacy,   setPrivacy]   = useState({
-    privacy_balance:       selfMember.privacy_balance,
-    privacy_contributions: selfMember.privacy_contributions,
-    privacy_activities:    selfMember.privacy_activities,
-  });
-  const [savingP, setSavingP] = useState(false);
+const FAQS = [
+  {
+    q: "How do I make a contribution?",
+    a: "Go to the Savings tab and tap 'Pay via Paystack' next to your active contribution program, or use the 'General Contribution' button to pay any amount.",
+  },
+  {
+    q: "How do I apply for a loan?",
+    a: "Open the Loans tab and tap 'Apply for Loan'. Fill in the amount and purpose, then submit. Your admin will review and approve or reject the application.",
+  },
+  {
+    q: "How long does loan approval take?",
+    a: "Loan approval time depends on your organisation's admin. You will receive an in-app notification and email once a decision is made.",
+  },
+  {
+    q: "How do I repay my loan?",
+    a: "Open the Loans tab, tap on your active loan, then tap 'Pay via Paystack'. You will be redirected to a secure payment page.",
+  },
+  {
+    q: "Can I withdraw my savings?",
+    a: "Yes. Go to the Savings tab and tap 'Request Withdrawal'. Your admin must approve the request before funds are released.",
+  },
+  {
+    q: "Where can I find my membership ID?",
+    a: "Your membership ID is shown on your profile (tap your avatar in the top-right corner) and also visible in the portal header.",
+  },
+  {
+    q: "How do I update my name or profile photo?",
+    a: "Tap your avatar in the top-right corner of the portal to open your profile. You can update your name, phone number, and photo there.",
+  },
+  {
+    q: "Why can't I see my loan balance?",
+    a: "Loan balances only appear once a loan has been approved and disbursed. If your application is still pending, you will see it listed as 'Awaiting Review'.",
+  },
+];
 
-  const load = useCallback(() => {
-    coopFn("member-get-directory", { member_id: selfMember.id, org_id: org.id })
-      .then(r => setDirectory(r.members || []))
-      .finally(() => setLoading(false));
-  }, [selfMember.id, org.id]);
-  useEffect(() => { load(); }, [load]);
+function SupportTab({ member, org }) {
+  const [view,      setView]      = useState("ticket"); // "ticket" | "faq"
+  const [category,  setCategory]  = useState("General");
+  const [subject,   setSubject]   = useState("");
+  const [message,   setMessage]   = useState("");
+  const [sending,   setSending]   = useState(false);
+  const [error,     setError]     = useState("");
+  const [done,      setDone]      = useState(null); // ticket_ref on success
+  const [openFaq,   setOpenFaq]   = useState(null);
 
-  const handlePrivacy = async (key, val) => {
-    const prev = privacy;
-    const newPrivacy = { ...privacy, [key]: val };
-    setPrivacy(newPrivacy);
-    setSavingP(true);
-    try { await coopFn("member-update-privacy", { member_id: selfMember.id, ...newPrivacy }); }
-    catch (e) { setPrivacy(prev); }
-    finally { setSavingP(false); }
+  const submit = async () => {
+    if (!subject.trim() || !message.trim()) { setError("Please fill in the subject and message."); return; }
+    setSending(true); setError("");
+    try {
+      const res = await coopFn("submit-support-ticket", {
+        member_id: member.id, org_id: org.id,
+        category, subject: subject.trim(), message: message.trim(),
+      });
+      setDone(res.ticket_ref);
+      setSubject(""); setMessage(""); setCategory("General");
+    } catch (e) {
+      setError(e.message || "Failed to submit ticket. Please try again.");
+    } finally {
+      setSending(false);
+    }
   };
-
-  const ROLE_COLORS = {
-    admin: "bg-green-100 text-green-700", president: "bg-amber-100 text-amber-700",
-    treasurer: "bg-green-100 text-green-700", secretary: "bg-green-100 text-green-700",
-    officer: "bg-pink-100 text-pink-700", member: "bg-slate-100 text-slate-600",
-  };
-
-  const filtered = directory.filter(m =>
-    m.full_name?.toLowerCase().includes(search.toLowerCase()) ||
-    m.role?.includes(search.toLowerCase())
-  );
 
   return (
-    <div className="p-4 pb-28 flex flex-col gap-4">
-      <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-100 dark:border-slate-700">
-        <div className="flex justify-between items-center mb-2">
-          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">My Privacy Settings</p>
-          {savingP && <div className="w-4 h-4 border-2 border-green-400 border-t-transparent rounded-full animate-spin" />}
-        </div>
+    <div className="flex flex-col h-full">
+      {/* Tab switcher */}
+      <div className="flex-none flex border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900">
         {[
-          ["privacy_balance",        "Hide my balance from directory"],
-          ["privacy_contributions",  "Hide my contributions from directory"],
-          ["privacy_activities",     "Hide my activities from directory"],
-        ].map(([key, label]) => (
-          <label key={key} className="flex items-center justify-between py-2 cursor-pointer">
-            <span className="text-xs text-slate-600 dark:text-slate-300">{label}</span>
-            <div onClick={() => handlePrivacy(key, !privacy[key])}
-              className={`w-10 h-6 rounded-full relative transition-colors cursor-pointer ${privacy[key] ? "bg-green-500" : "bg-slate-200 dark:bg-slate-600"}`}>
-              <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${privacy[key] ? "translate-x-5" : "translate-x-1"}`} />
-            </div>
-          </label>
+          { id: "ticket", label: "Raise a Ticket", icon: "M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" },
+          { id: "faq",    label: "FAQ",            icon: "M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" },
+        ].map(t => (
+          <button key={t.id} onClick={() => setView(t.id)}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-[12px] font-bold border-b-2 transition-colors
+              ${view === t.id ? "border-[#00A651] text-[#00A651]" : "border-transparent text-slate-400 dark:text-slate-500"}`}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+              <path d={t.icon} />
+            </svg>
+            {t.label}
+          </button>
         ))}
       </div>
 
-      <div className="relative">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-          <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-        </svg>
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search members…"
-          className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-400" />
-      </div>
-
-      {loading ? (
-        <div className="flex justify-center py-10"><div className="w-8 h-8 border-[3px] border-green-500 border-t-transparent rounded-full animate-spin" /></div>
-      ) : (
-        <div className="grid grid-cols-2 gap-2">
-          {filtered.map(m => (
-            <div key={m.id} className="bg-white dark:bg-slate-800 rounded-2xl p-3 border border-slate-100 dark:border-slate-700">
-              <div className="w-10 h-10 rounded-xl bg-green-100 dark:bg-green-900/30 flex items-center justify-center text-base font-extrabold text-green-600 mb-2">
-                {m.full_name?.charAt(0).toUpperCase()}
+      <div className="flex-1 overflow-y-auto p-4 pb-28">
+        {view === "ticket" ? (
+          done ? (
+            <div className="flex flex-col items-center justify-center py-16 gap-4 text-center">
+              <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: "linear-gradient(135deg,#00A651,#059669)" }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
               </div>
-              <p className="text-xs font-extrabold text-slate-800 dark:text-white leading-tight mb-0.5">{m.full_name}</p>
-              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full capitalize ${ROLE_COLORS[m.role] || ROLE_COLORS.member}`}>{m.role}</span>
-              {m.phone && <p className="text-[10px] text-slate-400 mt-1.5">📞 {m.phone}</p>}
-              {m.email && <p className="text-[10px] text-slate-400 truncate">✉ {m.email}</p>}
+              <div>
+                <p className="text-base font-extrabold text-slate-800 dark:text-white">Ticket Submitted!</p>
+                <p className="text-[12px] text-slate-400 mt-1">Reference: <span className="font-bold text-[#00A651]">{done}</span></p>
+                <p className="text-[12px] text-slate-400 mt-2 leading-relaxed">You'll receive a confirmation email shortly. Your organisation admin has been notified.</p>
+              </div>
+              <button onClick={() => setDone(null)}
+                className="mt-2 px-6 py-2.5 bg-[#00A651] text-white text-sm font-bold rounded-xl active:opacity-80">
+                Raise Another Ticket
+              </button>
             </div>
-          ))}
-        </div>
-      )}
+          ) : (
+            <div className="flex flex-col gap-4">
+              <div className="bg-[#00A651]/8 dark:bg-[#00A651]/10 rounded-2xl p-4 border border-[#00A651]/20">
+                <p className="text-[12px] font-bold text-[#00A651]">How it works</p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">Your ticket is sent to your organisation admin. You'll get a confirmation email and the admin will follow up with you directly.</p>
+              </div>
 
-      {/* Theme toggle */}
-      <div className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 border border-slate-100 dark:border-slate-700 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-            style={{ background: isDark ? "#0D2040" : "#f0fdf4" }}>
-            <svg viewBox="0 0 24 24" fill="none" className="w-4.5 h-4.5" stroke={isDark ? "#00A651" : "#0D2040"} strokeWidth={2} strokeLinecap="round">
-              {isDark
-                ? <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
-                : <><circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /></>
-              }
-            </svg>
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">{isDark ? "Dark Mode" : "Light Mode"}</p>
-            <p className="text-[10px] text-slate-400">Tap to switch</p>
-          </div>
-        </div>
-        <button onClick={onToggleDark}
-          className="w-12 h-6 rounded-full transition-all relative flex-shrink-0"
-          style={{ background: isDark ? "#00A651" : "#e2e8f0" }}>
-          <div className={`w-5 h-5 rounded-full bg-white shadow-md transition-transform absolute top-0.5 ${isDark ? "translate-x-[26px]" : "translate-x-0.5"}`} />
-        </button>
-      </div>
+              {error && (
+                <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-xl p-3">
+                  <p className="text-xs font-bold text-red-600 dark:text-red-400">{error}</p>
+                </div>
+              )}
 
-      {/* Account / Sign Out */}
-      <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-100 dark:border-slate-700 flex items-center gap-3">
-        {selfMember.avatar_url
-          ? <img src={selfMember.avatar_url} alt="" className="w-11 h-11 rounded-xl object-cover ring-2 ring-green-200 flex-shrink-0" />
-          : <div className="w-11 h-11 rounded-xl flex items-center justify-center text-lg font-extrabold text-white flex-shrink-0"
-              style={{ background: "linear-gradient(145deg,#00A651,#0D2040)" }}>
-              {selfMember.full_name?.charAt(0).toUpperCase()}
+              {/* Category */}
+              <div>
+                <label className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block mb-2">Category</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {["General", "Savings", "Loans", "Technical"].map(c => (
+                    <button key={c} onClick={() => setCategory(c)}
+                      className={`py-2.5 rounded-xl text-[12px] font-bold border-2 transition-all active:scale-[0.97]
+                        ${category === c ? "border-[#00A651] bg-[#00A651]/8 text-[#00A651]" : "border-slate-100 dark:border-slate-700 text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-800"}`}>
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Subject */}
+              <div>
+                <label className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">Subject *</label>
+                <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Brief description of your issue…"
+                  className="w-full bg-slate-100 dark:bg-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-[#00A651]" />
+              </div>
+
+              {/* Message */}
+              <div>
+                <label className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">Message *</label>
+                <textarea value={message} onChange={e => setMessage(e.target.value)} rows={5}
+                  placeholder="Describe your issue in detail…"
+                  className="w-full bg-slate-100 dark:bg-slate-800 rounded-xl px-3.5 py-3 text-sm text-slate-800 dark:text-white outline-none resize-none focus:ring-2 focus:ring-[#00A651]" />
+              </div>
+
+              <button onClick={submit} disabled={sending || !subject.trim() || !message.trim()}
+                className="w-full py-3.5 rounded-2xl font-bold text-sm text-white flex items-center justify-center gap-2 disabled:opacity-50 active:opacity-80 transition-opacity"
+                style={{ background: "linear-gradient(135deg,#00A651,#059669)" }}>
+                {sending
+                  ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Sending…</>
+                  : <><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>Submit Ticket</>}
+              </button>
             </div>
-        }
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-extrabold text-slate-800 dark:text-white truncate">{selfMember.full_name}</p>
-          <p className="text-[10px] text-slate-400 font-mono">{selfMember.membership_id} · {org?.name}</p>
-        </div>
-        <button onClick={() => supabase.auth.signOut()}
-          className="flex-shrink-0 flex items-center gap-1.5 text-[11px] font-bold text-red-500 border border-red-200 dark:border-red-800 px-3 py-1.5 rounded-xl active:opacity-75 transition-opacity">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="w-3.5 h-3.5">
-            <path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-          </svg>
-          Sign Out
-        </button>
+          )
+        ) : (
+          <div className="flex flex-col gap-2">
+            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Frequently Asked Questions</p>
+            {FAQS.map((faq, i) => (
+              <div key={i}
+                className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 overflow-hidden">
+                <button onClick={() => setOpenFaq(openFaq === i ? null : i)}
+                  className="w-full flex items-center justify-between px-4 py-3.5 text-left gap-3 active:bg-slate-50 dark:active:bg-slate-700/50">
+                  <span className="text-[13px] font-semibold text-slate-800 dark:text-white leading-snug flex-1">{faq.q}</span>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"
+                    className={`w-4 h-4 flex-shrink-0 text-slate-400 transition-transform ${openFaq === i ? "rotate-180" : ""}`}>
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </button>
+                {openFaq === i && (
+                  <div className="px-4 pb-4 border-t border-slate-50 dark:border-slate-700/50 pt-3">
+                    <p className="text-[12px] text-slate-500 dark:text-slate-400 leading-relaxed">{faq.a}</p>
+                  </div>
+                )}
+              </div>
+            ))}
+            <div className="mt-4 bg-[#00A651]/8 dark:bg-[#00A651]/10 rounded-2xl p-4 border border-[#00A651]/20 text-center">
+              <p className="text-[12px] text-slate-500 dark:text-slate-400">Can't find your answer?</p>
+              <button onClick={() => setView("ticket")} className="mt-1.5 text-[12px] font-bold text-[#00A651] active:opacity-70">Raise a support ticket →</button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1422,7 +1469,7 @@ const MAIN_TABS = [
 const MORE_TABS = [
   { id: "bills",     label: "Bills",     color:"#7c3aed", icon:"M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" },
   { id: "broadcast", label: "Broadcast", color:"#0f766e", icon:"M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" },
-  { id: "directory", label: "Directory", color:"#00A651", icon:"M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" },
+  { id: "support",   label: "Support",   color:"#00A651", icon:"M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" },
 ];
 
 // ─── Member Profile Sheet ─────────────────────────────────────────────────────
@@ -1675,7 +1722,7 @@ export default function CoopMemberPortal({ member: initialMember }) {
     loans:         <LoansTab member={member} org={org} />,
     bills:         <MemberBillsTab member={member} org={org} autoService={billsAutoSvc} onAutoOpened={() => setBillsAutoSvc(null)} />,
     broadcast:     <MemberBroadcastTab member={member} org={org} />,
-    directory:     <DirectoryTab member={member} org={org} isDark={isDark} onToggleDark={toggleDark} />,
+    support:       <SupportTab member={member} org={org} />,
     messages:      <GroupChat orgId={org.id} myName={member.full_name} myRole="member" orgName={org.name} org={org} onBack={() => navigateTo("home")} />,
   };
 

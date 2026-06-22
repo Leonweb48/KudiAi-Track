@@ -1943,6 +1943,62 @@ serve(async (req) => {
       return json({ loan: updatedLoan, amount: paidAmount });
     }
 
+    // ── Member submits a support ticket ──────────────────────────────────
+    if (action === "submit-support-ticket") {
+      const { member_id, org_id, category, subject, message } = body as {
+        member_id: string; org_id: string; category: string; subject: string; message: string;
+      };
+      if (!member_id || !org_id || !subject?.trim() || !message?.trim())
+        return json({ error: "member_id, org_id, subject, message required" }, 400);
+
+      const { data: mem } = await sb.from("org_members")
+        .select("full_name, email").eq("id", member_id).maybeSingle();
+      if (!mem) return json({ error: "Member not found" }, 404);
+
+      const { data: org } = await sb.from("organizations")
+        .select("name, owner_id").eq("id", org_id).maybeSingle();
+
+      const ticketRef = `TKT-${Date.now().toString(36).toUpperCase().slice(-6)}`;
+      const ticketData = {
+        ticket_ref: ticketRef,
+        member_name:  mem.full_name || "",
+        member_email: mem.email     || "",
+        org_name:     org?.name     || "",
+        category:     category      || "General",
+        subject:      subject.trim(),
+        message:      message.trim(),
+        date:         new Date().toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" }),
+      };
+
+      // Email org owner
+      if (org?.owner_id) {
+        const { data: ownerP } = await sb.from("profiles").select("email").eq("id", org.owner_id).maybeSingle();
+        if (ownerP?.email) {
+          fetch("https://admin.kudiai.app/api/public/email-trigger", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+            body: JSON.stringify({ event: "org_member_support_ticket", data: { ...ticketData, send_to: "org", owner_email: ownerP.email } }),
+          }).catch(() => null);
+        }
+      }
+      // Confirmation email to member
+      if (mem.email) {
+        fetch("https://admin.kudiai.app/api/public/email-trigger", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+          body: JSON.stringify({ event: "org_member_support_ticket", data: { ...ticketData, send_to: "member" } }),
+        }).catch(() => null);
+      }
+
+      // In-app: notify org of new ticket
+      insertNotif(org_id, "org", "info", "support",
+        "Support Ticket Received",
+        `${mem.full_name || "A member"} raised a ticket: ${subject.trim()}`,
+        null);
+
+      return json({ success: true, ticket_ref: ticketRef });
+    }
+
     // ── Member submits a withdrawal request ───────────────────────────────
     if (action === "request-member-withdrawal") {
       const { member_id, org_id, amount, reason } = body as {
