@@ -65,14 +65,15 @@ export default function PrivacySettings({ orgId, isAdmin, onBack }) {
   const [saved,    setSaved]    = useState(null);
 
   useEffect(()=>{
-    supabase.from("org_chat_settings").select("*").eq("org_id",orgId).single()
-      .then(({data})=>{ if(data) setSettings(data); });
+    supabase.from("org_chat_settings").select("*").eq("org_id",orgId).maybeSingle()
+      .then(({data})=>{ setSettings(data || { org_id: orgId }); });
   },[orgId]);
 
   const update = async (field, value) => {
     if(!isAdmin) return;
     setSaving(s=>({...s,[field]:true}));
-    await supabase.from("org_chat_settings").update({[field]:value}).eq("org_id",orgId);
+    await supabase.from("org_chat_settings")
+      .upsert({ org_id: orgId, [field]: value }, { onConflict: "org_id" });
     setSettings(s=>({...s,[field]:value}));
     setSaving(s=>({...s,[field]:false}));
     setSaved(field);
