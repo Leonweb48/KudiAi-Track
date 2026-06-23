@@ -2183,37 +2183,35 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
           <div className="bg-white dark:bg-slate-900 rounded-t-3xl max-h-[94vh] flex flex-col transition-all duration-300"
           style={netTheme ? { borderTop: `3px solid ${netTheme.bg}` } : {}}>
 
-            <div className={`flex items-center justify-between px-5 pt-4 pb-3 transition-all duration-300 ${!netTheme ? "border-b border-slate-100 dark:border-slate-800" : ""}`}
+            <div className={`flex items-center gap-3 px-5 pt-4 pb-3 transition-all duration-300 ${!netTheme ? "border-b border-slate-100 dark:border-slate-800" : ""}`}
               style={netTheme
                 ? { background: `linear-gradient(135deg, ${netTheme.bg}, ${netTheme.bg}cc)`, borderBottom: `1.5px solid ${netTheme.bg}` }
                 : {}}>
-              <div className="flex items-center gap-3">
-                {netTheme ? (
-                  <div className="w-14 h-10 flex items-center justify-center rounded-xl overflow-hidden"
-                    style={{ background: "rgba(255,255,255,0.25)" }}>
-                    <img src={netTheme.logo} alt={form.network} className="h-8 w-12 object-contain" draggable={false} />
-                  </div>
-                ) : (
-                  <div className="w-9 h-9 rounded-xl flex items-center justify-center"
-                    style={{ background: `linear-gradient(135deg,${cat.g1},${cat.g2})` }}>
-                    <Ico d={CAT_ICONS[selectedCat]} size={17} c="white" />
-                  </div>
-                )}
-                <div>
-                  <h2 className={`text-base font-bold ${netTheme ? "" : "text-slate-800 dark:text-white"}`}
-                    style={netTheme ? { color: netTheme.fg } : {}}>
-                    {netTheme ? `${form.network} ${cat.label}` : cat.label}
-                  </h2>
-                  <p className="text-[10px] font-semibold"
-                    style={netTheme ? { color: `${netTheme.fg}bb` } : { color: "#16a34a" }}>
-                    Service Active
-                  </p>
-                </div>
-              </div>
-              <button onClick={closeSheet} className="w-8 h-8 flex items-center justify-center rounded-full transition-colors"
+              <button onClick={closeSheet} className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full transition-colors active:scale-90"
                 style={netTheme ? { background: "rgba(255,255,255,0.22)" } : { background: "#f1f5f9" }}>
-                <Ico d="M18 6L6 18|M6 6l12 12" size={14} c={netTheme ? netTheme.fg : "#64748b"} />
+                <Ico d="M15 18l-6-6 6-6" size={16} c={netTheme ? netTheme.fg : "#64748b"} />
               </button>
+              {netTheme ? (
+                <div className="w-14 h-10 flex items-center justify-center rounded-xl overflow-hidden flex-shrink-0"
+                  style={{ background: "rgba(255,255,255,0.25)" }}>
+                  <img src={netTheme.logo} alt={form.network} className="h-8 w-12 object-contain" draggable={false} />
+                </div>
+              ) : (
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                  style={{ background: `linear-gradient(135deg,${cat.g1},${cat.g2})` }}>
+                  <Ico d={CAT_ICONS[selectedCat]} size={17} c="white" />
+                </div>
+              )}
+              <div>
+                <h2 className={`text-base font-bold ${netTheme ? "" : "text-slate-800 dark:text-white"}`}
+                  style={netTheme ? { color: netTheme.fg } : {}}>
+                  {netTheme ? `${form.network} ${cat.label}` : cat.label}
+                </h2>
+                <p className="text-[10px] font-semibold"
+                  style={netTheme ? { color: `${netTheme.fg}bb` } : { color: "#16a34a" }}>
+                  Service Active
+                </p>
+              </div>
             </div>
 
             <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4 transition-all duration-300"
