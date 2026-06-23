@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { supabase } from "../utils/supabase";
 import BillPayments from "./BillPayments";
 import CashbackCard from "../components/CashbackCard";
@@ -1641,6 +1641,56 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
   );
 }
 
+// ── Bills wrapper — mirrors same store shape as CoopMemberPortal ──────────
+function AjoMemberBillsWrapper({ client, ownerInfo, session, autoService, onAutoOpened }) {
+  const [bills, setBills] = useState([]);
+
+  const addTransaction = useCallback(async (payload) => {
+    try {
+      const { data } = await supabase.from("transactions").insert({
+        user_id:          session?.user?.id || null,
+        type:             payload.type,
+        category:         payload.category   || "sale",
+        amount:           parseFloat(payload.amount) || 0,
+        item_name:        payload.item_name  || "",
+        quantity:         1,
+        customer_name:    payload.customer_name || "",
+        payment_type:     payload.payment_type  || "cash",
+        note:             payload.note          || "",
+        transaction_date: payload.transaction_date || new Date().toISOString().slice(0, 10),
+        bill_status:      payload.bill_status !== undefined ? payload.bill_status : null,
+      }).select().single();
+      if (data) setBills(prev => [data, ...prev]);
+    } catch (_) {}
+  }, [session?.user?.id]);
+
+  const store = useMemo(() => ({
+    transactions: bills,
+    addTransaction,
+    profile: {
+      email:         client?.email || session?.user?.email || "",
+      owner_name:    client?.full_name || "",
+      business_name: ownerInfo?.business_name || "",
+      id:            session?.user?.id || null,
+    },
+  }), [bills, addTransaction, client, ownerInfo, session]);
+
+  return (
+    <BillPayments
+      store={store}
+      plan="basic"
+      markup={1.098}
+      pointsEnabled
+      staffName={client?.full_name || null}
+      staffEmail={client?.email || session?.user?.email || null}
+      businessName={ownerInfo?.business_name || ""}
+      excludeCats={["print-airtime", "print-data"]}
+      autoService={autoService}
+      onAutoOpened={onAutoOpened}
+    />
+  );
+}
+
 // ── Main portal ───────────────────────────────────────────────────────────
 export default function AjoMemberPortal({ session, ajoClient }) {
   const [client,           setClient]           = useState(ajoClient || null);
@@ -1772,12 +1822,10 @@ export default function AjoMemberPortal({ session, ajoClient }) {
           )}
           {tab === "bills" && (
             <div className="h-full overflow-y-auto">
-              <BillPayments
-                store={{ transactions: [], addTransaction: () => Promise.resolve(), profile: { business_name: ownerInfo?.business_name || "" } }}
-                plan="basic"
-                staffName={client?.full_name || null}
-                staffEmail={session?.user?.email || null}
-                businessName={ownerInfo?.business_name || ""}
+              <AjoMemberBillsWrapper
+                client={client}
+                ownerInfo={ownerInfo}
+                session={session}
               />
             </div>
           )}

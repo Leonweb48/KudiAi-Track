@@ -694,7 +694,6 @@ function StaffSales({ store, staff, session, livePerms, initialSub, initialData,
                   store={store}
                   plan={plan}
                   markup={1.098}
-                  airtimeDiscount={0.01}
                   pointsEnabled
                   staffName={staff?.full_name}
                   staffEmail={session?.user?.email || staff?.email || ""}

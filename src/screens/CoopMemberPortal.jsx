@@ -1451,6 +1451,7 @@ function MemberBillsTab({ member, org, autoService = null, onAutoOpened = null }
       plan=""
       markup={1.098}
       pointsEnabled
+      staffName={member.full_name}
       staffEmail={member.email}
       excludeCats={["print-airtime", "print-data"]}
       businessName={org.name}

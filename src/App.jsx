@@ -243,7 +243,7 @@ export default function App() {
                     plan={plan}
                     onUpgrade={openUpgrade}
                     branches={branchesHook.branches} />,
-    bills:        <BillPayments store={store} plan={plan} markup={1.098} airtimeDiscount={0.01} pointsEnabled
+    bills:        <BillPayments store={store} plan={plan} markup={1.098} pointsEnabled
                     staffEmail={session?.user?.email}
                     staffName={store.profile?.owner_name || store.profile?.business_name}
                     autoService={autoAdd?.tab === "bills" ? autoAdd?.type : null}
