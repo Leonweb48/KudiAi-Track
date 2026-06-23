@@ -393,8 +393,16 @@ export function TransactionReceipt({ txn, profile, onClose }) {
       <Row label="Category"  value={txn.category} />
       {txn.quantity > 1 && <Row label="Quantity" value={txn.quantity} />}
       <Row label="Payment"   value={txn.payment_type} />
-      <Row label="Customer"  value={txn.customer_name} />
-      <Row label="Note"      value={txn.note} />
+      {/* For bill payments: parse note into structured rows */}
+      {txn.payment_type === "bill_payment" && txn.note
+        ? txn.note.split(" | ").filter(s => s.includes(": ") && !/^Ref:/i.test(s.trim())).map((seg, i) => {
+            const idx = seg.indexOf(": ");
+            return <Row key={i} label={seg.slice(0, idx)} value={seg.slice(idx + 2)} />;
+          })
+        : <Row label="Customer" value={txn.customer_name} />
+      }
+      {txn.payment_type !== "bill_payment" && <Row label="Note" value={txn.note} />}
+      {txn.payment_type === "bill_payment" && (() => { const m = (txn.note||"").match(/Ref:\s*([^\s|]+)/i); return m ? <Row label="Ref No." value={m[1]} /> : null; })()}
       <Row label="Date"      value={txn.transaction_date} last />
 
       <Footer />
@@ -456,7 +464,7 @@ export function BillReceipt({ bill, onClose, onRetrieveToken }) {
   const [retrievedToken, setRetrievedToken] = useState(null);
   const [retrieveError,  setRetrieveError]  = useState("");
 
-  const effectiveToken = retrievedToken || bill.token;
+  const effectiveToken = retrievedToken || bill.token || bill.elecToken;
 
   const handleRetrieve = async () => {
     if (!onRetrieveToken || retrieving) return;
@@ -476,6 +484,75 @@ export function BillReceipt({ bill, onClose, onRetrieveToken }) {
     : new Date().toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" });
 
   const showRetrieveBtn = !!onRetrieveToken && !effectiveToken && !retrieving;
+  const cat = bill.category;
+
+  /* ── Category-specific detail rows ── */
+  const DetailRows = () => {
+    switch (cat) {
+      case "airtime":
+        return <>
+          <Row label="Network"    value={bill.network} bold />
+          <Row label="Phone No."  value={bill.phone || bill.customer_name} />
+        </>;
+      case "data":
+        return <>
+          <Row label="Network"    value={bill.network} bold />
+          <Row label="Phone No."  value={bill.phone || bill.customer_name} />
+          <Row label="Plan"       value={bill.planName || bill.item_name} />
+        </>;
+      case "print-airtime":
+        return <>
+          <Row label="Network"    value={bill.network} bold />
+          <Row label="Face Value" value={bill.value ? `₦${bill.value} per card` : bill.item_name} />
+          <Row label="Quantity"   value={bill.quantity ? `${bill.quantity} PIN(s)` : bill.customer_name} />
+        </>;
+      case "print-data":
+        return <>
+          <Row label="Network"    value={bill.network} bold />
+          <Row label="Plan"       value={bill.planName || bill.item_name} />
+          <Row label="Quantity"   value={bill.quantity ? `${bill.quantity} PIN(s)` : bill.customer_name} />
+        </>;
+      case "airtime-bundle":
+        return <>
+          <Row label="Sets"       value={bill.sets ? `${bill.sets} set(s)` : bill.item_name} bold />
+          <Row label="Networks"   value="MTN, Airtel, 9mobile, Glo" />
+        </>;
+      case "cable":
+        return <>
+          <Row label="Provider"   value={bill.service} bold />
+          <Row label="Package"    value={bill.item_name} />
+          <Row label="Smartcard"  value={bill.smartcard || bill.customer_name} />
+        </>;
+      case "electricity":
+        return <>
+          <Row label="Provider"   value={bill.service} bold />
+          <Row label="Meter No."  value={bill.meterNo || bill.customer_name} />
+          <Row label="Meter Type" value={bill.meterType === "01" ? "Prepaid" : bill.meterType === "02" ? "Postpaid" : (bill.meterType || "")} />
+        </>;
+      case "betting":
+        return <>
+          <Row label="Platform"   value={bill.service} bold />
+          <Row label="Account ID" value={bill.customerId || bill.customer_name} />
+        </>;
+      case "waec":
+      case "jamb":
+        return <>
+          <Row label="Phone No."  value={bill.phone || bill.customer_name} />
+          <Row label="Exam"       value={bill.item_name} />
+        </>;
+      case "spectranet":
+      case "smile":
+        return <>
+          <Row label="Account No." value={bill.accountNo || bill.customer_name} />
+          <Row label="Plan"        value={bill.planName || bill.item_name} />
+        </>;
+      default:
+        return <>
+          <Row label="Description" value={bill.item_name} />
+          <Row label="Beneficiary" value={bill.customer_name} />
+        </>;
+    }
+  };
 
   return (
     <Overlay onClose={onClose} pdfName={`KudiAITrack_Bill_Receipt_${dateStr}.pdf`}>
@@ -496,16 +573,39 @@ export function BillReceipt({ bill, onClose, onRetrieveToken }) {
       />
 
       <SectionHead label="Payment Details" />
-      <Row label="Service"     value={bill.service || bill.category} bold />
-      <Row label="Description" value={bill.item_name} />
-      <Row label="Beneficiary" value={bill.customer_name} />
-      {effectiveToken && <Row label="Token / Units" value={effectiveToken} color="#d97706" bold />}
-      <Row label="Receipt No"  value={bill.receiptId || bill.id?.toString().slice(0, 8).toUpperCase()} />
-      <Row label="Reference"   value={bill.apiRef} />
+      <Row label="Service"  value={bill.service || bill.category} bold />
+      <DetailRows />
+      {effectiveToken && <Row label="Elec. Token" value={effectiveToken} color="#d97706" bold />}
+      {bill.cardDetails && <Row label="Card Details" value={bill.cardDetails} color="#1d4ed8" bold />}
+      {bill.apiRef && <Row label="Ref No." value={bill.apiRef} />}
+      {bill.psRef  && <Row label="Payment Ref" value={bill.psRef} />}
       {bill.staffName && <Row label="Processed by" value={bill.staffName} />}
-      <Row label="Date"        value={dateStr} last />
+      <Row label="Date" value={dateStr} last />
 
-      {/* Electricity token retrieval — shown when no token but orderId present */}
+      {/* ── PINs / Vouchers ── */}
+      {bill.pinsArr?.length > 0 && (
+        <>
+          <SectionHead label={`Voucher PIN(s) — ${bill.pinsArr.length} total`} />
+          {bill.pinsArr.map((pin, i) => {
+            const serial = pin.EPIN_SERIAL ?? pin.sno ?? pin.serial ?? "";
+            const code   = pin.EPIN ?? pin.pin ?? pin.code ?? JSON.stringify(pin);
+            return (
+              <div key={i} style={{ margin: "4px 16px", padding: "10px 14px", background: "#f0fdf4", borderRadius: 10, border: "1px solid #bbf7d0" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                  <span style={{ fontSize: 9, color: "#6b7280", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                    PIN {i + 1}{pin.network ? ` · ${pin.network}` : ""}
+                  </span>
+                  {serial ? <span style={{ fontSize: 9, color: "#9ca3af", fontFamily: "monospace" }}>S/N: {serial}</span> : null}
+                </div>
+                <p style={{ fontFamily: "monospace", fontSize: 15, fontWeight: 900, color: "#15803d", margin: 0, wordBreak: "break-all", letterSpacing: 1.5 }}>{code}</p>
+              </div>
+            );
+          })}
+          <div style={{ height: 8 }} />
+        </>
+      )}
+
+      {/* ── Electricity token retrieval ── */}
       {(showRetrieveBtn || retrieving || retrieveError || retrievedToken) && (
         <div style={{ margin: "12px 16px 4px", borderRadius: 12, overflow: "hidden", border: "2px solid #fbbf24" }}>
           <div style={{ background: "linear-gradient(135deg,#fef3c7,#fde68a)", padding: "10px 14px", display: "flex", alignItems: "center", gap: 8 }}>

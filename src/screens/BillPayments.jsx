@@ -704,14 +704,22 @@ const BILL_PENDING_PREFIX = "ck_bill_pending_";
 
 /* ─── Map a stored bill transaction to BillReceipt props ─────────────────── */
 function billToReceipt(bill, profile, staffName) {
-  const refMatch   = (bill.note || "").match(/Ref:\s*([^\s|]+)/i);
-  const tokenMatch = (bill.note || "").match(/Token:\s*([^|]+)/i);
+  const n = bill.note || "";
+  const pick = (rx) => n.match(rx)?.[1]?.trim() || "";
   return {
     ...bill,
     businessName: profile?.business_name || profile?.owner_name || "My Business",
     service:      CATS.find(c => c.id === bill.category)?.label || bill.category,
-    apiRef:       refMatch?.[1] || "",
-    token:        tokenMatch?.[1]?.trim() || undefined,
+    apiRef:       pick(/Ref:\s*([^\s|]+)/i),
+    token:        pick(/Token:\s*([^|]+)/i) || undefined,
+    network:      pick(/Network:\s*([^|]+)/i),
+    phone:        pick(/Phone:\s*([^|]+)/i) || pick(/Beneficiary:\s*([^|]+)/i),
+    planName:     pick(/Plan:\s*([^|]+)/i),
+    smartcard:    pick(/Smartcard:\s*([^|]+)/i),
+    meterNo:      pick(/Meter:\s*([^|]+)/i),
+    customerId:   pick(/Customer:\s*([^|]+)/i),
+    accountNo:    pick(/Account:\s*([^|]+)/i),
+    value:        pick(/Value:\s*([^|]+)/i),
     staffName:    staffName || undefined,
   };
 }
@@ -1898,7 +1906,7 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
 
       localStorage.removeItem(BILL_PENDING_PREFIX + ref);
       setSaving(false);
-      setFulfillResult({ ok: true, label: itemName, detail: note, pinsArr: pinsArr || [], psRef: ref, apiRef, cardDetails, cat, amount: totalAmount || amount, earnedPts, txnHistoryPending, elecToken, elecOrderId });
+      setFulfillResult({ ok: true, label: itemName, detail: note, pinsArr: pinsArr || [], psRef: ref, apiRef, cardDetails, cat, amount: totalAmount || amount, earnedPts, txnHistoryPending, elecToken, elecOrderId, formSnap: { ...f } });
 
       // Send success confirmation emails (best-effort)
       const svcLabel = CATS.find(c => c.id === cat)?.label || cat;
@@ -1998,18 +2006,37 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
           staffName={staffName}
           onDone={() => setFulfillResult(null)}
           onShareReceipt={() => {
+            const fr = fulfillResult;
+            const fs = fr?.formSnap || {};
             setReceipt({
-              created_at:    new Date().toISOString(),
-              businessName:  profile?.business_name || profile?.owner_name || "My Business",
-              amount:        fulfillResult?.amount || 0,
-              category:      fulfillResult?.cat,
-              service:       CATS.find(c => c.id === fulfillResult?.cat)?.label || "Bill Payment",
-              item_name:     fulfillResult?.label || "",
-              customer_name: (() => { const m = (fulfillResult?.detail || "").match(/(?:Phone|Meter|Smartcard|Account|Beneficiary):\s*([^\s|]+)/i); return m?.[1] || ""; })(),
-              note:          fulfillResult?.detail || "",
-              apiRef:        fulfillResult?.apiRef || "",
-              staffName:     staffName || undefined,
-              id:            Date.now(),
+              created_at:   new Date().toISOString(),
+              businessName: profile?.business_name || profile?.owner_name || "My Business",
+              amount:       fr?.amount || 0,
+              category:     fr?.cat,
+              service:      CATS.find(c => c.id === fr?.cat)?.label || "Bill Payment",
+              item_name:    fr?.label || "",
+              // Structured per-category fields
+              network:      fs.network || "",
+              phone:        fs.phone || "",
+              planName:     fs.planName || "",
+              smartcard:    fs.smartcard || "",
+              meterNo:      fs.meterNo || "",
+              meterType:    fs.meterType || "",
+              provider:     fs.provider || "",
+              customerId:   fs.customerId || "",
+              accountNo:    fs.accountNo || "",
+              quantity:     fs.quantity || "",
+              value:        fs.value || "",
+              sets:         fs.sets || "",
+              // Result fields
+              pinsArr:      fr?.pinsArr || [],
+              token:        fr?.elecToken || "",
+              elecToken:    fr?.elecToken || "",
+              cardDetails:  fr?.cardDetails || "",
+              psRef:        fr?.psRef || "",
+              apiRef:       fr?.apiRef || "",
+              staffName:    staffName || undefined,
+              id:           Date.now(),
             });
             setFulfillResult(null);
           }}
