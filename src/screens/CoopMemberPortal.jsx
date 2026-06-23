@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { supabase } from "../utils/supabase";
 import { useTheme } from "../hooks/useTheme";
 import BillPayments from "./BillPayments";
+import CashbackCard from "../components/CashbackCard";
 import GroupChat from "./GroupChat";
 import AIChatWidget from "../components/AIChatWidget";
 import { buildCoopMemberContext } from "../utils/buildContext";
@@ -158,7 +159,7 @@ const MBR_QUICK = [
   { id:"cable",       label:"Cable TV",    g1:"#8b5cf6", g2:"#6d28d9", icon:"M2 7a2 2 0 012-2h16a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V7z|M12 19v3|M8 22h8" },
 ];
 
-function HomeTab({ member, org, announcements, polls = [], events = [], loans = [], wdRequests = [], onQuickService, onNavigate }) {
+function HomeTab({ member, org, announcements, polls = [], events = [], loans = [], wdRequests = [], onQuickService, onNavigate, userEmail }) {
   const activeLoans  = loans.filter(l => ["approved","disbursed","ongoing"].includes(l.status));
   const pendingWd    = wdRequests.filter(r => r.status === "pending");
   const pinnedAnns   = announcements.filter(a => a.is_pinned);
@@ -250,6 +251,9 @@ function HomeTab({ member, org, announcements, polls = [], events = [], loans = 
           ))}
         </div>
       </div>
+
+      {/* ── Cashback Balance ── */}
+      <CashbackCard userEmail={userEmail} />
 
       {/* ── My Summary ── */}
       <div className="px-4">
@@ -1446,8 +1450,8 @@ function MemberBillsTab({ member, org, autoService = null, onAutoOpened = null }
       store={store}
       plan=""
       markup={1.098}
-      cashback={10}
       pointsEnabled
+      staffEmail={member.email}
       excludeCats={["print-airtime", "print-data"]}
       businessName={org.name}
       autoService={autoService}
@@ -1717,7 +1721,7 @@ export default function CoopMemberPortal({ member: initialMember }) {
   if (!member) return null;
 
   const tabContent = {
-    home:          <HomeTab member={member} org={org} announcements={announcements} polls={polls} events={events} loans={loans} wdRequests={wdRequests} onQuickService={openQuickService} onNavigate={navigateTo} />,
+    home:          <HomeTab member={member} org={org} announcements={announcements} polls={polls} events={events} loans={loans} wdRequests={wdRequests} onQuickService={openQuickService} onNavigate={navigateTo} userEmail={member.email} />,
     contributions: <ContributionsTab member={member} org={org} onMemberUpdate={handleMemberUpdate} />,
     loans:         <LoansTab member={member} org={org} />,
     bills:         <MemberBillsTab member={member} org={org} autoService={billsAutoSvc} onAutoOpened={() => setBillsAutoSvc(null)} />,

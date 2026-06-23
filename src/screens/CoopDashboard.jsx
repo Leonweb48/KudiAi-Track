@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { supabase } from "../utils/supabase";
 import { useTheme } from "../hooks/useTheme";
 import BillPayments from "./BillPayments";
+import CashbackCard from "../components/CashbackCard";
 import GroupChat from "./GroupChat";
 import { CoopSavingReceipt, CoopBulkWithdrawalReceipt, CoopWithdrawalRequestReceipt } from "../components/shared/Receipt";
 import { CoopNotificationBell, useChatUnread, ChatToast } from "../components/shared/CoopNotifications";
@@ -79,7 +80,7 @@ const OV_QUICK = [
   { id:"cable",       label:"Cable TV",    g1:"#8b5cf6", g2:"#6d28d9", icon:"M2 7a2 2 0 012-2h16a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V7z|M12 19v3|M8 22h8" },
 ];
 
-function OverviewTab({ org, wallet, programs, announcements, members = [], loans = [], wdRequests = [], onQuickService = null, onNavigate = null }) {
+function OverviewTab({ org, wallet, programs, announcements, members = [], loans = [], wdRequests = [], onQuickService = null, onNavigate = null, adminEmail = null }) {
   const activeMembers  = members.filter(m => m.status === "active");
   const activePrograms = programs.filter(p => p.status === "active");
   const pendingReqs    = wdRequests.filter(r => r.status === "pending");
@@ -180,6 +181,9 @@ function OverviewTab({ org, wallet, programs, announcements, members = [], loans
           </div>
         </div>
       )}
+
+      {/* ── Cashback Balance ── */}
+      {adminEmail && <CashbackCard userEmail={adminEmail} />}
 
       {/* ── Dashboard Summary Grid ── */}
       <div className="px-4">
@@ -2617,7 +2621,6 @@ function BillsTab({ org, autoService = null, onAutoOpened = null, adminEmail = n
       store={store}
       plan=""
       markup={1.098}
-      cashback={10}
       pointsEnabled
       excludeCats={["print-airtime", "print-data"]}
       businessName={org.name}
@@ -2982,6 +2985,7 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
                 members={members} loans={loans} wdRequests={wdRequests}
                 onQuickService={isOrgPortal ? openQuickService : null}
                 onNavigate={isOrgPortal ? navigateTo : null}
+                adminEmail={adminEmail}
               />,
     members:  <MembersTab  org={org} members={members} onRefresh={loadAll} />,
     programs: <ProgramsTab org={org} onRefresh={loadAll} />,

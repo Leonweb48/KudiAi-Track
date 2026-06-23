@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../utils/supabase";
 import BillPayments from "./BillPayments";
+import CashbackCard from "../components/CashbackCard";
 import { fmt } from "../utils/helpers";
 import AppLogo from "../components/AppLogo";
 import Icon from "../components/Icon";
@@ -933,7 +934,7 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
 }
 
 // ── Overview tab ──────────────────────────────────────────────────────────
-function OverviewTab({ client, contributions, onWithdrawClick, onPayClick, ownerInfo, withdrawRequests = [], onBillsClick }) {
+function OverviewTab({ client, contributions, onWithdrawClick, onPayClick, ownerInfo, withdrawRequests = [], onBillsClick, userEmail }) {
   const [goal,      setGoal]      = useState(() => parseFloat(localStorage.getItem(`ajo_goal_${client?.id}`) || "0"));
   const [editGoal,  setEditGoal]  = useState(false);
   const [goalInput, setGoalInput] = useState("");
@@ -1061,6 +1062,9 @@ function OverviewTab({ client, contributions, onWithdrawClick, onPayClick, owner
           />
         </div>
       </div>
+
+      {/* Cashback Balance */}
+      <CashbackCard userEmail={userEmail} />
 
       {/* Quick Services */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4 shadow-sm">
@@ -1757,6 +1761,7 @@ export default function AjoMemberPortal({ session, ajoClient }) {
           {tab === "home" && client && (
             <OverviewTab
               client={client}
+              userEmail={client?.email || session?.user?.email}
               contributions={contributions}
               onWithdrawClick={() => setShowWithdraw(true)}
               onPayClick={() => setShowPay(true)}

@@ -5,6 +5,7 @@ import { clubkonnect } from "../utils/clubkonnect";
 import { canDo } from "../utils/plans";
 import { BillReceipt } from "../components/shared/Receipt";
 import { supabase } from "../utils/supabase";
+import { lookupDataPrice } from "../data/billPrices";
 
 /* ─── Service catalogue ───────────────────────────────────────────────────── */
 
@@ -510,6 +511,7 @@ function DataPlanGrid({ plans, selectedId, onSelect, loading, error, onRetry, ca
         {filtered.map(pl => {
           const { size, unit, duration } = parseDataPlan(pl.plan_name);
           const price = Number(pl.plan_amount);
+          const earnedCashback = cashback ? Math.floor(price * 0.01) : 0;
           const earnedPts = pointsEnabled && !cashback ? Math.floor(price / 50) : 0;
           const sel = selectedId === pl.plan_id;
           return (
@@ -527,8 +529,8 @@ function DataPlanGrid({ plans, selectedId, onSelect, loading, error, onRetry, ca
               <p className={`text-xs font-black mt-1.5 ${sel ? "text-blue-600 dark:text-blue-300" : "text-slate-700 dark:text-slate-300"}`}>
                 ₦{price.toLocaleString()}
               </p>
-              {cashback > 0 ? (
-                <p className="text-[9px] font-bold text-green-600 dark:text-green-400 mt-0.5">₦{cashback} Cashback</p>
+              {earnedCashback > 0 ? (
+                <p className="text-[9px] font-bold text-green-600 dark:text-green-400 mt-0.5">+₦{earnedCashback} Cashback</p>
               ) : earnedPts > 0 ? (
                 <p className="text-[9px] font-bold text-amber-600 dark:text-amber-400 mt-0.5">+{earnedPts} pts</p>
               ) : null}
@@ -1319,11 +1321,14 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
   const [error,         setError]         = useState("");
   const [receipt,       setReceipt]       = useState(null);
   const [pins,          setPins]          = useState(null);
-  const [pointsBalance, setPointsBalance] = useState(0);
-  const [usePoints,     setUsePoints]     = useState(false);
-  const [histCat,       setHistCat]       = useState("all");
-  const [histStatus,    setHistStatus]    = useState("all");
-  const pointsBalanceRef = useRef(0);
+  const [pointsBalance,   setPointsBalance]   = useState(0);
+  const [usePoints,       setUsePoints]       = useState(false);
+  const [cashbackBalance, setCashbackBalance] = useState(0);
+  const [useCashback,     setUseCashback]     = useState(false);
+  const [histCat,         setHistCat]         = useState("all");
+  const [histStatus,      setHistStatus]      = useState("all");
+  const pointsBalanceRef   = useRef(0);
+  const cashbackBalanceRef = useRef(0);
 
   // Detect Paystack return on first render so overlay appears immediately (no flash)
   const [saving, setSaving] = useState(() => {
@@ -1411,6 +1416,21 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
   // Keep ref in sync so fulfillAfterPayment (useCallback) always reads latest balance
   useEffect(() => { pointsBalanceRef.current = pointsBalance; }, [pointsBalance]);
 
+  // Load cashback balance from Supabase (keyed by user email)
+  const userEmailCB = staffEmail || profile?.email;
+  useEffect(() => {
+    if (!userEmailCB) return;
+    supabase.from("cashback_transactions").select("amount,type").eq("user_email", userEmailCB)
+      .then(({ data }) => {
+        if (!data?.length) return;
+        const earned   = data.filter(r => r.type === "earned").reduce((s, r) => s + Number(r.amount), 0);
+        const redeemed = data.filter(r => r.type === "redeemed").reduce((s, r) => s + Number(r.amount), 0);
+        const bal = Math.max(0, Math.floor(earned - redeemed));
+        setCashbackBalance(bal);
+        cashbackBalanceRef.current = bal;
+      });
+  }, [userEmailCB]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Handle return from Paystack redirect — fulfillment runs after first render
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -1490,16 +1510,19 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
     return () => { cancelled = true; clearTimeout(timer); };
   }, [fulfillResult?.elecOrderId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const closeSheet = () => { setSelectedCat(null); setForm({}); setError(""); resetVerify(); setUsePoints(false); };
+  const closeSheet = () => { setSelectedCat(null); setForm({}); setError(""); resetVerify(); setUsePoints(false); setUseCashback(false); };
 
   const loadPlans = async (action, extra) => {
     setPlansLoading(true); setPlans([]); setPlansError("");
     try {
       const r = await clubkonnect(action, extra);
       if (r?.plans?.length) {
-        const priced = markup > 1
-          ? r.plans.map(p => ({ ...p, plan_amount: Math.ceil(p.plan_amount * markup) }))
-          : r.plans;
+        const network = extra?.network || form.network || "";
+        const priced = r.plans.map(p => {
+          const customPrice = action === "data-plans" ? lookupDataPrice(network, p.plan_name) : null;
+          if (customPrice !== null) return { ...p, plan_amount: customPrice };
+          return markup > 1 ? { ...p, plan_amount: Math.ceil(p.plan_amount * markup) } : p;
+        });
         setPlans(priced);
       } else { setPlansError(r?.error || "No plans returned from provider"); }
     } catch (e) { setPlansError(e.message || "Failed to load plans"); }
@@ -1629,13 +1652,17 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
       const pointsDiscount = pointsEnabled && usePoints && pointsBalanceRef.current >= 50
         ? Math.min(pointsBalanceRef.current, Math.floor(chargeAmount * 0.5))
         : 0;
-      const finalAmount = chargeAmount - pointsDiscount;
+      // Cashback redemption — apply full balance up to (chargeAmount - pointsDiscount - 1)
+      const cashbackDiscount = useCashback && cashbackBalanceRef.current > 0
+        ? Math.min(cashbackBalanceRef.current, Math.max(0, chargeAmount - pointsDiscount - 1))
+        : 0;
+      const finalAmount = chargeAmount - pointsDiscount - cashbackDiscount;
 
       // Store bill details so we can fulfill after payment return
       const ref = `KDT-BILL-${Date.now()}`;
       localStorage.setItem(BILL_PENDING_PREFIX + ref, JSON.stringify({
         cat: selectedCat, form: { ...form }, verifyName,
-        paidAmount: finalAmount, baseAmount: chargeAmount, pointsDiscount,
+        paidAmount: finalAmount, baseAmount: chargeAmount, pointsDiscount, cashbackUsed: cashbackDiscount,
       }));
 
       // Initialize Paystack — prefer owner profile email, fall back to staff email
@@ -1823,9 +1850,21 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
       };
 
       await addTransaction(payload);
-      if (cat === "data" && cashback > 0) {
+
+      // Cashback: record redeemed amount (if used) and earned amount (1% of paid)
+      const { cashbackUsed = 0 } = pending;
+      const cbEmail = staffEmail || profile?.email;
+      const cbEarned = Math.floor((paidAmount || amount) * 0.01);
+      if (cbEmail && (cashbackUsed > 0 || cbEarned > 0)) {
         try {
-          await addTransaction({ type: "in", category: "data", payment_type: "cashback", item_name: "Data Cashback", amount: cashback, note: `₦${cashback} cashback on ${itemName}`, transaction_date: today() });
+          const rows = [];
+          if (cashbackUsed > 0) rows.push({ user_email: cbEmail, amount: cashbackUsed, type: "redeemed", bill_type: cat, description: `Applied to ${itemName}` });
+          if (cbEarned > 0)    rows.push({ user_email: cbEmail, amount: cbEarned,    type: "earned",   bill_type: cat, description: `1% cashback on ${itemName}` });
+          await supabase.from("cashback_transactions").insert(rows);
+          const newBal = Math.max(0, cashbackBalanceRef.current - cashbackUsed) + cbEarned;
+          setCashbackBalance(newBal);
+          cashbackBalanceRef.current = newBal;
+          setUseCashback(false);
         } catch (_) {}
       }
 
@@ -1903,7 +1942,7 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
         }
       } catch (_) {}
     }
-  }, [addTransaction, staffName, staffEmail, businessName, profile, pointsEnabled, cashback]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [addTransaction, staffName, staffEmail, businessName, profile, pointsEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const cat = CATS.find(c => c.id === selectedCat);
   const detected = form.phone?.length >= 4 ? detectNetwork(form.phone) : null;
@@ -1919,6 +1958,8 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
   })();
   const ptsSavings = pointsEnabled && usePoints && pointsBalance >= 50
     ? Math.min(pointsBalance, Math.floor(uiChargeAmt * 0.5)) : 0;
+  const cbSavings = useCashback && cashbackBalance > 0
+    ? Math.min(cashbackBalance, Math.max(0, uiChargeAmt - ptsSavings - 1)) : 0;
 
   return (
     <div className="pb-32 screen-enter">
@@ -1981,6 +2022,18 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
         </div>
 
         {bills.length > 0 && <Overview bills={bills} />}
+
+        {/* Cashback balance widget */}
+        {userEmailCB && (
+          <div className="flex items-center justify-between bg-gradient-to-r from-green-600 to-emerald-600 rounded-2xl px-5 py-4 text-white shadow-md">
+            <div>
+              <p className="text-[10px] font-bold text-green-100 uppercase tracking-widest">Cashback Balance</p>
+              <p className="text-2xl font-black mt-0.5">₦{cashbackBalance.toLocaleString()}</p>
+              <p className="text-[10px] text-green-200 mt-1">Earn 1% on every bill purchase</p>
+            </div>
+            <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center text-2xl">🎁</div>
+          </div>
+        )}
 
         {/* Reward points widget */}
         {pointsEnabled && (
@@ -2133,6 +2186,10 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
                     <p className="text-xs text-blue-700 dark:text-blue-300 font-semibold">{(airtimeDiscount * 100).toFixed(0)}% business discount on airtime!</p>
                   </div>
                 )}
+                <div className="flex items-center gap-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl px-3 py-2">
+                  <span className="text-base">🎁</span>
+                  <p className="text-xs text-green-700 dark:text-green-300 font-semibold">Earn 1% cashback on airtime purchases!</p>
+                </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Amount (₦) *</label>
                   <input type="number" value={form.amount} onChange={e => setF("amount", e.target.value)} placeholder="100"
@@ -2152,12 +2209,10 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
               {selectedCat === "data" && <>
                 <NetworkSelector value={form.network} onChange={handleNetworkChange} detected={detected && detected === form.network ? detected : null} />
                 <PhoneInput value={form.phone} onChange={e => { const v = e.target.value; const net = detectNetwork(v); setForm(f => ({ ...f, phone: v, ...(net ? { network: net } : {}) })); }} />
-                {cashback > 0 && (
-                  <div className="flex items-center gap-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl px-3 py-2">
-                    <span className="text-base">🎁</span>
-                    <p className="text-xs text-green-700 dark:text-green-300 font-semibold">Get ₦{cashback} cashback on every data purchase!</p>
-                  </div>
-                )}
+                <div className="flex items-center gap-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl px-3 py-2">
+                  <span className="text-base">🎁</span>
+                  <p className="text-xs text-green-700 dark:text-green-300 font-semibold">Earn 1% cashback on every purchase!</p>
+                </div>
                 <DataPlanGrid plans={plans} selectedId={form.planId} loading={plansLoading} error={plansError}
                   cashback={cashback} pointsEnabled={pointsEnabled}
                   onRetry={() => loadPlans("data-plans", { network: form.network })}
@@ -2428,6 +2483,22 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
                 })()}
               </>}
 
+              {/* Cashback balance toggle */}
+              {cashbackBalance > 0 && userEmailCB && uiChargeAmt > 0 && (
+                <div className="flex items-center justify-between bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl px-4 py-3">
+                  <div>
+                    <p className="text-xs font-black text-green-800 dark:text-green-200">Apply Cashback</p>
+                    <p className="text-[10px] text-green-600 dark:text-green-400">
+                      Balance: ₦{cashbackBalance.toLocaleString()} · saves ₦{Math.min(cashbackBalance, Math.max(0, uiChargeAmt - 1)).toLocaleString()}
+                    </p>
+                  </div>
+                  <button type="button" onClick={() => setUseCashback(v => !v)}
+                    className={`relative w-11 h-6 rounded-full transition-colors ${useCashback ? "bg-green-500" : "bg-slate-300 dark:bg-slate-600"}`}>
+                    <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${useCashback ? "translate-x-6" : "translate-x-1"}`} />
+                  </button>
+                </div>
+              )}
+
               {/* Redeem points toggle */}
               {pointsEnabled && pointsBalance >= 50 && uiChargeAmt > 0 && (
                 <div className="flex items-center justify-between bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-4 py-3">
@@ -2461,7 +2532,7 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
                     selectedCat === "print-airtime"   ? `Pay with Paystack · ${form.quantity || 1} × ₦${form.value}` :
                     selectedCat === "print-data"      ? `Pay with Paystack · ${form.quantity || 1} Plan${parseInt(form.quantity||"1")>1?"s":""}` :
                     selectedCat === "airtime-bundle"  ? (parseInt(form.sets||"0")>0 ? `Pay ₦${uiChargeAmt.toLocaleString()} · ${form.sets} Bundle Set${parseInt(form.sets)>1?"s":""}` : "Select number of sets") :
-                    form.amount ? `Pay ${fmt(uiChargeAmt - ptsSavings)} with Paystack${ptsSavings > 0 ? ` · ${ptsSavings} pts` : ""}` : `Pay with Paystack`
+                    form.amount ? `Pay ${fmt(uiChargeAmt - ptsSavings - cbSavings)} with Paystack${ptsSavings > 0 || cbSavings > 0 ? ` · savings applied` : ""}` : `Pay with Paystack`
                   )}
                 </button>
               </div>
