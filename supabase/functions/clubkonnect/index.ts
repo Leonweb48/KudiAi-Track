@@ -168,7 +168,9 @@ serve(async (req) => {
       const netId = NET_ID[network];
       if (!netId) return json({ error: `Unknown network: ${network}` });
       console.log(`data purchase: net=${netId} plan=${planId} phone=${phone.replace(/\D/g,"").slice(-4)}`);
-      const data = await ck("APIDatabundleV1.asp", {
+      // APIDatabundleV3.asp pairs with APIDatabundlePlansV2.asp (numeric plan IDs)
+      // APIDatabundleV1.asp used old alphabetic codes and rejects the numeric IDs
+      const data = await ck("APIDatabundleV3.asp", {
         APIKey: DATA_K, MobileNetwork: netId, DataPlan: planId,
         MobileNumber: phone.replace(/\D/g, ""), RequestID: reqId(), CallBackURL: "https://kudiai.app/",
       });
