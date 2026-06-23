@@ -27,7 +27,7 @@ const CATS = [
 const NETWORKS = ["MTN", "Airtel", "Glo", "9mobile"];
 const NET_CONFIG = {
   MTN:       { bg: "#FFC300", fg: "#000", abbr: "MTN",     logo: "/mtn.png"     },
-  Airtel:    { bg: "#EF3340", fg: "#fff", abbr: "Airtel",  logo: "/airtel.png"  },
+  Airtel:    { bg: "#EF3340", fg: "#fff", abbr: "Airtel",  logo: "/Airtel.png"  },
   Glo:       { bg: "#007838", fg: "#fff", abbr: "Glo",     logo: "/glo.jpg"     },
   "9mobile": { bg: "#006B54", fg: "#fff", abbr: "9mobile", logo: "/9mobile.png" },
 };
