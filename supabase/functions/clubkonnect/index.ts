@@ -874,7 +874,7 @@ serve(async (req) => {
       const useKey = AIRTIME_K || DATA_K || ELECTRICITY_K || CABLETV_K;
       if (!USER_ID || !useKey)
         return json({ error: "CK credentials not configured", balance: null, commission: null });
-      const data = await ck("APICheckWalletBalancev1.asp", { APIKey: useKey });
+      const data = await ck("APICheckWalletBalanceV1.asp", { APIKey: useKey });
       console.log("wallet-balance raw:", JSON.stringify(data));
 
       // Strip currency symbols / commas before parsing — CK sometimes returns "₦26.00"
