@@ -113,6 +113,8 @@ serve(async (req) => {
         "9mobile": ["9mobile","9MOBILE","m_9mobile","M_9MOBILE","etisalat","ETISALAT","Etisalat","emts","EMTS"],
       };
 
+      let _sampleProduct: unknown = null; // for debug logging
+
       if (mobileNet) {
         const allKeys = Object.keys(mobileNet);
         const matchedKey = allKeys.find(k => k.toUpperCase() === network.toUpperCase())
@@ -125,30 +127,38 @@ serve(async (req) => {
         for (const group of groups) {
           const products = (group?.PRODUCT ?? []) as Record<string, unknown>[];
           for (const p of products) {
-            const pid = String(p.PRODUCT_CODE ?? p.PRODUCT_ID ?? "");
+            if (!_sampleProduct) _sampleProduct = p; // capture first product for debug
+            // DataPlan takes priority — it's the field APIDatabundleV1.asp expects directly
+            const pid = String(p.DataPlan ?? p.PRODUCT_CODE ?? p.PRODUCT_ID ?? "");
             if (pid) plans.push({
               plan_id:     pid,
-              plan_name:   String(p.PRODUCT_NAME ?? ""),
-              plan_amount: Number(p.PRODUCT_AMOUNT ?? 0),
+              plan_name:   String(p.PRODUCT_NAME ?? p.DataPlanName ?? ""),
+              plan_amount: Number(p.PRODUCT_AMOUNT ?? p.Price ?? 0),
             });
           }
         }
       } else {
-        // Fallback for older response shapes
+        // Fallback for older / flat response shapes
         const raw: unknown[] = Array.isArray(data) ? data
           : (data?.DataBundlePlans ?? data?.response ?? data?.DataPlans ?? data?.plans ?? data?.data ?? []) as unknown[];
-        plans = (raw as Record<string, unknown>[]).map(p => ({
-          plan_id:     String(p.DataPlan ?? p.PRODUCT_CODE ?? p.id ?? ""),
-          plan_name:   String(p.DataPlanName ?? p.PRODUCT_NAME ?? p.name ?? ""),
-          plan_amount: Number(p.Price ?? p.PRODUCT_AMOUNT ?? p.amount ?? 0),
-        })).filter(p => p.plan_id && p.plan_id !== "undefined");
+        plans = (raw as Record<string, unknown>[]).map(p => {
+          if (!_sampleProduct) _sampleProduct = p;
+          return {
+            plan_id:     String(p.DataPlan ?? p.PRODUCT_CODE ?? p.PRODUCT_ID ?? p.id ?? ""),
+            plan_name:   String(p.DataPlanName ?? p.PRODUCT_NAME ?? p.name ?? ""),
+            plan_amount: Number(p.Price ?? p.PRODUCT_AMOUNT ?? p.amount ?? 0),
+          };
+        }).filter(p => p.plan_id && p.plan_id !== "undefined");
       }
+
+      console.log(`data-plans [${network}] sample product:`, JSON.stringify(_sampleProduct));
+      console.log(`data-plans [${network}] extracted ${plans.length} plans. first:`, JSON.stringify(plans[0]));
 
       if (!plans.length) {
         const availableKeys = mobileNet ? Object.keys(mobileNet).join(", ") : "none";
-        return json({ plans: [], error: `No plans for "${network}". API keys: [${availableKeys}]. Raw: ${JSON.stringify(data).slice(0,150)}` });
+        return json({ plans: [], error: `No plans for "${network}". API keys: [${availableKeys}]. Raw: ${JSON.stringify(data).slice(0,200)}` });
       }
-      return json({ plans, _count: plans.length });
+      return json({ plans, _count: plans.length, _sample: _sampleProduct });
     }
 
     // ── Data purchase ─────────────────────────────────────────────────────────
@@ -157,10 +167,12 @@ serve(async (req) => {
       if (!phone || !network || !planId) return json({ error: "phone, network and planId required" });
       const netId = NET_ID[network];
       if (!netId) return json({ error: `Unknown network: ${network}` });
+      console.log(`data purchase: net=${netId} plan=${planId} phone=${phone.replace(/\D/g,"").slice(-4)}`);
       const data = await ck("APIDatabundleV1.asp", {
         APIKey: DATA_K, MobileNetwork: netId, DataPlan: planId,
         MobileNumber: phone.replace(/\D/g, ""), RequestID: reqId(), CallBackURL: "https://kudiai.app/",
       });
+      console.log(`data purchase result:`, JSON.stringify(data).slice(0, 300));
       if (!isOk(data)) return json({ error: `${errMsg(data, "Data purchase failed")} [net:${netId} plan:${planId}]`, _raw: data });
       return json({ status: "SUCCESS", reference: String(data.orderid ?? data.requestid ?? ""), message: String(data.status ?? "ORDER_RECEIVED") });
     }

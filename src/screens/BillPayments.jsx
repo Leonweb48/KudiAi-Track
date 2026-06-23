@@ -1534,6 +1534,8 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
     setPlansLoading(true); setPlans([]); setPlansError("");
     try {
       const r = await clubkonnect(action, extra);
+      if (r?._sample) console.log("[CK data-plans] raw sample product:", JSON.stringify(r._sample));
+      if (r?.plans?.[0]) console.log("[CK data-plans] extracted plan[0]:", JSON.stringify(r.plans[0]));
       if (r?.plans?.length) {
         const network = extra?.network || form.network || "";
         const priced = r.plans.map(p => {
