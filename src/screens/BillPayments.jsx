@@ -1699,6 +1699,7 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
   // ── Step 2: Verify payment then fulfill service ───────────────────────────────
   const fulfillAfterPayment = useCallback(async (ref, pending) => {
     setError("");
+    let paystackConfirmed = false;
     try {
       // Verify payment with Paystack
       const { data: vd } = await supabase.functions.invoke("paystack", {
@@ -1726,6 +1727,7 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
         }
         throw new Error(vd?.data?.gateway_response || "Payment not confirmed. Please contact support.");
       }
+      paystackConfirmed = true;
 
       const { cat, form: f, verifyName: vName, paidAmount, baseAmount, pointsDiscount: redeemedPoints = 0 } = pending;
       let apiRef = "", note = "", itemName = "", customerRef = "", cardDetails = "", pinsArr = null, txnHistoryPending = false, elecToken = "", elecOrderId = "";
@@ -1904,6 +1906,15 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
       setSaving(false);
       const ckError = err.message || "Unknown error";
       setFulfillResult({ ok: false, label: "", detail: ckError, psRef: ref, apiRef: "" });
+
+      // Paystack charged the user at a discounted amount (cashback applied), but CK failed.
+      // Clear cashbackUsed from the pending entry so any retry doesn't re-deduct cashback —
+      // the owner's refund covers the full original amount, so cashback should be fully intact.
+      if (paystackConfirmed && pending.cashbackUsed > 0) {
+        try {
+          localStorage.setItem(BILL_PENDING_PREFIX + ref, JSON.stringify({ ...pending, cashbackUsed: 0 }));
+        } catch (_) {}
+      }
 
       // Record the failed bill in history
       try {
