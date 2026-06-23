@@ -26,10 +26,10 @@ const CATS = [
 
 const NETWORKS = ["MTN", "Airtel", "Glo", "9mobile"];
 const NET_CONFIG = {
-  MTN:       { bg: "#FFC300", fg: "#000", abbr: "MTN"     },
-  Airtel:    { bg: "#EF3340", fg: "#fff", abbr: "Airtel"  },
-  Glo:       { bg: "#007838", fg: "#fff", abbr: "Glo"     },
-  "9mobile": { bg: "#006B54", fg: "#fff", abbr: "9mobile" },
+  MTN:       { bg: "#FFC300", fg: "#000", abbr: "MTN",     logo: "/mtn.png"     },
+  Airtel:    { bg: "#EF3340", fg: "#fff", abbr: "Airtel",  logo: "/airtel.png"  },
+  Glo:       { bg: "#007838", fg: "#fff", abbr: "Glo",     logo: "/glo.jpg"     },
+  "9mobile": { bg: "#006B54", fg: "#fff", abbr: "9mobile", logo: "/9mobile.png" },
 };
 
 const ELECTRICITY_COMPANIES = [
@@ -337,10 +337,10 @@ function NetworkSelector({ value, onChange, detected }) {
           const sel = value === n;
           return (
             <button key={n} type="button" onClick={() => onChange(n)}
-              className={`relative flex flex-col items-center gap-1.5 rounded-2xl py-3 px-1 transition-all duration-150 active:scale-95 border-2 ${sel ? "shadow-md" : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"}`}
-              style={sel ? { borderColor: cfg.bg + "99", background: cfg.bg + "18" } : {}}>
-              <div className="w-full h-8 rounded-xl flex items-center justify-center" style={{ background: cfg.bg }}>
-                <span className="text-[10px] font-black tracking-wide leading-none" style={{ color: cfg.fg }}>{cfg.abbr}</span>
+              className={`relative flex flex-col items-center gap-1.5 rounded-2xl pt-3 pb-2 px-2 transition-all duration-200 active:scale-95 border-2 ${sel ? "shadow-md" : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"}`}
+              style={sel ? { borderColor: cfg.bg, background: cfg.bg + "18" } : {}}>
+              <div className="w-full h-9 flex items-center justify-center">
+                <img src={cfg.logo} alt={n} className="h-8 w-full object-contain" draggable={false} />
               </div>
               <span className={`text-[9px] font-bold leading-none ${sel ? "text-slate-700 dark:text-slate-100" : "text-slate-400 dark:text-slate-500"}`}>{n}</span>
               {sel && (
@@ -366,8 +366,10 @@ function PhoneInput({ value, onChange, label = "Phone Number *", placeholder = "
         <input type="tel" value={value} onChange={onChange} placeholder={placeholder}
           className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500 pr-20" />
         {cfg && (
-          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-black px-2 py-0.5 rounded-full leading-none"
-            style={{ background: cfg.bg, color: cfg.fg }}>{cfg.abbr}</span>
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 h-6 w-10 flex items-center justify-center rounded-lg overflow-hidden"
+            style={{ background: cfg.bg + "22", border: `1px solid ${cfg.bg}60` }}>
+            <img src={cfg.logo} alt={cfg.abbr} className="h-5 w-full object-contain" draggable={false} />
+          </span>
         )}
       </div>
     </div>
@@ -470,7 +472,7 @@ function parseDataPlan(planName) {
 
 const DATA_TABS = ["All", "Daily", "Weekly", "Monthly"];
 
-function DataPlanGrid({ plans, selectedId, onSelect, loading, error, onRetry, cashback = 0, pointsEnabled = false }) {
+function DataPlanGrid({ plans, selectedId, onSelect, loading, error, onRetry, cashback = 0, pointsEnabled = false, netCfg = null }) {
   const [activeTab, setActiveTab] = useState("All");
   useEffect(() => { setActiveTab("All"); }, [plans]);
 
@@ -500,12 +502,16 @@ function DataPlanGrid({ plans, selectedId, onSelect, loading, error, onRetry, ca
   return (
     <div className="space-y-3">
       <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-        {DATA_TABS.map(tab => (
-          <button key={tab} type="button" onClick={() => setActiveTab(tab)}
-            className={`flex-shrink-0 px-3.5 py-1.5 rounded-full text-[11px] font-bold transition-colors ${activeTab === tab ? "bg-blue-500 text-white" : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400"}`}>
-            {tab}
-          </button>
-        ))}
+        {DATA_TABS.map(tab => {
+          const isActive = activeTab === tab;
+          return (
+            <button key={tab} type="button" onClick={() => setActiveTab(tab)}
+              className={`flex-shrink-0 px-3.5 py-1.5 rounded-full text-[11px] font-bold transition-all duration-200 ${isActive ? "text-white" : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400"}`}
+              style={isActive ? { background: netCfg ? netCfg.bg : "#3b82f6" } : {}}>
+              {tab}
+            </button>
+          );
+        })}
       </div>
       <div className="grid grid-cols-3 gap-2.5">
         {filtered.map(pl => {
@@ -516,17 +522,21 @@ function DataPlanGrid({ plans, selectedId, onSelect, loading, error, onRetry, ca
           const sel = selectedId === pl.plan_id;
           return (
             <button key={pl.plan_id} type="button" onClick={() => onSelect(pl)}
-              className={`py-3 px-2 rounded-2xl border-2 text-center transition-all active:scale-95 ${sel ? "border-blue-500 bg-blue-50 dark:bg-blue-900/30" : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"}`}>
+              className={`py-3 px-2 rounded-2xl border-2 text-center transition-all duration-200 active:scale-95 ${sel ? "shadow-md" : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"}`}
+              style={sel ? { borderColor: netCfg ? netCfg.bg : "#3b82f6", background: netCfg ? netCfg.bg + "18" : undefined } : {}}>
               {size != null ? (
-                <p className={`leading-none font-black ${sel ? "text-blue-700 dark:text-blue-300" : "text-slate-800 dark:text-white"}`}>
+                <p className={`leading-none font-black ${!sel ? "text-slate-800 dark:text-white" : ""}`}
+                  style={sel ? { color: netCfg ? netCfg.bg : "#1d4ed8" } : {}}>
                   <span className="text-2xl">{size}</span>
                   <span className="text-sm">{unit}</span>
                 </p>
               ) : (
-                <p className={`text-[11px] font-bold leading-tight ${sel ? "text-blue-700 dark:text-blue-300" : "text-slate-800 dark:text-white"}`}>{pl.plan_name}</p>
+                <p className={`text-[11px] font-bold leading-tight ${!sel ? "text-slate-800 dark:text-white" : ""}`}
+                  style={sel ? { color: netCfg ? netCfg.bg : "#1d4ed8" } : {}}>{pl.plan_name}</p>
               )}
               {duration && <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">{duration}</p>}
-              <p className={`text-xs font-black mt-1.5 ${sel ? "text-blue-600 dark:text-blue-300" : "text-slate-700 dark:text-slate-300"}`}>
+              <p className={`text-xs font-black mt-1.5 ${!sel ? "text-slate-700 dark:text-slate-300" : ""}`}
+                style={sel ? { color: netCfg ? netCfg.bg : "#1d4ed8" } : {}}>
                 ₦{price.toLocaleString()}
               </p>
               {earnedCashback > 0 ? (
@@ -1969,6 +1979,12 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
   const cbSavings = useCashback && cashbackBalance > 0
     ? Math.min(cashbackBalance, Math.max(0, uiChargeAmt - ptsSavings - 1)) : 0;
 
+  // Dynamic network brand theme — active when a network service has a network selected
+  const NET_CATS = new Set(["airtime", "data", "print-airtime", "print-data"]);
+  const netTheme = (selectedCat && NET_CATS.has(selectedCat) && form.network)
+    ? NET_CONFIG[form.network] || null
+    : null;
+
   return (
     <div className="pb-32 screen-enter">
 
@@ -2164,25 +2180,44 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
       {/* Bottom sheet */}
       {selectedCat && cat && (
         <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40">
-          <div className="bg-white dark:bg-slate-900 rounded-t-3xl max-h-[94vh] flex flex-col">
+          <div className="bg-white dark:bg-slate-900 rounded-t-3xl max-h-[94vh] flex flex-col transition-all duration-300"
+          style={netTheme ? { borderTop: `3px solid ${netTheme.bg}` } : {}}>
 
-            <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-800">
+            <div className={`flex items-center justify-between px-5 pt-4 pb-3 transition-all duration-300 ${!netTheme ? "border-b border-slate-100 dark:border-slate-800" : ""}`}
+              style={netTheme
+                ? { background: `linear-gradient(135deg, ${netTheme.bg}, ${netTheme.bg}cc)`, borderBottom: `1.5px solid ${netTheme.bg}` }
+                : {}}>
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center"
-                  style={{ background: `linear-gradient(135deg,${cat.g1},${cat.g2})` }}>
-                  <Ico d={CAT_ICONS[selectedCat]} size={17} c="white" />
-                </div>
+                {netTheme ? (
+                  <div className="w-14 h-10 flex items-center justify-center rounded-xl overflow-hidden"
+                    style={{ background: "rgba(255,255,255,0.25)" }}>
+                    <img src={netTheme.logo} alt={form.network} className="h-8 w-12 object-contain" draggable={false} />
+                  </div>
+                ) : (
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center"
+                    style={{ background: `linear-gradient(135deg,${cat.g1},${cat.g2})` }}>
+                    <Ico d={CAT_ICONS[selectedCat]} size={17} c="white" />
+                  </div>
+                )}
                 <div>
-                  <h2 className="text-base font-bold text-slate-800 dark:text-white">{cat.label}</h2>
-                  <p className="text-[10px] text-green-600 font-semibold">Service Active</p>
+                  <h2 className={`text-base font-bold ${netTheme ? "" : "text-slate-800 dark:text-white"}`}
+                    style={netTheme ? { color: netTheme.fg } : {}}>
+                    {netTheme ? `${form.network} ${cat.label}` : cat.label}
+                  </h2>
+                  <p className="text-[10px] font-semibold"
+                    style={netTheme ? { color: `${netTheme.fg}bb` } : { color: "#16a34a" }}>
+                    Service Active
+                  </p>
                 </div>
               </div>
-              <button onClick={closeSheet} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
-                <Ico d="M18 6L6 18|M6 6l12 12" size={14} c="#64748b" />
+              <button onClick={closeSheet} className="w-8 h-8 flex items-center justify-center rounded-full transition-colors"
+                style={netTheme ? { background: "rgba(255,255,255,0.22)" } : { background: "#f1f5f9" }}>
+                <Ico d="M18 6L6 18|M6 6l12 12" size={14} c={netTheme ? netTheme.fg : "#64748b"} />
               </button>
             </div>
 
-            <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+            <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4 transition-all duration-300"
+              style={netTheme ? { background: `${netTheme.bg}09` } : {}}>
 
               {/* ── AIRTIME ── */}
               {selectedCat === "airtime" && <>
@@ -2191,11 +2226,18 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Amount (₦) *</label>
                   <input type="number" value={form.amount} onChange={e => setF("amount", e.target.value)} placeholder="100"
-                    className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500" />
+                    className="w-full border rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 transition-all duration-200"
+                    style={netTheme
+                      ? { borderColor: `${netTheme.bg}80`, "--tw-ring-color": netTheme.bg }
+                      : { borderColor: undefined }} />
                   {form.amount && parseFloat(form.amount) > 0 && (
-                    <div className="flex items-center gap-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl px-3 py-2 mt-2">
+                    <div className="flex items-center gap-2 rounded-xl px-3 py-2 mt-2 transition-all duration-200"
+                      style={netTheme
+                        ? { background: `${netTheme.bg}18`, border: `1px solid ${netTheme.bg}50` }
+                        : { background: "#f0fdf4", border: "1px solid #bbf7d0" }}>
                       <span className="text-base">🎁</span>
-                      <p className="text-xs text-green-700 dark:text-green-300 font-semibold">
+                      <p className="text-xs font-semibold"
+                        style={netTheme ? { color: netTheme.bg } : { color: "#15803d" }}>
                         {(() => { const cb = parseFloat((parseFloat(form.amount) * 0.01).toFixed(2)); return `You'll earn ₦${cb < 1 ? cb.toFixed(2) : cb} cashback`; })()}
                       </p>
                     </div>
@@ -2204,11 +2246,16 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
                     {[50,100,200,500,1000].map(a => {
                       const cb = parseFloat((a * 0.01).toFixed(2));
                       const cbStr = cb < 1 ? cb.toFixed(2) : String(cb);
+                      const isSel = form.amount === String(a);
                       return (
                         <button key={a} type="button" onClick={() => setF("amount", String(a))}
-                          className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors flex flex-col items-center ${form.amount === String(a) ? "bg-green-600 text-white border-green-600" : "border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400"}`}>
+                          className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all duration-200 flex flex-col items-center ${isSel ? "shadow-sm" : "border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400"}`}
+                          style={isSel
+                            ? { background: netTheme ? netTheme.bg : "#16a34a", borderColor: netTheme ? netTheme.bg : "#16a34a", color: netTheme ? netTheme.fg : "#fff" }
+                            : {}}>
                           <span>₦{a}</span>
-                          <span className={`text-[9px] font-semibold ${form.amount === String(a) ? "text-green-100" : "text-green-600 dark:text-green-400"}`}>+₦{cbStr}</span>
+                          <span className={`text-[9px] font-semibold ${!isSel ? "text-green-600 dark:text-green-400" : ""}`}
+                            style={isSel ? { color: netTheme ? `${netTheme.fg}cc` : "#d1fae5" } : {}}>+₦{cbStr}</span>
                         </button>
                       );
                     })}
@@ -2220,12 +2267,16 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
               {selectedCat === "data" && <>
                 <NetworkSelector value={form.network} onChange={handleNetworkChange} detected={detected && detected === form.network ? detected : null} />
                 <PhoneInput value={form.phone} onChange={e => { const v = e.target.value; const net = detectNetwork(v); setForm(f => ({ ...f, phone: v, ...(net ? { network: net } : {}) })); }} />
-                <div className="flex items-center gap-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl px-3 py-2">
+                <div className="flex items-center gap-2 rounded-xl px-3 py-2 transition-all duration-200"
+                  style={netTheme
+                    ? { background: `${netTheme.bg}18`, border: `1px solid ${netTheme.bg}50` }
+                    : { background: "#f0fdf4", border: "1px solid #bbf7d0" }}>
                   <span className="text-base">🎁</span>
-                  <p className="text-xs text-green-700 dark:text-green-300 font-semibold">Earn 1% cashback on every purchase!</p>
+                  <p className="text-xs font-semibold"
+                    style={netTheme ? { color: netTheme.bg } : { color: "#15803d" }}>Earn 1% cashback on every purchase!</p>
                 </div>
                 <DataPlanGrid plans={plans} selectedId={form.planId} loading={plansLoading} error={plansError}
-                  cashback={cashback} pointsEnabled={pointsEnabled}
+                  cashback={cashback} pointsEnabled={pointsEnabled} netCfg={netTheme}
                   onRetry={() => loadPlans("data-plans", { network: form.network })}
                   onSelect={pl => setForm(f => ({ ...f, planId: pl.plan_id, planName: pl.plan_name, amount: String(pl.plan_amount) }))} />
               </>}
@@ -2432,8 +2483,8 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
                       const cfg = NET_CONFIG[n];
                       return (
                         <div key={n} className="flex flex-col items-center py-3 px-1 gap-1.5">
-                          <div className="w-full h-7 rounded-lg flex items-center justify-center" style={{ background: cfg.bg }}>
-                            <span className="text-[9px] font-black" style={{ color: cfg.fg }}>{cfg.abbr}</span>
+                          <div className="w-full h-8 rounded-lg flex items-center justify-center overflow-hidden" style={{ background: cfg.bg + "18", border: `1px solid ${cfg.bg}40` }}>
+                            <img src={cfg.logo} alt={n} className="h-6 w-full object-contain" draggable={false} />
                           </div>
                           <p className="text-[9px] text-slate-400 leading-none">face ₦1,000</p>
                           <p className="text-[9px] font-bold text-green-600 leading-none">cost ₦{BUNDLE_CK_COSTS[n]}</p>
@@ -2538,7 +2589,7 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
               <div className="pb-6">
                 <button onClick={handlePay} disabled={saving}
                   className="w-full text-white font-bold rounded-xl py-3.5 text-sm transition-all disabled:opacity-60"
-                  style={{ background: `linear-gradient(135deg,${cat.g1},${cat.g2})` }}>
+                  style={{ background: "linear-gradient(135deg,#16a34a,#15803d)" }}>
                   {saving ? "Redirecting to Paystack…" : (
                     selectedCat === "print-airtime"   ? `Pay with Paystack · ${form.quantity || 1} × ₦${form.value}` :
                     selectedCat === "print-data"      ? `Pay with Paystack · ${form.quantity || 1} Plan${parseInt(form.quantity||"1")>1?"s":""}` :
