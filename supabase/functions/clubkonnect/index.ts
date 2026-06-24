@@ -134,7 +134,7 @@ serve(async (req) => {
             if (pid) plans.push({
               plan_id:     pid,
               plan_name:   String(p.PRODUCT_NAME ?? p.DataPlanName ?? ""),
-              plan_amount: Number(p.PRODUCT_AMOUNT ?? p.Price ?? 0),
+              plan_amount: Math.round(Number(p.PRODUCT_AMOUNT ?? p.Price ?? 0) * 100) / 100,
             });
           }
         }
@@ -147,7 +147,7 @@ serve(async (req) => {
           return {
             plan_id:     String(p.DataPlan ?? p.PRODUCT_ID ?? p.PRODUCT_CODE ?? p.id ?? ""),
             plan_name:   String(p.DataPlanName ?? p.PRODUCT_NAME ?? p.name ?? ""),
-            plan_amount: Number(p.Price ?? p.PRODUCT_AMOUNT ?? p.amount ?? 0),
+            plan_amount: Math.round(Number(p.Price ?? p.PRODUCT_AMOUNT ?? p.amount ?? 0) * 100) / 100,
           };
         }).filter(p => p.plan_id && p.plan_id !== "undefined");
       }
