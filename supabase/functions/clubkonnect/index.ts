@@ -128,9 +128,9 @@ serve(async (req) => {
           const products = (group?.PRODUCT ?? []) as Record<string, unknown>[];
           for (const p of products) {
             if (!_sampleProduct) _sampleProduct = p; // capture first product for debug
-            // PRODUCT_SNO is the globally-unique plan serial number that APIDatabundleV3.asp expects as DataPlan
-            // PRODUCT_CODE is a per-network sequential index and is NOT accepted by the purchase endpoint
-            const pid = String(p.DataPlan ?? p.PRODUCT_SNO ?? p.PRODUCT_CODE ?? p.PRODUCT_ID ?? "");
+            // PRODUCT_ID is the MB-size value CK's V1 purchase endpoint accepts as DataPlan (e.g. "500", "1000", "2000")
+            // PRODUCT_CODE and PRODUCT_SNO are internal indexes rejected by the purchase endpoint
+            const pid = String(p.DataPlan ?? p.PRODUCT_ID ?? p.PRODUCT_CODE ?? "");
             if (pid) plans.push({
               plan_id:     pid,
               plan_name:   String(p.PRODUCT_NAME ?? p.DataPlanName ?? ""),
@@ -145,7 +145,7 @@ serve(async (req) => {
         plans = (raw as Record<string, unknown>[]).map(p => {
           if (!_sampleProduct) _sampleProduct = p;
           return {
-            plan_id:     String(p.DataPlan ?? p.PRODUCT_CODE ?? p.PRODUCT_ID ?? p.id ?? ""),
+            plan_id:     String(p.DataPlan ?? p.PRODUCT_ID ?? p.PRODUCT_CODE ?? p.id ?? ""),
             plan_name:   String(p.DataPlanName ?? p.PRODUCT_NAME ?? p.name ?? ""),
             plan_amount: Number(p.Price ?? p.PRODUCT_AMOUNT ?? p.amount ?? 0),
           };
@@ -169,15 +169,29 @@ serve(async (req) => {
       const netId = NET_ID[network];
       if (!netId) return json({ error: `Unknown network: ${network}` });
       console.log(`data purchase: net=${netId} plan=${planId} phone=${phone.replace(/\D/g,"").slice(-4)}`);
-      // APIDatabundleV3.asp pairs with APIDatabundlePlansV2.asp (numeric plan IDs)
-      // APIDatabundleV1.asp used old alphabetic codes and rejects the numeric IDs
-      const data = await ck("APIDatabundleV3.asp", {
+      const data = await ck("APIDatabundleV1.asp", {
         APIKey: DATA_K, MobileNetwork: netId, DataPlan: planId,
         MobileNumber: phone.replace(/\D/g, ""), RequestID: reqId(), CallBackURL: "https://kudiai.app/",
       });
-      console.log(`data purchase result:`, JSON.stringify(data).slice(0, 300));
+      console.log(`data purchase result:`, JSON.stringify(data).slice(0, 500));
       if (!isOk(data)) return json({ error: `${errMsg(data, "Data purchase failed")} [net:${netId} plan:${planId}]`, _raw: data });
       return json({ status: "SUCCESS", reference: String(data.orderid ?? data.requestid ?? ""), message: String(data.status ?? "ORDER_RECEIVED") });
+    }
+
+    // ── Data purchase diagnostic (test without real phone to isolate plan ID format) ──
+    if (action === "data-probe") {
+      const { network, planId } = body as { network: string; planId: string };
+      const netId = NET_ID[network] ?? "01";
+      const dummy = "08000000000";
+      const rid = reqId();
+      // Try V1 and V3 with the given planId and a dummy phone
+      const [v1, v3] = await Promise.all([
+        ck("APIDatabundleV1.asp", { APIKey: DATA_K, MobileNetwork: netId, DataPlan: planId, MobileNumber: dummy, RequestID: rid + "A", CallBackURL: "https://kudiai.app/" }),
+        ck("APIDatabundleV3.asp", { APIKey: DATA_K, MobileNetwork: netId, DataPlan: planId, MobileNumber: dummy, RequestID: rid + "B", CallBackURL: "https://kudiai.app/" }),
+      ]);
+      console.log("data-probe v1:", JSON.stringify(v1));
+      console.log("data-probe v3:", JSON.stringify(v3));
+      return json({ netId, planId, v1_status: v1.status ?? v1.Status, v1_raw: v1, v3_status: v3.status ?? v3.Status, v3_raw: v3 });
     }
 
     // ── Cable TV providers ────────────────────────────────────────────────────
