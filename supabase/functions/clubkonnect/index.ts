@@ -128,8 +128,9 @@ serve(async (req) => {
           const products = (group?.PRODUCT ?? []) as Record<string, unknown>[];
           for (const p of products) {
             if (!_sampleProduct) _sampleProduct = p; // capture first product for debug
-            // DataPlan takes priority — it's the field APIDatabundleV1.asp expects directly
-            const pid = String(p.DataPlan ?? p.PRODUCT_CODE ?? p.PRODUCT_ID ?? "");
+            // PRODUCT_SNO is the globally-unique plan serial number that APIDatabundleV3.asp expects as DataPlan
+            // PRODUCT_CODE is a per-network sequential index and is NOT accepted by the purchase endpoint
+            const pid = String(p.DataPlan ?? p.PRODUCT_SNO ?? p.PRODUCT_CODE ?? p.PRODUCT_ID ?? "");
             if (pid) plans.push({
               plan_id:     pid,
               plan_name:   String(p.PRODUCT_NAME ?? p.DataPlanName ?? ""),
