@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG Tiny PS//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11-tiny.dtd">
+<svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny-ps"
+     viewBox="0 0 100 100" width="100" height="100">
+  <title>KudiAI Track</title>
+  <rect width="100" height="100" fill="#ffffff"/>
+  <rect x="9" y="10" width="14" height="80" rx="2" fill="#1a2e5a"/>
+  <polygon points="23,28 23,46 76,10 88,10 88,22 35,50" fill="#1a2e5a"/>
+  <polygon points="23,54 35,50 88,78 88,90 76,90 23,72" fill="#1a2e5a"/>
+  <circle cx="41" cy="50" r="19" fill="#16a34a"/>
+  <circle cx="41" cy="50" r="16" fill="#15803d"/>
+  <rect x="32" y="54" width="4" height="8" rx="1" fill="#ffffff" opacity="0.9"/>
+  <rect x="38" y="49" width="4" height="13" rx="1" fill="#ffffff" opacity="0.9"/>
+  <rect x="44" y="44" width="4" height="18" rx="1" fill="#ffffff" opacity="0.9"/>
+  <polyline points="31,56 37,50 43,45 50,40" stroke="#4ade80" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <polygon points="50,40 47,44 53,44" fill="#4ade80"/>
+  <polygon points="75,14 76.5,18 80,19.5 76.5,21 75,25 73.5,21 70,19.5 73.5,18" fill="#16a34a"/>
+  <polygon points="83,70 84,73 87,74 84,75 83,78 82,75 79,74 82,73" fill="#16a34a"/>
+  <polygon points="68,8 68.8,10.2 71,11 68.8,11.8 68,14 67.2,11.8 65,11 67.2,10.2" fill="#4ade80"/>
+</svg>
