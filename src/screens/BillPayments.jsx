@@ -451,26 +451,53 @@ function PlanGrid({ plans, selectedId, onSelect, loading, error, onRetry }) {
 
 function parseDataPlan(planName) {
   const name = planName || "";
-  const sizeMatch = name.match(/(\d+\.?\d*)\s*(GB|MB)/i);
+  const n    = name.toLowerCase();
+
+  const sizeMatch = name.match(/(\d+\.?\d*)\s*(GB|MB|TB)/i);
   const size  = sizeMatch ? parseFloat(sizeMatch[1]) : null;
   const unit  = sizeMatch ? sizeMatch[2].toUpperCase() : "GB";
-  const dayMatch   = name.match(/(\d+)\s*[Dd]ay/);
-  const monthMatch = name.match(/(\d+)\s*[Mm]onth/i) || (/[Mm]onthly/i.test(name) ? [null, "1"] : null);
+
   let duration = null, durationDays = 0;
-  if (dayMatch) {
-    const d = parseInt(dayMatch[1]);
+  const dayM = name.match(/(\d+)\s*[Dd]ay/);
+  const wkM  = name.match(/(\d+)\s*[Ww]eek/i);
+  const moM  = name.match(/(\d+)\s*[Mm]onth/i) || (/[Mm]onthly/i.test(name) ? [null, "1"] : null);
+
+  if (dayM) {
+    const d = parseInt(dayM[1]);
     duration = `${d} Day${d > 1 ? "s" : ""}`;
     durationDays = d;
-  } else if (monthMatch) {
-    const m = parseInt(monthMatch[1]) || 1;
+  } else if (wkM) {
+    const w = parseInt(wkM[1]);
+    duration = `${w} Week${w > 1 ? "s" : ""}`;
+    durationDays = w * 7;
+  } else if (/weekly/i.test(name)) {
+    duration = "Weekly";
+    durationDays = 7;
+  } else if (moM) {
+    const m = parseInt(moM[1]) || 1;
     duration = `${m} Month${m > 1 ? "s" : ""}`;
     durationDays = m * 30;
+  } else if (/night/i.test(name)) {
+    duration = "Night Plan";
+    durationDays = 14;
+  } else if (/weekend/i.test(name)) {
+    duration = "Weekend";
+    durationDays = 2;
   }
-  const category = durationDays <= 1 ? "daily" : durationDays <= 7 ? "weekly" : "monthly";
+
+  let category;
+  if (n.includes("awoof")) {
+    category = "awoof";
+  } else if (n.includes("sme")) {
+    category = "top deals";
+  } else {
+    category = (durationDays > 0 && durationDays <= 7) ? "weekly" : "monthly";
+  }
+
   return { size, unit, duration, category };
 }
 
-const DATA_TABS = ["All", "Daily", "Weekly", "Monthly"];
+const DATA_TABS = ["All", "Awoof", "Top Deals", "Weekly", "Monthly"];
 
 function DataPlanGrid({ plans, selectedId, onSelect, loading, error, onRetry, cashback = 0, pointsEnabled = false, netCfg = null }) {
   const [activeTab, setActiveTab] = useState("All");
