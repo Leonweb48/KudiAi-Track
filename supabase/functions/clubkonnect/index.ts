@@ -350,6 +350,10 @@ serve(async (req) => {
     function elecStat(d: Record<string, unknown>): string {
       return String(d?.status ?? d?.Status ?? "").toUpperCase().trim();
     }
+    // CK uses "transactionstatus" inside TXN_HISTORY responses for the inner order state
+    function elecTxnStat(d: Record<string, unknown>): string {
+      return String(d?.transactionstatus ?? d?.TransactionStatus ?? d?.status ?? d?.Status ?? "").toUpperCase().trim();
+    }
 
     if (action === "electricity") {
       const { company, meterType, meterNo, amount, phone } = body as { company: string; meterType: string; meterNo: string; amount: string; phone: string };
@@ -365,7 +369,12 @@ serve(async (req) => {
       });
       console.log("electricity purchase response:", JSON.stringify(data));
 
-      const orderId = String(data.orderid ?? data.OrderID ?? data.OrderId ?? data.requestid ?? data.RequestID ?? "");
+      // CK electricity uses "transactionid" (not "orderid") — must check both
+      const orderId = String(
+        data.orderid ?? data.OrderID ?? data.OrderId ??
+        data.transactionid ?? data.TransactionID ?? data.transactionId ??
+        data.requestid ?? data.RequestID ?? ""
+      );
       const purchaseStat = elecStat(data);
       const isExplicitFail = FAIL_PATTERNS.some(p => purchaseStat.includes(p)) ||
         purchaseStat === "ORDER_CANCELLED" || purchaseStat === "CANCELLED" ||
@@ -385,25 +394,26 @@ serve(async (req) => {
         return json({ error: errMsg(data, "Electricity purchase failed"), _raw: data });
       }
 
-      // ── Priority 3: TXN_HISTORY — order already exists, query it ─────────
+      // ── Priority 3: TXN_HISTORY — previous order found, use its transactionid ──
       if (purchaseStat.includes("TXN_HISTORY")) {
-        console.log("electricity TXN_HISTORY on purchase, orderId:", orderId);
+        const txnStat = elecTxnStat(data); // inner order status (transactionstatus field)
+        console.log("electricity TXN_HISTORY: orderId=%s txnStat=%s raw=%s", orderId, txnStat, JSON.stringify(data));
         if (orderId) {
-          const q = await ck("APIQueryV1.asp", { APIKey: ELECTRICITY_K, OrderID: orderId });
-          console.log("electricity TXN_HISTORY query response:", JSON.stringify(q));
-          const token = extractElecToken(q);
-          const qCode = elecStatusCode(q);
-          const qStat = elecStat(q);
-          if (token) {
-            return json({ status: "SUCCESS", reference: orderId, token, message: qStat || "ORDER_COMPLETED" });
-          }
-          if (qCode === "200" || qStat === "ORDER_COMPLETED") {
+          // If inner order is already completed, query once to get the token
+          if (txnStat === "ORDER_COMPLETED" || txnStat === "SUCCESSFUL" || txnStat === "SUCCESS") {
+            const q = await ck("APIQueryV1.asp", { APIKey: ELECTRICITY_K, OrderID: orderId });
+            console.log("electricity TXN_HISTORY completed query:", JSON.stringify(q));
+            const token = extractElecToken(q);
+            if (token) return json({ status: "SUCCESS", reference: orderId, token, message: "ORDER_COMPLETED" });
+            // Token not in query response — return PENDING so frontend keeps polling
             return json({ status: "PENDING", reference: orderId, token: "", message: "TXN_HISTORY_COMPLETED_NO_TOKEN" });
           }
-          if (!qStat.includes("CANCEL") && !qStat.includes("FAIL")) {
+          // Inner order still pending (ORDER_RECEIVED) — return PENDING so frontend polls
+          if (!txnStat.includes("CANCEL") && !txnStat.includes("FAIL")) {
             return json({ status: "PENDING", reference: orderId, token: "", message: "TXN_HISTORY_PENDING" });
           }
         }
+        // No usable ID or order failed — show check-meter message
         return json({ status: "TXN_HISTORY", reference: orderId, token: extractElecToken(data), message: "TXN_HISTORY" });
       }
 
