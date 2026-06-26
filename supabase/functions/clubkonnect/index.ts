@@ -295,8 +295,10 @@ serve(async (req) => {
       const candidates = [
         d.token, d.Token, d.metertoken, d.MeterToken, d.meter_token,
         d.electricity_token, d.ElectricityToken, d.tokencode, d.TokenCode,
-        d.units, d.Units, d.pin, d.Pin, d.vend_token, d.VendToken,
+        d.ElecToken, d.electoken, d.Electoken, d.METERTOKEN, d.METER_TOKEN,
+        d.pin, d.Pin, d.vend_token, d.VendToken,
         d.receipt_no, d.ReceiptNo, d.receiptno, d.Receiptno,
+        // NOTE: units/Units intentionally omitted — that's kWh, not a vending token
       ];
       const found = candidates.find(v =>
         v != null && String(v).trim() !== "" &&
@@ -338,14 +340,20 @@ serve(async (req) => {
       if (elecStat(data).includes("TXN_HISTORY")) {
         console.log("electricity TXN_HISTORY on purchase, orderId:", orderId);
         if (orderId) {
-          const q = await ck("APIQueryV1.asp", { OrderID: orderId });
+          const q = await ck("APIQueryV1.asp", { APIKey: ELECTRICITY_K, OrderID: orderId });
           console.log("electricity TXN_HISTORY query response:", JSON.stringify(q));
           const token = extractElecToken(q);
           if (elecStatusCode(q) === "200" || elecStat(q) === "ORDER_COMPLETED") {
             return json({ status: "SUCCESS", reference: orderId, token, message: "ORDER_COMPLETED" });
           }
+          // Order exists but still processing (ORDER_RECEIVED / ORDER_PROCESSED / ON_HOLD) —
+          // return PENDING so the frontend polling loop takes over rather than showing check-meter immediately
+          const qStat = elecStat(q);
+          if (!qStat.includes("CANCEL") && !qStat.includes("FAIL")) {
+            return json({ status: "PENDING", reference: orderId, token: "", message: "TXN_HISTORY_PENDING" });
+          }
         }
-        // Can't recover token — return pending so frontend can show check-meter state
+        // No orderId or order was definitively cancelled/failed
         return json({ status: "TXN_HISTORY", reference: orderId, token: extractElecToken(data), message: "TXN_HISTORY" });
       }
 
@@ -355,7 +363,7 @@ serve(async (req) => {
       if (!polledToken && orderId) {
         for (let i = 0; i < 12; i++) {
           await new Promise(r => setTimeout(r, 4000));
-          const q = await ck("APIQueryV1.asp", { OrderID: orderId });
+          const q = await ck("APIQueryV1.asp", { APIKey: ELECTRICITY_K, OrderID: orderId });
           const qCode = elecStatusCode(q);
           const qStat = elecStat(q);
           console.log(`electricity poll #${i + 1}: code=${qCode} status=${qStat} body=${JSON.stringify(q).slice(0, 200)}`);
@@ -380,7 +388,7 @@ serve(async (req) => {
     if (action === "electricity-query") {
       const { orderId } = body as { orderId: string };
       if (!orderId) return json({ error: "orderId required" });
-      const q = await ck("APIQueryV1.asp", { OrderID: orderId });
+      const q = await ck("APIQueryV1.asp", { APIKey: ELECTRICITY_K, OrderID: orderId });
       console.log("electricity-query response:", JSON.stringify(q));
       const qCode = elecStatusCode(q);
       const qStat = elecStat(q);
