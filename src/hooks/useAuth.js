@@ -3,7 +3,7 @@ import { supabase, supabaseConfigured } from "../utils/supabase";
 import { Capacitor } from "@capacitor/core";
 import { App } from "@capacitor/app";
 import { Browser } from "@capacitor/browser";
-import { fetchAndCachePlans, normalizeSlug, hasHigherPlanAvailable } from "../utils/plans";
+import { fetchAndCachePlans, invalidatePlansCache, normalizeSlug, hasHigherPlanAvailable } from "../utils/plans";
 
 const CACHE_KEY = "kuditrack_plan";
 const SESSION_LOGGED_KEY = "kuditrack_sess_logged";
@@ -550,6 +550,18 @@ export function useAuth() {
     setStatus("loading");
     supabase.auth.getSession().then(({ data }) => resolve(data.session));
   }, [resolve]);
+
+  // Realtime: invalidate plans cache the moment admin changes any plan in the DB
+  useEffect(() => {
+    const channel = supabase
+      .channel("plans_realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "subscription_plans" }, () => {
+        invalidatePlansCache();
+        fetchAndCachePlans(supabase).catch(() => {});
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
 
   return { status, session, plan, setReady, refetch, upgradeAvailable, staff, ajoClient, orgMember, adminUser, marketer, org, ownerId: staff?.owner_id ?? null };
 }

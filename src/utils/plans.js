@@ -102,11 +102,10 @@ const FALLBACK_PLANS = {
   },
 };
 
-// ── Module-level cache ─────────────────────────────────────────────────────────
+// ── Module-level cache (in-memory only — no localStorage so admin changes reflect immediately) ──
 let _cache = null;
 let _cacheExpiry = 0;
-const CACHE_KEY = "kuditrack_plans_v2";
-const CACHE_TTL = 10 * 60 * 1000;
+const CACHE_TTL = 2 * 60 * 1000; // 2-min in-session TTL; Realtime invalidates sooner
 
 // Legacy slug mapping
 const LEGACY_MAP = {
@@ -125,20 +124,7 @@ export function normalizeSlug(slug) {
 // ── fetchAndCachePlans ────────────────────────────────────────────────────────
 export async function fetchAndCachePlans(supabaseClient) {
   const now = Date.now();
-
   if (_cache && now < _cacheExpiry) return _cache;
-
-  try {
-    const raw = localStorage.getItem(CACHE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed?.expiry > now && parsed?.plans && Object.keys(parsed.plans).length > 0) {
-        _cache = parsed.plans;
-        _cacheExpiry = parsed.expiry;
-        return _cache;
-      }
-    }
-  } catch {}
 
   try {
     const { data, error } = await supabaseClient
@@ -159,9 +145,6 @@ export async function fetchAndCachePlans(supabaseClient) {
       });
       _cache = bySlug;
       _cacheExpiry = now + CACHE_TTL;
-      try {
-        localStorage.setItem(CACHE_KEY, JSON.stringify({ plans: bySlug, expiry: _cacheExpiry }));
-      } catch {}
       return _cache;
     }
   } catch {}
@@ -169,11 +152,10 @@ export async function fetchAndCachePlans(supabaseClient) {
   return null;
 }
 
-// Force-invalidate cache (call after a plan change in admin portal)
+// Force-invalidate cache — called by Realtime subscription when admin changes plans
 export function invalidatePlansCache() {
   _cache = null;
   _cacheExpiry = 0;
-  try { localStorage.removeItem(CACHE_KEY); } catch {}
 }
 
 // ── Synchronous helpers ───────────────────────────────────────────────────────
