@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import Icon   from "../components/Icon";
 import Modal  from "../components/shared/Modal";
-import { canDo, upgradeLabel } from "../utils/plans";
+import { canDo, upgradeLabel, planAvailableText } from "../utils/plans";
 import Field  from "../components/shared/Field";
 import Badge  from "../components/shared/Badge";
 import { CreditReceipt, CreditPaymentReceipt } from "../components/shared/Receipt";
