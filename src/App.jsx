@@ -42,6 +42,7 @@ import { useBiometricLock }  from "./hooks/useBiometricLock";
 import { useLoyalty }        from "./hooks/useLoyalty";
 import { useBranches }       from "./hooks/useBranches";
 import { LanguageProvider }  from "./contexts/LanguageContext";
+import { canDo }             from "./utils/plans";
 
 function Spinner() {
   return (
@@ -356,6 +357,8 @@ export default function App() {
           store={{ ...store, ...branchesHook }}
           userId={userId}
           inventory={inventory}
+          plan={plan}
+          onUpgrade={openUpgrade}
           onReport={(filteredStore) => setBranchReport(filteredStore)}
           onClose={() => setShowBranches(false)}
         />
@@ -373,8 +376,8 @@ export default function App() {
         </div>
       )}
 
-      {/* AI Business Assistant — full-screen overlay, z-50 */}
-      {showAI && (
+      {/* AI Business Assistant — full-screen overlay, z-50 (gated to aiChatbot feature) */}
+      {showAI && canDo(plan, "aiChatbot") && (
         <AIAssistant
           store={store}
           inventory={inventory}
@@ -385,7 +388,7 @@ export default function App() {
       )}
 
       {/* Floating AI Chat Widget — visible on all screens when full-screen AI is closed */}
-      {!showAI && (
+      {!showAI && canDo(plan, "aiChatbot") && (
         <AIChatWidget store={store} inventory={inventory} branches={branchesHook.branches} />
       )}
 

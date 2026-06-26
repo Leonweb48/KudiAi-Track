@@ -8,7 +8,7 @@ import { AsoReceipt, AjoTxReceipt } from "../components/shared/Receipt";
 import { ClientProfile } from "../components/shared/ClientProfile";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import { supabase } from "../utils/supabase";
-import { canDo } from "../utils/plans";
+import { canDo, featureLimit } from "../utils/plans";
 import { fmt, today } from "../utils/helpers";
 import { useT } from "../contexts/LanguageContext";
 import { getLang, speakConfirmation } from "../utils/i18n";
@@ -345,6 +345,12 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const saveGroup = async () => {
     if (!gf.name) { setGroupError("Group name is required"); return; }
     if (!profile?.id) return;
+    const asoLimit = featureLimit(plan, "aso");
+    if (asoLimit !== Infinity && groups.length >= asoLimit) {
+      setGroupError(`Your plan allows up to ${asoLimit} Ajo group${asoLimit !== 1 ? "s" : ""}. Upgrade to create more.`);
+      onUpgrade?.();
+      return;
+    }
     setGroupSaving(true); setGroupError("");
     try {
       const { data, error } = await supabase.functions.invoke("ajo-portal", {

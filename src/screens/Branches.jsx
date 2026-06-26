@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import Modal from "../components/shared/Modal";
 import { useBranches } from "../hooks/useBranches";
+import { featureLimit } from "../utils/plans";
 import { supabase } from "../utils/supabase";
 import { fmt } from "../utils/helpers";
 
@@ -556,7 +557,7 @@ function BranchDetail({ branch, transactions, credits, asoClients, allProducts, 
 }
 
 // ── Main Branches screen ──────────────────────────────────────────────────
-export default function Branches({ store, onClose, userId, inventory = {}, onReport }) {
+export default function Branches({ store, onClose, userId, inventory = {}, onReport, plan = "kobo", onUpgrade }) {
   const { branches, loading: branchLoading, addBranch, updateBranch, deleteBranch } = useBranches(userId);
   const { transactions = [], credits = [], asoClients = [], staffMap = {} } = store;
   const { products: allProducts = [], movements: allMovements = [] } = inventory;
@@ -653,7 +654,11 @@ export default function Branches({ store, onClose, userId, inventory = {}, onRep
           </svg>
         </button>
         <h1 className="flex-1 text-lg font-extrabold text-slate-800 dark:text-white">Branch Management</h1>
-        <button onClick={() => setShowAdd(true)}
+        <button onClick={() => {
+            const branchLimit = featureLimit(plan, "branches");
+            if (branchLimit !== Infinity && branches.length >= branchLimit) { onUpgrade?.(); return; }
+            setShowAdd(true);
+          }}
           className="flex items-center gap-1.5 bg-violet-600 text-white px-3 py-2 rounded-xl text-sm font-bold shadow-sm active:scale-95 transition">
           <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
             <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />

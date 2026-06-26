@@ -740,17 +740,30 @@ function AdminUsers({ session, currentAdmin }) {
 
 // ── Plans Manager ──────────────────────────────────────────────────────────────
 const ALL_FEATURE_KEYS = [
-  { key: "aso",            label: "Ajo/Savings Groups" },
-  { key: "pdfExport",      label: "PDF Reports & Export" },
-  { key: "staffManagement",label: "Staff Management" },
-  { key: "inventory",      label: "Inventory Management" },
-  { key: "loyalty",        label: "Loyalty Program" },
-  { key: "aiInsights",     label: "AI Business Insights" },
-  { key: "branches",       label: "Branch Management" },
-  { key: "apiAccess",      label: "API Access" },
-  { key: "loanAccess",     label: "Business Loan Access" },
-  { key: "printWholesale", label: "Print Wholesale (Airtime & Data)" },
+  { key: "credit",          label: "Credit Management" },
+  { key: "aso",             label: "Ajo/Savings Groups" },
+  { key: "pdfExport",       label: "PDF Reports & Export" },
+  { key: "staffManagement", label: "Staff Management" },
+  { key: "inventory",       label: "Inventory Management" },
+  { key: "loyalty",         label: "Loyalty Program" },
+  { key: "aiInsights",      label: "AI Business Insights" },
+  { key: "aiChatbot",       label: "AI Chatbot" },
+  { key: "branches",        label: "Branch Management" },
+  { key: "organisation",    label: "Organisation / Coop" },
+  { key: "apiAccess",       label: "API Access" },
+  { key: "loanAccess",      label: "Business Loan Access" },
+  { key: "printWholesale",  label: "Print Wholesale (Airtime & Data)" },
 ];
+
+// Features with a numeric cap — shown as an inline count input when enabled
+const COUNTABLE_FEATURE_LABELS = {
+  aso:             "Max groups",
+  staffManagement: "Max staff",
+  branches:        "Max branches",
+  organisation:    "Max orgs",
+  inventory:       "Max items",
+  loyalty:         "Max members",
+};
 
 function PlansManager() {
   const [plans, setPlans]   = useState([]);
@@ -786,6 +799,7 @@ function PlansManager() {
       sort_order:        plan.sort_order,
       is_active:         plan.is_active,
       feature_keys:      Array.isArray(plan.feature_keys) ? plan.feature_keys : [],
+      feature_limits:    (plan.feature_limits && typeof plan.feature_limits === "object") ? plan.feature_limits : {},
       features:          Array.isArray(plan.features) ? plan.features.join("\n") : "",
     });
     setMsg("");
@@ -815,6 +829,7 @@ function PlansManager() {
         sort_order:        Number(form.sort_order),
         is_active:         form.is_active,
         feature_keys:      form.feature_keys,
+        feature_limits:    form.feature_limits || {},
         features:          form.features.split("\n").map(s => s.trim()).filter(Boolean),
         updated_at:        new Date().toISOString(),
       };
@@ -908,20 +923,45 @@ function PlansManager() {
         </div>
 
         <div>
-          <label className="block text-[11px] font-semibold text-slate-500 mb-2">Feature Keys</label>
-          <div className="grid grid-cols-2 gap-2">
-            {ALL_FEATURE_KEYS.map(({ key, label }) => (
-              <label key={key} className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={f.feature_keys.includes(key)}
-                  onChange={() => toggleKey(key)}
-                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                />
-                <span className="text-xs text-slate-700">{label}</span>
-              </label>
-            ))}
+          <label className="block text-[11px] font-semibold text-slate-500 mb-2">Features &amp; Limits</label>
+          <div className="space-y-2">
+            {ALL_FEATURE_KEYS.map(({ key, label }) => {
+              const isOn = f.feature_keys.includes(key);
+              const countLabel = COUNTABLE_FEATURE_LABELS[key];
+              const limitVal = f.feature_limits?.[key];
+              const displayVal = (limitVal === undefined || limitVal === null || Number(limitVal) >= 999999) ? "" : String(limitVal);
+              return (
+                <div key={key} className="flex items-center gap-2 min-h-[28px]">
+                  <label className="flex items-center gap-2 cursor-pointer flex-1">
+                    <input
+                      type="checkbox"
+                      checked={isOn}
+                      onChange={() => toggleKey(key)}
+                      className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 shrink-0"
+                    />
+                    <span className="text-xs text-slate-700">{label}</span>
+                  </label>
+                  {countLabel && isOn && (
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className="text-[10px] text-slate-400 whitespace-nowrap">{countLabel}:</span>
+                      <input
+                        type="number"
+                        min="0"
+                        placeholder="∞"
+                        value={displayVal}
+                        onChange={e => {
+                          const v = e.target.value === "" ? 999999 : Math.max(0, Number(e.target.value));
+                          setForm(x => ({ ...x, feature_limits: { ...x.feature_limits, [key]: v } }));
+                        }}
+                        className="w-20 border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
+          <p className="text-[10px] text-slate-400 mt-2">Leave count blank = unlimited. Changes take effect for all businesses on this plan immediately.</p>
         </div>
 
         <div>

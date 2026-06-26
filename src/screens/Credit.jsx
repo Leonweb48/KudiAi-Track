@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import Icon   from "../components/Icon";
 import Modal  from "../components/shared/Modal";
+import { canDo } from "../utils/plans";
 import Field  from "../components/shared/Field";
 import Badge  from "../components/shared/Badge";
 import { CreditReceipt, CreditPaymentReceipt } from "../components/shared/Receipt";
@@ -82,6 +83,25 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
   useEffect(() => {
     if (autoOpen) { setShowAdd(true); onAutoOpened?.(); }
   }, [autoOpen, onAutoOpened]);
+
+  if (!canDo(plan, "credit")) {
+    return (
+      <div className="px-4 pt-20 pb-28 flex flex-col items-center text-center screen-enter">
+        <div className="w-24 h-24 bg-blue-50 dark:bg-blue-900/20 rounded-full flex items-center justify-center mb-5">
+          <svg width={44} height={44} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" className="text-blue-600">
+            <rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/>
+          </svg>
+        </div>
+        <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-2">Credit Management</h2>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 max-w-xs leading-relaxed">
+          Track credit sales, manage repayments, and monitor outstanding balances. Upgrade to access credit management.
+        </p>
+        <button onClick={onUpgrade} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-2xl font-bold text-sm active:scale-95 transition shadow-md">
+          Upgrade Plan
+        </button>
+      </div>
+    );
+  }
 
   // Aggregate stats
   const totalDebt   = credits.reduce((s, c) => s + (c.total_amount  || 0), 0);

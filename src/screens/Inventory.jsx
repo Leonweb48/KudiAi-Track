@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { fmt } from "../utils/helpers";
-import { canDo } from "../utils/plans";
+import { canDo, featureLimit } from "../utils/plans";
 import { useT } from "../contexts/LanguageContext";
 import { getLang, speakConfirmation } from "../utils/i18n";
 
@@ -578,6 +578,16 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
     return matchSearch && matchCat;
   });
 
+  const openAddForm = () => {
+    const invLimit = featureLimit(plan, "inventory");
+    if (invLimit !== Infinity && products.length >= invLimit) {
+      onUpgrade?.();
+      return;
+    }
+    setEditProd(null);
+    setShowForm(true);
+  };
+
   const handleSave = async (formData) => {
     setSaving(true);
     const isNew = !editProd?.id;
@@ -629,7 +639,7 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
               </svg>
             </button>
             {canAddStock && (
-              <button onClick={() => { setEditProd(null); setShowForm(true); }}
+              <button onClick={openAddForm}
                 className="flex items-center gap-1.5 px-3.5 py-2 bg-green-600 text-white text-xs font-extrabold rounded-xl active:scale-95 transition shadow-sm">
                 <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
                 Add Stock
@@ -720,7 +730,7 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
               {canAddStock ? "Add your first product to start tracking stock" : "No products have been added yet"}
             </p>
             {canAddStock && (
-              <button onClick={() => setShowForm(true)}
+              <button onClick={openAddForm}
                 className="px-5 py-2.5 bg-green-600 text-white font-bold text-sm rounded-xl active:scale-95 transition">
                 Add First Product
               </button>

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { supabase } from "../utils/supabase";
+import { featureLimit } from "../utils/plans";
 
 const ROLES = [
   { id: "cashier",        label: "Cashier",        color: "blue"   },
@@ -337,6 +338,12 @@ export default function StaffManagement({ session, plan = "starter", onBack }) {
     if (!form.email.trim())     { setError("Email is required"); return; }
     if (loginPassword.length < 8) { setError("Temporary password must be at least 8 characters"); return; }
     if (loginPassword !== confirmPassword) { setError("Passwords do not match"); return; }
+
+    const staffLimit = featureLimit(plan, "staffManagement");
+    if (staffLimit !== Infinity && staffList.length >= staffLimit) {
+      setError(`Your plan allows up to ${staffLimit} staff member${staffLimit !== 1 ? "s" : ""}. Upgrade to add more.`);
+      return;
+    }
 
     setSaving(true);
     let staffRow = null;

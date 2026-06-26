@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import Icon from "../components/Icon";
 import Modal from "../components/shared/Modal";
-import { canDo } from "../utils/plans";
+import { canDo, featureLimit } from "../utils/plans";
 
 const TIER = (totalPts) => {
   if (totalPts >= 500) return { label: "Gold",   color: "text-yellow-500 dark:text-yellow-400", bg: "bg-yellow-50 dark:bg-yellow-900/20" };
@@ -496,7 +496,11 @@ export default function Loyalty({ loyalty, plan, onUpgrade, onClose }) {
           <button onClick={() => setShowSettings(true)} className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
             <Icon name="settings" size={19} />
           </button>
-          <button onClick={() => setShowAdd(true)}
+          <button onClick={() => {
+              const loyaltyLimit = featureLimit(plan, "loyalty");
+              if (loyaltyLimit !== Infinity && customers.length >= loyaltyLimit) { onUpgrade?.(); return; }
+              setShowAdd(true);
+            }}
             className="flex items-center gap-1.5 bg-green-600 text-white px-3 py-2 rounded-xl text-sm font-bold shadow-sm">
             <Icon name="plus" size={15} />
             Add
