@@ -1383,8 +1383,13 @@ export default function BillPayments({ store, plan, session = null, staffName = 
   const [useCashback,     setUseCashback]     = useState(false);
   const [histCat,         setHistCat]         = useState("all");
   const [histStatus,      setHistStatus]      = useState("all");
-  const pointsBalanceRef   = useRef(0);
-  const cashbackBalanceRef = useRef(0);
+  const [billCouponCode,     setBillCouponCode]     = useState("");
+  const [billAppliedCoupon,  setBillAppliedCoupon]  = useState(null);
+  const [billCouponMsg,      setBillCouponMsg]      = useState(null);
+  const [billCouponLoading,  setBillCouponLoading]  = useState(false);
+  const pointsBalanceRef     = useRef(0);
+  const cashbackBalanceRef   = useRef(0);
+  const billAppliedCouponRef = useRef(null);
 
   // Ref for updating DB + sending email when electricity token arrives via polling
   const elecPendingCbRef = useRef(null);
@@ -1682,6 +1687,39 @@ export default function BillPayments({ store, plan, session = null, staffName = 
   };
 
   // ── Step 1: Validate form, initialize Paystack, redirect to checkout ──────────
+  const applyBillCoupon = async () => {
+    const code = billCouponCode.trim();
+    if (!code) return;
+    setBillCouponLoading(true); setBillCouponMsg(null);
+    try {
+      const { data, error: rpcErr } = await supabase.rpc("check_coupon", { p_code: code });
+      if (rpcErr) throw rpcErr;
+      if (!data?.valid) {
+        setBillCouponMsg({ text: data?.message || "Invalid coupon", ok: false });
+        setBillAppliedCoupon(null); billAppliedCouponRef.current = null;
+      } else {
+        const appliesTo = data.applies_to || [];
+        if (appliesTo.length > 0 && !appliesTo.includes("bills")) {
+          setBillCouponMsg({ text: "This coupon is not valid for bill payments", ok: false });
+          setBillAppliedCoupon(null); billAppliedCouponRef.current = null;
+        } else {
+          const coupon = {
+            code: data.code || code.toUpperCase(),
+            type: data.type, value: data.value,
+            applies_to: appliesTo, min_amount: data.min_amount || 0,
+          };
+          setBillAppliedCoupon(coupon); billAppliedCouponRef.current = coupon;
+          setBillCouponMsg({ text: data.message || "Coupon applied!", ok: true });
+        }
+      }
+    } catch (e) {
+      setBillCouponMsg({ text: e.message || "Failed to apply coupon", ok: false });
+      setBillAppliedCoupon(null); billAppliedCouponRef.current = null;
+    } finally {
+      setBillCouponLoading(false);
+    }
+  };
+
   const handlePay = async () => {
     setError(""); setSaving(true);
     try {
@@ -1725,13 +1763,28 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       const cashbackDiscount = useCashback && cashbackBalanceRef.current > 0
         ? Math.min(cashbackBalanceRef.current, Math.max(0, chargeAmount - pointsDiscount - 1))
         : 0;
-      const finalAmount = chargeAmount - pointsDiscount - cashbackDiscount;
+      // Coupon discount
+      const activeCoupon = billAppliedCouponRef.current;
+      const afterDiscounts = chargeAmount - pointsDiscount - cashbackDiscount;
+      const couponDiscount = (() => {
+        const c = activeCoupon;
+        if (!c || afterDiscounts <= 0) return 0;
+        if ((c.applies_to || []).length > 0 && !c.applies_to.includes("bills")) return 0;
+        if (chargeAmount < (c.min_amount || 0)) return 0;
+        return c.type === "percentage"
+          ? Math.round(chargeAmount * c.value / 100 * 100) / 100
+          : Math.min(c.value, afterDiscounts);
+      })();
+      const finalAmount = Math.max(0, afterDiscounts - couponDiscount);
 
       // Store bill details so we can fulfill after payment return
       const ref = `KDT-BILL-${Date.now()}`;
       localStorage.setItem(BILL_PENDING_PREFIX + ref, JSON.stringify({
         cat: selectedCat, form: { ...form }, verifyName,
         paidAmount: finalAmount, baseAmount: chargeAmount, pointsDiscount, cashbackUsed: cashbackDiscount,
+        couponCode: activeCoupon?.code || null,
+        couponDiscount,
+        couponOriginalAmount: afterDiscounts,
       }));
 
       // Initialize Paystack — prefer owner profile email, fall back to staff email
@@ -1957,6 +2010,22 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         }
       }
 
+      // Coupon redemption
+      const { couponCode: usedCouponCode, couponDiscount: couponDiscountAmt = 0, couponOriginalAmount = 0 } = pending;
+      if (usedCouponCode && couponDiscountAmt > 0) {
+        Promise.resolve(supabase.rpc("redeem_coupon", {
+          p_code:            usedCouponCode,
+          p_plan_slug:       "bills",
+          p_billing_cycle:   "monthly",
+          p_original_amount: couponOriginalAmount,
+          p_discount_amount: couponDiscountAmt,
+          p_final_amount:    Math.max(0, couponOriginalAmount - couponDiscountAmt),
+          p_reference:       ref,
+        })).catch(() => null);
+        setBillAppliedCoupon(null); billAppliedCouponRef.current = null;
+        setBillCouponCode(""); setBillCouponMsg(null);
+      }
+
       localStorage.removeItem(BILL_PENDING_PREFIX + ref);
       setSaving(false);
       setFulfillResult({ ok: true, label: itemName, detail: note, pinsArr: pinsArr || [], psRef: ref, apiRef, cardDetails, cat, amount: totalAmount || amount, earnedPts, txnHistoryPending, elecToken, elecOrderId, formSnap: { ...f } });
@@ -2062,6 +2131,15 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     ? Math.min(pointsBalance, Math.floor(uiChargeAmt * 0.5)) : 0;
   const cbSavings = useCashback && cashbackBalance > 0
     ? Math.min(cashbackBalance, Math.max(0, uiChargeAmt - ptsSavings - 1)) : 0;
+  const billCouponSavings = (() => {
+    const c = billAppliedCoupon;
+    if (!c || uiChargeAmt <= 0) return 0;
+    if ((c.applies_to || []).length > 0 && !c.applies_to.includes("bills")) return 0;
+    if (uiChargeAmt < (c.min_amount || 0)) return 0;
+    return c.type === "percentage"
+      ? Math.round(uiChargeAmt * c.value / 100 * 100) / 100
+      : Math.min(c.value, uiChargeAmt);
+  })();
 
   // Dynamic network brand theme — active when a network service has a network selected
   const NET_CATS = new Set(["airtime", "data", "print-airtime", "print-data"]);
@@ -2696,6 +2774,44 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                 </div>
               )}
 
+              {/* Coupon code */}
+              {uiChargeAmt > 0 && (
+                <div className="border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3">
+                  <p className="text-xs font-black text-slate-700 dark:text-slate-200 mb-2">Have a coupon code?</p>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Enter code"
+                      value={billCouponCode}
+                      onChange={e => {
+                        setBillCouponCode(e.target.value);
+                        setBillCouponMsg(null);
+                        if (!e.target.value.trim()) { setBillAppliedCoupon(null); billAppliedCouponRef.current = null; }
+                      }}
+                      onKeyDown={e => e.key === "Enter" && applyBillCoupon()}
+                      className="flex-1 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-green-500"
+                    />
+                    <button
+                      onClick={applyBillCoupon}
+                      disabled={!billCouponCode.trim() || billCouponLoading}
+                      className="px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-sm font-semibold transition-colors min-w-[60px]"
+                    >
+                      {billCouponLoading ? "…" : billAppliedCoupon ? "✓ On" : "Apply"}
+                    </button>
+                  </div>
+                  {billCouponMsg && (
+                    <p className={`mt-1.5 text-[11px] font-medium ${billCouponMsg.ok ? "text-green-600 dark:text-green-400" : "text-red-500"}`}>
+                      {billCouponMsg.text}
+                    </p>
+                  )}
+                  {billAppliedCoupon && billCouponSavings > 0 && (
+                    <p className="mt-1 text-[11px] font-bold text-green-600 dark:text-green-400">
+                      Saves ₦{billCouponSavings.toLocaleString()} on this payment
+                    </p>
+                  )}
+                </div>
+              )}
+
               {staffName && (
                 <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl px-4 py-2.5 flex items-center gap-2">
                   <Ico d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2|M12 11a4 4 0 100-8 4 4 0 000 8" size={14} c="#3b82f6" />
@@ -2713,7 +2829,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                     selectedCat === "print-airtime"   ? `Pay with Paystack · ${form.quantity || 1} × ₦${form.value}` :
                     selectedCat === "print-data"      ? `Pay with Paystack · ${form.quantity || 1} Plan${parseInt(form.quantity||"1")>1?"s":""}` :
                     selectedCat === "airtime-bundle"  ? (parseInt(form.sets||"0")>0 ? `Pay ₦${uiChargeAmt.toLocaleString()} · ${form.sets} Bundle Set${parseInt(form.sets)>1?"s":""}` : "Select number of sets") :
-                    form.amount ? `Pay ${fmt(uiChargeAmt - ptsSavings - cbSavings)} with Paystack${ptsSavings > 0 || cbSavings > 0 ? ` · savings applied` : ""}` : `Pay with Paystack`
+                    form.amount ? `Pay ${fmt(uiChargeAmt - ptsSavings - cbSavings - billCouponSavings)} with Paystack${ptsSavings > 0 || cbSavings > 0 || billCouponSavings > 0 ? ` · savings applied` : ""}` : `Pay with Paystack`
                   )}
                 </button>
               </div>
