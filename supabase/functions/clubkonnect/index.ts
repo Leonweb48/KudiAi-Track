@@ -292,20 +292,55 @@ serve(async (req) => {
     // ── Electricity purchase ──────────────────────────────────────────────────
     // ── Electricity token extraction helper (shared by purchase + query) ─────────
     function extractElecToken(d: Record<string, unknown>): string {
-      const candidates = [
-        d.token, d.Token, d.metertoken, d.MeterToken, d.meter_token,
-        d.electricity_token, d.ElectricityToken, d.tokencode, d.TokenCode,
-        d.ElecToken, d.electoken, d.Electoken, d.METERTOKEN, d.METER_TOKEN,
-        d.pin, d.Pin, d.vend_token, d.VendToken,
-        d.receipt_no, d.ReceiptNo, d.receiptno, d.Receiptno,
-        // NOTE: units/Units intentionally omitted — that's kWh, not a vending token
+      // 1. Check all known field names at top level
+      const NAMED_KEYS = [
+        "token", "Token", "metertoken", "MeterToken", "Metertoken", "meter_token",
+        "electricity_token", "ElectricityToken", "tokencode", "TokenCode",
+        "ElecToken", "electoken", "Electoken", "METERTOKEN", "METER_TOKEN",
+        "vend_token", "VendToken", "recharge_token", "RechargeToken",
+        "Rechargetoken", "rechargetoken", "receipt_no", "ReceiptNo",
+        "receiptno", "Receiptno", "pin", "Pin", "ELEC_TOKEN", "elec_token",
+        "vendtoken", "Vendtoken", "VENDtoken",
       ];
-      const found = candidates.find(v =>
-        v != null && String(v).trim() !== "" &&
-        String(v).toLowerCase() !== "null" &&
-        String(v).toLowerCase() !== "undefined"
-      );
-      return found ? String(found).trim() : "";
+      for (const k of NAMED_KEYS) {
+        const v = (d as Record<string, unknown>)[k];
+        if (v != null) {
+          const s = String(v).trim();
+          if (s && s !== "null" && s !== "undefined" && s.length >= 4) return s;
+        }
+      }
+      // 2. Deep-scan every value for 16+ consecutive digit strings (STS token pattern)
+      // Nigerian prepaid tokens are 20 digits, often grouped with spaces/dashes
+      const SKIP = new Set([
+        "statuscode", "StatusCode", "status", "Status", "orderid", "OrderID",
+        "requestid", "RequestID", "amount", "Amount", "units", "Units",
+        "phoneno", "PhoneNo", "meterno", "MeterNo", "userid", "UserID",
+        "electriccompany", "ElectricCompany", "metertype", "MeterType",
+        "callbackurl", "CallBackURL", "_http",
+      ]);
+      function deepScan(obj: Record<string, unknown>, depth: number): string {
+        if (depth > 4) return "";
+        for (const [k, v] of Object.entries(obj)) {
+          if (SKIP.has(k)) continue;
+          if (typeof v === "string" || typeof v === "number") {
+            const s = String(v).replace(/[\s\-]/g, "");
+            if (/^\d{16,}$/.test(s)) return String(v).trim();
+          }
+          if (v !== null && typeof v === "object" && !Array.isArray(v)) {
+            const found = deepScan(v as Record<string, unknown>, depth + 1);
+            if (found) return found;
+          }
+        }
+        return "";
+      }
+      const scanned = deepScan(d, 0);
+      if (scanned) return scanned;
+      // 3. Fallback: parse _raw string for 20-digit token if JSON was unparseable
+      if (typeof d._raw === "string") {
+        const m = d._raw.match(/\b(\d{20})\b/);
+        if (m) return m[1];
+      }
+      return "";
     }
 
     function elecStatusCode(d: Record<string, unknown>): string {
@@ -338,17 +373,22 @@ serve(async (req) => {
 
       // TXN_HISTORY on the initial purchase — order already exists, query it
       if (elecStat(data).includes("TXN_HISTORY")) {
-        console.log("electricity TXN_HISTORY on purchase, orderId:", orderId);
+        console.log("electricity TXN_HISTORY on purchase, orderId:", orderId, "full purchase response:", JSON.stringify(data));
         if (orderId) {
           const q = await ck("APIQueryV1.asp", { APIKey: ELECTRICITY_K, OrderID: orderId });
           console.log("electricity TXN_HISTORY query response:", JSON.stringify(q));
           const token = extractElecToken(q);
-          if (elecStatusCode(q) === "200" || elecStat(q) === "ORDER_COMPLETED") {
-            return json({ status: "SUCCESS", reference: orderId, token, message: "ORDER_COMPLETED" });
-          }
-          // Order exists but still processing (ORDER_RECEIVED / ORDER_PROCESSED / ON_HOLD) —
-          // return PENDING so the frontend polling loop takes over rather than showing check-meter immediately
+          const qCode = elecStatusCode(q);
           const qStat = elecStat(q);
+          // If we have a token, return it regardless of status
+          if (token) {
+            return json({ status: "SUCCESS", reference: orderId, token, message: qStat || "ORDER_COMPLETED" });
+          }
+          if (qCode === "200" || qStat === "ORDER_COMPLETED") {
+            // Completed but no token — hand off to frontend polling to keep trying
+            return json({ status: "PENDING", reference: orderId, token: "", message: "TXN_HISTORY_COMPLETED_NO_TOKEN" });
+          }
+          // Order exists but still processing (ORDER_RECEIVED / ORDER_PROCESSED / ON_HOLD)
           if (!qStat.includes("CANCEL") && !qStat.includes("FAIL")) {
             return json({ status: "PENDING", reference: orderId, token: "", message: "TXN_HISTORY_PENDING" });
           }
@@ -357,28 +397,40 @@ serve(async (req) => {
         return json({ status: "TXN_HISTORY", reference: orderId, token: extractElecToken(data), message: "TXN_HISTORY" });
       }
 
-      // ORDER_RECEIVED / ORDER_PROCESSED — poll until ORDER_COMPLETED (max 50s)
+      // ORDER_RECEIVED / ORDER_PROCESSED — poll until ORDER_COMPLETED (max ~88s = 22×4s)
       // ClubKonnect processes asynchronously; token only appears in ORDER_COMPLETED response
       let polledToken = extractElecToken(data);
       if (!polledToken && orderId) {
-        for (let i = 0; i < 12; i++) {
+        let completedButNoToken = 0; // track how many times we saw ORDER_COMPLETED with no token
+        for (let i = 0; i < 22; i++) {
           await new Promise(r => setTimeout(r, 4000));
           const q = await ck("APIQueryV1.asp", { APIKey: ELECTRICITY_K, OrderID: orderId });
           const qCode = elecStatusCode(q);
           const qStat = elecStat(q);
-          console.log(`electricity poll #${i + 1}: code=${qCode} status=${qStat} body=${JSON.stringify(q).slice(0, 200)}`);
+          const qToken = extractElecToken(q);
+          console.log(`electricity poll #${i + 1}: code=${qCode} status=${qStat} token=${qToken || "(none)"} full=${JSON.stringify(q)}`);
 
+          if (qToken) {
+            // Token found — regardless of status code, we have what we need
+            return json({ status: "SUCCESS", reference: orderId, token: qToken, message: qStat || "ORDER_COMPLETED" });
+          }
           if (qCode === "200" || qStat === "ORDER_COMPLETED") {
-            polledToken = extractElecToken(q);
-            return json({ status: "SUCCESS", reference: orderId, token: polledToken, message: "ORDER_COMPLETED" });
+            // Order completed but token not in response yet — CK sometimes delivers token slightly late
+            completedButNoToken++;
+            console.log(`electricity poll #${i + 1}: ORDER_COMPLETED but no token (attempt ${completedButNoToken}/5)`);
+            if (completedButNoToken >= 5) {
+              // Give up waiting for token — return PENDING so frontend can keep checking
+              break;
+            }
+            continue; // keep polling even though CK says completed
           }
           if (qCode.startsWith("5") || qStat === "ORDER_CANCELLED") {
             return json({ error: errMsg(q, "Electricity order cancelled by provider"), _raw: q });
           }
           // ORDER_RECEIVED (100), ORDER_PROCESSED (300), ORDER_ONHOLD (6xx) → keep polling
         }
-        // Still pending after 48s — return PENDING so frontend can keep polling
-        return json({ status: "PENDING", reference: orderId, token: "", message: "ORDER_RECEIVED" });
+        // Still pending after polling window — return PENDING so frontend can keep polling
+        return json({ status: "PENDING", reference: orderId, token: "", message: completedButNoToken > 0 ? "ORDER_COMPLETED_NO_TOKEN" : "ORDER_RECEIVED" });
       }
 
       return json({ status: "SUCCESS", reference: orderId, token: polledToken, message: String(data.status ?? "ORDER_RECEIVED") });
@@ -389,12 +441,17 @@ serve(async (req) => {
       const { orderId } = body as { orderId: string };
       if (!orderId) return json({ error: "orderId required" });
       const q = await ck("APIQueryV1.asp", { APIKey: ELECTRICITY_K, OrderID: orderId });
-      console.log("electricity-query response:", JSON.stringify(q));
+      console.log("electricity-query full response:", JSON.stringify(q));
       const qCode = elecStatusCode(q);
       const qStat = elecStat(q);
       const token = extractElecToken(q);
+      // Return SUCCESS as soon as we have a token — regardless of status code
+      if (token) {
+        return json({ status: "SUCCESS", reference: orderId, token, message: qStat || "ORDER_COMPLETED" });
+      }
       if (qCode === "200" || qStat === "ORDER_COMPLETED") {
-        return json({ status: "SUCCESS", reference: orderId, token, message: "ORDER_COMPLETED" });
+        // Completed but CK didn't include the token in this poll — keep PENDING so frontend retries
+        return json({ status: "PENDING", reference: orderId, token: "", message: "ORDER_COMPLETED_NO_TOKEN" });
       }
       if (qCode.startsWith("5") || qStat === "ORDER_CANCELLED") {
         return json({ status: "CANCELLED", reference: orderId, token: "", message: errMsg(q, "Order cancelled") });
