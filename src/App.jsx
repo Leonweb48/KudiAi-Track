@@ -67,9 +67,17 @@ export default function App() {
   const [voiceOpen,   setVoiceOpen]   = useState(false);
   const [showUpgrade,  setShowUpgrade]  = useState(() => {
     const p = new URLSearchParams(window.location.search);
+
+    // Bill-payment returns always win — never show the upgrade screen over a bill confirmation
+    const billRef = p.get("bill_ref") || p.get("trxref") || p.get("reference");
+    const hasBillPending = billRef
+      ? !!localStorage.getItem(`ck_bill_pending_${billRef}`)
+      : Object.keys(localStorage).some(k => k.startsWith("ck_bill_pending_"));
+    if (hasBillPending) return false;
+
+    // Subscription upgrade return or bfcache restore from an abandoned upgrade
     const subRef = p.get("sub_ref");
     if (subRef && localStorage.getItem(`sub_pending_${subRef}`)) return true;
-    // fallback: bfcache restore may have cleared URL but left localStorage key
     if (Object.keys(localStorage).some(k => k.startsWith("sub_pending_"))) return true;
     return false;
   });
@@ -112,9 +120,13 @@ export default function App() {
   // ── Paystack bill payment return: switch to bills tab so BillPayments mounts ──
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const billRef = params.get("bill_ref") || params.get("trxref");
+    const billRef = params.get("bill_ref") || params.get("trxref") || params.get("reference");
     if (billRef && localStorage.getItem(`ck_bill_pending_${billRef}`)) {
       setTab("bills");
+      // Clear any stale sub_pending_* keys so they can't trigger showUpgrade later
+      Object.keys(localStorage)
+        .filter(k => k.startsWith("sub_pending_"))
+        .forEach(k => localStorage.removeItem(k));
     }
   }, []);
 
