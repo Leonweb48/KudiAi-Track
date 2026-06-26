@@ -3,7 +3,7 @@ import Modal           from "../components/shared/Modal";
 import Field           from "../components/shared/Field";
 import StaffManagement from "./StaffManagement";
 import { supabase }    from "../utils/supabase";
-import { canDo, upgradeLabel, planRequiredLabel, planAvailableText } from "../utils/plans";
+import { canDo, upgradeLabel, planRequiredLabel, planAvailableText, hasHigherPlanAvailable, getActivePlans } from "../utils/plans";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import { LANGUAGES, getLangMeta } from "../utils/i18n";
 import { useLanguage, useT } from "../contexts/LanguageContext";
@@ -490,7 +490,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
       <SectionLabel>{t("settings.account")}</SectionLabel>
       <SettingsCard>
         <Row icon={<PersonIcon />} label={t("settings.profile")}   sub={t("settings.profileSub")}  onClick={openEdit} />
-        <Row icon={<CrownIcon />}  label={t("settings.premium")}   sub={t("settings.premiumSub")}  onClick={plan !== "premium" ? onUpgrade : undefined} />
+        <Row icon={<CrownIcon />}  label="Subscription & Plans"  sub={hasHigherPlanAvailable(plan) ? "Upgrade for more features" : "You're on the top plan"}  onClick={hasHigherPlanAvailable(plan) ? onUpgrade : undefined} />
         <Row icon={<UsersIcon />}  label={t("settings.staff")}     sub={canDo(plan, "staffManagement") ? t("settings.staffSub") : planAvailableText("staffManagement")}    onClick={() => canDo(plan, "staffManagement") ? setStaffMgmt(true) : onUpgrade?.()} />
         <Row icon={<BellIcon />}   label={t("settings.notif")}     sub={t("settings.notifSub")}    onClick={() => onNotifications?.()} />
       </SettingsCard>

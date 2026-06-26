@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { jsPDF } from "jspdf";
 import { fmt, today } from "../utils/helpers";
 import { clubkonnect } from "../utils/clubkonnect";
-import { canDo } from "../utils/plans";
+import { canDo, planRequiredLabel, getLowestPlanWithFeature } from "../utils/plans";
 import { BillReceipt } from "../components/shared/Receipt";
 import { supabase } from "../utils/supabase";
 import { lookupDataPrice } from "../data/billPrices";
@@ -2215,12 +2215,12 @@ export default function BillPayments({ store, plan, session = null, staffName = 
           </div>
           {!isWholesale && visibleCats.some(c => c.wholesale) && (
             <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center mt-2">
-              Print Airtime & Data wholesale require the Oga plan
+              Print Airtime & Data wholesale require the {getLowestPlanWithFeature("printWholesale")?.name ?? "Oga"} plan
             </p>
           )}
           {isEnterprise && !isLoanEligible && (
             <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center mt-1">
-              Business Loan unlocks after 4 months on the Oga plan
+              Business Loan unlocks after 4 months on the {getLowestPlanWithFeature("loanAccess")?.name ?? "Oga"} plan
             </p>
           )}
         </div>

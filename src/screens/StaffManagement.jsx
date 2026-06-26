@@ -844,7 +844,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
                               />
                             </>
                           ) : (
-                            <p className="text-[10px] text-amber-500 font-semibold">Enterprise plan required to enable print features</p>
+                            <p className="text-[10px] text-amber-500 font-semibold">{planRequiredLabel("printWholesale")} to enable print features</p>
                           )}
                         </div>
                       )}
@@ -1156,7 +1156,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
                               />
                             </>
                           ) : (
-                            <p className="text-[10px] text-amber-500 font-semibold">Enterprise plan required to enable print features</p>
+                            <p className="text-[10px] text-amber-500 font-semibold">{planRequiredLabel("printWholesale")} to enable print features</p>
                           )}
                         </div>
                       )}

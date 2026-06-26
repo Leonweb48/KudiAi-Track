@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { filterByPeriod, fmt } from "../utils/helpers";
-import { canDo, upgradeLabel, planRequiredLabel } from "../utils/plans";
+import { canDo, upgradeLabel, planRequiredLabel, getLowestPlanWithFeature } from "../utils/plans";
 import { useT } from "../contexts/LanguageContext";
 import { getLang } from "../utils/i18n";
 import { getSalesPrediction, getRestockData, getSlowMovers } from "../utils/predictions";
@@ -465,7 +465,7 @@ Ajo/savings balance: ₦${fmt(ajoBal)} across ${asoClients.length} clients`;
               <span className="text-2xl flex-shrink-0">✨</span>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-bold text-purple-800 dark:text-purple-300">{planRequiredLabel("aiInsights")}</p>
-                <p className="text-xs text-purple-600 dark:text-purple-400 mt-0.5">{t("premium.aiDesc")}</p>
+                <p className="text-xs text-purple-600 dark:text-purple-400 mt-0.5">AI-powered business insights are available on the {getLowestPlanWithFeature("aiInsights")?.name ?? "higher"} plan.</p>
               </div>
               <button onClick={onUpgrade}
                 className="flex-shrink-0 bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 rounded-xl font-bold text-xs active:scale-95 transition-all">
