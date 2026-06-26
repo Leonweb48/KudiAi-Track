@@ -69,7 +69,7 @@ function computeCouponDiscount(appliedCoupon, planSlug, billingCycle, chargeAmou
 
 const SUB_PENDING_PREFIX = "sub_pending_";
 
-function PaidButton({ plan, session, disabled, yearly = false, onPaymentStart, appliedCoupon }) {
+function PaidButton({ plan, session, disabled, yearly = false, onPaymentStart, appliedCoupon, onFreeCoupon }) {
   const chargeAmount = yearly && plan.price_yearly > 0 ? plan.price_yearly : plan.price_monthly;
   const billingCycle = yearly ? "yearly" : "monthly";
   const { applies: couponApplies, discount: discountAmount, final: finalAmount } =
@@ -86,11 +86,18 @@ function PaidButton({ plan, session, disabled, yearly = false, onPaymentStart, a
   const handleClick = async () => {
     setBusy(true); setErr("");
 
-    // Validate amount before hitting Paystack
-    if (finalAmount <= 0) {
-      setErr("Coupon covers the full cost. Please contact support to activate your plan.");
-      setBusy(false); return;
+    // 100% coupon — activate directly without Paystack
+    if (finalAmount <= 0 && couponApplies && appliedCoupon) {
+      setBusy(false);
+      onFreeCoupon?.(plan.slug, yearly, {
+        couponCode: appliedCoupon.code,
+        originalAmount: chargeAmount,
+        discountAmount: chargeAmount,
+        finalAmount: 0,
+      });
+      return;
     }
+
     if (finalAmount < 100) {
       setErr(`Discounted amount (₦${finalAmount.toLocaleString()}) is below Paystack's minimum of ₦100.`);
       setBusy(false); return;
@@ -145,12 +152,16 @@ function PaidButton({ plan, session, disabled, yearly = false, onPaymentStart, a
       {couponApplies && (
         <div className="text-center">
           <span className="text-xs text-gray-400 line-through mr-1.5">₦{chargeAmount.toLocaleString()}</span>
-          <span className="text-sm font-bold text-green-600 dark:text-green-400">₦{finalAmount.toLocaleString()}</span>
-          <span className="text-xs text-gray-400 ml-1">/{billingCycle === "yearly" ? "yr" : "mo"}</span>
+          <span className="text-sm font-bold text-green-600 dark:text-green-400">
+            {finalAmount === 0 ? "FREE" : `₦${finalAmount.toLocaleString()}`}
+          </span>
+          {finalAmount > 0 && <span className="text-xs text-gray-400 ml-1">/{billingCycle === "yearly" ? "yr" : "mo"}</span>}
         </div>
       )}
       <button disabled={disabled || busy} onClick={handleClick} className={cls}>
-        {busy ? "Opening Paystack…" : `Subscribe — ₦${finalAmount.toLocaleString()}/${billingCycle === "yearly" ? "yr" : "mo"}`}
+        {busy ? "Activating…" : finalAmount === 0 && couponApplies
+          ? "Activate Free — Coupon Applied"
+          : `Subscribe — ₦${finalAmount.toLocaleString()}/${billingCycle === "yearly" ? "yr" : "mo"}`}
       </button>
       {err && <p className="text-[10px] text-red-500 text-center">{err}</p>}
     </div>
@@ -619,7 +630,7 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
                     {saving ? "Activating…" : "Start for Free"}
                   </button>
                 ) : (
-                  <PaidButton plan={plan} session={session} disabled={saving} yearly={yearly} onPaymentStart={() => setSaving(true)} appliedCoupon={appliedCoupon} />
+                  <PaidButton plan={plan} session={session} disabled={saving} yearly={yearly} onPaymentStart={() => setSaving(true)} appliedCoupon={appliedCoupon} onFreeCoupon={(slug, yr, ci) => saveSub(slug, null, yr, ci)} />
                 )}
               </div>
             );
