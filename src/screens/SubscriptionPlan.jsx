@@ -248,7 +248,7 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
 
       // Redeem coupon after confirmed payment (non-blocking)
       if (!isFree && couponInfo?.couponCode && (couponInfo.discountAmount ?? 0) > 0) {
-        supabase.rpc("redeem_coupon", {
+        Promise.resolve(supabase.rpc("redeem_coupon", {
           p_code:            couponInfo.couponCode,
           p_plan_slug:       planSlug,
           p_billing_cycle:   isYearly ? "yearly" : "monthly",
@@ -256,7 +256,7 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
           p_discount_amount: couponInfo.discountAmount,
           p_final_amount:    couponInfo.finalAmount,
           p_reference:       reference || "",
-        }).catch(() => null);
+        })).catch(() => null);
       }
 
       const expiresAt = isFree
