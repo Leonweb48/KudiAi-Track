@@ -153,6 +153,24 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
     setSaving(true); setError("");
     try {
       const isFree = planSlug === "kobo" || planSlug === "starter";
+
+      // Verify payment with Paystack before activating any paid plan
+      if (!isFree && reference) {
+        const { data: vd } = await supabase.functions.invoke("paystack", {
+          body: { action: "verify", reference },
+        });
+        const psStatus = vd?.data?.status;
+        if (psStatus !== "success") {
+          const gwResp = (vd?.data?.gateway_response || "").toLowerCase();
+          const isCancelled = psStatus === "abandoned" || gwResp.includes("abandon") || gwResp.includes("cancel");
+          throw new Error(
+            isCancelled
+              ? "Payment was cancelled. Your plan was not changed. Please try again."
+              : `Payment not confirmed (${vd?.data?.gateway_response || psStatus || "not verified"}). Please contact support if you were charged.`
+          );
+        }
+      }
+
       const expiresAt = isFree
         ? null
         : new Date(Date.now() + (isYearly ? 365 : 30) * 24 * 60 * 60 * 1000).toISOString();
