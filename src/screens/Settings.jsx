@@ -3,7 +3,7 @@ import Modal           from "../components/shared/Modal";
 import Field           from "../components/shared/Field";
 import StaffManagement from "./StaffManagement";
 import { supabase }    from "../utils/supabase";
-import { canDo }       from "../utils/plans";
+import { canDo, upgradeLabel, planRequiredLabel, planAvailableText } from "../utils/plans";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import { LANGUAGES, getLangMeta } from "../utils/i18n";
 import { useLanguage, useT } from "../contexts/LanguageContext";
@@ -448,7 +448,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
 
       {/* ── STAFF MANAGEMENT BANNER ────────────────────────────────── */}
       <button
-        onClick={() => setStaffMgmt(true)}
+        onClick={() => canDo(plan, "staffManagement") ? setStaffMgmt(true) : onUpgrade?.()}
         className="w-full mb-5 bg-green-600 hover:bg-green-700 text-white rounded-2xl px-4 py-4 flex items-center gap-3 shadow-md transition-colors"
       >
         <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0">
@@ -491,7 +491,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
       <SettingsCard>
         <Row icon={<PersonIcon />} label={t("settings.profile")}   sub={t("settings.profileSub")}  onClick={openEdit} />
         <Row icon={<CrownIcon />}  label={t("settings.premium")}   sub={t("settings.premiumSub")}  onClick={plan !== "premium" ? onUpgrade : undefined} />
-        <Row icon={<UsersIcon />}  label={t("settings.staff")}     sub={t("settings.staffSub")}    onClick={() => setStaffMgmt(true)} />
+        <Row icon={<UsersIcon />}  label={t("settings.staff")}     sub={canDo(plan, "staffManagement") ? t("settings.staffSub") : planAvailableText("staffManagement")}    onClick={() => canDo(plan, "staffManagement") ? setStaffMgmt(true) : onUpgrade?.()} />
         <Row icon={<BellIcon />}   label={t("settings.notif")}     sub={t("settings.notifSub")}    onClick={() => onNotifications?.()} />
       </SettingsCard>
 
@@ -501,20 +501,20 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
         <Row
           icon={<GiftIcon />}
           label="Loyalty Program"
-          sub={canDo(plan, "loyalty") ? "Points, cashback & referrals" : "Business & Premium plans"}
+          sub={canDo(plan, "loyalty") ? "Points, cashback & referrals" : planAvailableText("loyalty")}
           onClick={canDo(plan, "loyalty") ? onLoyalty : onUpgrade}
         />
         <Row
           icon={<BranchIcon />}
           label="Branch Management"
-          sub={canDo(plan, "branches") ? "Manage branches & staff" : "Premium plan only"}
+          sub={canDo(plan, "branches") ? "Manage branches & staff" : planAvailableText("branches")}
           onClick={canDo(plan, "branches") ? onBranches : onUpgrade}
         />
         <Row
           icon={<CoopIcon />}
           label="My Organisations"
-          sub="Cooperatives, associations & groups"
-          onClick={onCoops}
+          sub={canDo(plan, "organisation") ? "Cooperatives, associations & groups" : planAvailableText("organisation")}
+          onClick={canDo(plan, "organisation") ? onCoops : onUpgrade}
         />
       </SettingsCard>
 
@@ -752,7 +752,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
       {/* ── Staff Management full-screen overlay ───────────────────── */}
       {staffMgmt && (
         <div className="fixed inset-0 z-50 bg-slate-50 dark:bg-slate-900">
-          <StaffManagement session={session} plan={plan} onBack={() => setStaffMgmt(false)} />
+          <StaffManagement session={session} plan={plan} onBack={() => setStaffMgmt(false)} onUpgrade={() => { setStaffMgmt(false); onUpgrade?.(); }} />
         </div>
       )}
       </div>{/* /px-4 */}

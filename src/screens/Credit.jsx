@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import Icon   from "../components/Icon";
 import Modal  from "../components/shared/Modal";
-import { canDo } from "../utils/plans";
+import { canDo, upgradeLabel } from "../utils/plans";
 import Field  from "../components/shared/Field";
 import Badge  from "../components/shared/Badge";
 import { CreditReceipt, CreditPaymentReceipt } from "../components/shared/Receipt";
@@ -94,10 +94,10 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
         </div>
         <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-2">Credit Management</h2>
         <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 max-w-xs leading-relaxed">
-          Track credit sales, manage repayments, and monitor outstanding balances. Upgrade to access credit management.
+          Track credit sales, manage repayments, and monitor outstanding balances. {planAvailableText("credit")}
         </p>
         <button onClick={onUpgrade} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-2xl font-bold text-sm active:scale-95 transition shadow-md">
-          Upgrade Plan
+          {upgradeLabel("credit")}
         </button>
       </div>
     );

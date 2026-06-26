@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import Icon from "../components/Icon";
 import Modal from "../components/shared/Modal";
-import { canDo, featureLimit } from "../utils/plans";
+import { canDo, featureLimit, upgradeLabel, planAvailableText } from "../utils/plans";
 
 const TIER = (totalPts) => {
   if (totalPts >= 500) return { label: "Gold",   color: "text-yellow-500 dark:text-yellow-400", bg: "bg-yellow-50 dark:bg-yellow-900/20" };
@@ -334,11 +334,11 @@ export default function Loyalty({ loyalty, plan, onUpgrade, onClose }) {
             </div>
             <h2 className="text-xl font-bold text-slate-800 dark:text-white mb-2">Loyalty Program</h2>
             <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
-              Reward loyal customers with points, cashback, and referral bonuses. Available on Business &amp; Premium plans.
+              Reward loyal customers with points, cashback, and referral bonuses. {planAvailableText("loyalty")}
             </p>
             <button onClick={onUpgrade}
               className="px-6 py-3 bg-green-600 text-white rounded-xl font-bold text-sm shadow-sm">
-              Upgrade to Unlock
+              {upgradeLabel("loyalty")}
             </button>
           </div>
         </div>

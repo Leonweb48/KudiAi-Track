@@ -217,6 +217,33 @@ export function getActivePlans() {
   return Object.values(source).sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
 }
 
+// Returns the cheapest active plan that includes featureKey.
+export function getLowestPlanWithFeature(featureKey) {
+  return getActivePlans()
+    .filter(p => p.is_active !== false)
+    .find(p => Array.isArray(p.feature_keys) && p.feature_keys.includes(featureKey)) ?? null;
+}
+
+// Dynamic button label: "Upgrade to Naira — ₦7,000/mo"
+export function upgradeLabel(featureKey) {
+  const p = getLowestPlanWithFeature(featureKey);
+  if (!p) return "Upgrade Plan";
+  const price = p.price_monthly ? `₦${Number(p.price_monthly).toLocaleString()}/mo` : "Free";
+  return `Upgrade to ${p.name} — ${price}`;
+}
+
+// Dynamic heading: "Naira Plan Required"
+export function planRequiredLabel(featureKey) {
+  const p = getLowestPlanWithFeature(featureKey);
+  return p ? `${p.name} Plan Required` : "Upgrade Required";
+}
+
+// Dynamic description: "Available on the Naira plan and above."
+export function planAvailableText(featureKey) {
+  const p = getLowestPlanWithFeature(featureKey);
+  return p ? `Available on the ${p.name} plan and above.` : "Upgrade to access this feature.";
+}
+
 export function isHigherPlan(currentSlug, targetSlug) {
   const cur = getPlanData(normalizeSlug(currentSlug));
   const tgt = getPlanData(normalizeSlug(targetSlug));

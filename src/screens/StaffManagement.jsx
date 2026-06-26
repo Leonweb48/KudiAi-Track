@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { supabase } from "../utils/supabase";
-import { featureLimit } from "../utils/plans";
+import { canDo, featureLimit, upgradeLabel, planRequiredLabel, planAvailableText } from "../utils/plans";
 
 const ROLES = [
   { id: "cashier",        label: "Cashier",        color: "blue"   },
@@ -69,7 +69,7 @@ function PermToggle({ checked, onChange, label }) {
   );
 }
 
-export default function StaffManagement({ session, plan = "starter", onBack }) {
+export default function StaffManagement({ session, plan = "starter", onBack, onUpgrade }) {
   const userId = session.user.id;
 
   const [staffList,   setStaffList]   = useState([]);
@@ -545,6 +545,35 @@ export default function StaffManagement({ session, plan = "starter", onBack }) {
     setReportData({ tx, cr, aso, totalIn, totalOut, txThisMonth });
     setReportLoading(false);
   };
+
+  if (!canDo(plan, "staffManagement")) {
+    return (
+      <div className="h-full bg-slate-50 dark:bg-slate-900 flex flex-col">
+        <div className="bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 px-4 pt-12 pb-3 flex items-center gap-3">
+          <button onClick={onBack} className="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-700">
+            <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+              <path d="M19 12H5M12 5l-7 7 7 7" />
+            </svg>
+          </button>
+          <h1 className="text-lg font-bold text-slate-800 dark:text-white">Staff Management</h1>
+        </div>
+        <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
+          <div className="w-20 h-20 bg-green-50 dark:bg-green-900/20 rounded-full flex items-center justify-center mb-5">
+            <svg viewBox="0 0 24 24" fill="none" className="w-10 h-10 text-green-600" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round">
+              <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
+            </svg>
+          </div>
+          <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-2">{planRequiredLabel("staffManagement")}</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 max-w-xs leading-relaxed">
+            Add team members, assign roles and permissions, and track performance. {planAvailableText("staffManagement")}
+          </p>
+          <button onClick={onUpgrade} className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-2xl font-bold text-sm active:scale-95 transition shadow-md">
+            {upgradeLabel("staffManagement")}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full bg-slate-50 dark:bg-slate-900 flex flex-col">

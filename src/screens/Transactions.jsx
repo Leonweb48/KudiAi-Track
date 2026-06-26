@@ -4,7 +4,7 @@ import Modal  from "../components/shared/Modal";
 import Field  from "../components/shared/Field";
 import { TransactionReceipt } from "../components/shared/Receipt";
 import { fmt, today } from "../utils/helpers";
-import { canDo, planLimits } from "../utils/plans";
+import { canDo, planLimits, planRequiredLabel } from "../utils/plans";
 import { useT } from "../contexts/LanguageContext";
 import { getLang, speakConfirmation } from "../utils/i18n";
 
@@ -264,7 +264,7 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
           <div className="flex-1">
             <p className="text-sm font-bold text-amber-800 dark:text-amber-300">Monthly limit reached</p>
             <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
-              Free plan: {limits.maxTxPerMonth} transactions/month. Upgrade to record more.
+              {limits.maxTxPerMonth} transactions/month limit reached. Upgrade to record more.
             </p>
           </div>
           <button onClick={onUpgrade}

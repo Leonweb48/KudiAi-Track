@@ -8,7 +8,7 @@ import { AsoReceipt, AjoTxReceipt } from "../components/shared/Receipt";
 import { ClientProfile } from "../components/shared/ClientProfile";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import { supabase } from "../utils/supabase";
-import { canDo, featureLimit } from "../utils/plans";
+import { canDo, featureLimit, upgradeLabel, planRequiredLabel, planAvailableText } from "../utils/plans";
 import { fmt, today } from "../utils/helpers";
 import { useT } from "../contexts/LanguageContext";
 import { getLang, speakConfirmation } from "../utils/i18n";
@@ -778,14 +778,14 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             <rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0110 0v4" />
           </svg>
         </div>
-        <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-2">Business Plan Required</h2>
+        <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-2">{planRequiredLabel("aso")}</h2>
         <p className="text-sm text-slate-500 dark:text-slate-400 mb-2 max-w-xs leading-relaxed">
-          Aso savings management is available on the Business plan and above.
+          Aso savings management is {planAvailableText("aso")}
         </p>
         <p className="text-xs text-slate-400 dark:text-slate-500 mb-6">Manage client contributions, withdrawals & statements.</p>
         <button onClick={onUpgrade}
           className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-2xl font-bold text-sm active:scale-95 transition-all shadow-md">
-          Upgrade to Business — ₦2,500/mo
+          {upgradeLabel("aso")}
         </button>
       </div>
     );

@@ -6,7 +6,7 @@ import { useBiometricLock }   from "../hooks/useBiometricLock";
 import { useNotifications }   from "../hooks/useNotifications";
 import NotificationCenter, { NotificationBell } from "../components/NotificationCenter";
 import { fmt, today }         from "../utils/helpers";
-import { canDo, normalizeSlug } from "../utils/plans";
+import { canDo, normalizeSlug, planRequiredLabel, planAvailableText } from "../utils/plans";
 import AppLogo                from "../components/AppLogo";
 import Icon                   from "../components/Icon";
 import Modal                  from "../components/shared/Modal";
@@ -814,7 +814,7 @@ function StaffRecords({ store, staff, livePerms, initialSub, plan }) {
         {sub === "ajo" && !ajoOnPlan && (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-8">
             <p className="text-base font-bold text-slate-600 dark:text-slate-400">Plan upgrade required</p>
-            <p className="text-sm text-slate-400">Ajo / Savings management requires the Basic plan or higher. Ask the business owner to upgrade.</p>
+            <p className="text-sm text-slate-400">Ajo / Savings management is {planAvailableText("aso")} Ask the business owner to upgrade.</p>
           </div>
         )}
         {sub === "ajo" && ajoOnPlan && (
@@ -838,7 +838,7 @@ function StaffStock({ inventory, staff, livePerms, plan }) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4 px-8 text-center">
         <p className="text-base font-bold text-slate-600 dark:text-slate-400">Plan upgrade required</p>
-        <p className="text-sm text-slate-400">Inventory management requires the Basic plan or higher. Ask the business owner to upgrade.</p>
+        <p className="text-sm text-slate-400">Inventory management is {planAvailableText("inventory")} Ask the business owner to upgrade.</p>
       </div>
     );
   }

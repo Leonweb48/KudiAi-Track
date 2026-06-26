@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { fmt } from "../utils/helpers";
-import { canDo, featureLimit } from "../utils/plans";
+import { canDo, featureLimit, upgradeLabel, planAvailableText } from "../utils/plans";
 import { useT } from "../contexts/LanguageContext";
 import { getLang, speakConfirmation } from "../utils/i18n";
 
@@ -558,10 +558,10 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
         </div>
         <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-2">Inventory Management</h2>
         <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 max-w-xs leading-relaxed">
-          Track stock, manage products, get low-stock alerts, and analyse your best sellers. Available on Business plan and above.
+          Track stock, manage products, get low-stock alerts, and analyse your best sellers. {planAvailableText("inventory")}
         </p>
         <button onClick={onUpgrade} className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-2xl font-bold text-sm active:scale-95 transition shadow-md">
-          Upgrade to Business — ₦2,500/mo
+          {upgradeLabel("inventory")}
         </button>
       </div>
     );

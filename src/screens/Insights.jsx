@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { filterByPeriod, fmt } from "../utils/helpers";
-import { canDo } from "../utils/plans";
+import { canDo, upgradeLabel, planRequiredLabel } from "../utils/plans";
 import { useT } from "../contexts/LanguageContext";
 import { getLang } from "../utils/i18n";
 import { getSalesPrediction, getRestockData, getSlowMovers } from "../utils/predictions";
@@ -464,12 +464,12 @@ Ajo/savings balance: ₦${fmt(ajoBal)} across ${asoClients.length} clients`;
             <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-700 rounded-2xl p-4 flex items-center gap-3 mb-5">
               <span className="text-2xl flex-shrink-0">✨</span>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-purple-800 dark:text-purple-300">{t("insights.premiumReq")}</p>
+                <p className="text-sm font-bold text-purple-800 dark:text-purple-300">{planRequiredLabel("aiInsights")}</p>
                 <p className="text-xs text-purple-600 dark:text-purple-400 mt-0.5">{t("premium.aiDesc")}</p>
               </div>
               <button onClick={onUpgrade}
                 className="flex-shrink-0 bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 rounded-xl font-bold text-xs active:scale-95 transition-all">
-                {t("insights.upgradeBtn")}
+                {upgradeLabel("aiInsights")}
               </button>
             </div>
           )}
