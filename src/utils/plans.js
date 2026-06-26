@@ -179,6 +179,9 @@ export function invalidatePlansCache() {
 // ── Synchronous helpers ───────────────────────────────────────────────────────
 
 function getPlanData(slug) {
+  // Try the exact slug first so DB-defined plans (any slug) always win
+  if (slug && _cache?.[slug]) return _cache[slug];
+  // Then try normalized slug (handles legacy aliases like "professional" → "naira")
   const s = normalizeSlug(slug);
   return _cache?.[s] ?? FALLBACK_PLANS[s] ?? FALLBACK_PLANS.kobo;
 }
@@ -202,7 +205,9 @@ export function featureLimit(slug, key) {
 export function planLimits(slug) {
   const p = getPlanData(slug);
   const keys = Array.isArray(p.feature_keys) ? p.feature_keys : [];
-  const limits = { maxTxPerMonth: p.max_transactions >= 999999 ? Infinity : (p.max_transactions || 50) };
+  // 0 or unset = unlimited (admin hasn't restricted); 999999 = explicitly unlimited
+  const maxTx = !p.max_transactions || p.max_transactions >= 999999 ? Infinity : p.max_transactions;
+  const limits = { maxTxPerMonth: maxTx };
   keys.forEach((k) => { limits[k] = true; });
   return limits;
 }
