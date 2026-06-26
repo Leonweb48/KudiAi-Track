@@ -62,18 +62,22 @@ function getDisplayFeatures(plan) {
 }
 
 // PaidButton must always call usePaystackPayment (React Hook rules)
-function PaidButton({ plan, session, onSuccess, disabled }) {
-  const [ref] = useState(`kt-${plan.slug}-${Date.now()}`);
+function PaidButton({ plan, session, onSuccess, disabled, yearly = false }) {
+  const chargeAmount = yearly && plan.price_yearly > 0 ? plan.price_yearly : plan.price_monthly;
+  const [ref] = useState(`kt-${plan.slug}-${yearly ? "yr" : "mo"}-${Date.now()}`);
   const [busy, setBusy] = useState(false);
   const [nativeErr, setNativeErr] = useState("");
 
   const config = {
     reference: ref,
     email:     session.user.email,
-    amount:    plan.price_monthly * 100,
+    amount:    chargeAmount * 100,
     publicKey: process.env.REACT_APP_PAYSTACK_PUBLIC_KEY || "",
     metadata: {
-      custom_fields: [{ display_name: "Plan", variable_name: "plan", value: plan.name }],
+      custom_fields: [
+        { display_name: "Plan", variable_name: "plan", value: plan.name },
+        { display_name: "Billing", variable_name: "billing_cycle", value: yearly ? "yearly" : "monthly" },
+      ],
     },
   };
   const initPayment = usePaystackPayment(config);
@@ -92,7 +96,7 @@ function PaidButton({ plan, session, onSuccess, disabled }) {
         const res = await fetch(`${baseUrl}/functions/v1/initialize-payment`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${anonKey}`, "apikey": anonKey },
-          body: JSON.stringify({ email: session.user.email, amount: plan.price_monthly * 100, reference: ref, planId: plan.slug }),
+          body: JSON.stringify({ email: session.user.email, amount: chargeAmount * 100, reference: ref, planId: plan.slug, billingCycle: yearly ? "yearly" : "monthly" }),
         });
         const data = await res.json();
         if (!res.ok || !data.authorization_url) throw new Error(data.error || `Server error ${res.status}`);
@@ -116,7 +120,7 @@ function PaidButton({ plan, session, onSuccess, disabled }) {
                 user_email: session.user.email,
                 plan_name:  plan.name,
                 plan_slug:  plan.slug,
-                plan_price: plan.price_monthly,
+                plan_price: chargeAmount,
               },
             }),
           }).catch(() => null);
@@ -128,18 +132,19 @@ function PaidButton({ plan, session, onSuccess, disabled }) {
   return (
     <div className="space-y-1.5">
       <button disabled={disabled || busy} onClick={handleClick} className={cls}>
-        {busy ? "Opening Paystack…" : `Subscribe — ₦${plan.price_monthly.toLocaleString()}/mo`}
+        {busy ? "Opening Paystack…" : `Subscribe — ₦${chargeAmount.toLocaleString()}/${yearly ? "yr" : "mo"}`}
       </button>
       {nativeErr && <p className="text-[10px] text-red-500 text-center">{nativeErr}</p>}
     </div>
   );
 }
 
-export default function SubscriptionPlan({ session, onComplete, onClose, isUpgrade = false, currentPlan = "starter" }) {
+export default function SubscriptionPlan({ session, onComplete, onClose, isUpgrade = false, currentPlan = "kobo" }) {
   const [plans, setPlans] = useState(() => getActivePlans());
   const [loadingPlans, setLoadingPlans] = useState(plans.length === 0);
   const [saving,  setSaving]  = useState(false);
   const [error,   setError]   = useState("");
+  const [yearly,  setYearly]  = useState(false);
   const [pendingPayment, setPendingPayment] = useState(
     () => JSON.parse(localStorage.getItem("pendingPayment") || "null")
   );
@@ -155,29 +160,32 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
       .finally(() => setLoadingPlans(false));
   }, []);
 
-  const saveSub = useCallback(async (planSlug, reference) => {
+  const saveSub = useCallback(async (planSlug, reference, isYearly = false) => {
     setSaving(true); setError("");
     try {
-      const expiresAt = planSlug === "starter"
+      const isFree = planSlug === "kobo" || planSlug === "starter";
+      const expiresAt = isFree
         ? null
-        : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+        : new Date(Date.now() + (isYearly ? 365 : 30) * 24 * 60 * 60 * 1000).toISOString();
 
       const { data: existing } = await supabase
         .from("subscriptions").select("id, plan").eq("user_id", session.user.id).maybeSingle();
 
-      // First-time paid: no prior subscription, or prior was free starter
-      const isFirstTimePaid = planSlug !== "starter" && (!existing || existing.plan === "starter" || !existing.plan);
+      // First-time paid: no prior subscription, or prior was free plan
+      const isFirstTimePaid = !isFree && (!existing || existing.plan === "kobo" || existing.plan === "starter" || !existing.plan);
 
       let err;
       if (existing) {
         ({ error: err } = await supabase.from("subscriptions").update({
           plan: planSlug, status: "active",
           paystack_reference: reference || null, expires_at: expiresAt,
+          billing_cycle: isFree ? "monthly" : (isYearly ? "yearly" : "monthly"),
         }).eq("id", existing.id));
       } else {
         ({ error: err } = await supabase.from("subscriptions").insert({
           user_id: session.user.id, plan: planSlug, status: "active",
           paystack_reference: reference || null, expires_at: expiresAt,
+          billing_cycle: isFree ? "monthly" : (isYearly ? "yearly" : "monthly"),
         }));
       }
 
@@ -186,7 +194,7 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
       await supabase.from("plan_upgrade_prompts").update({ seen: true }).eq("user_id", session.user.id).eq("seen", false);
 
       // Fire email notifications for all paid plan purchases (non-blocking)
-      if (planSlug !== "starter") {
+      if (!isFree) {
         const planData = plans.find(p => p.slug === planSlug);
         const features = planData ? getDisplayFeatures(planData) : [];
         const { data: profile } = await supabase
@@ -207,9 +215,10 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
               plan_name:     planData?.name || planSlug,
               plan_slug:     planSlug,
               plan_price:    planData?.price_monthly || 0,
-              plan_features: features,
-              reference:     reference || "",
-              is_first_time: isFirstTimePaid,
+              plan_features:  features,
+              billing_cycle:  isYearly ? "yearly" : "monthly",
+              reference:      reference || "",
+              is_first_time:  isFirstTimePaid,
             },
           }),
         }).catch(() => null);
@@ -274,8 +283,8 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
   const currentPlanData   = plans.find(p => p.slug === currentNormalized);
   const currentSortOrder  = currentPlanData?.sort_order ?? 0;
 
-  const handleFree = () => saveSub("starter", null);
-  const handlePaid = (slug) => (ref) => saveSub(slug, ref.reference);
+  const handleFree = () => saveSub("kobo", null, false);
+  const handlePaid = (slug, isYearly) => (ref) => saveSub(slug, ref.reference, isYearly);
 
   if (loadingPlans && plans.length === 0) {
     return (
@@ -309,6 +318,21 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
           <p className="text-sm text-gray-500 dark:text-slate-400 mt-1">
             {isUpgrade ? "Unlock more features for your business." : "Start free. Upgrade anytime. Cancel anytime."}
           </p>
+
+          {/* Billing toggle */}
+          <div className="flex items-center justify-center gap-3 mt-4">
+            <span className={`text-sm font-medium ${!yearly ? "text-gray-800 dark:text-white" : "text-gray-400 dark:text-slate-500"}`}>Monthly</span>
+            <button
+              onClick={() => setYearly(v => !v)}
+              className={`relative w-12 h-6 rounded-full transition-colors ${yearly ? "bg-green-500" : "bg-gray-300 dark:bg-slate-600"}`}
+            >
+              <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${yearly ? "translate-x-6" : "translate-x-0"}`} />
+            </button>
+            <span className={`text-sm font-medium ${yearly ? "text-gray-800 dark:text-white" : "text-gray-400 dark:text-slate-500"}`}>
+              Yearly
+              <span className="ml-1.5 text-[10px] font-bold text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/30 px-1.5 py-0.5 rounded-full">Save up to 10%</span>
+            </span>
+          </div>
         </div>
 
         {pendingPayment && (
@@ -372,6 +396,11 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
                   <div className="mt-2 flex items-end gap-1">
                     {plan.price_monthly === 0 ? (
                       <span className="text-3xl font-extrabold text-gray-800 dark:text-white">Free</span>
+                    ) : yearly && plan.price_yearly > 0 ? (
+                      <>
+                        <span className="text-3xl font-extrabold text-gray-800 dark:text-white">₦{Math.round(plan.price_yearly / 12).toLocaleString()}</span>
+                        <span className="text-sm text-gray-400 mb-1">/month</span>
+                      </>
                     ) : (
                       <>
                         <span className="text-3xl font-extrabold text-gray-800 dark:text-white">₦{plan.price_monthly.toLocaleString()}</span>
@@ -380,9 +409,15 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
                     )}
                   </div>
                   {plan.price_monthly === 0 && <p className="text-xs text-gray-400 mt-0.5">Free forever</p>}
-                  {plan.price_yearly > 0 && (
+                  {plan.price_yearly > 0 && yearly && (
+                    <p className="text-xs text-green-600 dark:text-green-400 mt-0.5 font-medium">
+                      Billed ₦{plan.price_yearly.toLocaleString()}/year
+                      <span className="ml-1 text-gray-400">(save {Math.round((1 - plan.price_yearly / (plan.price_monthly * 12)) * 100)}%)</span>
+                    </p>
+                  )}
+                  {plan.price_yearly > 0 && !yearly && (
                     <p className="text-xs text-green-600 dark:text-green-400 mt-0.5">
-                      ₦{plan.price_yearly.toLocaleString()}/year <span className="text-gray-400">(save {Math.round((1 - plan.price_yearly / (plan.price_monthly * 12)) * 100)}%)</span>
+                      Switch to yearly → save {Math.round((1 - plan.price_yearly / (plan.price_monthly * 12)) * 100)}%
                     </p>
                   )}
                 </div>
@@ -409,10 +444,10 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
                     ✓ Active Plan
                   </button>
                 ) : isDowngrade ? (
-                  <button onClick={plan.slug === "starter" ? handleFree : undefined}
-                    disabled={saving || plan.slug !== "starter"}
+                  <button onClick={plan.slug === "kobo" || plan.slug === "starter" ? handleFree : undefined}
+                    disabled={saving || (plan.slug !== "kobo" && plan.slug !== "starter")}
                     className="w-full py-2.5 rounded-xl font-semibold text-sm border-2 border-gray-200 text-gray-400 hover:bg-gray-50 disabled:opacity-40 transition-colors text-xs">
-                    {plan.slug === "starter" ? "Downgrade to Free" : "Not available"}
+                    {plan.slug === "kobo" || plan.slug === "starter" ? "Downgrade to Free" : "Not available"}
                   </button>
                 ) : plan.price_monthly === 0 ? (
                   <button onClick={handleFree} disabled={saving}
@@ -420,7 +455,7 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
                     Get Started Free
                   </button>
                 ) : (
-                  <PaidButton plan={plan} session={session} disabled={saving} onSuccess={handlePaid(plan.slug)} />
+                  <PaidButton plan={plan} session={session} disabled={saving} yearly={yearly} onSuccess={handlePaid(plan.slug, yearly)} />
                 )}
               </div>
             );

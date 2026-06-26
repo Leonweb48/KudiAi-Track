@@ -738,12 +738,290 @@ function AdminUsers({ session, currentAdmin }) {
   );
 }
 
+// ── Plans Manager ──────────────────────────────────────────────────────────────
+const ALL_FEATURE_KEYS = [
+  { key: "aso",            label: "Ajo/Savings Groups" },
+  { key: "pdfExport",      label: "PDF Reports & Export" },
+  { key: "staffManagement",label: "Staff Management" },
+  { key: "inventory",      label: "Inventory Management" },
+  { key: "loyalty",        label: "Loyalty Program" },
+  { key: "aiInsights",     label: "AI Business Insights" },
+  { key: "branches",       label: "Branch Management" },
+  { key: "apiAccess",      label: "API Access" },
+  { key: "loanAccess",     label: "Business Loan Access" },
+  { key: "printWholesale", label: "Print Wholesale (Airtime & Data)" },
+];
+
+function PlansManager() {
+  const [plans, setPlans]   = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(null); // plan id being edited
+  const [form, setForm]     = useState({});
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg]       = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const { data } = await supabase
+      .from("subscription_plans")
+      .select("*")
+      .order("sort_order");
+    setPlans(data || []);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const startEdit = (plan) => {
+    setEditing(plan.id);
+    setForm({
+      name:              plan.name,
+      description:       plan.description || "",
+      price_monthly:     plan.price_monthly,
+      price_yearly:      plan.price_yearly || 0,
+      max_transactions:  plan.max_transactions,
+      max_organizations: plan.max_organizations,
+      max_org_members:   plan.max_org_members,
+      max_ajo_groups:    plan.max_ajo_groups,
+      sort_order:        plan.sort_order,
+      is_active:         plan.is_active,
+      feature_keys:      Array.isArray(plan.feature_keys) ? plan.feature_keys : [],
+      features:          Array.isArray(plan.features) ? plan.features.join("\n") : "",
+    });
+    setMsg("");
+  };
+
+  const toggleKey = (key) => {
+    setForm(f => ({
+      ...f,
+      feature_keys: f.feature_keys.includes(key)
+        ? f.feature_keys.filter(k => k !== key)
+        : [...f.feature_keys, key],
+    }));
+  };
+
+  const handleSave = async () => {
+    setSaving(true); setMsg("");
+    try {
+      const payload = {
+        name:              form.name,
+        description:       form.description,
+        price_monthly:     Number(form.price_monthly),
+        price_yearly:      Number(form.price_yearly),
+        max_transactions:  Number(form.max_transactions),
+        max_organizations: Number(form.max_organizations),
+        max_org_members:   Number(form.max_org_members),
+        max_ajo_groups:    Number(form.max_ajo_groups),
+        sort_order:        Number(form.sort_order),
+        is_active:         form.is_active,
+        feature_keys:      form.feature_keys,
+        features:          form.features.split("\n").map(s => s.trim()).filter(Boolean),
+        updated_at:        new Date().toISOString(),
+      };
+      const { error } = await supabase.from("subscription_plans").update(payload).eq("id", editing);
+      if (error) throw error;
+      // Bust the client-side cache so next page load picks up changes
+      try { localStorage.removeItem("kuditrack_plans_v2"); } catch {}
+      setMsg("Saved successfully.");
+      setEditing(null);
+      load();
+    } catch (e) {
+      setMsg("Error: " + (e.message || "Could not save"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <div className="py-10 text-center text-slate-400 text-sm">Loading plans…</div>;
+
+  if (editing) {
+    const f = form;
+    return (
+      <div className="space-y-5">
+        <div className="flex items-center gap-3 mb-2">
+          <button onClick={() => setEditing(null)} className="text-xs text-slate-500 hover:text-slate-700 flex items-center gap-1">
+            ← Back
+          </button>
+          <h3 className="text-base font-bold text-slate-800">Edit Plan</h3>
+        </div>
+
+        {msg && <p className={`text-xs px-3 py-2 rounded-lg ${msg.startsWith("Error") ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"}`}>{msg}</p>}
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-500 mb-1">Plan Name</label>
+            <input value={f.name} onChange={e => setForm(x => ({...x, name: e.target.value}))}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-500 mb-1">Sort Order</label>
+            <input type="number" value={f.sort_order} onChange={e => setForm(x => ({...x, sort_order: e.target.value}))}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-[11px] font-semibold text-slate-500 mb-1">Description</label>
+          <input value={f.description} onChange={e => setForm(x => ({...x, description: e.target.value}))}
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-500 mb-1">Price/Month (₦)</label>
+            <input type="number" value={f.price_monthly} onChange={e => setForm(x => ({...x, price_monthly: e.target.value}))}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-500 mb-1">Price/Year (₦)</label>
+            <input type="number" value={f.price_yearly} onChange={e => setForm(x => ({...x, price_yearly: e.target.value}))}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            {f.price_monthly > 0 && f.price_yearly > 0 && (
+              <p className="text-[10px] text-green-600 mt-0.5">
+                {Math.round((1 - f.price_yearly / (f.price_monthly * 12)) * 100)}% off yearly
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-500 mb-1">Max Transactions/mo</label>
+            <input type="number" value={f.max_transactions} onChange={e => setForm(x => ({...x, max_transactions: e.target.value}))}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-500 mb-1">Max Organisations</label>
+            <input type="number" value={f.max_organizations} onChange={e => setForm(x => ({...x, max_organizations: e.target.value}))}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-500 mb-1">Max Members/Org</label>
+            <input type="number" value={f.max_org_members} onChange={e => setForm(x => ({...x, max_org_members: e.target.value}))}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-500 mb-1">Max Ajo Groups</label>
+            <input type="number" value={f.max_ajo_groups} onChange={e => setForm(x => ({...x, max_ajo_groups: e.target.value}))}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-[11px] font-semibold text-slate-500 mb-2">Feature Keys</label>
+          <div className="grid grid-cols-2 gap-2">
+            {ALL_FEATURE_KEYS.map(({ key, label }) => (
+              <label key={key} className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={f.feature_keys.includes(key)}
+                  onChange={() => toggleKey(key)}
+                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-xs text-slate-700">{label}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-[11px] font-semibold text-slate-500 mb-1">Display Features (one per line)</label>
+          <textarea
+            value={f.features}
+            onChange={e => setForm(x => ({...x, features: e.target.value}))}
+            rows={6}
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none font-mono"
+          />
+        </div>
+
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={f.is_active}
+              onChange={e => setForm(x => ({...x, is_active: e.target.checked}))}
+              className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span className="text-sm text-slate-700 font-medium">Plan is active (visible to users)</span>
+          </label>
+        </div>
+
+        <div className="flex gap-3">
+          <button onClick={handleSave} disabled={saving}
+            className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold disabled:opacity-50 transition-colors">
+            {saving ? "Saving…" : "Save Changes"}
+          </button>
+          <button onClick={() => setEditing(null)}
+            className="px-5 py-2.5 border border-slate-200 text-slate-600 rounded-xl text-sm font-medium hover:bg-slate-50">
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-base font-bold text-slate-800">Subscription Plans</h3>
+        <p className="text-xs text-slate-400">Changes take effect immediately for new subscribers</p>
+      </div>
+
+      {plans.map(plan => (
+        <div key={plan.id}
+          className={`bg-white border rounded-2xl p-5 shadow-sm flex flex-col gap-3 ${plan.is_active ? "border-slate-200" : "border-dashed border-slate-300 opacity-60"}`}>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <h4 className="font-bold text-slate-800 text-sm">{plan.name}</h4>
+                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${plan.is_active ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500"}`}>
+                  {plan.is_active ? "Active" : "Inactive"}
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">{plan.description}</p>
+            </div>
+            <button onClick={() => startEdit(plan)}
+              className="text-xs px-3 py-1.5 rounded-lg bg-blue-50 text-blue-600 font-semibold hover:bg-blue-100 transition-colors flex-shrink-0">
+              Edit
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 text-[11px]">
+            <div className="bg-slate-50 rounded-lg px-3 py-2">
+              <p className="text-slate-400">Monthly</p>
+              <p className="font-bold text-slate-800">{plan.price_monthly === 0 ? "Free" : `₦${plan.price_monthly.toLocaleString()}`}</p>
+            </div>
+            <div className="bg-slate-50 rounded-lg px-3 py-2">
+              <p className="text-slate-400">Yearly</p>
+              <p className="font-bold text-slate-800">
+                {plan.price_yearly ? `₦${plan.price_yearly.toLocaleString()}` : "—"}
+                {plan.price_yearly > 0 && plan.price_monthly > 0 && (
+                  <span className="text-green-600 ml-1">({Math.round((1 - plan.price_yearly / (plan.price_monthly * 12)) * 100)}% off)</span>
+                )}
+              </p>
+            </div>
+          </div>
+
+          {Array.isArray(plan.feature_keys) && plan.feature_keys.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {plan.feature_keys.map(k => (
+                <span key={k} className="text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-medium">{k}</span>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── Nav items ──────────────────────────────────────────────────────────────────
 const NAV = [
   { id: "overview",   label: "Overview",       icon: "⊞" },
   { id: "users",      label: "Users",          icon: "👥" },
   { id: "finance",    label: "Finance",        icon: "💰" },
   { id: "orgs",       label: "Organisations",  icon: "🏛" },
+  { id: "plans",      label: "Plans",          icon: "📦" },
   { id: "security",   label: "Security",       icon: "🔒" },
   { id: "audit",      label: "Audit Log",      icon: "📋" },
   { id: "broadcasts", label: "Broadcasts",     icon: "📢" },
@@ -764,6 +1042,7 @@ export default function AdminDashboard({ session, adminUser }) {
     users:      <Users      session={session} />,
     finance:    <Finance    session={session} />,
     orgs:       <Organisations session={session} />,
+    plans:      <PlansManager />,
     security:   <Security   session={session} />,
     audit:      <AuditLog   session={session} />,
     broadcasts: <Broadcasts session={session} />,

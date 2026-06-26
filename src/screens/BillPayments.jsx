@@ -6,6 +6,7 @@ import { canDo } from "../utils/plans";
 import { BillReceipt } from "../components/shared/Receipt";
 import { supabase } from "../utils/supabase";
 import { lookupDataPrice } from "../data/billPrices";
+import LoanApplicationModal from "../components/LoanApplicationModal";
 
 /* ─── Service catalogue ───────────────────────────────────────────────────── */
 
@@ -19,9 +20,10 @@ const CATS = [
   { id: "jamb",         label: "JAMB ePin",       g1: "#f97316", g2: "#ea580c" },
   { id: "spectranet",   label: "Spectranet",      g1: "#6366f1", g2: "#4f46e5" },
   { id: "smile",        label: "Smile 4G",        g1: "#ec4899", g2: "#db2777" },
-  { id: "print-airtime", label: "Print Airtime",  g1: "#64748b", g2: "#475569", enterprise: true },
-  { id: "print-data",     label: "Print Data",      g1: "#64748b", g2: "#475569", enterprise: true },
-  { id: "airtime-bundle", label: "Bundle Set",      g1: "#7c3aed", g2: "#5b21b6", enterprise: true },
+  { id: "print-airtime",   label: "Print Airtime",    g1: "#64748b", g2: "#475569", wholesale: true },
+  { id: "print-data",      label: "Print Data",       g1: "#64748b", g2: "#475569", wholesale: true },
+  { id: "airtime-bundle",  label: "Bundle Set",       g1: "#7c3aed", g2: "#5b21b6", enterprise: true },
+  { id: "business-loan",   label: "Business Loan",    g1: "#059669", g2: "#047857", loan: true },
 ];
 
 const NETWORKS = ["MTN", "Airtel", "Glo", "9mobile"];
@@ -315,6 +317,7 @@ const CAT_ICONS = {
   "print-airtime": "M6 9V2h12v7|M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2|M6 14h12v8H6v-8z",
   "print-data":     "M6 9V2h12v7|M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2|M6 14h12v8H6v-8z",
   "airtime-bundle": "M20 12v10H4V12|M2 7h20v5H2z|M12 22V7|M12 7H7.5a2.5 2.5 0 010-5C11 2 12 7 12 7z|M12 7h4.5a2.5 2.5 0 000-5C13 2 12 7 12 7z",
+  "business-loan":  "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z",
 };
 
 /* ─── Shared sub-components ───────────────────────────────────────────────── */
@@ -1348,18 +1351,26 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
   );
 }
 
-export default function BillPayments({ store, plan, staffName = null, staffEmail = null, businessName = null, autoService = null, onAutoOpened = null, excludeCats = [], markup = 1.0, airtimeDiscount = 0, cashback = 0, pointsEnabled = false, bundleAppPct = 0.3 }) {
+export default function BillPayments({ store, plan, session = null, staffName = null, staffEmail = null, businessName = null, autoService = null, onAutoOpened = null, excludeCats = [], markup = 1.0, airtimeDiscount = 0, cashback = 0, pointsEnabled = false, bundleAppPct = 0.3 }) {
   const { transactions, addTransaction, profile } = store;
-  // plan is a slug string from useAuth (e.g. "enterprise"), not a plan object
+  // plan is a slug string from useAuth (e.g. "oga"), not a plan object
   const planSlug = typeof plan === "string" ? plan : (plan?.slug ?? "");
-  // Unlock for enterprise: match by feature key or slug name
-  const isEnterprise = canDo(planSlug, "apiAccess") || planSlug === "enterprise";
+  // Unlock for enterprise/oga: match by feature key or slug name
+  const isEnterprise = canDo(planSlug, "apiAccess") || planSlug === "enterprise" || planSlug === "oga";
+  // Unlock wholesale features (print-airtime, print-data) for Oga plan
+  const isWholesale = canDo(planSlug, "printWholesale") || planSlug === "oga" || planSlug === "enterprise";
+  // Loan eligibility: Oga plan + account at least 4 months old
+  const accountAgeMonths = session?.user?.created_at
+    ? (Date.now() - new Date(session.user.created_at)) / (30 * 24 * 60 * 60 * 1000)
+    : 0;
+  const isLoanEligible = isEnterprise && accountAgeMonths >= 4;
 
   // Bundle pricing: platform keeps bundleAppPct of gross profit, subscriber saves the rest
   const bundleSubscriberSavings = Math.round(BUNDLE_PROFIT_PER_SET * (1 - bundleAppPct));
   const bundleChargePerSet = BUNDLE_FACE_PER_SET - bundleSubscriberSavings;
 
   const [selectedCat,   setSelectedCat]   = useState(null);
+  const [showLoanModal, setShowLoanModal] = useState(false);
   const [showKeyStatus, setShowKeyStatus] = useState(false);
   const [showStatement, setShowStatement] = useState(false);
   const [form,          setForm]          = useState({});
@@ -1435,6 +1446,8 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
     if (excludeCats.includes(catId)) return;
     const catMeta = CATS.find(c => c.id === catId);
     if (catMeta?.enterprise && !isEnterprise) return;
+    if (catMeta?.wholesale && !isWholesale) return;
+    if (catId === "business-loan") { setShowLoanModal(true); return; }
     setSelectedCat(catId);
     setForm({ network: "MTN", phone: "", amount: "", planId: "", planName: "",
                provider: "", smartcard: "", meterNo: "", meterType: "01",
@@ -1445,7 +1458,7 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
     if (catId === "spectranet") loadPlans("spectranet-plans", {});
     if (catId === "smile") loadPlans("smile-plans", {});
     if (catId === "print-data") loadPlans("data-plans", { network: "MTN" });
-  }, [isEnterprise, excludeCats]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isEnterprise, isWholesale, excludeCats]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (autoService) { openSheet(autoService); onAutoOpened?.(); }
@@ -2025,6 +2038,15 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
   return (
     <div className="pb-32 screen-enter">
 
+      {/* ── Loan Application Modal ────────────────────────────────────────── */}
+      {showLoanModal && (
+        <LoanApplicationModal
+          session={session}
+          profile={profile}
+          onClose={() => setShowLoanModal(false)}
+        />
+      )}
+
       {/* ── Paystack return overlay (processing → result) ─────────────────── */}
       {((saving && !selectedCat) || fulfillResult) && (
         <BillResultOverlay
@@ -2137,14 +2159,18 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
           <h2 className="text-[13px] font-bold text-slate-700 dark:text-slate-300 mb-3 tracking-wide">Select Service</h2>
           <div className="grid grid-cols-3 gap-3">
             {visibleCats.map(c => {
-              const locked = c.enterprise && !isEnterprise;
+              const lockedEnterprise = c.enterprise && !isEnterprise;
+              const lockedWholesale  = c.wholesale  && !isWholesale;
+              const lockedLoan       = c.loan && (!isEnterprise || !isLoanEligible);
+              const locked = lockedEnterprise || lockedWholesale || lockedLoan;
               const count  = bills.filter(b => b.category === c.id).length;
+              const badge  = lockedEnterprise ? "OGA" : lockedWholesale ? "OGA" : lockedLoan && !isEnterprise ? "OGA" : lockedLoan ? "4MO" : null;
               return (
                 <button key={c.id} onClick={() => openSheet(c.id)} disabled={locked}
                   className={`rounded-2xl p-4 flex flex-col items-center gap-2 shadow-sm active:scale-95 transition-all duration-150 text-white relative ${locked ? "opacity-50 cursor-not-allowed" : ""}`}
                   style={{ background: `linear-gradient(135deg,${c.g1},${c.g2})` }}>
-                  {locked && (
-                    <span className="absolute top-1.5 right-1.5 bg-white/30 rounded-full px-1.5 py-0.5 text-[8px] font-black tracking-wide">PRO</span>
+                  {badge && (
+                    <span className="absolute top-1.5 right-1.5 bg-white/30 rounded-full px-1.5 py-0.5 text-[8px] font-black tracking-wide">{badge}</span>
                   )}
                   <Ico d={CAT_ICONS[c.id]} size={26} c="rgba(255,255,255,0.95)" />
                   <p className="text-[11px] font-bold text-center leading-tight">{c.label}</p>
@@ -2153,9 +2179,14 @@ export default function BillPayments({ store, plan, staffName = null, staffEmail
               );
             })}
           </div>
-          {!isEnterprise && visibleCats.some(c => c.enterprise) && (
+          {!isWholesale && visibleCats.some(c => c.wholesale) && (
             <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center mt-2">
-              Print Airtime & Print Data require the Enterprise plan
+              Print Airtime & Data wholesale require the Oga plan
+            </p>
+          )}
+          {isEnterprise && !isLoanEligible && (
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center mt-1">
+              Business Loan unlocks after 4 months on the Oga plan
             </p>
           )}
         </div>
