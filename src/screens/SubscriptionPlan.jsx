@@ -95,7 +95,7 @@ function PaidButton({ plan, session, disabled, yearly = false }) {
           body: {
             action:       "initialize",
             email:        session.user.email,
-            amount:       chargeAmount * 100,
+            amount:       chargeAmount,
             reference:    ref,
             callback_url: callbackUrl,
             metadata: {

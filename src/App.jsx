@@ -64,7 +64,10 @@ export default function App() {
   });
   const [autoAdd,     setAutoAdd]     = useState(null);
   const [voiceOpen,   setVoiceOpen]   = useState(false);
-  const [showUpgrade,  setShowUpgrade]  = useState(false);
+  const [showUpgrade,  setShowUpgrade]  = useState(() => {
+    const p = new URLSearchParams(window.location.search);
+    return !!(p.get("sub_ref") && p.get("plan"));
+  });
   const [showReports,  setShowReports]  = useState(false);
   const [showAI,       setShowAI]       = useState(false);
   const [showBranches, setShowBranches] = useState(false);
