@@ -24,15 +24,12 @@ function XIcon() {
   );
 }
 
-// Derive a color from sort_order
 function planColor(sortOrder) {
   return ["gray", "blue", "violet", "amber"][sortOrder] || "blue";
 }
 
-// Build the "missing" features list: features in ALL_FEATURE_LIST not in this plan's feature_keys
 function getMissingFeatures(plan, allPlans) {
   const keys = Array.isArray(plan.feature_keys) ? plan.feature_keys : [];
-  // Only show as missing if a higher-tier plan has it
   const higherKeys = new Set();
   allPlans.forEach(p => {
     if ((p.sort_order ?? 0) > (plan.sort_order ?? 0)) {
@@ -44,11 +41,9 @@ function getMissingFeatures(plan, allPlans) {
     .map(f => f.label);
 }
 
-// Derives display feature list from DB features array or feature_keys
 function getDisplayFeatures(plan) {
   const arr = Array.isArray(plan.features) ? plan.features : [];
   if (arr.length > 0) return arr;
-  // Fallback: build from feature_keys
   const keys = Array.isArray(plan.feature_keys) ? plan.feature_keys : [];
   const list = [];
   if (plan.price_monthly === 0) list.push(`${plan.max_transactions} transactions/mo`);
@@ -60,11 +55,26 @@ function getDisplayFeatures(plan) {
   return list;
 }
 
+function computeCouponDiscount(appliedCoupon, planSlug, billingCycle, chargeAmount) {
+  if (!appliedCoupon) return { applies: false, discount: 0, final: chargeAmount };
+  const planMatch   = appliedCoupon.applies_to.length === 0 || appliedCoupon.applies_to.includes(planSlug);
+  const cycleMatch  = appliedCoupon.billing_cycles.length === 0 || appliedCoupon.billing_cycles.includes(billingCycle);
+  const amountMatch = chargeAmount >= (appliedCoupon.min_amount || 0);
+  if (!planMatch || !cycleMatch || !amountMatch) return { applies: false, discount: 0, final: chargeAmount };
+  const discount = appliedCoupon.type === "percentage"
+    ? Math.round(chargeAmount * appliedCoupon.value / 100 * 100) / 100
+    : Math.min(appliedCoupon.value, chargeAmount);
+  return { applies: true, discount, final: Math.max(0, chargeAmount - discount) };
+}
+
 const SUB_PENDING_PREFIX = "sub_pending_";
 
-// PaidButton: uses Supabase paystack edge function (server-side) — no client-side key needed
-function PaidButton({ plan, session, disabled, yearly = false, onPaymentStart }) {
+function PaidButton({ plan, session, disabled, yearly = false, onPaymentStart, appliedCoupon }) {
   const chargeAmount = yearly && plan.price_yearly > 0 ? plan.price_yearly : plan.price_monthly;
+  const billingCycle = yearly ? "yearly" : "monthly";
+  const { applies: couponApplies, discount: discountAmount, final: finalAmount } =
+    computeCouponDiscount(appliedCoupon, plan.slug, billingCycle, chargeAmount);
+
   const [busy, setBusy] = useState(false);
   const [err,  setErr]  = useState("");
 
@@ -76,45 +86,40 @@ function PaidButton({ plan, session, disabled, yearly = false, onPaymentStart })
   const handleClick = async () => {
     setBusy(true); setErr("");
     const ref = `kt-sub-${plan.slug}-${Date.now()}`;
+    const couponMeta = couponApplies && appliedCoupon ? {
+      couponCode: appliedCoupon.code, originalAmount: chargeAmount, discountAmount, finalAmount,
+    } : {};
+
     try {
       if (isNative) {
-        // Native: initialize-payment edge function → Browser.open → deep link return
         const baseUrl = supabase.supabaseUrl;
         const anonKey = supabase.supabaseKey;
         const res = await fetch(`${baseUrl}/functions/v1/initialize-payment`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${anonKey}`, "apikey": anonKey },
-          body: JSON.stringify({ email: session.user.email, amount: chargeAmount * 100, reference: ref, planId: plan.slug }),
+          body: JSON.stringify({ email: session.user.email, amount: finalAmount * 100, reference: ref, planId: plan.slug }),
         });
         const data = await res.json();
         if (!res.ok || !data.authorization_url) throw new Error(data.error || `Server error ${res.status}`);
-        localStorage.setItem("pendingPayment", JSON.stringify({ planId: plan.slug, reference: data.reference || ref, yearly }));
+        localStorage.setItem("pendingPayment", JSON.stringify({ planId: plan.slug, reference: data.reference || ref, yearly, ...couponMeta }));
         await Browser.open({ url: data.authorization_url });
       } else {
-        // Web: same pattern as BillPayments — store plan info in localStorage keyed by reference,
-        // callback URL carries only the ref (plan/yearly come from localStorage, not URL params)
         const callbackUrl = `${window.location.origin}/?sub_ref=${ref}`;
+        const customFields = [
+          { display_name: "Plan",    variable_name: "plan",          value: plan.name },
+          { display_name: "Billing", variable_name: "billing_cycle", value: billingCycle },
+        ];
+        if (couponApplies && appliedCoupon) {
+          customFields.push({ display_name: "Coupon", variable_name: "coupon_code", value: appliedCoupon.code });
+        }
         const { data, error } = await supabase.functions.invoke("paystack", {
-          body: {
-            action:       "initialize",
-            email:        session.user.email,
-            amount:       chargeAmount,
-            reference:    ref,
-            callback_url: callbackUrl,
-            metadata: {
-              custom_fields: [
-                { display_name: "Plan",    variable_name: "plan",          value: plan.name },
-                { display_name: "Billing", variable_name: "billing_cycle", value: yearly ? "yearly" : "monthly" },
-              ],
-            },
-          },
+          body: { action: "initialize", email: session.user.email, amount: finalAmount, reference: ref, callback_url: callbackUrl, metadata: { custom_fields: customFields } },
         });
         if (error || !data?.data?.authorization_url) {
           throw new Error(data?.message || error?.message || "Could not start payment");
         }
-        // Store per-reference pending info — used to verify intent on return and detect cancellation
-        localStorage.setItem(`${SUB_PENDING_PREFIX}${ref}`, JSON.stringify({ planId: plan.slug, yearly }));
-        onPaymentStart?.(); // signal parent to set saving=true (enables bfcache/back-button detection)
+        localStorage.setItem(`${SUB_PENDING_PREFIX}${ref}`, JSON.stringify({ planId: plan.slug, yearly, ...couponMeta }));
+        onPaymentStart?.();
         window.location.href = data.data.authorization_url;
       }
     } catch (e) {
@@ -125,8 +130,15 @@ function PaidButton({ plan, session, disabled, yearly = false, onPaymentStart })
 
   return (
     <div className="space-y-1.5">
+      {couponApplies && (
+        <div className="text-center">
+          <span className="text-xs text-gray-400 line-through mr-1.5">₦{chargeAmount.toLocaleString()}</span>
+          <span className="text-sm font-bold text-green-600 dark:text-green-400">₦{finalAmount.toLocaleString()}</span>
+          <span className="text-xs text-gray-400 ml-1">/{billingCycle === "yearly" ? "yr" : "mo"}</span>
+        </div>
+      )}
       <button disabled={disabled || busy} onClick={handleClick} className={cls}>
-        {busy ? "Opening Paystack…" : `Subscribe — ₦${chargeAmount.toLocaleString()}/${yearly ? "yr" : "mo"}`}
+        {busy ? "Opening Paystack…" : `Subscribe — ₦${finalAmount.toLocaleString()}/${billingCycle === "yearly" ? "yr" : "mo"}`}
       </button>
       {err && <p className="text-[10px] text-red-500 text-center">{err}</p>}
     </div>
@@ -143,11 +155,16 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
     () => JSON.parse(localStorage.getItem("pendingPayment") || "null")
   );
 
+  // Coupon state
+  const [couponCode,    setCouponCode]    = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState(null);
+  const [couponMsg,     setCouponMsg]     = useState(null); // { text, ok }
+  const [couponLoading, setCouponLoading] = useState(false);
+
   const saveSubRef = useRef(null);
   const savingRef  = useRef(false);
   savingRef.current = saving;
 
-  // Load/refresh plans from DB
   useEffect(() => {
     setLoadingPlans(true);
     fetchAndCachePlans(supabase)
@@ -156,12 +173,40 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
       .finally(() => setLoadingPlans(false));
   }, []);
 
-  const saveSub = useCallback(async (planSlug, reference, isYearly = false) => {
+  const applyCoupon = useCallback(async () => {
+    const code = couponCode.trim();
+    if (!code) return;
+    setCouponLoading(true); setCouponMsg(null);
+    try {
+      const { data, error: rpcErr } = await supabase.rpc("check_coupon", { p_code: code });
+      if (rpcErr) throw rpcErr;
+      if (!data?.valid) {
+        setCouponMsg({ text: data?.message || "Invalid coupon", ok: false });
+        setAppliedCoupon(null);
+      } else {
+        setAppliedCoupon({
+          code:           data.code || code.toUpperCase(),
+          type:           data.type,
+          value:          data.value,
+          applies_to:     data.applies_to  || [],
+          billing_cycles: data.billing_cycles || [],
+          min_amount:     data.min_amount  || 0,
+        });
+        setCouponMsg({ text: data.message || "Coupon applied!", ok: true });
+      }
+    } catch (e) {
+      setCouponMsg({ text: e.message || "Failed to apply coupon", ok: false });
+      setAppliedCoupon(null);
+    } finally {
+      setCouponLoading(false);
+    }
+  }, [couponCode]);
+
+  const saveSub = useCallback(async (planSlug, reference, isYearly = false, couponInfo = null) => {
     setSaving(true); setError("");
     try {
       const isFree = planSlug === "kobo" || planSlug === "starter";
 
-      // Verify payment with Paystack before activating any paid plan
       if (!isFree && reference) {
         const { data: vd } = await supabase.functions.invoke("paystack", {
           body: { action: "verify", reference },
@@ -178,6 +223,19 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
         }
       }
 
+      // Redeem coupon after confirmed payment (non-blocking)
+      if (!isFree && couponInfo?.couponCode && (couponInfo.discountAmount ?? 0) > 0) {
+        supabase.rpc("redeem_coupon", {
+          p_code:            couponInfo.couponCode,
+          p_plan_slug:       planSlug,
+          p_billing_cycle:   isYearly ? "yearly" : "monthly",
+          p_original_amount: couponInfo.originalAmount,
+          p_discount_amount: couponInfo.discountAmount,
+          p_final_amount:    couponInfo.finalAmount,
+          p_reference:       reference || "",
+        }).catch(() => null);
+      }
+
       const expiresAt = isFree
         ? null
         : new Date(Date.now() + (isYearly ? 365 : 30) * 24 * 60 * 60 * 1000).toISOString();
@@ -185,7 +243,6 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
       const { data: existing } = await supabase
         .from("subscriptions").select("id, plan").eq("user_id", session.user.id).maybeSingle();
 
-      // First-time paid: no prior subscription, or prior was free plan
       const isFirstTimePaid = !isFree && (!existing || existing.plan === "kobo" || existing.plan === "starter" || !existing.plan);
 
       let err;
@@ -204,17 +261,14 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
       }
 
       if (err) throw err;
-      // Mark any upgrade prompts as seen
       await supabase.from("plan_upgrade_prompts").update({ seen: true }).eq("user_id", session.user.id).eq("seen", false);
 
-      // Fire email notifications (non-blocking)
       const planData = plans.find(p => p.slug === planSlug);
       const { data: profile } = await supabase
         .from("profiles").select("full_name, business_name").eq("id", session.user.id).maybeSingle();
       const userName = profile?.full_name || session.user.email;
       const bizName  = profile?.business_name || "";
 
-      // Kobo (free) plan welcome email with upgrade prompts
       if (isFree) {
         const upgradePlans = plans
           .filter(p => p.price_monthly > 0)
@@ -222,58 +276,26 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
         fetch("https://admin.kudiai.app/api/public/email-trigger", {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
-          body: JSON.stringify({
-            event: "kobo_welcome",
-            data: {
-              user_email:    session.user.email,
-              user_name:     userName,
-              business_name: bizName,
-              upgrade_plans: upgradePlans,
-            },
-          }),
+          body: JSON.stringify({ event: "kobo_welcome", data: { user_email: session.user.email, user_name: userName, business_name: bizName, upgrade_plans: upgradePlans } }),
         }).catch(() => null);
       }
 
       if (!isFree) {
         const features = planData ? getDisplayFeatures(planData) : [];
-
-        // Plan confirmation email to user — every paid purchase (new, upgrade, renewal)
         fetch("https://admin.kudiai.app/api/public/email-trigger", {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
           body: JSON.stringify({
             event: "subscription_welcome",
-            data: {
-              user_email:    session.user.email,
-              user_name:     userName,
-              business_name: bizName,
-              plan_name:     planData?.name || planSlug,
-              plan_slug:     planSlug,
-              plan_price:    planData?.price_monthly || 0,
-              plan_features:  features,
-              billing_cycle:  isYearly ? "yearly" : "monthly",
-              reference:      reference || "",
-              is_first_time:  isFirstTimePaid,
-            },
+            data: { user_email: session.user.email, user_name: userName, business_name: bizName, plan_name: planData?.name || planSlug, plan_slug: planSlug, plan_price: planData?.price_monthly || 0, plan_features: features, billing_cycle: isYearly ? "yearly" : "monthly", reference: reference || "", is_first_time: isFirstTimePaid },
           }),
         }).catch(() => null);
-
-        // Admin alert — every paid plan purchase (new subscription or upgrade/renewal)
         fetch("https://admin.kudiai.app/api/public/email-trigger", {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
           body: JSON.stringify({
             event: "plan_purchased",
-            data: {
-              user_email:    session.user.email,
-              user_name:     userName,
-              business_name: bizName,
-              plan_name:     planData?.name || planSlug,
-              plan_slug:     planSlug,
-              plan_price:    planData?.price_monthly || 0,
-              reference:     reference || "",
-              is_first_time: isFirstTimePaid,
-            },
+            data: { user_email: session.user.email, user_name: userName, business_name: bizName, plan_name: planData?.name || planSlug, plan_slug: planSlug, plan_price: planData?.price_monthly || 0, reference: reference || "", is_first_time: isFirstTimePaid },
           }),
         }).catch(() => null);
       }
@@ -281,6 +303,7 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
       setPendingPayment(null);
       localStorage.removeItem("pendingPayment");
       Object.keys(localStorage).filter(k => k.startsWith(SUB_PENDING_PREFIX)).forEach(k => localStorage.removeItem(k));
+      setAppliedCoupon(null); setCouponCode(""); setCouponMsg(null);
       onComplete(planSlug);
     } catch (e) {
       setError(e.message || "Could not save plan. Please try again.");
@@ -301,7 +324,8 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
       if (!pending) return;
       localStorage.removeItem("pendingPayment");
       setPendingPayment(null);
-      saveSubRef.current(pending.planId, pending.reference);
+      const { planId, reference, yearly: isYearly = false, couponCode: cc, originalAmount, discountAmount, finalAmount } = pending;
+      saveSubRef.current(planId, reference, isYearly, cc ? { couponCode: cc, originalAmount, discountAmount, finalAmount } : null);
     };
     window.addEventListener("paymentCallback", handleDeepLink);
     let resumeListener;
@@ -319,27 +343,27 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
   const currentPlanData   = plans.find(p => p.slug === currentNormalized);
   const currentSortOrder  = currentPlanData?.sort_order ?? 0;
 
-  const handleFree = () => saveSub("kobo", null, false);
+  const handleFree = () => saveSub("kobo", null, false, null);
 
-  // Detect return from Paystack web redirect — plan info comes from localStorage, not URL
+  // Detect return from Paystack web redirect
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const subRef = params.get("sub_ref");
     if (!subRef) return;
     const pendingKey = `${SUB_PENDING_PREFIX}${subRef}`;
     const stored = localStorage.getItem(pendingKey);
-    if (!stored) return; // orphaned URL — no matching pending payment
-    const { planId, yearly: isYearly = false } = JSON.parse(stored);
+    if (!stored) return;
+    const { planId, yearly: isYearly = false, couponCode: cc, originalAmount, discountAmount, finalAmount } = JSON.parse(stored);
     window.history.replaceState({}, "", window.location.pathname);
     localStorage.removeItem(pendingKey);
-    saveSub(planId, subRef, isYearly);
+    saveSub(planId, subRef, isYearly, cc ? { couponCode: cc, originalAmount, discountAmount, finalAmount } : null);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Detect cancellation via bfcache restore (back button) or in-app browser close
+  // Detect cancellation via bfcache restore or in-app browser close
   useEffect(() => {
     const showDisrupted = () => {
       const params = new URLSearchParams(window.location.search);
-      if (params.get("sub_ref")) return; // normal redirect — handled above
+      if (params.get("sub_ref")) return;
       const keys = Object.keys(localStorage).filter(k => k.startsWith(SUB_PENDING_PREFIX));
       if (keys.length === 0 && !savingRef.current) return;
       keys.forEach(k => localStorage.removeItem(k));
@@ -403,13 +427,49 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
               <span className="ml-1.5 text-[10px] font-bold text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/30 px-1.5 py-0.5 rounded-full">Save up to 10%</span>
             </span>
           </div>
+
+          {/* Coupon input */}
+          <div className="max-w-sm mx-auto mt-5">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder="Have a coupon code?"
+                value={couponCode}
+                onChange={e => {
+                  setCouponCode(e.target.value);
+                  setCouponMsg(null);
+                  if (!e.target.value.trim()) setAppliedCoupon(null);
+                }}
+                onKeyDown={e => e.key === "Enter" && applyCoupon()}
+                className="flex-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-gray-800 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+              <button
+                onClick={applyCoupon}
+                disabled={!couponCode.trim() || couponLoading}
+                className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-sm font-semibold transition-colors min-w-[70px]"
+              >
+                {couponLoading ? "…" : appliedCoupon ? "Applied ✓" : "Apply"}
+              </button>
+            </div>
+            {couponMsg && (
+              <p className={`mt-1.5 text-xs font-medium text-left ${couponMsg.ok ? "text-green-600 dark:text-green-400" : "text-red-500"}`}>
+                {couponMsg.text}
+              </p>
+            )}
+          </div>
         </div>
 
         {pendingPayment && (
           <div className="mb-4 max-w-sm mx-auto bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-center">
             <p className="text-sm font-semibold text-green-800 mb-2">Payment completed?</p>
             <button
-              onClick={() => { const p = pendingPayment; setPendingPayment(null); localStorage.removeItem("pendingPayment"); saveSub(p.planId, p.reference, p.yearly || false); }}
+              onClick={() => {
+                const p = pendingPayment;
+                setPendingPayment(null);
+                localStorage.removeItem("pendingPayment");
+                saveSub(p.planId, p.reference, p.yearly || false,
+                  p.couponCode ? { couponCode: p.couponCode, originalAmount: p.originalAmount, discountAmount: p.discountAmount, finalAmount: p.finalAmount } : null);
+              }}
               disabled={saving}
               className="text-sm font-bold text-white bg-green-600 hover:bg-green-700 px-5 py-2 rounded-lg disabled:opacity-50">
               Activate My Plan
@@ -433,6 +493,10 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
             const isBestValue = !isCurrent && plan.sort_order === plans.length - 1 && plans.length > 2;
             const displayFeatures = getDisplayFeatures(plan);
             const missingFeatures = getMissingFeatures(plan, plans);
+            const billingCycle = yearly ? "yearly" : "monthly";
+            const baseCharge = yearly && plan.price_yearly > 0 ? plan.price_yearly : plan.price_monthly;
+            const { applies: couponApplies, discount: couponDiscount, final: couponFinal } =
+              computeCouponDiscount(appliedCoupon, plan.slug, billingCycle, baseCharge);
 
             const ringCls = isCurrent ? "ring-2 ring-blue-400 opacity-75"
               : isPopular ? "ring-2 ring-green-500"
@@ -463,9 +527,19 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
                 <div className="mb-5">
                   <h2 className="text-base font-bold text-gray-700 dark:text-slate-200 uppercase tracking-wide">{plan.name}</h2>
                   {plan.description && <p className="text-xs text-gray-400 dark:text-slate-500 mt-0.5">{plan.description}</p>}
-                  <div className="mt-2 flex items-end gap-1">
+                  <div className="mt-2 flex items-end gap-1 flex-wrap">
                     {plan.price_monthly === 0 ? (
                       <span className="text-3xl font-extrabold text-gray-800 dark:text-white">Free</span>
+                    ) : couponApplies ? (
+                      <>
+                        <span className="text-lg font-bold text-gray-400 dark:text-slate-500 line-through">
+                          ₦{(yearly && plan.price_yearly > 0 ? Math.round(plan.price_yearly / 12) : plan.price_monthly).toLocaleString()}
+                        </span>
+                        <span className="text-3xl font-extrabold text-green-600 dark:text-green-400">
+                          ₦{(yearly ? Math.round(couponFinal / 12) : couponFinal).toLocaleString()}
+                        </span>
+                        <span className="text-sm text-gray-400 mb-1">/month</span>
+                      </>
                     ) : yearly && plan.price_yearly > 0 ? (
                       <>
                         <span className="text-3xl font-extrabold text-gray-800 dark:text-white">₦{Math.round(plan.price_yearly / 12).toLocaleString()}</span>
@@ -479,13 +553,21 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
                     )}
                   </div>
                   {plan.price_monthly === 0 && <p className="text-xs text-gray-400 mt-0.5">Free forever</p>}
-                  {plan.price_yearly > 0 && yearly && (
+                  {couponApplies && plan.price_monthly > 0 && (
+                    <p className="text-xs text-green-600 dark:text-green-400 mt-0.5 font-medium">
+                      Coupon saves ₦{couponDiscount.toLocaleString()}
+                      {yearly && plan.price_yearly > 0
+                        ? ` — billed ₦${couponFinal.toLocaleString()}/year`
+                        : ""}
+                    </p>
+                  )}
+                  {!couponApplies && plan.price_yearly > 0 && yearly && (
                     <p className="text-xs text-green-600 dark:text-green-400 mt-0.5 font-medium">
                       Billed ₦{plan.price_yearly.toLocaleString()}/year
                       <span className="ml-1 text-gray-400">(save {Math.round((1 - plan.price_yearly / (plan.price_monthly * 12)) * 100)}%)</span>
                     </p>
                   )}
-                  {plan.price_yearly > 0 && !yearly && (
+                  {!couponApplies && plan.price_yearly > 0 && !yearly && (
                     <p className="text-xs text-green-600 dark:text-green-400 mt-0.5">
                       Switch to yearly → save {Math.round((1 - plan.price_yearly / (plan.price_monthly * 12)) * 100)}%
                     </p>
@@ -525,7 +607,7 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
                     {saving ? "Activating…" : "Start for Free"}
                   </button>
                 ) : (
-                  <PaidButton plan={plan} session={session} disabled={saving} yearly={yearly} onPaymentStart={() => setSaving(true)} />
+                  <PaidButton plan={plan} session={session} disabled={saving} yearly={yearly} onPaymentStart={() => setSaving(true)} appliedCoupon={appliedCoupon} />
                 )}
               </div>
             );
