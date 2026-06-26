@@ -68,11 +68,15 @@ function PaidButton({ plan, session, onSuccess, disabled, yearly = false }) {
   const [busy, setBusy] = useState(false);
   const [nativeErr, setNativeErr] = useState("");
 
+  // Paystack public key — public key is safe to inline; env var used when available
+  const paystackKey = process.env.REACT_APP_PAYSTACK_PUBLIC_KEY
+    || "pk_live_78958c4f4d265f7dcf6736d436a551210f0ea508";
+
   const config = {
     reference: ref,
     email:     session.user.email,
     amount:    chargeAmount * 100,
-    publicKey: process.env.REACT_APP_PAYSTACK_PUBLIC_KEY || "",
+    publicKey: paystackKey,
     metadata: {
       custom_fields: [
         { display_name: "Plan", variable_name: "plan", value: plan.name },
@@ -193,14 +197,35 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
       // Mark any upgrade prompts as seen
       await supabase.from("plan_upgrade_prompts").update({ seen: true }).eq("user_id", session.user.id).eq("seen", false);
 
-      // Fire email notifications for all paid plan purchases (non-blocking)
+      // Fire email notifications (non-blocking)
+      const planData = plans.find(p => p.slug === planSlug);
+      const { data: profile } = await supabase
+        .from("profiles").select("full_name, business_name").eq("id", session.user.id).maybeSingle();
+      const userName = profile?.full_name || session.user.email;
+      const bizName  = profile?.business_name || "";
+
+      // Kobo (free) plan welcome email with upgrade prompts
+      if (isFree) {
+        const upgradePlans = plans
+          .filter(p => p.price_monthly > 0)
+          .map(p => ({ name: p.name, slug: p.slug, price: p.price_monthly, features: getDisplayFeatures(p).slice(0, 4) }));
+        fetch("https://admin.kudiai.app/api/public/email-trigger", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+          body: JSON.stringify({
+            event: "kobo_welcome",
+            data: {
+              user_email:    session.user.email,
+              user_name:     userName,
+              business_name: bizName,
+              upgrade_plans: upgradePlans,
+            },
+          }),
+        }).catch(() => null);
+      }
+
       if (!isFree) {
-        const planData = plans.find(p => p.slug === planSlug);
         const features = planData ? getDisplayFeatures(planData) : [];
-        const { data: profile } = await supabase
-          .from("profiles").select("full_name, business_name").eq("id", session.user.id).maybeSingle();
-        const userName = profile?.full_name || session.user.email;
-        const bizName  = profile?.business_name || "";
 
         // Plan confirmation email to user — every paid purchase (new, upgrade, renewal)
         fetch("https://admin.kudiai.app/api/public/email-trigger", {
@@ -452,7 +477,7 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
                 ) : plan.price_monthly === 0 ? (
                   <button onClick={handleFree} disabled={saving}
                     className="w-full py-2.5 rounded-xl font-semibold text-sm border-2 border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors">
-                    Get Started Free
+                    {saving ? "Activating…" : "Start for Free"}
                   </button>
                 ) : (
                   <PaidButton plan={plan} session={session} disabled={saving} yearly={yearly} onSuccess={handlePaid(plan.slug, yearly)} />
