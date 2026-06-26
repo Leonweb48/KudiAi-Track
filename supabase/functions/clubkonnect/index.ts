@@ -309,8 +309,8 @@ serve(async (req) => {
           if (s && s !== "null" && s !== "undefined" && s.length >= 4) return s;
         }
       }
-      // 2. Deep-scan every value for 16+ consecutive digit strings (STS token pattern)
-      // Nigerian prepaid tokens are 20 digits, often grouped with spaces/dashes
+      // 2. Deep-scan every value for EXACTLY 20-digit strings (Nigerian STS token standard)
+      // STS tokens are always 20 digits — using 16+ was too broad and caught other IDs
       const SKIP = new Set([
         "statuscode", "StatusCode", "status", "Status", "orderid", "OrderID",
         "requestid", "RequestID", "amount", "Amount", "units", "Units",
@@ -323,8 +323,9 @@ serve(async (req) => {
         for (const [k, v] of Object.entries(obj)) {
           if (SKIP.has(k)) continue;
           if (typeof v === "string" || typeof v === "number") {
-            const s = String(v).replace(/[\s\-]/g, "");
-            if (/^\d{16,}$/.test(s)) return String(v).trim();
+            // Strip spaces/dashes (tokens often come as "XXXX XXXX XXXX XXXX XXXX")
+            const clean = String(v).replace(/[\s\-]/g, "");
+            if (/^\d{20}$/.test(clean)) return String(v).trim();
           }
           if (v !== null && typeof v === "object" && !Array.isArray(v)) {
             const found = deepScan(v as Record<string, unknown>, depth + 1);
@@ -335,7 +336,7 @@ serve(async (req) => {
       }
       const scanned = deepScan(d, 0);
       if (scanned) return scanned;
-      // 3. Fallback: parse _raw string for 20-digit token if JSON was unparseable
+      // 3. Fallback: parse _raw string for exactly 20-digit token if JSON was unparseable
       if (typeof d._raw === "string") {
         const m = d._raw.match(/\b(\d{20})\b/);
         if (m) return m[1];
