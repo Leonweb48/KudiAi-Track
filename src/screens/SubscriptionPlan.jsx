@@ -85,7 +85,19 @@ function PaidButton({ plan, session, disabled, yearly = false, onPaymentStart, a
 
   const handleClick = async () => {
     setBusy(true); setErr("");
-    const ref = `kt-sub-${plan.slug}-${Date.now()}`;
+
+    // Validate amount before hitting Paystack
+    if (finalAmount <= 0) {
+      setErr("Coupon covers the full cost. Please contact support to activate your plan.");
+      setBusy(false); return;
+    }
+    if (finalAmount < 100) {
+      setErr(`Discounted amount (₦${finalAmount.toLocaleString()}) is below Paystack's minimum of ₦100.`);
+      setBusy(false); return;
+    }
+
+    // Alphanumeric-only reference — Paystack Live rejects hyphens in some cases
+    const ref = `ksub${Date.now()}${Math.floor(Math.random() * 900000 + 100000)}`;
     const couponMeta = couponApplies && appliedCoupon ? {
       couponCode: appliedCoupon.code, originalAmount: chargeAmount, discountAmount, finalAmount,
     } : {};
