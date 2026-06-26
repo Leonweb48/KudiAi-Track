@@ -766,12 +766,14 @@ const COUNTABLE_FEATURE_LABELS = {
 };
 
 function PlansManager() {
-  const [plans, setPlans]   = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState(null); // plan id being edited
-  const [form, setForm]     = useState({});
-  const [saving, setSaving] = useState(false);
-  const [msg, setMsg]       = useState("");
+  const [plans, setPlans]         = useState([]);
+  const [loading, setLoading]     = useState(true);
+  const [editing, setEditing]     = useState(null); // plan id being edited
+  const [form, setForm]           = useState({});
+  const [saving, setSaving]       = useState(false);
+  const [msg, setMsg]             = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(null); // { plan, subCount } | null
+  const [deleting, setDeleting]   = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -844,6 +846,35 @@ function PlansManager() {
       setMsg("Error: " + (e.message || "Could not save"));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const startDelete = async (plan) => {
+    // Count active subscribers on this plan before confirming
+    const { count } = await supabase
+      .from("subscriptions")
+      .select("id", { count: "exact", head: true })
+      .eq("plan", plan.slug)
+      .eq("status", "active");
+    setConfirmDelete({ plan, subCount: count || 0 });
+  };
+
+  const handleDelete = async () => {
+    if (!confirmDelete) return;
+    setDeleting(true);
+    try {
+      const { error } = await supabase
+        .from("subscription_plans")
+        .delete()
+        .eq("id", confirmDelete.plan.id);
+      if (error) throw error;
+      try { localStorage.removeItem("kuditrack_plans_v2"); } catch {}
+      setConfirmDelete(null);
+      load();
+    } catch (e) {
+      setConfirmDelete(prev => prev ? { ...prev, error: e.message } : null);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -1007,6 +1038,39 @@ function PlansManager() {
         <p className="text-xs text-slate-400">Changes take effect immediately for new subscribers</p>
       </div>
 
+      {/* Delete confirmation modal */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full space-y-4">
+            <h4 className="font-bold text-slate-800 text-base">Delete "{confirmDelete.plan.name}"?</h4>
+            {confirmDelete.subCount > 0 ? (
+              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
+                <strong>{confirmDelete.subCount} active subscriber{confirmDelete.subCount !== 1 ? "s" : ""}</strong> are currently on this plan. They will automatically fall back to the Kobo (free) plan.
+              </div>
+            ) : (
+              <p className="text-sm text-slate-500">No active subscribers on this plan. It will be permanently removed.</p>
+            )}
+            {confirmDelete.error && (
+              <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{confirmDelete.error}</p>
+            )}
+            <div className="flex gap-3">
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-semibold disabled:opacity-50 transition-colors">
+                {deleting ? "Deleting…" : "Yes, Delete"}
+              </button>
+              <button
+                onClick={() => setConfirmDelete(null)}
+                disabled={deleting}
+                className="px-5 py-2.5 border border-slate-200 text-slate-600 rounded-xl text-sm font-medium hover:bg-slate-50 disabled:opacity-50">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {plans.map(plan => (
         <div key={plan.id}
           className={`bg-white border rounded-2xl p-5 shadow-sm flex flex-col gap-3 ${plan.is_active ? "border-slate-200" : "border-dashed border-slate-300 opacity-60"}`}>
@@ -1020,10 +1084,16 @@ function PlansManager() {
               </div>
               <p className="text-xs text-slate-400 mt-0.5">{plan.description}</p>
             </div>
-            <button onClick={() => startEdit(plan)}
-              className="text-xs px-3 py-1.5 rounded-lg bg-blue-50 text-blue-600 font-semibold hover:bg-blue-100 transition-colors flex-shrink-0">
-              Edit
-            </button>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button onClick={() => startEdit(plan)}
+                className="text-xs px-3 py-1.5 rounded-lg bg-blue-50 text-blue-600 font-semibold hover:bg-blue-100 transition-colors">
+                Edit
+              </button>
+              <button onClick={() => startDelete(plan)}
+                className="text-xs px-3 py-1.5 rounded-lg bg-red-50 text-red-600 font-semibold hover:bg-red-100 transition-colors">
+                Delete
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-2 text-[11px]">
