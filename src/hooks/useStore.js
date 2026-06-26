@@ -350,6 +350,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
           module:  "transactions",
           details: extra ? `${amt} · ${extra}` : amt });
       }
+      return data;
     }
   };
 

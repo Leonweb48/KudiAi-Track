@@ -1386,6 +1386,9 @@ export default function BillPayments({ store, plan, session = null, staffName = 
   const pointsBalanceRef   = useRef(0);
   const cashbackBalanceRef = useRef(0);
 
+  // Ref for updating DB + sending email when electricity token arrives via polling
+  const elecPendingCbRef = useRef(null);
+
   // Detect Paystack return on first render so overlay appears immediately (no flash)
   const [saving, setSaving] = useState(() => {
     const p = new URLSearchParams(window.location.search);
@@ -1541,6 +1544,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       if (cancelled || attempts >= MAX) {
         if (!cancelled) {
           setFulfillResult(prev => prev ? { ...prev, elecOrderId: "", txnHistoryPending: true } : prev);
+          elecPendingCbRef.current = null;
         }
         return;
       }
@@ -1550,15 +1554,22 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         if (cancelled) return;
         if (q.status === "SUCCESS" && q.token) {
           const tok = q.token;
+          let resolvedNote = "";
           setFulfillResult(prev => {
             if (!prev) return prev;
-            const newNote = prev.detail.replace(" | Token loading...", "").replace("Token loading... | ", "").replace("Token loading...", "");
-            return { ...prev, elecToken: tok, elecOrderId: "", detail: `Token: ${tok} | ${newNote}`.replace(" |  | ", " | ") };
+            const cleaned = prev.detail.replace(" | Token loading...", "").replace("Token loading... | ", "").replace("Token loading...", "");
+            resolvedNote = `Token: ${tok} | ${cleaned}`.replace(" |  | ", " | ");
+            return { ...prev, elecToken: tok, elecOrderId: "", detail: resolvedNote };
           });
+          // Persist token to DB + fire deferred email
+          if (resolvedNote && elecPendingCbRef.current) {
+            elecPendingCbRef.current(tok, resolvedNote);
+          }
           return;
         }
         if (q.status === "CANCELLED") {
           setFulfillResult(prev => prev ? { ...prev, elecOrderId: "", txnHistoryPending: true } : prev);
+          elecPendingCbRef.current = null;
           return;
         }
       } catch (_) {}
@@ -1909,7 +1920,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         bill_status: "success",
       };
 
-      await addTransaction(payload);
+      const savedTxn = await addTransaction(payload);
 
       // Cashback: record redeemed amount (if used) and earned amount (1% of paid)
       const { cashbackUsed = 0 } = pending;
@@ -1950,17 +1961,40 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       setSaving(false);
       setFulfillResult({ ok: true, label: itemName, detail: note, pinsArr: pinsArr || [], psRef: ref, apiRef, cardDetails, cat, amount: totalAmount || amount, earnedPts, txnHistoryPending, elecToken, elecOrderId, formSnap: { ...f } });
 
-      // Send success confirmation emails (best-effort)
+      // For electricity PENDING: defer DB update + email until polling finds the token
       const svcLabel = CATS.find(c => c.id === cat)?.label || cat;
-      try {
-        await supabase.functions.invoke("clubkonnect", {
-          body: { action: "bill-success-email", user_email: profile?.email || null, user_name: profile?.owner_name || profile?.business_name || null, service: svcLabel, amount: totalAmount || amount, reference: ref, detail: note },
-        });
-      } catch (_) {}
-      if (staffEmail && staffEmail !== profile?.email) {
+      if (cat === "electricity" && elecOrderId) {
+        const _ref      = ref;
+        const _txnId    = savedTxn?.id || null;
+        const _email    = profile?.email || null;
+        const _name     = profile?.owner_name || profile?.business_name || null;
+        const _amount   = totalAmount || amount;
+        elecPendingCbRef.current = (tok, updatedNote) => {
+          elecPendingCbRef.current = null;
+          if (_txnId) {
+            supabase.from("transactions").update({ note: updatedNote }).eq("id", _txnId).catch(() => {});
+          }
+          supabase.functions.invoke("clubkonnect", {
+            body: { action: "bill-success-email", user_email: _email, user_name: _name, service: "Electricity", amount: _amount, reference: _ref, detail: updatedNote },
+          }).catch(() => {});
+          if (staffEmail && staffEmail !== _email) {
+            supabase.functions.invoke("clubkonnect", {
+              body: { action: "bill-staff-email", staff_email: staffEmail, staff_name: staffName, business_name: businessName || profile?.business_name, service: "Electricity", amount: _amount, reference: _ref, detail: updatedNote, outcome: "success" },
+            }).catch(() => {});
+          }
+        };
+      } else {
+        // Send success confirmation emails immediately (best-effort)
         try {
-          supabase.functions.invoke("clubkonnect", { body: { action: "bill-staff-email", staff_email: staffEmail, staff_name: staffName, business_name: businessName || profile?.business_name, service: svcLabel, amount: totalAmount || amount, reference: ref, detail: note, outcome: "success" } });
+          await supabase.functions.invoke("clubkonnect", {
+            body: { action: "bill-success-email", user_email: profile?.email || null, user_name: profile?.owner_name || profile?.business_name || null, service: svcLabel, amount: totalAmount || amount, reference: ref, detail: note },
+          });
         } catch (_) {}
+        if (staffEmail && staffEmail !== profile?.email) {
+          try {
+            supabase.functions.invoke("clubkonnect", { body: { action: "bill-staff-email", staff_email: staffEmail, staff_name: staffName, business_name: businessName || profile?.business_name, service: svcLabel, amount: totalAmount || amount, reference: ref, detail: note, outcome: "success" } });
+          } catch (_) {}
+        }
       }
     } catch (err) {
       setSaving(false);
@@ -2698,7 +2732,18 @@ export default function BillPayments({ store, plan, session = null, staffName = 
             receipt.category === "electricity" && !receipt.token && receipt.apiRef
               ? async (orderId) => {
                   const q = await clubkonnect("electricity-query", { orderId });
-                  if (q.status === "SUCCESS" && q.token) return q.token;
+                  if (q.status === "SUCCESS" && q.token) {
+                    // Persist token into the DB note so future receipt opens show it
+                    if (receipt.id) {
+                      const baseNote = (receipt.note || "")
+                        .replace(" | Token loading...", "")
+                        .replace("Token loading... | ", "")
+                        .replace("Token loading...", "");
+                      const updatedNote = `Token: ${q.token} | ${baseNote}`.replace(" |  | ", " | ");
+                      supabase.from("transactions").update({ note: updatedNote }).eq("id", receipt.id).catch(() => {});
+                    }
+                    return q.token;
+                  }
                   throw new Error(q.status === "CANCELLED"
                     ? "Order was cancelled by provider. Contact support with your reference."
                     : "Token not ready yet. Please wait a few minutes and try again.");
