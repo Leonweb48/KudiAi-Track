@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { usePaystackPayment } from "react-paystack";
 import { supabase } from "../utils/supabase";
 import AppLogo from "../components/AppLogo";
 import { fetchAndCachePlans, getActivePlans, normalizeSlug, ALL_FEATURE_LIST } from "../utils/plans";
@@ -61,75 +60,61 @@ function getDisplayFeatures(plan) {
   return list;
 }
 
-// PaidButton must always call usePaystackPayment (React Hook rules)
-function PaidButton({ plan, session, onSuccess, disabled, yearly = false }) {
+// PaidButton: uses Supabase paystack edge function (server-side) — no client-side key needed
+function PaidButton({ plan, session, disabled, yearly = false }) {
   const chargeAmount = yearly && plan.price_yearly > 0 ? plan.price_yearly : plan.price_monthly;
-  const [ref] = useState(`kt-${plan.slug}-${yearly ? "yr" : "mo"}-${Date.now()}`);
   const [busy, setBusy] = useState(false);
-  const [nativeErr, setNativeErr] = useState("");
-
-  // Paystack public key — public key is safe to inline; env var used when available
-  const paystackKey = process.env.REACT_APP_PAYSTACK_PUBLIC_KEY
-    || "pk_live_78958c4f4d265f7dcf6736d436a551210f0ea508";
-
-  const config = {
-    reference: ref,
-    email:     session.user.email,
-    amount:    chargeAmount * 100,
-    publicKey: paystackKey,
-    metadata: {
-      custom_fields: [
-        { display_name: "Plan", variable_name: "plan", value: plan.name },
-        { display_name: "Billing", variable_name: "billing_cycle", value: yearly ? "yearly" : "monthly" },
-      ],
-    },
-  };
-  const initPayment = usePaystackPayment(config);
+  const [err,  setErr]  = useState("");
 
   const color = planColor(plan.sort_order);
-  const cls = color === "violet" || color === "amber"
+  const cls = color === "violet"
     ? "w-full py-2.5 rounded-xl font-semibold text-sm bg-violet-600 hover:bg-violet-700 text-white disabled:opacity-50 transition-colors"
     : "w-full py-2.5 rounded-xl font-semibold text-sm bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 transition-colors";
 
   const handleClick = async () => {
-    if (isNative) {
-      setBusy(true); setNativeErr("");
-      try {
+    setBusy(true); setErr("");
+    const ref = `kt-sub-${plan.slug}-${Date.now()}`;
+    try {
+      if (isNative) {
+        // Native: initialize-payment edge function → Browser.open → deep link return
         const baseUrl = supabase.supabaseUrl;
         const anonKey = supabase.supabaseKey;
         const res = await fetch(`${baseUrl}/functions/v1/initialize-payment`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${anonKey}`, "apikey": anonKey },
-          body: JSON.stringify({ email: session.user.email, amount: chargeAmount * 100, reference: ref, planId: plan.slug, billingCycle: yearly ? "yearly" : "monthly" }),
+          body: JSON.stringify({ email: session.user.email, amount: chargeAmount * 100, reference: ref, planId: plan.slug }),
         });
         const data = await res.json();
         if (!res.ok || !data.authorization_url) throw new Error(data.error || `Server error ${res.status}`);
-        localStorage.setItem("pendingPayment", JSON.stringify({ planId: plan.slug, reference: data.reference || ref }));
+        localStorage.setItem("pendingPayment", JSON.stringify({ planId: plan.slug, reference: data.reference || ref, yearly }));
         await Browser.open({ url: data.authorization_url });
-      } catch (err) {
-        setNativeErr(err.message);
-      } finally {
-        setBusy(false);
+      } else {
+        // Web: use same paystack edge function as BillPayments (secret key lives on server)
+        const callbackUrl = `${window.location.origin}/?sub_ref=${ref}&plan=${plan.slug}${yearly ? "&yearly=1" : ""}`;
+        const { data, error } = await supabase.functions.invoke("paystack", {
+          body: {
+            action:       "initialize",
+            email:        session.user.email,
+            amount:       chargeAmount * 100,
+            reference:    ref,
+            callback_url: callbackUrl,
+            metadata: {
+              custom_fields: [
+                { display_name: "Plan",    variable_name: "plan",          value: plan.name },
+                { display_name: "Billing", variable_name: "billing_cycle", value: yearly ? "yearly" : "monthly" },
+              ],
+            },
+          },
+        });
+        if (error || !data?.data?.authorization_url) {
+          throw new Error(data?.message || error?.message || "Could not start payment");
+        }
+        localStorage.setItem("pendingPayment", JSON.stringify({ planId: plan.slug, reference: ref, yearly }));
+        window.location.href = data.data.authorization_url;
       }
-    } else {
-      initPayment({
-        onSuccess,
-        onClose: () => {
-          fetch("https://admin.kudiai.app/api/public/email-trigger", {
-            method:  "POST",
-            headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
-            body: JSON.stringify({
-              event: "payment_cancelled",
-              data: {
-                user_email: session.user.email,
-                plan_name:  plan.name,
-                plan_slug:  plan.slug,
-                plan_price: chargeAmount,
-              },
-            }),
-          }).catch(() => null);
-        },
-      });
+    } catch (e) {
+      setErr(e.message || "Payment failed. Please try again.");
+      setBusy(false);
     }
   };
 
@@ -138,7 +123,7 @@ function PaidButton({ plan, session, onSuccess, disabled, yearly = false }) {
       <button disabled={disabled || busy} onClick={handleClick} className={cls}>
         {busy ? "Opening Paystack…" : `Subscribe — ₦${chargeAmount.toLocaleString()}/${yearly ? "yr" : "mo"}`}
       </button>
-      {nativeErr && <p className="text-[10px] text-red-500 text-center">{nativeErr}</p>}
+      {err && <p className="text-[10px] text-red-500 text-center">{err}</p>}
     </div>
   );
 }
@@ -309,7 +294,19 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
   const currentSortOrder  = currentPlanData?.sort_order ?? 0;
 
   const handleFree = () => saveSub("kobo", null, false);
-  const handlePaid = (slug, isYearly) => (ref) => saveSub(slug, ref.reference, isYearly);
+
+  // Detect return from Paystack web redirect (/?sub_ref=...&plan=...&yearly=1)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const subRef = params.get("sub_ref");
+    const planSlug = params.get("plan");
+    const isYearly = params.get("yearly") === "1";
+    if (subRef && planSlug) {
+      window.history.replaceState({}, "", window.location.pathname);
+      localStorage.removeItem("pendingPayment");
+      saveSub(planSlug, subRef, isYearly);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loadingPlans && plans.length === 0) {
     return (
@@ -364,7 +361,7 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
           <div className="mb-4 max-w-sm mx-auto bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-center">
             <p className="text-sm font-semibold text-green-800 mb-2">Payment completed?</p>
             <button
-              onClick={() => { const p = pendingPayment; setPendingPayment(null); localStorage.removeItem("pendingPayment"); saveSub(p.planId, p.reference); }}
+              onClick={() => { const p = pendingPayment; setPendingPayment(null); localStorage.removeItem("pendingPayment"); saveSub(p.planId, p.reference, p.yearly || false); }}
               disabled={saving}
               className="text-sm font-bold text-white bg-green-600 hover:bg-green-700 px-5 py-2 rounded-lg disabled:opacity-50">
               Activate My Plan
@@ -480,7 +477,7 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
                     {saving ? "Activating…" : "Start for Free"}
                   </button>
                 ) : (
-                  <PaidButton plan={plan} session={session} disabled={saving} yearly={yearly} onSuccess={handlePaid(plan.slug, yearly)} />
+                  <PaidButton plan={plan} session={session} disabled={saving} yearly={yearly} />
                 )}
               </div>
             );
