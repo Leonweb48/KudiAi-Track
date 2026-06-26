@@ -66,7 +66,11 @@ export default function App() {
   const [voiceOpen,   setVoiceOpen]   = useState(false);
   const [showUpgrade,  setShowUpgrade]  = useState(() => {
     const p = new URLSearchParams(window.location.search);
-    return !!(p.get("sub_ref") && p.get("plan"));
+    const subRef = p.get("sub_ref");
+    if (subRef && localStorage.getItem(`sub_pending_${subRef}`)) return true;
+    // fallback: bfcache restore may have cleared URL but left localStorage key
+    if (Object.keys(localStorage).some(k => k.startsWith("sub_pending_"))) return true;
+    return false;
   });
   const [showReports,  setShowReports]  = useState(false);
   const [showAI,       setShowAI]       = useState(false);

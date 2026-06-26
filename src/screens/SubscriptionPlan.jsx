@@ -60,8 +60,10 @@ function getDisplayFeatures(plan) {
   return list;
 }
 
+const SUB_PENDING_PREFIX = "sub_pending_";
+
 // PaidButton: uses Supabase paystack edge function (server-side) — no client-side key needed
-function PaidButton({ plan, session, disabled, yearly = false }) {
+function PaidButton({ plan, session, disabled, yearly = false, onPaymentStart }) {
   const chargeAmount = yearly && plan.price_yearly > 0 ? plan.price_yearly : plan.price_monthly;
   const [busy, setBusy] = useState(false);
   const [err,  setErr]  = useState("");
@@ -89,8 +91,9 @@ function PaidButton({ plan, session, disabled, yearly = false }) {
         localStorage.setItem("pendingPayment", JSON.stringify({ planId: plan.slug, reference: data.reference || ref, yearly }));
         await Browser.open({ url: data.authorization_url });
       } else {
-        // Web: use same paystack edge function as BillPayments (secret key lives on server)
-        const callbackUrl = `${window.location.origin}/?sub_ref=${ref}&plan=${plan.slug}${yearly ? "&yearly=1" : ""}`;
+        // Web: same pattern as BillPayments — store plan info in localStorage keyed by reference,
+        // callback URL carries only the ref (plan/yearly come from localStorage, not URL params)
+        const callbackUrl = `${window.location.origin}/?sub_ref=${ref}`;
         const { data, error } = await supabase.functions.invoke("paystack", {
           body: {
             action:       "initialize",
@@ -109,7 +112,9 @@ function PaidButton({ plan, session, disabled, yearly = false }) {
         if (error || !data?.data?.authorization_url) {
           throw new Error(data?.message || error?.message || "Could not start payment");
         }
-        localStorage.setItem("pendingPayment", JSON.stringify({ planId: plan.slug, reference: ref, yearly }));
+        // Store per-reference pending info — used to verify intent on return and detect cancellation
+        localStorage.setItem(`${SUB_PENDING_PREFIX}${ref}`, JSON.stringify({ planId: plan.slug, yearly }));
+        onPaymentStart?.(); // signal parent to set saving=true (enables bfcache/back-button detection)
         window.location.href = data.data.authorization_url;
       }
     } catch (e) {
@@ -139,6 +144,8 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
   );
 
   const saveSubRef = useRef(null);
+  const savingRef  = useRef(false);
+  savingRef.current = saving;
 
   // Load/refresh plans from DB
   useEffect(() => {
@@ -273,6 +280,7 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
 
       setPendingPayment(null);
       localStorage.removeItem("pendingPayment");
+      Object.keys(localStorage).filter(k => k.startsWith(SUB_PENDING_PREFIX)).forEach(k => localStorage.removeItem(k));
       onComplete(planSlug);
     } catch (e) {
       setError(e.message || "Could not save plan. Please try again.");
@@ -313,17 +321,39 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
 
   const handleFree = () => saveSub("kobo", null, false);
 
-  // Detect return from Paystack web redirect (/?sub_ref=...&plan=...&yearly=1)
+  // Detect return from Paystack web redirect — plan info comes from localStorage, not URL
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const subRef = params.get("sub_ref");
-    const planSlug = params.get("plan");
-    const isYearly = params.get("yearly") === "1";
-    if (subRef && planSlug) {
-      window.history.replaceState({}, "", window.location.pathname);
-      localStorage.removeItem("pendingPayment");
-      saveSub(planSlug, subRef, isYearly);
-    }
+    if (!subRef) return;
+    const pendingKey = `${SUB_PENDING_PREFIX}${subRef}`;
+    const stored = localStorage.getItem(pendingKey);
+    if (!stored) return; // orphaned URL — no matching pending payment
+    const { planId, yearly: isYearly = false } = JSON.parse(stored);
+    window.history.replaceState({}, "", window.location.pathname);
+    localStorage.removeItem(pendingKey);
+    saveSub(planId, subRef, isYearly);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Detect cancellation via bfcache restore (back button) or in-app browser close
+  useEffect(() => {
+    const showDisrupted = () => {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("sub_ref")) return; // normal redirect — handled above
+      const keys = Object.keys(localStorage).filter(k => k.startsWith(SUB_PENDING_PREFIX));
+      if (keys.length === 0 && !savingRef.current) return;
+      keys.forEach(k => localStorage.removeItem(k));
+      setSaving(false);
+      setError("Your payment was not completed. Please try again.");
+    };
+    const onPageShow = (e) => { if (e.persisted) showDisrupted(); };
+    const onVisible  = () => { if (document.visibilityState === "visible" && savingRef.current) showDisrupted(); };
+    window.addEventListener("pageshow", onPageShow);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("pageshow", onPageShow);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loadingPlans && plans.length === 0) {
@@ -495,7 +525,7 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
                     {saving ? "Activating…" : "Start for Free"}
                   </button>
                 ) : (
-                  <PaidButton plan={plan} session={session} disabled={saving} yearly={yearly} />
+                  <PaidButton plan={plan} session={session} disabled={saving} yearly={yearly} onPaymentStart={() => setSaving(true)} />
                 )}
               </div>
             );
