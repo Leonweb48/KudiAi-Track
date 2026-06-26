@@ -365,76 +365,73 @@ serve(async (req) => {
       });
       console.log("electricity purchase response:", JSON.stringify(data));
 
-      // Hard failure
-      if (!isOk(data) && !elecStat(data).includes("TXN_HISTORY")) {
+      const orderId = String(data.orderid ?? data.OrderID ?? data.OrderId ?? data.requestid ?? data.RequestID ?? "");
+      const purchaseStat = elecStat(data);
+      const isExplicitFail = FAIL_PATTERNS.some(p => purchaseStat.includes(p)) ||
+        purchaseStat === "ORDER_CANCELLED" || purchaseStat === "CANCELLED" ||
+        elecStatusCode(data).startsWith("5");
+
+      // ── Priority 1: token present in the purchase response ───────────────
+      // CK sometimes returns the token synchronously in the first call.
+      // Check this BEFORE any status validation so we don't miss it.
+      const immediateToken = extractElecToken(data);
+      if (immediateToken && !isExplicitFail) {
+        console.log("electricity: token found in purchase response:", immediateToken);
+        return json({ status: "SUCCESS", reference: orderId, token: immediateToken, message: purchaseStat || "ORDER_COMPLETED" });
+      }
+
+      // ── Priority 2: hard failure ──────────────────────────────────────────
+      if (!isOk(data) && !purchaseStat.includes("TXN_HISTORY")) {
         return json({ error: errMsg(data, "Electricity purchase failed"), _raw: data });
       }
 
-      const orderId = String(data.orderid ?? data.OrderID ?? data.requestid ?? "");
-
-      // TXN_HISTORY on the initial purchase — order already exists, query it
-      if (elecStat(data).includes("TXN_HISTORY")) {
-        console.log("electricity TXN_HISTORY on purchase, orderId:", orderId, "full purchase response:", JSON.stringify(data));
+      // ── Priority 3: TXN_HISTORY — order already exists, query it ─────────
+      if (purchaseStat.includes("TXN_HISTORY")) {
+        console.log("electricity TXN_HISTORY on purchase, orderId:", orderId);
         if (orderId) {
           const q = await ck("APIQueryV1.asp", { APIKey: ELECTRICITY_K, OrderID: orderId });
           console.log("electricity TXN_HISTORY query response:", JSON.stringify(q));
           const token = extractElecToken(q);
           const qCode = elecStatusCode(q);
           const qStat = elecStat(q);
-          // If we have a token, return it regardless of status
           if (token) {
             return json({ status: "SUCCESS", reference: orderId, token, message: qStat || "ORDER_COMPLETED" });
           }
           if (qCode === "200" || qStat === "ORDER_COMPLETED") {
-            // Completed but no token — hand off to frontend polling to keep trying
             return json({ status: "PENDING", reference: orderId, token: "", message: "TXN_HISTORY_COMPLETED_NO_TOKEN" });
           }
-          // Order exists but still processing (ORDER_RECEIVED / ORDER_PROCESSED / ON_HOLD)
           if (!qStat.includes("CANCEL") && !qStat.includes("FAIL")) {
             return json({ status: "PENDING", reference: orderId, token: "", message: "TXN_HISTORY_PENDING" });
           }
         }
-        // No orderId or order was definitively cancelled/failed
         return json({ status: "TXN_HISTORY", reference: orderId, token: extractElecToken(data), message: "TXN_HISTORY" });
       }
 
-      // ORDER_RECEIVED / ORDER_PROCESSED — poll until ORDER_COMPLETED (max ~88s = 22×4s)
-      // ClubKonnect processes asynchronously; token only appears in ORDER_COMPLETED response
-      let polledToken = extractElecToken(data);
-      if (!polledToken && orderId) {
-        let completedButNoToken = 0; // track how many times we saw ORDER_COMPLETED with no token
-        for (let i = 0; i < 22; i++) {
-          await new Promise(r => setTimeout(r, 4000));
-          const q = await ck("APIQueryV1.asp", { APIKey: ELECTRICITY_K, OrderID: orderId });
-          const qCode = elecStatusCode(q);
-          const qStat = elecStat(q);
-          const qToken = extractElecToken(q);
-          console.log(`electricity poll #${i + 1}: code=${qCode} status=${qStat} token=${qToken || "(none)"} full=${JSON.stringify(q)}`);
+      // ── Priority 4: ORDER_RECEIVED — poll until token arrives (max ~88s) ──
+      let polledToken = "";
+      let completedButNoToken = 0;
+      for (let i = 0; i < 22; i++) {
+        await new Promise(r => setTimeout(r, 4000));
+        const q = await ck("APIQueryV1.asp", { APIKey: ELECTRICITY_K, OrderID: orderId });
+        const qCode = elecStatusCode(q);
+        const qStat = elecStat(q);
+        const qToken = extractElecToken(q);
+        console.log(`electricity poll #${i + 1}: code=${qCode} status=${qStat} token=${qToken || "(none)"} full=${JSON.stringify(q)}`);
 
-          if (qToken) {
-            // Token found — regardless of status code, we have what we need
-            return json({ status: "SUCCESS", reference: orderId, token: qToken, message: qStat || "ORDER_COMPLETED" });
-          }
-          if (qCode === "200" || qStat === "ORDER_COMPLETED") {
-            // Order completed but token not in response yet — CK sometimes delivers token slightly late
-            completedButNoToken++;
-            console.log(`electricity poll #${i + 1}: ORDER_COMPLETED but no token (attempt ${completedButNoToken}/5)`);
-            if (completedButNoToken >= 5) {
-              // Give up waiting for token — return PENDING so frontend can keep checking
-              break;
-            }
-            continue; // keep polling even though CK says completed
-          }
-          if (qCode.startsWith("5") || qStat === "ORDER_CANCELLED") {
-            return json({ error: errMsg(q, "Electricity order cancelled by provider"), _raw: q });
-          }
-          // ORDER_RECEIVED (100), ORDER_PROCESSED (300), ORDER_ONHOLD (6xx) → keep polling
+        if (qToken) {
+          return json({ status: "SUCCESS", reference: orderId, token: qToken, message: qStat || "ORDER_COMPLETED" });
         }
-        // Still pending after polling window — return PENDING so frontend can keep polling
-        return json({ status: "PENDING", reference: orderId, token: "", message: completedButNoToken > 0 ? "ORDER_COMPLETED_NO_TOKEN" : "ORDER_RECEIVED" });
+        if (qCode === "200" || qStat === "ORDER_COMPLETED" || qStat === "SUCCESSFUL" || qStat === "SUCCESS") {
+          completedButNoToken++;
+          console.log(`electricity poll #${i + 1}: completed status but no token yet (${completedButNoToken}/5)`);
+          if (completedButNoToken >= 5) break;
+          continue;
+        }
+        if (qCode.startsWith("5") || qStat === "ORDER_CANCELLED" || qStat === "CANCELLED") {
+          return json({ error: errMsg(q, "Electricity order cancelled by provider"), _raw: q });
+        }
       }
-
-      return json({ status: "SUCCESS", reference: orderId, token: polledToken, message: String(data.status ?? "ORDER_RECEIVED") });
+      return json({ status: "PENDING", reference: orderId, token: "", message: completedButNoToken > 0 ? "ORDER_COMPLETED_NO_TOKEN" : "ORDER_RECEIVED" });
     }
 
     // ── Electricity status query (frontend polls this when status=PENDING) ────────
