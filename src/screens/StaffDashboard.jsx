@@ -6,7 +6,7 @@ import { useBiometricLock }   from "../hooks/useBiometricLock";
 import { useNotifications }   from "../hooks/useNotifications";
 import NotificationCenter, { NotificationBell } from "../components/NotificationCenter";
 import { fmt, today }         from "../utils/helpers";
-import { canDo, normalizeSlug, planRequiredLabel, planAvailableText } from "../utils/plans";
+import { canDo, normalizeSlug, planAvailableText } from "../utils/plans";
 import AppLogo                from "../components/AppLogo";
 import Icon                   from "../components/Icon";
 import Modal                  from "../components/shared/Modal";

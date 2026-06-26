@@ -4,7 +4,7 @@ import Modal  from "../components/shared/Modal";
 import Field  from "../components/shared/Field";
 import { TransactionReceipt } from "../components/shared/Receipt";
 import { fmt, today } from "../utils/helpers";
-import { canDo, planLimits, planRequiredLabel } from "../utils/plans";
+import { canDo, planLimits } from "../utils/plans";
 import { useT } from "../contexts/LanguageContext";
 import { getLang, speakConfirmation } from "../utils/i18n";
 

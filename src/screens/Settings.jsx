@@ -3,7 +3,7 @@ import Modal           from "../components/shared/Modal";
 import Field           from "../components/shared/Field";
 import StaffManagement from "./StaffManagement";
 import { supabase }    from "../utils/supabase";
-import { canDo, upgradeLabel, planRequiredLabel, planAvailableText, hasHigherPlanAvailable, getActivePlans } from "../utils/plans";
+import { canDo, planAvailableText, hasHigherPlanAvailable } from "../utils/plans";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import { LANGUAGES, getLangMeta } from "../utils/i18n";
 import { useLanguage, useT } from "../contexts/LanguageContext";

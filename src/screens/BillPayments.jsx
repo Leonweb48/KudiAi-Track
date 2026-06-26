@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { jsPDF } from "jspdf";
 import { fmt, today } from "../utils/helpers";
 import { clubkonnect } from "../utils/clubkonnect";
-import { canDo, planRequiredLabel, getLowestPlanWithFeature } from "../utils/plans";
+import { canDo, getLowestPlanWithFeature } from "../utils/plans";
 import { BillReceipt } from "../components/shared/Receipt";
 import { supabase } from "../utils/supabase";
 import { lookupDataPrice } from "../data/billPrices";
