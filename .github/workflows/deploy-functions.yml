@@ -1,0 +1,38 @@
+name: Deploy Supabase Edge Functions
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/functions/**"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Set Supabase secrets
+        run: |
+          supabase secrets set \
+            EMAIL_TRIGGER_SECRET=${{ secrets.EMAIL_TRIGGER_SECRET }} \
+            --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Deploy edge functions
+        run: |
+          supabase functions deploy clubkonnect         --no-verify-jwt --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
+          supabase functions deploy paystack-webhook    --no-verify-jwt --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
+          supabase functions deploy ajo-portal                          --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
+          supabase functions deploy coop-portal                         --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
+          supabase functions deploy manage-staff-account                --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
+          supabase functions deploy manage-ajo-client-account           --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
+          supabase functions deploy auth-email-hook      --no-verify-jwt --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
+          supabase functions deploy whisper                              --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
