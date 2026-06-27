@@ -1598,22 +1598,6 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     fulfillAfterPayment(ref, JSON.parse(stored));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Native Android: handle paymentCallback deep-link event dispatched by useAuth after Browser.open redirect
-  useEffect(() => {
-    const handler = (e) => {
-      const url = e.detail?.url || "";
-      const params = new URLSearchParams(url.split("?")[1] || "");
-      const ref = params.get("bill_ref") || params.get("trxref") || params.get("reference");
-      if (!ref) return;
-      const stored = localStorage.getItem(BILL_PENDING_PREFIX + ref);
-      if (!stored) return;
-      setSaving(true);
-      fulfillAfterPayment(ref, JSON.parse(stored));
-    };
-    window.addEventListener("paymentCallback", handler);
-    return () => window.removeEventListener("paymentCallback", handler);
-  }, [fulfillAfterPayment]);
-
   // Detect cancellation via bfcache restore (Android back button) or in-app browser close
   const savingRef = useRef(saving);
   savingRef.current = saving;
@@ -2261,6 +2245,22 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       } catch (_) {}
     }
   }, [addTransaction, staffName, staffEmail, businessName, profile, pointsEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Native Android: handle paymentCallback deep-link event dispatched by useAuth after Browser.open redirect
+  useEffect(() => {
+    const handler = (e) => {
+      const url = e.detail?.url || "";
+      const params = new URLSearchParams(url.split("?")[1] || "");
+      const ref = params.get("bill_ref") || params.get("trxref") || params.get("reference");
+      if (!ref) return;
+      const stored = localStorage.getItem(BILL_PENDING_PREFIX + ref);
+      if (!stored) return;
+      setSaving(true);
+      fulfillAfterPayment(ref, JSON.parse(stored));
+    };
+    window.addEventListener("paymentCallback", handler);
+    return () => window.removeEventListener("paymentCallback", handler);
+  }, [fulfillAfterPayment]);
 
   const cat = CATS.find(c => c.id === selectedCat);
   const detected = form.phone?.length >= 4 ? detectNetwork(form.phone) : null;
