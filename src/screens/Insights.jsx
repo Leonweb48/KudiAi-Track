@@ -1,9 +1,9 @@
 import { useState, useMemo } from "react";
 import { filterByPeriod, fmt } from "../utils/helpers";
 import { canDo, upgradeLabel, planRequiredLabel, getLowestPlanWithFeature } from "../utils/plans";
-import { useT } from "../contexts/LanguageContext";
-import { getLang } from "../utils/i18n";
+import { useT, useLanguage } from "../contexts/LanguageContext";
 import { getSalesPrediction, getRestockData, getSlowMovers } from "../utils/predictions";
+import { buildContext } from "../utils/buildContext";
 
 const CHAT_URL = "https://admin.kudiai.app/api/public/chat";
 const SECRET   = process.env.REACT_APP_EMAIL_SECRET;
@@ -266,8 +266,8 @@ export default function Insights({ store, inventory, plan = "starter", onUpgrade
   const isStaffView  = Boolean(staffName);
   const isPremium    = canDo(plan, "aiInsights");
   const hasInventory = canDo(plan, "inventory");
-  const t   = useT();
-  const lang = getLang();
+  const t          = useT();
+  const { lang }   = useLanguage();
 
   const prediction  = useMemo(() => getSalesPrediction(transactions), [transactions]);
   const restockData = useMemo(() => getRestockData(products, transactions), [products, transactions]);
@@ -287,24 +287,17 @@ export default function Insights({ store, inventory, plan = "starter", onUpgrade
       tx.forEach(t2 => { if (t2.item_name) itemCounts[t2.item_name] = (itemCounts[t2.item_name] || 0) + 1; });
       const topItems = Object.entries(itemCounts).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k]) => k);
 
-      const creditOwed   = credits.reduce((s, c) => s + (c.outstanding || 0), 0);
-      const overdueCount = credits.filter(c => c.status === "overdue").length;
-      const ajoBal       = asoClients.reduce((s, c) => s + (c.current_balance || 0), 0);
-      const outOfStock   = products.filter(p => p.quantity === 0).length;
-      const lowStock     = products.filter(p => p.quantity > 0 && p.quantity <= (p.low_stock_threshold || 5)).length;
+      const fullContext = buildContext(store, products, []);
+      const context = `${fullContext}
 
-      const context = `Business: ${store.profile?.business_name || "Unknown"} | Period analysed: ${period}
-${period.charAt(0).toUpperCase() + period.slice(1)} transactions: ${tx.length} | Sales: ₦${fmt(totalIn)} | Expenses: ₦${fmt(totalOut)} | Profit: ₦${fmt(totalIn - totalOut)}
-Top selling items: ${topItems.join(", ") || "None recorded"}
-Outstanding credit: ₦${fmt(creditOwed)} | Overdue credit customers: ${overdueCount}
-Inventory: ${products.length} products | ${outOfStock} out of stock | ${lowStock} low stock
-Ajo/savings balance: ₦${fmt(ajoBal)} across ${asoClients.length} clients`;
+ANALYSIS PERIOD: ${period} | Period Sales: ₦${fmt(totalIn)} | Period Expenses: ₦${fmt(totalOut)} | Period Profit: ₦${fmt(totalIn - totalOut)} | Period Transactions: ${tx.length}
+Top items this period: ${topItems.join(", ") || "None recorded"}`;
 
       const res = await fetch(CHAT_URL, {
         method:  "POST",
         headers: { "Content-Type": "application/json", "x-trigger-secret": SECRET },
         body:    JSON.stringify({
-          message:         `Analyse my business performance for the ${period} period. Give me: key insights from the numbers, any warnings I should know about, growth opportunities I can act on, and 2–3 specific action items for this week. Be direct, practical, and encouraging.`,
+          message:         `Carefully analyse ALL my business data for the ${period} period. Reference specific numbers, customer names, product names, and amounts from my actual data. Give me: key insights from the real numbers, any warnings or risks I should act on immediately, growth opportunities specific to my business, and 2–3 clear action items I can do this week. Be direct, practical, and use the actual figures — not generic advice.`,
           lang,
           businessContext: context,
           history:         [],

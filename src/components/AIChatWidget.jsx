@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { getLang } from "../utils/i18n";
+import { useLanguage } from "../contexts/LanguageContext";
 import { buildContext } from "../utils/buildContext";
 import { askGemini } from "../utils/gemini";
 
@@ -59,12 +59,12 @@ export default function AIChatWidget({
     if (open && inputRef.current) setTimeout(() => inputRef.current?.focus(), 150);
   }, [open]);
 
+  const { lang } = useLanguage();
+
   async function runAI(userMsg) {
     let context = "";
     let history = [];
-    let lang    = "en";
     try {
-      lang               = getLang();
       const products     = inventory?.products || [];
       context = portalContext ?? buildContext(store, products, branches);
       history = msgRef.current

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { getLang } from "../utils/i18n";
+import { useLanguage } from "../contexts/LanguageContext";
 import { buildContext } from "../utils/buildContext";
 import { askGemini } from "../utils/gemini";
 
@@ -73,10 +73,10 @@ function speakText(text, lang) {
 
 /* ── Main screen ─────────────────────────────────────────────────────── */
 export default function AIAssistant({ store, inventory, branches = [], onClose, initialQuery = "" }) {
-  const lang     = getLang();
+  const { lang } = useLanguage();
   const greeting = GREETINGS[lang] || GREETINGS.en;
 
-  const [messages,  setMessages]  = useState([{ role: "assistant", text: greeting }]);
+  const [messages,  setMessages]  = useState(() => [{ role: "assistant", text: GREETINGS[lang] || GREETINGS.en }]);
   const [input,     setInput]     = useState("");
   const [thinking,  setThinking]  = useState(false);
   const [listening, setListening] = useState(false);
