@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useNavigate, useLocation, Routes, Route } from "react-router-dom";
 import { useStore }          from "./hooks/useStore";
 import { useAuth }           from "./hooks/useAuth";
 import { useNotifications }  from "./hooks/useNotifications";
@@ -56,31 +57,16 @@ function Spinner() {
 }
 
 export default function App() {
-  const [tab,         setTab]         = useState(() => {
-    const p = new URLSearchParams(window.location.search);
-    const ref = p.get("bill_ref") || p.get("trxref") || p.get("reference");
-    if (ref && localStorage.getItem(`ck_bill_pending_${ref}`)) return "bills";
-    if (Object.keys(localStorage).some(k => k.startsWith("ck_bill_pending_"))) return "bills";
-    return "home";
-  });
+  const navigate   = useNavigate();
+  const location   = useLocation();
+
+  // Derive active tab from URL path — keeps BottomNav and SCREENS in sync with browser history
+  const tab    = location.pathname === "/" ? "home" : location.pathname.slice(1);
+  const setTab = (t) => navigate(t === "home" ? "/" : `/${t}`);
+
   const [autoAdd,     setAutoAdd]     = useState(null);
   const [voiceOpen,   setVoiceOpen]   = useState(false);
-  const [showUpgrade,  setShowUpgrade]  = useState(() => {
-    const p = new URLSearchParams(window.location.search);
-
-    // Bill-payment returns always win — never show the upgrade screen over a bill confirmation
-    const billRef = p.get("bill_ref") || p.get("trxref") || p.get("reference");
-    const hasBillPending = billRef
-      ? !!localStorage.getItem(`ck_bill_pending_${billRef}`)
-      : Object.keys(localStorage).some(k => k.startsWith("ck_bill_pending_"));
-    if (hasBillPending) return false;
-
-    // Subscription upgrade return or bfcache restore from an abandoned upgrade
-    const subRef = p.get("sub_ref");
-    if (subRef && localStorage.getItem(`sub_pending_${subRef}`)) return true;
-    if (Object.keys(localStorage).some(k => k.startsWith("sub_pending_"))) return true;
-    return false;
-  });
+  const [showUpgrade,  setShowUpgrade]  = useState(false);
   const [showReports,  setShowReports]  = useState(false);
   const [showAI,       setShowAI]       = useState(false);
   const [showBranches, setShowBranches] = useState(false);
@@ -117,18 +103,30 @@ export default function App() {
     document.documentElement.classList.toggle("dark", !!isDark);
   }, [isDark]);
 
-  // ── Paystack bill payment return: switch to bills tab so BillPayments mounts ──
+  // ── Handle Paystack return URLs and subscription upgrade returns ──
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
+    const params  = new URLSearchParams(location.search);
     const billRef = params.get("bill_ref") || params.get("trxref") || params.get("reference");
+
+    // Bill payment return — redirect to /bills preserving query params
     if (billRef && localStorage.getItem(`ck_bill_pending_${billRef}`)) {
-      setTab("bills");
-      // Clear any stale sub_pending_* keys so they can't trigger showUpgrade later
-      Object.keys(localStorage)
-        .filter(k => k.startsWith("sub_pending_"))
-        .forEach(k => localStorage.removeItem(k));
+      if (location.pathname !== "/bills") navigate(`/bills${location.search}`, { replace: true });
+      Object.keys(localStorage).filter(k => k.startsWith("sub_pending_")).forEach(k => localStorage.removeItem(k));
+      return;
     }
-  }, []);
+
+    // Orphaned bill pending (user navigated away mid-payment)
+    if (Object.keys(localStorage).some(k => k.startsWith("ck_bill_pending_"))) {
+      if (location.pathname !== "/bills") navigate("/bills", { replace: true });
+      return;
+    }
+
+    // Subscription upgrade return
+    const subRef = params.get("sub_ref");
+    const hasSub = (subRef && localStorage.getItem(`sub_pending_${subRef}`)) ||
+                   Object.keys(localStorage).some(k => k.startsWith("sub_pending_"));
+    if (hasSub) setShowUpgrade(true);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Smart daily alerts (overdue credits + missed aso payments) ──
   const alertFiredRef = useRef(false);
@@ -312,7 +310,18 @@ export default function App() {
           )}
 
           <main className="flex-1 overflow-y-auto overscroll-contain">
-            {SCREENS[tab]}
+            <Routes>
+              <Route path="/"             element={SCREENS.home}         />
+              <Route path="/transactions" element={SCREENS.transactions}  />
+              <Route path="/credit"       element={SCREENS.credit}        />
+              <Route path="/aso"          element={SCREENS.aso}           />
+              <Route path="/inventory"    element={SCREENS.inventory}     />
+              <Route path="/bills"        element={SCREENS.bills}         />
+              <Route path="/insights"     element={SCREENS.insights}      />
+              <Route path="/loyalty"      element={SCREENS.loyalty}       />
+              <Route path="/settings"     element={SCREENS.settings}      />
+              <Route path="*"             element={SCREENS.home}          />
+            </Routes>
           </main>
 
           <BottomNav active={tab} onNavigate={setTab} />

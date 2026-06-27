@@ -20,6 +20,7 @@
     "react-dom": "^18.2.0",
     "react-google-recaptcha": "^3.1.0",
     "react-paystack": "^6.0.0",
+    "react-router-dom": "^7.18.0",
     "react-scripts": "5.0.1",
     "tailwindcss": "^3.4.19"
   },
