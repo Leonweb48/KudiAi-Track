@@ -519,19 +519,20 @@ export function BillReceipt({ bill, onClose, onRetrieveToken }) {
         </>;
       case "cable":
         return <>
-          <Row label="Provider"   value={bill.service} bold />
-          <Row label="Package"    value={bill.item_name} />
+          <Row label="Provider"   value={bill.providerName || bill.service} bold />
+          <Row label="Package"    value={bill.packageName || bill.item_name} />
           <Row label="Smartcard"  value={bill.smartcard || bill.customer_name} />
         </>;
       case "electricity":
         return <>
-          <Row label="Provider"   value={bill.service} bold />
+          <Row label="Provider"   value={bill.providerName || bill.service} bold />
           <Row label="Meter No."  value={bill.meterNo || bill.customer_name} />
-          <Row label="Meter Type" value={bill.meterType === "01" ? "Prepaid" : bill.meterType === "02" ? "Postpaid" : (bill.meterType || "")} />
+          <Row label="Meter Type" value={bill.meterTypeName || (bill.meterType === "01" ? "Prepaid" : bill.meterType === "02" ? "Postpaid" : (bill.meterType || ""))} />
+          {bill.phone && <Row label="Phone"      value={bill.phone} />}
         </>;
       case "betting":
         return <>
-          <Row label="Platform"   value={bill.service} bold />
+          <Row label="Platform"   value={bill.platformName || bill.service} bold />
           <Row label="Account ID" value={bill.customerId || bill.customer_name} />
         </>;
       case "waec":

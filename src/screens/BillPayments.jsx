@@ -740,8 +740,16 @@ function parseRetryForm(bill) {
 
 /* ─── Map a stored bill transaction to BillReceipt props ─────────────────── */
 function billToReceipt(bill, profile, staffName) {
-  const n = bill.note || "";
+  const raw  = bill.note || "";
+  const pinsIdx = raw.indexOf("__PINS__");
+  const n    = pinsIdx !== -1 ? raw.slice(0, pinsIdx) : raw;
   const pick = (rx) => n.match(rx)?.[1]?.trim() || "";
+
+  let pinsArr;
+  if (pinsIdx !== -1) {
+    try { pinsArr = JSON.parse(raw.slice(pinsIdx + 8)); } catch (_) {}
+  }
+
   return {
     ...bill,
     businessName: profile?.business_name || profile?.owner_name || "My Business",
@@ -753,10 +761,15 @@ function billToReceipt(bill, profile, staffName) {
     planName:     pick(/Plan:\s*([^|]+)/i),
     smartcard:    pick(/Smartcard:\s*([^|]+)/i),
     meterNo:      pick(/Meter:\s*([^|]+)/i),
+    meterTypeName:pick(/Type:\s*([^|]+)/i),
+    providerName: pick(/Provider:\s*([^|]+)/i),
+    platformName: pick(/Platform:\s*([^|]+)/i),
+    packageName:  pick(/Package:\s*([^|]+)/i),
     customerId:   pick(/Customer:\s*([^|]+)/i),
     accountNo:    pick(/Account:\s*([^|]+)/i),
     value:        pick(/Value:\s*([^|]+)/i),
     staffName:    staffName || undefined,
+    pinsArr:      pinsArr,
   };
 }
 
@@ -1950,19 +1963,19 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       if (cat === "airtime") {
         const r = await clubkonnect("airtime", { phone: f.phone, network: f.network, amount: String(f.amount) });
         apiRef = r.reference; itemName = `${f.network} Airtime`; customerRef = f.phone;
-        note = `Network: ${f.network}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
+        note = `Phone: ${f.phone} | Network: ${f.network}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
 
       } else if (cat === "data") {
         const r = await clubkonnect("data", { phone: f.phone, network: f.network, planId: f.planId });
         apiRef = r.reference; itemName = `${f.network} ${f.planName} Data`; customerRef = f.phone;
-        note = `Network: ${f.network} | Plan: ${f.planName}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
+        note = `Phone: ${f.phone} | Network: ${f.network} | Plan: ${f.planName}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
 
       } else if (cat === "cable") {
         const r = await clubkonnect("cable", { provider: f.provider, packageId: f.packageId, smartcard: f.smartcard, phone: f.phone });
         apiRef = r.reference;
         const provName = CABLE_PROVIDERS.find(p => p.code === f.provider)?.name || f.provider;
         itemName = `${provName} ${f.packageName}`; customerRef = f.smartcard;
-        note = `Smartcard: ${f.smartcard} | ${vName}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
+        note = `Provider: ${provName} | Package: ${f.packageName} | Smartcard: ${f.smartcard} | ${vName}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
 
       } else if (cat === "electricity") {
         const r = await clubkonnect("electricity", { company: f.company, meterType: f.meterType, meterNo: f.meterNo, amount: String(f.amount), phone: f.phone });
@@ -1971,19 +1984,20 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         const mTypeName = f.meterType === "01" ? "Prepaid" : "Postpaid";
         itemName = `${compName} ${mTypeName}`; customerRef = f.meterNo;
         elecToken = r.token || "";
+        const elecBase = `Meter: ${f.meterNo} | Type: ${mTypeName} | Provider: ${compName} | Phone: ${f.phone}`;
         if (r.status === "PENDING") {
           // Edge function polled but token not yet ready — frontend will continue polling
           elecOrderId = r.reference || apiRef;
-          note = `Meter: ${f.meterNo} | ${vName} | Token loading...${apiRef ? ` | Ref: ${apiRef}` : ""}`;
+          note = `${elecBase} | ${vName} | Token loading...${apiRef ? ` | Ref: ${apiRef}` : ""}`;
         } else if (r.status === "TXN_HISTORY") {
           if (elecToken) {
-            note = `Token: ${elecToken} | Meter: ${f.meterNo} | ${vName}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
+            note = `Token: ${elecToken} | ${elecBase} | ${vName}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
           } else {
             txnHistoryPending = true;
-            note = `Meter: ${f.meterNo} | ${vName} | Check meter — token may already be dispensed${apiRef ? ` | Ref: ${apiRef}` : ""}`;
+            note = `${elecBase} | ${vName} | Check meter — token may already be dispensed${apiRef ? ` | Ref: ${apiRef}` : ""}`;
           }
         } else {
-          note = elecToken ? `Token: ${elecToken} | Meter: ${f.meterNo} | ${vName}${apiRef ? ` | Ref: ${apiRef}` : ""}` : `Meter: ${f.meterNo} | ${vName}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
+          note = elecToken ? `Token: ${elecToken} | ${elecBase} | ${vName}${apiRef ? ` | Ref: ${apiRef}` : ""}` : `${elecBase} | ${vName}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
         }
 
       } else if (cat === "betting") {
@@ -1991,7 +2005,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         apiRef = r.reference;
         const compName = BETTING_COMPANIES.find(c => c.code === f.company)?.name || f.company;
         itemName = `${compName} Wallet Top-up`; customerRef = f.customerId;
-        note = `Customer: ${f.customerId} | ${vName}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
+        note = `Platform: ${compName} | Customer: ${f.customerId} | ${vName}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
 
       } else if (cat === "waec") {
         const r = await clubkonnect("waec", { examType: f.examType, phone: f.phone });
@@ -2020,14 +2034,14 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         apiRef = r.reference; pinsArr = (r.pins || []).map(p => ({ ...p, network: f.network }));
         const qty = parseInt(f.quantity, 10);
         itemName = `${f.network} ₦${f.value} Airtime Print x${qty}`; customerRef = `${qty} pins`;
-        note = `Network: ${f.network} | Value: ₦${f.value} x${qty}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
+        note = `Network: ${f.network} | Value: ₦${f.value} x${qty}${apiRef ? ` | Ref: ${apiRef}` : ""}__PINS__${JSON.stringify(pinsArr)}`;
 
       } else if (cat === "print-data") {
         const r = await clubkonnect("print-data", { network: f.network, planId: f.planId, quantity: f.quantity });
         apiRef = r.reference; pinsArr = (r.pins || []).map(p => ({ ...p, network: f.network }));
         const qty = parseInt(f.quantity, 10);
         itemName = `${f.network} ${f.planName} Data Print x${qty}`; customerRef = `${qty} pins`;
-        note = `Network: ${f.network} | Plan: ${f.planName} x${qty}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
+        note = `Network: ${f.network} | Plan: ${f.planName} x${qty}${apiRef ? ` | Ref: ${apiRef}` : ""}__PINS__${JSON.stringify(pinsArr)}`;
 
       } else if (cat === "airtime-bundle") {
         const sets = parseInt(f.sets || "1", 10);
@@ -2046,7 +2060,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         apiRef = [mtn.reference, airtel.reference, nm.reference, glo.reference].filter(Boolean).join(" | ");
         itemName    = `All-Network Bundle ×${sets} Set${sets > 1 ? "s" : ""}`;
         customerRef = `${sets * 4} PINs (${sets} per network)`;
-        note = `Sets: ${sets} | Networks: MTN, Airtel, 9mobile, Glo | Face value: ₦${(sets * BUNDLE_FACE_PER_SET).toLocaleString()}${apiRef ? ` | Refs: ${apiRef}` : ""}`;
+        note = `Sets: ${sets} | Networks: MTN, Airtel, 9mobile, Glo | Face value: ₦${(sets * BUNDLE_FACE_PER_SET).toLocaleString()}${apiRef ? ` | Refs: ${apiRef}` : ""}__PINS__${JSON.stringify(pinsArr)}`;
       }
 
       const totalAmount = cat === "print-airtime"
@@ -2146,15 +2160,22 @@ export default function BillPayments({ store, plan, session = null, staffName = 
           }
         };
       } else {
+        // Strip __PINS__ section from display detail; pass pins separately
+        const pinsDelimIdx = (note || "").indexOf("__PINS__");
+        const cleanDetail  = pinsDelimIdx !== -1 ? note.slice(0, pinsDelimIdx) : note;
+        let emailPins;
+        if (pinsDelimIdx !== -1) {
+          try { emailPins = JSON.parse(note.slice(pinsDelimIdx + 8)); } catch (_) {}
+        }
         // Send success confirmation emails immediately (best-effort)
         try {
           await supabase.functions.invoke("clubkonnect", {
-            body: { action: "bill-success-email", user_email: profile?.email || null, user_name: profile?.owner_name || profile?.business_name || null, service: svcLabel, amount: totalAmount || amount, reference: ref, detail: note },
+            body: { action: "bill-success-email", user_email: profile?.email || null, user_name: profile?.owner_name || profile?.business_name || null, service: svcLabel, amount: totalAmount || amount, reference: ref, detail: cleanDetail, pins: emailPins || undefined },
           });
         } catch (_) {}
         if (staffEmail && staffEmail !== profile?.email) {
           try {
-            supabase.functions.invoke("clubkonnect", { body: { action: "bill-staff-email", staff_email: staffEmail, staff_name: staffName, business_name: businessName || profile?.business_name, service: svcLabel, amount: totalAmount || amount, reference: ref, detail: note, outcome: "success" } });
+            supabase.functions.invoke("clubkonnect", { body: { action: "bill-staff-email", staff_email: staffEmail, staff_name: staffName, business_name: businessName || profile?.business_name, service: svcLabel, amount: totalAmount || amount, reference: ref, detail: cleanDetail, pins: emailPins || undefined, outcome: "success" } });
           } catch (_) {}
         }
       }

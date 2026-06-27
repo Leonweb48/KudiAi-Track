@@ -836,11 +836,45 @@ serve(async (req) => {
       }
     }
 
+    // ── Shared PIN cards HTML renderer ───────────────────────────────────────
+    const renderPinCards = (pins: unknown[]) => {
+      if (!pins || !pins.length) return "";
+      const networkColors: Record<string, string> = {
+        MTN: "#fef3c7", Airtel: "#fee2e2", Glo: "#dcfce7", "9mobile": "#dbeafe",
+      };
+      const networkBorders: Record<string, string> = {
+        MTN: "#fde68a", Airtel: "#fca5a5", Glo: "#86efac", "9mobile": "#93c5fd",
+      };
+      const cards = (pins as Record<string, unknown>[]).map((pin, i) => {
+        const serial  = String(pin.EPIN_SERIAL ?? pin.sno ?? pin.serial ?? "");
+        const code    = String(pin.EPIN ?? pin.pin ?? pin.code ?? "");
+        const network = String(pin.network ?? "");
+        const bg      = networkColors[network] || "#f0fdf4";
+        const border  = networkBorders[network] || "#bbf7d0";
+        return `<div style="background:${bg};border:1px solid ${border};border-radius:8px;padding:10px 12px;margin-bottom:8px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+            <span style="font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">
+              PIN ${i + 1}${network ? " · " + network : ""}
+            </span>
+            ${serial ? `<span style="font-size:10px;color:#9ca3af;font-family:monospace;">S/N: ${serial}</span>` : ""}
+          </div>
+          <p style="font-family:monospace;font-size:17px;font-weight:900;color:#15803d;margin:0;letter-spacing:2px;word-break:break-all;">${code}</p>
+        </div>`;
+      }).join("");
+      return `<div style="margin:0 0 16px;">
+        <p style="font-size:11px;font-weight:800;color:#064e3b;text-transform:uppercase;letter-spacing:1.5px;margin:0 0 8px;">
+          Voucher PIN${pins.length > 1 ? "s" : ""} (${pins.length} total)
+        </p>
+        ${cards}
+        <p style="font-size:11px;color:#6b7280;margin:8px 0 0;">Keep these PINs safe — they cannot be reissued if lost.</p>
+      </div>`;
+    };
+
     // ── Bill success email — notify business user their bill was delivered ────────
     if (action === "bill-success-email") {
-      const { user_email, user_name, service, amount, reference, detail } = body as {
+      const { user_email, user_name, service, amount, reference, detail, pins } = body as {
         user_email?: string; user_name?: string; service?: string;
-        amount?: number; reference?: string; detail?: string;
+        amount?: number; reference?: string; detail?: string; pins?: unknown[];
       };
       if (!user_email) return json({ ok: false, error: "user_email required" });
       try {
@@ -851,6 +885,7 @@ serve(async (req) => {
             ? `<tr><td style="padding:6px 0;color:#6b7280;width:120px;font-size:13px;">${k}</td><td style="padding:6px 0;font-weight:600;color:#111827;font-size:13px;">${rest.join(": ")}</td></tr>`
             : `<tr><td colspan="2" style="padding:6px 0;color:#374151;font-size:13px;">${d}</td></tr>`;
         }).join("");
+        const pinCards = pins?.length ? renderPinCards(pins) : "";
         const html = billEmailHtml({
           accentColor: "linear-gradient(135deg,#059669,#047857)",
           icon: "✓",
@@ -859,6 +894,7 @@ serve(async (req) => {
           body: `<p style="margin:0 0 14px;color:#374151;font-size:14px;">Dear <strong>${user_name || "Valued Customer"}</strong>,</p>
             <p style="margin:0 0 18px;color:#374151;font-size:14px;line-height:1.6;">Your <strong>${service}</strong> payment of <strong>₦${amount?.toLocaleString() || "?"}</strong> was processed successfully.</p>
             ${detailRows ? `<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">${detailRows}</table>` : ""}
+            ${pinCards}
             <div style="padding:12px 16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;margin-bottom:14px;">
               <p style="margin:0;font-size:13px;color:#166534;">Payment Ref: <strong style="font-family:monospace;">${reference}</strong></p>
             </div>
@@ -905,10 +941,10 @@ serve(async (req) => {
 
     // ── Bill staff notification — notify staff member of bill outcome ──────────
     if (action === "bill-staff-email") {
-      const { staff_email, staff_name, business_name, service, amount, reference, detail, outcome } = body as {
+      const { staff_email, staff_name, business_name, service, amount, reference, detail, outcome, pins } = body as {
         staff_email?: string; staff_name?: string; business_name?: string;
         service?: string; amount?: number; reference?: string; detail?: string;
-        outcome?: "success" | "failed" | "cancelled";
+        outcome?: "success" | "failed" | "cancelled"; pins?: unknown[];
       };
       if (!staff_email) return json({ ok: false, error: "staff_email required" });
       try {
@@ -940,6 +976,7 @@ serve(async (req) => {
               }
             </p>
             ${detailRows ? `<table style="width:100%;border-collapse:collapse;margin-bottom:14px;">${detailRows}</table>` : ""}
+            ${isSuccess && pins?.length ? renderPinCards(pins) : ""}
             ${reference ? `<div style="padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;"><p style="margin:0;font-size:12px;color:#64748b;">Payment Ref: <strong style="font-family:monospace;">${reference}</strong></p></div>` : ""}`,
         });
         await sendEmail(sb, { to: staff_email, subject: `KudiAI Track: ${service} bill ${outcome === "success" ? "delivered ✓" : outcome === "failed" ? "failed ✕" : "not completed"}`, html });
