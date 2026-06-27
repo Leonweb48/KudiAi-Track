@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { jsPDF } from "jspdf";
 import { fmt, today } from "../utils/helpers";
+import { calcPointsDiscount, calcCashbackDiscount, calcCouponDiscount, calcBillAmounts } from "../utils/billCalc";
 import { clubkonnect } from "../utils/clubkonnect";
 import { canDo, getLowestPlanWithFeature } from "../utils/plans";
 import { BillReceipt } from "../components/shared/Receipt";
@@ -1698,27 +1699,15 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
       if (!chargeAmount || chargeAmount <= 0) throw new Error("Invalid amount");
 
-      // Points redemption — up to 50% of charge, minimum 50 pts to redeem
-      const pointsDiscount = pointsEnabled && usePoints && pointsBalanceRef.current >= 50
-        ? Math.min(pointsBalanceRef.current, Math.floor(chargeAmount * 0.5))
-        : 0;
-      // Cashback redemption — apply full balance up to (chargeAmount - pointsDiscount - 1)
-      const cashbackDiscount = useCashback && cashbackBalanceRef.current > 0
-        ? Math.min(cashbackBalanceRef.current, Math.max(0, chargeAmount - pointsDiscount - 1))
-        : 0;
-      // Coupon discount
-      const activeCoupon = billAppliedCouponRef.current;
-      const afterDiscounts = chargeAmount - pointsDiscount - cashbackDiscount;
-      const couponDiscount = (() => {
-        const c = activeCoupon;
-        if (!c || afterDiscounts <= 0) return 0;
-        if ((c.applies_to || []).length > 0 && !c.applies_to.includes("bills")) return 0;
-        if (chargeAmount < (c.min_amount || 0)) return 0;
-        return c.type === "percentage"
-          ? Math.round(chargeAmount * c.value / 100 * 100) / 100
-          : Math.min(c.value, afterDiscounts);
-      })();
-      const finalAmount = Math.max(0, afterDiscounts - couponDiscount);
+      const { pointsDiscount, cashbackDiscount, couponDiscount, afterDiscounts, finalAmount } = calcBillAmounts({
+        chargeAmount,
+        pointsBalance:   pointsBalanceRef.current,
+        usePoints,
+        pointsEnabled,
+        cashbackBalance: cashbackBalanceRef.current,
+        useCashback,
+        coupon:          billAppliedCouponRef.current,
+      });
 
       // Store bill details so we can fulfill after payment return
       const ref = `KDT-BILL-${Date.now()}`;
@@ -2084,19 +2073,9 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     if (selectedCat === "airtime-bundle") return parseInt(form.sets || "0", 10) * bundleChargePerSet;
     return a;
   })();
-  const ptsSavings = pointsEnabled && usePoints && pointsBalance >= 50
-    ? Math.min(pointsBalance, Math.floor(uiChargeAmt * 0.5)) : 0;
-  const cbSavings = useCashback && cashbackBalance > 0
-    ? Math.min(cashbackBalance, Math.max(0, uiChargeAmt - ptsSavings - 1)) : 0;
-  const billCouponSavings = (() => {
-    const c = billAppliedCoupon;
-    if (!c || uiChargeAmt <= 0) return 0;
-    if ((c.applies_to || []).length > 0 && !c.applies_to.includes("bills")) return 0;
-    if (uiChargeAmt < (c.min_amount || 0)) return 0;
-    return c.type === "percentage"
-      ? Math.round(uiChargeAmt * c.value / 100 * 100) / 100
-      : Math.min(c.value, uiChargeAmt);
-  })();
+  const ptsSavings       = calcPointsDiscount({ chargeAmount: uiChargeAmt, pointsBalance, usePoints, pointsEnabled });
+  const cbSavings        = calcCashbackDiscount({ chargeAmount: uiChargeAmt, cashbackBalance, useCashback, pointsDiscount: ptsSavings });
+  const billCouponSavings = calcCouponDiscount({ chargeAmount: uiChargeAmt, coupon: billAppliedCoupon, afterDiscounts: uiChargeAmt - ptsSavings - cbSavings });
 
   // Dynamic network brand theme — active when a network service has a network selected
   const NET_CATS = new Set(["airtime", "data", "print-airtime", "print-data"]);
