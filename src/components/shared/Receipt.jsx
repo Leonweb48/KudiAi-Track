@@ -529,6 +529,7 @@ export function BillReceipt({ bill, onClose, onRetrieveToken }) {
           <Row label="Meter No."       value={bill.meterNo || bill.customer_name} />
           <Row label="Meter Type"      value={bill.meterTypeName || (bill.meterType === "01" ? "Prepaid" : bill.meterType === "02" ? "Postpaid" : (bill.meterType || ""))} />
           {bill.phone && <Row label="Phone"           value={bill.phone} />}
+          {bill.meterAddress  && <Row label="Meter Address"   value={bill.meterAddress} />}
           {bill.stationAddress && <Row label="Station Address" value={bill.stationAddress} />}
         </>;
       case "betting":

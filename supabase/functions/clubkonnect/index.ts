@@ -307,7 +307,11 @@ serve(async (req) => {
       const name = String(data?.customer_name ?? data?.CustomerName ?? data?.CUSTOMER_NAME ?? "");
       if (!name || name.toUpperCase() === "INVALID_METERNO" || name.toUpperCase().includes("INVALID"))
         return json({ error: `Meter not found (${meterNo}). Check the number and selected company.`, _raw: data });
-      return json({ customer_name: name });
+      const addr = String(
+        data?.customer_address ?? data?.CustomerAddress ?? data?.CUSTOMER_ADDRESS ??
+        data?.address         ?? data?.Address          ?? data?.meter_address   ?? ""
+      ).trim();
+      return json({ customer_name: name, customer_address: addr || null });
     }
 
     // ── Electricity purchase ──────────────────────────────────────────────────

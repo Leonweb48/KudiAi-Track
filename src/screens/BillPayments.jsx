@@ -770,6 +770,7 @@ function billToReceipt(bill, profile, staffName) {
     planName:       pick(/Plan:\s*([^|]+)/i),
     smartcard:      pick(/Smartcard:\s*([^|]+)/i),
     meterNo:        pick(/Meter:\s*([^|]+)/i),
+    meterAddress:   pick(/Meter Address:\s*([^|]+)/i),
     meterTypeName:  pick(/Type:\s*([^|]+)/i),
     providerName:   parsedProvider,
     platformName:   pick(/Platform:\s*([^|]+)/i),
@@ -1501,8 +1502,9 @@ export default function BillPayments({ store, plan, session = null, staffName = 
   const [txnPinAmount, setTxnPinAmount] = useState(null); // null = hidden
 
   // Verification state
-  const [verifyStatus, setVerifyStatus] = useState("idle"); // idle | loading | ok | error
-  const [verifyName,   setVerifyName]   = useState("");
+  const [verifyStatus,  setVerifyStatus]  = useState("idle"); // idle | loading | ok | error
+  const [verifyName,    setVerifyName]    = useState("");
+  const [meterAddress,  setMeterAddress]  = useState("");
 
   // Dynamic option lists
   const [plans,        setPlans]        = useState([]);
@@ -1750,8 +1752,10 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     try {
       const r = await clubkonnect("electricity-verify", { company: form.company, meterNo: form.meterNo, meterType: form.meterType });
       setVerifyStatus("ok"); setVerifyName(r.customer_name);
+      setMeterAddress(r.customer_address || "");
     } catch (e) {
       setVerifyStatus("error"); setVerifyName(e.message || "Verification failed");
+      setMeterAddress("");
     }
   };
 
@@ -1881,7 +1885,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       // Store bill details so we can fulfill after payment return
       const ref = `KDT-BILL-${Date.now()}`;
       localStorage.setItem(BILL_PENDING_PREFIX + ref, JSON.stringify({
-        cat: selectedCat, form: { ...form }, verifyName,
+        cat: selectedCat, form: { ...form }, verifyName, meterAddress,
         paidAmount: finalAmount, baseAmount: chargeAmount, pointsDiscount, cashbackUsed: cashbackDiscount,
         couponCode: billAppliedCouponRef.current?.code || null,
         couponDiscount,
@@ -1966,7 +1970,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         paystackConfirmed = true;
       }
 
-      const { cat, form: f, verifyName: vName, paidAmount, baseAmount, pointsDiscount: redeemedPoints = 0 } = pending;
+      const { cat, form: f, verifyName: vName, meterAddress: mAddr = "", paidAmount, baseAmount, pointsDiscount: redeemedPoints = 0 } = pending;
       let apiRef = "", note = "", itemName = "", customerRef = "", cardDetails = "", pinsArr = null, txnHistoryPending = false, elecToken = "", elecOrderId = "";
       const amount = parseFloat(f.amount) || 0;
 
@@ -1994,7 +1998,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         const mTypeName = f.meterType === "01" ? "Prepaid" : "Postpaid";
         itemName = `${compName} ${mTypeName}`; customerRef = f.meterNo;
         elecToken = r.token || "";
-        const elecBase = `Meter: ${f.meterNo} | Type: ${mTypeName} | Provider: ${compName} | Phone: ${f.phone}`;
+        const elecBase = `Meter: ${f.meterNo} | Type: ${mTypeName} | Provider: ${compName} | Phone: ${f.phone}${mAddr ? ` | Meter Address: ${mAddr}` : ""}`;
         if (r.status === "PENDING") {
           // Edge function polled but token not yet ready — frontend will continue polling
           elecOrderId = r.reference || apiRef;
