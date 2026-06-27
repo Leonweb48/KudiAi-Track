@@ -133,8 +133,9 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
         if (localStorage.getItem(lsKey)) continue;
         localStorage.setItem(lsKey, "1");
         fireEmailTrigger("ajo_contribution_overdue", {
+          client_id:              cl.id,
+          owner_id:               userId,
           client_name:            cl.full_name             || "",
-          client_email:           cl.email                 || "",
           next_contribution_date: cl.next_contribution_date,
           contribution_amount:    cl.contribution_amount   || 0,
           contribution_frequency: cl.contribution_frequency || "",
@@ -309,8 +310,6 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
       setDbError("Saved locally — will sync when connection improves");
       fireEmailTrigger("transaction_failed", {
         owner_id:      userId,
-        owner_email:   profile.email || "",
-        owner_name:    profile.owner_name || profile.business_name || "",
         business_name: profile.business_name || "",
         amount:        String(parseFloat(t.amount) || 0),
         description:   t.item_name || t.category || "Transaction",
@@ -331,16 +330,14 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
         onNotify?.("sales", "Expense Recorded", `${fmt(parseFloat(t.amount))} · ${label}`);
       }
       fireEmailTrigger(t.type === "in" ? "transaction_credit" : "transaction_debit", {
-        owner_id: userId,
-        user_email: profile.email || "",
-        user_name: profile.owner_name || profile.business_name || "",
+        owner_id:      userId,
         business_name: profile.business_name || "",
-        amount: String(parseFloat(t.amount) || 0),
-        description: t.item_name || t.category || "Transaction",
-        date: t.transaction_date || today(),
+        amount:        String(parseFloat(t.amount) || 0),
+        description:   t.item_name || t.category || "Transaction",
+        date:          t.transaction_date || today(),
         customer_name: t.customer_name || "",
-        staff_id: staffId || "",
-        staff_name: staffName || "",
+        staff_id:      staffId || "",
+        staff_name:    staffName || "",
       });
       if (staffId) {
         const amt   = `${t.type === "in" ? "+" : "-"}₦${parseFloat(t.amount).toLocaleString()}`;
@@ -362,8 +359,6 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
     else if (txToCancel) {
       fireEmailTrigger("transaction_cancelled", {
         owner_id:      userId,
-        owner_email:   profile.email || "",
-        owner_name:    profile.owner_name || profile.business_name || "",
         business_name: profile.business_name || "",
         amount:        String(txToCancel.amount || 0),
         description:   txToCancel.item_name || txToCancel.category || "Transaction",
@@ -590,18 +585,15 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
           }).catch(console.error);
         }
         fireEmailTrigger("ajo_contribution", {
-          user_email:    staffId ? (profile.email || "") : (authEmailRef.current || profile.email || ""),
-          user_name:     profile.owner_name || profile.business_name || "",
+          owner_id:      userId,
+          client_id:     id,
+          staff_id:      staffId || null,
           business_name: profile.business_name || "",
-          client_email:  updated.email    || "",
-          client_name:   updated.full_name || "",
           group_name:    updated.group_name || "",
           amount,
           balance:       updated.current_balance,
           reg_fee:       regFee || 0,
           date:          today(),
-          staff_email:   staffId ? (authEmailRef.current || "") : "",
-          staff_name:    staffName || "",
         });
         onNotify?.("aso", "Contribution Received", `${fmt(amount)} from ${updated.full_name}`);
       }
@@ -633,19 +625,16 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
           recorded_by: staffId || null,
         }).catch(console.error);
         fireEmailTrigger("ajo_withdrawal", {
-          user_email:    staffId ? (profile.email || "") : (authEmailRef.current || profile.email || ""),
-          user_name:     profile.owner_name || profile.business_name || "",
+          owner_id:      userId,
+          client_id:     id,
+          staff_id:      staffId || null,
           business_name: profile.business_name || "",
-          client_email:  updated.email    || "",
-          client_name:   updated.full_name || "",
           group_name:    updated.group_name || "",
           gross_amount:  amount,
           fee_amount:    feeAmount,
           amount:        netAmount,
           balance_after: updated.current_balance,
           date:          today(),
-          staff_email:   staffId ? (authEmailRef.current || "") : "",
-          staff_name:    staffName || "",
         });
       }
     }
