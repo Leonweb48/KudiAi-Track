@@ -257,7 +257,7 @@ function speakInsight(text, lang) {
 
 /* ── Main Insights screen ────────────────────────────────────────── */
 export default function Insights({ store, inventory, plan = "starter", onUpgrade, staffName, onReports, onAIOpen }) {
-  const { transactions, credits, asoClients } = store;
+  const { transactions } = store;
   const products = useMemo(() => inventory?.products || [], [inventory]);
   const [period,    setPeriod]    = useState("today");
   const [aiLoading, setAiLoading] = useState(false);
