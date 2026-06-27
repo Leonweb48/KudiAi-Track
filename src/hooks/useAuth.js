@@ -79,7 +79,8 @@ export function useAuth() {
       setMarketer(null);
       setOrg(null);
       subVerified.current = false;
-      localStorage.removeItem(CACHE_KEY);
+      // Do NOT clear CACHE_KEY here — if the next login's DB query has a transient
+      // failure the cached plan prevents a false "subscribing" redirect.
       return;
     }
 
@@ -467,8 +468,25 @@ export function useAuth() {
       return;
     }
 
-    // DB returned nothing — check localStorage cache set by a previous setReady call.
-    // Covers the case where RLS SELECT policy is missing but the user did pay.
+    // Table query returned nothing — try the SECURITY DEFINER RPC which bypasses RLS.
+    // This is the same function staff dashboards use and always works even when
+    // the direct subscriptions SELECT policy is missing or the row is slow to appear.
+    const { data: rpcPlan } = await supabase.rpc("get_owner_plan").catch(() => ({ data: null }));
+    if (rpcPlan && rpcPlan !== "starter") {
+      const resolvedPlan = normalizeSlug(rpcPlan);
+      setPlan(resolvedPlan);
+      localStorage.setItem(CACHE_KEY, resolvedPlan);
+      subVerified.current = true;
+      logPlatformSession(supabase, uid, "business", sess.user.user_metadata?.full_name || sess.user.user_metadata?.owner_name, email);
+      fetchAndCachePlans(supabase).then(() => {
+        setUpgradeAvailable(hasHigherPlanAvailable(resolvedPlan));
+      }).catch(() => {});
+      setStatus("ready");
+      return;
+    }
+
+    // RPC also returned nothing — check localStorage cache as last resort.
+    // Covers transient network failures; cleared only when a real "kobo" is confirmed.
     const cached = localStorage.getItem(CACHE_KEY);
     if (cached) {
       const cachedPlan = normalizeSlug(cached);

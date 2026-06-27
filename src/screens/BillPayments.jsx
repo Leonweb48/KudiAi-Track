@@ -1490,9 +1490,10 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       orphaned.forEach(k => localStorage.removeItem(k));
       return { ok: false, disrupted: true, detail: "Your payment was not completed. Please try again.", psRef: "" };
     }
-    // Restore last successful bill result so it reappears when user navigates back
+    // Restore last successful bill result so it reappears when user navigates back.
+    // sessionStorage auto-clears on tab close / new login — prevents stale receipts.
     try {
-      const cached = localStorage.getItem(BILL_LAST_RESULT);
+      const cached = sessionStorage.getItem(BILL_LAST_RESULT);
       if (cached) return JSON.parse(cached);
     } catch (_) {}
     return null;
@@ -2148,7 +2149,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       setSaving(false);
       const successResult = { ok: true, label: itemName, detail: note, pinsArr: pinsArr || [], psRef: ref, apiRef, cardDetails, cat, amount: totalAmount || amount, earnedPts, txnHistoryPending, elecToken, elecOrderId, formSnap: { ...f } };
       setFulfillResult(successResult);
-      try { localStorage.setItem(BILL_LAST_RESULT, JSON.stringify(successResult)); } catch (_) {}
+      try { sessionStorage.setItem(BILL_LAST_RESULT, JSON.stringify(successResult)); } catch (_) {}
       saveBeneficiary(cat, f, vName);
 
       // For electricity PENDING: defer DB update + email until polling finds the token
@@ -2288,7 +2289,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
           profile={profile}
           businessName={businessName}
           staffName={staffName}
-          onDone={() => { localStorage.removeItem(BILL_LAST_RESULT); setFulfillResult(null); }}
+          onDone={() => { sessionStorage.removeItem(BILL_LAST_RESULT); setFulfillResult(null); }}
           onShareReceipt={() => {
             const fr = fulfillResult;
             const fs = fr?.formSnap || {};
@@ -2322,7 +2323,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
               staffName:    staffName || undefined,
               id:           Date.now(),
             });
-            localStorage.removeItem(BILL_LAST_RESULT);
+            sessionStorage.removeItem(BILL_LAST_RESULT);
             setFulfillResult(null);
           }}
         />
