@@ -1722,7 +1722,14 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         couponCode: activeCoupon?.code || null,
         couponDiscount,
         couponOriginalAmount: afterDiscounts,
+        isFree: finalAmount === 0,
       }));
+
+      // 100% coupon — skip Paystack entirely, go straight to fulfillment
+      if (finalAmount === 0) {
+        window.location.href = `${window.location.origin}${window.location.pathname}?bill_ref=${ref}`;
+        return;
+      }
 
       // Initialize Paystack — prefer owner profile email, fall back to staff email
       const email = profile?.email || staffEmail || "";
@@ -1762,33 +1769,38 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     setError("");
     let paystackConfirmed = false;
     try {
-      // Verify payment with Paystack
-      const { data: vd } = await supabase.functions.invoke("paystack", {
-        body: { action: "verify", reference: ref },
-      });
-      if (vd?.data?.status !== "success") {
-        const status = vd?.data?.status || "";
-        const gwResp = (vd?.data?.gateway_response || "").toLowerCase();
-        const isAbandoned = status === "abandoned" || gwResp.includes("abandon") || gwResp.includes("cancel");
-        if (isAbandoned) {
-          localStorage.removeItem(BILL_PENDING_PREFIX + ref);
-          setSaving(false);
-          setFulfillResult({ ok: false, disrupted: true, detail: "Your payment was disrupted before completion. You were not charged.", psRef: ref });
-          const { cat: aCat } = pending;
-          const aService = CATS.find(c => c.id === aCat)?.label || aCat || "Bill";
-          try {
-            supabase.functions.invoke("clubkonnect", { body: { action: "bill-cancelled-email", user_email: profile?.email || null, user_name: profile?.owner_name || profile?.business_name || null, service: aService, reference: ref, reason: "The payment session was abandoned before confirmation." } });
-          } catch (_) {}
-          if (staffEmail && staffEmail !== profile?.email) {
+      if (pending.isFree) {
+        // 100% coupon — no Paystack charge to verify, proceed directly to fulfillment
+        paystackConfirmed = false;
+      } else {
+        // Verify payment with Paystack
+        const { data: vd } = await supabase.functions.invoke("paystack", {
+          body: { action: "verify", reference: ref },
+        });
+        if (vd?.data?.status !== "success") {
+          const status = vd?.data?.status || "";
+          const gwResp = (vd?.data?.gateway_response || "").toLowerCase();
+          const isAbandoned = status === "abandoned" || gwResp.includes("abandon") || gwResp.includes("cancel");
+          if (isAbandoned) {
+            localStorage.removeItem(BILL_PENDING_PREFIX + ref);
+            setSaving(false);
+            setFulfillResult({ ok: false, disrupted: true, detail: "Your payment was disrupted before completion. You were not charged.", psRef: ref });
+            const { cat: aCat } = pending;
+            const aService = CATS.find(c => c.id === aCat)?.label || aCat || "Bill";
             try {
-              supabase.functions.invoke("clubkonnect", { body: { action: "bill-staff-email", staff_email: staffEmail, staff_name: staffName, business_name: businessName || profile?.business_name, service: aService, reference: ref, outcome: "cancelled" } });
+              supabase.functions.invoke("clubkonnect", { body: { action: "bill-cancelled-email", user_email: profile?.email || null, user_name: profile?.owner_name || profile?.business_name || null, service: aService, reference: ref, reason: "The payment session was abandoned before confirmation." } });
             } catch (_) {}
+            if (staffEmail && staffEmail !== profile?.email) {
+              try {
+                supabase.functions.invoke("clubkonnect", { body: { action: "bill-staff-email", staff_email: staffEmail, staff_name: staffName, business_name: businessName || profile?.business_name, service: aService, reference: ref, outcome: "cancelled" } });
+              } catch (_) {}
+            }
+            return;
           }
-          return;
+          throw new Error(vd?.data?.gateway_response || "Payment not confirmed. Please contact support.");
         }
-        throw new Error(vd?.data?.gateway_response || "Payment not confirmed. Please contact support.");
+        paystackConfirmed = true;
       }
-      paystackConfirmed = true;
 
       const { cat, form: f, verifyName: vName, paidAmount, baseAmount, pointsDiscount: redeemedPoints = 0 } = pending;
       let apiRef = "", note = "", itemName = "", customerRef = "", cardDetails = "", pinsArr = null, txnHistoryPending = false, elecToken = "", elecOrderId = "";
@@ -2753,10 +2765,11 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                 <button onClick={handlePay} disabled={saving}
                   className="w-full text-white font-bold rounded-xl py-3.5 text-sm transition-all disabled:opacity-60"
                   style={{ background: "linear-gradient(135deg,#16a34a,#15803d)" }}>
-                  {saving ? "Redirecting to Paystack…" : (
+                  {saving ? (billAppliedCoupon && uiChargeAmt - ptsSavings - cbSavings - billCouponSavings <= 0 ? "Processing free bill…" : "Redirecting to Paystack…") : (
                     selectedCat === "print-airtime"   ? `Pay with Paystack · ${form.quantity || 1} × ₦${form.value}` :
                     selectedCat === "print-data"      ? `Pay with Paystack · ${form.quantity || 1} Plan${parseInt(form.quantity||"1")>1?"s":""}` :
                     selectedCat === "airtime-bundle"  ? (parseInt(form.sets||"0")>0 ? `Pay ₦${uiChargeAmt.toLocaleString()} · ${form.sets} Bundle Set${parseInt(form.sets)>1?"s":""}` : "Select number of sets") :
+                    form.amount && uiChargeAmt - ptsSavings - cbSavings - billCouponSavings <= 0 ? "Activate Free — Coupon Applied" :
                     form.amount ? `Pay ${fmt(uiChargeAmt - ptsSavings - cbSavings - billCouponSavings)} with Paystack${ptsSavings > 0 || cbSavings > 0 || billCouponSavings > 0 ? ` · savings applied` : ""}` : `Pay with Paystack`
                   )}
                 </button>
