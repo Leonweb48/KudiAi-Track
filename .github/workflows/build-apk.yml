@@ -24,6 +24,8 @@ jobs:
 
       - name: Build React app
         run: npm run build
+        env:
+          REACT_APP_EMAIL_SECRET: kuditrack-email-trigger-2026-amaya
 
       - name: Create Capacitor generated files
         run: |

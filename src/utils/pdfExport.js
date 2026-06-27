@@ -1,3 +1,5 @@
+import { savePdf } from "./pdfSave";
+
 const fmtN = (n) =>
   `N${Number(n || 0).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
 
@@ -101,7 +103,7 @@ export async function exportTransactionReceipt(transaction, profile) {
   y = drawRow(doc, y + 1, "Total", fmtN(transaction.amount), true);
 
   buildFooter(doc, y + 8);
-  doc.save(`receipt_${transaction.id || Date.now()}.pdf`);
+  await savePdf(doc, `receipt_${transaction.id || Date.now()}.pdf`);
 }
 
 /* ── Credit Statement ─────────────────────────────────────────────── */
@@ -142,7 +144,7 @@ export async function exportCreditStatement(credit, profile) {
   });
 
   buildFooter(doc, y + 8);
-  doc.save(`credit_${(credit.customer_name || "statement").replace(/\s+/g, "_")}.pdf`);
+  await savePdf(doc, `credit_${(credit.customer_name || "statement").replace(/\s+/g, "_")}.pdf`);
 }
 
 /* ── Aso Savings Statement ────────────────────────────────────────── */
@@ -183,5 +185,5 @@ export async function exportAsoStatement(client, profile) {
   });
 
   buildFooter(doc, y + 8);
-  doc.save(`aso_${(client.full_name || "statement").replace(/\s+/g, "_")}.pdf`);
+  await savePdf(doc, `aso_${(client.full_name || "statement").replace(/\s+/g, "_")}.pdf`);
 }

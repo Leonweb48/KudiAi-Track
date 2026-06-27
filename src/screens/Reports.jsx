@@ -3,6 +3,7 @@ import html2canvas from "html2canvas";
 import { jsPDF }   from "jspdf";
 import { fmt }     from "../utils/helpers";
 import { useT }    from "../contexts/LanguageContext";
+import { savePdf } from "../utils/pdfSave";
 
 /* ── date helpers ──────────────────────────────────────────────────── */
 const todayStr = () => new Date().toISOString().split("T")[0];
@@ -721,7 +722,7 @@ export default function Reports({ store, onClose }) {
       }
 
       const NAMES = { sales:"Sales", credit:"Credit", aso:"Ajo", bills:"Bills", staff:"Staff", stock:"Stock" };
-      pdf.save(`KudiAITrack_${NAMES[reportType]}_Report_${from}_${to}.pdf`);
+      await savePdf(pdf, `KudiAITrack_${NAMES[reportType]}_Report_${from}_${to}.pdf`);
     } catch(e) {
       console.error("PDF export:", e);
     }

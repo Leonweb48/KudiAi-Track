@@ -13,6 +13,7 @@ import LoanApplicationModal from "../components/LoanApplicationModal";
 import TransactionPinModal  from "../components/TransactionPinModal";
 import { LS_PIN_HASH }      from "../hooks/useBiometricLock";
 import { buildCallbackUrl, openPaystackCheckout } from "../utils/paystackCheckout";
+import { savePdf } from "../utils/pdfSave";
 
 /* ─── Service catalogue ───────────────────────────────────────────────────── */
 
@@ -111,7 +112,7 @@ function pinDashed(s) {
   return d.match(/.{1,4}/g)?.join("-") ?? d;
 }
 
-function generateTokenPDF({ fulfillResult, profile, businessName }) {
+async function generateTokenPDF({ fulfillResult, profile, businessName }) {
   const { pinsArr = [], label = "", cat = "", amount = 0, psRef = "" } = fulfillResult || {};
   if (!pinsArr.length) return;
 
@@ -269,7 +270,7 @@ function generateTokenPDF({ fulfillResult, profile, businessName }) {
     }
   }
 
-  pdf.save(`KudiAI_Tokens_${Date.now()}.pdf`);
+  await savePdf(pdf, `KudiAI_Tokens_${Date.now()}.pdf`);
 }
 
 /* ─── Helpers ─────────────────────────────────────────────────────────────── */
@@ -786,7 +787,7 @@ function billToReceipt(bill, profile, staffName) {
 }
 
 /* ─── PDF statement generator ────────────────────────────────────────────── */
-function genBillStatement(allBills, catFilter, period, profile) {
+async function genBillStatement(allBills, catFilter, period, profile) {
   const biz = profile?.business_name || profile?.owner_name || "My Business";
 
   let rows = catFilter === "all" ? [...allBills] : allBills.filter(b => b.category === catFilter);
@@ -880,7 +881,7 @@ function genBillStatement(allBills, catFilter, period, profile) {
   pdf.setFont("helvetica", "normal"); pdf.setTextColor(180, 180, 200);
   pdf.text("Computer-generated statement. No signature required.", W - M, 289, { align: "right" });
 
-  pdf.save(`KudiTrack_Bill_Statement_${svcName.replace(/\s+/g, "_")}_${now.toISOString().slice(0, 10)}.pdf`);
+  await savePdf(pdf, `KudiTrack_Bill_Statement_${svcName.replace(/\s+/g, "_")}_${now.toISOString().slice(0, 10)}.pdf`);
 }
 
 /* ─── Statement modal ────────────────────────────────────────────────────── */

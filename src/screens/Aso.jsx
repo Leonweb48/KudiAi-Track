@@ -275,11 +275,11 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   }, [autoOpen, onAutoOpened, plan]);
 
   useEffect(() => {
-    if (!showAdd || banks.length > 0) return;
+    if ((!showAdd && !showGroupAdd) || banks.length > 0) return;
     supabase.functions.invoke("paystack", { body: { action: "list-banks" } })
       .then(({ data }) => { if (data?.data) setBanks(data.data); })
       .catch(() => {});
-  }, [showAdd]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [showAdd, showGroupAdd]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const resolveClientAccount = async () => {
     if (!f.account_number || !f.bank_code) return;
@@ -326,7 +326,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   };
 
   const resolveAccount = async () => {
-    if (!gf.account_number || !gf.bank_code) { setGroupError("Enter bank code and account number first"); return; }
+    if (!gf.account_number || !gf.bank_code) { setGroupError("Select a bank and enter the account number first"); return; }
     setResolving(true); setGroupError(""); setResolvedName("");
     try {
       const { data, error } = await supabase.functions.invoke("paystack", {
@@ -1750,7 +1750,11 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                               {grp.contribution_amount   && <span className="text-[10px] text-slate-400">· ₦{fmt(grp.contribution_amount)}</span>}
                             </div>
                             {grp.account_number && (
-                              <p className="text-[10px] text-slate-400 mt-0.5 font-mono">{grp.account_name ? `${grp.account_name} · ` : ""}{grp.account_number}</p>
+                              <p className="text-[10px] text-slate-400 mt-0.5 font-mono">
+                                {grp.account_name ? `${grp.account_name} · ` : ""}
+                                {grp.account_number}
+                                {grp.bank_code && banks.length > 0 && (() => { const b = banks.find(x => x.code === grp.bank_code); return b ? ` · ${b.name}` : ""; })()}
+                              </p>
                             )}
                             {hasSubacct ? (
                               <span className="inline-flex items-center gap-1 text-[10px] font-bold text-green-600 dark:text-green-400 mt-1">
@@ -1795,7 +1799,10 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                   </div>
 
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pt-1">Bank Account (for Paystack routing)</p>
-                  <Field label="Bank Code" value={gf.bank_code} onChange={e => { setG("bank_code", e.target.value); setResolvedName(""); }} placeholder="e.g. 057 (Zenith)" />
+                  <Field label="Bank" as="select" value={gf.bank_code} onChange={e => { setG("bank_code", e.target.value); setResolvedName(""); }}>
+                    <option value="">Select bank…</option>
+                    {banks.map(b => <option key={b.code} value={b.code}>{b.name}</option>)}
+                  </Field>
                   <div className="flex gap-2">
                     <div className="flex-1">
                       <Field label="Account Number" value={gf.account_number} onChange={e => { setG("account_number", e.target.value); setResolvedName(""); }} placeholder="10-digit NUBAN" />

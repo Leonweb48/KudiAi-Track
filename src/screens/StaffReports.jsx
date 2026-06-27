@@ -2,6 +2,7 @@ import { useState, useRef } from "react";
 import html2canvas from "html2canvas";
 import { jsPDF }   from "jspdf";
 import { fmt }     from "../utils/helpers";
+import { savePdf } from "../utils/pdfSave";
 
 /* ── date helpers ───────────────────────────────────────────────────── */
 const todayStr = () => new Date().toISOString().split("T")[0];
@@ -501,7 +502,7 @@ export default function StaffReports({ store, inventory, staffName, businessName
       while(remaining>0){ pdf.addPage(); pdf.addImage(imgData,"PNG",0,-(page*pdfH),pdfW,imgH); remaining-=pdfH; page++; }
       const NAMES={sales:"Sales",credit:"Credit",aso:"Ajo",bills:"Bills",myPerf:"MyPerformance",stock:"Stock"};
       const safe=(staffName||"Staff").replace(/\s+/g,"_");
-      pdf.save(`KudiAITrack_${safe}_${NAMES[reportType]}_${from}_${to}.pdf`);
+      await savePdf(pdf, `KudiAITrack_${safe}_${NAMES[reportType]}_${from}_${to}.pdf`);
     } catch(e) { console.error("PDF export:", e); }
     setExporting(false);
   };

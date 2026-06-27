@@ -6,6 +6,8 @@
 import { useRef, useState, useEffect } from "react";
 import html2canvas from "html2canvas";
 import { jsPDF }   from "jspdf";
+import { Capacitor } from "@capacitor/core";
+import { savePdf }   from "../../utils/pdfSave";
 
 const fmt  = (n) => `₦${Number(n || 0).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
 const NAVY = "#1B2A5E";
@@ -64,21 +66,25 @@ async function downloadPDF(ref, filename) {
   const mmH = (canvas.height / 2.5) * (25.4 / 96);
   const pdf = new jsPDF({ orientation: "p", unit: "mm", format: [mmW, mmH] });
   pdf.addImage(imgData, "PNG", 0, 0, mmW, mmH);
-  pdf.save(filename || "KudiAITrack_Receipt.pdf");
+  await savePdf(pdf, filename || "KudiAITrack_Receipt.pdf");
 }
 
 async function nativeShare(file) {
-  // Try Web Share API (opens share sheet including WhatsApp on mobile)
   if (navigator.share) {
     try {
-      await navigator.share({ files: [file], title: "KudiAI Track Receipt" });
+      const shareData = { title: "KudiAI Track Receipt" };
+      // Only include file if the platform supports file sharing
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        shareData.files = [file];
+      }
+      await navigator.share(shareData);
       return;
     } catch (err) {
-      // AbortError = user dismissed share sheet — that's fine, don't fallback to download
       if (err?.name === "AbortError") return;
     }
   }
-  // Fallback: download the PNG
+  // Fallback: download the PNG (web only — anchor clicks do nothing in WebView)
+  if (Capacitor.isNativePlatform()) return;
   const url = URL.createObjectURL(file);
   const a   = document.createElement("a");
   a.href = url; a.download = file.name; a.click();
@@ -1160,7 +1166,7 @@ export function StaffActivityStatement({ store, staffName, businessName, onClose
         remaining -= pdfH; page++;
       }
       const name = (staffName||"staff").replace(/\s+/g,"_");
-      pdf.save(`KudiAITrack_Staff_Statement_${name}_${from}_${to}.pdf`);
+      await savePdf(pdf, `KudiAITrack_Staff_Statement_${name}_${from}_${to}.pdf`);
     } catch(e) { console.error("PDF export:", e); }
     setExporting(false);
   };
