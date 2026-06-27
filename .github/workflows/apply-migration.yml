@@ -2,71 +2,19 @@ name: Apply Supabase Migration
 
 on:
   workflow_dispatch:
-    inputs:
-      migration:
-        description: Migration name to apply
-        required: false
-        default: email_delivery_log
 
 jobs:
   migrate:
     runs-on: ubuntu-latest
     steps:
-      - name: Apply email_delivery_log migration via Management API
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Push pending migrations to remote DB
         run: |
-          python3 - <<'PYEOF'
-          import json, urllib.request, os, sys
-
-          sql = """
-          CREATE TABLE IF NOT EXISTS email_delivery_log (
-            id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-            to_email    TEXT        NOT NULL,
-            subject     TEXT,
-            status      TEXT        NOT NULL DEFAULT 'sent'
-                         CHECK (status IN ('sent', 'failed')),
-            error_msg   TEXT,
-            smtp_host   TEXT,
-            created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-          );
-
-          CREATE INDEX IF NOT EXISTS idx_edl_created  ON email_delivery_log(created_at DESC);
-          CREATE INDEX IF NOT EXISTS idx_edl_status   ON email_delivery_log(status);
-          CREATE INDEX IF NOT EXISTS idx_edl_to_email ON email_delivery_log(to_email);
-
-          ALTER TABLE email_delivery_log ENABLE ROW LEVEL SECURITY;
-
-          DO $$
-          BEGIN
-            IF NOT EXISTS (
-              SELECT 1 FROM pg_policies
-              WHERE tablename = 'email_delivery_log'
-              AND   policyname = 'edl_service_role_only'
-            ) THEN
-              CREATE POLICY edl_service_role_only ON email_delivery_log
-                USING  (auth.role() = 'service_role')
-                WITH CHECK (auth.role() = 'service_role');
-            END IF;
-          END $$;
-          """
-
-          ref   = os.environ["SUPABASE_PROJECT_ID"]
-          token = os.environ["SUPABASE_ACCESS_TOKEN"]
-          url   = f"https://api.supabase.com/v1/projects/{ref}/database/query"
-
-          body = json.dumps({"query": sql}).encode("utf-8")
-          req  = urllib.request.Request(
-            url, data=body,
-            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-            method="POST",
-          )
-          try:
-            resp = urllib.request.urlopen(req)
-            print("Migration applied successfully:")
-            print(resp.read().decode())
-          except urllib.error.HTTPError as e:
-            print(f"HTTP {e.code}: {e.read().decode()}", file=sys.stderr)
-            sys.exit(1)
-          PYEOF
+          supabase db push --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
         env:
-          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
