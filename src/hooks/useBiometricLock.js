@@ -2,11 +2,11 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Capacitor } from "@capacitor/core";
 import { App as CapApp } from "@capacitor/app";
 
-const LS_ENABLED  = "kt_lock_enabled";
-const LS_PIN_HASH = "kt_lock_pin_hash";
-const LS_CRED_ID  = "kt_lock_cred_id";
+export const LS_ENABLED  = "kt_lock_enabled";
+export const LS_PIN_HASH = "kt_lock_pin_hash";
+export const LS_CRED_ID  = "kt_lock_cred_id";
 
-async function sha256(text) {
+export async function sha256(text) {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
 }

@@ -8,6 +8,8 @@ import { BillReceipt } from "../components/shared/Receipt";
 import { supabase } from "../utils/supabase";
 import { lookupDataPrice } from "../data/billPrices";
 import LoanApplicationModal from "../components/LoanApplicationModal";
+import TransactionPinModal  from "../components/TransactionPinModal";
+import { LS_PIN_HASH }      from "../hooks/useBiometricLock";
 
 /* ─── Service catalogue ───────────────────────────────────────────────────── */
 
@@ -1359,6 +1361,9 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     return null;
   });
 
+  // Transaction PIN confirmation — set to the display amount when PIN is required
+  const [txnPinAmount, setTxnPinAmount] = useState(null); // null = hidden
+
   // Verification state
   const [verifyStatus, setVerifyStatus] = useState("idle"); // idle | loading | ok | error
   const [verifyName,   setVerifyName]   = useState("");
@@ -1714,7 +1719,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       localStorage.setItem(BILL_PENDING_PREFIX + ref, JSON.stringify({
         cat: selectedCat, form: { ...form }, verifyName,
         paidAmount: finalAmount, baseAmount: chargeAmount, pointsDiscount, cashbackUsed: cashbackDiscount,
-        couponCode: activeCoupon?.code || null,
+        couponCode: billAppliedCouponRef.current?.code || null,
         couponDiscount,
         couponOriginalAmount: afterDiscounts,
         isFree: finalAmount === 0,
@@ -2750,7 +2755,15 @@ export default function BillPayments({ store, plan, session = null, staffName = 
               {error && <p className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-3 py-2">{error}</p>}
 
               <div className="pb-6">
-                <button onClick={handlePay} disabled={saving}
+                <button onClick={() => {
+                  // If user has a PIN set up, confirm before paying
+                  if (localStorage.getItem(LS_PIN_HASH)) {
+                    const displayAmt = uiChargeAmt - ptsSavings - cbSavings - billCouponSavings;
+                    setTxnPinAmount(Math.max(0, displayAmt));
+                  } else {
+                    handlePay();
+                  }
+                }} disabled={saving}
                   className="w-full text-white font-bold rounded-xl py-3.5 text-sm transition-all disabled:opacity-60"
                   style={{ background: "linear-gradient(135deg,#16a34a,#15803d)" }}>
                   {saving ? (billAppliedCoupon && uiChargeAmt - ptsSavings - cbSavings - billCouponSavings <= 0 ? "Processing free bill…" : "Redirecting to Paystack…") : (
@@ -2766,6 +2779,14 @@ export default function BillPayments({ store, plan, session = null, staffName = 
             </div>
           </div>
         </div>
+      )}
+
+      {txnPinAmount !== null && (
+        <TransactionPinModal
+          amount={txnPinAmount}
+          onConfirm={() => { setTxnPinAmount(null); handlePay(); }}
+          onCancel={() => setTxnPinAmount(null)}
+        />
       )}
 
       {pins && <PinModal pins={pins.list} title={pins.title} onClose={() => setPins(null)} />}
