@@ -613,30 +613,48 @@ function Overview({ bills }) {
   );
 }
 
-function BillRow({ bill, onOpen }) {
-  const cat = CATS.find(c => c.id === bill.category) || CATS[0];
+function BillRow({ bill, onOpen, onRetry }) {
+  const cat    = CATS.find(c => c.id === bill.category) || CATS[0];
   const failed = bill.bill_status === "failed";
+  const retryable = failed && onRetry && BEN_CATS.has(bill.category);
   return (
-    <div onClick={onOpen}
-      className={`rounded-2xl px-4 py-3.5 border flex items-center gap-3 shadow-sm cursor-pointer active:scale-[0.98] transition-transform ${failed ? "bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800/50" : "bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700/50"}`}>
-      <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-        style={{ background: failed ? "linear-gradient(135deg,#ef4444,#dc2626)" : `linear-gradient(135deg,${cat.g1},${cat.g2})` }}>
-        <Ico d={CAT_ICONS[bill.category] || CAT_ICONS.airtime} size={18} c="white" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5">
-          <p className="text-sm font-bold text-slate-800 dark:text-white truncate">{bill.item_name}</p>
-          {failed && <span className="text-[9px] font-black bg-red-500 text-white px-1.5 py-0.5 rounded-full flex-shrink-0">FAILED</span>}
+    <div className={`rounded-2xl border shadow-sm overflow-hidden ${failed ? "bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800/50" : "bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700/50"}`}>
+      {/* Main row — tap to open receipt */}
+      <div onClick={onOpen}
+        className="px-4 py-3.5 flex items-center gap-3 cursor-pointer active:scale-[0.98] transition-transform">
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+          style={{ background: failed ? "linear-gradient(135deg,#ef4444,#dc2626)" : `linear-gradient(135deg,${cat.g1},${cat.g2})` }}>
+          <Ico d={CAT_ICONS[bill.category] || CAT_ICONS.airtime} size={18} c="white" />
         </div>
-        <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">
-          {bill.customer_name && `${bill.customer_name} · `}{fmtDT(bill.created_at)}
-        </p>
-        {bill.note && <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate italic">{bill.note}</p>}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5">
+            <p className="text-sm font-bold text-slate-800 dark:text-white truncate">{bill.item_name}</p>
+            {failed && <span className="text-[9px] font-black bg-red-500 text-white px-1.5 py-0.5 rounded-full flex-shrink-0">FAILED</span>}
+          </div>
+          <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">
+            {bill.customer_name && `${bill.customer_name} · `}{fmtDT(bill.created_at)}
+          </p>
+          {bill.note && <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate italic">{bill.note}</p>}
+        </div>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <p className={`text-sm font-extrabold ${failed ? "text-red-400 line-through" : "text-red-500"}`}>{fmt(bill.amount)}</p>
+          <Ico d="M9 18l6-6-6-6" size={14} c="#94a3b8" />
+        </div>
       </div>
-      <div className="flex items-center gap-1 flex-shrink-0">
-        <p className={`text-sm font-extrabold ${failed ? "text-red-400 line-through" : "text-red-500"}`}>{fmt(bill.amount)}</p>
-        <Ico d="M9 18l6-6-6-6" size={14} c="#94a3b8" />
-      </div>
+      {/* Retry strip — only on supported failed bills */}
+      {retryable && (
+        <div className="px-3 pb-3">
+          <button
+            onClick={() => onRetry(bill)}
+            className="w-full py-2 rounded-xl text-xs font-black text-white flex items-center justify-center gap-1.5 active:scale-95 transition-transform"
+            style={{ background: "linear-gradient(135deg,#ef4444,#dc2626)" }}>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+            </svg>
+            Retry Payment
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -674,6 +692,50 @@ function PinModal({ pins, title, onClose }) {
 
 const BILL_PENDING_PREFIX = "ck_bill_pending_";
 const BILL_LAST_RESULT    = "ck_bill_last_result";
+
+/* ─── Parse a stored bill transaction back into form fields for retry ─────── */
+function parseRetryForm(bill) {
+  const cat  = bill.category;
+  const note = bill.note || "";
+  const name = bill.customer_name || "";
+  const item = bill.item_name    || "";
+
+  // "Key: value | Key: value" → { key: value }
+  const kv = {};
+  note.split("|").forEach(seg => {
+    const i = seg.indexOf(":");
+    if (i > 0) kv[seg.slice(0, i).trim().toLowerCase()] = seg.slice(i + 1).trim();
+  });
+
+  const NETS = ["MTN", "Airtel", "9mobile", "Glo"];
+
+  if (cat === "airtime") {
+    return { phone: name, network: kv["network"] || NETS.find(n => item.includes(n)) || "MTN" };
+  }
+  if (cat === "data") {
+    return { phone: name, network: kv["network"] || NETS.find(n => item.includes(n)) || "MTN" };
+  }
+  if (cat === "electricity") {
+    const meterType = item.toLowerCase().includes("postpaid") ? "02" : "01";
+    const comp = ELECTRICITY_COMPANIES.find(c => item.includes(c.name.split(" ")[0]));
+    return { meterNo: name, meterType, company: comp?.code || "" };
+  }
+  if (cat === "cable") {
+    const prov = CABLE_PROVIDERS.find(p => item.toLowerCase().includes(p.name.toLowerCase()));
+    return { smartcard: name, provider: prov?.code || "" };
+  }
+  if (cat === "betting") {
+    const comp = BETTING_COMPANIES.find(c => item.toLowerCase().includes(c.name.toLowerCase()));
+    return { customerId: name, company: comp?.code || "" };
+  }
+  if (cat === "spectranet" || cat === "smile") {
+    return { accountNo: name };
+  }
+  if (cat === "waec" || cat === "jamb") {
+    return { phone: name };
+  }
+  return {};
+}
 
 /* ─── Map a stored bill transaction to BillReceipt props ─────────────────── */
 function billToReceipt(bill, profile, staffName) {
@@ -1587,6 +1649,16 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     setError("");
   };
 
+  // Open a failed bill's category and pre-fill form with the original identifiers
+  const retryBill = (bill) => {
+    const fields = parseRetryForm(bill);
+    openSheet(bill.category);              // resets form to defaults
+    setForm(f => ({ ...f, ...fields }));   // batched — merges retry fields on top of defaults
+    if (bill.category === "cable" && fields.provider) {
+      loadPkgs("cable-packages", { provider: fields.provider });
+    }
+  };
+
   const loadPlans = async (action, extra) => {
     setPlansLoading(true); setPlans([]); setPlansError("");
     try {
@@ -2358,7 +2430,8 @@ export default function BillPayments({ store, plan, session = null, staffName = 
             <div className="space-y-2">
               {filteredBills.map(b => (
                 <BillRow key={b.id || b.item_name + b.created_at} bill={b}
-                  onOpen={() => setReceipt(billToReceipt(b, profile, staffName))} />
+                  onOpen={() => setReceipt(billToReceipt(b, profile, staffName))}
+                  onRetry={retryBill} />
               ))}
             </div>
           )}
