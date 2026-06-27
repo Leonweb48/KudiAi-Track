@@ -69,7 +69,7 @@ export function CoopMemberFirstLogin({ member }) {
     const memberEmail = member?.email || (await supabase.auth.getUser()).data?.user?.email || "";
     fetch("https://admin.kudiai.app/api/public/email-trigger", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+      headers: { "Content-Type": "application/json", "x-trigger-secret": process.env.REACT_APP_EMAIL_SECRET },
       body: JSON.stringify({
         event: "org_member_first_login",
         data: { name: member?.full_name || "", email: memberEmail, org_name: member?.org?.name || member?.organizations?.name || "" },

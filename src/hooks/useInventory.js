@@ -67,7 +67,7 @@ export function useInventory(userId, staffId = null, onNotify = null, branchId =
     if (prod.quantity > 0) {
       fetch("https://admin.kudiai.app/api/public/email-trigger", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+        headers: { "Content-Type": "application/json", "x-trigger-secret": process.env.REACT_APP_EMAIL_SECRET },
         body: JSON.stringify({
           event: "stock_entry",
           data: {
@@ -149,7 +149,7 @@ export function useInventory(userId, staffId = null, onNotify = null, branchId =
     if (type === "restock") {
       fetch("https://admin.kudiai.app/api/public/email-trigger", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+        headers: { "Content-Type": "application/json", "x-trigger-secret": process.env.REACT_APP_EMAIL_SECRET },
         body: JSON.stringify({
           event: "stock_entry",
           data: {

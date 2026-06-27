@@ -342,7 +342,7 @@ export default function Onboarding({ session, onComplete }) {
       // Fire welcome email for the new business user (non-blocking)
       fetch("https://admin.kudiai.app/api/public/email-trigger", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+        headers: { "Content-Type": "application/json", "x-trigger-secret": process.env.REACT_APP_EMAIL_SECRET },
         body: JSON.stringify({
           event: "business_registered",
           data: {

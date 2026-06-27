@@ -6,7 +6,7 @@ import { getLang } from "../utils/i18n";
 import { getSalesPrediction, getRestockData, getSlowMovers } from "../utils/predictions";
 
 const CHAT_URL = "https://admin.kudiai.app/api/public/chat";
-const SECRET   = "kuditrack-email-trigger-2026-amaya";
+const SECRET   = process.env.REACT_APP_EMAIL_SECRET;
 
 const AI_QUICK = [
   { label: "Today's Sales",      q: "How were today's sales?"    },

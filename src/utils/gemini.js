@@ -1,5 +1,5 @@
 const CHAT_URL = "https://admin.kudiai.app/api/public/chat";
-const SECRET   = "kuditrack-email-trigger-2026-amaya";
+const SECRET   = process.env.REACT_APP_EMAIL_SECRET;
 
 function errorMessage(err, status) {
   if (typeof navigator !== "undefined" && !navigator.onLine)

@@ -16,7 +16,7 @@ async function fireWelcomeEmail(event, data) {
     sessionStorage.setItem(sentKey, "1");
     await fetch("https://admin.kudiai.app/api/public/email-trigger", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+      headers: { "Content-Type": "application/json", "x-trigger-secret": process.env.REACT_APP_EMAIL_SECRET },
       body: JSON.stringify({ event, data }),
     });
   } catch { /* non-critical */ }

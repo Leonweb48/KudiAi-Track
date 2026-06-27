@@ -708,7 +708,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       // Emails resolved server-side from IDs to guarantee fresh delivery
       fetch("https://admin.kudiai.app/api/public/email-trigger", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+        headers: { "Content-Type": "application/json", "x-trigger-secret": process.env.REACT_APP_EMAIL_SECRET },
         body: JSON.stringify({
           event: "ajo_withdrawal_approved",
           data: {
@@ -742,7 +742,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       const cl = req.aso_clients || {};
       fetch("https://admin.kudiai.app/api/public/email-trigger", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+        headers: { "Content-Type": "application/json", "x-trigger-secret": process.env.REACT_APP_EMAIL_SECRET },
         body: JSON.stringify({
           event: "ajo_withdrawal_rejected",
           data: {

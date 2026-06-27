@@ -298,7 +298,7 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
           .map(p => ({ name: p.name, slug: p.slug, price: p.price_monthly, features: getDisplayFeatures(p).slice(0, 4) }));
         fetch("https://admin.kudiai.app/api/public/email-trigger", {
           method: "POST",
-          headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+          headers: { "Content-Type": "application/json", "x-trigger-secret": process.env.REACT_APP_EMAIL_SECRET },
           body: JSON.stringify({ event: "kobo_welcome", data: { user_email: session.user.email, user_name: userName, business_name: bizName, upgrade_plans: upgradePlans } }),
         }).catch(() => null);
       }
@@ -307,7 +307,7 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
         const features = planData ? getDisplayFeatures(planData) : [];
         fetch("https://admin.kudiai.app/api/public/email-trigger", {
           method: "POST",
-          headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+          headers: { "Content-Type": "application/json", "x-trigger-secret": process.env.REACT_APP_EMAIL_SECRET },
           body: JSON.stringify({
             event: "subscription_welcome",
             data: { user_email: session.user.email, user_name: userName, business_name: bizName, plan_name: planData?.name || planSlug, plan_slug: planSlug, plan_price: planData?.price_monthly || 0, plan_features: features, billing_cycle: isYearly ? "yearly" : "monthly", reference: reference || "", is_first_time: isFirstTimePaid },
@@ -315,7 +315,7 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
         }).catch(() => null);
         fetch("https://admin.kudiai.app/api/public/email-trigger", {
           method: "POST",
-          headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+          headers: { "Content-Type": "application/json", "x-trigger-secret": process.env.REACT_APP_EMAIL_SECRET },
           body: JSON.stringify({
             event: "plan_purchased",
             data: { user_email: session.user.email, user_name: userName, business_name: bizName, plan_name: planData?.name || planSlug, plan_slug: planSlug, plan_price: planData?.price_monthly || 0, reference: reference || "", is_first_time: isFirstTimePaid },
