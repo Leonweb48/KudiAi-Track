@@ -4,6 +4,7 @@ import { useBranches } from "../hooks/useBranches";
 import { featureLimit } from "../utils/plans";
 import { supabase } from "../utils/supabase";
 import { fmt } from "../utils/helpers";
+import { useT } from "../contexts/LanguageContext";
 
 const MEDALS = ["🥇", "🥈", "🥉"];
 
@@ -43,6 +44,7 @@ function LabeledInput({ label, value, onChange, placeholder, type = "text" }) {
 
 // ── Branch create / edit modal ────────────────────────────────────────────
 function BranchModal({ branch, staffList, onClose, onSave }) {
+  const t = useT();
   const isEdit = !!branch;
   const [f,      setF]    = useState({
     name:       branch?.name       || "",
@@ -64,33 +66,33 @@ function BranchModal({ branch, staffList, onClose, onSave }) {
   };
 
   return (
-    <Modal title={isEdit ? "Edit Branch" : "New Branch"} onClose={onClose}>
+    <Modal title={isEdit ? t("branch.editBranch") : t("branch.newBranch")} onClose={onClose}>
       <div className="space-y-4">
         {err && <p className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">{err}</p>}
-        <LabeledInput label="Branch Name *" value={f.name}    onChange={v => set("name", v)}    placeholder="e.g. Lekki Branch" />
-        <LabeledInput label="Address"       value={f.address} onChange={v => set("address", v)} placeholder="Street, city, state" />
-        <LabeledInput label="Phone"         value={f.phone}   onChange={v => set("phone", v)}   placeholder="08012345678" type="tel" />
+        <LabeledInput label={t("branch.branchName")} value={f.name}    onChange={v => set("name", v)}    placeholder="e.g. Lekki Branch" />
+        <LabeledInput label={t("branch.address")}    value={f.address} onChange={v => set("address", v)} placeholder="Street, city, state" />
+        <LabeledInput label={t("branch.phone")}      value={f.phone}   onChange={v => set("phone", v)}   placeholder="08012345678" type="tel" />
         {staffList.length > 0 && (
           <div>
-            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5 block">Branch Manager</label>
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5 block">{t("branch.manager")}</label>
             <select value={f.manager_id} onChange={e => set("manager_id", e.target.value)}
               className="w-full border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-700 text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-violet-500/30">
-              <option value="">— No manager assigned —</option>
+              <option value="">{t("branch.noManager")}</option>
               {staffList.map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}
             </select>
           </div>
         )}
         <div>
-          <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5 block">Status</label>
+          <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5 block">{t("branch.status")}</label>
           <select value={f.is_active === false ? "inactive" : "active"} onChange={e => set("is_active", e.target.value === "active")}
             className="w-full border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-700 text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-violet-500/30">
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
+            <option value="active">{t("branch.active")}</option>
+            <option value="inactive">{t("branch.inactive")}</option>
           </select>
         </div>
         <button onClick={handleSave} disabled={saving}
           className="w-full py-3 bg-violet-600 text-white rounded-xl font-bold text-sm disabled:opacity-50 transition-colors active:scale-[0.99]">
-          {saving ? "Saving…" : isEdit ? "Save Changes" : "Create Branch"}
+          {saving ? t("branch.saving") : isEdit ? t("branch.saveChanges") : t("branch.create")}
         </button>
       </div>
     </Modal>
@@ -99,6 +101,7 @@ function BranchModal({ branch, staffList, onClose, onSave }) {
 
 // ── Overview tab ──────────────────────────────────────────────────────────
 function OverviewTab({ transactions, credits }) {
+  const t = useT();
   const MS = monthStr();
   const today = new Date().toISOString().slice(0, 10);
 
@@ -122,17 +125,17 @@ function OverviewTab({ transactions, credits }) {
         style={{ background: "linear-gradient(145deg,#7c3aed 0%,#6d28d9 55%,#4c1d95 100%)" }}>
         <div className="absolute -top-8 -right-8 w-28 h-28 rounded-full bg-white/5 pointer-events-none" />
         <div className="relative">
-          <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-0.5">Today's Profit</p>
+          <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-0.5">{t("branch.todayProfit")}</p>
           <p className={`text-3xl font-black tabular mb-3 ${profit < 0 ? "text-red-300" : "text-white"}`}>
             {profit < 0 && "−"}{fmt(Math.abs(profit))}
           </p>
           <div className="grid grid-cols-2 divide-x divide-white/20">
             <div className="pr-3">
-              <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider">Cash In</p>
+              <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider">{t("branch.cashIn")}</p>
               <p className="text-sm font-extrabold text-green-200">{fmt(cashIn)}</p>
             </div>
             <div className="pl-3">
-              <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider">Cash Out</p>
+              <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider">{t("branch.cashOut")}</p>
               <p className="text-sm font-extrabold text-red-200">{fmt(cashOut)}</p>
             </div>
           </div>
@@ -142,10 +145,10 @@ function OverviewTab({ transactions, credits }) {
       {/* Month stats */}
       <div className="grid grid-cols-2 gap-3">
         {[
-          { label: "Month Sales",    value: fmt(monthIn),    color: "text-green-600 dark:text-green-400" },
-          { label: "Month Expenses", value: fmt(monthOut),   color: "text-red-500 dark:text-red-400"     },
-          { label: "Open Credits",   value: openCr.length,   color: "text-amber-600 dark:text-amber-400" },
-          { label: "Outstanding",    value: fmt(outstanding), color: "text-amber-600 dark:text-amber-400" },
+          { label: t("branch.monthSales"),    value: fmt(monthIn),    color: "text-green-600 dark:text-green-400" },
+          { label: t("branch.monthExpenses"), value: fmt(monthOut),   color: "text-red-500 dark:text-red-400"     },
+          { label: t("branch.openCredits"),   value: openCr.length,   color: "text-amber-600 dark:text-amber-400" },
+          { label: t("branch.outstanding"),   value: fmt(outstanding), color: "text-amber-600 dark:text-amber-400" },
         ].map(({ label, value, color }) => (
           <div key={label} className="bg-white dark:bg-slate-800 rounded-2xl p-3.5 border border-slate-100 dark:border-slate-700 shadow-sm">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">{label}</p>
@@ -558,6 +561,7 @@ function BranchDetail({ branch, transactions, credits, asoClients, allProducts, 
 
 // ── Main Branches screen ──────────────────────────────────────────────────
 export default function Branches({ store, onClose, userId, inventory = {}, onReport, plan = "kobo", onUpgrade }) {
+  const t = useT();
   const { branches, loading: branchLoading, addBranch, updateBranch, deleteBranch } = useBranches(userId);
   const { transactions = [], credits = [], asoClients = [], staffMap = {} } = store;
   const { products: allProducts = [], movements: allMovements = [] } = inventory;
@@ -653,7 +657,7 @@ export default function Branches({ store, onClose, userId, inventory = {}, onRep
             <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
           </svg>
         </button>
-        <h1 className="flex-1 text-lg font-extrabold text-slate-800 dark:text-white">Branch Management</h1>
+        <h1 className="flex-1 text-lg font-extrabold text-slate-800 dark:text-white">{t("branch.title")}</h1>
         <button onClick={() => {
             const branchLimit = featureLimit(plan, "branches");
             if (branchLimit !== Infinity && branches.length >= branchLimit) { onUpgrade?.(); return; }

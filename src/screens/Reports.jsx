@@ -1,7 +1,8 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 import html2canvas from "html2canvas";
 import { jsPDF }   from "jspdf";
 import { fmt }     from "../utils/helpers";
+import { useT }    from "../contexts/LanguageContext";
 
 /* ── date helpers ──────────────────────────────────────────────────── */
 const todayStr = () => new Date().toISOString().split("T")[0];
@@ -637,25 +638,30 @@ function ReportTemplate({ type, reportData, profile, from, to }) {
 }
 
 /* ── Report type selector cards ─────────────────────────────────────── */
-const REPORT_TYPES = [
-  { id:"sales",  label:"Sales Report",     sub:"Revenue, expenses, profit & transactions",  icon:"📈", color:"bg-green-50 dark:bg-green-900/20",  border:"border-green-200 dark:border-green-800",  active:"bg-green-600" },
-  { id:"credit", label:"Credit Report",    sub:"Debtors, outstanding & overdue accounts",   icon:"👥", color:"bg-amber-50 dark:bg-amber-900/20",  border:"border-amber-200 dark:border-amber-800",  active:"bg-amber-500" },
-  { id:"aso",    label:"Ajo Report",       sub:"Savings clients, contributions & balance",  icon:"🏦", color:"bg-violet-50 dark:bg-violet-900/20",border:"border-violet-200 dark:border-violet-800",active:"bg-violet-600"},
-  { id:"bills",  label:"Bills Report",     sub:"Bill payments by category & provider",      icon:"🧾", color:"bg-red-50 dark:bg-red-900/20",      border:"border-red-200 dark:border-red-800",      active:"bg-red-500"   },
-  { id:"staff",  label:"Staff Performance",sub:"Per-staff transactions & contributions",    icon:"👤", color:"bg-blue-50 dark:bg-blue-900/20",    border:"border-blue-200 dark:border-blue-800",    active:"bg-blue-600"  },
-  { id:"stock",  label:"Stock Report",     sub:"Items sold, revenue & inventory overview",  icon:"📦", color:"bg-orange-50 dark:bg-orange-900/20",border:"border-orange-200 dark:border-orange-800",active:"bg-orange-500"},
-];
+function makeReportTypes(t) {
+  return [
+    { id:"sales",  label:t("report.sales"),  sub:"Revenue, expenses, profit & transactions",  icon:"📈", color:"bg-green-50 dark:bg-green-900/20",  border:"border-green-200 dark:border-green-800",  active:"bg-green-600" },
+    { id:"credit", label:t("report.credit"), sub:"Debtors, outstanding & overdue accounts",   icon:"👥", color:"bg-amber-50 dark:bg-amber-900/20",  border:"border-amber-200 dark:border-amber-800",  active:"bg-amber-500" },
+    { id:"aso",    label:t("report.ajo"),    sub:"Savings clients, contributions & balance",  icon:"🏦", color:"bg-violet-50 dark:bg-violet-900/20",border:"border-violet-200 dark:border-violet-800",active:"bg-violet-600"},
+    { id:"bills",  label:t("report.bills"),  sub:"Bill payments by category & provider",      icon:"🧾", color:"bg-red-50 dark:bg-red-900/20",      border:"border-red-200 dark:border-red-800",      active:"bg-red-500"   },
+    { id:"staff",  label:t("report.staff"),  sub:"Per-staff transactions & contributions",    icon:"👤", color:"bg-blue-50 dark:bg-blue-900/20",    border:"border-blue-200 dark:border-blue-800",    active:"bg-blue-600"  },
+    { id:"stock",  label:t("report.stock"),  sub:"Items sold, revenue & inventory overview",  icon:"📦", color:"bg-orange-50 dark:bg-orange-900/20",border:"border-orange-200 dark:border-orange-800",active:"bg-orange-500"},
+  ];
+}
 
-const PERIODS = [
-  { id:"today", label:"Today"     },
-  { id:"week",  label:"This Week" },
-  { id:"month", label:"This Month"},
-  { id:"year",  label:"This Year" },
-  { id:"custom",label:"Custom"    },
-];
+function makePeriods(t) {
+  return [
+    { id:"today", label:t("report.today")     },
+    { id:"week",  label:t("report.thisWeek")  },
+    { id:"month", label:t("report.thisMonth") },
+    { id:"year",  label:t("report.thisYear")  },
+    { id:"custom",label:t("report.custom")    },
+  ];
+}
 
 /* ── Main screen ────────────────────────────────────────────────────── */
 export default function Reports({ store, onClose }) {
+  const t = useT();
   const { transactions, credits, asoClients, profile, staffMap = {} } = store;
 
   const [reportType, setReportType] = useState("sales");
@@ -666,6 +672,8 @@ export default function Reports({ store, onClose }) {
   const [exporting,  setExporting]  = useState(false);
 
   const reportRef = useRef(null);
+  const REPORT_TYPES = useMemo(() => makeReportTypes(t), [t]);
+  const PERIODS      = useMemo(() => makePeriods(t),      [t]);
 
   const { from, to } = periodRange(period, customFrom, customTo);
 
@@ -742,14 +750,14 @@ export default function Reports({ store, onClose }) {
             {exporting ? (
               <>
                 <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin"/>
-                Exporting…
+                {t("report.exporting")}
               </>
             ) : (
               <>
                 <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
                   <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
                 </svg>
-                Export PDF
+                {t("report.exportPDF")}
               </>
             )}
           </button>
@@ -790,15 +798,15 @@ export default function Reports({ store, onClose }) {
           </svg>
         </button>
         <div>
-          <p className="text-lg font-black text-slate-800 dark:text-white">Report Generator</p>
-          <p className="text-xs text-slate-400 dark:text-slate-500">Professional PDF export</p>
+          <p className="text-lg font-black text-slate-800 dark:text-white">{t("report.title")}</p>
+          <p className="text-xs text-slate-400 dark:text-slate-500">{t("report.subtitle")}</p>
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-5">
 
         {/* Report type grid */}
-        <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3">Select Report Type</p>
+        <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3">{t("report.selectType")}</p>
         <div className="grid grid-cols-2 gap-2.5 mb-6">
           {REPORT_TYPES.map(rt => (
             <button key={rt.id} onClick={() => setReportType(rt.id)}
@@ -815,7 +823,7 @@ export default function Reports({ store, onClose }) {
         </div>
 
         {/* Period selector */}
-        <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3">Report Period</p>
+        <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3">{t("report.period")}</p>
         <div className="flex gap-1.5 flex-wrap mb-3">
           {PERIODS.map(p => (
             <button key={p.id} onClick={() => setPeriod(p.id)}
@@ -833,12 +841,12 @@ export default function Reports({ store, onClose }) {
         {period === "custom" && (
           <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 mb-5 grid grid-cols-2 gap-3">
             <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">From</p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">{t("report.from")}</p>
               <input type="date" value={customFrom} onChange={e=>setCustomFrom(e.target.value)}
                 className="w-full text-sm text-slate-800 dark:text-slate-100 bg-transparent focus:outline-none"/>
             </div>
             <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">To</p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">{t("report.to")}</p>
               <input type="date" value={customTo} onChange={e=>setCustomTo(e.target.value)}
                 className="w-full text-sm text-slate-800 dark:text-slate-100 bg-transparent focus:outline-none"/>
             </div>
@@ -864,7 +872,7 @@ export default function Reports({ store, onClose }) {
           <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
             <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>
           </svg>
-          Generate {REPORT_TYPES.find(r=>r.id===reportType)?.label}
+          {t("report.generate")} {REPORT_TYPES.find(r=>r.id===reportType)?.label}
         </button>
 
         <div className="h-10" />

@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { jsPDF } from "jspdf";
 import { fmt, today } from "../utils/helpers";
+import { useT } from "../contexts/LanguageContext";
 import { calcPointsDiscount, calcCashbackDiscount, calcCouponDiscount, calcBillAmounts } from "../utils/billCalc";
 import { saveBeneficiary, getBeneficiaries, benDisplayName, benSubLabel, BEN_CATS } from "../utils/billBeneficiaries";
 import { clubkonnect } from "../utils/clubkonnect";
@@ -1390,6 +1391,22 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
 }
 
 export default function BillPayments({ store, plan, session = null, staffName = null, staffEmail = null, businessName = null, autoService = null, onAutoOpened = null, excludeCats = [], markup = 1.0, airtimeDiscount = 0, cashback = 0, pointsEnabled = false, bundleAppPct = 0.3 }) {
+  const t = useT();
+  const CAT_LABELS = useMemo(() => ({
+    airtime:        t("bill.airtime"),
+    data:           t("bill.dataBundle"),
+    cable:          t("bill.cableTV"),
+    electricity:    t("bill.electricity"),
+    betting:        t("bill.bettingWallet"),
+    waec:           t("bill.waecEPin"),
+    jamb:           t("bill.jambEPin"),
+    spectranet:     t("bill.spectranet"),
+    smile:          t("bill.smile4g"),
+    "print-airtime":t("bill.printAirtime"),
+    "print-data":   t("bill.printData"),
+    "airtime-bundle":t("bill.bundleSet"),
+    "business-loan":t("bill.businessLoan"),
+  }), [t]);
   const { transactions, addTransaction, profile } = store;
   // plan is a slug string from useAuth (e.g. "oga"), not a plan object
   const planSlug = typeof plan === "string" ? plan : (plan?.slug ?? "");
@@ -2346,7 +2363,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                     <span className="absolute top-1.5 right-1.5 bg-white/30 rounded-full px-1.5 py-0.5 text-[8px] font-black tracking-wide">{badge}</span>
                   )}
                   <Ico d={CAT_ICONS[c.id]} size={26} c="rgba(255,255,255,0.95)" />
-                  <p className="text-[11px] font-bold text-center leading-tight">{c.label}</p>
+                  <p className="text-[11px] font-bold text-center leading-tight">{CAT_LABELS[c.id] || c.label}</p>
                   {count > 0 && <p className="text-[9px] font-semibold bg-white/25 px-1.5 py-0.5 rounded-full">{count}</p>}
                 </button>
               );
@@ -2395,14 +2412,14 @@ export default function BillPayments({ store, plan, session = null, staffName = 
               </div>
               {usedBillCats.length > 1 && (
                 <div className="flex gap-2 mb-3 overflow-x-auto no-scrollbar">
-                  {[{ id: "all", label: "All Services" }, ...usedBillCats].map(c => (
+                  {[{ id: "all", label: t("bill.airtime") ? "All Services" : "All Services" }, ...usedBillCats].map(c => (
                     <button key={c.id} onClick={() => setHistCat(c.id)}
                       className={`flex-shrink-0 px-3 py-1.5 rounded-full text-[11px] font-bold transition-colors ${
                         histCat === c.id
                           ? "bg-[#1B2A5E] text-white"
                           : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
                       }`}>
-                      {c.label}
+                      {CAT_LABELS[c.id] || c.label}
                     </button>
                   ))}
                 </div>
@@ -2466,7 +2483,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
               <div>
                 <h2 className={`text-base font-bold ${netTheme ? "" : "text-slate-800 dark:text-white"}`}
                   style={netTheme ? { color: netTheme.fg } : {}}>
-                  {netTheme ? `${form.network} ${cat.label}` : cat.label}
+                  {netTheme ? `${form.network} ${CAT_LABELS[cat.id] || cat.label}` : (CAT_LABELS[cat.id] || cat.label)}
                 </h2>
                 <p className="text-[10px] font-semibold"
                   style={netTheme ? { color: `${netTheme.fg}bb` } : { color: "#16a34a" }}>

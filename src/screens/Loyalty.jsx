@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import Icon from "../components/Icon";
 import Modal from "../components/shared/Modal";
 import { canDo, featureLimit, upgradeLabel, planAvailableText } from "../utils/plans";
+import { useT } from "../contexts/LanguageContext";
 
 const TIER = (totalPts) => {
   if (totalPts >= 500) return { label: "Gold",   color: "text-yellow-500 dark:text-yellow-400", bg: "bg-yellow-50 dark:bg-yellow-900/20" };
@@ -265,6 +266,7 @@ function RedeemModal({ customer, onRedeem, onClose }) {
 }
 
 export default function Loyalty({ loyalty, plan, onUpgrade, onClose }) {
+  const t = useT();
   const {
     customers, settings, loading: loyaltyLoading,
     addCustomer, awardPoints, redeemPoints,
@@ -325,14 +327,14 @@ export default function Loyalty({ loyalty, plan, onUpgrade, onClose }) {
               <Icon name="x" size={20} />
             </button>
           )}
-          <h1 className="text-lg font-bold text-slate-800 dark:text-white">Loyalty Program</h1>
+          <h1 className="text-lg font-bold text-slate-800 dark:text-white">{t("loyalty.program")}</h1>
         </div>
         <div className="flex-1 flex items-center justify-center p-6">
           <div className="text-center max-w-xs">
             <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-2xl flex items-center justify-center mx-auto mb-4">
               <Icon name="gift" size={32} className="text-green-600 dark:text-green-400" />
             </div>
-            <h2 className="text-xl font-bold text-slate-800 dark:text-white mb-2">Loyalty Program</h2>
+            <h2 className="text-xl font-bold text-slate-800 dark:text-white mb-2">{t("loyalty.program")}</h2>
             <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
               Reward loyal customers with points, cashback, and referral bonuses. {planAvailableText("loyalty")}
             </p>
@@ -391,14 +393,18 @@ export default function Loyalty({ loyalty, plan, onUpgrade, onClose }) {
             </button>
           </div>
           <div className="flex gap-1 mt-3">
-            {["profile", "rewards", "history"].map(tab => (
-              <button key={tab} onClick={() => setDetailTab(tab)}
+            {[
+              { id:"profile", label: t("loyalty.tabProfile") },
+              { id:"rewards", label: t("loyalty.tabRewards") },
+              { id:"history", label: t("loyalty.tabHistory") },
+            ].map(tab => (
+              <button key={tab.id} onClick={() => setDetailTab(tab.id)}
                 className={`flex-1 py-2 rounded-xl text-xs font-bold capitalize transition-colors ${
-                  detailTab === tab
+                  detailTab === tab.id
                     ? "bg-green-600 text-white"
                     : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
                 }`}>
-                {tab}
+                {tab.label}
               </button>
             ))}
           </div>
@@ -439,11 +445,11 @@ export default function Loyalty({ loyalty, plan, onUpgrade, onClose }) {
               <div className="grid grid-cols-2 gap-3">
                 <button onClick={() => setShowAward(true)}
                   className="py-3 bg-green-600 text-white rounded-xl font-bold text-sm hover:bg-green-700 transition-colors">
-                  + Award Points
+                  {t("loyalty.awardPoints")}
                 </button>
                 <button onClick={() => setShowRedeem(true)} disabled={!(selected.points_balance > 0)}
                   className="py-3 bg-amber-500 text-white rounded-xl font-bold text-sm disabled:opacity-40 transition-colors">
-                  − Redeem Points
+                  {t("loyalty.redeemPoints")}
                 </button>
               </div>
               <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-4 space-y-2">
@@ -488,9 +494,9 @@ export default function Loyalty({ loyalty, plan, onUpgrade, onClose }) {
             </button>
           )}
           <div className="flex-1 min-w-0">
-            <h1 className="text-lg font-bold text-slate-800 dark:text-white leading-tight">Loyalty Program</h1>
+            <h1 className="text-lg font-bold text-slate-800 dark:text-white leading-tight">{t("loyalty.program")}</h1>
             {!settings.is_active && (
-              <p className="text-xs text-amber-500 font-semibold mt-0.5">Inactive — tap ⚙ to activate</p>
+              <p className="text-xs text-amber-500 font-semibold mt-0.5">{t("loyalty.inactive")}</p>
             )}
           </div>
           <button onClick={() => setShowSettings(true)} className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
@@ -510,7 +516,7 @@ export default function Loyalty({ loyalty, plan, onUpgrade, onClose }) {
 
       <div className="px-4 pt-4 pb-6 space-y-4">
         <div className="grid grid-cols-3 gap-3">
-          <StatBox label="Customers"    value={stats.total}                         color="text-slate-700 dark:text-white" />
+          <StatBox label={t("loyalty.customers")} value={stats.total}               color="text-slate-700 dark:text-white" />
           <StatBox label="Points Given" value={stats.totalPts.toLocaleString()}     color="text-green-600 dark:text-green-400" />
           <StatBox label="Cashback"     value={fmtN(stats.totalCash)}              color="text-blue-600 dark:text-blue-400" />
         </div>
@@ -520,7 +526,7 @@ export default function Loyalty({ loyalty, plan, onUpgrade, onClose }) {
             <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
           </svg>
           <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search by name, ID, or phone…"
+            placeholder={t("loyalty.searchPlaceholder")}
             className="w-full pl-9 pr-4 py-2.5 border border-slate-200 dark:border-slate-600 rounded-xl text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-green-500/30"
           />
         </div>
@@ -533,9 +539,9 @@ export default function Loyalty({ loyalty, plan, onUpgrade, onClose }) {
               <Icon name="gift" size={26} className="text-green-500 dark:text-green-400" />
             </div>
             <p className="font-semibold text-slate-600 dark:text-slate-300 text-sm">
-              {search ? "No customers match your search" : "No loyalty customers yet"}
+              {search ? t("loyalty.noMatches") : t("loyalty.noCustomersYet")}
             </p>
-            {!search && <p className="text-xs text-slate-400 mt-1">Tap Add to enrol your first customer</p>}
+            {!search && <p className="text-xs text-slate-400 mt-1">{t("loyalty.tapAdd")}</p>}
           </div>
         ) : (
           <div className="space-y-2">

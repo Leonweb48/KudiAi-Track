@@ -1,24 +1,29 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { supabase } from "../utils/supabase";
 import { canDo, featureLimit, upgradeLabel, planRequiredLabel, planAvailableText } from "../utils/plans";
+import { useT } from "../contexts/LanguageContext";
 
-const ROLES = [
-  { id: "cashier",        label: "Cashier",        color: "blue"   },
-  { id: "sales_officer",  label: "Sales Officer",  color: "green"  },
-  { id: "credit_officer", label: "Credit Officer", color: "amber"  },
-  { id: "aso_collector",  label: "Aso Collector",  color: "purple" },
-  { id: "manager",        label: "Manager",        color: "red"    },
-];
+function makeRoles(t) {
+  return [
+    { id: "cashier",        label: t("staff.cashier"),       color: "blue"   },
+    { id: "sales_officer",  label: t("staff.salesOfficer"),  color: "green"  },
+    { id: "credit_officer", label: t("staff.creditOfficer"), color: "amber"  },
+    { id: "aso_collector",  label: t("staff.asoCollector"),  color: "purple" },
+    { id: "manager",        label: t("staff.manager"),       color: "red"    },
+  ];
+}
 
-const MODULES = [
-  { id: "transactions", label: "Transactions"     },
-  { id: "bills",        label: "Bill Payments"    },
-  { id: "credit",       label: "Credit Sales"     },
-  { id: "aso",          label: "Ajo Savings"      },
-  { id: "inventory",    label: "Stock / Inventory"},
-  { id: "insights",     label: "Insights"         },
-];
+function makeModules(t) {
+  return [
+    { id: "transactions", label: t("staff.transactions")  },
+    { id: "bills",        label: t("staff.billPayments")  },
+    { id: "credit",       label: t("staff.creditSales")   },
+    { id: "aso",          label: t("staff.ajoSavings")    },
+    { id: "inventory",    label: t("staff.stockInventory")},
+    { id: "insights",     label: t("staff.insights")      },
+  ];
+}
 
 const ROLE_DEFAULTS = {
   cashier:        ["transactions", "bills"],
@@ -28,20 +33,19 @@ const ROLE_DEFAULTS = {
   manager:        ["transactions", "bills", "credit", "aso", "inventory", "insights"],
 };
 
-const ROLE_COLORS = {
-  blue:   "bg-blue-100   text-blue-700",
-  green:  "bg-green-100  text-green-700",
-  amber:  "bg-amber-100  text-amber-700",
-  purple: "bg-purple-100 text-purple-700",
-  red:    "bg-red-100    text-red-700",
+const ROLE_COLOR_MAP = {
+  cashier:        "bg-blue-100   text-blue-700",
+  sales_officer:  "bg-green-100  text-green-700",
+  credit_officer: "bg-amber-100  text-amber-700",
+  aso_collector:  "bg-purple-100 text-purple-700",
+  manager:        "bg-red-100    text-red-700",
 };
 
 function roleColor(roleId) {
-  const r = ROLES.find(r => r.id === roleId);
-  return r ? ROLE_COLORS[r.color] : "bg-slate-100 text-slate-600";
+  return ROLE_COLOR_MAP[roleId] || "bg-slate-100 text-slate-600";
 }
-function roleLabel(roleId) {
-  return ROLES.find(r => r.id === roleId)?.label || roleId;
+function roleLabel(roleId, roles) {
+  return roles?.find(r => r.id === roleId)?.label || roleId;
 }
 
 function Avatar({ url, name, size = "md" }) {
@@ -70,6 +74,9 @@ function PermToggle({ checked, onChange, label }) {
 }
 
 export default function StaffManagement({ session, plan = "starter", onBack, onUpgrade }) {
+  const t = useT();
+  const ROLES   = useMemo(() => makeRoles(t),   [t]);
+  const MODULES = useMemo(() => makeModules(t), [t]);
   const userId = session.user.id;
 
   const [staffList,   setStaffList]   = useState([]);
@@ -555,7 +562,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
               <path d="M19 12H5M12 5l-7 7 7 7" />
             </svg>
           </button>
-          <h1 className="text-lg font-bold text-slate-800 dark:text-white">Staff Management</h1>
+          <h1 className="text-lg font-bold text-slate-800 dark:text-white">{t("staff.title")}</h1>
         </div>
         <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
           <div className="w-20 h-20 bg-green-50 dark:bg-green-900/20 rounded-full flex items-center justify-center mb-5">
@@ -586,7 +593,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
           </svg>
         </button>
         <div className="flex-1">
-          <h1 className="text-lg font-bold text-slate-800 dark:text-white">Staff Management</h1>
+          <h1 className="text-lg font-bold text-slate-800 dark:text-white">{t("staff.title")}</h1>
           <p className="text-xs text-slate-500 dark:text-slate-400">{staffList.length} staff member{staffList.length !== 1 ? "s" : ""}</p>
         </div>
         <button onClick={openAdd}
@@ -638,7 +645,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
                 </div>
                 <div className="flex flex-col items-end gap-1.5">
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${roleColor(s.role)}`}>
-                    {roleLabel(s.role)}
+                    {roleLabel(s.role, ROLES)}
                   </span>
                   <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${s.status === "active" ? "bg-green-50 text-green-600" : "bg-red-50 text-red-500"}`}>
                     {s.status === "active" ? "Active" : "Suspended"}
