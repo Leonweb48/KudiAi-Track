@@ -1602,6 +1602,9 @@ export default function BillPayments({ store, plan, session = null, staffName = 
   // Detect cancellation via bfcache restore (Android back button) or in-app browser close
   const savingRef = useRef(saving);
   savingRef.current = saving;
+  // Ref so the visibility handler always calls the latest fulfillAfterPayment closure
+  const fulfillAfterPaymentRef = useRef(null);
+
   useEffect(() => {
     const showDisrupted = () => {
       const params = new URLSearchParams(window.location.search);
@@ -1617,12 +1620,37 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
     // bfcache restore: user pressed back on Paystack and browser served cached page
     const onPageShow = (e) => { if (e.persisted) showDisrupted(); };
-    // in-app browser close: Paystack opened in WebView, closed without redirect
-    const onVisible  = () => { if (document.visibilityState === "visible" && savingRef.current) showDisrupted(); };
+
+    // When app becomes visible: wait 2s (to allow deep-link paymentCallback to fire first),
+    // then try to verify with Paystack. Handles OPay and other external payment methods that
+    // redirect users outside Chrome Custom Tabs.
+    let visibleTimer = null;
+    const onVisible = () => {
+      if (document.visibilityState !== "visible" || !savingRef.current) return;
+      clearTimeout(visibleTimer);
+      visibleTimer = setTimeout(() => {
+        if (!savingRef.current) return; // deep link already handled it
+        const params = new URLSearchParams(window.location.search);
+        const urlRef = params.get("bill_ref") || params.get("trxref") || params.get("reference");
+        if (urlRef) return; // URL-based redirect — handled elsewhere
+        const keys = Object.keys(localStorage).filter(k => k.startsWith(BILL_PENDING_PREFIX));
+        if (keys.length === 0) return;
+        const key = keys[0];
+        const ref = key.replace(BILL_PENDING_PREFIX, "");
+        const stored = localStorage.getItem(key);
+        if (stored && fulfillAfterPaymentRef.current) {
+          // Attempt Paystack verification — fulfillAfterPayment will show disrupted if abandoned
+          fulfillAfterPaymentRef.current(ref, JSON.parse(stored));
+        } else {
+          showDisrupted();
+        }
+      }, 2000);
+    };
 
     window.addEventListener("pageshow", onPageShow);
     document.addEventListener("visibilitychange", onVisible);
     return () => {
+      clearTimeout(visibleTimer);
       window.removeEventListener("pageshow", onPageShow);
       document.removeEventListener("visibilitychange", onVisible);
     };
@@ -2246,6 +2274,9 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       } catch (_) {}
     }
   }, [addTransaction, staffName, staffEmail, businessName, profile, pointsEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep ref in sync so the visibilitychange handler always calls the latest closure
+  useEffect(() => { fulfillAfterPaymentRef.current = fulfillAfterPayment; }, [fulfillAfterPayment]);
 
   // Native Android: handle paymentCallback deep-link event dispatched by useAuth after Browser.open redirect
   useEffect(() => {

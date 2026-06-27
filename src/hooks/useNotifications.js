@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { Capacitor } from "@capacitor/core";
+import { LocalNotifications } from "@capacitor/local-notifications";
 
 const MAX = 100;
+let _nativeNotifId = 1;
 
 const DEFAULT_SETTINGS = {
   push: false, voice: false,
@@ -51,10 +54,29 @@ export function useNotifications(userId) {
     localStorage.setItem(`kt_notif_settings_${userId}`, JSON.stringify(settings));
   }, [settings, userId]);
 
+  const pushNative = useCallback(async (title, body) => {
+    try {
+      await LocalNotifications.schedule({
+        notifications: [{
+          id:    _nativeNotifId++,
+          title,
+          body,
+          sound: "default",
+          smallIcon: "ic_stat_icon_config_sample",
+          iconColor: "#4f46e5",
+        }],
+      });
+    } catch { /* non-critical */ }
+  }, []);
+
   const pushBrowser = useCallback((title, body) => {
+    if (Capacitor.isNativePlatform()) {
+      pushNative(title, body);
+      return;
+    }
     if (!("Notification" in window) || Notification.permission !== "granted") return;
     try { new Notification(title, { body, icon: "/logo.png", badge: "/logo.png" }); } catch {}
-  }, []);
+  }, [pushNative]);
 
   const speak = useCallback((text) => {
     if (!("speechSynthesis" in window)) return;
@@ -86,6 +108,18 @@ export function useNotifications(userId) {
   const updateSetting = useCallback((key, val) => setS(p => ({ ...p, [key]: val })), []);
 
   const requestPush = useCallback(async () => {
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const result = await LocalNotifications.requestPermissions();
+        if (result.display === "granted") {
+          updateSetting("push", true);
+          return "granted";
+        }
+        return result.display;
+      } catch {
+        return "unsupported";
+      }
+    }
     if (!("Notification" in window)) return "unsupported";
     if (Notification.permission === "denied") return "denied";
     const perm = await Notification.requestPermission();

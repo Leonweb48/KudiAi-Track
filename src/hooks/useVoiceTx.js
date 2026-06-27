@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { Capacitor, CapacitorHttp } from "@capacitor/core";
 
 const VOICE_PARSE_URL  = "https://admin.kudiai.app/api/public/voice-parse";
 const TRIGGER_SECRET   = process.env.REACT_APP_EMAIL_SECRET;
@@ -30,21 +31,35 @@ function blobToBase64(blob) {
 
 async function sendToGemini(audioBlob, mimeType) {
   const base64 = await blobToBase64(audioBlob);
-  const res = await fetch(VOICE_PARSE_URL, {
-    method:  "POST",
-    headers: {
-      "Content-Type":     "application/json",
-      "x-trigger-secret": TRIGGER_SECRET,
-    },
-    body: JSON.stringify({ audio_base64: base64, mime_type: mimeType || "audio/webm" }),
-  });
+  const payload = { audio_base64: base64, mime_type: mimeType || "audio/webm" };
+  const headers = {
+    "Content-Type":     "application/json",
+    "x-trigger-secret": TRIGGER_SECRET || "",
+  };
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || `Server error ${res.status}`);
+  let data;
+  if (Capacitor.isNativePlatform()) {
+    const res = await CapacitorHttp.post({
+      url: VOICE_PARSE_URL,
+      headers,
+      data: JSON.stringify(payload),
+    });
+    if (res.status < 200 || res.status >= 300) {
+      throw new Error((res.data?.error) || `Server error ${res.status}`);
+    }
+    data = typeof res.data === "string" ? JSON.parse(res.data) : res.data;
+  } else {
+    const res = await fetch(VOICE_PARSE_URL, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `Server error ${res.status}`);
+    }
+    data = await res.json();
   }
-
-  const data  = await res.json();
   const isIn  = data.transaction_type === "Cash In";
   return {
     type:          isIn ? "in" : "out",
