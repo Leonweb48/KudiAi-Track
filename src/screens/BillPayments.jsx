@@ -668,68 +668,6 @@ function PinModal({ pins, title, onClose }) {
 
 /* ─── Main component ───────────────────────────────────────────────────────── */
 
-function KeyStatusPanel({ onClose }) {
-  const [results, setResults]   = useState(null);
-  const [checking, setChecking] = useState(true);
-
-  const run = useCallback(async () => {
-    setChecking(true); setResults(null);
-    try { const r = await clubkonnect("health-check", {}); setResults(r?.results || []); }
-    catch (e) { setResults([{ label: "Error", ok: false, detail: e.message }]); }
-    finally { setChecking(false); }
-  }, []);
-
-  useState(() => { run(); }, []);
-
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-4">
-      <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl">
-        <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-800">
-          <h3 className="text-base font-bold text-slate-800 dark:text-white">API Key Status</h3>
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
-            <Ico d="M18 6L6 18|M6 6l12 12" size={14} c="#64748b" />
-          </button>
-        </div>
-        <div className="px-5 py-4 space-y-2 max-h-96 overflow-y-auto">
-          {checking && (
-            <div className="flex items-center gap-3 py-4 justify-center">
-              <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full spinner" />
-              <p className="text-sm text-slate-500">Checking all services…</p>
-            </div>
-          )}
-          {results && results.map((r, i) => (
-            <div key={i} className={`rounded-xl px-4 py-2.5 border ${r.ok ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800" : "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"}`}>
-              <div className="flex items-center justify-between">
-                <span className={`text-sm font-semibold ${r.ok ? "text-green-700 dark:text-green-300" : "text-red-700 dark:text-red-300"}`}>{r.label}</span>
-                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${r.ok ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300" : "bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300"}`}>
-                  {r.ok ? "OK" : r.detail || "Invalid Key"}
-                </span>
-              </div>
-              {!r.ok && r.raw && (
-                <p className="text-[10px] text-red-400 dark:text-red-500 mt-1 break-all leading-tight">{r.raw}</p>
-              )}
-            </div>
-          ))}
-          {results && results.some(r => !r.ok) && (
-            <p className="text-[11px] text-slate-400 dark:text-slate-500 pt-1">
-              Services showing "Invalid Key" need their API key updated in Supabase secrets. Contact your service provider to get the correct API key for each broken service.
-            </p>
-          )}
-        </div>
-        <div className="px-5 pb-5 flex gap-2">
-          <button onClick={run} disabled={checking}
-            className="flex-1 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold rounded-xl py-2.5 text-sm disabled:opacity-50">
-            Re-check
-          </button>
-          <button onClick={onClose} className="flex-1 bg-slate-800 dark:bg-slate-700 text-white font-bold rounded-xl py-2.5 text-sm">
-            Done
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 const BILL_PENDING_PREFIX = "ck_bill_pending_";
 
 /* ─── Map a stored bill transaction to BillReceipt props ─────────────────── */
@@ -1371,7 +1309,6 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
   const [selectedCat,   setSelectedCat]   = useState(null);
   const [showLoanModal, setShowLoanModal] = useState(false);
-  const [showKeyStatus, setShowKeyStatus] = useState(false);
   const [showStatement, setShowStatement] = useState(false);
   const [form,          setForm]          = useState({});
   const [error,         setError]         = useState("");
@@ -2208,17 +2145,8 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
       {/* Header */}
       <div className="px-4 pt-5 pb-4 bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 sticky top-0 z-10">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-extrabold text-slate-900 dark:text-white">Bill Payments</h1>
-            <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">VTU &amp; Bill Payment Services</p>
-          </div>
-          <button onClick={() => setShowKeyStatus(true)}
-            className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold px-3 py-1.5 rounded-full">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M12 2a10 10 0 100 20 10 10 0 000-20z" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
-            API Status
-          </button>
-        </div>
+        <h1 className="text-xl font-extrabold text-slate-900 dark:text-white">Bill Payments</h1>
+        <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">VTU &amp; Bill Payment Services</p>
       </div>
 
       <div className="px-4 pt-4 space-y-4">
@@ -2869,7 +2797,6 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         />
       )}
       {showStatement && <BillStatementModal bills={bills} profile={profile} onClose={() => setShowStatement(false)} />}
-      {showKeyStatus && <KeyStatusPanel onClose={() => setShowKeyStatus(false)} />}
     </div>
   );
 }
