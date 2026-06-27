@@ -1,3 +1,5 @@
+import { Capacitor, CapacitorHttp } from "@capacitor/core";
+
 const CHAT_URL = "https://admin.kudiai.app/api/public/chat";
 const SECRET   = process.env.REACT_APP_EMAIL_SECRET;
 
@@ -30,8 +32,6 @@ export async function askGemini({
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     if (attempt > 0) await new Promise(r => setTimeout(r, attempt === 1 ? 1000 : 2000));
 
-    // A timer promise that always rejects after `timeout` ms so Promise.race
-    // can never hang forever regardless of fetch/body-read behaviour.
     let rejectTimer;
     const timerPromise = new Promise((_, reject) => {
       rejectTimer = setTimeout(
@@ -43,19 +43,33 @@ export async function askGemini({
     try {
       const text = await Promise.race([
         (async () => {
-          const res = await fetch(CHAT_URL, {
-            method:  "POST",
-            headers: {
-              "Content-Type":     "application/json",
-              "x-trigger-secret": SECRET,
-            },
-            body: JSON.stringify({ message, lang, businessContext: context, history }),
-          });
+          const payload = { message, lang, businessContext: context, history };
+          const headers = {
+            "Content-Type":     "application/json",
+            "x-trigger-secret": SECRET || "",
+          };
 
+          if (Capacitor.isNativePlatform()) {
+            // Native HTTP bypasses WebView CORS restrictions
+            const res = await CapacitorHttp.post({
+              url: CHAT_URL,
+              headers,
+              data: JSON.stringify(payload),
+            });
+            if (res.status < 200 || res.status >= 300) {
+              throw Object.assign(new Error(`HTTP ${res.status}`), { status: res.status });
+            }
+            return typeof res.data === "string" ? res.data : JSON.stringify(res.data);
+          }
+
+          const res = await fetch(CHAT_URL, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(payload),
+          });
           if (!res.ok) {
             throw Object.assign(new Error(`HTTP ${res.status}`), { status: res.status });
           }
-
           return await res.text();
         })(),
         timerPromise,

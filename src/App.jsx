@@ -42,6 +42,7 @@ import { useInventory }      from "./hooks/useInventory";
 import { useBiometricLock }  from "./hooks/useBiometricLock";
 import { useLoyalty }        from "./hooks/useLoyalty";
 import { useBranches }       from "./hooks/useBranches";
+import { usePermissions }    from "./hooks/usePermissions";
 import { canDo }             from "./utils/plans";
 
 function Spinner() {
@@ -96,6 +97,9 @@ export default function App() {
 
   // Branch management (premium only)
   const branchesHook = useBranches(userId);
+
+  // Request camera, mic, location, and notification permissions on native
+  usePermissions();
 
   const isDark = store.profile?.dark_mode;
   useEffect(() => {
