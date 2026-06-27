@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { jsPDF } from "jspdf";
 import { fmt, today } from "../utils/helpers";
 import { calcPointsDiscount, calcCashbackDiscount, calcCouponDiscount, calcBillAmounts } from "../utils/billCalc";
+import { saveBeneficiary, getBeneficiaries, deleteBeneficiary, benDisplayName, benSubLabel, BEN_CATS } from "../utils/billBeneficiaries";
 import { clubkonnect } from "../utils/clubkonnect";
 import { canDo, getLowestPlanWithFeature } from "../utils/plans";
 import { BillReceipt } from "../components/shared/Receipt";
@@ -1535,6 +1536,24 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
   const closeSheet = () => { setSelectedCat(null); setForm({}); setError(""); resetVerify(); setUsePoints(false); setUseCashback(false); };
 
+  // Fill form from a saved beneficiary (user still needs to verify + pick amount)
+  const applyBeneficiary = (ben) => {
+    setForm(f => ({
+      ...f,
+      ...(ben.phone      && { phone:      ben.phone      }),
+      ...(ben.network    && { network:    ben.network    }),
+      ...(ben.meterNo    && { meterNo:    ben.meterNo    }),
+      ...(ben.meterType  && { meterType:  ben.meterType  }),
+      ...(ben.company    && { company:    ben.company    }),
+      ...(ben.smartcard  && { smartcard:  ben.smartcard  }),
+      ...(ben.provider   && { provider:   ben.provider   }),
+      ...(ben.customerId && { customerId: ben.customerId }),
+      ...(ben.accountNo  && { accountNo:  ben.accountNo  }),
+    }));
+    resetVerify();
+    setError("");
+  };
+
   const loadPlans = async (action, extra) => {
     setPlansLoading(true); setPlans([]); setPlansError("");
     try {
@@ -1980,6 +1999,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       const successResult = { ok: true, label: itemName, detail: note, pinsArr: pinsArr || [], psRef: ref, apiRef, cardDetails, cat, amount: totalAmount || amount, earnedPts, txnHistoryPending, elecToken, elecOrderId, formSnap: { ...f } };
       setFulfillResult(successResult);
       try { localStorage.setItem(BILL_LAST_RESULT, JSON.stringify(successResult)); } catch (_) {}
+      saveBeneficiary(cat, f, vName);
 
       // For electricity PENDING: defer DB update + email until polling finds the token
       const svcLabel = CATS.find(c => c.id === cat)?.label || cat;
@@ -2078,6 +2098,9 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     if (selectedCat === "airtime-bundle") return parseInt(form.sets || "0", 10) * bundleChargePerSet;
     return a;
   })();
+  // Saved beneficiaries for the active category
+  const savedBens = selectedCat && BEN_CATS.has(selectedCat) ? getBeneficiaries(selectedCat) : [];
+
   const ptsSavings       = calcPointsDiscount({ chargeAmount: uiChargeAmt, pointsBalance, usePoints, pointsEnabled });
   const cbSavings        = calcCashbackDiscount({ chargeAmount: uiChargeAmt, cashbackBalance, useCashback, pointsDiscount: ptsSavings });
   const billCouponSavings = calcCouponDiscount({ chargeAmount: uiChargeAmt, coupon: billAppliedCoupon, afterDiscounts: uiChargeAmt - ptsSavings - cbSavings });
@@ -2348,6 +2371,23 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
             <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4 transition-all duration-300"
               style={netTheme ? { background: `${netTheme.bg}09` } : {}}>
+
+              {/* ── SAVED BENEFICIARIES ── */}
+              {savedBens.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-2">Quick Select</p>
+                  <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+                    {savedBens.map(ben => (
+                      <button key={ben.id} type="button"
+                        onClick={() => applyBeneficiary(ben)}
+                        className="flex-none flex flex-col items-start px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-brand-400 hover:bg-brand-50 dark:hover:bg-brand-900/20 active:scale-95 transition-all text-left min-w-[100px] max-w-[140px]">
+                        <span className="text-xs font-bold text-slate-900 dark:text-white truncate w-full">{benDisplayName(ben)}</span>
+                        <span className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 truncate w-full">{benSubLabel(ben)}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* ── AIRTIME ── */}
               {selectedCat === "airtime" && <>
