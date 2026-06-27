@@ -12,6 +12,7 @@ import NotificationCenter, { NotificationBell } from "../components/Notification
 import { AjoTxReceipt } from "../components/shared/Receipt";
 import AIChatWidget from "../components/AIChatWidget";
 import { buildAjoMemberContext } from "../utils/buildContext";
+import { useT, useLanguage } from "../contexts/LanguageContext";
 
 async function ajoFn(action, body = {}) {
   const { data, error } = await supabase.functions.invoke("ajo-portal", {
@@ -33,27 +34,32 @@ async function ajoFn(action, body = {}) {
 const ADMIN_URL = "https://admin.kudiai.app";
 const YEAR      = new Date().getFullYear();
 
-const TICKET_TYPES = [
-  { value: "account",     label: "Account / Login"     },
-  { value: "transaction", label: "Transaction Issue"   },
-  { value: "technical",   label: "Technical Problem"   },
-  { value: "savings",     label: "Savings / Ajo Group" },
-  { value: "general",     label: "General Enquiry"     },
-];
-
-const NAV = [
-  { id: "home",    icon: "home",  label: "Home"    },
-  { id: "bills",   icon: "bills", label: "Bills"   },
-  { id: "history", icon: "txn",   label: "History" },
-  { id: "me",      icon: "user",  label: "Settings" },
-];
-
-function greetingText() {
-  const h = new Date().getHours();
-  return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
+function makeTicketTypes(t) {
+  return [
+    { value: "account",     label: t("ticket.account")     },
+    { value: "transaction", label: t("ticket.transaction") },
+    { value: "technical",   label: t("ticket.technical")   },
+    { value: "savings",     label: t("ticket.savings")     },
+    { value: "general",     label: t("ticket.general")     },
+  ];
 }
-function fmtDate() {
-  return new Date().toLocaleDateString("en-NG", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+
+function makeNav(t) {
+  return [
+    { id: "home",    icon: "home",  label: t("nav.home")     },
+    { id: "bills",   icon: "bills", label: t("nav.bills")    },
+    { id: "history", icon: "txn",   label: t("nav.history")  },
+    { id: "me",      icon: "user",  label: t("settings.title") },
+  ];
+}
+
+function greetingText(t) {
+  const h = new Date().getHours();
+  return h < 12 ? t("greet.morning") : h < 17 ? t("greet.afternoon") : t("greet.evening");
+}
+function fmtDate(lang) {
+  const locale = lang === "ha" ? "ha" : lang === "yo" ? "yo" : lang === "ig" ? "ig" : "en-NG";
+  return new Date().toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 }
 async function uploadAjoAvatar(file, clientId) {
   const ext  = file.name.split(".").pop();
@@ -287,6 +293,9 @@ function LockScreen({ lock }) {
 
 // ── Support ticket modal ───────────────────────────────────────────────────
 function SupportModal({ onClose, clientName, clientEmail }) {
+  const t = useT();
+  const TICKET_TYPES = makeTicketTypes(t);
+
   const [form, setForm]      = useState({ subject: "", description: "", type: "general", priority: "medium", user_name: clientName || "", user_email: clientEmail || "" });
   const [submitting, setSub] = useState(false);
   const [done, setDone]      = useState(null);
@@ -338,7 +347,7 @@ function SupportModal({ onClose, clientName, clientEmail }) {
             <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">Category</label>
             <select value={form.type} onChange={e => setForm(f => ({...f, type: e.target.value}))}
               className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 focus:outline-none">
-              {TICKET_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              {TICKET_TYPES.map(tt => <option key={tt.value} value={tt.value}>{tt.label}</option>)}
             </select>
           </div>
           <div>
@@ -935,6 +944,9 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
 
 // ── Overview tab ──────────────────────────────────────────────────────────
 function OverviewTab({ client, contributions, onWithdrawClick, onPayClick, ownerInfo, withdrawRequests = [], onBillsClick, userEmail }) {
+  const t = useT();
+  const { lang } = useLanguage();
+
   const [goal,      setGoal]      = useState(() => parseFloat(localStorage.getItem(`ajo_goal_${client?.id}`) || "0"));
   const [editGoal,  setEditGoal]  = useState(false);
   const [goalInput, setGoalInput] = useState("");
@@ -989,11 +1001,11 @@ function OverviewTab({ client, contributions, onWithdrawClick, onPayClick, owner
     <div className="px-4 pt-5 pb-28 space-y-4">
       {/* Greeting */}
       <div>
-        <p className="text-sm text-slate-400 dark:text-slate-500 font-medium">{greetingText()}</p>
+        <p className="text-sm text-slate-400 dark:text-slate-500 font-medium">{greetingText(t)}</p>
         <h1 className="text-2xl font-black text-slate-800 dark:text-white leading-tight">
           {(client?.full_name || "").split(" ")[0] || "Member"} 👋
         </h1>
-        <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{fmtDate()}</p>
+        <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{fmtDate(lang)}</p>
       </div>
 
       {/* AI insight card */}
@@ -1693,6 +1705,10 @@ function AjoMemberBillsWrapper({ client, ownerInfo, session, autoService, onAuto
 
 // ── Main portal ───────────────────────────────────────────────────────────
 export default function AjoMemberPortal({ session, ajoClient }) {
+  const t = useT();
+
+  const NAV = useMemo(() => makeNav(t), [t]);
+
   const [client,           setClient]           = useState(ajoClient || null);
   const [contributions,    setContributions]    = useState([]);
   const [ownerInfo,        setOwnerInfo]        = useState(null);
@@ -1900,15 +1916,15 @@ export default function AjoMemberPortal({ session, ajoClient }) {
       {client && (
         <AIChatWidget
           portalContext={buildAjoMemberContext(client, contributions, ownerInfo)}
-          greeting={`Hi${client.full_name ? ` ${client.full_name.split(" ")[0]}` : ""}! I'm **KudiAI**, your Ajo savings assistant.\n\nI know your balance, contributions, and savings history. Ask me anything!`}
+          greeting={`${greetingText(t)}${client.full_name ? `, ${client.full_name.split(" ")[0]}` : ""}! I'm **KudiAI**, your Ajo savings assistant.\n\nI know your balance, contributions, and savings history. Ask me anything!`}
           quickChips={[
-            { label: "My Balance",       q: "What is my current savings balance?" },
-            { label: "Next Contribution", q: "When is my next contribution due?" },
-            { label: "Contribution History", q: "Show my recent contribution history" },
-            { label: "Savings Goal",     q: "How am I doing with my savings goal?" },
-            { label: "Savings Tips",     q: "Give me tips to save more consistently" },
+            { label: t("aiChip.mySavings")         || "My Balance",           q: "What is my current savings balance?" },
+            { label: t("portal.nextPayment")        || "Next Contribution",    q: "When is my next contribution due?" },
+            { label: t("portal.history")            || "Contribution History", q: "Show my recent contribution history" },
+            { label: t("aiChip.coopBenefits")       || "Savings Goal",        q: "How am I doing with my savings goal?" },
+            { label: t("aiChip.mySavings") + " Tips"|| "Savings Tips",        q: "Give me tips to save more consistently" },
           ]}
-          inputPlaceholder="Ask about your savings…"
+          inputPlaceholder={t("aiChip.ajoPlaceholder") || "Ask about your savings…"}
         />
       )}
     </div>

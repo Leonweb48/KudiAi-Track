@@ -20,6 +20,7 @@ import Inventory              from "./Inventory";
 import Insights               from "./Insights";
 import StaffReports           from "./StaffReports";
 import { AddTxnModal }        from "./Transactions";
+import { useT, useLanguage }  from "../contexts/LanguageContext";
 
 /* ═══════════════════════════════════════════════════════════════════
    CONSTANTS
@@ -27,40 +28,47 @@ import { AddTxnModal }        from "./Transactions";
 const ADMIN_URL = "https://admin.kudiai.app";
 const YEAR      = new Date().getFullYear();
 
-const TICKET_TYPES = [
-  { value: "account",     label: "Account / Login"      },
-  { value: "transaction", label: "Transaction Issue"     },
-  { value: "technical",   label: "Technical Problem"     },
-  { value: "ajo",         label: "Ajo / Savings Group"   },
-  { value: "general",     label: "General Enquiry"       },
-];
+function makeTicketTypes(t) {
+  return [
+    { value: "account",     label: t("ticket.account")     },
+    { value: "transaction", label: t("ticket.transaction") },
+    { value: "technical",   label: t("ticket.technical")   },
+    { value: "ajo",         label: t("ticket.ajo")         },
+    { value: "general",     label: t("ticket.general")     },
+  ];
+}
 
-const NAV = [
-  { id: "home",    icon: "home",      label: "Home"    },
-  { id: "sales",   icon: "txn",       label: "Sales"   },
-  { id: "records", icon: "credit",    label: "Records" },
-  { id: "stock",   icon: "inventory", label: "Stock"   },
-  { id: "me",      icon: "user",      label: "Me"      },
-];
+function makeNav(t) {
+  return [
+    { id: "home",    icon: "home",      label: t("nav.home")    },
+    { id: "sales",   icon: "txn",       label: t("nav.sales")   },
+    { id: "records", icon: "credit",    label: t("nav.records") },
+    { id: "stock",   icon: "inventory", label: t("nav.stock")   },
+    { id: "me",      icon: "user",      label: t("nav.me")      },
+  ];
+}
 
-const BILL_SERVICES = [
-  { id: "mic",         label: "Mic Sale",    g1: "#059669", g2: "#065f46", isMic: true },
-  { id: "airtime",     label: "Airtime",     g1: "#ef4444", g2: "#dc2626", icon: "M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81 19.79 19.79 0 01.25 2.18 2 2 0 012.22 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" },
-  { id: "data",        label: "Data",        g1: "#3b82f6", g2: "#1d4ed8", icon: "M1 6l11-4 11 4|M1 12l11-4 11 4|M1 18l11-4 11 4" },
-  { id: "electricity", label: "Electricity", g1: "#f59e0b", g2: "#d97706", icon: "M13 2L3 14h9l-1 8 10-12h-9l1-8z" },
-  { id: "cable",       label: "Cable TV",    g1: "#8b5cf6", g2: "#6d28d9", icon: "M2 7a2 2 0 012-2h16a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V7z|M12 19v3|M8 22h8" },
-  { id: "betting",     label: "Betting",     g1: "#10b981", g2: "#059669", icon: "M12 2a10 10 0 100 20A10 10 0 0012 2z|M12 8v4l3 3" },
-];
+function makeBillServices(t) {
+  return [
+    { id: "mic",         label: t("bill.micSale"),     g1: "#059669", g2: "#065f46", isMic: true },
+    { id: "airtime",     label: t("bill.airtime"),     g1: "#ef4444", g2: "#dc2626", icon: "M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81 19.79 19.79 0 01.25 2.18 2 2 0 012.22 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" },
+    { id: "data",        label: t("bill.data"),        g1: "#3b82f6", g2: "#1d4ed8", icon: "M1 6l11-4 11 4|M1 12l11-4 11 4|M1 18l11-4 11 4" },
+    { id: "electricity", label: t("bill.electricity"), g1: "#f59e0b", g2: "#d97706", icon: "M13 2L3 14h9l-1 8 10-12h-9l1-8z" },
+    { id: "cable",       label: t("bill.cableTV"),     g1: "#8b5cf6", g2: "#6d28d9", icon: "M2 7a2 2 0 012-2h16a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V7z|M12 19v3|M8 22h8" },
+    { id: "betting",     label: t("bill.betting"),     g1: "#10b981", g2: "#059669", icon: "M12 2a10 10 0 100 20A10 10 0 0012 2z|M12 8v4l3 3" },
+  ];
+}
 
 /* ═══════════════════════════════════════════════════════════════════
    TINY HELPERS
 ═══════════════════════════════════════════════════════════════════ */
-function greetingText() {
+function greetingText(t) {
   const h = new Date().getHours();
-  return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
+  return h < 12 ? t("greet.morning") : h < 17 ? t("greet.afternoon") : t("greet.evening");
 }
-function fmtDate() {
-  return new Date().toLocaleDateString("en-NG", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+function fmtDate(lang) {
+  const locale = lang === "ha" ? "ha" : lang === "yo" ? "yo" : lang === "ig" ? "ig" : "en-NG";
+  return new Date().toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 }
 function dateRange(period) {
   const now = new Date();
@@ -377,6 +385,9 @@ function LockScreen({ lock }) {
    SUPPORT TICKET MODAL (same as business portal)
 ═══════════════════════════════════════════════════════════════════ */
 function SupportModal({ onClose, staffName, staffEmail }) {
+  const t = useT();
+  const TICKET_TYPES = makeTicketTypes(t);
+
   const [form, setForm]       = useState({ subject: "", description: "", type: "general", priority: "medium", user_name: staffName || "", user_email: staffEmail || "" });
   const [submitting, setSub]  = useState(false);
   const [done, setDone]       = useState(null);
@@ -428,7 +439,7 @@ function SupportModal({ onClose, staffName, staffEmail }) {
             <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">Category</label>
             <select value={form.type} onChange={e => setForm(f => ({...f, type: e.target.value}))}
               className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 focus:outline-none">
-              {TICKET_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              {TICKET_TYPES.map(tt => <option key={tt.value} value={tt.value}>{tt.label}</option>)}
             </select>
           </div>
           <div>
@@ -490,6 +501,10 @@ function FAQ() {
    HOME TAB
 ═══════════════════════════════════════════════════════════════════ */
 function StaffHome({ staff, store, inventory, plan, onGoTo, onVoiceOpen, onAddCash }) {
+  const t = useT();
+  const { lang } = useLanguage();
+  const BILL_SERVICES = makeBillServices(t);
+
   const { transactions = [], credits = [], asoClients = [], loading } = store;
   const todayStr     = today();
   const todayTx      = transactions.filter(t => t.transaction_date === todayStr);
@@ -508,9 +523,9 @@ function StaffHome({ staff, store, inventory, plan, onGoTo, onVoiceOpen, onAddCa
 
       {/* Greeting */}
       <div className="pt-5 pb-2">
-        <p className="text-sm text-slate-400 dark:text-slate-500 font-medium">{greetingText()} 👋</p>
+        <p className="text-sm text-slate-400 dark:text-slate-500 font-medium">{greetingText(t)} 👋</p>
         <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white leading-tight mt-0.5 truncate">{name}</h1>
-        <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{fmtDate()}</p>
+        <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{fmtDate(lang)}</p>
       </div>
 
       {/* Alerts */}
@@ -1129,6 +1144,10 @@ function StaffMe({ staff, session, store, inventory, livePerms, staffId, lock, p
    MAIN STAFF DASHBOARD
 ═══════════════════════════════════════════════════════════════════ */
 export default function StaffDashboard({ session, staff: staffProp }) {
+  const t = useT();
+
+  const NAV = useMemo(() => makeNav(t), [t]);
+
   const [staffPatch, setStaffPatch] = useState({});
   const staff = useMemo(() => ({ ...staffProp, ...staffPatch }), [staffProp, staffPatch]);
 

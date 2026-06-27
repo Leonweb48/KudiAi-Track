@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { supabase } from "../utils/supabase";
 import { useTheme } from "../hooks/useTheme";
+import { useT } from "../contexts/LanguageContext";
 import BillPayments from "./BillPayments";
 import CashbackCard from "../components/CashbackCard";
 import GroupChat from "./GroupChat";
@@ -1464,18 +1465,22 @@ function MemberBillsTab({ member, org, autoService = null, onAutoOpened = null }
 // ═══════════════════════════════════════════════════
 //  MAIN PORTAL
 // ═══════════════════════════════════════════════════
-const MAIN_TABS = [
-  { id: "home",          label: "Home",    icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" },
-  { id: "contributions", label: "Savings", icon: "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" },
-  { id: "loans",         label: "Loans",   icon: "M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" },
-  { id: "messages",      label: "Chat",    icon: "M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" },
-];
+function makeMainTabsMember(t) {
+  return [
+    { id: "home",          label: t("coop.overview"), icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" },
+    { id: "contributions", label: t("coop.savings"),  icon: "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" },
+    { id: "loans",         label: t("coop.loans"),    icon: "M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" },
+    { id: "messages",      label: t("coop.chat"),     icon: "M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" },
+  ];
+}
 
-const MORE_TABS = [
-  { id: "bills",     label: "Bills",     color:"#7c3aed", icon:"M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" },
-  { id: "broadcast", label: "Broadcast", color:"#0f766e", icon:"M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" },
-  { id: "support",   label: "Support",   color:"#00A651", icon:"M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" },
-];
+function makeMoreTabsMember(t) {
+  return [
+    { id: "bills",     label: t("coop.bills"),     color:"#7c3aed", icon:"M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" },
+    { id: "broadcast", label: t("coop.broadcast"), color:"#0f766e", icon:"M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" },
+    { id: "support",   label: t("coop.support"),   color:"#00A651", icon:"M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" },
+  ];
+}
 
 // ─── Member Profile Sheet ─────────────────────────────────────────────────────
 function ProfileSheet({ member, onClose, onSave }) {
@@ -1591,6 +1596,10 @@ function ProfileSheet({ member, onClose, onSave }) {
 }
 
 export default function CoopMemberPortal({ member: initialMember }) {
+  const t = useT();
+  const MAIN_TABS = useMemo(() => makeMainTabsMember(t), [t]);
+  const MORE_TABS = useMemo(() => makeMoreTabsMember(t), [t]);
+
   const { isDark, toggle: toggleDark } = useTheme();
   const [member,        setMember]        = useState(initialMember);
   const [tab,           setTab]           = useState(() => {
@@ -1955,15 +1964,15 @@ export default function CoopMemberPortal({ member: initialMember }) {
       {member && (
         <AIChatWidget
           portalContext={buildCoopMemberContext(member, loans, org)}
-          greeting={`Hi${member.full_name ? ` ${member.full_name.split(" ")[0]}` : ""}! I'm **KudiAI**, your cooperative assistant.\n\nI know your savings, loans, and membership details — ask me anything!`}
+          greeting={`${t("greet.morning").split(" ")[0]}${member.full_name ? ` ${member.full_name.split(" ")[0]}` : ""}! I'm **KudiAI**, your cooperative assistant.\n\nI know your savings, loans, and membership details — ask me anything!`}
           quickChips={[
-            { label: "My Savings",     q: "What is my current savings balance?" },
-            { label: "Loan Status",    q: "What are my active loans and remaining balances?" },
-            { label: "Loan Eligibility", q: "Am I eligible for a new loan?" },
-            { label: "Payment Plan",   q: "Show my loan payment schedule" },
-            { label: "Coop Benefits",  q: "What benefits do I get as a cooperative member?" },
+            { label: t("aiChip.mySavings")       || "My Savings",       q: "What is my current savings balance?" },
+            { label: t("aiChip.loanStatus")       || "Loan Status",      q: "What are my active loans and remaining balances?" },
+            { label: t("aiChip.loanEligibility")  || "Loan Eligibility", q: "Am I eligible for a new loan?" },
+            { label: t("aiChip.paymentPlan")      || "Payment Plan",     q: "Show my loan payment schedule" },
+            { label: t("aiChip.coopBenefits")     || "Coop Benefits",    q: "What benefits do I get as a cooperative member?" },
           ]}
-          inputPlaceholder="Ask about your coop account…"
+          inputPlaceholder={t("aiChip.memberPlaceholder") || "Ask about your coop account…"}
         />
       )}
 

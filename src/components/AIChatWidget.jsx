@@ -1,18 +1,7 @@
-import { useState, useRef, useEffect } from "react";
-import { useLanguage } from "../contexts/LanguageContext";
+import { useState, useRef, useEffect, useMemo } from "react";
+import { useLanguage, useT } from "../contexts/LanguageContext";
 import { buildContext } from "../utils/buildContext";
 import { askGemini } from "../utils/gemini";
-
-const DEFAULT_QUICK = [
-  { label: "Today's Sales",    q: "How were today's sales?"                                   },
-  { label: "Total Profit",     q: "What is my total profit?"                                  },
-  { label: "Outstanding",      q: "Who owes me money and how much in total?"                  },
-  { label: "Stock Status",     q: "What is my current stock status and what is running low?"  },
-  { label: "Ajo Summary",      q: "Give me a full Ajo savings summary with all client details" },
-  { label: "Monthly Report",   q: "Give me a full monthly business report"                    },
-];
-
-const DEFAULT_GREETING = "Hi! I'm **KudiAI**, your AI business assistant powered by Gemini.\n\nAsk me anything about your sales, credit, stock, Ajo savings, staff, or branches — I know your real data!";
 
 function FormattedText({ text }) {
   return text.split("\n").map((line, i) => (
@@ -37,8 +26,22 @@ export default function AIChatWidget({
   // Portal override mode
   portalContext, quickChips, greeting: greetingProp, inputPlaceholder,
 }) {
-  const effectiveQuick    = quickChips    || DEFAULT_QUICK;
-  const effectiveGreeting = greetingProp  || DEFAULT_GREETING;
+  const t = useT();
+  const { lang } = useLanguage();
+
+  const defaultQuick = useMemo(() => [
+    { label: t("aiChip.todaySales")  || "Today's Sales",    q: "How were today's sales?"                                   },
+    { label: t("aiChip.totalProfit") || "Total Profit",     q: "What is my total profit?"                                  },
+    { label: t("aiChip.outstanding") || "Outstanding",      q: "Who owes me money and how much in total?"                  },
+    { label: t("aiChip.stockStatus") || "Stock Status",     q: "What is my current stock status and what is running low?"  },
+    { label: t("aiChip.ajoSummary")  || "Ajo Summary",      q: "Give me a full Ajo savings summary with all client details" },
+    { label: t("aiChip.monthlyReport")|| "Monthly Report",  q: "Give me a full monthly business report"                    },
+  ], [t]);
+
+  const defaultGreeting = `${t("home.welcome") || "Hi"}! I'm **KudiAI**, your AI business assistant powered by Gemini.\n\nAsk me anything about your sales, credit, stock, Ajo savings, staff, or branches — I know your real data!`;
+
+  const effectiveQuick    = quickChips    || defaultQuick;
+  const effectiveGreeting = greetingProp  || defaultGreeting;
 
   const [open,     setOpen]     = useState(false);
   const [messages, setMessages] = useState([{ role: "assistant", text: effectiveGreeting }]);
@@ -58,8 +61,6 @@ export default function AIChatWidget({
   useEffect(() => {
     if (open && inputRef.current) setTimeout(() => inputRef.current?.focus(), 150);
   }, [open]);
-
-  const { lang } = useLanguage();
 
   async function runAI(userMsg) {
     let context = "";

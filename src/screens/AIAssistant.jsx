@@ -74,7 +74,6 @@ function speakText(text, lang) {
 /* ── Main screen ─────────────────────────────────────────────────────── */
 export default function AIAssistant({ store, inventory, branches = [], onClose, initialQuery = "" }) {
   const { lang } = useLanguage();
-  const greeting = GREETINGS[lang] || GREETINGS.en;
 
   const [messages,  setMessages]  = useState(() => [{ role: "assistant", text: GREETINGS[lang] || GREETINGS.en }]);
   const [input,     setInput]     = useState("");

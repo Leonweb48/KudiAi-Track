@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { supabase } from "../utils/supabase";
 import { useTheme } from "../hooks/useTheme";
+import { useT } from "../contexts/LanguageContext";
 import BillPayments from "./BillPayments";
 import CashbackCard from "../components/CashbackCard";
 import GroupChat from "./GroupChat";
@@ -2883,36 +2884,40 @@ function OrgPortalSupportTab({ org }) {
 //  NAVIGATION STRUCTURE
 // ═══════════════════════════════════════════════════
 
-// Bottom nav (org portal)
-const MAIN_TABS = [
-  { id: "overview",  label: "Home",    icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" },
-  { id: "members",   label: "Members", icon: "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" },
-  { id: "finance",   label: "Finance", icon: "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" },
-  { id: "loans",     label: "Loans",   icon: "M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" },
-  { id: "messages",  label: "Chat",    icon: "M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" },
-];
+// Bottom nav (org portal) — labels injected via t() at render time
+function makeMainTabs(t) {
+  return [
+    { id: "overview",  label: t("coop.overview"), icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" },
+    { id: "members",   label: t("coop.members"),  icon: "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" },
+    { id: "finance",   label: t("coop.finance"),  icon: "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" },
+    { id: "loans",     label: t("coop.loans"),    icon: "M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" },
+    { id: "messages",  label: t("coop.chat"),     icon: "M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" },
+  ];
+}
 
-// "More" sheet tabs (org portal)
-const MORE_TABS = [
-  { id: "programs",  label: "Programs",  icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2",          color: "#059669" },
-  { id: "broadcast", label: "Broadcast", icon: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z",                                                   color: "#0f766e" },
-  { id: "bills",     label: "Bills",     icon: "M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z",                                                   color: "#00A651", orgOnly: true },
-  { id: "profile",   label: "Profile",   icon: "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4", color: "#0ea5e9" },
-  { id: "support",   label: "Support",   icon: "M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z", color: "#7c3aed" },
-];
+function makeMoreTabs(t) {
+  return [
+    { id: "programs",  label: t("coop.programs"),  icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2",          color: "#059669" },
+    { id: "broadcast", label: t("coop.broadcast"), icon: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z",                                                   color: "#0f766e" },
+    { id: "bills",     label: t("coop.bills"),     icon: "M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z",                                                   color: "#00A651", orgOnly: true },
+    { id: "profile",   label: t("coop.profile"),   icon: "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4", color: "#0ea5e9" },
+    { id: "support",   label: t("coop.support"),   icon: "M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z", color: "#7c3aed" },
+  ];
+}
 
-// Horizontal scroll tabs (non-org-portal view, admin side)
-const TABS = [
-  { id: "overview",  label: "Overview",  icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" },
-  { id: "members",   label: "Members",   icon: "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" },
-  { id: "programs",  label: "Programs",  icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" },
-  { id: "finance",   label: "Finance",   icon: "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" },
-  { id: "loans",     label: "Loans",     icon: "M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" },
-  { id: "broadcast", label: "Broadcast", icon: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" },
-  { id: "messages",  label: "Messages",  icon: "M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" },
-  { id: "settings",  label: "Settings",  icon: "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z" },
-  { id: "bills",     label: "Bills",     icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2M9 14l2 2 4-4", orgOnly: true },
-];
+function makeTabs(t) {
+  return [
+    { id: "overview",  label: t("coop.overview"),  icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" },
+    { id: "members",   label: t("coop.members"),   icon: "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" },
+    { id: "programs",  label: t("coop.programs"),  icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" },
+    { id: "finance",   label: t("coop.finance"),   icon: "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" },
+    { id: "loans",     label: t("coop.loans"),     icon: "M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" },
+    { id: "broadcast", label: t("coop.broadcast"), icon: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" },
+    { id: "messages",  label: t("coop.messages"),  icon: "M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" },
+    { id: "settings",  label: t("coop.settings"),  icon: "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z" },
+    { id: "bills",     label: t("coop.bills"),     icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2M9 14l2 2 4-4", orgOnly: true },
+  ];
+}
 
 const ORG_TYPE_ICONS = { cooperative:"🤝", market_association:"🏪", church:"⛪", ngo:"🌍", youth_group:"👥", savings_group:"💰", community_group:"🏘️", professional_association:"💼", savings_club:"🏦" };
 
@@ -2920,6 +2925,11 @@ const ORG_TYPE_ICONS = { cooperative:"🤝", market_association:"🏪", church:"
 //  MAIN DASHBOARD
 // ═══════════════════════════════════════════════════
 export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = false, adminEmail = null }) {
+  const t = useT();
+  const MAIN_TABS = useMemo(() => makeMainTabs(t), [t]);
+  const MORE_TABS = useMemo(() => makeMoreTabs(t), [t]);
+  const TABS      = useMemo(() => makeTabs(t),     [t]);
+
   const { isDark, toggle: toggleDark } = useTheme();
   const [tab,           setTab]           = useState(() => {
     const p = new URLSearchParams(window.location.search);
@@ -3197,16 +3207,16 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
           {/* ── KudiAI Gemini Assistant ── */}
           <AIChatWidget
             portalContext={buildCoopOrgContext(org, members, wallet, programs, loans, announcements)}
-            greeting={`Hi${org.owner_name ? ` ${org.owner_name.split(" ")[0]}` : ""}! I'm **KudiAI**, your cooperative assistant powered by Gemini.\n\nI know your members, savings, loans, programs, and wallet — ask me anything!`}
+            greeting={`${t("greet.morning").split(" ")[0]}${org.owner_name ? ` ${org.owner_name.split(" ")[0]}` : ""}! I'm **KudiAI**, your cooperative assistant powered by Gemini.\n\nI know your members, savings, loans, programs, and wallet — ask me anything!`}
             quickChips={[
-              { label: "Member Summary",   q: "Give me a summary of all members and their savings balances" },
-              { label: "Active Loans",     q: "List all active loans and total outstanding amount" },
-              { label: "Wallet Balance",   q: "What is the current wallet balance and recent transactions?" },
-              { label: "Pending Requests", q: "Are there any pending withdrawal requests I need to action?" },
-              { label: "Savings Programs", q: "What savings programs are active and how are they performing?" },
-              { label: "Monthly Report",   q: "Give me a full monthly cooperative performance report" },
+              { label: t("aiChip.memberSummary")   || "Member Summary",   q: "Give me a summary of all members and their savings balances" },
+              { label: t("aiChip.activeLoans")     || "Active Loans",     q: "List all active loans and total outstanding amount" },
+              { label: t("aiChip.walletBalance")   || "Wallet Balance",   q: "What is the current wallet balance and recent transactions?" },
+              { label: t("aiChip.pendingRequests") || "Pending Requests", q: "Are there any pending withdrawal requests I need to action?" },
+              { label: t("aiChip.savingsPrograms") || "Savings Programs", q: "What savings programs are active and how are they performing?" },
+              { label: t("aiChip.monthlyReport")   || "Monthly Report",   q: "Give me a full monthly cooperative performance report" },
             ]}
-            inputPlaceholder="Ask about your cooperative…"
+            inputPlaceholder={t("aiChip.coopPlaceholder") || "Ask about your cooperative…"}
           />
 
         </div>
