@@ -40,18 +40,18 @@ const NET_CONFIG = {
 };
 
 const ELECTRICITY_COMPANIES = [
-  { code: "01", name: "EKEDC (Eko)" },
-  { code: "02", name: "IKEDC (Ikeja)" },
-  { code: "03", name: "AEDC (Abuja)" },
-  { code: "04", name: "KEDC (Kano)" },
-  { code: "05", name: "PHEDC (Port Harcourt)" },
-  { code: "06", name: "JEDC (Jos)" },
-  { code: "07", name: "IBEDC (Ibadan)" },
-  { code: "08", name: "KAEDC (Kaduna)" },
-  { code: "09", name: "EEDC (Enugu)" },
-  { code: "10", name: "BEDC (Benin)" },
-  { code: "11", name: "YEDC (Yola)" },
-  { code: "12", name: "APLE (Abuja)" },
+  { code: "01", name: "EKEDC (Eko)",           address: "24/25 Marina Street, Lagos Island, Lagos" },
+  { code: "02", name: "IKEDC (Ikeja)",          address: "1 Billings Way, Oregun, Ikeja, Lagos" },
+  { code: "03", name: "AEDC (Abuja)",           address: "1 Zaria Road, Kaura District, Abuja" },
+  { code: "04", name: "KEDC (Kano)",            address: "Mohammed Abdullahi Wase Road, Kano" },
+  { code: "05", name: "PHEDC (Port Harcourt)",  address: "Rumuola Road, Port Harcourt, Rivers State" },
+  { code: "06", name: "JEDC (Jos)",             address: "1 Yakubu Gowon Way, Jos, Plateau State" },
+  { code: "07", name: "IBEDC (Ibadan)",         address: "Poly Road, Apata, Ibadan, Oyo State" },
+  { code: "08", name: "KAEDC (Kaduna)",         address: "Independence Way, Kaduna" },
+  { code: "09", name: "EEDC (Enugu)",           address: "Emene Industrial Layout, Enugu" },
+  { code: "10", name: "BEDC (Benin)",           address: "2 Akpakpava Road, Benin City, Edo State" },
+  { code: "11", name: "YEDC (Yola)",            address: "Yola, Adamawa State" },
+  { code: "12", name: "APLE (Abuja)",           address: "AEDC Operations, Abuja" },
 ];
 
 const CABLE_PROVIDERS = [
@@ -750,26 +750,36 @@ function billToReceipt(bill, profile, staffName) {
     try { pinsArr = JSON.parse(raw.slice(pinsIdx + 8)); } catch (_) {}
   }
 
+  const parsedProvider = pick(/Provider:\s*([^|]+)/i);
+  // Derive station address — try parsed provider first, fall back to item_name prefix
+  const elecComp = bill.category === "electricity"
+    ? ELECTRICITY_COMPANIES.find(c =>
+        (parsedProvider && parsedProvider.startsWith(c.name)) ||
+        (bill.item_name && bill.item_name.startsWith(c.name))
+      )
+    : null;
+
   return {
     ...bill,
-    businessName: profile?.business_name || profile?.owner_name || "My Business",
-    service:      CATS.find(c => c.id === bill.category)?.label || bill.category,
-    apiRef:       pick(/Ref:\s*([^\s|]+)/i),
-    token:        pick(/Token:\s*([^|]+)/i) || undefined,
-    network:      pick(/Network:\s*([^|]+)/i),
-    phone:        pick(/Phone:\s*([^|]+)/i) || pick(/Beneficiary:\s*([^|]+)/i),
-    planName:     pick(/Plan:\s*([^|]+)/i),
-    smartcard:    pick(/Smartcard:\s*([^|]+)/i),
-    meterNo:      pick(/Meter:\s*([^|]+)/i),
-    meterTypeName:pick(/Type:\s*([^|]+)/i),
-    providerName: pick(/Provider:\s*([^|]+)/i),
-    platformName: pick(/Platform:\s*([^|]+)/i),
-    packageName:  pick(/Package:\s*([^|]+)/i),
-    customerId:   pick(/Customer:\s*([^|]+)/i),
-    accountNo:    pick(/Account:\s*([^|]+)/i),
-    value:        pick(/Value:\s*([^|]+)/i),
-    staffName:    staffName || undefined,
-    pinsArr:      pinsArr,
+    businessName:   profile?.business_name || profile?.owner_name || "My Business",
+    service:        CATS.find(c => c.id === bill.category)?.label || bill.category,
+    apiRef:         pick(/Ref:\s*([^\s|]+)/i),
+    token:          pick(/Token:\s*([^|]+)/i) || undefined,
+    network:        pick(/Network:\s*([^|]+)/i),
+    phone:          pick(/Phone:\s*([^|]+)/i) || pick(/Beneficiary:\s*([^|]+)/i),
+    planName:       pick(/Plan:\s*([^|]+)/i),
+    smartcard:      pick(/Smartcard:\s*([^|]+)/i),
+    meterNo:        pick(/Meter:\s*([^|]+)/i),
+    meterTypeName:  pick(/Type:\s*([^|]+)/i),
+    providerName:   parsedProvider,
+    platformName:   pick(/Platform:\s*([^|]+)/i),
+    packageName:    pick(/Package:\s*([^|]+)/i),
+    customerId:     pick(/Customer:\s*([^|]+)/i),
+    accountNo:      pick(/Account:\s*([^|]+)/i),
+    value:          pick(/Value:\s*([^|]+)/i),
+    staffName:      staffName || undefined,
+    pinsArr:        pinsArr,
+    stationAddress: elecComp?.address || undefined,
   };
 }
 

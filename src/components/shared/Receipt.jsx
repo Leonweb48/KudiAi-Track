@@ -525,10 +525,11 @@ export function BillReceipt({ bill, onClose, onRetrieveToken }) {
         </>;
       case "electricity":
         return <>
-          <Row label="Provider"   value={bill.providerName || bill.service} bold />
-          <Row label="Meter No."  value={bill.meterNo || bill.customer_name} />
-          <Row label="Meter Type" value={bill.meterTypeName || (bill.meterType === "01" ? "Prepaid" : bill.meterType === "02" ? "Postpaid" : (bill.meterType || ""))} />
-          {bill.phone && <Row label="Phone"      value={bill.phone} />}
+          <Row label="Provider"        value={bill.providerName || bill.service} bold />
+          <Row label="Meter No."       value={bill.meterNo || bill.customer_name} />
+          <Row label="Meter Type"      value={bill.meterTypeName || (bill.meterType === "01" ? "Prepaid" : bill.meterType === "02" ? "Postpaid" : (bill.meterType || ""))} />
+          {bill.phone && <Row label="Phone"           value={bill.phone} />}
+          {bill.stationAddress && <Row label="Station Address" value={bill.stationAddress} />}
         </>;
       case "betting":
         return <>
@@ -576,12 +577,26 @@ export function BillReceipt({ bill, onClose, onRetrieveToken }) {
       <SectionHead label="Payment Details" />
       <Row label="Service"  value={bill.service || bill.category} bold />
       <DetailRows />
-      {effectiveToken && <Row label="Elec. Token" value={effectiveToken} color="#d97706" bold />}
       {bill.cardDetails && <Row label="Card Details" value={bill.cardDetails} color="#1d4ed8" bold />}
       {bill.apiRef && <Row label="Ref No." value={bill.apiRef} />}
       {bill.psRef  && <Row label="Payment Ref" value={bill.psRef} />}
       {bill.staffName && <Row label="Processed by" value={bill.staffName} />}
       <Row label="Date" value={dateStr} last />
+
+      {/* ── Electricity Token — prominent card ── */}
+      {effectiveToken && (
+        <div style={{ margin: "10px 16px 4px", background: "linear-gradient(135deg,#fef9c3,#fef3c7)", borderRadius: 12, border: "2px solid #fbbf24", padding: "14px 16px" }}>
+          <p style={{ fontSize: 9, fontWeight: 800, color: "#92400e", textTransform: "uppercase", letterSpacing: 1.5, margin: "0 0 6px" }}>
+            Electricity Token
+          </p>
+          <p style={{ fontFamily: "monospace", fontSize: 22, fontWeight: 900, color: "#1e293b", margin: 0, letterSpacing: 3, wordBreak: "break-all", textAlign: "center" }}>
+            {effectiveToken}
+          </p>
+          <p style={{ fontSize: 9, color: "#92400e", margin: "6px 0 0", textAlign: "center" }}>
+            Enter this code on your prepaid meter to load units
+          </p>
+        </div>
+      )}
 
       {/* ── PINs / Vouchers ── */}
       {bill.pinsArr?.length > 0 && (
@@ -606,28 +621,19 @@ export function BillReceipt({ bill, onClose, onRetrieveToken }) {
         </>
       )}
 
-      {/* ── Electricity token retrieval ── */}
-      {(showRetrieveBtn || retrieving || retrieveError || retrievedToken) && (
+      {/* ── Electricity token retrieval (only when token not yet known) ── */}
+      {(showRetrieveBtn || retrieving || retrieveError) && (
         <div style={{ margin: "12px 16px 4px", borderRadius: 12, overflow: "hidden", border: "2px solid #fbbf24" }}>
           <div style={{ background: "linear-gradient(135deg,#fef3c7,#fde68a)", padding: "10px 14px", display: "flex", alignItems: "center", gap: 8 }}>
             <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth={2.5} strokeLinecap="round">
               <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
             </svg>
             <span style={{ fontSize: 10, fontWeight: 800, color: "#92400e", letterSpacing: 1, textTransform: "uppercase" }}>
-              {retrievedToken ? "Electricity Token" : "Retrieve Token"}
+              Retrieve Token
             </span>
           </div>
           <div style={{ background: "white", padding: "14px", display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
-            {retrievedToken ? (
-              <>
-                <p style={{ fontFamily: "monospace", fontSize: 22, fontWeight: 900, color: "#1e293b", textAlign: "center", wordBreak: "break-all", margin: 0, letterSpacing: 2 }}>
-                  {retrievedToken}
-                </p>
-                <p style={{ fontSize: 10, color: "#94a3b8", textAlign: "center", margin: 0 }}>
-                  Enter this token on your prepaid meter to load units
-                </p>
-              </>
-            ) : retrieving ? (
+            {retrieving ? (
               <>
                 <div style={{ width: 32, height: 32, borderRadius: "50%", border: "3px solid #fef3c7", borderTopColor: "#f59e0b", animation: "spin 0.8s linear infinite" }} />
                 <p style={{ fontSize: 11, color: "#64748b", textAlign: "center", margin: 0 }}>Querying provider for token...</p>
