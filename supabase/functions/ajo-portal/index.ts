@@ -6,6 +6,8 @@ const CORS = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const EMAIL_TRIGGER_SECRET = Deno.env.get("EMAIL_TRIGGER_SECRET") ?? "";
+
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -78,7 +80,7 @@ serve(async (req) => {
       if (isFirstLogin && client.email) {
         fetch("https://admin.kudiai.app/api/public/email-trigger", {
           method: "POST",
-          headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+          headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
           body: JSON.stringify({ event: "ajo_client_first_login", data: { name: client.full_name || "", email: client.email } }),
         }).catch(() => null);
       }
@@ -206,7 +208,7 @@ serve(async (req) => {
 
         await fetch("https://admin.kudiai.app/api/public/email-trigger", {
           method: "POST",
-          headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+          headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
           body: JSON.stringify({ event: "ajo_contribution", data: emailData }),
         }).catch(() => null);
       }
@@ -256,7 +258,7 @@ serve(async (req) => {
 
       await fetch("https://admin.kudiai.app/api/public/email-trigger", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+        headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
         body: JSON.stringify({
           event: "ajo_withdrawal_request",
           data: {
@@ -347,7 +349,7 @@ serve(async (req) => {
 
       await fetch("https://admin.kudiai.app/api/public/email-trigger", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+        headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
         body: JSON.stringify({
           event: "ajo_withdrawal_approved",
           data: {
@@ -545,7 +547,7 @@ serve(async (req) => {
             method:  "POST",
             headers: {
               "Content-Type":     "application/json",
-              "x-trigger-secret": "kuditrack-email-trigger-2026-amaya",
+              "x-trigger-secret": EMAIL_TRIGGER_SECRET,
             },
             body: JSON.stringify({
               event: "ajo_contribution_paystack",

@@ -5,6 +5,8 @@ const CORS = {
   "Access-Control-Allow-Origin":  "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+const EMAIL_TRIGGER_SECRET = Deno.env.get("EMAIL_TRIGGER_SECRET") ?? "";
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { ...CORS, "Content-Type": "application/json" } });
 }
@@ -108,7 +110,7 @@ serve(async (req) => {
       // Send credentials email to org
       fetch("https://admin.kudiai.app/api/public/email-trigger", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+        headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
         body: JSON.stringify({
           event: "org_portal_created",
           data: { org_name: org.name, email: org.email, temp_password: tempPwd, reg_number: org.reg_number },
@@ -302,7 +304,7 @@ serve(async (req) => {
         }
         fetch("https://admin.kudiai.app/api/public/email-trigger", {
           method: "POST",
-          headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+          headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
           body: JSON.stringify({
             event: "org_member_created",
             data: {
@@ -399,7 +401,7 @@ serve(async (req) => {
 
       fetch("https://admin.kudiai.app/api/public/email-trigger", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+        headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
         body: JSON.stringify({
           event: "org_member_otp_resend",
           data: { member_name: member.full_name, member_email: member.email, org_name: orgRow?.name || "", otp_code: otp },
@@ -430,7 +432,7 @@ serve(async (req) => {
 
       fetch("https://admin.kudiai.app/api/public/email-trigger", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+        headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
         body: JSON.stringify({
           event: "org_member_otp_resend",
           data: {
@@ -523,7 +525,7 @@ serve(async (req) => {
       // Send OTP to member's email
       fetch("https://admin.kudiai.app/api/public/email-trigger", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+        headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
         body: JSON.stringify({
           event: "org_member_otp_resend",
           data: { member_name: m.full_name, member_email: m.email, otp_code: resetOtp },
@@ -618,7 +620,7 @@ serve(async (req) => {
       };
       fetch("https://admin.kudiai.app/api/public/email-trigger", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+        headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
         body: JSON.stringify({ event: "org_new_program", data: emailPayload }),
       }).catch(() => null);
       // In-app: notify each active member
@@ -706,7 +708,7 @@ serve(async (req) => {
       if (memberInfo?.email) {
         fetch("https://admin.kudiai.app/api/public/email-trigger", {
           method: "POST",
-          headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+          headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
           body: JSON.stringify({
             event: "org_saving",
             data: {
@@ -833,7 +835,7 @@ serve(async (req) => {
           const mAmt = affectedMembers.find(am => am.id === m.id)?.amount || 0;
           fetch("https://admin.kudiai.app/api/public/email-trigger", {
             method: "POST",
-            headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+            headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
             body: JSON.stringify({
               event: "org_saving",
               data: { member_name: m.full_name || "", member_email: m.email, amount: mAmt,
@@ -845,7 +847,7 @@ serve(async (req) => {
       if (wdOwnerEmail) {
         fetch("https://admin.kudiai.app/api/public/email-trigger", {
           method: "POST",
-          headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+          headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
           body: JSON.stringify({
             event: "org_saving",
             data: { member_name: `${affectedMembers.length} member(s)`, member_email: "",
@@ -915,7 +917,7 @@ serve(async (req) => {
         const { data: ownerProf } = await sb.from("profiles").select("email").eq("id", loanOrg.owner_id).maybeSingle();
         if (ownerProf?.email) {
           fetch("https://admin.kudiai.app/api/public/email-trigger", {
-            method: "POST", headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+            method: "POST", headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
             body: JSON.stringify({ event: "org_loan_request", data: {
               owner_email: ownerProf.email, org_name: loanOrg.name,
               member_name: (loan as Record<string, { full_name?: string }>).org_members?.full_name || "",
@@ -965,7 +967,7 @@ serve(async (req) => {
         if (memberEmail) {
           const { data: approvedOrg } = await sb.from("organizations").select("name").eq("id", existingLoan.org_id).maybeSingle();
           fetch("https://admin.kudiai.app/api/public/email-trigger", {
-            method: "POST", headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+            method: "POST", headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
             body: JSON.stringify({ event: "org_loan_approved", data: {
               member_email: memberEmail, member_name: memberName, org_name: approvedOrg?.name || "",
               amount: principal, interest_rate: rate, months, monthly_installment: monthlyInstallment,
@@ -987,7 +989,7 @@ serve(async (req) => {
         if (memberEmail) {
           const { data: rejOrg } = await sb.from("organizations").select("name").eq("id", existingLoan.org_id).maybeSingle();
           fetch("https://admin.kudiai.app/api/public/email-trigger", {
-            method: "POST", headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+            method: "POST", headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
             body: JSON.stringify({ event: "org_loan_rejected", data: {
               member_email: memberEmail, member_name: memberName, org_name: rejOrg?.name || "",
               amount: existingLoan.amount_requested,
@@ -1037,7 +1039,7 @@ serve(async (req) => {
         if (memberEmail) {
           const { data: disbOrg } = await sb.from("organizations").select("name").eq("id", existingLoan.org_id).maybeSingle();
           fetch("https://admin.kudiai.app/api/public/email-trigger", {
-            method: "POST", headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+            method: "POST", headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
             body: JSON.stringify({ event: "org_loan_disbursed", data: {
               member_email: memberEmail, member_name: memberName, org_name: disbOrg?.name || "",
               amount: amt, due_date: update.due_date,
@@ -1122,7 +1124,7 @@ serve(async (req) => {
       };
       if (memberEmail) {
         fetch("https://admin.kudiai.app/api/public/email-trigger", {
-          method: "POST", headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+          method: "POST", headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
           body: JSON.stringify({ event: "org_loan_repayment", data: { ...emailData, send_to: "member" } }),
         }).catch(() => null);
       }
@@ -1130,7 +1132,7 @@ serve(async (req) => {
         const { data: ownerP } = await sb.from("profiles").select("email").eq("id", repayOrg.owner_id).maybeSingle();
         if (ownerP?.email) {
           fetch("https://admin.kudiai.app/api/public/email-trigger", {
-            method: "POST", headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+            method: "POST", headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
             body: JSON.stringify({ event: "org_loan_repayment", data: { ...emailData, send_to: "org", owner_email: ownerP.email } }),
           }).catch(() => null);
         }
@@ -1192,7 +1194,7 @@ serve(async (req) => {
           loan_purpose: ol.loan_purpose || "",
         };
         fetch("https://admin.kudiai.app/api/public/email-trigger", {
-          method: "POST", headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+          method: "POST", headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
           body: JSON.stringify({ event: "org_loan_overdue", data: payload }),
         }).catch(() => null);
         // In-app: alert both member and org
@@ -1242,7 +1244,7 @@ serve(async (req) => {
         for (const r of recipients) {
           fetch("https://admin.kudiai.app/api/public/email-trigger", {
             method: "POST",
-            headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+            headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
             body: JSON.stringify({ event: "org_broadcast", data: {
               email: r.email, member_name: r.name, is_org: r.is_org, org_name: mtgOrg.name,
               broadcast_type: "Meeting", title,
@@ -1383,7 +1385,7 @@ serve(async (req) => {
         for (const r of recipients) {
           fetch("https://admin.kudiai.app/api/public/email-trigger", {
             method: "POST",
-            headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+            headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
             body: JSON.stringify({ event: "org_broadcast", data: {
               email: r.email, member_name: r.name, is_org: r.is_org, org_name: annOrg.name,
               broadcast_type: btype, ann_type: String(type || "announcement"),
@@ -1771,7 +1773,7 @@ serve(async (req) => {
         if (mem?.email) {
           fetch("https://admin.kudiai.app/api/public/email-trigger", {
             method: "POST",
-            headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+            headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
             body: JSON.stringify({
               event: "org_saving",
               data: {
@@ -1926,7 +1928,7 @@ serve(async (req) => {
       };
       if (repayMem?.email) {
         fetch("https://admin.kudiai.app/api/public/email-trigger", {
-          method: "POST", headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+          method: "POST", headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
           body: JSON.stringify({ event: "org_loan_repayment", data: { ...emailData, send_to: "member" } }),
         }).catch(() => null);
       }
@@ -1934,7 +1936,7 @@ serve(async (req) => {
         const { data: ownerP } = await sb.from("profiles").select("email").eq("id", repayOrg.owner_id).maybeSingle();
         if (ownerP?.email) {
           fetch("https://admin.kudiai.app/api/public/email-trigger", {
-            method: "POST", headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+            method: "POST", headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
             body: JSON.stringify({ event: "org_loan_repayment", data: { ...emailData, send_to: "org", owner_email: ownerP.email } }),
           }).catch(() => null);
         }
@@ -1976,7 +1978,7 @@ serve(async (req) => {
         if (ownerP?.email) {
           fetch("https://admin.kudiai.app/api/public/email-trigger", {
             method: "POST",
-            headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+            headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
             body: JSON.stringify({ event: "org_member_support_ticket", data: { ...ticketData, send_to: "org", owner_email: ownerP.email } }),
           }).catch(() => null);
         }
@@ -1985,7 +1987,7 @@ serve(async (req) => {
       if (mem.email) {
         fetch("https://admin.kudiai.app/api/public/email-trigger", {
           method: "POST",
-          headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+          headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
           body: JSON.stringify({ event: "org_member_support_ticket", data: { ...ticketData, send_to: "member" } }),
         }).catch(() => null);
       }
@@ -2033,7 +2035,7 @@ serve(async (req) => {
       if (ownerEmail) {
         fetch("https://admin.kudiai.app/api/public/email-trigger", {
           method: "POST",
-          headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+          headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
           body: JSON.stringify({ event: "org_member_support_ticket", data: { ...ticketData, send_to: "member" } }),
         }).catch(() => null);
       }
@@ -2079,7 +2081,7 @@ serve(async (req) => {
         if (op?.email) {
           fetch("https://admin.kudiai.app/api/public/email-trigger", {
             method: "POST",
-            headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+            headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
             body: JSON.stringify({
               event: "org_withdrawal_request",
               data: {
@@ -2168,7 +2170,7 @@ serve(async (req) => {
         if (mem.email) {
           fetch("https://admin.kudiai.app/api/public/email-trigger", {
             method: "POST",
-            headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+            headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
             body: JSON.stringify({
               event: "org_withdrawal_approved",
               data: {
@@ -2193,7 +2195,7 @@ serve(async (req) => {
         if (mem?.email) {
           fetch("https://admin.kudiai.app/api/public/email-trigger", {
             method: "POST",
-            headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+            headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
             body: JSON.stringify({
               event: "org_withdrawal_rejected",
               data: {
@@ -2314,7 +2316,7 @@ serve(async (req) => {
         for (const r of recipients) {
           fetch("https://admin.kudiai.app/api/public/email-trigger", {
             method: "POST",
-            headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+            headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
             body: JSON.stringify({ event: "org_broadcast", data: {
               email: r.email, member_name: r.name, is_org: r.is_org, org_name: evtOrg.name,
               broadcast_type: "Event", title, description: description || "",
@@ -2387,7 +2389,7 @@ serve(async (req) => {
         for (const r of recipients) {
           fetch("https://admin.kudiai.app/api/public/email-trigger", {
             method: "POST",
-            headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+            headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
             body: JSON.stringify({ event: "org_broadcast", data: {
               email: r.email, member_name: r.name, is_org: r.is_org, org_name: pollOrg.name,
               broadcast_type: "Poll", title: question,

@@ -14,6 +14,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { createHmac }   from "https://deno.land/std@0.168.0/node/crypto.ts";
 
 const CORS = { "Access-Control-Allow-Origin": "*" };
+const EMAIL_TRIGGER_SECRET = Deno.env.get("EMAIL_TRIGGER_SECRET") ?? "";
 
 function ok(msg = "ok") {
   return new Response(msg, { status: 200, headers: CORS });
@@ -214,7 +215,7 @@ async function firePaymentFailureEmail(
       method:  "POST",
       headers: {
         "Content-Type":     "application/json",
-        "x-trigger-secret": "kuditrack-email-trigger-2026-amaya",
+        "x-trigger-secret": EMAIL_TRIGGER_SECRET,
       },
       body: JSON.stringify({
         event: "payment_failed",
@@ -278,7 +279,7 @@ async function fireContributionEmail(
       method:  "POST",
       headers: {
         "Content-Type":   "application/json",
-        "x-trigger-secret": "kuditrack-email-trigger-2026-amaya",
+        "x-trigger-secret": EMAIL_TRIGGER_SECRET,
       },
       body: JSON.stringify({ event: "ajo_contribution", data: emailData }),
     }).catch(() => null);

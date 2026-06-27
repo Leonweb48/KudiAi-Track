@@ -7,6 +7,8 @@ const cors = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+const EMAIL_TRIGGER_SECRET = Deno.env.get("EMAIL_TRIGGER_SECRET") ?? "";
+
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
@@ -152,7 +154,7 @@ serve(async (req) => {
 
       fetch("https://admin.kudiai.app/api/public/email-trigger", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-trigger-secret": "kuditrack-email-trigger-2026-amaya" },
+        headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
         body: JSON.stringify({ event: "ajo_client_registered", data: emailData }),
       }).catch(() => null);
     }
