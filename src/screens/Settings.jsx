@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import Modal           from "../components/shared/Modal";
 import Field           from "../components/shared/Field";
 import StaffManagement from "./StaffManagement";
+import LegalScreen      from "./LegalScreen";
 import { supabase }    from "../utils/supabase";
 import { canDo, planAvailableText, hasHigherPlanAvailable } from "../utils/plans";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
@@ -99,16 +100,6 @@ function PinSetupModal({ onDone, onClose }) {
 
 const GENDERS = ["Male", "Female", "Prefer not to say"];
 
-const INFO = {
-  privacy: {
-    title: "Privacy Policy",
-    body:  "KudiAI Track collects only the data you enter. Your business data is stored securely in Supabase and is never shared with third parties. You can request data deletion at any time by contacting support.",
-  },
-  terms: {
-    title: "Terms & Conditions",
-    body:  "By using KudiAI Track you agree to use the app for lawful business purposes only. We are not liable for financial decisions made based on app data. Subscription fees are non-refundable after the billing period starts.",
-  },
-};
 
 async function uploadProfileImg(file, userId) {
   const path = `${userId}/profile`;
@@ -356,11 +347,11 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
   const [saving,        setSaving]        = useState(false);
   const [saveError,     setSaveError]     = useState("");
   const [signingOut,    setSigningOut]    = useState(false);
-  const [infoModal,     setInfoModal]     = useState(null);
   const [showPinSetup,  setShowPinSetup]  = useState(false);
   const [showSupport,   setShowSupport]   = useState(false);
   const [lockBusy,      setLockBusy]      = useState(false);
   const [showLangPick,  setShowLangPick]  = useState(false);
+  const [legalScreen,   setLegalScreen]   = useState(null); // "terms" | "privacy"
 
   const lockEnabled    = lock?.enabled    ?? false;
   const lockHasPIN     = lock?.hasPIN     ?? false;
@@ -596,9 +587,9 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
       {/* ── LEGAL ──────────────────────────────────────────────────── */}
       <SectionLabel>{t("settings.legal")}</SectionLabel>
       <SettingsCard>
-        <Row icon={<DocIcon />}  label={t("settings.terms")}   onClick={() => setInfoModal(INFO.terms)} />
-        <Row icon={<DocIcon />}  label={t("settings.privacy")} onClick={() => setInfoModal(INFO.privacy)} />
-        <Row icon={<HelpIcon />} label="Help & Support"    onClick={() => setShowSupport(true)} />
+        <Row icon={<DocIcon />}  label={t("settings.terms")}   sub="Last updated 1 July 2026"   onClick={() => setLegalScreen("terms")} />
+        <Row icon={<DocIcon />}  label={t("settings.privacy")} sub="NDPA 2023 compliant"         onClick={() => setLegalScreen("privacy")} />
+        <Row icon={<HelpIcon />} label="Help & Support"        onClick={() => setShowSupport(true)} />
       </SettingsCard>
 
       {/* ── LOG OUT ────────────────────────────────────────────────── */}
@@ -647,16 +638,6 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
         />
       )}
 
-      {/* ── Info modal ─────────────────────────────────────────────── */}
-      {infoModal && (
-        <Modal title={infoModal.title} onClose={() => setInfoModal(null)}>
-          <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">{infoModal.body}</p>
-          <button onClick={() => setInfoModal(null)}
-            className="w-full mt-5 py-3 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-bold text-sm transition-colors">
-            Got it
-          </button>
-        </Modal>
-      )}
 
       {/* ── Edit profile modal ─────────────────────────────────────── */}
       {editProfile && (
@@ -754,6 +735,11 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
         <div className="fixed inset-0 z-50 bg-slate-50 dark:bg-slate-900">
           <StaffManagement session={session} plan={plan} onBack={() => setStaffMgmt(false)} onUpgrade={() => { setStaffMgmt(false); onUpgrade?.(); }} />
         </div>
+      )}
+
+      {/* ── Legal full-screen overlay ───────────────────────────────── */}
+      {legalScreen && (
+        <LegalScreen type={legalScreen} onBack={() => setLegalScreen(null)} />
       )}
       </div>{/* /px-4 */}
     </div>
