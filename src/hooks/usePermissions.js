@@ -15,8 +15,13 @@ export function usePermissions() {
 
       // Microphone — getUserMedia triggers the RECORD_AUDIO dialog on Android
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
         stream.getTracks().forEach((t) => t.stop());
+      } catch (_) {}
+
+      // Location
+      try {
+        await navigator.geolocation.getCurrentPosition(() => {}, () => {}, { timeout: 1 });
       } catch (_) {}
 
       // Notifications

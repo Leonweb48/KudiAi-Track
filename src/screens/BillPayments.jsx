@@ -12,6 +12,7 @@ import { lookupDataPrice } from "../data/billPrices";
 import LoanApplicationModal from "../components/LoanApplicationModal";
 import TransactionPinModal  from "../components/TransactionPinModal";
 import { LS_PIN_HASH }      from "../hooks/useBiometricLock";
+import { buildCallbackUrl, openPaystackCheckout } from "../utils/paystackCheckout";
 
 /* ─── Service catalogue ───────────────────────────────────────────────────── */
 
@@ -1597,6 +1598,22 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     fulfillAfterPayment(ref, JSON.parse(stored));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Native Android: handle paymentCallback deep-link event dispatched by useAuth after Browser.open redirect
+  useEffect(() => {
+    const handler = (e) => {
+      const url = e.detail?.url || "";
+      const params = new URLSearchParams(url.split("?")[1] || "");
+      const ref = params.get("bill_ref") || params.get("trxref") || params.get("reference");
+      if (!ref) return;
+      const stored = localStorage.getItem(BILL_PENDING_PREFIX + ref);
+      if (!stored) return;
+      setSaving(true);
+      fulfillAfterPayment(ref, JSON.parse(stored));
+    };
+    window.addEventListener("paymentCallback", handler);
+    return () => window.removeEventListener("paymentCallback", handler);
+  }, [fulfillAfterPayment]);
+
   // Detect cancellation via bfcache restore (Android back button) or in-app browser close
   const savingRef = useRef(saving);
   savingRef.current = saving;
@@ -1903,7 +1920,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       // Initialize Paystack — prefer owner profile email, fall back to staff email
       const email = profile?.email || staffEmail || "";
       const catLabel = CATS.find(c => c.id === selectedCat)?.label || selectedCat;
-      const callbackUrl = `${window.location.origin}${window.location.pathname}?bill_ref=${ref}`;
+      const callbackUrl = buildCallbackUrl(`${window.location.origin}${window.location.pathname}`, { bill_ref: ref });
 
       const { data: ps } = await supabase.functions.invoke("paystack", {
         body: {
@@ -1925,8 +1942,8 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         throw new Error(ps?.error || ps?.data?.message || "Could not initialize payment");
       }
 
-      // Redirect to Paystack checkout
-      window.location.href = ps.data.authorization_url;
+      // Open Paystack checkout (in-app browser on Android, redirect on web)
+      await openPaystackCheckout(ps.data.authorization_url);
     } catch (err) {
       setSaving(false);
       setError(err.message || "Payment failed. Please try again.");

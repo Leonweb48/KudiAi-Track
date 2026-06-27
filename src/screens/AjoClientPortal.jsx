@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { openPaystackPopup } from "../utils/paystackCheckout";
 import { supabase } from "../utils/supabase";
 import { peyflex } from "../utils/peyflex";
 import { fmt } from "../utils/helpers";
@@ -26,6 +27,8 @@ function PayContributionModal({ client, onClose, onSuccess }) {
   const [status,     setStatus]    = useState("idle"); // idle | loading | awaiting | verifying | done | error
   const [message,    setMessage]   = useState("");
   const [pendingRef, setPendingRef] = useState(null);
+  const popupCleanup = useRef(null);
+  useEffect(() => () => popupCleanup.current?.(), []);
 
   const doVerify = useCallback(async (ref) => {
     if (!ref) return;
@@ -55,34 +58,11 @@ function PayContributionModal({ client, onClose, onSuccess }) {
       setStatus("awaiting");
       setMessage("Paystack is open. After paying, come back here and tap the button below.");
 
-      // Open as popup on desktop, new tab on mobile
-      const popup = window.open(
-        res.authorization_url,
-        "paystack-checkout",
-        "width=520,height=700,left=200,top=80,scrollbars=yes",
-      );
-
-      if (!popup) return; // popup blocked — user must tap verify manually
-
-      // Poll: auto-verify when popup closes or redirects back to our domain
-      const poll = setInterval(async () => {
-        try {
-          if (popup.closed) {
-            clearInterval(poll);
-            setTimeout(() => doVerify(ref), 600);
-            return;
-          }
-          // Once popup navigates to our domain, grab the reference and close it
-          try {
-            const urlRef = new URL(popup.location.href).searchParams.get("reference");
-            if (urlRef) {
-              clearInterval(poll);
-              popup.close();
-              setTimeout(() => doVerify(urlRef || ref), 300);
-            }
-          } catch { /* still on Paystack domain — cross-origin, keep polling */ }
-        } catch { clearInterval(poll); }
-      }, 500);
+      // Open in-app browser (Chrome Custom Tabs on Android, popup on web)
+      popupCleanup.current?.();
+      popupCleanup.current = openPaystackPopup(res.authorization_url, {
+        onClose: (urlRef) => setTimeout(() => doVerify(urlRef || ref), 600),
+      });
     } catch (e) {
       setStatus("error");
       setMessage(e.message || "Payment failed. Please try again.");

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { buildCallbackUrl, openPaystackCheckout } from "../utils/paystackCheckout";
 import { supabase } from "../utils/supabase";
 import { useTheme } from "../hooks/useTheme";
 import { useT } from "../contexts/LanguageContext";
@@ -409,14 +410,14 @@ function PayOrgModal({ member, org, preProgram, history, onClose }) {
       const res = await coopFn("initialize-member-payment", {
         member_id: member.id, org_id: org.id, amount: amt,
         program_id: programId || undefined,
-        callback_url: window.location.origin,
+        callback_url: buildCallbackUrl(window.location.origin),
       });
       if (!res.authorization_url) throw new Error("Payment initialization failed");
       localStorage.setItem(`${ORG_PAY_PREFIX}${res.reference}`, JSON.stringify({
         member_id: member.id, org_id: org.id, amount: amt,
         program_id: programId || undefined,
       }));
-      window.location.href = res.authorization_url;
+      await openPaystackCheckout(res.authorization_url);
     } catch (e) {
       setLoading(false);
       setError(e.message || "Payment failed. Please try again.");
@@ -858,13 +859,13 @@ function LoansTab({ member, org }) {
       const res = await coopFn("initialize-loan-payment", {
         member_id: member.id, org_id: org.id,
         loan_id: loan.id, amount: repayAmt,
-        callback_url: window.location.origin,
+        callback_url: buildCallbackUrl(window.location.origin),
       });
       if (!res.authorization_url) throw new Error("Payment initialization failed");
       localStorage.setItem(`${ORG_LOAN_PAY_PREFIX}${res.reference}`, JSON.stringify({
         member_id: member.id, org_id: org.id, loan_id: loan.id, amount: repayAmt,
       }));
-      window.location.href = res.authorization_url;
+      await openPaystackCheckout(res.authorization_url);
     } catch (e) {
       setRepaying(false);
       setError(e.message || "Payment failed. Please try again.");
@@ -1693,6 +1694,59 @@ export default function CoopMemberPortal({ member: initialMember }) {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Native Android: handle paymentCallback deep-link event dispatched by useAuth after Browser.open redirect
+  useEffect(() => {
+    const handler = (e) => {
+      const url = e.detail?.url || "";
+      const params = new URLSearchParams(url.split("?")[1] || "");
+      const ref = params.get("trxref") || params.get("reference");
+      if (!ref) return;
+
+      const contribKey = ORG_PAY_PREFIX + ref;
+      const contribStored = localStorage.getItem(contribKey);
+      if (contribStored) {
+        let pending;
+        try { pending = JSON.parse(contribStored); } catch { return; }
+        localStorage.removeItem(contribKey);
+        setProcessingPayment(true);
+        coopFn("confirm-member-payment", {
+          member_id: pending.member_id, org_id: pending.org_id,
+          reference: ref, program_id: pending.program_id || undefined,
+        }).then(res => {
+          if (res.member) setMember(prev => ({ ...prev, ...res.member }));
+          setTab("contributions");
+          setProcessingPayment(false);
+          setPaymentResult({ ok: true, amount: res.amount || pending.amount, ref, type: "contribution" });
+        }).catch(err => {
+          setProcessingPayment(false);
+          setPaymentResult({ ok: false, error: err.message || "Payment verification failed", ref });
+        });
+        return;
+      }
+
+      const loanKey = ORG_LOAN_PAY_PREFIX + ref;
+      const loanStored = localStorage.getItem(loanKey);
+      if (loanStored) {
+        let pending;
+        try { pending = JSON.parse(loanStored); } catch { return; }
+        localStorage.removeItem(loanKey);
+        setProcessingPayment(true);
+        coopFn("confirm-loan-payment", {
+          member_id: pending.member_id, org_id: pending.org_id,
+          loan_id: pending.loan_id, reference: ref,
+        }).then(res => {
+          setTab("loans");
+          setProcessingPayment(false);
+          setPaymentResult({ ok: true, amount: res.amount || pending.amount, ref, type: "loan" });
+        }).catch(err => {
+          setProcessingPayment(false);
+          setPaymentResult({ ok: false, error: err.message || "Payment verification failed", ref });
+        });
+      }
+    };
+    window.addEventListener("paymentCallback", handler);
+    return () => window.removeEventListener("paymentCallback", handler);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load announcements + summary counts for dashboard
   useEffect(() => {
