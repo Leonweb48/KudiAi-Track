@@ -669,6 +669,7 @@ function PinModal({ pins, title, onClose }) {
 /* ─── Main component ───────────────────────────────────────────────────────── */
 
 const BILL_PENDING_PREFIX = "ck_bill_pending_";
+const BILL_LAST_RESULT    = "ck_bill_last_result";
 
 /* ─── Map a stored bill transaction to BillReceipt props ─────────────────── */
 function billToReceipt(bill, profile, staffName) {
@@ -1349,6 +1350,11 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       orphaned.forEach(k => localStorage.removeItem(k));
       return { ok: false, disrupted: true, detail: "Your payment was not completed. Please try again.", psRef: "" };
     }
+    // Restore last successful bill result so it reappears when user navigates back
+    try {
+      const cached = localStorage.getItem(BILL_LAST_RESULT);
+      if (cached) return JSON.parse(cached);
+    } catch (_) {}
     return null;
   });
 
@@ -1977,7 +1983,9 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
       localStorage.removeItem(BILL_PENDING_PREFIX + ref);
       setSaving(false);
-      setFulfillResult({ ok: true, label: itemName, detail: note, pinsArr: pinsArr || [], psRef: ref, apiRef, cardDetails, cat, amount: totalAmount || amount, earnedPts, txnHistoryPending, elecToken, elecOrderId, formSnap: { ...f } });
+      const successResult = { ok: true, label: itemName, detail: note, pinsArr: pinsArr || [], psRef: ref, apiRef, cardDetails, cat, amount: totalAmount || amount, earnedPts, txnHistoryPending, elecToken, elecOrderId, formSnap: { ...f } };
+      setFulfillResult(successResult);
+      try { localStorage.setItem(BILL_LAST_RESULT, JSON.stringify(successResult)); } catch (_) {}
 
       // For electricity PENDING: defer DB update + email until polling finds the token
       const svcLabel = CATS.find(c => c.id === cat)?.label || cat;
@@ -2116,7 +2124,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
           profile={profile}
           businessName={businessName}
           staffName={staffName}
-          onDone={() => setFulfillResult(null)}
+          onDone={() => { localStorage.removeItem(BILL_LAST_RESULT); setFulfillResult(null); }}
           onShareReceipt={() => {
             const fr = fulfillResult;
             const fs = fr?.formSnap || {};
@@ -2150,6 +2158,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
               staffName:    staffName || undefined,
               id:           Date.now(),
             });
+            localStorage.removeItem(BILL_LAST_RESULT);
             setFulfillResult(null);
           }}
         />
