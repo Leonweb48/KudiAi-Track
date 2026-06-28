@@ -467,7 +467,8 @@ export function useAuth() {
     // Table query returned nothing — try the SECURITY DEFINER RPC which bypasses RLS.
     // This is the same function staff dashboards use and always works even when
     // the direct subscriptions SELECT policy is missing or the row is slow to appear.
-    const { data: rpcPlan } = await supabase.rpc("get_owner_plan").catch(() => ({ data: null }));
+    let rpcPlan = null;
+    try { rpcPlan = (await supabase.rpc("get_owner_plan")).data; } catch {}
     if (rpcPlan && rpcPlan !== "starter") {
       const resolvedPlan = normalizeSlug(rpcPlan);
       setPlan(resolvedPlan);
@@ -532,7 +533,7 @@ export function useAuth() {
     if (Capacitor.isNativePlatform()) {
       App.addListener("appUrlOpen", async ({ url }) => {
         if (url.startsWith("com.amayatechnologies.kuditrack://login-callback")) {
-          await Browser.close();
+          try { await Browser.close(); } catch { /* custom tab may already be dismissed */ }
           // Supabase v2 uses PKCE by default — redirect contains ?code=... not #access_token=...
           // exchangeCodeForSession handles both PKCE codes and implicit token hashes
           const { error } = await supabase.auth.exchangeCodeForSession(url);
