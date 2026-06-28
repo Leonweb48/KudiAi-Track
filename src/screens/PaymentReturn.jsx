@@ -12,8 +12,13 @@ export default function PaymentReturn() {
   const search = window.location.search;
 
   useEffect(() => {
-    const deepLink = `${APP_SCHEME}://payment-callback${search}`;
-    window.location.replace(deepLink);
+    // Chrome 86+ blocks window.location.replace("custom-scheme://...") inside Chrome Custom Tabs.
+    // The intent:// URI format is the correct way to hand off from CCT to an Android app.
+    // Chrome intercepts it, fires the Android intent, and the app receives it via appUrlOpen.
+    const intentUrl =
+      `intent://payment-callback${search}` +
+      `#Intent;scheme=${APP_SCHEME};package=com.amayatechnologies.kuditrack;end;`;
+    window.location.replace(intentUrl);
   }, [search]);
 
   return (
