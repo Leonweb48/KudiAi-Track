@@ -514,12 +514,18 @@ export function useAuth() {
       App.addListener("appUrlOpen", async ({ url }) => {
         if (url.startsWith("com.amayatechnologies.kuditrack://login-callback")) {
           await Browser.close();
-          const hashStr = url.split("#")[1] || url.split("?")[1] || "";
-          const params = new URLSearchParams(hashStr);
-          const access_token = params.get("access_token");
-          const refresh_token = params.get("refresh_token");
-          if (access_token && refresh_token) {
-            await supabase.auth.setSession({ access_token, refresh_token });
+          // Supabase v2 uses PKCE by default — redirect contains ?code=... not #access_token=...
+          // exchangeCodeForSession handles both PKCE codes and implicit token hashes
+          const { error } = await supabase.auth.exchangeCodeForSession(url);
+          if (error) {
+            // Fallback for implicit flow (token in URL hash)
+            const hashStr = url.split("#")[1] || "";
+            const params = new URLSearchParams(hashStr);
+            const access_token = params.get("access_token");
+            const refresh_token = params.get("refresh_token");
+            if (access_token && refresh_token) {
+              await supabase.auth.setSession({ access_token, refresh_token });
+            }
           }
         } else if (url.startsWith("com.amayatechnologies.kuditrack://payment-callback")) {
           await Browser.close();
