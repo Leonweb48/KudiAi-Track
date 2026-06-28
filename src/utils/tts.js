@@ -37,7 +37,9 @@ async function serverTTS(payload) {
       "Content-Type":     "application/json",
       "x-trigger-secret": SECRET || "",
     },
-    data: JSON.stringify(payload),
+    data:           payload,
+    readTimeout:    30000,
+    connectTimeout: 15000,
   });
   if (res.status !== 200) throw new Error(`TTS HTTP ${res.status}`);
   const data = typeof res.data === "string" ? JSON.parse(res.data) : res.data;
