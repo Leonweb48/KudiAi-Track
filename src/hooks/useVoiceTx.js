@@ -39,15 +39,28 @@ async function sendToGemini(audioBlob, mimeType) {
 
   let data;
   if (Capacitor.isNativePlatform()) {
+    // readTimeout must be long — audio upload + Gemini processing can take 30-60 s.
+    // OkHttp default is 10 s which always causes a timeout.
     const res = await CapacitorHttp.post({
-      url: VOICE_PARSE_URL,
+      url:            VOICE_PARSE_URL,
       headers,
-      data: JSON.stringify(payload),
+      data:           payload,
+      readTimeout:    120000,
+      connectTimeout: 15000,
     });
     if (res.status < 200 || res.status >= 300) {
-      throw new Error((res.data?.error) || `Server error ${res.status}`);
+      const errMsg = (typeof res.data === "object" && res.data?.error)
+        ? res.data.error
+        : (typeof res.data === "string" ? res.data : `Server error ${res.status}`);
+      throw new Error(errMsg);
     }
-    data = typeof res.data === "string" ? JSON.parse(res.data) : res.data;
+    try {
+      data = typeof res.data === "object" && res.data !== null
+        ? res.data
+        : JSON.parse(res.data);
+    } catch {
+      throw new Error("Unexpected response from voice parser");
+    }
   } else {
     const res = await fetch(VOICE_PARSE_URL, {
       method: "POST",
@@ -128,7 +141,6 @@ export function useVoiceTx() {
     streamRef.current = stream;
 
     const mimeType = getSupportedMimeType();
-    mimeTypeRef.current = mimeType;
 
     let mr;
     try {
@@ -139,6 +151,10 @@ export function useVoiceTx() {
       setStatus("error");
       return;
     }
+    // Use the actual MIME type the recorder chose (important on Android WebView
+    // where MediaRecorder.isTypeSupported returns false for all listed types
+    // but the recorder still picks a valid default like audio/mp4).
+    mimeTypeRef.current = mr.mimeType || mimeType || "audio/webm";
     mediaRecorderRef.current = mr;
 
     mr.ondataavailable = (e) => {

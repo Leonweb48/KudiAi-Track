@@ -23,7 +23,7 @@ export async function askGemini({
   history     = [],
   lang        = "en",
   onChunk,
-  timeout     = 30000,
+  timeout     = 60000,  // AI generation takes 20-30 s; 30 s was too tight
   maxAttempts = 3,
 }) {
   let lastErr    = null;
@@ -50,16 +50,25 @@ export async function askGemini({
           };
 
           if (Capacitor.isNativePlatform()) {
-            // Native HTTP bypasses WebView CORS restrictions
+            // Native HTTP bypasses WebView CORS.
+            // responseType:"text" prevents CapacitorHttp trying to JSON-parse
+            // the plain-text AI reply, which can silently return null.
+            // readTimeout must be set explicitly — OkHttp default is 10 s,
+            // far too short for Gemini to generate a response.
             const res = await CapacitorHttp.post({
-              url: CHAT_URL,
+              url:            CHAT_URL,
               headers,
-              data: JSON.stringify(payload),
+              data:           payload,   // pass as object; Capacitor serialises to JSON
+              responseType:   "text",
+              readTimeout:    60000,
+              connectTimeout: 15000,
             });
             if (res.status < 200 || res.status >= 300) {
               throw Object.assign(new Error(`HTTP ${res.status}`), { status: res.status });
             }
-            return typeof res.data === "string" ? res.data : JSON.stringify(res.data);
+            const raw = typeof res.data === "string" ? res.data
+                      : res.data != null ? String(res.data) : "";
+            return raw;
           }
 
           const res = await fetch(CHAT_URL, {
