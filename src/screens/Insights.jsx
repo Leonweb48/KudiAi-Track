@@ -4,9 +4,8 @@ import { canDo, upgradeLabel, planRequiredLabel, getLowestPlanWithFeature } from
 import { useT, useLanguage } from "../contexts/LanguageContext";
 import { getSalesPrediction, getRestockData, getSlowMovers } from "../utils/predictions";
 import { buildContext } from "../utils/buildContext";
-
-const CHAT_URL = "https://admin.kudiai.app/api/public/chat";
-const SECRET   = process.env.REACT_APP_EMAIL_SECRET;
+import { askGemini } from "../utils/gemini";
+import { speakText } from "../utils/tts";
 
 const AI_QUICK = [
   { label: "Today's Sales",      q: "How were today's sales?"    },
@@ -243,17 +242,6 @@ function FormattedText({ text }) {
   ));
 }
 
-const SPEECH_LANG = { en: "en-NG", pidgin: "en-NG", ha: "ha-NG", ig: "ig-NG", yo: "yo-NG" };
-
-function speakInsight(text, lang) {
-  if (!("speechSynthesis" in window)) return;
-  window.speechSynthesis.cancel();
-  const utt = new SpeechSynthesisUtterance(text.replace(/\*\*/g, ""));
-  utt.lang  = SPEECH_LANG[lang] || "en-NG";
-  utt.rate  = 0.92;
-  utt.pitch = 1.0;
-  window.speechSynthesis.speak(utt);
-}
 
 /* ── Main Insights screen ────────────────────────────────────────── */
 export default function Insights({ store, inventory, plan = "starter", onUpgrade, staffName, onReports, onAIOpen }) {
@@ -293,19 +281,12 @@ export default function Insights({ store, inventory, plan = "starter", onUpgrade
 ANALYSIS PERIOD: ${period} | Period Sales: ₦${fmt(totalIn)} | Period Expenses: ₦${fmt(totalOut)} | Period Profit: ₦${fmt(totalIn - totalOut)} | Period Transactions: ${tx.length}
 Top items this period: ${topItems.join(", ") || "None recorded"}`;
 
-      const res = await fetch(CHAT_URL, {
-        method:  "POST",
-        headers: { "Content-Type": "application/json", "x-trigger-secret": SECRET },
-        body:    JSON.stringify({
-          message:         `Carefully analyse ALL my business data for the ${period} period. Reference specific numbers, customer names, product names, and amounts from my actual data. Give me: key insights from the real numbers, any warnings or risks I should act on immediately, growth opportunities specific to my business, and 2–3 clear action items I can do this week. Be direct, practical, and use the actual figures — not generic advice.`,
-          lang,
-          businessContext: context,
-          history:         [],
-        }),
+      const text = await askGemini({
+        message: `Carefully analyse ALL my business data for the ${period} period. Reference specific numbers, customer names, product names, and amounts from my actual data. Give me: key insights from the real numbers, any warnings or risks I should act on immediately, growth opportunities specific to my business, and 2–3 clear action items I can do this week. Be direct, practical, and use the actual figures — not generic advice.`,
+        lang,
+        context,
+        history: [],
       });
-
-      if (!res.ok) throw new Error("API error");
-      const text = await res.text();
       setAiInsight(text || "");
     } catch {
       setAiError("Could not generate insights. Please check your connection and try again.");
@@ -427,7 +408,7 @@ Top items this period: ${topItems.join(", ") || "None recorded"}`;
                       <p className="text-sm font-bold text-white">Gemini AI Insight</p>
                     </div>
                     <button
-                      onClick={() => speakInsight(aiInsight, lang)}
+                      onClick={() => speakText(aiInsight, lang)}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white/80 text-[11px] font-semibold transition-colors active:scale-95">
                       <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                         <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" stroke="none" />

@@ -1,25 +1,43 @@
 import { Capacitor } from "@capacitor/core";
+import { Filesystem, Directory } from "@capacitor/filesystem";
+import { Share } from "@capacitor/share";
+
+async function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result.split(",")[1]);
+    reader.onerror  = reject;
+    reader.readAsDataURL(blob);
+  });
+}
 
 /**
  * Save or share a jsPDF document.
+ * Native Android/iOS: writes to cache dir then opens the native share sheet.
  * Web: triggers a browser file download.
- * Native Android/iOS: opens the system share sheet so the user can send to WhatsApp,
- * Drive, email, etc. Falls back silently if share is unavailable.
  */
 export async function savePdf(doc, filename) {
-  if (Capacitor.isNativePlatform() && navigator.share) {
+  if (Capacitor.isNativePlatform()) {
     try {
-      const blob = doc.output("blob");
-      const file = new File([blob], filename, { type: "application/pdf" });
-      const shareData = { title: filename };
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        shareData.files = [file];
-      }
-      await navigator.share(shareData);
+      const blob   = doc.output("blob");
+      const base64 = await blobToBase64(blob);
+
+      const saved = await Filesystem.writeFile({
+        path:      filename,
+        data:      base64,
+        directory: Directory.Cache,
+        recursive: true,
+      });
+
+      await Share.share({
+        title: filename,
+        url:   saved.uri,
+        dialogTitle: "Share PDF",
+      });
       return;
     } catch (e) {
-      if (e?.name === "AbortError") return;
-      // Share failed — fall through to normal doc.save() as last resort
+      if (e?.message?.includes("cancel") || e?.errorMessage?.includes("cancel")) return;
+      // fall through — try doc.save() as last resort (works in browser dev tools)
     }
   }
   doc.save(filename);

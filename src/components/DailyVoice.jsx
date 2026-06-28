@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from "react";
+import { Capacitor } from "@capacitor/core";
+import { speakText, cancelTTS } from "../utils/tts";
 
 const MOTIVATIONS = [
   "Every naira you save today builds the empire of tomorrow.",
@@ -115,14 +117,26 @@ export default function DailyVoice({ userId, profile, credits, asoClients, lowSt
   const isSpeakingRef  = useRef(false);
 
   const dismiss = () => {
-    window.speechSynthesis?.cancel();
+    cancelTTS();
     setVisible(false);
     setIsSpeaking(false);
     isSpeakingRef.current = false;
   };
 
-  const doSpeak = (msg) => {
-    if (!window.speechSynthesis) { setNeedsTap(false); return; }
+  const doSpeak = async (msg) => {
+    setNeedsTap(false);
+
+    if (Capacitor.isNativePlatform()) {
+      isSpeakingRef.current = true;
+      setIsSpeaking(true);
+      await speakText(msg, "en").catch(() => {});
+      isSpeakingRef.current = false;
+      setIsSpeaking(false);
+      setTimeout(() => setVisible(false), 2500);
+      return;
+    }
+
+    if (!window.speechSynthesis) { setNeedsTap(true); return; }
     window.speechSynthesis.cancel();
 
     const utter = new SpeechSynthesisUtterance(msg);
@@ -138,7 +152,7 @@ export default function DailyVoice({ userId, profile, credits, asoClients, lowSt
   };
 
   // Cancel on unmount
-  useEffect(() => () => { window.speechSynthesis?.cancel(); }, []);
+  useEffect(() => () => { cancelTTS(); }, []);
 
   // Fire once per day after data loads
   useEffect(() => {

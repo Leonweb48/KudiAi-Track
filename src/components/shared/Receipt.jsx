@@ -7,6 +7,8 @@ import { useRef, useState, useEffect } from "react";
 import html2canvas from "html2canvas";
 import { jsPDF }   from "jspdf";
 import { Capacitor } from "@capacitor/core";
+import { Filesystem, Directory } from "@capacitor/filesystem";
+import { Share } from "@capacitor/share";
 import { savePdf }   from "../../utils/pdfSave";
 
 const fmt  = (n) => `₦${Number(n || 0).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
@@ -69,22 +71,36 @@ async function downloadPDF(ref, filename) {
   await savePdf(pdf, filename || "KudiAITrack_Receipt.pdf");
 }
 
+async function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result.split(",")[1]);
+    reader.onerror   = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 async function nativeShare(file) {
-  if (navigator.share) {
+  if (Capacitor.isNativePlatform()) {
     try {
-      const shareData = { title: "KudiAI Track Receipt" };
-      // Only include file if the platform supports file sharing
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        shareData.files = [file];
-      }
-      await navigator.share(shareData);
-      return;
-    } catch (err) {
-      if (err?.name === "AbortError") return;
+      const base64 = await fileToBase64(file);
+      const saved  = await Filesystem.writeFile({
+        path:      file.name,
+        data:      base64,
+        directory: Directory.Cache,
+        recursive: true,
+      });
+      await Share.share({
+        title: "KudiAI Track Receipt",
+        url:   saved.uri,
+        dialogTitle: "Share Receipt",
+      });
+    } catch (e) {
+      if (e?.message?.includes("cancel") || e?.errorMessage?.includes("cancel")) return;
     }
+    return;
   }
-  // Fallback: download the PNG (web only — anchor clicks do nothing in WebView)
-  if (Capacitor.isNativePlatform()) return;
+  // Web fallback: download the PNG
   const url = URL.createObjectURL(file);
   const a   = document.createElement("a");
   a.href = url; a.download = file.name; a.click();

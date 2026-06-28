@@ -34,6 +34,7 @@ import AjoMemberPortal       from "./screens/AjoMemberPortal";
 import CoopList              from "./screens/CoopList";
 import CoopDashboard         from "./screens/CoopDashboard";
 import CoopMemberPortal, { CoopMemberFirstLogin } from "./screens/CoopMemberPortal";
+import PaymentReturn         from "./screens/PaymentReturn";
 import OrgPortal             from "./screens/OrgPortal";
 import OrgFirstLogin         from "./screens/OrgFirstLogin";
 import OrgMemberOtpVerify   from "./screens/OrgMemberOtpVerify";
@@ -322,6 +323,7 @@ export default function App() {
               <Route path="/insights"     element={SCREENS.insights}      />
               <Route path="/loyalty"      element={SCREENS.loyalty}       />
               <Route path="/settings"     element={SCREENS.settings}      />
+              <Route path="/payment-return" element={<PaymentReturn />}     />
               <Route path="*"             element={SCREENS.home}          />
             </Routes>
           </main>

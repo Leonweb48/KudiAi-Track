@@ -1,19 +1,25 @@
 import { Browser } from "@capacitor/browser";
 import { Capacitor } from "@capacitor/core";
 
-const APP_SCHEME = "com.amayatechnologies.kuditrack";
+const APP_SCHEME    = "com.amayatechnologies.kuditrack";
+const VERCEL_ORIGIN = "https://kuditrack-kappa.vercel.app";
 
 export const isNative = () => Capacitor.isNativePlatform();
 
 /**
  * Build a Paystack callback URL.
- * On native Android, returns a deep link that Chrome Custom Tabs will hand back
- * to the app via the appUrlOpen event (handled in useAuth.js).
- * On web, returns the normal https URL with query params appended.
+ *
+ * On native Android we use an HTTPS Vercel URL so Paystack accepts it.
+ * Our /payment-return page immediately redirects to the deep link
+ * com.amayatechnologies.kuditrack://payment-callback?... which brings
+ * the user back into the app via the appUrlOpen event.
+ *
+ * On web we use the normal https URL.
  */
 export function buildCallbackUrl(webBaseUrl, params = {}) {
   if (isNative()) {
-    return `${APP_SCHEME}://payment-callback?${new URLSearchParams(params)}`;
+    const qs = new URLSearchParams(params).toString();
+    return `${VERCEL_ORIGIN}/payment-return${qs ? `?${qs}` : ""}`;
   }
   try {
     const url = new URL(webBaseUrl);
@@ -84,3 +90,8 @@ export function openPaystackPopup(authorizationUrl, { onClose } = {}) {
 
   return () => clearInterval(poll);
 }
+
+/**
+ * Deep-link scheme used by the PaymentReturn page to redirect back into the app.
+ */
+export { APP_SCHEME };

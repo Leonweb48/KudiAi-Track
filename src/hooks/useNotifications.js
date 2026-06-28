@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Capacitor } from "@capacitor/core";
 import { LocalNotifications } from "@capacitor/local-notifications";
+import { speakText } from "../utils/tts";
 
 const MAX = 100;
 let _nativeNotifId = 1;
@@ -79,11 +80,7 @@ export function useNotifications(userId) {
   }, [pushNative]);
 
   const speak = useCallback((text) => {
-    if (!("speechSynthesis" in window)) return;
-    window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.rate = 1.05; u.pitch = 1.0; u.volume = 1.0;
-    window.speechSynthesis.speak(u);
+    speakText(text, "en").catch(() => {});
   }, []);
 
   const addNotification = useCallback((type, title, message) => {

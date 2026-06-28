@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useLanguage } from "../contexts/LanguageContext";
 import { buildContext } from "../utils/buildContext";
 import { askGemini } from "../utils/gemini";
+import { speakText, cancelTTS } from "../utils/tts";
 
 const SPEECH_LANG = { en: "en-NG", pidgin: "en-NG", ha: "ha-NG", ig: "ig-NG", yo: "yo-NG" };
 
@@ -61,15 +62,6 @@ function TypingDots() {
   );
 }
 
-function speakText(text, lang) {
-  if (!("speechSynthesis" in window)) return;
-  window.speechSynthesis.cancel();
-  const utt  = new SpeechSynthesisUtterance(text.replace(/\*\*/g, ""));
-  utt.lang   = SPEECH_LANG[lang] || "en-NG";
-  utt.rate   = 0.92;
-  utt.pitch  = 1.0;
-  window.speechSynthesis.speak(utt);
-}
 
 /* ── Main screen ─────────────────────────────────────────────────────── */
 export default function AIAssistant({ store, inventory, branches = [], onClose, initialQuery = "" }) {

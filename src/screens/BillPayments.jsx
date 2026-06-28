@@ -13,6 +13,8 @@ import LoanApplicationModal from "../components/LoanApplicationModal";
 import TransactionPinModal  from "../components/TransactionPinModal";
 import { LS_PIN_HASH }      from "../hooks/useBiometricLock";
 import { buildCallbackUrl, openPaystackCheckout } from "../utils/paystackCheckout";
+import { Browser } from "@capacitor/browser";
+import { Capacitor } from "@capacitor/core";
 import { savePdf } from "../utils/pdfSave";
 
 /* ─── Service catalogue ───────────────────────────────────────────────────── */
@@ -1654,6 +1656,30 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       window.removeEventListener("pageshow", onPageShow);
       document.removeEventListener("visibilitychange", onVisible);
     };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Native-only: when Chrome Custom Tabs closes (browserFinished), verify payment immediately.
+  // This fires after deep link redirect (payment-return → custom scheme) closes the tab,
+  // OR if the user presses back without completing payment.
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    let listener;
+    Browser.addListener("browserFinished", () => {
+      if (!savingRef.current) return; // no payment in progress
+      // Give paymentCallback (deep link) 1s to fire first; if it handled it, savingRef will be false
+      setTimeout(() => {
+        if (!savingRef.current) return;
+        const keys = Object.keys(localStorage).filter(k => k.startsWith(BILL_PENDING_PREFIX));
+        if (keys.length === 0) return;
+        const key    = keys[0];
+        const ref    = key.replace(BILL_PENDING_PREFIX, "");
+        const stored = localStorage.getItem(key);
+        if (stored && fulfillAfterPaymentRef.current) {
+          fulfillAfterPaymentRef.current(ref, JSON.parse(stored));
+        }
+      }, 1000);
+    }).then((l) => { listener = l; });
+    return () => listener?.remove();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Poll for electricity token when edge function returned PENDING (async processing)
