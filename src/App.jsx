@@ -189,6 +189,9 @@ export default function App() {
   const closeUpgrade  = () => setShowUpgrade(false);
   const finishUpgrade = (planId) => { setReady(planId); setShowUpgrade(false); };
 
+  // Public route: Chrome Custom Tab has no session, must render before auth check
+  if (location.pathname === "/payment-return") return <PaymentReturn />;
+
   if (status === "loading")         return <Spinner />;
 
   // Super Admin — full command center

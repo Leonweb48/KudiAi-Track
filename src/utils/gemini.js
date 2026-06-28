@@ -1,3 +1,5 @@
+import { Capacitor, CapacitorHttp } from "@capacitor/core";
+
 const CHAT_URL = "https://admin.kudiai.app/api/public/chat";
 const SECRET   = process.env.REACT_APP_EMAIL_SECRET;
 
@@ -21,9 +23,42 @@ export async function askGemini({
   history     = [],
   lang        = "en",
   onChunk,
-  timeout     = 90000,  // 90 s: streaming AI can take 30-60 s end-to-end on native
+  timeout     = 90000,
   maxAttempts = 3,
 }) {
+  const reqHeaders = {
+    "Content-Type":     "application/json",
+    "x-trigger-secret": SECRET || "",
+  };
+
+  // Native Android: CapacitorHttp bypasses WebView CORS; request no_stream so
+  // the server returns JSON { text } instead of a ReadableStream.
+  if (Capacitor.isNativePlatform()) {
+    const payload = { message, lang, businessContext: context, history, no_stream: true };
+    let lastErr = null;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      if (attempt > 0) await new Promise(r => setTimeout(r, attempt === 1 ? 1000 : 2000));
+      try {
+        const r = await CapacitorHttp.post({
+          url:         CHAT_URL,
+          headers:     reqHeaders,
+          data:        JSON.stringify(payload),
+          readTimeout: timeout,
+        });
+        if (r.status !== 200) throw Object.assign(new Error(`HTTP ${r.status}`), { status: r.status });
+        const text = String(r.data?.text || r.data || "");
+        if (text && onChunk) onChunk(text);
+        return text;
+      } catch (e) {
+        lastErr = e;
+        if (e?.status === 401 || e?.status === 403 || e?.status === 429) break;
+        if (typeof navigator !== "undefined" && !navigator.onLine) break;
+      }
+    }
+    throw new Error(errorMessage(lastErr, lastErr?.status));
+  }
+
+  // Web: fetch with streaming reader
   let lastErr    = null;
   let lastStatus = null;
 
@@ -38,11 +73,8 @@ export async function askGemini({
       const res = await fetch(CHAT_URL, {
         method:  "POST",
         signal:  controller.signal,
-        headers: {
-          "Content-Type":     "application/json",
-          "x-trigger-secret": SECRET || "",
-        },
-        body: JSON.stringify(payload),
+        headers: reqHeaders,
+        body:    JSON.stringify(payload),
       });
 
       clearTimeout(timer);

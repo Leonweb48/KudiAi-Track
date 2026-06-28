@@ -1,4 +1,4 @@
-import { Capacitor } from "@capacitor/core";
+import { Capacitor, CapacitorHttp } from "@capacitor/core";
 
 const TTS_URL = "https://admin.kudiai.app/api/public/tts";
 const SECRET  = process.env.REACT_APP_EMAIL_SECRET;
@@ -28,17 +28,31 @@ function playBase64(base64, mimeType) {
 }
 
 async function serverTTS(payload) {
+  const ttsHeaders = {
+    "Content-Type":     "application/json",
+    "x-trigger-secret": SECRET || "",
+  };
+
+  if (Capacitor.isNativePlatform()) {
+    const r = await CapacitorHttp.post({
+      url:         TTS_URL,
+      headers:     ttsHeaders,
+      data:        JSON.stringify(payload),
+      readTimeout: 60000,
+    });
+    if (r.status !== 200) throw new Error(`TTS HTTP ${r.status}`);
+    if (!r.data?.audio_base64) throw new Error("No audio returned");
+    return r.data;
+  }
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 30000);
   try {
     const res = await fetch(TTS_URL, {
       method:  "POST",
       signal:  controller.signal,
-      headers: {
-        "Content-Type":     "application/json",
-        "x-trigger-secret": SECRET || "",
-      },
-      body: JSON.stringify(payload),
+      headers: ttsHeaders,
+      body:    JSON.stringify(payload),
     });
     if (res.status !== 200) throw new Error(`TTS HTTP ${res.status}`);
     const data = await res.json();

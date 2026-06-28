@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { Capacitor, CapacitorHttp } from "@capacitor/core";
 
 const VOICE_PARSE_URL  = "https://admin.kudiai.app/api/public/voice-parse";
 const TRIGGER_SECRET   = process.env.REACT_APP_EMAIL_SECRET;
@@ -31,31 +32,44 @@ function blobToBase64(blob) {
 async function sendToGemini(audioBlob, mimeType) {
   const base64 = await blobToBase64(audioBlob);
   const payload = { audio_base64: base64, mime_type: mimeType || "audio/webm" };
+  const voiceHeaders = {
+    "Content-Type":     "application/json",
+    "x-trigger-secret": TRIGGER_SECRET || "",
+  };
 
-  // 120 s: audio upload + Gemini transcription + parsing can take 30-60 s.
-  // Global CapacitorHttp patching (capacitor.config.json) makes fetch() use
-  // native OkHttp on Android, bypassing WebView CORS and the 10 s default timeout.
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 120000);
   let data;
-  try {
-    const res = await fetch(VOICE_PARSE_URL, {
-      method:  "POST",
-      signal:  controller.signal,
-      headers: {
-        "Content-Type":     "application/json",
-        "x-trigger-secret": TRIGGER_SECRET || "",
-      },
-      body: JSON.stringify(payload),
+  if (Capacitor.isNativePlatform()) {
+    // CapacitorHttp bypasses WebView CORS and has no 10s default timeout
+    const r = await CapacitorHttp.post({
+      url:         VOICE_PARSE_URL,
+      headers:     voiceHeaders,
+      data:        JSON.stringify(payload),
+      readTimeout: 120000,
     });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || `Server error ${res.status}`);
+    if (!r.status || r.status < 200 || r.status >= 300) {
+      throw new Error(r.data?.error || `Server error ${r.status}`);
     }
-    data = await res.json();
-  } finally {
-    clearTimeout(timer);
+    data = r.data;
+  } else {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 120000);
+    try {
+      const res = await fetch(VOICE_PARSE_URL, {
+        method:  "POST",
+        signal:  controller.signal,
+        headers: voiceHeaders,
+        body:    JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Server error ${res.status}`);
+      }
+      data = await res.json();
+    } finally {
+      clearTimeout(timer);
+    }
   }
+
   const isIn  = data.transaction_type === "Cash In";
   return {
     type:          isIn ? "in" : "out",

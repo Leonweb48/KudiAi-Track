@@ -323,6 +323,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
       }
       fireEmailTrigger(t.type === "in" ? "transaction_credit" : "transaction_debit", {
         owner_id:      userId,
+        user_email:    authEmailRef.current || profile.email || "",
         business_name: profile.business_name || "",
         amount:        String(parseFloat(t.amount) || 0),
         description:   t.item_name || t.category || "Transaction",
@@ -412,6 +413,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
       }
       fireEmailTrigger("credit_added", {
         owner_id:       userId,
+        owner_email:    authEmailRef.current || profile.email || "",
         staff_id:       staffId  || null,
         staff_name:     staffName || "",
         business_name:  profile.business_name || "",
@@ -463,6 +465,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
           total_amount:   updated.total_amount,
           status:         updated.status,
           owner_id:       userId,
+          owner_email:    authEmailRef.current || profile.email || "",
           business_name:  profile.business_name || "",
           staff_id:       staffId  || "",
           staff_name:     staffName || "",
@@ -589,6 +592,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
         }
         fireEmailTrigger("ajo_contribution", {
           owner_id:      userId,
+          user_email:    authEmailRef.current || profile.email || "",
           client_id:     id,
           staff_id:      staffId || null,
           business_name: profile.business_name || "",
@@ -629,6 +633,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
         }).catch(console.error);
         fireEmailTrigger("ajo_withdrawal", {
           owner_id:      userId,
+          user_email:    authEmailRef.current || profile.email || "",
           client_id:     id,
           staff_id:      staffId || null,
           business_name: profile.business_name || "",

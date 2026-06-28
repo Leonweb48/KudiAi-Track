@@ -2,7 +2,7 @@ import { Browser } from "@capacitor/browser";
 import { Capacitor } from "@capacitor/core";
 
 const APP_SCHEME    = "com.amayatechnologies.kuditrack";
-const VERCEL_ORIGIN = "https://kuditrack-kappa.vercel.app";
+const VERCEL_ORIGIN = "https://kudiai.app";
 
 export const isNative = () => Capacitor.isNativePlatform();
 
