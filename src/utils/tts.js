@@ -91,26 +91,18 @@ export async function speakText(text, lang = "en") {
   if (!text || !text.trim()) return;
   cancelTTS();
 
-  if (Capacitor.isNativePlatform()) {
-    try {
-      const clean = text.replace(/\*\*/g, "").replace(/#+\s*/g, "").trim().slice(0, 700);
-      const data  = await serverTTS({ text: clean, lang });
-      if (data.quota_exceeded) {
-        // Gemini quota hit — fall through to device TTS below
-        await deviceSpeak(clean);
-        return;
-      }
-      await playBase64(data.audio_base64, data.mime_type || "audio/mp3");
-      return;
-    } catch (e) {
-      console.error("[TTS] speakText failed:", e?.message || e);
-      // server error — try device TTS as last resort
-      await deviceSpeak(text.replace(/\*\*/g, "").replace(/#+\s*/g, "").trim().slice(0, 700));
+  const clean = text.replace(/\*\*/g, "").replace(/#+\s*/g, "").trim().slice(0, 700);
+  try {
+    const data = await serverTTS({ text: clean, lang });
+    if (data.quota_exceeded) {
+      await deviceSpeak(clean);
       return;
     }
+    await playBase64(data.audio_base64, data.mime_type || "audio/mp3");
+  } catch (e) {
+    console.error("[TTS] speakText failed:", e?.message || e);
+    await deviceSpeak(clean);
   }
-
-  await deviceSpeak(text);
 }
 
 export async function speakEvent(event, lang = "en") {
