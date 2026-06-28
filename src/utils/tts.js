@@ -1,7 +1,7 @@
+import { Capacitor } from "@capacitor/core";
+
 const TTS_URL = "https://admin.kudiai.app/api/public/tts";
 const SECRET  = process.env.REACT_APP_EMAIL_SECRET;
-
-import { Capacitor } from "@capacitor/core";
 
 const SPEECH_LANG = {
   en: "en-NG", pidgin: "en-NG", ha: "ha", ig: "ig", yo: "yo",
