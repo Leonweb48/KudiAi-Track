@@ -2,6 +2,7 @@ import { useState } from "react";
 import { supabase } from "../utils/supabase";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import AppLogo from "../components/AppLogo";
+import { sendEmailTrigger } from "../utils/emailTrigger";
 
 /* ── Constants ─────────────────────────────────────────────────── */
 const CURRENCIES = ["Nigerian Naira (₦)", "US Dollar ($)", "British Pound (£)", "Euro (€)"];
@@ -340,18 +341,11 @@ export default function Onboarding({ session, onComplete }) {
       }
 
       // Fire welcome email for the new business user (non-blocking)
-      fetch("https://admin.kudiai.app/api/public/email-trigger", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-trigger-secret": process.env.REACT_APP_EMAIL_SECRET },
-        body: JSON.stringify({
-          event: "business_registered",
-          data: {
-            email:         session.user.email,
-            name:          fullName || session.user.user_metadata?.full_name || session.user.email.split("@")[0],
-            business_name: bizName || "",
-          },
-        }),
-      }).catch(() => null);
+      sendEmailTrigger("business_registered", {
+        email:         session.user.email,
+        name:          fullName || session.user.user_metadata?.full_name || session.user.email.split("@")[0],
+        business_name: bizName || "",
+      });
 
       onComplete();
     } catch (err) {

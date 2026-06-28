@@ -4,17 +4,9 @@ import { uid, today, fmt } from "../utils/helpers";
 import { logAudit } from "../utils/auditLog";
 import { savePendingOp, getPendingOps, getPendingCount } from "../utils/offlineDb";
 import { syncPending } from "../utils/syncManager";
+import { sendEmailTrigger } from "../utils/emailTrigger";
 
-function fireEmailTrigger(event, data) {
-  fetch("https://admin.kudiai.app/api/public/email-trigger", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-trigger-secret": process.env.REACT_APP_EMAIL_SECRET },
-    body: JSON.stringify({ event, data }),
-  })
-    .then(r => r.json())
-    .then(res => console.log("[KudiTrack Email]", event, res))
-    .catch(err => console.warn("[KudiTrack Email] fetch failed:", err));
-}
+const fireEmailTrigger = sendEmailTrigger;
 
 // ── localStorage cache ─────────────────────────────────────────────
 function saveCacheLS(key, data) {

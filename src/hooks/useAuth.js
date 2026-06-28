@@ -4,22 +4,17 @@ import { Capacitor } from "@capacitor/core";
 import { App } from "@capacitor/app";
 import { Browser } from "@capacitor/browser";
 import { fetchAndCachePlans, invalidatePlansCache, normalizeSlug, hasHigherPlanAvailable } from "../utils/plans";
+import { sendEmailTrigger } from "../utils/emailTrigger";
 
 const CACHE_KEY = "kuditrack_plan";
 const SESSION_LOGGED_KEY = "kuditrack_sess_logged";
 const WELCOME_EMAIL_KEY = "kuditrack_welcome_sent";
 
-async function fireWelcomeEmail(event, data) {
-  try {
-    const sentKey = `${WELCOME_EMAIL_KEY}_${data.email || data.name}`;
-    if (sessionStorage.getItem(sentKey)) return;
-    sessionStorage.setItem(sentKey, "1");
-    await fetch("https://admin.kudiai.app/api/public/email-trigger", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-trigger-secret": process.env.REACT_APP_EMAIL_SECRET },
-      body: JSON.stringify({ event, data }),
-    });
-  } catch { /* non-critical */ }
+function fireWelcomeEmail(event, data) {
+  const sentKey = `${WELCOME_EMAIL_KEY}_${data.email || data.name}`;
+  if (sessionStorage.getItem(sentKey)) return;
+  sessionStorage.setItem(sentKey, "1");
+  sendEmailTrigger(event, data);
 }
 
 async function logPlatformSession(supabaseClient, userId, userType, username, email) {

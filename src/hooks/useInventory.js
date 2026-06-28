@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../utils/supabase";
 import { uid } from "../utils/helpers";
+import { sendEmailTrigger } from "../utils/emailTrigger";
 
 export function useInventory(userId, staffId = null, onNotify = null, branchId = null) {
   const [products,  setProducts]  = useState([]);
@@ -65,22 +66,15 @@ export function useInventory(userId, staffId = null, onNotify = null, branchId =
     const { error } = await supabase.from("products").insert(prod);
     if (error) { setDbError(error.message); return false; }
     if (prod.quantity > 0) {
-      fetch("https://admin.kudiai.app/api/public/email-trigger", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-trigger-secret": process.env.REACT_APP_EMAIL_SECRET },
-        body: JSON.stringify({
-          event: "stock_entry",
-          data: {
-            owner_id: userId,
-            staff_id: staffId || null,
-            branch_id: effectiveBranch,
-            product_name: prod.product_name,
-            quantity: prod.quantity,
-            category: prod.category || null,
-            entry_type: "new_product",
-          },
-        }),
-      }).catch(() => null);
+      sendEmailTrigger("stock_entry", {
+        owner_id: userId,
+        staff_id: staffId || null,
+        branch_id: effectiveBranch,
+        product_name: prod.product_name,
+        quantity: prod.quantity,
+        category: prod.category || null,
+        entry_type: "new_product",
+      });
     }
     setProducts(prev => [...prev, prod].sort((a, b) => a.product_name.localeCompare(b.product_name)));
     return true;
@@ -147,22 +141,15 @@ export function useInventory(userId, staffId = null, onNotify = null, branchId =
     if (me || pe) { setDbError((me || pe).message); return false; }
 
     if (type === "restock") {
-      fetch("https://admin.kudiai.app/api/public/email-trigger", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-trigger-secret": process.env.REACT_APP_EMAIL_SECRET },
-        body: JSON.stringify({
-          event: "stock_entry",
-          data: {
-            owner_id: userId,
-            staff_id: staffId || null,
-            branch_id: branchId || null,
-            product_name: product.product_name,
-            quantity: Math.abs(inputQty),
-            category: product.category || null,
-            entry_type: "restock",
-          },
-        }),
-      }).catch(() => null);
+      sendEmailTrigger("stock_entry", {
+        owner_id: userId,
+        staff_id: staffId || null,
+        branch_id: branchId || null,
+        product_name: product.product_name,
+        quantity: Math.abs(inputQty),
+        category: product.category || null,
+        entry_type: "restock",
+      });
     }
 
     setMovements(prev => [mov, ...prev]);

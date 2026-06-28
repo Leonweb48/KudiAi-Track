@@ -10,6 +10,7 @@ import AIChatWidget from "../components/AIChatWidget";
 import { buildCoopMemberContext } from "../utils/buildContext";
 import { CoopSavingReceipt, CoopWithdrawalRequestReceipt } from "../components/shared/Receipt";
 import { CoopNotificationBell, useChatUnread, ChatToast } from "../components/shared/CoopNotifications";
+import { sendEmailTrigger } from "../utils/emailTrigger";
 
 const coopFn = async (action, body = {}) => {
   const r = await supabase.functions.invoke("coop-portal", { body: { action, ...body } });
@@ -69,14 +70,9 @@ export function CoopMemberFirstLogin({ member }) {
     if (err) { setError(err.message); setSaving(false); return; }
     // Fire welcome email now — member has completed full setup and is about to land on portal
     const memberEmail = member?.email || (await supabase.auth.getUser()).data?.user?.email || "";
-    fetch("https://admin.kudiai.app/api/public/email-trigger", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-trigger-secret": process.env.REACT_APP_EMAIL_SECRET },
-      body: JSON.stringify({
-        event: "org_member_first_login",
-        data: { name: member?.full_name || "", email: memberEmail, org_name: member?.org?.name || member?.organizations?.name || "" },
-      }),
-    }).catch(() => null);
+    sendEmailTrigger("org_member_first_login", {
+      name: member?.full_name || "", email: memberEmail, org_name: member?.org?.name || member?.organizations?.name || "",
+    });
     setSuccess(true);
     // onAuthStateChange fires → must_change_password: false → org_member status → CoopMemberPortal
   };

@@ -12,6 +12,7 @@ import { canDo, featureLimit, upgradeLabel, planRequiredLabel, planAvailableText
 import { fmt, today } from "../utils/helpers";
 import { useT } from "../contexts/LanguageContext";
 import { getLang, speakConfirmation } from "../utils/i18n";
+import { sendEmailTrigger } from "../utils/emailTrigger";
 
 const BLANK = {
   full_name: "", contribution_frequency: "daily", contribution_amount: "",
@@ -706,24 +707,17 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
       // Rule: always notify business owner + ajo client when withdrawal is approved
       // Emails resolved server-side from IDs to guarantee fresh delivery
-      fetch("https://admin.kudiai.app/api/public/email-trigger", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-trigger-secret": process.env.REACT_APP_EMAIL_SECRET },
-        body: JSON.stringify({
-          event: "ajo_withdrawal_approved",
-          data: {
-            client_id:     req.aso_client_id,
-            owner_id:      req.owner_id,
-            business_name: profile?.business_name || "",
-            amount:        req.amount,
-            fee_type:      req.fee_type,
-            fee_amount:    req.fee_amount,
-            net_amount:    req.net_amount,
-            balance_after: newBalance,
-            date:          new Date().toLocaleDateString("en-NG"),
-          },
-        }),
-      }).catch(() => null);
+      sendEmailTrigger("ajo_withdrawal_approved", {
+        client_id:     req.aso_client_id,
+        owner_id:      req.owner_id,
+        business_name: profile?.business_name || "",
+        amount:        req.amount,
+        fee_type:      req.fee_type,
+        fee_amount:    req.fee_amount,
+        net_amount:    req.net_amount,
+        balance_after: newBalance,
+        date:          new Date().toLocaleDateString("en-NG"),
+      });
 
       reloadWithdrawalRequests();
     } catch (e) {
@@ -740,22 +734,15 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         .update({ status: "rejected", approved_at: new Date().toISOString() })
         .eq("id", req.id);
       const cl = req.aso_clients || {};
-      fetch("https://admin.kudiai.app/api/public/email-trigger", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-trigger-secret": process.env.REACT_APP_EMAIL_SECRET },
-        body: JSON.stringify({
-          event: "ajo_withdrawal_rejected",
-          data: {
-            client_id:     req.aso_client_id,
-            owner_id:      req.owner_id,
-            client_name:   cl.full_name || "",
-            business_name: profile?.business_name || "",
-            amount:        req.amount || 0,
-            group_name:    req.group_name || "",
-            date:          new Date().toLocaleDateString("en-NG"),
-          },
-        }),
-      }).catch(() => null);
+      sendEmailTrigger("ajo_withdrawal_rejected", {
+        client_id:     req.aso_client_id,
+        owner_id:      req.owner_id,
+        client_name:   cl.full_name || "",
+        business_name: profile?.business_name || "",
+        amount:        req.amount || 0,
+        group_name:    req.group_name || "",
+        date:          new Date().toLocaleDateString("en-NG"),
+      });
       reloadWithdrawalRequests();
     } catch (e) {
       console.error("Reject failed:", e);

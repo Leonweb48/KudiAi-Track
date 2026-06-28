@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Capacitor } from "@capacitor/core";
 
 /* ── helpers ─────────────────────────────────────────────────────── */
 function timeAgo(ts) {
@@ -72,8 +73,9 @@ function SettingsView({ settings, updateSetting, requestPush, speak, onBack, all
     else setPushStatus(null);
   };
 
-  const pushSupported = "Notification" in window;
-  const pushDenied    = pushSupported && Notification.permission === "denied";
+  // On native (Capacitor) always treat push as supported — we use LocalNotifications, not browser API
+  const pushSupported = Capacitor.isNativePlatform() || "Notification" in window;
+  const pushDenied    = !Capacitor.isNativePlatform() && pushSupported && Notification.permission === "denied";
 
   const ALL_TYPE_SETTINGS = [
     { key: "sales",    label: "Sales & Expenses",  icon: "💰", desc: "Every recorded sale and expense" },
@@ -119,9 +121,9 @@ function SettingsView({ settings, updateSetting, requestPush, speak, onBack, all
                 <div>
                   <p className="text-sm font-semibold text-slate-800 dark:text-white">Push Notifications</p>
                   <p className="text-xs text-slate-400 dark:text-slate-500">
-                    {!pushSupported ? "Not supported in this browser"
-                      : pushDenied ? "Blocked — enable in browser settings"
-                      : "Alerts even when the app is in background"}
+                    {!pushSupported ? "Not supported on this device"
+                      : pushDenied ? "Blocked — enable in device settings"
+                      : "Alerts even when the app is in the background"}
                   </p>
                 </div>
               </div>
@@ -133,7 +135,7 @@ function SettingsView({ settings, updateSetting, requestPush, speak, onBack, all
             </div>
             {pushStatus === "denied" && (
               <p className="text-xs text-red-500 px-4 pb-3">
-                Permission denied. Go to browser settings to allow notifications.
+                Permission denied. Go to device Settings → Apps → KudiAI Track → Notifications to enable.
               </p>
             )}
           </div>
