@@ -240,7 +240,10 @@ export default function Auth() {
 
   // Listen for auth errors dispatched by useAuth while this component is already mounted
   useEffect(() => {
-    const handler = (e) => setError(e.detail || "Login failed. Please try again.");
+    const handler = (e) => {
+      setError(e.detail || "Login failed. Please try again.");
+      setLoading(false); // Reset so user can retry after a routing error
+    };
     window.addEventListener("kuditrack_auth_error", handler);
     return () => window.removeEventListener("kuditrack_auth_error", handler);
   }, []);

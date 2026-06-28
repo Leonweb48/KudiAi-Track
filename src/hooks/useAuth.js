@@ -516,7 +516,7 @@ export function useAuth() {
       window.dispatchEvent(new CustomEvent("kuditrack_auth_error", {
         detail: isNetErr
           ? "Network error. Check your connection and try signing in again."
-          : "Sign-in error. Please try again.",
+          : `Sign-in error: ${err?.message || "unknown"}`,
       }));
       setStatus("unauthenticated");
     }
