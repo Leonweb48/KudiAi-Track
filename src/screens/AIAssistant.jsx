@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useLanguage } from "../contexts/LanguageContext";
 import { buildContext } from "../utils/buildContext";
 import { askGemini } from "../utils/gemini";
-import { speakText, cancelTTS } from "../utils/tts";
+import { speakText } from "../utils/tts";
 
 const SPEECH_LANG = { en: "en-NG", pidgin: "en-NG", ha: "ha-NG", ig: "ig-NG", yo: "yo-NG" };
 
