@@ -22,7 +22,7 @@ function playBase64(base64, mimeType) {
     const audio = new Audio(`data:${mimeType};base64,${base64}`);
     _current = audio;
     audio.onended  = () => { _current = null; resolve(); };
-    audio.onerror  = () => { _current = null; reject(new Error("audio decode error")); };
+    audio.onerror  = (e) => { _current = null; reject(new Error(`audio decode error: ${e?.message || e}`)); };
     audio.play().catch((e) => { _current = null; reject(e); });
   });
 }
@@ -34,14 +34,16 @@ async function serverTTS(payload) {
   };
 
   if (Capacitor.isNativePlatform()) {
+    console.log("[TTS] native → CapacitorHttp.post", payload);
     const r = await CapacitorHttp.post({
       url:         TTS_URL,
       headers:     ttsHeaders,
       data:        JSON.stringify(payload),
       readTimeout: 60000,
     });
-    if (r.status !== 200) throw new Error(`TTS HTTP ${r.status}`);
-    if (!r.data?.audio_base64) throw new Error("No audio returned");
+    console.log("[TTS] response status:", r.status, "has audio:", !!r.data?.audio_base64);
+    if (r.status !== 200) throw new Error(`TTS HTTP ${r.status}: ${JSON.stringify(r.data)}`);
+    if (!r.data?.audio_base64) throw new Error(`No audio returned. data keys: ${Object.keys(r.data || {}).join(",")}`);
     return r.data;
   }
 
@@ -73,7 +75,8 @@ export async function speakText(text, lang = "en") {
       const data  = await serverTTS({ text: clean, lang });
       await playBase64(data.audio_base64, data.mime_type || "audio/mp3");
       return;
-    } catch {
+    } catch (e) {
+      console.error("[TTS] speakText failed:", e?.message || e);
       // fall through to speechSynthesis
     }
   }
@@ -92,7 +95,7 @@ export async function speakEvent(event, lang = "en") {
   try {
     const data = await serverTTS({ event, lang });
     await playBase64(data.audio_base64, data.mime_type || "audio/mp3");
-  } catch {
-    // non-critical
+  } catch (e) {
+    console.error("[TTS] speakEvent failed:", e?.message || e);
   }
 }
