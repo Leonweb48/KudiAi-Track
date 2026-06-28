@@ -53,6 +53,7 @@
   },
   "devDependencies": {
     "sharp": "^0.35.2",
-    "workbox-build": "^7.4.1"
+    "workbox-build": "^7.4.1",
+    "yaml": "^2.9.0"
   }
 }
