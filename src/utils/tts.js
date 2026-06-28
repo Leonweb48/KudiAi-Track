@@ -3,10 +3,6 @@ import { Capacitor, CapacitorHttp } from "@capacitor/core";
 const TTS_URL = "https://admin.kudiai.app/api/public/tts";
 const SECRET  = process.env.REACT_APP_EMAIL_SECRET;
 
-const SPEECH_LANG = {
-  en: "en-NG", pidgin: "en-NG", ha: "ha", ig: "ig", yo: "yo",
-};
-
 let _current = null;
 
 export function cancelTTS() {
@@ -27,6 +23,29 @@ function playBase64(base64, mimeType) {
   });
 }
 
+// Device TTS — uses Android/iOS system voice. Works even when Gemini quota is hit.
+// Does NOT set utter.lang to uncommon codes like "en-NG" — most Android devices
+// only have "en-US" or "en-GB" installed; setting an unsupported code causes silence.
+function deviceSpeak(text) {
+  return new Promise((resolve) => {
+    if (!("speechSynthesis" in window)) { resolve(); return; }
+    window.speechSynthesis.cancel();
+    const utter = new SpeechSynthesisUtterance(text.replace(/\*\*/g, "").replace(/#+\s*/g, ""));
+    utter.rate  = 0.88;
+    utter.pitch = 1.05;
+    utter.volume = 1.0;
+    // Pick the best available English voice; fall through to system default
+    const voices = window.speechSynthesis.getVoices();
+    const pick = voices.find(v => v.lang.startsWith("en-")) || voices[0];
+    if (pick) utter.voice = pick;
+    utter.onend   = () => resolve();
+    utter.onerror = () => resolve();
+    window.speechSynthesis.speak(utter);
+    // Safety: resolve after 30s regardless
+    setTimeout(resolve, 30000);
+  });
+}
+
 async function serverTTS(payload) {
   const ttsHeaders = {
     "Content-Type":     "application/json",
@@ -41,9 +60,11 @@ async function serverTTS(payload) {
       data:        JSON.stringify(payload),
       readTimeout: 60000,
     });
-    console.log("[TTS] response status:", r.status, "has audio:", !!r.data?.audio_base64);
+    console.log("[TTS] response status:", r.status, "quota_exceeded:", !!r.data?.quota_exceeded, "has audio:", !!r.data?.audio_base64);
     if (r.status !== 200) throw new Error(`TTS HTTP ${r.status}: ${JSON.stringify(r.data)}`);
-    if (!r.data?.audio_base64) throw new Error(`No audio returned. data keys: ${Object.keys(r.data || {}).join(",")}`);
+    // quota_exceeded → signal caller to use device TTS
+    if (r.data?.quota_exceeded) return { quota_exceeded: true };
+    if (!r.data?.audio_base64) throw new Error(`No audio. keys: ${Object.keys(r.data || {}).join(",")}`);
     return r.data;
   }
 
@@ -58,6 +79,7 @@ async function serverTTS(payload) {
     });
     if (res.status !== 200) throw new Error(`TTS HTTP ${res.status}`);
     const data = await res.json();
+    if (data.quota_exceeded) return { quota_exceeded: true };
     if (!data.audio_base64) throw new Error("No audio returned");
     return data;
   } finally {
@@ -73,20 +95,22 @@ export async function speakText(text, lang = "en") {
     try {
       const clean = text.replace(/\*\*/g, "").replace(/#+\s*/g, "").trim().slice(0, 700);
       const data  = await serverTTS({ text: clean, lang });
+      if (data.quota_exceeded) {
+        // Gemini quota hit — fall through to device TTS below
+        await deviceSpeak(clean);
+        return;
+      }
       await playBase64(data.audio_base64, data.mime_type || "audio/mp3");
       return;
     } catch (e) {
       console.error("[TTS] speakText failed:", e?.message || e);
-      // fall through to speechSynthesis
+      // server error — try device TTS as last resort
+      await deviceSpeak(text.replace(/\*\*/g, "").replace(/#+\s*/g, "").trim().slice(0, 700));
+      return;
     }
   }
 
-  if (!("speechSynthesis" in window)) return;
-  const utter = new SpeechSynthesisUtterance(text.replace(/\*\*/g, ""));
-  utter.lang  = SPEECH_LANG[lang] || "en-NG";
-  utter.rate  = 0.92;
-  utter.pitch = 1.0;
-  window.speechSynthesis.speak(utter);
+  await deviceSpeak(text);
 }
 
 export async function speakEvent(event, lang = "en") {
@@ -94,6 +118,10 @@ export async function speakEvent(event, lang = "en") {
   cancelTTS();
   try {
     const data = await serverTTS({ event, lang });
+    if (data.quota_exceeded) {
+      await deviceSpeak(event.replace(/([A-Z])/g, " $1").trim());
+      return;
+    }
     await playBase64(data.audio_base64, data.mime_type || "audio/mp3");
   } catch (e) {
     console.error("[TTS] speakEvent failed:", e?.message || e);
