@@ -1,0 +1,30 @@
+name: Deploy OTA Update to Capgo
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build React app
+        env:
+          REACT_APP_SUPABASE_URL: ${{ secrets.REACT_APP_SUPABASE_URL }}
+          REACT_APP_SUPABASE_ANON_KEY: ${{ secrets.REACT_APP_SUPABASE_ANON_KEY }}
+          REACT_APP_PAYSTACK_PUBLIC_KEY: ${{ secrets.REACT_APP_PAYSTACK_PUBLIC_KEY }}
+          REACT_APP_GEMINI_API_KEY: ${{ secrets.REACT_APP_GEMINI_API_KEY }}
+        run: npm run build
+
+      - name: Upload bundle to Capgo
+        run: npx @capgo/cli@latest bundle upload -a ${{ secrets.CAPGO_API_KEY }} -c production
