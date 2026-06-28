@@ -1489,12 +1489,10 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     const p = new URLSearchParams(window.location.search);
     const ref = p.get("bill_ref") || p.get("trxref") || p.get("reference");
     if (ref) return null; // pending — will be resolved by useEffect + fulfillAfterPayment
-    // No URL ref: check for orphaned pending entries (user cancelled without redirect)
+    // Orphaned entries (no URL params) are handled by the mount useEffect below —
+    // we attempt Paystack verification first before showing "disrupted".
     const orphaned = Object.keys(localStorage).filter(k => k.startsWith(BILL_PENDING_PREFIX));
-    if (orphaned.length > 0) {
-      orphaned.forEach(k => localStorage.removeItem(k));
-      return { ok: false, disrupted: true, detail: "Your payment was not completed. Please try again.", psRef: "" };
-    }
+    if (orphaned.length > 0) return null;
     // Restore last successful bill result so it reappears when user navigates back.
     // sessionStorage auto-clears on tab close / new login — prevents stale receipts.
     try {
@@ -1590,16 +1588,32 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       });
   }, [userEmailCB]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Handle return from Paystack redirect — fulfillment runs after first render
+  // Handle return from Paystack redirect — fulfillment runs after first render.
+  // Also handles orphaned pending entries: tries Paystack verification before showing disrupted.
+  // This covers: intent:// redirect blocked by Chrome CCT, app killed while CCT was open,
+  // or OPay/external payment apps returning to the native app directly.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const ref = params.get("bill_ref") || params.get("trxref") || params.get("reference");
-    if (!ref) return; // orphaned / no-redirect case already handled by initial state
 
-    window.history.replaceState({}, "", window.location.pathname);
-    const stored = localStorage.getItem(BILL_PENDING_PREFIX + ref);
-    if (!stored) { setSaving(false); return; }
-    fulfillAfterPayment(ref, JSON.parse(stored));
+    if (ref) {
+      window.history.replaceState({}, "", window.location.pathname);
+      const stored = localStorage.getItem(BILL_PENDING_PREFIX + ref);
+      if (!stored) { setSaving(false); return; }
+      fulfillAfterPayment(ref, JSON.parse(stored));
+      return;
+    }
+
+    // No URL params — check for orphaned pending entries and try to verify
+    const orphanedKeys = Object.keys(localStorage).filter(k => k.startsWith(BILL_PENDING_PREFIX));
+    if (orphanedKeys.length === 0) return;
+    const orphanKey = orphanedKeys[0];
+    const orphanRef = orphanKey.replace(BILL_PENDING_PREFIX, "");
+    const orphanStored = localStorage.getItem(orphanKey);
+    if (orphanStored) {
+      setSaving(true);
+      fulfillAfterPayment(orphanRef, JSON.parse(orphanStored));
+    }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Detect cancellation via bfcache restore (Android back button) or in-app browser close
@@ -1660,25 +1674,25 @@ export default function BillPayments({ store, plan, session = null, staffName = 
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Native-only: when Chrome Custom Tabs closes (browserFinished), verify payment immediately.
-  // This fires after deep link redirect (payment-return → custom scheme) closes the tab,
-  // OR if the user presses back without completing payment.
+  // Does NOT require savingRef to be true — the native app may have been killed and restarted
+  // while the CCT was open, resetting saving to false while the pending entry stays in localStorage.
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
     let listener;
     Browser.addListener("browserFinished", () => {
-      if (!savingRef.current) return; // no payment in progress
-      // Give paymentCallback (deep link) 1s to fire first; if it handled it, savingRef will be false
+      // Give paymentCallback (deep link) 1.5s to fire first and claim the pending entry
       setTimeout(() => {
-        if (!savingRef.current) return;
         const keys = Object.keys(localStorage).filter(k => k.startsWith(BILL_PENDING_PREFIX));
-        if (keys.length === 0) return;
+        if (keys.length === 0) return; // no payment was pending (or already fulfilled)
+        if (savingRef.current) return; // paymentCallback or fulfillAfterPayment already running
         const key    = keys[0];
         const ref    = key.replace(BILL_PENDING_PREFIX, "");
         const stored = localStorage.getItem(key);
         if (stored && fulfillAfterPaymentRef.current) {
+          setSaving(true);
           fulfillAfterPaymentRef.current(ref, JSON.parse(stored));
         }
-      }, 1000);
+      }, 1500);
     }).then((l) => { listener = l; });
     return () => listener?.remove();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps

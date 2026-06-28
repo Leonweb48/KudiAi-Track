@@ -35,6 +35,8 @@ import CoopList              from "./screens/CoopList";
 import CoopDashboard         from "./screens/CoopDashboard";
 import CoopMemberPortal, { CoopMemberFirstLogin } from "./screens/CoopMemberPortal";
 import PaymentReturn         from "./screens/PaymentReturn";
+import { Browser }           from "@capacitor/browser";
+import { Capacitor }         from "@capacitor/core";
 import OrgPortal             from "./screens/OrgPortal";
 import OrgFirstLogin         from "./screens/OrgFirstLogin";
 import OrgMemberOtpVerify   from "./screens/OrgMemberOtpVerify";
@@ -176,6 +178,27 @@ export default function App() {
       loyalty.awardByName(txnData.customer_name, parseFloat(txnData.amount) || 0);
     }
   };
+
+  // Navigate to /bills when deep-link payment callback fires.
+  // Needed when BillPayments isn't the active screen at the time the CCT fires the intent.
+  useEffect(() => {
+    const handler = () => navigate("/bills");
+    window.addEventListener("paymentCallback", handler);
+    return () => window.removeEventListener("paymentCallback", handler);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Navigate to /bills when CCT closes (browserFinished) and a payment is pending.
+  // Covers the case where Chrome CCT blocks the intent:// auto-redirect and the user
+  // closes the tab manually, or where OPay/external apps cause the CCT to close early.
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    let listener;
+    Browser.addListener("browserFinished", () => {
+      const hasPending = Object.keys(localStorage).some(k => k.startsWith("ck_bill_pending_"));
+      if (hasPending) navigate("/bills");
+    }).then(l => { listener = l; });
+    return () => { listener?.remove(); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const triggerQuickAction = (targetTab, type = null) => {
     setTab(targetTab);

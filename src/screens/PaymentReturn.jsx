@@ -5,21 +5,19 @@ const APP_SCHEME = "com.amayatechnologies.kuditrack";
 /**
  * Landing page deployed on Vercel at /payment-return.
  * Paystack redirects here after a payment (native flow).
- * This page immediately forwards all URL params to the app's deep-link scheme,
- * which Android intercepts and hands back to our Capacitor WebView via appUrlOpen.
+ * Attempts auto-redirect via intent:// URI; falls back to a tap button
+ * because Chrome CCT blocks programmatic intent navigation without a user gesture.
  */
 export default function PaymentReturn() {
   const search = window.location.search;
+  const intentUrl =
+    `intent://payment-callback${search}` +
+    `#Intent;scheme=${APP_SCHEME};package=com.amayatechnologies.kuditrack;end;`;
 
   useEffect(() => {
-    // Chrome 86+ blocks window.location.replace("custom-scheme://...") inside Chrome Custom Tabs.
-    // The intent:// URI format is the correct way to hand off from CCT to an Android app.
-    // Chrome intercepts it, fires the Android intent, and the app receives it via appUrlOpen.
-    const intentUrl =
-      `intent://payment-callback${search}` +
-      `#Intent;scheme=${APP_SCHEME};package=com.amayatechnologies.kuditrack;end;`;
-    window.location.replace(intentUrl);
-  }, [search]);
+    // Attempt auto-redirect — works on some Chrome versions even without user gesture
+    window.location.href = intentUrl;
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div style={{
@@ -40,12 +38,22 @@ export default function PaymentReturn() {
       <h2 style={{ fontSize: 22, fontWeight: 700, color: "#1B2A5E", margin: "0 0 8px" }}>
         Payment Complete
       </h2>
-      <p style={{ fontSize: 14, color: "#64748b", maxWidth: 280, lineHeight: 1.5, margin: 0 }}>
-        Returning to KudiAI Track to confirm your payment…
+      <p style={{ fontSize: 14, color: "#64748b", maxWidth: 280, lineHeight: 1.5, margin: "0 0 28px" }}>
+        Your payment was successful. Tap the button below to return to KudiAI Track and receive your service.
       </p>
-      <p style={{ fontSize: 12, color: "#94a3b8", marginTop: 16 }}>
-        You can close this tab if it doesn't close automatically.
-      </p>
+      <a
+        href={intentUrl}
+        style={{
+          display: "inline-block",
+          background: "linear-gradient(135deg, #4f46e5, #1B2A5E)",
+          color: "#fff", fontWeight: 700, fontSize: 16,
+          padding: "14px 32px", borderRadius: 12,
+          textDecoration: "none",
+          boxShadow: "0 4px 16px rgba(79,70,229,0.3)",
+        }}
+      >
+        Return to KudiAI Track →
+      </a>
     </div>
   );
 }
