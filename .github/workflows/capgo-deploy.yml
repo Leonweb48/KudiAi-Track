@@ -26,5 +26,41 @@ jobs:
           REACT_APP_PAYSTACK_PUBLIC_KEY: ${{ secrets.REACT_APP_PAYSTACK_PUBLIC_KEY }}
         run: npm run build
 
+      - name: Ensure APK deep-link is in Supabase redirect allowlist
+        run: |
+          node -e "
+          const https = require('https');
+          const DEEP_LINK = 'com.amayatechnologies.kuditrack://login-callback';
+          const token = process.env.SUPABASE_ACCESS_TOKEN;
+          const project = process.env.SUPABASE_PROJECT_ID;
+          function req(method, path, body) {
+            return new Promise((resolve, reject) => {
+              const opts = {
+                hostname: 'api.supabase.com',
+                path, method,
+                headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }
+              };
+              const r = https.request(opts, res => {
+                let d = ''; res.on('data', c => d += c); res.on('end', () => resolve(JSON.parse(d)));
+              });
+              r.on('error', reject);
+              if (body) r.write(JSON.stringify(body));
+              r.end();
+            });
+          }
+          async function main() {
+            const cfg = await req('GET', '/v1/projects/' + project + '/config/auth');
+            const urls = Array.isArray(cfg.additional_redirect_urls) ? cfg.additional_redirect_urls : [];
+            if (urls.includes(DEEP_LINK)) { console.log('Redirect URL already set'); return; }
+            urls.push(DEEP_LINK);
+            await req('PATCH', '/v1/projects/' + project + '/config/auth', { additional_redirect_urls: urls });
+            console.log('Added deep-link to Supabase redirect allowlist');
+          }
+          main().catch(e => console.error('Warning (non-fatal):', e.message));
+          "
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+
       - name: Upload bundle to Capgo
         run: npx @capgo/cli@latest bundle upload -a ${{ secrets.CAPGO_API_KEY }} -c production --bundle 1.0.${{ github.run_number }}

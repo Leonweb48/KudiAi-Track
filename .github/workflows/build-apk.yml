@@ -65,8 +65,8 @@ jobs:
             echo '</manifest>'
           } > android/capacitor-cordova-android-plugins/src/main/AndroidManifest.xml
 
-          echo '{"appId":"com.amayatechnologies.kuditrack","appName":"KudiAI Track","webDir":"build","server":{"androidScheme":"https"},"android":{"allowMixedContent":true}}' > android/app/src/main/assets/capacitor.config.json
-          echo '[{"pkg":"@capacitor/app","classpath":"com.capacitorjs.plugins.app.AppPlugin"},{"pkg":"@capacitor/browser","classpath":"com.capacitorjs.plugins.browser.BrowserPlugin"},{"pkg":"@capacitor/camera","classpath":"com.capacitorjs.plugins.camera.CameraPlugin"},{"pkg":"@capacitor/filesystem","classpath":"com.capacitorjs.plugins.filesystem.FilesystemPlugin"},{"pkg":"@capacitor/local-notifications","classpath":"com.capacitorjs.plugins.localnotifications.LocalNotificationsPlugin"},{"pkg":"@capacitor/share","classpath":"com.capacitorjs.plugins.share.SharePlugin"}]' > android/app/src/main/assets/capacitor.plugins.json
+          echo '{"appId":"com.amayatechnologies.kuditrack","appName":"KudiAI Track","webDir":"build","server":{"androidScheme":"https"},"android":{"allowMixedContent":true},"plugins":{"CapacitorUpdater":{"autoUpdate":true}}}' > android/app/src/main/assets/capacitor.config.json
+          echo '[{"pkg":"@capacitor/app","classpath":"com.capacitorjs.plugins.app.AppPlugin"},{"pkg":"@capacitor/browser","classpath":"com.capacitorjs.plugins.browser.BrowserPlugin"},{"pkg":"@capacitor/camera","classpath":"com.capacitorjs.plugins.camera.CameraPlugin"},{"pkg":"@capacitor/filesystem","classpath":"com.capacitorjs.plugins.filesystem.FilesystemPlugin"},{"pkg":"@capacitor/local-notifications","classpath":"com.capacitorjs.plugins.localnotifications.LocalNotificationsPlugin"},{"pkg":"@capacitor/share","classpath":"com.capacitorjs.plugins.share.SharePlugin"},{"pkg":"@capgo/capacitor-updater","classpath":"ee.forgr.capacitor_updater.CapacitorUpdaterPlugin"}]' > android/app/src/main/assets/capacitor.plugins.json
 
           {
             echo '<?xml version="1.0" encoding="utf-8"?>'

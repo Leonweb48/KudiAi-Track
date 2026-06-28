@@ -9,7 +9,7 @@ import { Capacitor } from "@capacitor/core";
 
 // Tell Capgo this bundle loaded successfully — prevents auto-rollback
 if (Capacitor.isNativePlatform()) {
-  CapacitorUpdater.notifyAppReady();
+  CapacitorUpdater.notifyAppReady().catch(() => {});
 }
 
 const root = ReactDOM.createRoot(document.getElementById("root"));

@@ -255,15 +255,14 @@ export default function Auth() {
     e.preventDefault();
     clearMessages();
     setLoading(true);
+    let keepLoading = false;
     try {
       if (mode === "register" && password.length < 8) {
         setError("Password must be at least 8 characters.");
-        setLoading(false);
         return;
       }
       if (mode === "register" && password !== confirmPass) {
         setError("Passwords do not match. Please check and try again.");
-        setLoading(false);
         return;
       }
       if (mode === "login") {
@@ -277,7 +276,6 @@ export default function Auth() {
               .from("org_members").select("id").eq("email", email.trim().toLowerCase()).maybeSingle();
             if (orgMemberCheck) {
               setError("Your account needs to be verified. Please log in with the temporary password your admin gave you.");
-              setLoading(false);
               return;
             }
             const { error: otpErr } = await supabase.auth.signInWithOtp({
@@ -287,11 +285,16 @@ export default function Auth() {
             if (otpErr) throw otpErr;
             setStaffConfirm(true);
             setMode("otp");
-            setLoading(false);
             return;
           }
           throw signInErr;
         }
+        // Login succeeded — stay in loading state while useAuth routes the user.
+        // Component will unmount once status changes; if routing fails, useAuth
+        // fires kuditrack_auth_error and sets status "unauthenticated" which
+        // remounts Auth and resets loading automatically.
+        keepLoading = true;
+        return;
       } else if (mode === "register") {
         const [{ data: staffCheck }, { data: ajoCheck }] = await Promise.all([
           supabase.from("staff").select("id").eq("email", email.trim().toLowerCase()).maybeSingle(),
@@ -331,7 +334,7 @@ export default function Auth() {
     } catch (err) {
       setError(err.message);
     } finally {
-      setLoading(false);
+      if (!keepLoading) setLoading(false);
     }
   };
 
@@ -346,6 +349,9 @@ export default function Auth() {
         });
         if (error) throw error;
         await Browser.open({ url: data.url, windowName: "_self" });
+        // Keep loading — the browser is open. useAuth fires kuditrack_auth_error
+        // if the OAuth callback fails, which resets loading when Auth remounts.
+        return;
       } else {
         const { error } = await supabase.auth.signInWithOAuth({
           provider: "google",
@@ -355,7 +361,6 @@ export default function Auth() {
       }
     } catch (err) {
       setError(err.message);
-    } finally {
       setLoading(false);
     }
   };

@@ -499,6 +499,25 @@ export function useAuth() {
     setStatus("subscribing");
     } catch (err) {
       console.error("[useAuth] resolve error:", err?.message || err);
+      const isNetErr = err && (
+        err.message?.includes("Failed to fetch") ||
+        err.message?.includes("Load failed") ||
+        err.message?.includes("NetworkError") ||
+        err.message?.includes("network")
+      );
+      if (isNetErr) {
+        // Retry once after 2 s before giving up
+        await new Promise(r => setTimeout(r, 2000));
+        try {
+          const { data } = await supabase.auth.getSession();
+          if (data.session) { await resolve(data.session); return; }
+        } catch { /* fall through */ }
+      }
+      window.dispatchEvent(new CustomEvent("kuditrack_auth_error", {
+        detail: isNetErr
+          ? "Network error. Check your connection and try signing in again."
+          : "Sign-in error. Please try again.",
+      }));
       setStatus("unauthenticated");
     }
   }, []);
@@ -525,6 +544,12 @@ export function useAuth() {
             const refresh_token = params.get("refresh_token");
             if (access_token && refresh_token) {
               await supabase.auth.setSession({ access_token, refresh_token });
+            } else {
+              // Neither PKCE nor implicit tokens found — surface the error
+              console.error("[useAuth] OAuth exchange failed:", error.message);
+              window.dispatchEvent(new CustomEvent("kuditrack_auth_error", {
+                detail: "Google sign-in failed. Please try again.",
+              }));
             }
           }
         } else if (url.startsWith("com.amayatechnologies.kuditrack://payment-callback")) {
