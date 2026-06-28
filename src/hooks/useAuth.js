@@ -64,6 +64,7 @@ export function useAuth() {
   const subVerified = useRef(false);
 
   const resolve = useCallback(async (sess) => {
+    try {
     if (!sess) {
       setSession(null);
       setStatus("unauthenticated");
@@ -496,6 +497,10 @@ export function useAuth() {
 
     // Genuinely no subscription found
     setStatus("subscribing");
+    } catch (err) {
+      console.error("[useAuth] resolve error:", err?.message || err);
+      setStatus("unauthenticated");
+    }
   }, []);
 
   useEffect(() => {

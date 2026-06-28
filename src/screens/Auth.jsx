@@ -122,9 +122,9 @@ function OtpScreen({ email, onBack, onVerified, otpType = "signup" }) {
       const { error } = await supabase.auth.verifyOtp({ email, token: otp, type: otpType });
       if (error) throw error;
       onVerified();
+      // Stay loading — component unmounts when auth status changes to "onboarding"
     } catch (err) {
       setError(err.message);
-    } finally {
       setLoading(false);
     }
   };
