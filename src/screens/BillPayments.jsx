@@ -2017,6 +2017,9 @@ export default function BillPayments({ store, plan, session = null, staffName = 
           const status = vd?.data?.status || "";
           const gwResp = (vd?.data?.gateway_response || "").toLowerCase();
           const isAbandoned = status === "abandoned" || gwResp.includes("abandon") || gwResp.includes("cancel");
+          // Payment is still in progress (e.g. OPay native app opened, user not done yet).
+          // Keep saving=true and localStorage intact so visibilitychange can retry.
+          if (status === "pending") return;
           if (isAbandoned) {
             localStorage.removeItem(BILL_PENDING_PREFIX + ref);
             setSaving(false);

@@ -1,5 +1,3 @@
-import { Capacitor, CapacitorHttp } from "@capacitor/core";
-
 const CHAT_URL = "https://admin.kudiai.app/api/public/chat";
 const SECRET   = process.env.REACT_APP_EMAIL_SECRET;
 
@@ -23,7 +21,7 @@ export async function askGemini({
   history     = [],
   lang        = "en",
   onChunk,
-  timeout     = 60000,  // AI generation takes 20-30 s; 30 s was too tight
+  timeout     = 90000,  // 90 s: streaming AI can take 30-60 s end-to-end on native
   maxAttempts = 3,
 }) {
   let lastErr    = null;
@@ -32,67 +30,35 @@ export async function askGemini({
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     if (attempt > 0) await new Promise(r => setTimeout(r, attempt === 1 ? 1000 : 2000));
 
-    let rejectTimer;
-    const timerPromise = new Promise((_, reject) => {
-      rejectTimer = setTimeout(
-        () => reject(Object.assign(new Error("timeout"), { name: "AbortError" })),
-        timeout,
-      );
-    });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeout);
 
     try {
-      const text = await Promise.race([
-        (async () => {
-          const payload = { message, lang, businessContext: context, history };
-          const headers = {
-            "Content-Type":     "application/json",
-            "x-trigger-secret": SECRET || "",
-          };
+      const payload = { message, lang, businessContext: context, history };
+      const res = await fetch(CHAT_URL, {
+        method:  "POST",
+        signal:  controller.signal,
+        headers: {
+          "Content-Type":     "application/json",
+          "x-trigger-secret": SECRET || "",
+        },
+        body: JSON.stringify(payload),
+      });
 
-          if (Capacitor.isNativePlatform()) {
-            // Native HTTP bypasses WebView CORS.
-            // responseType:"text" prevents CapacitorHttp trying to JSON-parse
-            // the plain-text AI reply, which can silently return null.
-            // readTimeout must be set explicitly — OkHttp default is 10 s,
-            // far too short for Gemini to generate a response.
-            const res = await CapacitorHttp.post({
-              url:            CHAT_URL,
-              headers,
-              data:           payload,   // pass as object; Capacitor serialises to JSON
-              responseType:   "text",
-              readTimeout:    60000,
-              connectTimeout: 15000,
-            });
-            if (res.status < 200 || res.status >= 300) {
-              throw Object.assign(new Error(`HTTP ${res.status}`), { status: res.status });
-            }
-            const raw = typeof res.data === "string" ? res.data
-                      : res.data != null ? String(res.data) : "";
-            return raw;
-          }
+      clearTimeout(timer);
 
-          const res = await fetch(CHAT_URL, {
-            method: "POST",
-            headers,
-            body: JSON.stringify(payload),
-          });
-          if (!res.ok) {
-            throw Object.assign(new Error(`HTTP ${res.status}`), { status: res.status });
-          }
-          return await res.text();
-        })(),
-        timerPromise,
-      ]);
+      if (!res.ok) {
+        throw Object.assign(new Error(`HTTP ${res.status}`), { status: res.status });
+      }
 
-      clearTimeout(rejectTimer);
+      const text = await res.text();
       if (text && onChunk) onChunk(text);
       return text || "";
 
     } catch (e) {
-      clearTimeout(rejectTimer);
+      clearTimeout(timer);
       lastErr = e;
       if (e?.status) lastStatus = e.status;
-      // Don't retry on timeout, offline, or auth/rate-limit errors
       if (e?.name === "AbortError") break;
       if (typeof navigator !== "undefined" && !navigator.onLine) break;
       if (e?.status === 401 || e?.status === 403 || e?.status === 429) break;

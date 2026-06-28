@@ -65,7 +65,7 @@ jobs:
             echo '</manifest>'
           } > android/capacitor-cordova-android-plugins/src/main/AndroidManifest.xml
 
-          echo '{"appId":"com.amayatechnologies.kuditrack","appName":"KudiAI Track","webDir":"build","server":{"androidScheme":"https"},"android":{"allowMixedContent":true}}' > android/app/src/main/assets/capacitor.config.json
+          echo '{"appId":"com.amayatechnologies.kuditrack","appName":"KudiAI Track","webDir":"build","server":{"androidScheme":"https"},"android":{"allowMixedContent":true},"plugins":{"CapacitorHttp":{"enabled":true}}}' > android/app/src/main/assets/capacitor.config.json
           echo '[{"pkg":"@capacitor/app","classpath":"com.capacitorjs.plugins.app.AppPlugin"},{"pkg":"@capacitor/browser","classpath":"com.capacitorjs.plugins.browser.BrowserPlugin"},{"pkg":"@capacitor/camera","classpath":"com.capacitorjs.plugins.camera.CameraPlugin"},{"pkg":"@capacitor/filesystem","classpath":"com.capacitorjs.plugins.filesystem.FilesystemPlugin"},{"pkg":"@capacitor/local-notifications","classpath":"com.capacitorjs.plugins.localnotifications.LocalNotificationsPlugin"},{"pkg":"@capacitor/share","classpath":"com.capacitorjs.plugins.share.SharePlugin"}]' > android/app/src/main/assets/capacitor.plugins.json
 
           {

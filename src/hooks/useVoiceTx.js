@@ -1,5 +1,4 @@
 import { useState, useRef } from "react";
-import { Capacitor, CapacitorHttp } from "@capacitor/core";
 
 const VOICE_PARSE_URL  = "https://admin.kudiai.app/api/public/voice-parse";
 const TRIGGER_SECRET   = process.env.REACT_APP_EMAIL_SECRET;
@@ -32,39 +31,21 @@ function blobToBase64(blob) {
 async function sendToGemini(audioBlob, mimeType) {
   const base64 = await blobToBase64(audioBlob);
   const payload = { audio_base64: base64, mime_type: mimeType || "audio/webm" };
-  const headers = {
-    "Content-Type":     "application/json",
-    "x-trigger-secret": TRIGGER_SECRET || "",
-  };
 
+  // 120 s: audio upload + Gemini transcription + parsing can take 30-60 s.
+  // Global CapacitorHttp patching (capacitor.config.json) makes fetch() use
+  // native OkHttp on Android, bypassing WebView CORS and the 10 s default timeout.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 120000);
   let data;
-  if (Capacitor.isNativePlatform()) {
-    // readTimeout must be long — audio upload + Gemini processing can take 30-60 s.
-    // OkHttp default is 10 s which always causes a timeout.
-    const res = await CapacitorHttp.post({
-      url:            VOICE_PARSE_URL,
-      headers,
-      data:           payload,
-      readTimeout:    120000,
-      connectTimeout: 15000,
-    });
-    if (res.status < 200 || res.status >= 300) {
-      const errMsg = (typeof res.data === "object" && res.data?.error)
-        ? res.data.error
-        : (typeof res.data === "string" ? res.data : `Server error ${res.status}`);
-      throw new Error(errMsg);
-    }
-    try {
-      data = typeof res.data === "object" && res.data !== null
-        ? res.data
-        : JSON.parse(res.data);
-    } catch {
-      throw new Error("Unexpected response from voice parser");
-    }
-  } else {
+  try {
     const res = await fetch(VOICE_PARSE_URL, {
-      method: "POST",
-      headers,
+      method:  "POST",
+      signal:  controller.signal,
+      headers: {
+        "Content-Type":     "application/json",
+        "x-trigger-secret": TRIGGER_SECRET || "",
+      },
       body: JSON.stringify(payload),
     });
     if (!res.ok) {
@@ -72,6 +53,8 @@ async function sendToGemini(audioBlob, mimeType) {
       throw new Error(err.error || `Server error ${res.status}`);
     }
     data = await res.json();
+  } finally {
+    clearTimeout(timer);
   }
   const isIn  = data.transaction_type === "Cash In";
   return {
