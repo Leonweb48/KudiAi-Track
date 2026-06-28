@@ -19,12 +19,13 @@ export function cancelTTS() {
 
 // Play base64 audio returned by the TTS API
 function playBase64(base64, mimeType) {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const audio = new Audio(`data:${mimeType};base64,${base64}`);
     _current = audio;
     audio.onended  = () => { _current = null; resolve(); };
-    audio.onerror  = () => { _current = null; resolve(); };
-    audio.play().catch(() => { _current = null; resolve(); });
+    audio.onerror  = () => { _current = null; reject(new Error("audio decode error")); };
+    // Reject so caller can fall through to speechSynthesis if play is blocked
+    audio.play().catch((e) => { _current = null; reject(e); });
   });
 }
 

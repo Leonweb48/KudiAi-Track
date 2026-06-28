@@ -185,9 +185,10 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
   const [couponMsg,     setCouponMsg]     = useState(null); // { text, ok }
   const [couponLoading, setCouponLoading] = useState(false);
 
-  const saveSubRef = useRef(null);
-  const savingRef  = useRef(false);
-  savingRef.current = saving;
+  const saveSubRef      = useRef(null);
+  const savingRef       = useRef(false);
+  savingRef.current     = saving;
+  const processingRef   = useRef(null); // dedup: tracks ref currently being saved
 
   useEffect(() => {
     setLoadingPlans(true);
@@ -227,6 +228,11 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
   }, [couponCode]);
 
   const saveSub = useCallback(async (planSlug, reference, isYearly = false, couponInfo = null) => {
+    // Dedup guard — prevent double-processing the same payment reference
+    const refKey = reference || `free_${planSlug}_${Date.now()}`;
+    if (processingRef.current === refKey) return;
+    processingRef.current = refKey;
+
     setSaving(true); setError("");
     try {
       const isFree = planSlug === "kobo" || planSlug === "starter";
@@ -247,17 +253,21 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
         }
       }
 
-      // Redeem coupon after confirmed payment (non-blocking)
+      // Redeem coupon — awaited so we know if it succeeded
       if (!isFree && couponInfo?.couponCode && (couponInfo.discountAmount ?? 0) > 0) {
-        Promise.resolve(supabase.rpc("redeem_coupon", {
-          p_code:            couponInfo.couponCode,
-          p_plan_slug:       planSlug,
-          p_billing_cycle:   isYearly ? "yearly" : "monthly",
-          p_original_amount: couponInfo.originalAmount,
-          p_discount_amount: couponInfo.discountAmount,
-          p_final_amount:    couponInfo.finalAmount,
-          p_reference:       reference || "",
-        })).catch(() => null);
+        try {
+          await supabase.rpc("redeem_coupon", {
+            p_code:            couponInfo.couponCode,
+            p_plan_slug:       planSlug,
+            p_billing_cycle:   isYearly ? "yearly" : "monthly",
+            p_original_amount: couponInfo.originalAmount,
+            p_discount_amount: couponInfo.discountAmount,
+            p_final_amount:    couponInfo.finalAmount,
+            p_reference:       reference || "",
+          });
+        } catch (ce) {
+          console.warn("[Coupon] redemption failed:", ce);
+        }
       }
 
       const expiresAt = isFree
@@ -314,6 +324,8 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
     } catch (e) {
       setError(e.message || "Could not save plan. Please try again.");
       setSaving(false);
+    } finally {
+      processingRef.current = null;
     }
   }, [session, onComplete, plans]);
 
@@ -328,8 +340,10 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
     const handleDeepLink = () => {
       const pending = JSON.parse(localStorage.getItem("pendingPayment") || "null");
       if (!pending) return;
-      localStorage.removeItem("pendingPayment");
-      setPendingPayment(null);
+      // Do NOT remove pendingPayment here — saveSub removes it only on success.
+      // If saveSub fails (e.g. network drop), pendingPayment stays so the user
+      // can retry via the "Payment completed?" button.
+      setPendingPayment(null); // hide manual button while processing
       const { planId, reference, yearly: isYearly = false, couponCode: cc, originalAmount, discountAmount, finalAmount } = pending;
       saveSubRef.current(planId, reference, isYearly, cc ? { couponCode: cc, originalAmount, discountAmount, finalAmount } : null);
     };

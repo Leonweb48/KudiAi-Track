@@ -467,6 +467,17 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
           staff_id:       staffId  || "",
           staff_name:     staffName || "",
         });
+        if (updated.status === "paid") {
+          fireEmailTrigger("credit_fully_paid", {
+            owner_id:       userId,
+            business_name:  profile.business_name || "",
+            customer_name:  updated.customer_name || "",
+            customer_email: updated.email || "",
+            total_amount:   updated.total_amount,
+            staff_id:       staffId || null,
+            staff_name:     staffName || "",
+          });
+        }
       }
     }
   };

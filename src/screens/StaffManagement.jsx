@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { supabase } from "../utils/supabase";
 import { canDo, featureLimit, upgradeLabel, planRequiredLabel, planAvailableText } from "../utils/plans";
 import { useT } from "../contexts/LanguageContext";
+import { sendEmailTrigger } from "../utils/emailTrigger";
 
 function makeRoles(t) {
   return [
@@ -386,6 +387,15 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
 
       const tempPwd = loginPassword;
       await provisionLogin(staffRow, tempPwd);
+
+      // Email staff their login credentials so they don't depend on owner verbally sharing them
+      sendEmailTrigger("staff_created", {
+        owner_id:  userId,
+        name:      form.full_name,
+        email:     form.email,
+        password:  tempPwd,
+        role:      form.role || "",
+      });
 
       // Send OTP to confirm staff email — owner will enter code from staff
       let otpClient = null;
