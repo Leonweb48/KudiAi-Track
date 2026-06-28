@@ -27,4 +27,4 @@ jobs:
         run: npm run build
 
       - name: Upload bundle to Capgo
-        run: npx @capgo/cli@latest bundle upload -a ${{ secrets.CAPGO_API_KEY }} -c production
+        run: npx @capgo/cli@latest bundle upload -a ${{ secrets.CAPGO_API_KEY }} -c production --bundle 1.0.${{ github.run_number }}
