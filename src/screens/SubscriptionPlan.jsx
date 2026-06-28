@@ -6,6 +6,7 @@ import { Capacitor } from "@capacitor/core";
 import { Browser } from "@capacitor/browser";
 import { App } from "@capacitor/app";
 import { sendEmailTrigger } from "../utils/emailTrigger";
+import { openPaystackInline } from "../utils/paystackInline";
 
 const isNative = Capacitor.isNativePlatform();
 
@@ -70,7 +71,7 @@ function computeCouponDiscount(appliedCoupon, planSlug, billingCycle, chargeAmou
 
 const SUB_PENDING_PREFIX = "sub_pending_";
 
-function PaidButton({ plan, session, disabled, yearly = false, onPaymentStart, appliedCoupon, onFreeCoupon }) {
+function PaidButton({ plan, session, disabled, yearly = false, appliedCoupon, onSuccess, onCancel }) {
   const chargeAmount = yearly && plan.price_yearly > 0 ? plan.price_yearly : plan.price_monthly;
   const billingCycle = yearly ? "yearly" : "monthly";
   const { applies: couponApplies, discount: discountAmount, final: finalAmount } =
@@ -87,15 +88,15 @@ function PaidButton({ plan, session, disabled, yearly = false, onPaymentStart, a
   const handleClick = async () => {
     setBusy(true); setErr("");
 
+    const ref = `ksub${Date.now()}${Math.floor(Math.random() * 900000 + 100000)}`;
+    const couponMeta = couponApplies && appliedCoupon
+      ? { couponCode: appliedCoupon.code, originalAmount: chargeAmount, discountAmount, finalAmount }
+      : null;
+
     // 100% coupon — activate directly without Paystack
     if (finalAmount <= 0 && couponApplies && appliedCoupon) {
       setBusy(false);
-      onFreeCoupon?.(plan.slug, yearly, {
-        couponCode: appliedCoupon.code,
-        originalAmount: chargeAmount,
-        discountAmount: chargeAmount,
-        finalAmount: 0,
-      });
+      onSuccess?.(null, couponMeta);
       return;
     }
 
@@ -104,46 +105,57 @@ function PaidButton({ plan, session, disabled, yearly = false, onPaymentStart, a
       setBusy(false); return;
     }
 
-    // Alphanumeric-only reference — Paystack Live rejects hyphens in some cases
-    const ref = `ksub${Date.now()}${Math.floor(Math.random() * 900000 + 100000)}`;
-    const couponMeta = couponApplies && appliedCoupon ? {
-      couponCode: appliedCoupon.code, originalAmount: chargeAmount, discountAmount, finalAmount,
-    } : {};
-
     try {
       if (isNative) {
+        // Native: Chrome Custom Tabs → HTTPS Vercel callback → deep link back into app
         const baseUrl = supabase.supabaseUrl;
         const anonKey = supabase.supabaseKey;
         const res = await fetch(`${baseUrl}/functions/v1/initialize-payment`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${anonKey}`, "apikey": anonKey },
-          body: JSON.stringify({ email: session.user.email, amount: finalAmount * 100, reference: ref, planId: plan.slug }),
+          body: JSON.stringify({
+            email:     session.user.email,
+            amount:    finalAmount * 100,
+            reference: ref,
+            planId:    plan.slug,
+            userId:    session.user.id,
+            yearly,
+          }),
         });
         const data = await res.json();
         if (!res.ok || !data.authorization_url) throw new Error(data.error || `Server error ${res.status}`);
-        localStorage.setItem("pendingPayment", JSON.stringify({ planId: plan.slug, reference: data.reference || ref, yearly, ...couponMeta }));
+        localStorage.setItem("pendingPayment", JSON.stringify({ planId: plan.slug, reference: data.reference || ref, yearly, ...(couponMeta || {}) }));
         await Browser.open({ url: data.authorization_url });
+        // Keep busy=true — spinner stays until the deep-link paymentCallback event fires
       } else {
-        const callbackUrl = `${window.location.origin}/?sub_ref=${ref}`;
-        const customFields = [
-          { display_name: "Plan",    variable_name: "plan",          value: plan.name },
-          { display_name: "Billing", variable_name: "billing_cycle", value: billingCycle },
-        ];
-        if (couponApplies && appliedCoupon) {
-          customFields.push({ display_name: "Coupon", variable_name: "coupon_code", value: appliedCoupon.code });
-        }
-        const { data, error } = await supabase.functions.invoke("paystack", {
-          body: { action: "initialize", email: session.user.email, amount: finalAmount, reference: ref, callback_url: callbackUrl, metadata: { custom_fields: customFields } },
+        // Web: inline popup — no page redirect, no reload
+        const paidRef = await openPaystackInline({
+          email:    session.user.email,
+          amount:   finalAmount,
+          ref,
+          metadata: {
+            payment_type: "subscription",
+            plan_slug:    plan.slug,
+            user_id:      session.user.id,
+            yearly,
+            custom_fields: [
+              { display_name: "Plan",    variable_name: "plan",          value: plan.name },
+              { display_name: "Billing", variable_name: "billing_cycle", value: billingCycle },
+              ...(couponMeta ? [{ display_name: "Coupon", variable_name: "coupon_code", value: appliedCoupon.code }] : []),
+            ],
+          },
         });
-        if (error || !data?.data?.authorization_url) {
-          throw new Error(data?.message || error?.message || "Could not start payment");
-        }
-        localStorage.setItem(`${SUB_PENDING_PREFIX}${ref}`, JSON.stringify({ planId: plan.slug, yearly, ...couponMeta }));
-        onPaymentStart?.();
-        window.location.href = data.data.authorization_url;
+        // Popup confirmed — hand off to parent to call saveSub
+        onSuccess?.(paidRef, couponMeta);
+        // Keep busy=true — parent's saving overlay takes over from here
       }
     } catch (e) {
-      setErr(e.message || "Payment failed. Please try again.");
+      if (e.message === "cancelled") {
+        setErr("Payment cancelled. Please try again.");
+        onCancel?.();
+      } else {
+        setErr(e.message || "Payment failed. Please try again.");
+      }
       setBusy(false);
     }
   };
@@ -627,7 +639,15 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
                     {saving ? "Activating…" : "Start for Free"}
                   </button>
                 ) : (
-                  <PaidButton plan={plan} session={session} disabled={saving} yearly={yearly} onPaymentStart={() => setSaving(true)} appliedCoupon={appliedCoupon} onFreeCoupon={(slug, yr, ci) => saveSub(slug, null, yr, ci)} />
+                  <PaidButton
+                    plan={plan}
+                    session={session}
+                    disabled={saving}
+                    yearly={yearly}
+                    appliedCoupon={appliedCoupon}
+                    onSuccess={(ref, ci) => saveSubRef.current?.(plan.slug, ref, yearly, ci)}
+                    onCancel={() => setSaving(false)}
+                  />
                 )}
               </div>
             );

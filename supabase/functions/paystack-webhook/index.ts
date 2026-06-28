@@ -100,7 +100,14 @@ serve(async (req) => {
     payload,
   }).onConflict("reference").ignore();
 
-  // ── 4. Find the pending contribution record ────────────────────────────
+  // ── Route by payment type ────────────────────────────────────────────────
+  const paymentType = (meta.payment_type ?? "") as string;
+  if (paymentType === "subscription") {
+    await handleSubscriptionPayment(sb, meta, reference, paidAt);
+    return ok("subscription processed");
+  }
+
+  // ── 4. Find the pending contribution record (Ajo) ────────────────────────
   const { data: contrib, error: contribErr } = await sb
     .from("ajo_contributions")
     .select("id, aso_client_id, owner_id, amount, paystack_status")
@@ -225,6 +232,53 @@ async function firePaymentFailureEmail(
   } catch (e) {
     console.error("[paystack-webhook] Payment failure email failed:", e);
   }
+}
+
+async function handleSubscriptionPayment(
+  sb: ReturnType<typeof createClient>,
+  meta: Record<string, unknown>,
+  reference: string,
+  paidAt: string,
+) {
+  const userId   = meta.user_id   as string | undefined;
+  const planSlug = meta.plan_slug as string | undefined;
+  const isYearly = !!(meta.yearly);
+
+  if (!userId || !planSlug) {
+    console.warn("[paystack-webhook] subscription missing user_id or plan_slug:", meta);
+    return;
+  }
+
+  const expiresAt = new Date(
+    Date.now() + (isYearly ? 365 : 30) * 24 * 60 * 60 * 1000,
+  ).toISOString();
+
+  const { data: existing } = await sb
+    .from("subscriptions")
+    .select("id")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (existing) {
+    await sb.from("subscriptions").update({
+      plan:               planSlug,
+      status:             "active",
+      paystack_reference: reference,
+      expires_at:         expiresAt,
+      billing_cycle:      isYearly ? "yearly" : "monthly",
+    }).eq("id", existing.id);
+  } else {
+    await sb.from("subscriptions").insert({
+      user_id:            userId,
+      plan:               planSlug,
+      status:             "active",
+      paystack_reference: reference,
+      expires_at:         expiresAt,
+      billing_cycle:      isYearly ? "yearly" : "monthly",
+    });
+  }
+
+  console.log(`[paystack-webhook] subscription activated: user=${userId} plan=${planSlug} ref=${reference}`);
 }
 
 async function fireContributionEmail(

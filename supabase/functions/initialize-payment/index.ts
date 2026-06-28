@@ -12,7 +12,7 @@ serve(async (req) => {
   }
 
   try {
-    const { email, amount, reference, planId } = await req.json();
+    const { email, amount, reference, planId, userId, yearly } = await req.json();
 
     const res = await fetch(
       "https://api.paystack.co/transaction/initialize",
@@ -26,16 +26,17 @@ serve(async (req) => {
           email,
           amount,
           reference,
-          callback_url:
-            "com.amayatechnologies.kuditrack://payment-callback",
+          // Must be an HTTPS URL so Paystack can redirect to it after payment.
+          // The Vercel page then deep-links back into the native app.
+          callback_url: "https://kuditrack-kappa.vercel.app/payment-return",
           metadata: {
-            planId,
+            payment_type: "subscription",
+            plan_slug:    planId,
+            user_id:      userId || null,
+            yearly:       !!yearly,
             custom_fields: [
-              {
-                display_name: "Plan",
-                variable_name: "plan",
-                value: planId,
-              },
+              { display_name: "Plan",    variable_name: "plan",          value: planId },
+              { display_name: "Billing", variable_name: "billing_cycle", value: yearly ? "yearly" : "monthly" },
             ],
           },
         }),

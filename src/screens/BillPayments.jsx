@@ -13,6 +13,7 @@ import LoanApplicationModal from "../components/LoanApplicationModal";
 import TransactionPinModal  from "../components/TransactionPinModal";
 import { LS_PIN_HASH }      from "../hooks/useBiometricLock";
 import { buildCallbackUrl, openPaystackCheckout } from "../utils/paystackCheckout";
+import { openPaystackInline } from "../utils/paystackInline";
 import { Browser } from "@capacitor/browser";
 import { Capacitor } from "@capacitor/core";
 import { savePdf } from "../utils/pdfSave";
@@ -1941,48 +1942,58 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
       // Store bill details so we can fulfill after payment return
       const ref = `KDT-BILL-${Date.now()}`;
-      localStorage.setItem(BILL_PENDING_PREFIX + ref, JSON.stringify({
+      const pending = {
         cat: selectedCat, form: { ...form }, verifyName, meterAddress,
         paidAmount: finalAmount, baseAmount: chargeAmount, pointsDiscount, cashbackUsed: cashbackDiscount,
         couponCode: billAppliedCouponRef.current?.code || null,
         couponDiscount,
         couponOriginalAmount: afterDiscounts,
         isFree: finalAmount === 0,
-      }));
+      };
+      localStorage.setItem(BILL_PENDING_PREFIX + ref, JSON.stringify(pending));
 
       // 100% coupon — skip Paystack entirely, go straight to fulfillment
       if (finalAmount === 0) {
-        window.location.href = `${window.location.origin}${window.location.pathname}?bill_ref=${ref}`;
+        await fulfillAfterPaymentRef.current(ref, pending);
         return;
       }
 
       // Initialize Paystack — prefer owner profile email, fall back to staff email
       const email = profile?.email || staffEmail || "";
       const catLabel = CATS.find(c => c.id === selectedCat)?.label || selectedCat;
-      const callbackUrl = buildCallbackUrl(`${window.location.origin}${window.location.pathname}`, { bill_ref: ref });
+      const billMeta = {
+        payment_type: "bill",
+        bill_type:    selectedCat,
+        bill_label:   catLabel,
+        customer:     form.phone || form.meterNo || form.smartcard || form.customerId || form.accountNo || "",
+      };
 
-      const { data: ps } = await supabase.functions.invoke("paystack", {
-        body: {
-          action: "initialize",
-          email,
-          amount: finalAmount,
-          reference: ref,
-          callback_url: callbackUrl,
-          metadata: {
-            bill_type: selectedCat,
-            bill_label: catLabel,
-            customer: form.phone || form.meterNo || form.smartcard || form.customerId || form.accountNo || "",
-          },
-        },
-      });
-
-      if (ps?.error || !ps?.data?.authorization_url) {
-        localStorage.removeItem(BILL_PENDING_PREFIX + ref);
-        throw new Error(ps?.error || ps?.data?.message || "Could not initialize payment");
+      if (Capacitor.isNativePlatform()) {
+        // Native: Chrome Custom Tabs → HTTPS callback → deep link back into app
+        const callbackUrl = buildCallbackUrl(`${window.location.origin}${window.location.pathname}`, { bill_ref: ref });
+        const { data: ps } = await supabase.functions.invoke("paystack", {
+          body: { action: "initialize", email, amount: finalAmount, reference: ref, callback_url: callbackUrl, metadata: billMeta },
+        });
+        if (ps?.error || !ps?.data?.authorization_url) {
+          localStorage.removeItem(BILL_PENDING_PREFIX + ref);
+          throw new Error(ps?.error || ps?.data?.message || "Could not initialize payment");
+        }
+        await openPaystackCheckout(ps.data.authorization_url);
+      } else {
+        // Web: inline popup — no page redirect, no reload
+        try {
+          const paidRef = await openPaystackInline({ email, amount: finalAmount, ref, metadata: billMeta });
+          await fulfillAfterPaymentRef.current(paidRef || ref, pending);
+        } catch (pe) {
+          localStorage.removeItem(BILL_PENDING_PREFIX + ref);
+          if (pe.message === "cancelled") {
+            setSaving(false);
+            setError("Payment cancelled. Please try again.");
+          } else {
+            throw pe;
+          }
+        }
       }
-
-      // Open Paystack checkout (in-app browser on Android, redirect on web)
-      await openPaystackCheckout(ps.data.authorization_url);
     } catch (err) {
       setSaving(false);
       setError(err.message || "Payment failed. Please try again.");
