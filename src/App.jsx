@@ -181,8 +181,12 @@ export default function App() {
 
   // Navigate to /bills when deep-link payment callback fires.
   // Needed when BillPayments isn't the active screen at the time the CCT fires the intent.
+  // Guard: skip if already on /bills to avoid pushing a duplicate history entry, which would
+  // cause the failure overlay to persist across back-button presses (same route = no remount).
   useEffect(() => {
-    const handler = () => navigate("/bills");
+    const handler = () => {
+      if (window.location.pathname !== "/bills") navigate("/bills");
+    };
     window.addEventListener("paymentCallback", handler);
     return () => window.removeEventListener("paymentCallback", handler);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -190,12 +194,13 @@ export default function App() {
   // Navigate to /bills when CCT closes (browserFinished) and a payment is pending.
   // Covers the case where Chrome CCT blocks the intent:// auto-redirect and the user
   // closes the tab manually, or where OPay/external apps cause the CCT to close early.
+  // Guard: skip if already on /bills — BillPayments' own browserFinished listener handles it.
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
     let listener;
     Browser.addListener("browserFinished", () => {
       const hasPending = Object.keys(localStorage).some(k => k.startsWith("ck_bill_pending_"));
-      if (hasPending) navigate("/bills");
+      if (hasPending && window.location.pathname !== "/bills") navigate("/bills");
     }).then(l => { listener = l; });
     return () => { listener?.remove(); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
