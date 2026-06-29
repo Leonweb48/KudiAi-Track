@@ -434,16 +434,15 @@ function VerifyBadge({ status, name }) {
   return null;
 }
 
-function PlanGrid({ plans, selectedId, onSelect, loading, error, onRetry }) {
+function PlanGrid({ plans, selectedId, onSelect, loading, error }) {
   if (loading) return (
     <div className="grid grid-cols-3 gap-2">
       {[1,2,3,4,5,6].map(i => <div key={i} className="h-14 bg-slate-100 dark:bg-slate-700 rounded-xl animate-pulse" />)}
     </div>
   );
   if (error) return (
-    <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-3 py-3 space-y-2">
+    <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-3 py-3">
       <p className="text-xs text-red-600 dark:text-red-400 font-medium">{error}</p>
-      {onRetry && <button onClick={onRetry} className="text-xs font-bold text-red-600 dark:text-red-400 underline">Retry</button>}
     </div>
   );
   if (!plans.length) return null;
@@ -512,7 +511,7 @@ function parseDataPlan(planName) {
 
 const DATA_TABS = ["All", "Awoof", "Top Deals", "Weekly", "Monthly"];
 
-function DataPlanGrid({ plans, selectedId, onSelect, loading, error, onRetry, cashback = 0, pointsEnabled = false, netCfg = null }) {
+function DataPlanGrid({ plans, selectedId, onSelect, loading, error, cashback = 0, pointsEnabled = false, netCfg = null }) {
   const [activeTab, setActiveTab] = useState("All");
   useEffect(() => { setActiveTab("All"); }, [plans]);
 
@@ -532,9 +531,8 @@ function DataPlanGrid({ plans, selectedId, onSelect, loading, error, onRetry, ca
     </div>
   );
   if (error) return (
-    <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-3 py-3 space-y-2">
+    <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-3 py-3">
       <p className="text-xs text-red-600 dark:text-red-400 font-medium">{error}</p>
-      {onRetry && <button onClick={onRetry} className="text-xs font-bold text-red-600 dark:text-red-400 underline">Retry</button>}
     </div>
   );
   if (!plans.length) return null;
@@ -2647,8 +2645,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                 </div>
                 <DataPlanGrid plans={plans} selectedId={form.planId} loading={plansLoading} error={plansError}
                   cashback={cashback} pointsEnabled={pointsEnabled} netCfg={netTheme}
-                  onRetry={() => loadPlans("data-plans", { network: form.network })}
-                  onSelect={pl => setForm(f => ({ ...f, planId: pl.plan_id, planName: pl.plan_name, amount: String(pl.plan_amount) }))} />
+                                    onSelect={pl => setForm(f => ({ ...f, planId: pl.plan_id, planName: pl.plan_name, amount: String(pl.plan_amount) }))} />
               </>}
 
               {/* ── CABLE TV ── */}
@@ -2668,8 +2665,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                       <PlanGrid
                         plans={pkgs.map(p => ({ plan_id: p.package_id, plan_name: p.package_name, plan_amount: p.package_amount }))}
                         selectedId={form.packageId} loading={pkgsLoading} error={pkgsError}
-                        onRetry={() => loadPkgs("cable-packages", { provider: form.provider })}
-                        onSelect={p => setForm(f => ({ ...f, packageId: p.plan_id, packageName: p.plan_name, amount: String(p.plan_amount) }))} />
+                                                onSelect={p => setForm(f => ({ ...f, packageId: p.plan_id, packageName: p.plan_name, amount: String(p.plan_amount) }))} />
                     </div>
                   </>}
                 </>}
@@ -2770,8 +2766,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">Data Plan *</label>
                   <PlanGrid plans={plans} selectedId={form.planId} loading={plansLoading} error={plansError}
-                    onRetry={() => loadPlans("spectranet-plans", {})}
-                    onSelect={pl => setForm(f => ({ ...f, planId: pl.plan_id, planName: pl.plan_name, amount: String(pl.plan_amount) }))} />
+                                        onSelect={pl => setForm(f => ({ ...f, planId: pl.plan_id, planName: pl.plan_name, amount: String(pl.plan_amount) }))} />
                 </div>
               </>}
 
@@ -2787,8 +2782,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                   <div>
                     <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">Data Plan *</label>
                     <PlanGrid plans={plans} selectedId={form.planId} loading={plansLoading} error={plansError}
-                      onRetry={() => loadPlans("smile-plans", {})}
-                      onSelect={pl => setForm(f => ({ ...f, planId: pl.plan_id, planName: pl.plan_name, amount: String(pl.plan_amount) }))} />
+                                            onSelect={pl => setForm(f => ({ ...f, planId: pl.plan_id, planName: pl.plan_name, amount: String(pl.plan_amount) }))} />
                   </div>
                 )}
               </>}
@@ -2827,8 +2821,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">Data Plan *</label>
                   <PlanGrid plans={plans} selectedId={form.planId} loading={plansLoading} error={plansError}
-                    onRetry={() => loadPlans("data-plans", { network: form.network })}
-                    onSelect={pl => setForm(f => ({ ...f, planId: pl.plan_id, planName: pl.plan_name, amount: String(pl.plan_amount) }))} />
+                                        onSelect={pl => setForm(f => ({ ...f, planId: pl.plan_id, planName: pl.plan_name, amount: String(pl.plan_amount) }))} />
                 </div>
                 {form.planId && (
                   <div>
