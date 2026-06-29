@@ -1493,12 +1493,6 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     // we attempt Paystack verification first before showing "disrupted".
     const orphaned = Object.keys(localStorage).filter(k => k.startsWith(BILL_PENDING_PREFIX));
     if (orphaned.length > 0) return null;
-    // Restore last successful bill result so it reappears when user navigates back.
-    // sessionStorage auto-clears on tab close / new login — prevents stale receipts.
-    try {
-      const cached = sessionStorage.getItem(BILL_LAST_RESULT);
-      if (cached) return JSON.parse(cached);
-    } catch (_) {}
     return null;
   });
 
