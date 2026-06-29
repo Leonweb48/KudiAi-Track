@@ -1569,6 +1569,9 @@ export default function BillPayments({ store, plan, session = null, staffName = 
   savingRef.current = saving;
   // Ref so the visibility handler always calls the latest fulfillAfterPayment closure
   const fulfillAfterPaymentRef = useRef(null);
+  // Set to true when the paymentCallback deep-link event is received so the
+  // browserFinished listener knows NOT to run a second verification.
+  const paymentCallbackFiredRef = useRef(false);
 
   useEffect(() => {
     const showDisrupted = () => {
@@ -1632,7 +1635,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       setTimeout(() => {
         const keys = Object.keys(localStorage).filter(k => k.startsWith(BILL_PENDING_PREFIX));
         if (keys.length === 0) return; // no payment was pending (or already fulfilled)
-        if (savingRef.current) return; // paymentCallback or fulfillAfterPayment already running
+        if (paymentCallbackFiredRef.current) return; // paymentCallback deep-link already handling it
         const key    = keys[0];
         const ref    = key.replace(BILL_PENDING_PREFIX, "");
         const stored = localStorage.getItem(key);
@@ -1848,6 +1851,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
   };
 
   const handlePay = async () => {
+    paymentCallbackFiredRef.current = false; // reset for fresh payment
     setError(""); setSaving(true);
     try {
       const amount = parseFloat(form.amount) || 0;
@@ -2269,6 +2273,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       if (!ref) return;
       const stored = localStorage.getItem(BILL_PENDING_PREFIX + ref);
       if (!stored) return;
+      paymentCallbackFiredRef.current = true; // prevent browserFinished from double-verifying
       setSaving(true);
       fulfillAfterPayment(ref, JSON.parse(stored));
     };
@@ -2321,6 +2326,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
           businessName={businessName}
           staffName={staffName}
           onDone={() => {
+            paymentCallbackFiredRef.current = false;
             sessionStorage.removeItem(BILL_LAST_RESULT);
             // Belt-and-suspenders: clear any orphaned pending entries so no re-trigger on back navigation
             try {
