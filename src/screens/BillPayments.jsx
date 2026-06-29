@@ -1550,6 +1550,22 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // When the user navigates back/forward (Android back button or browser history),
+  // clear any stale failure overlay so it doesn't reappear on a duplicate /bills entry.
+  useEffect(() => {
+    const onPop = () => {
+      setFulfillResult(prev => {
+        if (prev && !prev.ok) {
+          try { sessionStorage.removeItem(BILL_LAST_RESULT); } catch (_) {}
+          return null;
+        }
+        return prev;
+      });
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
   // Detect cancellation via bfcache restore (Android back button) or in-app browser close
   const savingRef = useRef(saving);
   savingRef.current = saving;
@@ -2306,7 +2322,16 @@ export default function BillPayments({ store, plan, session = null, staffName = 
           profile={profile}
           businessName={businessName}
           staffName={staffName}
-          onDone={() => { sessionStorage.removeItem(BILL_LAST_RESULT); setFulfillResult(null); }}
+          onDone={() => {
+            sessionStorage.removeItem(BILL_LAST_RESULT);
+            // Belt-and-suspenders: clear any orphaned pending entries so no re-trigger on back navigation
+            try {
+              Object.keys(localStorage)
+                .filter(k => k.startsWith(BILL_PENDING_PREFIX))
+                .forEach(k => localStorage.removeItem(k));
+            } catch (_) {}
+            setFulfillResult(null);
+          }}
           onShareReceipt={() => {
             const fr = fulfillResult;
             const fs = fr?.formSnap || {};

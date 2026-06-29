@@ -554,7 +554,7 @@ export function useAuth() {
             }
           }
         } else if (url.startsWith("com.amayatechnologies.kuditrack://payment-callback")) {
-          await Browser.close();
+          try { await Browser.close(); } catch { /* CCT may already be closed by the intent tap */ }
           window.dispatchEvent(new CustomEvent("paymentCallback", { detail: { url } }));
         }
       }).then((l) => { appUrlListener = l; });
