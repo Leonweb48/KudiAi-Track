@@ -1,8 +1,9 @@
-import { useState, useMemo } from "react";
-import { jsPDF }   from "jspdf";
-import { fmt }     from "../utils/helpers";
-import { useT }    from "../contexts/LanguageContext";
-import { savePdf } from "../utils/pdfSave";
+import { useState, useMemo, useRef } from "react";
+import { jsPDF }      from "jspdf";
+import html2canvas    from "html2canvas";
+import { fmt }        from "../utils/helpers";
+import { useT }       from "../contexts/LanguageContext";
+import { savePdf }    from "../utils/pdfSave";
 
 /* ── date helpers ──────────────────────────────────────────────────── */
 const todayStr = () => new Date().toISOString().split("T")[0];
@@ -659,12 +660,11 @@ function makePeriods(t) {
   ];
 }
 
-/* ── Native PDF builder (bypasses html2canvas; works on Android WebView) ── */
+/* eslint-disable no-unused-vars, no-undef */
 function hexToRgb(hex) {
   if (!hex || !hex.startsWith("#")) return [51, 65, 85];
   return [parseInt(hex.slice(1,3),16), parseInt(hex.slice(3,5),16), parseInt(hex.slice(5,7),16)];
 }
-
 async function buildNativeReportPDF(type, data, profile, from, to) {
   const doc = new jsPDF({ orientation:"p", unit:"mm", format:"a4" });
   const W  = doc.internal.pageSize.getWidth();
@@ -990,6 +990,7 @@ async function buildNativeReportPDF(type, data, profile, from, to) {
   const PNAMES={sales:"Sales",credit:"Credit",aso:"Ajo",bills:"Bills",staff:"Staff",stock:"Stock"};
   await savePdf(doc, `KudiAITrack_${PNAMES[type]}_Report_${from}_${to}.pdf`);
 }
+/* eslint-enable no-unused-vars, no-undef */
 
 /* ── Main screen ────────────────────────────────────────────────────── */
 export default function Reports({ store, onClose }) {
@@ -1020,11 +1021,26 @@ export default function Reports({ store, onClose }) {
     }
   })();
 
+  const reportRef = useRef(null);
+  const PNAMES = {sales:"Sales",credit:"Credit",aso:"Ajo",bills:"Bills",staff:"Staff",stock:"Stock"};
+
   const exportPDF = async () => {
-    if (exporting) return;
+    if (exporting || !reportRef.current) return;
     setExporting(true);
     try {
-      await buildNativeReportPDF(reportType, reportData, profile, from, to);
+      const canvas = await html2canvas(reportRef.current, { scale:2, useCORS:true, allowTaint:true, logging:false });
+      const imgData = canvas.toDataURL("image/png");
+      const doc = new jsPDF({ unit:"mm", format:"a4" });
+      const pgW = doc.internal.pageSize.getWidth();
+      const pgH = doc.internal.pageSize.getHeight();
+      const imgH = (canvas.height / canvas.width) * pgW;
+      let posY = 0;
+      while (posY < imgH) {
+        if (posY > 0) doc.addPage();
+        doc.addImage(imgData, "PNG", 0, -posY, pgW, imgH);
+        posY += pgH;
+      }
+      await savePdf(doc, `KudiAITrack_${PNAMES[reportType]||reportType}_Report_${from}_${to}.pdf`);
     } catch(e) {
       console.error("PDF export:", e);
     }
@@ -1074,7 +1090,7 @@ export default function Reports({ store, onClose }) {
               width: 794,
               flexShrink: 0,
             }}>
-              <div style={{width: 794, background:"#fff", boxShadow:"0 20px 60px rgba(0,0,0,.25)"}}>
+              <div ref={reportRef} style={{width: 794, background:"#fff", boxShadow:"0 20px 60px rgba(0,0,0,.25)"}}>
                 <ReportTemplate
                   type={reportType}
                   reportData={reportData}

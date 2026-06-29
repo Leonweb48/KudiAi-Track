@@ -751,76 +751,91 @@ async function genBillStatement(allBills, catFilter, period, profile) {
   const successCnt  = rows.filter(b => b.bill_status !== "failed").length;
 
   const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
-  const W = 210, M = 14;
+  const W = 210, M = 14, GRN = [6, 78, 59], GRN2 = [22, 163, 74], EMR = [110, 231, 183];
 
-  // Header band
-  pdf.setFillColor(27, 42, 94);
-  pdf.rect(0, 0, W, 42, "F");
-  pdf.setTextColor(255, 255, 255);
-  pdf.setFontSize(20); pdf.setFont("helvetica", "bold");
-  pdf.text("KUDITRACK", M, 17);
-  pdf.setFontSize(11); pdf.setFont("helvetica", "normal");
-  pdf.text("BILL PAYMENT STATEMENT", M, 26);
-  pdf.setFontSize(9); pdf.setTextColor(100, 220, 140);
-  pdf.text(`Generated: ${now.toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" })}`, M, 35);
+  // Header band — green (matches KudiAI Track report style)
+  pdf.setFillColor(...GRN);
+  pdf.rect(0, 0, W, 30, "F");
+  pdf.setFont("helvetica", "bold"); pdf.setTextColor(255, 255, 255);
+  pdf.setFontSize(20); pdf.text("KUDI", M, 16);
+  pdf.setTextColor(...EMR);
+  pdf.text("AI", M + 27, 16);
+  pdf.setTextColor(255, 255, 255, 0.6); pdf.setFontSize(7);
+  pdf.text("Track", M + 40, 12);
+  pdf.setTextColor(255, 255, 255); pdf.setFont("helvetica", "bold"); pdf.setFontSize(11);
+  pdf.text(biz, M, 24);
+  pdf.setFont("helvetica", "normal"); pdf.setFontSize(8); pdf.setTextColor(...EMR);
+  pdf.text(`Generated: ${now.toLocaleDateString("en-NG", { day:"numeric", month:"long", year:"numeric" })}`, W - M, 24, { align:"right" });
 
-  // Green stripe
-  pdf.setFillColor(22, 163, 74);
-  pdf.rect(0, 42, W, 3, "F");
+  // Title band
+  pdf.setFillColor(240, 253, 244);
+  pdf.rect(0, 30, W, 12, "F");
+  pdf.setDrawColor(...GRN2); pdf.setLineWidth(0.8);
+  pdf.line(0, 42, W, 42);
+  pdf.setFont("helvetica", "bold"); pdf.setFontSize(7.5); pdf.setTextColor(...GRN2);
+  pdf.text("BILL PAYMENT STATEMENT", M, 38);
+  pdf.setFont("helvetica", "normal"); pdf.setFontSize(8); pdf.setTextColor(100, 116, 139);
+  pdf.text(`Service: ${svcName}  ·  Period: ${periodLabel}`, W - M, 38, { align:"right" });
 
-  let y = 54;
-  pdf.setFontSize(10); pdf.setTextColor(30, 30, 30);
-  const info = [["Business", biz], ["Service", svcName], ["Period", periodLabel], ["Total Transactions", String(rows.length)]];
-  for (const [lbl, val] of info) {
-    pdf.setFont("helvetica", "bold"); pdf.text(`${lbl}:`, M, y);
-    pdf.setFont("helvetica", "normal"); pdf.text(val, M + 50, y);
-    y += 7;
+  let y = 52;
+  // Summary stats row
+  const stats = [["Transactions", String(rows.length)], ["Successful", String(successCnt)], ["Total Amount", `₦${totalAmt.toLocaleString("en-NG",{minimumFractionDigits:2})}`]];
+  const bw = (W - 2*M - 8) / 3;
+  for (let i = 0; i < stats.length; i++) {
+    const x = M + i*(bw+4);
+    pdf.setFillColor(248, 250, 252); pdf.rect(x, y, bw, 14, "F");
+    pdf.setFont("helvetica","bold"); pdf.setFontSize(6); pdf.setTextColor(148,163,184);
+    pdf.text(stats[i][0].toUpperCase(), x+3, y+6);
+    pdf.setFont("helvetica","bold"); pdf.setFontSize(10); pdf.setTextColor(30,41,59);
+    pdf.text(stats[i][1], x+3, y+13, {maxWidth:bw-5});
   }
-  y += 6;
+  y += 20;
 
   // Table header
-  pdf.setFillColor(27, 42, 94);
-  pdf.rect(M, y, W - 2 * M, 8, "F");
-  pdf.setTextColor(255, 255, 255); pdf.setFontSize(7.5); pdf.setFont("helvetica", "bold");
-  const cx = [M + 1, M + 24, M + 70, M + 118, M + 143, M + 162];
-  ["DATE", "SERVICE", "DESCRIPTION", "BENEFICIARY", "STATUS", "AMOUNT (₦)"].forEach((h, i) => pdf.text(h, cx[i], y + 5.5));
+  pdf.setFillColor(241, 245, 249);
+  pdf.rect(M, y, W - 2*M, 8, "F");
+  pdf.setFont("helvetica", "bold"); pdf.setFontSize(7); pdf.setTextColor(71, 85, 105);
+  const cx = [M+2, M+24, M+70, M+118, M+143, M+162];
+  ["DATE","SERVICE","DESCRIPTION","BENEFICIARY","STATUS","AMOUNT (₦)"].forEach((h,i) => pdf.text(h, cx[i], y+5.5));
   y += 10;
 
   pdf.setFont("helvetica", "normal"); pdf.setFontSize(7.5);
   let alt = false;
   for (const b of rows) {
     if (y > 272) { pdf.addPage(); y = 20; }
-    pdf.setFillColor(...(alt ? [240, 240, 248] : [255, 255, 255]));
-    pdf.rect(M, y - 1, W - 2 * M, 7, "F");
+    pdf.setFillColor(...(alt ? [248,250,252] : [255,255,255]));
+    pdf.rect(M, y-1, W-2*M, 7, "F");
     const dateStr = b.created_at
-      ? new Date(b.created_at).toLocaleDateString("en-NG", { day: "2-digit", month: "short", year: "2-digit" })
+      ? new Date(b.created_at).toLocaleDateString("en-NG", { day:"2-digit", month:"short", year:"2-digit" })
       : (b.transaction_date || "");
     const failed = b.bill_status === "failed";
-    pdf.setTextColor(...(failed ? [185, 28, 28] : [30, 30, 30]));
-    pdf.text(dateStr,                                              cx[0], y + 4.5);
-    pdf.text((CATS.find(c => c.id === b.category)?.label || b.category || "").slice(0, 14), cx[1], y + 4.5);
-    pdf.text((b.item_name     || "").slice(0, 24),                cx[2], y + 4.5);
-    pdf.text((b.customer_name || "").slice(0, 16),                cx[3], y + 4.5);
-    pdf.text(failed ? "Failed" : "Success",                       cx[4], y + 4.5);
-    pdf.text(Number(b.amount || 0).toLocaleString("en-NG", { minimumFractionDigits: 2 }), cx[5], y + 4.5);
+    pdf.setTextColor(...(failed ? [185,28,28] : [30,41,59]));
+    pdf.text(dateStr, cx[0], y+4.5);
+    pdf.text((CATS.find(c=>c.id===b.category)?.label||b.category||"").slice(0,14), cx[1], y+4.5);
+    pdf.text((b.item_name||"").slice(0,24), cx[2], y+4.5);
+    pdf.text((b.customer_name||"").slice(0,16), cx[3], y+4.5);
+    pdf.setTextColor(...(failed ? [185,28,28] : [22,163,74]));
+    pdf.text(failed?"Failed":"Success", cx[4], y+4.5);
+    pdf.setTextColor(30,41,59);
+    pdf.text(Number(b.amount||0).toLocaleString("en-NG",{minimumFractionDigits:2}), cx[5], y+4.5);
     y += 7; alt = !alt;
   }
 
   // Summary line
-  pdf.setDrawColor(22, 163, 74); pdf.setLineWidth(0.5);
-  pdf.line(M, y + 2, W - M, y + 2); y += 9;
-  pdf.setFontSize(10); pdf.setFont("helvetica", "bold"); pdf.setTextColor(30, 30, 30);
-  pdf.text(`Successful: ${successCnt} of ${rows.length} transactions`, M, y);
-  pdf.setTextColor(22, 163, 74);
-  pdf.text(`₦${totalAmt.toLocaleString("en-NG", { minimumFractionDigits: 2 })}`, W - M, y, { align: "right" });
+  pdf.setDrawColor(...GRN2); pdf.setLineWidth(0.4);
+  pdf.line(M, y+2, W-M, y+2); y += 9;
+  pdf.setFont("helvetica","bold"); pdf.setFontSize(9); pdf.setTextColor(30,41,59);
+  pdf.text(`${successCnt} of ${rows.length} successful`, M, y);
+  pdf.setTextColor(...GRN2);
+  pdf.text(`₦${totalAmt.toLocaleString("en-NG",{minimumFractionDigits:2})}`, W-M, y, {align:"right"});
 
   // Footer
-  pdf.setFillColor(27, 42, 94);
+  pdf.setFillColor(...GRN);
   pdf.rect(0, 280, W, 17, "F");
-  pdf.setFontSize(8); pdf.setFont("helvetica", "bold"); pdf.setTextColor(100, 220, 140);
-  pdf.text("AMAYA & Co. Technologies", M, 289);
-  pdf.setFont("helvetica", "normal"); pdf.setTextColor(180, 180, 200);
-  pdf.text("Computer-generated statement. No signature required.", W - M, 289, { align: "right" });
+  pdf.setFont("helvetica","bold"); pdf.setFontSize(8); pdf.setTextColor(...EMR);
+  pdf.text("KudiAI Track", M, 289);
+  pdf.setFont("helvetica","normal"); pdf.setTextColor(255,255,255,0.6);
+  pdf.text("support@kudiai.app", W-M, 289, {align:"right"});
 
   await savePdf(pdf, `KudiTrack_Bill_Statement_${svcName.replace(/\s+/g, "_")}_${now.toISOString().slice(0, 10)}.pdf`);
 }
