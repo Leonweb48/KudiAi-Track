@@ -1,10 +1,8 @@
-import { useState, useRef, useMemo } from "react";
-import html2canvas from "html2canvas";
+import { useState, useMemo } from "react";
 import { jsPDF }   from "jspdf";
 import { fmt }     from "../utils/helpers";
 import { useT }    from "../contexts/LanguageContext";
 import { savePdf } from "../utils/pdfSave";
-import { Capacitor } from "@capacitor/core";
 
 /* ── date helpers ──────────────────────────────────────────────────── */
 const todayStr = () => new Date().toISOString().split("T")[0];
@@ -85,8 +83,8 @@ function PieChart({ segments, size=140 }) {
     const frac=(sg.v||0)/total;
     const sweep=frac*360;
     const a0=ang, a1=ang+sweep; ang=a1;
-    const r=(a:number)=>a*Math.PI/180;
-    const p=(a:number)=>[cx+R*Math.cos(r(a)), cy+R*Math.sin(r(a))];
+    const r=(a)=>a*Math.PI/180;
+    const p=(a)=>[cx+R*Math.cos(r(a)), cy+R*Math.sin(r(a))];
     const [x0,y0]=p(a0); const [x1,y1]=p(a1);
     const large=sweep>180?1:0;
     return {...sg, frac, d:`M${cx},${cy}L${x0},${y0}A${R},${R},0,${large},1,${x1},${y1}Z`};
@@ -1005,7 +1003,6 @@ export default function Reports({ store, onClose }) {
   const [preview,    setPreview]    = useState(false);
   const [exporting,  setExporting]  = useState(false);
 
-  const reportRef = useRef(null);
   const REPORT_TYPES = useMemo(() => makeReportTypes(t), [t]);
   const PERIODS      = useMemo(() => makePeriods(t),      [t]);
 
@@ -1024,41 +1021,10 @@ export default function Reports({ store, onClose }) {
   })();
 
   const exportPDF = async () => {
-    if (!reportRef.current || exporting) return;
+    if (exporting) return;
     setExporting(true);
     try {
-      if (Capacitor.isNativePlatform()) {
-        // html2canvas renders poorly on Android WebView (no SVG, no CSS Grid, wrong fonts).
-        // Use a fully programmatic jsPDF path instead for consistent print-quality output.
-        await buildNativeReportPDF(reportType, reportData, profile, from, to);
-      } else {
-        const el = reportRef.current;
-        const canvas = await html2canvas(el, {
-          scale: 2,
-          backgroundColor: "#ffffff",
-          useCORS: true,
-          logging: false,
-          width: 794,
-          windowWidth: 794,
-          scrollX: 0,
-          scrollY: 0,
-        });
-        const imgData = canvas.toDataURL("image/png");
-        const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
-        const pdfW = pdf.internal.pageSize.getWidth();
-        const pdfH = pdf.internal.pageSize.getHeight();
-        const imgH = (canvas.height / canvas.width) * pdfW;
-        pdf.addImage(imgData, "PNG", 0, 0, pdfW, imgH);
-        let remaining = imgH - pdfH;
-        let page = 1;
-        while (remaining > 0) {
-          pdf.addPage();
-          pdf.addImage(imgData, "PNG", 0, -(page * pdfH), pdfW, imgH);
-          remaining -= pdfH; page++;
-        }
-        const NAMES = { sales:"Sales", credit:"Credit", aso:"Ajo", bills:"Bills", staff:"Staff", stock:"Stock" };
-        await savePdf(pdf, `KudiAITrack_${NAMES[reportType]}_Report_${from}_${to}.pdf`);
-      }
+      await buildNativeReportPDF(reportType, reportData, profile, from, to);
     } catch(e) {
       console.error("PDF export:", e);
     }
@@ -1108,7 +1074,7 @@ export default function Reports({ store, onClose }) {
               width: 794,
               flexShrink: 0,
             }}>
-              <div ref={reportRef} style={{width: 794, background:"#fff", boxShadow:"0 20px 60px rgba(0,0,0,.25)"}}>
+              <div style={{width: 794, background:"#fff", boxShadow:"0 20px 60px rgba(0,0,0,.25)"}}>
                 <ReportTemplate
                   type={reportType}
                   reportData={reportData}
