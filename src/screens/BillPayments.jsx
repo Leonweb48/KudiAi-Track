@@ -753,17 +753,22 @@ async function genBillStatement(allBills, catFilter, period, profile) {
   const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
   const W = 210, M = 14, GRN = [6, 78, 59], GRN2 = [22, 163, 74], EMR = [110, 231, 183];
 
+  let logo = null;
+  try { const blob = await (await fetch('/logo.png')).blob(); logo = await new Promise(res => { const fr = new FileReader(); fr.onloadend = () => res(fr.result); fr.readAsDataURL(blob); }); } catch {}
+
   // Header band — green (matches KudiAI Track report style)
+  const tX = M + (logo ? 22 : 0);
   pdf.setFillColor(...GRN);
   pdf.rect(0, 0, W, 30, "F");
+  if (logo) pdf.addImage(logo, 'PNG', M, 6, 18, 18);
   pdf.setFont("helvetica", "bold"); pdf.setTextColor(255, 255, 255);
-  pdf.setFontSize(20); pdf.text("KUDI", M, 16);
+  pdf.setFontSize(20); pdf.text("KUDI", tX, 16);
   pdf.setTextColor(...EMR);
-  pdf.text("AI", M + 27, 16);
+  pdf.text("AI", tX + 27, 16);
   pdf.setTextColor(255, 255, 255, 0.6); pdf.setFontSize(7);
-  pdf.text("Track", M + 40, 12);
+  pdf.text("Track", tX + 40, 12);
   pdf.setTextColor(255, 255, 255); pdf.setFont("helvetica", "bold"); pdf.setFontSize(11);
-  pdf.text(biz, M, 24);
+  pdf.text(biz, tX, 24);
   pdf.setFont("helvetica", "normal"); pdf.setFontSize(8); pdf.setTextColor(...EMR);
   pdf.text(`Generated: ${now.toLocaleDateString("en-NG", { day:"numeric", month:"long", year:"numeric" })}`, W - M, 24, { align:"right" });
 

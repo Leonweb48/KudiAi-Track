@@ -943,7 +943,11 @@ async function buildNativeActivityStatementPDF(staffName, businessName, from, to
   const tc=[22,163,74];
   const prd = from===to ? stmtFmtD(from) : `${stmtFmtD(from)} - ${stmtFmtD(to)}`;
 
+  let logo = null;
+  try { const blob = await (await fetch('/logo.png')).blob(); logo = await new Promise(res => { const fr = new FileReader(); fr.onloadend = () => res(fr.result); fr.readAsDataURL(blob); }); } catch {}
+
   doc.setFillColor(...tc); doc.rect(0,0,W,28,"F");
+  if (logo) doc.addImage(logo, 'PNG', M, 5, 18, 18);
   doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(8);
   doc.text("KudiAI Track · Staff Activity Statement", W/2, 8, {align:"center"});
   doc.setFontSize(12); doc.text(businessName||"My Business", W/2, 17, {align:"center"});

@@ -1,6 +1,5 @@
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { jsPDF }      from "jspdf";
-import html2canvas    from "html2canvas";
 import { fmt }        from "../utils/helpers";
 import { savePdf }    from "../utils/pdfSave";
 
@@ -443,7 +442,6 @@ function StaffReportTemplate({ type, reportData, staffName, businessName, from, 
   );
 }
 
-/* eslint-disable no-unused-vars, no-undef */
 function hexToRgb(hex) {
   if (!hex || !hex.startsWith("#")) return [51, 65, 85];
   return [parseInt(hex.slice(1,3),16), parseInt(hex.slice(3,5),16), parseInt(hex.slice(5,7),16)];
@@ -469,8 +467,12 @@ async function buildNativeStaffReportPDF(type, data, staffName, businessName, fr
   const sn  = staffName || "Staff Member";
   const prd = from===to ? fmtD(from) : `${fmtD(from)} - ${fmtD(to)}`;
 
+  let logo = null;
+  try { const blob = await (await fetch('/logo.png')).blob(); logo = await new Promise(res => { const fr = new FileReader(); fr.onloadend = () => res(fr.result); fr.readAsDataURL(blob); }); } catch {}
+
   doc.setFillColor(...tc);
   doc.rect(0,0,W,28,"F");
+  if (logo) doc.addImage(logo, 'PNG', M, 5, 18, 18);
   doc.setTextColor(255,255,255);
   doc.setFont("helvetica","bold"); doc.setFontSize(8);
   doc.text("KudiAI Track · Staff Report", W/2, 8, {align:"center"});
@@ -734,7 +736,6 @@ async function buildNativeStaffReportPDF(type, data, staffName, businessName, fr
   const safe=(staffName||"Staff").replace(/\s+/g,"_");
   await savePdf(doc, `KudiAITrack_${safe}_${PNAMES[type]}_Report_${from}_${to}.pdf`);
 }
-/* eslint-enable no-unused-vars, no-undef */
 
 /* ── report type cards ───────────────────────────────────────────────── */
 const REPORT_TYPES = [
@@ -779,27 +780,11 @@ export default function StaffReports({ store, inventory, staffName, businessName
     }
   })();
 
-  const reportRef = useRef(null);
-  const PNAMES = {sales:"Sales",credit:"Credit",aso:"Ajo",bills:"Bills",myPerf:"Performance",stock:"Stock"};
-
   const exportPDF = async () => {
-    if (exporting || !reportRef.current) return;
+    if (exporting) return;
     setExporting(true);
     try {
-      const canvas = await html2canvas(reportRef.current, { scale:2, useCORS:true, allowTaint:true, logging:false });
-      const imgData = canvas.toDataURL("image/png");
-      const doc = new jsPDF({ unit:"mm", format:"a4" });
-      const pgW = doc.internal.pageSize.getWidth();
-      const pgH = doc.internal.pageSize.getHeight();
-      const imgH = (canvas.height / canvas.width) * pgW;
-      let posY = 0;
-      while (posY < imgH) {
-        if (posY > 0) doc.addPage();
-        doc.addImage(imgData, "PNG", 0, -posY, pgW, imgH);
-        posY += pgH;
-      }
-      const safe = (staffName||"Staff").replace(/\s+/g,"_");
-      await savePdf(doc, `KudiAITrack_${safe}_${PNAMES[reportType]||reportType}_Report_${from}_${to}.pdf`);
+      await buildNativeStaffReportPDF(reportType, reportData, staffName, businessName, from, to);
     } catch(e) { console.error("PDF export:", e); }
     setExporting(false);
   };
@@ -831,7 +816,7 @@ export default function StaffReports({ store, inventory, staffName, businessName
         <div className="flex-1 overflow-y-auto bg-slate-300 dark:bg-slate-700">
           <div className="py-4 flex justify-center">
             <div style={{zoom:Math.min(1,(window.innerWidth-16)/794),width:794,flexShrink:0}}>
-              <div ref={reportRef} style={{width:794,background:"#fff",boxShadow:"0 20px 60px rgba(0,0,0,.25)"}}>
+              <div style={{width:794,background:"#fff",boxShadow:"0 20px 60px rgba(0,0,0,.25)"}}>
                 <StaffReportTemplate type={reportType} reportData={reportData} staffName={staffName} businessName={businessName} from={from} to={to}/>
               </div>
             </div>
