@@ -1941,12 +1941,8 @@ export default function BillPayments({ store, plan, session = null, staffName = 
   // ── Step 2: Verify payment then fulfill service ───────────────────────────────
   const fulfillAfterPayment = useCallback(async (ref, pending) => {
     setError("");
-    let paystackConfirmed = false;
     try {
-      if (pending.isFree) {
-        // 100% coupon — no Paystack charge to verify, proceed directly to fulfillment
-        paystackConfirmed = false;
-      } else {
+      if (!pending.isFree) {
         // Verify payment with Paystack
         const { data: vd } = await supabase.functions.invoke("paystack", {
           body: { action: "verify", reference: ref },
@@ -1976,7 +1972,6 @@ export default function BillPayments({ store, plan, session = null, staffName = 
           }
           throw new Error(vd?.data?.gateway_response || "Payment not confirmed. Please contact support.");
         }
-        paystackConfirmed = true;
       }
 
       const { cat, form: f, verifyName: vName, meterAddress: mAddr = "", paidAmount, baseAmount, pointsDiscount: redeemedPoints = 0 } = pending;
