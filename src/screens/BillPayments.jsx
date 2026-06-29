@@ -1603,11 +1603,12 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         if (urlRef) return; // URL-based redirect — handled elsewhere
         const keys = Object.keys(localStorage).filter(k => k.startsWith(BILL_PENDING_PREFIX));
         if (keys.length === 0) return;
+        if (paymentCallbackFiredRef.current) return; // paymentCallback or browserFinished already verifying
         const key = keys[0];
         const ref = key.replace(BILL_PENDING_PREFIX, "");
         const stored = localStorage.getItem(key);
         if (stored && fulfillAfterPaymentRef.current) {
-          // Attempt Paystack verification — fulfillAfterPayment will show disrupted if abandoned
+          paymentCallbackFiredRef.current = true; // prevent duplicate from any later trigger
           fulfillAfterPaymentRef.current(ref, JSON.parse(stored));
         } else {
           showDisrupted();
@@ -1636,6 +1637,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         const keys = Object.keys(localStorage).filter(k => k.startsWith(BILL_PENDING_PREFIX));
         if (keys.length === 0) return; // no payment was pending (or already fulfilled)
         if (paymentCallbackFiredRef.current) return; // paymentCallback deep-link already handling it
+        paymentCallbackFiredRef.current = true; // block visibilitychange from also verifying
         const key    = keys[0];
         const ref    = key.replace(BILL_PENDING_PREFIX, "");
         const stored = localStorage.getItem(key);

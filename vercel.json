@@ -46,6 +46,10 @@
   ],
   "rewrites": [
     {
+      "source": "/payment-return",
+      "destination": "/payment-return.html"
+    },
+    {
       "source": "/((?!api/|service-worker\\.js|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp|woff|woff2|ttf|eot|json|txt|xml|pdf)$).*)",
       "destination": "/index.html"
     }
