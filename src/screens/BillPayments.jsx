@@ -2276,15 +2276,10 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       setSaving(false);
       const ckError = err.message || "Unknown error";
       setFulfillResult({ ok: false, label: "", detail: ckError, psRef: ref, apiRef: "" });
-
-      // Paystack charged the user at a discounted amount (cashback applied), but CK failed.
-      // Clear cashbackUsed from the pending entry so any retry doesn't re-deduct cashback —
-      // the owner's refund covers the full original amount, so cashback should be fully intact.
-      if (paystackConfirmed && pending.cashbackUsed > 0) {
-        try {
-          localStorage.setItem(BILL_PENDING_PREFIX + ref, JSON.stringify({ ...pending, cashbackUsed: 0 }));
-        } catch (_) {}
-      }
+      // Always remove the pending entry on failure — the orphan-check and browserFinished
+      // listener would otherwise re-trigger fulfillAfterPayment every time the user opens
+      // the Bills page or the app returns from background.
+      localStorage.removeItem(BILL_PENDING_PREFIX + ref);
 
       // Record the failed bill in history
       try {
