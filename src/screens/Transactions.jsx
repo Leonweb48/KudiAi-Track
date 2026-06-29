@@ -7,6 +7,8 @@ import { fmt, today } from "../utils/helpers";
 import { canDo, planLimits } from "../utils/plans";
 import { useT } from "../contexts/LanguageContext";
 import { getLang, speakConfirmation } from "../utils/i18n";
+import { speakEvent } from "../utils/tts";
+import { Capacitor } from "@capacitor/core";
 
 const CATEGORIES   = ["sale", "expense", "stock", "credit sale", "debt repayment", "other"];
 const PAYMENT_TYPES = ["cash", "transfer", "pos", "mobile money"];
@@ -68,7 +70,11 @@ export function AddTxnModal({ onAdd, onClose, defaultType = "in", inventory = nu
     const qty       = parseInt(f.quantity) || 1;
     const unitPrice = parseFloat(f.unit_price) || (parseFloat(f.amount) / qty);
     onAdd({ ...f, amount: parseFloat(f.amount), quantity: qty, unit_price: unitPrice });
-    speakConfirmation(f.type === "in" ? "cashIn" : "cashOut", getLang());
+    if (Capacitor.isNativePlatform()) {
+      speakEvent(f.type === "in" ? "cashIn" : "cashOut", getLang()).catch(() => {});
+    } else {
+      speakConfirmation(f.type === "in" ? "cashIn" : "cashOut", getLang());
+    }
 
     /* Sync matched inventory product on sales */
     if (matchedProduct && f.type === "in" && inventory?.recordMovement) {
