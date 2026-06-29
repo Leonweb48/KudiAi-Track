@@ -1609,6 +1609,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         const stored = localStorage.getItem(key);
         if (stored && fulfillAfterPaymentRef.current) {
           paymentCallbackFiredRef.current = true; // prevent duplicate from any later trigger
+          setSelectedCat(null); // show processing overlay immediately
           fulfillAfterPaymentRef.current(ref, JSON.parse(stored));
         } else {
           showDisrupted();
@@ -1642,6 +1643,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         const ref    = key.replace(BILL_PENDING_PREFIX, "");
         const stored = localStorage.getItem(key);
         if (stored && fulfillAfterPaymentRef.current) {
+          setSelectedCat(null); // show processing overlay immediately
           setSaving(true);
           fulfillAfterPaymentRef.current(ref, JSON.parse(stored));
         }
@@ -2276,6 +2278,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       const stored = localStorage.getItem(BILL_PENDING_PREFIX + ref);
       if (!stored) return;
       paymentCallbackFiredRef.current = true; // prevent browserFinished from double-verifying
+      setSelectedCat(null); // show processing overlay immediately
       setSaving(true);
       fulfillAfterPayment(ref, JSON.parse(stored));
     };
