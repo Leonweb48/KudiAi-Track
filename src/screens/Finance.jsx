@@ -17,6 +17,7 @@ export default function Finance({
   userId, session,
   onSelectCoopOrg,
   inventory,
+  invoiceHook,
 }) {
   const [tab, setTab] = useState(autoOpenTab || "credit");
 
@@ -72,7 +73,7 @@ export default function Finance({
       )}
       {tab === "invoices" && (
         <Invoices
-          userId={userId}
+          invoiceHook={invoiceHook}
           plan={plan}
           onUpgrade={onUpgrade}
           profile={store.profile}

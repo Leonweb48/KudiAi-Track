@@ -19,6 +19,8 @@ const QUICK = [
   { label: "Staff Overview",     q: "Tell me about my staff"                                       },
   { label: "Branch Summary",     q: "Give me a summary of my branches"                             },
   { label: "Monthly Report",     q: "Give me a full monthly business report"                       },
+  { label: "Invoice Summary",    q: "Show me a summary of all my invoices and outstanding amounts" },
+  { label: "Overdue Invoices",   q: "Which invoices are overdue and how much is owed?"             },
   { label: "Grow Business",      q: "How can I grow my business?"                                  },
   { label: "App Features",       q: "What can this app do for my business?"                        },
   { label: "Pricing Tips",       q: "What is a good pricing strategy for my business?"             },
@@ -64,7 +66,7 @@ function TypingDots() {
 
 
 /* ── Main screen ─────────────────────────────────────────────────────── */
-export default function AIAssistant({ store, inventory, branches = [], onClose, initialQuery = "" }) {
+export default function AIAssistant({ store, inventory, branches = [], invoices = [], onClose, initialQuery = "" }) {
   const { lang } = useLanguage();
 
   const [messages,  setMessages]  = useState(() => [{ role: "assistant", text: GREETINGS[lang] || GREETINGS.en }]);
@@ -96,7 +98,7 @@ export default function AIAssistant({ store, inventory, branches = [], onClose, 
     setThinking(true);
 
     const products = inventory?.products || [];
-    const context  = buildContext(store, products, branches);
+    const context  = buildContext(store, products, branches, invoices);
     const history  = msgRef.current.slice(1).filter(m => !m.isError).map(m => ({ role: m.role, text: m.text }));
 
     let fullReply  = "";

@@ -115,7 +115,25 @@ export function buildCoopMemberContext(member = {}, loans = [], org = {}) {
   ].filter(Boolean).join("\n");
 }
 
-export function buildContext(store, products, branches = []) {
+function buildInvoiceContext(invoices) {
+  const k2n = (k) => (k || 0) / 100;
+  const total_outstanding = invoices
+    .filter(i => ["sent", "overdue", "partially_paid"].includes(i.status))
+    .reduce((s, i) => s + k2n(i.total_kobo - i.amount_paid_kobo), 0);
+  const overdue   = invoices.filter(i => i.status === "overdue");
+  const paid      = invoices.filter(i => i.status === "paid");
+  const draft     = invoices.filter(i => i.status === "draft");
+  const recentLines = invoices.slice(0, 10).map(i =>
+    `  • ${i.invoice_number} | ${i.customer_name} | ₦${fmt(k2n(i.total_kobo))} | ${i.status.toUpperCase()}${i.due_date ? ` | Due: ${i.due_date}` : ""}`
+  );
+  return [
+    `INVOICES: ${invoices.length} total | ${overdue.length} overdue | ${paid.length} paid | ${draft.length} draft`,
+    `INVOICE OUTSTANDING: ₦${fmt(total_outstanding)} across ${invoices.filter(i => ["sent","overdue","partially_paid"].includes(i.status)).length} invoice(s)`,
+    invoices.length > 0 ? `RECENT INVOICES:\n${recentLines.join("\n")}` : "",
+  ].filter(Boolean).join("\n");
+}
+
+export function buildContext(store, products, branches = [], invoices = []) {
   const { profile = {}, transactions = [], credits = [], asoClients = [], staffMap = {} } = store;
   const todayStr = today();
   const now      = new Date();
@@ -181,5 +199,6 @@ export function buildContext(store, products, branches = []) {
     asoClients.length > 0 ? `AJO CLIENTS:\n${ajoClientLines.join("\n")}` : "AJO CLIENTS: None yet",
     `STAFF: ${staffNames.length > 0 ? `${staffNames.length} member(s) — ${staffNames.join(", ")}` : "None"}`,
     `BRANCHES: ${branches.length > 0 ? `${branches.length} branch(es) — ${branchLines}` : "None"}`,
+    invoices.length > 0 ? buildInvoiceContext(invoices) : "INVOICES: None yet",
   ].join("\n");
 }

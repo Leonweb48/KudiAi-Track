@@ -42,6 +42,7 @@ import OrgFirstLogin         from "./screens/OrgFirstLogin";
 import OrgMemberOtpVerify   from "./screens/OrgMemberOtpVerify";
 import AdminDashboard        from "./screens/AdminDashboard";
 import { useInventory }      from "./hooks/useInventory";
+import { useInvoices }      from "./hooks/useInvoices";
 import { useBiometricLock }  from "./hooks/useBiometricLock";
 import { useLoyalty }        from "./hooks/useLoyalty";
 import { useBranches }       from "./hooks/useBranches";
@@ -95,6 +96,9 @@ export default function App() {
 
   // Inventory — separate hook; also fires low-stock notifications
   const inventory = useInventory(userId, null, addNotification);
+
+  // Invoices — lifted here so daily alerts + AI context can use invoice data
+  const invoiceHook = useInvoices(userId);
 
   // Biometric / PIN lock
   const lock = useBiometricLock(userId);
@@ -161,6 +165,17 @@ export default function App() {
       );
     }
 
+    // Overdue invoices
+    const overdueInvoices = invoiceHook.invoices.filter(i => i.status === "overdue");
+    if (overdueInvoices.length > 0) {
+      const totalOwed = overdueInvoices.reduce((s, i) => s + ((i.total_kobo - i.amount_paid_kobo) / 100), 0);
+      addNotification(
+        "invoices",
+        `${overdueInvoices.length} Overdue Invoice${overdueInvoices.length > 1 ? "s" : ""}`,
+        `${fmt(totalOwed)} still outstanding`
+      );
+    }
+
     // Missed aso contributions
     const now = new Date(); now.setHours(0, 0, 0, 0);
     const overdueAso = store.asoClients.filter(c => {
@@ -174,7 +189,7 @@ export default function App() {
         "Clients have missed their contribution dates"
       );
     }
-  }, [userId, store.loading, store.credits, store.asoClients, addNotification]);
+  }, [userId, store.loading, store.credits, store.asoClients, invoiceHook.invoices, addNotification]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const addTransactionWithLoyalty = async (txnData) => {
     await store.addTransaction(txnData);
@@ -304,7 +319,8 @@ export default function App() {
                     userId={userId}
                     session={session}
                     onSelectCoopOrg={setCoopOrg}
-                    inventory={inventory} />,
+                    inventory={inventory}
+                    invoiceHook={invoiceHook} />,
     inventory:    <Inventory
                     inventory={inventory}
                     isOwner={true}
@@ -454,6 +470,7 @@ export default function App() {
           store={store}
           inventory={inventory}
           branches={branchesHook.branches}
+          invoices={invoiceHook.invoices}
           initialQuery={aiQuery}
           onClose={() => setShowAI(false)}
         />
