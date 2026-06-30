@@ -32,7 +32,7 @@ function SetupNotice() {
 function BgLayout({ children, center = false }) {
   const t = useT();
   return (
-    <div className="fixed inset-0 flex flex-col overflow-hidden">
+    <div className="fixed inset-0 flex flex-col">
       {/* Portrait photo — fills entire screen, anchored top to show face */}
       <img
         src="/login-bg.jpg"
