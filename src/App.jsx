@@ -36,6 +36,7 @@ import PaymentReturn         from "./screens/PaymentReturn";
 import { Browser }           from "@capacitor/browser";
 import { Capacitor }         from "@capacitor/core";
 import { App as CapApp }     from "@capacitor/app";
+import { StatusBar, Style }  from "@capacitor/status-bar";
 import Finance               from "./screens/Finance";
 import OrgPortal             from "./screens/OrgPortal";
 import OrgFirstLogin         from "./screens/OrgFirstLogin";
@@ -209,6 +210,14 @@ export default function App() {
     return () => { listener?.remove(); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Edge-to-edge status bar: overlay on main app, solid on login page
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    const isLoginPage = status === "unauthenticated" || status === "loading";
+    StatusBar.setOverlaysWebView({ overlay: !isLoginPage }).catch(() => {});
+    if (!isLoginPage) StatusBar.setStyle({ style: Style.Dark }).catch(() => {});
+  }, [status]);
+
   // Android hardware back button
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
@@ -343,7 +352,7 @@ export default function App() {
   return (
     <div className={isDark ? "dark" : ""}>
       <div className="h-[100dvh] bg-slate-50 dark:bg-slate-900 flex justify-center transition-colors duration-200">
-        <div className="w-full max-w-md relative flex flex-col h-[100dvh]">
+        <div className="w-full max-w-md relative flex flex-col h-[100dvh]" style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}>
           <SyncBar isOnline={store.isOnline} pending={store.pendingSync} isSyncing={store.isSyncing} onSync={store.runSync} />
 
           {upgradeAvailable && !upgradeBannerDismissed && (
