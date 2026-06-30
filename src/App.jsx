@@ -336,7 +336,7 @@ export default function App() {
                     onUpgrade={openUpgrade}
                     branches={branchesHook.branches} />,
     bills:        <BillPayments store={store} plan={plan} session={session}
-                    markup={plan === "oga" || plan === "enterprise" ? 1.05 : 1.098}
+                    markup={canDo(plan, "apiAccess") ? 1.05 : 1.098}
                     pointsEnabled
                     staffEmail={session?.user?.email}
                     staffName={store.profile?.owner_name || store.profile?.business_name}

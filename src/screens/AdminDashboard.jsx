@@ -1045,7 +1045,7 @@ function PlansManager() {
             <h4 className="font-bold text-slate-800 text-base">Delete "{confirmDelete.plan.name}"?</h4>
             {confirmDelete.subCount > 0 ? (
               <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
-                <strong>{confirmDelete.subCount} active subscriber{confirmDelete.subCount !== 1 ? "s" : ""}</strong> are currently on this plan. They will automatically fall back to the Kobo (free) plan.
+                <strong>{confirmDelete.subCount} active subscriber{confirmDelete.subCount !== 1 ? "s" : ""}</strong> are currently on this plan. They will automatically fall back to the free plan.
               </div>
             ) : (
               <p className="text-sm text-slate-500">No active subscribers on this plan. It will be permanently removed.</p>

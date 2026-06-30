@@ -1,4 +1,5 @@
 /* LegalScreen — full-screen Terms & Conditions and Privacy Policy viewer */
+import { getActivePlans } from "../utils/plans";
 
 const COMPANY = {
   name:    "AMAYA & Co. Technologies",
@@ -107,7 +108,7 @@ function TermsContent() {
         '"Ajo/Esusu Client" — a participant in a savings cooperative group on the platform.',
         '"Organisation Member" — a member of a cooperative or association on the platform.',
         '"Marketer" — an affiliate partner earning commission through the Marketer Portal.',
-        '"Subscription Plan" — your chosen service tier (Kobo, Naira, or Oga).',
+        '"Subscription Plan" — your chosen service tier as set by the platform administrator.',
         '"Third-Party Service Providers" — external companies whose services are integrated, including Paystack, ClubKonnect, Peyflex, Anthropic, and Supabase.',
       ]} />
 
@@ -140,11 +141,19 @@ function TermsContent() {
       <P>The platform integrates Anthropic's Claude AI for business insights, chatbot assistance, and analytics summaries. AI-generated outputs are for informational purposes only and do not constitute financial, legal, or professional advice. Do not rely solely on AI outputs for significant business or financial decisions.</P>
 
       <H2>5. Subscription Plans & Billing</H2>
-      <DataTable rows={[
-        ["Kobo (Free)",    "₦0/month — 50 transactions/month, 5 staff, 1 Ajo group, basic features"],
-        ["Naira",          "₦7,000/month or ₦75,600/year — Unlimited transactions, 10 staff, AI features, 3 branches"],
-        ["Oga",            "₦15,000/month or ₦171,000/year — All Naira features + organisations, loan access, wholesale"],
-      ]} />
+      <DataTable rows={
+        getActivePlans()
+          .filter(p => p.is_active !== false)
+          .map(p => {
+            const price = p.price_monthly === 0
+              ? "Free"
+              : `₦${Number(p.price_monthly).toLocaleString()}/month${p.price_yearly ? ` or ₦${Number(p.price_yearly).toLocaleString()}/year` : ""}`;
+            return [
+              p.name + (p.price_monthly === 0 ? " (Free)" : ""),
+              `${price}${p.description ? ` — ${p.description}` : ""}`,
+            ];
+          })
+      } />
       <H3>5.1 Billing & Renewal</H3>
       <P>Subscription fees are charged in advance for the selected billing period (monthly or yearly) and auto-renew unless cancelled at least 24 hours before renewal. Payments are processed through Paystack.</P>
       <H3>5.2 Refund Policy</H3>

@@ -1398,9 +1398,8 @@ export default function BillPayments({ store, plan, session = null, staffName = 
   // plan is a slug string from useAuth (e.g. "oga"), not a plan object
   const planSlug = typeof plan === "string" ? plan : (plan?.slug ?? "");
   // Unlock for enterprise/oga: match by feature key or slug name
-  const isEnterprise = canDo(planSlug, "apiAccess") || planSlug === "enterprise" || planSlug === "oga";
-  // Unlock wholesale features (print-airtime, print-data) for Oga plan
-  const isWholesale = canDo(planSlug, "printWholesale") || planSlug === "oga" || planSlug === "enterprise";
+  const isEnterprise = canDo(planSlug, "apiAccess");
+  const isWholesale = canDo(planSlug, "printWholesale");
   // Loan eligibility: Oga plan + account at least 4 months old
   const accountAgeMonths = session?.user?.created_at
     ? (Date.now() - new Date(session.user.created_at)) / (30 * 24 * 60 * 60 * 1000)
@@ -2461,7 +2460,8 @@ export default function BillPayments({ store, plan, session = null, staffName = 
               const lockedLoan       = c.loan && (!isEnterprise || !isLoanEligible);
               const locked = lockedEnterprise || lockedWholesale || lockedLoan;
               const count  = bills.filter(b => b.category === c.id).length;
-              const badge  = lockedEnterprise ? "OGA" : lockedWholesale ? "OGA" : lockedLoan && !isEnterprise ? "OGA" : lockedLoan ? "4MO" : null;
+              const reqPlanLabel = (getLowestPlanWithFeature("apiAccess")?.name ?? "Pro").slice(0, 4).toUpperCase();
+              const badge  = lockedEnterprise ? reqPlanLabel : lockedWholesale ? reqPlanLabel : lockedLoan && !isEnterprise ? reqPlanLabel : lockedLoan ? "4MO" : null;
               return (
                 <button key={c.id} onClick={() => openSheet(c.id)} disabled={locked}
                   className={`rounded-2xl p-4 flex flex-col items-center gap-2 shadow-sm active:scale-95 transition-all duration-150 text-white relative ${locked ? "opacity-50 cursor-not-allowed" : ""}`}
@@ -2478,12 +2478,12 @@ export default function BillPayments({ store, plan, session = null, staffName = 
           </div>
           {!isWholesale && visibleCats.some(c => c.wholesale) && (
             <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center mt-2">
-              Print Airtime & Data wholesale require the {getLowestPlanWithFeature("printWholesale")?.name ?? "Oga"} plan
+              Print Airtime & Data wholesale require the {getLowestPlanWithFeature("printWholesale")?.name ?? "a higher tier"} plan
             </p>
           )}
           {isEnterprise && !isLoanEligible && (
             <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center mt-1">
-              Business Loan unlocks after 4 months on the {getLowestPlanWithFeature("loanAccess")?.name ?? "Oga"} plan
+              Business Loan unlocks after 4 months on the {getLowestPlanWithFeature("loanAccess")?.name ?? "a higher tier"} plan
             </p>
           )}
         </div>

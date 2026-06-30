@@ -4,7 +4,7 @@ import Aso                 from "./Aso";
 import CoopList            from "./CoopList";
 import Invoices            from "./Invoices";
 import LoanApplicationModal from "../components/LoanApplicationModal";
-import { canDo }           from "../utils/plans";
+import { canDo, getLowestPlanWithFeature } from "../utils/plans";
 import { fmt }             from "../utils/helpers";
 
 const TABS = [
@@ -53,11 +53,13 @@ function LoanTab({ isEnterprise, isLoanEligible, accountAgeMonths, onUpgrade, on
         </div>
         <p className="font-bold text-slate-700 dark:text-slate-200 text-base mb-1">Business Loan</p>
         <p className="text-sm text-slate-400 dark:text-slate-500 mb-5 max-w-xs leading-relaxed">
-          Apply for quick business financing. Available on the Oga plan.
+          Apply for quick business financing. {getLowestPlanWithFeature("loanAccess")
+            ? `Available on the ${getLowestPlanWithFeature("loanAccess").name} plan and above.`
+            : "Upgrade to access this feature."}
         </p>
         <button onClick={onUpgrade}
           className="bg-brand-600 text-white font-bold px-6 py-3 rounded-2xl text-sm active:scale-95 transition">
-          Upgrade to Oga
+          {`Upgrade to ${getLowestPlanWithFeature("loanAccess")?.name ?? "a higher plan"}`}
         </button>
       </div>
     );
@@ -74,7 +76,7 @@ function LoanTab({ isEnterprise, isLoanEligible, accountAgeMonths, onUpgrade, on
         </div>
         <p className="font-bold text-slate-700 dark:text-slate-200 text-base mb-2">Almost There!</p>
         <p className="text-sm text-slate-400 dark:text-slate-500 leading-relaxed max-w-xs">
-          Business Loan unlocks after 4 months on the Oga plan.{" "}
+          {`Business Loan unlocks after 4 months on the ${getLowestPlanWithFeature("loanAccess")?.name ?? "required"} plan.`}{" "}
           <span className="font-bold text-amber-500">{monthsLeft} month{monthsLeft !== 1 ? "s" : ""} remaining.</span>
         </p>
       </div>

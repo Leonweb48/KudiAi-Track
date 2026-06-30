@@ -49,10 +49,10 @@ export const ALL_FEATURE_LIST = [
   { key: "printWholesale",  label: "Print recharge & data wholesale" },
 ];
 
-// ── Fallback hardcoded plans (matches DB seed data) ───────────────────────────
+// ── Fallback hardcoded plans (shown only when DB is unreachable) ───────────────
 const FALLBACK_PLANS = {
   kobo: {
-    id: "fallback-kobo", name: "Kobo", slug: "kobo",
+    id: "fallback-kobo", name: "Free", slug: "kobo",
     description: "Free forever — get started at your own pace",
     price_monthly: 0, price_yearly: 0, sort_order: 0,
     max_transactions: 50, max_organizations: 1, max_org_members: 5, max_ajo_groups: 1,
@@ -62,7 +62,7 @@ const FALLBACK_PLANS = {
     is_active: true,
   },
   naira: {
-    id: "fallback-naira", name: "Naira", slug: "naira",
+    id: "fallback-naira", name: "Standard", slug: "naira",
     description: "Everything your business needs to grow",
     price_monthly: 7000, price_yearly: 75600, sort_order: 1,
     max_transactions: 999999, max_organizations: 5, max_org_members: 50, max_ajo_groups: 10,
@@ -83,14 +83,14 @@ const FALLBACK_PLANS = {
     is_active: true,
   },
   oga: {
-    id: "fallback-oga", name: "Oga", slug: "oga",
+    id: "fallback-oga", name: "Premium", slug: "oga",
     description: "Maximum power for serious business owners",
     price_monthly: 15000, price_yearly: 171000, sort_order: 2,
     max_transactions: 999999, max_organizations: 20, max_org_members: 200, max_ajo_groups: 50,
     feature_keys: ["credit", "aso", "pdfExport", "staffManagement", "inventory", "loyalty", "aiInsights", "aiChatbot", "branches", "organisation", "apiAccess", "loanAccess", "printWholesale", "invoices"],
     feature_limits: { aso: 999999, staffManagement: 999999, branches: 999999, organisation: 999999, inventory: 999999, loyalty: 999999 },
     features: [
-      "Everything in Naira",
+      "Everything in Standard",
       "Organisation / Coop management",
       "Business loan access",
       "Print airtime wholesale",
@@ -250,29 +250,3 @@ export function hasHigherPlanAvailable(currentSlug) {
   return Object.values(source).some((p) => (p.sort_order ?? 0) > (cur?.sort_order ?? 0));
 }
 
-// Legacy compat
-export const PLANS_META = {
-  kobo:         { name: "Kobo",  color: "gray",   price: 0,     badge: "Free forever" },
-  naira:        { name: "Naira", color: "blue",   price: 7000,  badge: "₦7,000/mo" },
-  oga:          { name: "Oga",   color: "violet", price: 15000, badge: "₦15,000/mo" },
-  starter:      { name: "Kobo",  color: "gray",   price: 0,     badge: "Free forever" },
-  basic:        { name: "Naira", color: "blue",   price: 7000,  badge: "₦7,000/mo" },
-  business:     { name: "Naira", color: "blue",   price: 7000,  badge: "₦7,000/mo" },
-  professional: { name: "Naira", color: "blue",   price: 7000,  badge: "₦7,000/mo" },
-  premium:      { name: "Naira", color: "blue",   price: 7000,  badge: "₦7,000/mo" },
-  enterprise:   { name: "Oga",   color: "violet", price: 15000, badge: "₦15,000/mo" },
-};
-
-export const PLAN_ORDER = ["kobo", "naira", "oga"];
-
-export const PLAN_LIMITS = {
-  kobo:         { maxTxPerMonth: 50 },
-  naira:        { maxTxPerMonth: Infinity, credit: true, aso: true, pdfExport: true, staffManagement: true, inventory: true, loyalty: true, aiInsights: true, aiChatbot: true, branches: true },
-  oga:          { maxTxPerMonth: Infinity, credit: true, aso: true, pdfExport: true, staffManagement: true, inventory: true, loyalty: true, aiInsights: true, aiChatbot: true, branches: true, organisation: true, apiAccess: true, loanAccess: true, printWholesale: true },
-  starter:      { maxTxPerMonth: 50 },
-  basic:        { maxTxPerMonth: Infinity, credit: true, aso: true, pdfExport: true, staffManagement: true, inventory: true, loyalty: true, aiInsights: true, branches: true },
-  business:     { maxTxPerMonth: Infinity, credit: true, aso: true, pdfExport: true, staffManagement: true, inventory: true, loyalty: true },
-  professional: { maxTxPerMonth: Infinity, credit: true, aso: true, pdfExport: true, staffManagement: true, inventory: true, loyalty: true, aiInsights: true, branches: true },
-  premium:      { maxTxPerMonth: Infinity, credit: true, aso: true, pdfExport: true, staffManagement: true, inventory: true, loyalty: true, aiInsights: true, branches: true },
-  enterprise:   { maxTxPerMonth: Infinity, credit: true, aso: true, pdfExport: true, staffManagement: true, inventory: true, loyalty: true, aiInsights: true, aiChatbot: true, branches: true, organisation: true, apiAccess: true, loanAccess: true, printWholesale: true, invoices: true },
-};

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Capacitor }             from "@capacitor/core";
 import { Browser }               from "@capacitor/browser";
-import { canDo }                 from "../utils/plans";
+import { canDo, planAvailableText } from "../utils/plans";
 import { fmt, today }            from "../utils/helpers";
 import { exportInvoicePdf }      from "../utils/generateInvoicePdf";
 import InvoiceBuilder            from "../components/InvoiceBuilder";
@@ -417,7 +417,7 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
           </svg>
         </div>
         <p className="font-bold text-slate-700 dark:text-slate-200 text-base mb-1">Invoice Generation</p>
-        <p className="text-sm text-slate-400 mb-5">Available on Naira and Oga plans</p>
+        <p className="text-sm text-slate-400 mb-5">{planAvailableText("invoices")}</p>
         <button onClick={onUpgrade}
           className="bg-brand-600 text-white font-bold px-6 py-3 rounded-2xl text-sm active:scale-95 transition">
           Upgrade Plan
