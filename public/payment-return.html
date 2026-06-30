@@ -48,6 +48,7 @@
       max-width: 340px; width: 100%;
     }
     .assurance p { font-size: 12px; color: #1d4ed8; margin: 0; line-height: 1.55; font-weight: 600; }
+    #autoMsg { font-size: 13px; color: #64748b; margin-bottom: 18px; }
   </style>
 </head>
 <body>
@@ -60,14 +61,16 @@
 
   <h1>Payment Submitted</h1>
   <p class="subtitle">
-    Tap the button below to return to <strong style="color:#1B2A5E">KudiAI Track</strong>.
+    Returning you to <strong style="color:#1B2A5E">KudiAI Track</strong>…
     Your payment will be verified and your service delivered instantly.
   </p>
 
   <span id="refEl"></span>
   <div id="spacer" class="spacer"></div>
 
-  <a id="returnBtn" class="return-btn" href="#">
+  <p id="autoMsg" style="display:none">If the app did not open automatically, tap below:</p>
+
+  <a id="returnBtn" class="return-btn" href="#" style="display:none">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
       stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
       <circle cx="12" cy="12" r="10"/>
@@ -77,7 +80,7 @@
     Return to KudiAI Track
   </a>
 
-  <p class="tip">
+  <p class="tip" id="tipText" style="display:none">
     If the app does not open, tap the button above — your payment is saved and
     will be verified when you return to the Bills page.
   </p>
@@ -100,9 +103,35 @@
         document.getElementById("spacer").style.marginBottom = "0";
       }
 
-      document.getElementById("returnBtn").href =
+      // Intent URI — Chrome on Android opens the app directly without a prompt
+      var intentUri =
         "intent://payment-callback" + search +
         "#Intent;scheme=" + APP + ";package=" + APP + ";end;";
+
+      // Custom scheme fallback (iOS / other browsers)
+      var customScheme = APP + "://payment-callback" + search;
+
+      document.getElementById("returnBtn").href = intentUri;
+
+      // Auto-redirect: attempt to open the app as soon as the page loads.
+      // The intent:// URI tells Android exactly which app+scheme to open.
+      // If the app is installed, it opens immediately; the browser tab stays
+      // in the background. If not, the browser ignores it and we show the button.
+      function tryAutoRedirect() {
+        // Try Android intent URI first
+        window.location.href = intentUri;
+
+        // After 1.8 s, if we are still here, the redirect didn't open the app.
+        // Show the manual button as fallback.
+        setTimeout(function () {
+          document.getElementById("autoMsg").style.display = "block";
+          document.getElementById("returnBtn").style.display = "flex";
+          document.getElementById("tipText").style.display = "block";
+        }, 1800);
+      }
+
+      // Small delay so the page is fully painted before we navigate away
+      setTimeout(tryAutoRedirect, 300);
     })();
   </script>
 </body>
