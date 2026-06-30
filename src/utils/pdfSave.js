@@ -14,6 +14,8 @@ async function blobToBase64(blob) {
 /**
  * Save or share a jsPDF document.
  * Native Android/iOS: writes to cache dir then opens the native share sheet.
+ * The share sheet is NOT awaited — the caller's loading state clears immediately
+ * so the spinner stops before the share dialog appears.
  * Web: triggers a browser file download.
  */
 export async function savePdf(doc, filename) {
@@ -29,16 +31,18 @@ export async function savePdf(doc, filename) {
         recursive: true,
       });
 
-      await Share.share({
-        title: filename,
-        url:   saved.uri,
-        dialogTitle: "Share PDF",
-      });
-      return;
+      // Fire-and-forget: share sheet only resolves when user picks an app.
+      // Awaiting it would leave the spinner running until the user acts.
+      Share.share({
+        title:       filename,
+        url:         saved.uri,
+        dialogTitle: "Share or save PDF",
+      }).catch(() => {});
     } catch (e) {
       if (e?.message?.includes("cancel") || e?.errorMessage?.includes("cancel")) return;
-      // fall through — try doc.save() as last resort (works in browser dev tools)
+      doc.save(filename);
     }
+    return;
   }
   doc.save(filename);
 }
