@@ -108,18 +108,25 @@ let _cache = null;
 let _cacheExpiry = 0;
 const CACHE_TTL = 2 * 60 * 1000; // 2-min in-session TTL; Realtime invalidates sooner
 
-// Legacy slug mapping
+// Legacy slug mapping — covers both clean slugs and actual DB slugs (which may have spaces/full words)
 const LEGACY_MAP = {
-  starter:      "kobo",
-  basic:        "naira",
-  business:     "naira",
-  professional: "naira",
-  premium:      "naira",
-  enterprise:   "oga",
+  // canonical aliases
+  starter:           "kobo",
+  basic:             "naira",
+  business:          "naira",
+  professional:      "naira",
+  premium:           "naira",
+  enterprise:        "oga",
+  // actual DB slugs (subscription_plans.slug in production)
+  "starter plan":    "kobo",
+  "business plan":   "naira",
+  "enterprise plan": "oga",
 };
 
 export function normalizeSlug(slug) {
-  return LEGACY_MAP[slug] || slug || "kobo";
+  if (!slug) return "kobo";
+  const lower = slug.toLowerCase().trim();
+  return LEGACY_MAP[lower] || lower || "kobo";
 }
 
 // ── fetchAndCachePlans ────────────────────────────────────────────────────────
@@ -137,12 +144,16 @@ export async function fetchAndCachePlans(supabaseClient) {
     if (!error && data?.length) {
       const bySlug = {};
       data.forEach((p) => {
-        bySlug[p.slug] = {
+        const normalized = {
           ...p,
           feature_keys:   Array.isArray(p.feature_keys)   ? p.feature_keys   : (p.feature_keys   ? JSON.parse(p.feature_keys)   : []),
           features:       Array.isArray(p.features)        ? p.features       : (p.features        ? JSON.parse(p.features)        : []),
           feature_limits: (p.feature_limits && typeof p.feature_limits === "object") ? p.feature_limits : (p.feature_limits ? JSON.parse(p.feature_limits) : {}),
         };
+        // Index by original slug AND canonical slug so lookups always hit cache
+        bySlug[p.slug] = normalized;
+        const canonical = normalizeSlug(p.slug);
+        if (canonical !== p.slug) bySlug[canonical] = normalized;
       });
       _cache = bySlug;
       _cacheExpiry = now + CACHE_TTL;
