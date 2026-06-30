@@ -84,7 +84,7 @@ export default function App() {
   const [aiQuery,      setAiQuery]      = useState("");
   const [branchReport, setBranchReport] = useState(null);
 
-  const { status, session, plan, setReady, refetch, upgradeAvailable, staff, ajoClient, orgMember, adminUser, marketer, org } = useAuth();
+  const { status, session, plan, setReady, refetch, upgradeAvailable, plansVersion, staff, ajoClient, orgMember, adminUser, marketer, org } = useAuth();
   const userId = session?.user?.id;
 
   // Notification system — initialised before store so addNotification is stable

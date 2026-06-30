@@ -49,6 +49,7 @@ async function logPlatformSession(supabaseClient, userId, userType, username, em
 
 export function useAuth() {
   const [status,         setStatus]         = useState("loading");
+  const [plansVersion,   setPlansVersion]   = useState(0);
   const [session,        setSession]        = useState(null);
   const [plan,           setPlan]           = useState(() => normalizeSlug(localStorage.getItem(CACHE_KEY) || "starter"));
   const [upgradeAvailable, setUpgradeAvailable] = useState(false);
@@ -601,17 +602,43 @@ export function useAuth() {
     supabase.auth.getSession().then(({ data }) => resolve(data.session));
   }, [resolve]);
 
-  // Realtime: invalidate plans cache the moment admin changes any plan in the DB
+  // Realtime: when admin changes subscription_plans in DB, invalidate the
+  // module cache, re-fetch, then bump plansVersion so App.jsx re-renders and
+  // every canDo() call runs again against the fresh cache.
   useEffect(() => {
     const channel = supabase
       .channel("plans_realtime")
       .on("postgres_changes", { event: "*", schema: "public", table: "subscription_plans" }, () => {
         invalidatePlansCache();
-        fetchAndCachePlans(supabase).catch(() => {});
+        fetchAndCachePlans(supabase)
+          .then(() => setPlansVersion(v => v + 1))
+          .catch(() => {});
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  return { status, session, plan, setReady, refetch, upgradeAvailable, staff, ajoClient, orgMember, adminUser, marketer, org, ownerId: staff?.owner_id ?? null };
+  // Also watch the user's own subscription row so that upgrading from another
+  // device or session is reflected immediately without requiring a re-login.
+  useEffect(() => {
+    if (!session?.user?.id) return;
+    const channel = supabase
+      .channel("user_subscription_realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "subscriptions", filter: `user_id=eq.${session.user.id}` },
+        (payload) => {
+          const newPlan = normalizeSlug(payload.new?.plan || "kobo");
+          setPlan(newPlan);
+          localStorage.setItem(CACHE_KEY, newPlan);
+          fetchAndCachePlans(supabase)
+            .then(() => setPlansVersion(v => v + 1))
+            .catch(() => {});
+        }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [session?.user?.id]);
+
+  return { status, session, plan, setReady, refetch, upgradeAvailable, plansVersion, staff, ajoClient, orgMember, adminUser, marketer, org, ownerId: staff?.owner_id ?? null };
 }

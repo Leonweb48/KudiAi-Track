@@ -87,7 +87,7 @@ const FALLBACK_PLANS = {
     description: "Maximum power for serious business owners",
     price_monthly: 15000, price_yearly: 171000, sort_order: 2,
     max_transactions: 999999, max_organizations: 20, max_org_members: 200, max_ajo_groups: 50,
-    feature_keys: ["credit", "aso", "pdfExport", "staffManagement", "inventory", "loyalty", "aiInsights", "aiChatbot", "branches", "organisation", "apiAccess", "loanAccess", "printWholesale"],
+    feature_keys: ["credit", "aso", "pdfExport", "staffManagement", "inventory", "loyalty", "aiInsights", "aiChatbot", "branches", "organisation", "apiAccess", "loanAccess", "printWholesale", "invoices"],
     feature_limits: { aso: 999999, staffManagement: 999999, branches: 999999, organisation: 999999, inventory: 999999, loyalty: 999999 },
     features: [
       "Everything in Naira",
@@ -96,6 +96,7 @@ const FALLBACK_PLANS = {
       "Print airtime wholesale",
       "Print data wholesale",
       "API access",
+      "Invoice generation & WhatsApp sending",
       "Priority support",
     ],
     is_active: true,
