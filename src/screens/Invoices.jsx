@@ -26,7 +26,14 @@ const METHODS = [
   { value: "other",        label: "Other" },
 ];
 
-const FILTERS = ["all", "draft", "sent", "overdue", "paid", "cancelled"];
+const INV_TABS = [
+  { id: "all",       label: "All" },
+  { id: "draft",     label: "Draft" },
+  { id: "sent",      label: "Sent" },
+  { id: "overdue",   label: "Overdue" },
+  { id: "paid",      label: "Paid" },
+  { id: "cancelled", label: "Cancelled" },
+];
 
 // ── Share helpers ──────────────────────────────────────────────────────────
 function buildWhatsAppUrl(inv, profile) {
@@ -431,39 +438,62 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
     .reduce((s, i) => s + (i.total_kobo - i.amount_paid_kobo), 0);
   const overdue_count = invoices.filter(i => i.status === "overdue").length;
 
+  const counts = {
+    all:       invoices.length,
+    draft:     invoices.filter(i => i.status === "draft").length,
+    sent:      invoices.filter(i => i.status === "sent").length,
+    overdue:   invoices.filter(i => i.status === "overdue").length,
+    paid:      invoices.filter(i => i.status === "paid").length,
+    cancelled: invoices.filter(i => i.status === "cancelled").length,
+  };
+
   return (
     <div className="pb-6">
-      {/* Summary banner */}
+      {/* Summary dashboard card */}
       {invoices.length > 0 && (
-        <div className="mx-4 mt-4 mb-3 bg-gradient-to-r from-brand-600 to-brand-700 rounded-2xl p-4 text-white">
-          <div className="flex items-center justify-between">
+        <div className="mx-4 mt-4 mb-3 rounded-2xl p-4 text-white shadow-md"
+          style={{ background: "linear-gradient(135deg, #1B2A5E 0%, #2563eb 100%)" }}>
+          <p className="text-[10px] font-bold uppercase tracking-widest opacity-60 mb-3">Invoice Summary</p>
+          <div className="grid grid-cols-3 gap-2">
             <div>
-              <p className="text-[11px] font-bold opacity-75 uppercase tracking-widest mb-0.5">Outstanding</p>
-              <p className="text-2xl font-extrabold">{fmtK(outstanding_total)}</p>
+              <p className="text-[10px] opacity-60 mb-0.5">Outstanding</p>
+              <p className="text-base font-black leading-tight">{fmtK(outstanding_total)}</p>
             </div>
-            {overdue_count > 0 && (
-              <div className="bg-red-500 rounded-xl px-3 py-1.5 text-center">
-                <p className="text-sm font-extrabold">{overdue_count}</p>
-                <p className="text-[10px] opacity-90">overdue</p>
-              </div>
-            )}
+            <div className="border-l border-white/20 pl-3">
+              <p className="text-[10px] opacity-60 mb-0.5">Total</p>
+              <p className="text-base font-black leading-tight">{invoices.length}</p>
+            </div>
+            <div className="border-l border-white/20 pl-3">
+              <p className="text-[10px] opacity-60 mb-0.5">Overdue</p>
+              <p className={`text-base font-black leading-tight ${overdue_count > 0 ? "text-red-300" : "text-white"}`}>
+                {overdue_count}
+              </p>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Filter chips */}
+      {/* X/Twitter-style status tabs */}
       {invoices.length > 0 && (
-        <div className="flex gap-2 px-4 mb-4 overflow-x-auto pb-1 scrollbar-none">
-          {FILTERS.map(f => (
-            <button key={f} onClick={() => setFilter(f)}
-              className={`flex-shrink-0 px-3 py-1.5 rounded-full text-[11px] font-bold capitalize transition ${
-                filter === f
-                  ? "bg-brand-600 text-white"
-                  : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
-              }`}>
-              {f === "all" ? `All (${invoices.length})` : f}
-            </button>
-          ))}
+        <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700">
+          <div className="flex overflow-x-auto scrollbar-none">
+            {INV_TABS.map(t => (
+              <button key={t.id} onClick={() => setFilter(t.id)}
+                className={`relative flex-1 min-w-[60px] px-3 py-3 flex flex-col items-center whitespace-nowrap transition-colors
+                  hover:bg-slate-100 dark:hover:bg-slate-800/60
+                  ${filter === t.id ? "text-slate-900 dark:text-white" : "text-slate-500 dark:text-slate-400"}`}>
+                <span className="text-[12px] font-semibold">{t.label}</span>
+                {counts[t.id] > 0 && (
+                  <span className={`text-[10px] font-bold leading-none mt-0.5 ${
+                    filter === t.id ? "text-brand-600 dark:text-brand-400" : "text-slate-400 dark:text-slate-600"
+                  }`}>{counts[t.id]}</span>
+                )}
+                {filter === t.id && (
+                  <span className="absolute bottom-0 left-0 right-0 h-[3px] bg-brand-600 dark:bg-brand-400 rounded-t" />
+                )}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -475,7 +505,7 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
       ) : filtered.length === 0 && filter === "all" ? (
         <EmptyInvoices onNew={() => setShowBuilder(true)} />
       ) : (
-        <div className="px-4">
+        <div className="px-4 mt-3">
           {filtered.length === 0
             ? <p className="text-center text-slate-400 py-12 text-sm">No {filter} invoices</p>
             : filtered.map(inv => <InvoiceCard key={inv.id} inv={inv} onTap={setDetailInv} />)
