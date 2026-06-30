@@ -26,13 +26,13 @@ const METHODS = [
   { value: "other",        label: "Other" },
 ];
 
-const INV_TABS = [
-  { id: "all",       label: "All" },
-  { id: "draft",     label: "Draft" },
-  { id: "sent",      label: "Sent" },
-  { id: "overdue",   label: "Overdue" },
-  { id: "paid",      label: "Paid" },
-  { id: "cancelled", label: "Cancelled" },
+const STATUS_TILES = [
+  { id: "all",       label: "All",       g1: "#1B2A5E", g2: "#2d4a8a", icon: "M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" },
+  { id: "draft",     label: "Draft",     g1: "#64748b", g2: "#475569", icon: "M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7|M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" },
+  { id: "sent",      label: "Sent",      g1: "#2563eb", g2: "#1d4ed8", icon: "M22 2L11 13|M22 2l-7 20-4-9-9-4 20-7z" },
+  { id: "overdue",   label: "Overdue",   g1: "#ef4444", g2: "#dc2626", icon: "M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z|M12 9v4|M12 17h.01" },
+  { id: "paid",      label: "Paid",      g1: "#16a34a", g2: "#15803d", icon: "M22 11.08V12a10 10 0 11-5.93-9.14|M22 4L12 14.01l-3-3" },
+  { id: "cancelled", label: "Cancelled", g1: "#94a3b8", g2: "#64748b", icon: "M18 6L6 18|M6 6l12 12" },
 ];
 
 // ── Share helpers ──────────────────────────────────────────────────────────
@@ -473,26 +473,42 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
         </div>
       )}
 
-      {/* X/Twitter-style status tabs */}
+      {/* Status filter tiles — Quick Services style */}
       {invoices.length > 0 && (
-        <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700">
-          <div className="flex overflow-x-auto scrollbar-none">
-            {INV_TABS.map(t => (
-              <button key={t.id} onClick={() => setFilter(t.id)}
-                className={`relative flex-1 min-w-[60px] px-3 py-3 flex flex-col items-center whitespace-nowrap transition-colors
-                  hover:bg-slate-100 dark:hover:bg-slate-800/60
-                  ${filter === t.id ? "text-slate-900 dark:text-white" : "text-slate-500 dark:text-slate-400"}`}>
-                <span className="text-[12px] font-semibold">{t.label}</span>
-                {counts[t.id] > 0 && (
-                  <span className={`text-[10px] font-bold leading-none mt-0.5 ${
-                    filter === t.id ? "text-brand-600 dark:text-brand-400" : "text-slate-400 dark:text-slate-600"
-                  }`}>{counts[t.id]}</span>
-                )}
-                {filter === t.id && (
-                  <span className="absolute bottom-0 left-0 right-0 h-[3px] bg-brand-600 dark:bg-brand-400 rounded-t" />
-                )}
-              </button>
-            ))}
+        <div className="mx-4 mb-3">
+          <div className="bg-white dark:bg-slate-800 rounded-3xl p-4 shadow-card border border-slate-100 dark:border-slate-700/50">
+            <p className="text-[12px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-4">Filter by Status</p>
+            <div className="grid grid-cols-3 gap-y-4 gap-x-2">
+              {STATUS_TILES.map(s => {
+                const active = filter === s.id;
+                return (
+                  <button key={s.id} onClick={() => setFilter(s.id)}
+                    className="flex flex-col items-center gap-1.5 active:scale-90 transition-transform duration-150">
+                    <div className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm relative"
+                      style={active
+                        ? { background: `linear-gradient(135deg,${s.g1},${s.g2})` }
+                        : { background: "transparent", border: "2px solid #e2e8f0" }}>
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                        stroke={active ? "white" : s.g1} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        {s.icon.split("|").map((d, i) => <path key={i} d={d} />)}
+                      </svg>
+                      {counts[s.id] > 0 && (
+                        <span className={`absolute -top-1 -right-1 text-[9px] font-black px-1.5 py-0.5 rounded-full leading-none ${
+                          active ? "bg-white text-slate-800" : "text-white"
+                        }`} style={active ? {} : { background: s.g1 }}>
+                          {counts[s.id]}
+                        </span>
+                      )}
+                    </div>
+                    <span className={`text-[11px] font-semibold text-center leading-tight ${
+                      active ? "text-slate-900 dark:text-white" : "text-slate-500 dark:text-slate-400"
+                    }`}>
+                      {s.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}
