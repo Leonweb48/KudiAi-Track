@@ -402,7 +402,7 @@ function InvoiceDetail({ inv, profile, onClose, onSent, onCancel, onPayment }) {
 }
 
 // ── Main Invoices screen ──────────────────────────────────────────────────
-export default function Invoices({ invoiceHook, plan, onUpgrade, profile, inventory }) {
+export default function Invoices({ invoiceHook, plan, onUpgrade, profile, inventory, addTransaction }) {
   const { invoices, customers, loading, reload, createDraft, markSent, cancelInvoice, recordInvoicePayment } = invoiceHook;
   const [filter,      setFilter]      = useState("all");
   const [showBuilder, setShowBuilder] = useState(false);
@@ -558,7 +558,17 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
           onCancel={async (id) => { await cancelInvoice(id); await reload(); }}
           onPayment={async (payData) => {
             const result = await recordInvoicePayment({ invoiceId: detailInv.id, ...payData });
-            // Refresh detailInv with updated data from state
+            if (!result.error && parseFloat(payData.amount_naira) > 0) {
+              await addTransaction?.({
+                type:             "in",
+                category:         "invoice",
+                amount:           parseFloat(payData.amount_naira),
+                item_name:        `Invoice ${detailInv.invoice_number} — ${detailInv.customer_name}`,
+                payment_type:     payData.method || "cash",
+                customer_name:    detailInv.customer_name || "",
+                transaction_date: payData.paidAt ? payData.paidAt.slice(0, 10) : today(),
+              });
+            }
             await reload();
             return result;
           }}

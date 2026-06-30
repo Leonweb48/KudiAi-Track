@@ -252,6 +252,7 @@ export default function Finance({
             onUpgrade={onUpgrade}
             profile={store.profile}
             inventory={inventory}
+            addTransaction={store.addTransaction}
           />
         )}
 
