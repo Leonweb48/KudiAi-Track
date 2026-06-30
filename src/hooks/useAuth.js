@@ -457,10 +457,9 @@ export function useAuth() {
       localStorage.setItem(CACHE_KEY, resolvedPlan);
       subVerified.current = true;
       logPlatformSession(supabase, uid, "business", sess.user.user_metadata?.full_name || sess.user.user_metadata?.owner_name, email);
-      // Warm the plans cache and check for upgrade availability
-      fetchAndCachePlans(supabase).then(() => {
-        setUpgradeAvailable(hasHigherPlanAvailable(resolvedPlan));
-      }).catch(() => {});
+      // Await plans fetch so feature_keys from DB are warm before first render
+      await fetchAndCachePlans(supabase).catch(() => {});
+      setUpgradeAvailable(hasHigherPlanAvailable(resolvedPlan));
       setStatus("ready");
       return;
     }
@@ -476,9 +475,8 @@ export function useAuth() {
       localStorage.setItem(CACHE_KEY, resolvedPlan);
       subVerified.current = true;
       logPlatformSession(supabase, uid, "business", sess.user.user_metadata?.full_name || sess.user.user_metadata?.owner_name, email);
-      fetchAndCachePlans(supabase).then(() => {
-        setUpgradeAvailable(hasHigherPlanAvailable(resolvedPlan));
-      }).catch(() => {});
+      await fetchAndCachePlans(supabase).catch(() => {});
+      setUpgradeAvailable(hasHigherPlanAvailable(resolvedPlan));
       setStatus("ready");
       return;
     }
@@ -490,9 +488,8 @@ export function useAuth() {
       const cachedPlan = normalizeSlug(cached);
       setPlan(cachedPlan);
       subVerified.current = true;
-      fetchAndCachePlans(supabase).then(() => {
-        setUpgradeAvailable(hasHigherPlanAvailable(cachedPlan));
-      }).catch(() => {});
+      await fetchAndCachePlans(supabase).catch(() => {});
+      setUpgradeAvailable(hasHigherPlanAvailable(cachedPlan));
       setStatus("ready");
       return;
     }
