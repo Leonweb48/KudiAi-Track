@@ -23,9 +23,6 @@ body {
   -moz-osx-font-smoothing: grayscale;
   overscroll-behavior: none;
   touch-action: pan-y;
-  /* Pull content below the status bar on PWA/standalone mode */
-  padding-top: env(safe-area-inset-top, 0px);
-  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 /* ── Scrollbar ────────────────────────────────────────────────────── */
