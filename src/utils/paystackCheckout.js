@@ -1,6 +1,14 @@
 import { Browser } from "@capacitor/browser";
 import { Capacitor } from "@capacitor/core";
 
+function isBrowserAvailable() {
+  try {
+    return Capacitor.isPluginAvailable("Browser");
+  } catch {
+    return false;
+  }
+}
+
 const APP_SCHEME    = "com.amayatechnologies.kuditrack";
 const VERCEL_ORIGIN = "https://kudiai.app";
 
@@ -37,7 +45,14 @@ export function buildCallbackUrl(webBaseUrl, params = {}) {
  */
 export async function openPaystackCheckout(authorizationUrl) {
   if (isNative()) {
-    await Browser.open({ url: authorizationUrl });
+    if (isBrowserAvailable()) {
+      await Browser.open({ url: authorizationUrl });
+    } else {
+      // Browser plugin not compiled in this APK — open via system intent.
+      // Deep-link callback (com.amayatechnologies.kuditrack://payment-callback)
+      // will still bring the user back via appUrlOpen.
+      window.open(authorizationUrl, "_system");
+    }
   } else {
     window.location.href = authorizationUrl;
   }
@@ -54,13 +69,19 @@ export async function openPaystackCheckout(authorizationUrl) {
  */
 export function openPaystackPopup(authorizationUrl, { onClose } = {}) {
   if (isNative()) {
-    Browser.open({ url: authorizationUrl });
-    let listener;
-    Browser.addListener("browserFinished", () => {
-      listener?.remove();
-      onClose?.();
-    }).then((l) => { listener = l; });
-    return () => listener?.remove();
+    if (isBrowserAvailable()) {
+      Browser.open({ url: authorizationUrl });
+      let listener;
+      Browser.addListener("browserFinished", () => {
+        listener?.remove();
+        onClose?.();
+      }).then((l) => { listener = l; });
+      return () => listener?.remove();
+    }
+    // Browser plugin not available — use system browser, trigger onClose after delay
+    window.open(authorizationUrl, "_system");
+    const t = setTimeout(() => onClose?.(), 5000);
+    return () => clearTimeout(t);
   }
 
   const popup = window.open(
