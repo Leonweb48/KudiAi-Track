@@ -1,4 +1,5 @@
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
+import { LocalNotifications }       from "@capacitor/local-notifications";
 
 const TTS_URL = "https://admin.kudiai.app/api/public/tts";
 const SECRET  = process.env.REACT_APP_EMAIL_SECRET;
@@ -144,15 +145,54 @@ export async function speakText(text, lang = "en") {
   }
 }
 
-export async function speakEvent(event, lang = "en") {
-  if (!Capacitor.isNativePlatform()) return;
-  cancelTTS();
+// ── WhatsApp-style heads-up notification for transaction events ─────────────
+const TXN_CHANNEL = "kt_txn_alerts";
+let _channelReady = false;
+
+async function ensureTxnChannel() {
+  if (_channelReady) return;
   try {
-    const data = await serverTTS({ event, lang });
-    if (data.quota_exceeded) { await deviceSpeak(event.replace(/([A-Z])/g, " $1").trim()); return; }
-    const { base64, mimeType } = resolveAudio(data);
-    await playBase64(base64, mimeType);
+    await LocalNotifications.createChannel({
+      id:          TXN_CHANNEL,
+      name:        "Transaction Alerts",
+      description: "Real-time sales and payment alerts",
+      importance:  5,      // IMPORTANCE_HIGH → heads-up banner
+      sound:       "default",
+      vibration:   true,
+      visibility:  1,
+    });
+    _channelReady = true;
+  } catch {}
+}
+
+const EVENT_NOTIF = {
+  cashIn:      { title: "💰 Cash In",       body: "Money received" },
+  cashOut:     { title: "💸 Cash Out",      body: "Payment made" },
+  stockIn:     { title: "📦 Stock Added",   body: "New stock recorded" },
+  creditSaved: { title: "📋 Credit Saved",  body: "Customer credit recorded" },
+  ajoDeposit:  { title: "🏦 Ajo Deposit",   body: "Contribution saved" },
+  ajoWithdraw: { title: "🏧 Ajo Withdraw",  body: "Withdrawal completed" },
+};
+
+export async function speakEvent(event, lang = "en", extra = {}) {
+  if (!Capacitor.isNativePlatform()) return;
+  const tpl  = EVENT_NOTIF[event] || { title: "KudiAI Track", body: "Transaction recorded" };
+  const amt  = extra.amount ? `  ₦${Number(extra.amount).toLocaleString("en-NG")}` : "";
+  const body = `${tpl.body}${amt}`;
+  try {
+    await ensureTxnChannel();
+    await LocalNotifications.schedule({
+      notifications: [{
+        id:        Math.floor(Math.random() * 2_000_000),
+        title:     tpl.title,
+        body,
+        channelId: TXN_CHANNEL,
+        sound:     "default",
+        smallIcon: "ic_stat_icon_config_sample",
+        iconColor: "#16a34a",
+      }],
+    });
   } catch (e) {
-    console.error("[TTS] speakEvent failed:", e?.message || e);
+    console.error("[Notif] speakEvent failed:", e?.message || e);
   }
 }

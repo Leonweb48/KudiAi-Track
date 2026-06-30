@@ -71,7 +71,7 @@ export function AddTxnModal({ onAdd, onClose, defaultType = "in", inventory = nu
     const unitPrice = parseFloat(f.unit_price) || (parseFloat(f.amount) / qty);
     onAdd({ ...f, amount: parseFloat(f.amount), quantity: qty, unit_price: unitPrice });
     if (Capacitor.isNativePlatform()) {
-      speakEvent(f.type === "in" ? "cashIn" : "cashOut", getLang()).catch(() => {});
+      speakEvent(f.type === "in" ? "cashIn" : "cashOut", getLang(), { amount: parseFloat(f.amount) }).catch(() => {});
     } else {
       speakConfirmation(f.type === "in" ? "cashIn" : "cashOut", getLang());
     }
