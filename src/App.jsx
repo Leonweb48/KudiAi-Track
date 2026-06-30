@@ -303,7 +303,8 @@ export default function App() {
                     onAutoOpened={clearAutoAdd}
                     userId={userId}
                     session={session}
-                    onSelectCoopOrg={setCoopOrg} />,
+                    onSelectCoopOrg={setCoopOrg}
+                    inventory={inventory} />,
     inventory:    <Inventory
                     inventory={inventory}
                     isOwner={true}

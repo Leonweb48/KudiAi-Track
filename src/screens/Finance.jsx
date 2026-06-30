@@ -1,12 +1,14 @@
 import { useState, useEffect } from "react";
-import Credit from "./Credit";
-import Aso from "./Aso";
+import Credit   from "./Credit";
+import Aso      from "./Aso";
 import CoopList from "./CoopList";
+import Invoices from "./Invoices";
 
 const TABS = [
-  { id: "credit", label: "Credit" },
-  { id: "ajo",    label: "Ajo" },
-  { id: "org",    label: "Organisation" },
+  { id: "credit",   label: "Credit" },
+  { id: "ajo",      label: "Ajo" },
+  { id: "invoices", label: "Invoices" },
+  { id: "org",      label: "Organisation" },
 ];
 
 export default function Finance({
@@ -14,6 +16,7 @@ export default function Finance({
   autoOpenTab, onAutoOpened,
   userId, session,
   onSelectCoopOrg,
+  inventory,
 }) {
   const [tab, setTab] = useState(autoOpenTab || "credit");
 
@@ -65,6 +68,15 @@ export default function Finance({
           onAutoOpened={onAutoOpened}
           onUpgrade={onUpgrade}
           embedded
+        />
+      )}
+      {tab === "invoices" && (
+        <Invoices
+          userId={userId}
+          plan={plan}
+          onUpgrade={onUpgrade}
+          profile={store.profile}
+          inventory={inventory}
         />
       )}
       {tab === "org" && (
