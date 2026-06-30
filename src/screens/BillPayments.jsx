@@ -1984,17 +1984,24 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     setError("");
     try {
       if (!pending.isFree) {
-        // Verify payment with Paystack
+        // Verify payment with Paystack (server-side; edge function requires auth)
         const { data: vd } = await supabase.functions.invoke("paystack", {
           body: { action: "verify", reference: ref },
         });
-        if (vd?.data?.status !== "success") {
-          const status = vd?.data?.status || "";
-          const gwResp = (vd?.data?.gateway_response || "").toLowerCase();
-          const isAbandoned = status === "abandoned" || gwResp.includes("abandon") || gwResp.includes("cancel");
-          // Payment is still in progress (e.g. OPay native app opened, user not done yet).
-          // Keep saving=true and localStorage intact so visibilitychange can retry.
-          if (status === "pending") return;
+        const psStatus = vd?.data?.status || "";
+        const gwResp   = (vd?.data?.gateway_response || "").toLowerCase();
+
+        if (psStatus !== "success") {
+          const isAbandoned = psStatus === "abandoned" || gwResp.includes("abandon") || gwResp.includes("cancel");
+          // Payment still in progress — keep pending so visibilitychange can retry
+          if (psStatus === "pending") return;
+          // Already fulfilled (replay blocked by server idempotency guard)
+          if (psStatus === "already_fulfilled") {
+            localStorage.removeItem(BILL_PENDING_PREFIX + ref);
+            setSaving(false);
+            setFulfillResult({ ok: false, disrupted: true, detail: "This payment reference has already been used. Contact support if you need help.", psRef: ref });
+            return;
+          }
           if (isAbandoned) {
             localStorage.removeItem(BILL_PENDING_PREFIX + ref);
             setSaving(false);
@@ -2012,6 +2019,14 @@ export default function BillPayments({ store, plan, session = null, staffName = 
             return;
           }
           throw new Error(vd?.data?.gateway_response || "Payment not confirmed. Please contact support.");
+        }
+
+        // Amount integrity check — Paystack amount (kobo) must match what we charged
+        const verifiedKobo = vd?.data?.amount ?? 0;
+        const expectedKobo = Math.round((pending.paidAmount || 0) * 100);
+        if (expectedKobo > 0 && verifiedKobo < Math.round(expectedKobo * 0.99)) {
+          localStorage.removeItem(BILL_PENDING_PREFIX + ref);
+          throw new Error(`Payment amount mismatch — paid ₦${(verifiedKobo / 100).toFixed(0)} but expected ₦${(expectedKobo / 100).toFixed(0)}. Contact support.`);
         }
       }
 

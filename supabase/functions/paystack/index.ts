@@ -66,11 +66,33 @@ serve(async (req) => {
     // ── Verify a transaction ───────────────────────────────────────────────
     if (action === "verify") {
       const { reference } = body as { reference: string };
+      if (!reference) return json({ error: "reference required" }, 400);
+
+      // Require a valid Supabase user session for all bill verifications
+      const token = authHeader.replace("Bearer ", "");
+      if (!token) return json({ error: "Unauthorized" }, 401);
+      const { data: { user }, error: authErr } = await sb.auth.getUser(token);
+      if (authErr || !user) return json({ error: "Unauthorized" }, 401);
+
       const res = await fetch(
         `https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`,
         { headers: psHeaders },
       );
-      return json(await res.json());
+      const psResp = await res.json();
+
+      // Idempotency: mark as fulfilled on first success; reject on replay
+      if (psResp?.data?.status === "success") {
+        const { error: logErr } = await sb
+          .from("paystack_webhook_log")
+          .insert({ event: "bill.api_verify", reference, payload: { user_id: user.id, amount: psResp.data.amount, verified_at: new Date().toISOString() } });
+
+        if (logErr?.code === "23505") {
+          // Unique constraint — reference already fulfilled
+          return json({ ...psResp, data: { ...psResp.data, status: "already_fulfilled" } });
+        }
+      }
+
+      return json(psResp);
     }
 
     // ── Resolve a bank account (verify account number + bank code) ─────────
