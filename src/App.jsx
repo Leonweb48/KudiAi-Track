@@ -24,6 +24,7 @@ import Inventory             from "./screens/Inventory";
 import Reports               from "./screens/Reports";
 import AIAssistant           from "./screens/AIAssistant";
 import LockScreen            from "./components/LockScreen";
+import PinSetupModal         from "./components/PinSetupModal";
 import AIChatWidget         from "./components/AIChatWidget";
 import Loyalty               from "./screens/Loyalty";
 import Branches              from "./screens/Branches";
@@ -265,28 +266,32 @@ export default function App() {
   // Super Admin — full command center
   if (status === "admin") return <AdminDashboard session={session} adminUser={adminUser} />;
 
-  // Organisation self-registered portal
+  // Organisation self-registered portal — setup flow (no PIN gate)
   if (status === "org_setup") return <OrgFirstLogin org={org} />;
-  if (status === "organisation") return <OrgPortal session={session} org={org} />;
 
-  // Org member — email OTP verification then password change on first login
+  // Org member — setup flows first, PIN gate after
   if (status === "org_member_otp")   return <OrgMemberOtpVerify member={orgMember} />;
   if (status === "org_member_setup") return <CoopMemberFirstLogin member={orgMember} />;
-  if (status === "org_member") return <CoopMemberPortal member={orgMember} />;
 
-  // Ajo client login — route to dedicated client portal
-  if (status === "ajo_client_setup" || status === "ajo_client") {
-    return <AjoMemberPortal session={session} ajoClient={ajoClient} />;
-  }
+  // Ajo / staff / marketer — setup flows first
+  if (status === "ajo_client_setup") return <AjoMemberPortal session={session} ajoClient={ajoClient} />;
+  if (status === "unauthenticated")  return <Auth />;
+  if (status === "onboarding")       return <Onboarding session={session} onComplete={refetch} />;
+  if (status === "subscribing")      return <SubscriptionPlan session={session} onComplete={setReady} />;
+  if (status === "staff_setup")      return <StaffDashboard session={session} staff={staff} />;
+  if (status === "marketer_setup")   return <MarketerFirstLogin marketer={marketer} />;
 
-  if (status === "unauthenticated") return <Auth />;
+  // ── PIN setup gate — blocks all portals until the user sets a device PIN ──
+  // Covers: organisation, org_member, ajo_client, staff, branch_manager, marketer, main app.
+  if (!lock.hasPIN) return <PinSetupModal lock={lock} />;
 
-  if (status === "onboarding")      return <Onboarding session={session} onComplete={refetch} />;
-  if (status === "subscribing")     return <SubscriptionPlan session={session} onComplete={setReady} />;
-  if (status === "staff_setup" || status === "staff") return <StaffDashboard session={session} staff={staff} />;
+  // ── Authenticated portals (PIN already set) ──
+  if (status === "organisation")  return <OrgPortal session={session} org={org} />;
+  if (status === "org_member")    return <CoopMemberPortal member={orgMember} />;
+  if (status === "ajo_client")    return <AjoMemberPortal session={session} ajoClient={ajoClient} />;
+  if (status === "staff")         return <StaffDashboard session={session} staff={staff} />;
   if (status === "branch_manager") return <ManagerDashboard session={session} staff={staff} />;
-  if (status === "marketer_setup")  return <MarketerFirstLogin marketer={marketer} />;
-  if (status === "marketer")        return <MarketerDashboard marketer={marketer} />;
+  if (status === "marketer")      return <MarketerDashboard marketer={marketer} />;
 
   if (showUpgrade) {
     return (
