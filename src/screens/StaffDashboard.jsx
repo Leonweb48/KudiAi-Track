@@ -21,6 +21,8 @@ import Insights               from "./Insights";
 import StaffReports           from "./StaffReports";
 import { AddTxnModal }        from "./Transactions";
 import { useT, useLanguage }  from "../contexts/LanguageContext";
+import { useInvoices }        from "../hooks/useInvoices";
+import Invoices               from "./Invoices";
 
 /* ═══════════════════════════════════════════════════════════════════
    CONSTANTS
@@ -796,8 +798,9 @@ function StaffSales({ store, staff, session, livePerms, initialSub, initialData,
 /* ═══════════════════════════════════════════════════════════════════
    RECORDS TAB
 ═══════════════════════════════════════════════════════════════════ */
-function StaffRecords({ store, staff, livePerms, initialSub, plan }) {
+function StaffRecords({ store, staff, livePerms, initialSub, plan, invoiceHook, inventory, ownerId }) {
   const ajoOnPlan = canDo(plan, "aso");
+  const invOnPlan = canDo(plan, "invoices");
   const [sub, setSub] = useState(initialSub || "credit");
   useEffect(() => { if (initialSub) setSub(initialSub); }, [initialSub]);
   const allowed = livePerms.filter(p => p.can_view).map(p => p.module);
@@ -805,13 +808,14 @@ function StaffRecords({ store, staff, livePerms, initialSub, plan }) {
   return (
     <div className="h-full flex flex-col">
       <div className="flex-shrink-0 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 pt-3 pb-0">
-        <div className="flex gap-1">
+        <div className="flex gap-1 overflow-x-auto scrollbar-none">
           {[
-            ["credit","Credit", true],
-            ["ajo","Ajo", ajoOnPlan],
+            ["credit",   "Credit",   true],
+            ["ajo",      "Ajo",      ajoOnPlan],
+            ["invoices", "Invoices", invOnPlan],
           ].filter(([,, show]) => show).map(([v, l]) => (
             <button key={v} onClick={() => setSub(v)}
-              className={`px-6 py-2.5 text-[12px] font-bold transition-all border-b-2 ${sub === v ? "border-brand-600 text-brand-600 dark:text-brand-400 dark:border-brand-400" : "border-transparent text-slate-400 dark:text-slate-500"}`}>
+              className={`px-5 py-2.5 text-[12px] font-bold transition-all border-b-2 whitespace-nowrap ${sub === v ? "border-brand-600 text-brand-600 dark:text-brand-400 dark:border-brand-400" : "border-transparent text-slate-400 dark:text-slate-500"}`}>
               {l}
             </button>
           ))}
@@ -834,6 +838,23 @@ function StaffRecords({ store, staff, livePerms, initialSub, plan }) {
         )}
         {sub === "ajo" && ajoOnPlan && (
           <div className="h-full overflow-y-auto pb-4"><Aso store={store} plan={plan} staffId={staff?.id} /></div>
+        )}
+        {sub === "invoices" && !allowed.includes("invoices") && (
+          <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-8">
+            <p className="text-base font-bold text-slate-600 dark:text-slate-400">Invoices not enabled</p>
+            <p className="text-sm text-slate-400">Contact your manager to enable invoice access for your account.</p>
+          </div>
+        )}
+        {sub === "invoices" && allowed.includes("invoices") && (
+          <Invoices
+            invoiceHook={invoiceHook}
+            plan={plan}
+            onUpgrade={null}
+            profile={store.profile}
+            inventory={inventory}
+            addTransaction={store.addTransaction}
+            userId={ownerId}
+          />
         )}
       </div>
     </div>
@@ -1178,9 +1199,10 @@ export default function StaffDashboard({ session, staff: staffProp }) {
   const notif    = useNotifications(staffId);
   const { addNotification } = notif;
 
-  const store     = useStore(ownerId, staffId, staff?.full_name, addNotification);
-  const inventory = useInventory(ownerId, staffId, addNotification, staff?.branch_id || null);
-  const lock      = useBiometricLock(staffId);
+  const store       = useStore(ownerId, staffId, staff?.full_name, addNotification);
+  const inventory   = useInventory(ownerId, staffId, addNotification, staff?.branch_id || null);
+  const invoiceHook = useInvoices(ownerId);
+  const lock        = useBiometricLock(staffId);
 
   // Fetch the business owner's active subscription plan.
   // Uses a SECURITY DEFINER RPC so the staff member's JWT can read the
@@ -1284,7 +1306,7 @@ export default function StaffDashboard({ session, staff: staffProp }) {
     switch (tab) {
       case "home":    return <StaffHome    staff={staff} store={store} inventory={inventory} plan={plan} onGoTo={goTo} onVoiceOpen={() => setVoiceOpen(true)} onAddCash={openAddTxn} />;
       case "sales":   return <StaffSales   store={store} staff={staff} session={session} livePerms={livePerms} initialSub={subNav} initialData={subData} onVoiceOpen={() => setVoiceOpen(true)} inventory={inventory} onAddCash={openAddTxn} plan={plan} />;
-      case "records": return <StaffRecords store={store} staff={staff} livePerms={livePerms} initialSub={subNav} plan={plan} />;
+      case "records": return <StaffRecords store={store} staff={staff} livePerms={livePerms} initialSub={subNav} plan={plan} invoiceHook={invoiceHook} inventory={inventory} ownerId={ownerId} />;
       case "stock":   return <StaffStock   inventory={inventory} staff={staff} livePerms={livePerms} plan={plan} />;
       case "me":      return <StaffMe      staff={staff} session={session} store={store} inventory={inventory} livePerms={livePerms} staffId={staffId} lock={lock} plan={plan} initialView={subNav} onStaffUpdate={p => setStaffPatch(prev => ({ ...prev, ...p }))} />;
       default:        setTab("home"); return null;
