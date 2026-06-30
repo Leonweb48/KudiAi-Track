@@ -262,5 +262,5 @@ export const PLAN_LIMITS = {
   business:     { maxTxPerMonth: Infinity, credit: true, aso: true, pdfExport: true, staffManagement: true, inventory: true, loyalty: true },
   professional: { maxTxPerMonth: Infinity, credit: true, aso: true, pdfExport: true, staffManagement: true, inventory: true, loyalty: true, aiInsights: true, branches: true },
   premium:      { maxTxPerMonth: Infinity, credit: true, aso: true, pdfExport: true, staffManagement: true, inventory: true, loyalty: true, aiInsights: true, branches: true },
-  enterprise:   { maxTxPerMonth: Infinity, credit: true, aso: true, pdfExport: true, staffManagement: true, inventory: true, loyalty: true, aiInsights: true, aiChatbot: true, branches: true, organisation: true, apiAccess: true, loanAccess: true, printWholesale: true },
+  enterprise:   { maxTxPerMonth: Infinity, credit: true, aso: true, pdfExport: true, staffManagement: true, inventory: true, loyalty: true, aiInsights: true, aiChatbot: true, branches: true, organisation: true, apiAccess: true, loanAccess: true, printWholesale: true, invoices: true },
 };
