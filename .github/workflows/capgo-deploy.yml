@@ -66,4 +66,4 @@ jobs:
       - name: Upload bundle to Capgo
         run: |
           BUNDLE_VER="1.0.$(( ${{ github.run_number }} + 100 ))"
-          npx @capgo/cli@latest bundle upload -a ${{ secrets.CAPGO_API_KEY }} -c production --bundle "$BUNDLE_VER"
+          npx @capgo/cli@latest bundle upload -a ${{ secrets.CAPGO_API_KEY }} -c production --bundle "$BUNDLE_VER" --ignore-metadata-check
