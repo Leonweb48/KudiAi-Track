@@ -253,6 +253,7 @@ export default function Finance({
             profile={store.profile}
             inventory={inventory}
             addTransaction={store.addTransaction}
+            userId={userId}
           />
         )}
 

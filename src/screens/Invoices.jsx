@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Capacitor }             from "@capacitor/core";
 import { Browser }               from "@capacitor/browser";
 import { canDo, planAvailableText } from "../utils/plans";
+import { sendEmailTrigger }          from "../utils/emailTrigger";
 import { fmt, today }            from "../utils/helpers";
 import { exportInvoicePdf }      from "../utils/generateInvoicePdf";
 import InvoiceBuilder            from "../components/InvoiceBuilder";
@@ -402,7 +403,7 @@ function InvoiceDetail({ inv, profile, onClose, onSent, onCancel, onPayment }) {
 }
 
 // ── Main Invoices screen ──────────────────────────────────────────────────
-export default function Invoices({ invoiceHook, plan, onUpgrade, profile, inventory, addTransaction }) {
+export default function Invoices({ invoiceHook, plan, onUpgrade, profile, inventory, addTransaction, userId }) {
   const { invoices, customers, loading, reload, createDraft, markSent, cancelInvoice, recordInvoicePayment } = invoiceHook;
   const [filter,      setFilter]      = useState("all");
   const [showBuilder, setShowBuilder] = useState(false);
@@ -554,8 +555,35 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
           inv={detailInv}
           profile={profile}
           onClose={() => setDetailInv(null)}
-          onSent={async (id) => { await markSent(id); await reload(); }}
-          onCancel={async (id) => { await cancelInvoice(id); await reload(); }}
+          onSent={async (id) => {
+            const { error } = await markSent(id);
+            if (!error) {
+              sendEmailTrigger("invoice_sent", {
+                owner_id:       userId,
+                business_name:  profile?.business_name || "",
+                invoice_number: detailInv.invoice_number,
+                customer_name:  detailInv.customer_name,
+                customer_email: detailInv.customer_email || "",
+                total_amount:   koboToNaira(detailInv.total_kobo),
+                due_date:       detailInv.due_date || "",
+              });
+            }
+            await reload();
+          }}
+          onCancel={async (id) => {
+            const { error } = await cancelInvoice(id);
+            if (!error) {
+              sendEmailTrigger("invoice_cancelled", {
+                owner_id:       userId,
+                business_name:  profile?.business_name || "",
+                invoice_number: detailInv.invoice_number,
+                customer_name:  detailInv.customer_name,
+                customer_email: detailInv.customer_email || "",
+                total_amount:   koboToNaira(detailInv.total_kobo),
+              });
+            }
+            await reload();
+          }}
           onPayment={async (payData) => {
             const result = await recordInvoicePayment({ invoiceId: detailInv.id, ...payData });
             if (!result.error && parseFloat(payData.amount_naira) > 0) {
@@ -567,6 +595,16 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
                 payment_type:     payData.method || "cash",
                 customer_name:    detailInv.customer_name || "",
                 transaction_date: payData.paidAt ? payData.paidAt.slice(0, 10) : today(),
+              });
+              sendEmailTrigger("invoice_paid", {
+                owner_id:       userId,
+                business_name:  profile?.business_name || "",
+                invoice_number: detailInv.invoice_number,
+                customer_name:  detailInv.customer_name,
+                customer_email: detailInv.customer_email || "",
+                total_amount:   koboToNaira(detailInv.total_kobo),
+                amount_paid:    parseFloat(payData.amount_naira),
+                payment_method: payData.method || "cash",
               });
             }
             await reload();
