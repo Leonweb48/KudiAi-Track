@@ -112,7 +112,7 @@ function QuickBillsCard({ onBillOpen, onVoiceOpen }) {
     <div className="bg-white dark:bg-slate-800 rounded-3xl p-4 shadow-card border border-slate-100 dark:border-slate-700/50">
       <div className="flex items-center justify-between mb-4">
         <p className="text-[12px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Quick Services</p>
-        <button onClick={() => onBillOpen?.("airtime")}
+        <button onClick={() => onBillOpen?.()}
           className="text-[11px] font-bold text-brand-600 dark:text-brand-400">See all</button>
       </div>
       <div className="grid grid-cols-3 gap-y-5">
