@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
-import { Capacitor } from "@capacitor/core";
+import { Capacitor, registerPlugin } from "@capacitor/core";
 import { LocalNotifications } from "@capacitor/local-notifications";
+
+const NotificationSettings = registerPlugin("NotificationSettings");
 
 /* ── helpers ─────────────────────────────────────────────────────── */
 function timeAgo(ts) {
@@ -147,11 +149,18 @@ function SettingsView({ settings, updateSetting, requestPush, speak, onBack, all
               />
             </div>
             {(pushDenied || pushStatus === "denied") && (
-              <p className="text-xs text-red-500 px-4 pb-3">
-                Notifications are blocked. Open your phone&apos;s{" "}
-                <strong>Settings → Apps → KudiAI Track → Notifications</strong>{" "}
-                and turn them on, then come back here.
-              </p>
+              <div className="px-4 pb-4 space-y-2">
+                <p className="text-xs text-red-500">
+                  Notifications are blocked by Android. Tap the button below to open settings and turn them on.
+                </p>
+                {Capacitor.isNativePlatform() && (
+                  <button
+                    onClick={() => NotificationSettings.open().catch(() => {})}
+                    className="w-full bg-blue-500 active:bg-blue-600 text-white text-xs font-bold rounded-xl py-2.5 active:scale-95 transition-all">
+                    Open Notification Settings
+                  </button>
+                )}
+              </div>
             )}
           </div>
 
