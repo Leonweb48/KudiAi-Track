@@ -34,6 +34,7 @@ import CoopDashboard         from "./screens/CoopDashboard";
 import CoopMemberPortal, { CoopMemberFirstLogin } from "./screens/CoopMemberPortal";
 import PaymentReturn         from "./screens/PaymentReturn";
 import { Browser }           from "@capacitor/browser";
+import { StatusBar }         from "@capacitor/status-bar";
 import { Capacitor }         from "@capacitor/core";
 import { App as CapApp }     from "@capacitor/app";
 import Finance               from "./screens/Finance";
@@ -223,6 +224,12 @@ export default function App() {
     }).then(l => { listener = l; });
     return () => { listener?.remove(); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Disable status-bar overlay so it doesn't cover app content (edge-to-edge off)
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    StatusBar.setOverlaysWebView({ overlay: false }).catch(() => {});
+  }, []);
 
   // Android hardware back button
   useEffect(() => {
