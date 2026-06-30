@@ -49,7 +49,7 @@ function buildReminderMessage(c, businessName) {
   return `Dear ${c.customer_name},\n\nThis is a friendly reminder that you have an outstanding balance with us.${overdueLine}\n\nDue Date: ${c.due_date || "N/A"}\nTotal Debt: ${fmt(c.total_amount)}\nAmount Paid: ${fmt(c.amount_paid || 0)}\nBalance Remaining: ${fmt(c.outstanding)}${biz}\n\nKindly make payment at your earliest convenience. Thank you.`;
 }
 
-export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened, onUpgrade }) {
+export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened, onUpgrade, embedded }) {
   const t = useT();
   const [showAdd,      setShowAdd]      = useState(false);
   const [repaying,     setRepaying]     = useState(null);
@@ -176,7 +176,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
     <div className="px-4 pt-5 pb-28 screen-enter">
 
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 -mx-4 px-4 py-3 mb-4 border-b border-slate-100 dark:border-slate-700/60 flex items-center justify-between">
+      <div className={`${embedded ? "" : "sticky top-0 z-10"} bg-white dark:bg-slate-900 -mx-4 px-4 py-3 mb-4 border-b border-slate-100 dark:border-slate-700/60 flex items-center justify-between`}>
         <h1 className="text-xl font-extrabold text-slate-800 dark:text-white tracking-tight">{t("credit.title")}</h1>
         <button onClick={() => setShowAdd(true)}
           className="w-9 h-9 bg-amber-500 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform">

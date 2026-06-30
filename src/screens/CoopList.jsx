@@ -204,7 +204,7 @@ function RegisterModal({ onClose, onCreated, userId }) {
 }
 
 // ── Main CoopList ──────────────────────────────────────────
-export default function CoopList({ userId, onOpen, onClose }) {
+export default function CoopList({ userId, onOpen, onClose, embedded }) {
   const [orgs,       setOrgs]       = useState([]);
   const [loading,    setLoading]    = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -221,16 +221,18 @@ export default function CoopList({ userId, onOpen, onClose }) {
   useEffect(() => { load(); }, [load]);
 
   return (
-    <div className="fixed inset-0 z-[60] bg-slate-50 dark:bg-slate-900 flex justify-center">
-      <div className="w-full max-w-md flex flex-col h-full">
+    <div className={embedded ? "flex flex-col" : "fixed inset-0 z-[60] bg-slate-50 dark:bg-slate-900 flex justify-center"}>
+      <div className={embedded ? "w-full flex flex-col" : "w-full max-w-md flex flex-col h-full"}>
 
         {/* Header */}
         <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 py-3 flex items-center gap-3">
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
-            <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
-              <path d="M19 12H5M12 5l-7 7 7 7" />
-            </svg>
-          </button>
+          {!embedded && (
+            <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
+              <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+                <path d="M19 12H5M12 5l-7 7 7 7" />
+              </svg>
+            </button>
+          )}
           <div className="flex-1">
             <p className="text-sm font-extrabold text-slate-800 dark:text-white">My Organisations</p>
             <p className="text-[10px] text-slate-400">{orgs.length} organisation{orgs.length !== 1 ? "s" : ""}</p>

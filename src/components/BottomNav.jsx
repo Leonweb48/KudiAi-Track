@@ -5,8 +5,7 @@ const NAV_IDS = [
   { id: "home",         icon: "home",      tkey: "nav.home"    },
   { id: "transactions", icon: "txn",       tkey: "nav.sales"   },
   { id: "inventory",    icon: "inventory", tkey: "nav.stock"   },
-  { id: "credit",       icon: "credit",    tkey: "nav.credit"  },
-  { id: "aso",          icon: "aso",       tkey: "nav.ajo"     },
+  { id: "finance",      icon: "finance",   tkey: "nav.finance" },
   { id: "insights",     icon: "insights",  tkey: "nav.reports" },
   { id: "settings",     icon: "settings",  tkey: "nav.more"    },
 ];
@@ -18,7 +17,7 @@ export default function BottomNav({ active, onNavigate }) {
       className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md z-40 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 shadow-float will-change-transform"
       role="navigation" aria-label="Main navigation"
     >
-      <div className="flex items-stretch h-[60px]">
+      <div className="flex items-stretch h-[64px]">
         {NAV_IDS.map((n) => {
           const isActive = active === n.id;
           const label = t(n.tkey);
@@ -39,7 +38,7 @@ export default function BottomNav({ active, onNavigate }) {
               <div className={`transition-all duration-200 ${isActive ? "scale-110" : "scale-100"}`}>
                 <Icon
                   name={n.icon}
-                  size={21}
+                  size={24}
                   className={isActive
                     ? "text-brand-600 dark:text-brand-400"
                     : "text-slate-400 dark:text-slate-500"}
@@ -47,7 +46,7 @@ export default function BottomNav({ active, onNavigate }) {
               </div>
 
               {/* Label */}
-              <span className={`text-[8px] font-bold uppercase tracking-wide leading-none transition-colors duration-150 ${
+              <span className={`text-[9px] font-bold uppercase tracking-wide leading-none transition-colors duration-150 ${
                 isActive
                   ? "text-brand-600 dark:text-brand-400"
                   : "text-slate-400 dark:text-slate-500"

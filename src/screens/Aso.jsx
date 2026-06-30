@@ -199,7 +199,7 @@ function AsoClientHistoryModal({ client, contributions, businessName, onClose })
   );
 }
 
-export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, onUpgrade, staffId = null }) {
+export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, onUpgrade, staffId = null, embedded }) {
   const t = useT();
   const [showAdd,      setShowAdd]      = useState(false);
   const [selected,     setSelected]     = useState(null);
@@ -781,7 +781,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     <div className="px-4 pt-5 pb-28 screen-enter">
 
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 -mx-4 px-4 py-3 mb-4 border-b border-slate-100 dark:border-slate-700/60 flex items-center justify-between">
+      <div className={`${embedded ? "" : "sticky top-0 z-10"} bg-white dark:bg-slate-900 -mx-4 px-4 py-3 mb-4 border-b border-slate-100 dark:border-slate-700/60 flex items-center justify-between`}>
         <h1 className="text-xl font-extrabold text-slate-800 dark:text-white tracking-tight">{t("aso.title")}</h1>
         <div className="flex items-center gap-2">
           <button

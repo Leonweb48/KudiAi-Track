@@ -11,8 +11,6 @@ import NotificationCenter    from "./components/NotificationCenter";
 import DailyVoice            from "./components/DailyVoice";
 import Home                  from "./screens/Home";
 import Transactions          from "./screens/Transactions";
-import Credit                from "./screens/Credit";
-import Aso                   from "./screens/Aso";
 import Insights              from "./screens/Insights";
 import Settings              from "./screens/Settings";
 import Auth                  from "./screens/Auth";
@@ -37,6 +35,8 @@ import CoopMemberPortal, { CoopMemberFirstLogin } from "./screens/CoopMemberPort
 import PaymentReturn         from "./screens/PaymentReturn";
 import { Browser }           from "@capacitor/browser";
 import { Capacitor }         from "@capacitor/core";
+import { App as CapApp }     from "@capacitor/app";
+import Finance               from "./screens/Finance";
 import OrgPortal             from "./screens/OrgPortal";
 import OrgFirstLogin         from "./screens/OrgFirstLogin";
 import OrgMemberOtpVerify   from "./screens/OrgMemberOtpVerify";
@@ -63,9 +63,13 @@ export default function App() {
   const navigate   = useNavigate();
   const location   = useLocation();
 
-  // Derive active tab from URL path — keeps BottomNav and SCREENS in sync with browser history
-  const tab    = location.pathname === "/" ? "home" : location.pathname.slice(1);
-  const setTab = (t) => navigate(t === "home" ? "/" : `/${t}`);
+  // Derive active tab from URL path — maps legacy credit/aso routes to finance
+  const rawTab = location.pathname === "/" ? "home" : location.pathname.slice(1).split("/")[0];
+  const tab    = (rawTab === "credit" || rawTab === "aso") ? "finance" : rawTab;
+  const setTab = (t) => {
+    const target = (t === "credit" || t === "aso") ? "finance" : t;
+    navigate(target === "home" ? "/" : `/${target}`);
+  };
 
   const [autoAdd,     setAutoAdd]     = useState(null);
   const [voiceOpen,   setVoiceOpen]   = useState(false);
@@ -205,6 +209,19 @@ export default function App() {
     return () => { listener?.remove(); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Android hardware back button
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    const sub = CapApp.addListener("backButton", () => {
+      if (window.history.length > 1) {
+        navigate(-1);
+      } else {
+        CapApp.exitApp();
+      }
+    });
+    return () => { sub.then(s => s.remove()); };
+  }, [navigate]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const triggerQuickAction = (targetTab, type = null) => {
     setTab(targetTab);
     setAutoAdd({ tab: targetTab, type });
@@ -278,18 +295,15 @@ export default function App() {
                     onVoiceOpen={() => setVoiceOpen(true)}
                     onUpgrade={openUpgrade}
                     inventory={inventory} />,
-    credit:       <Credit
+    finance:      <Finance
                     store={store}
                     plan={plan}
-                    autoOpen={autoAdd?.tab === "credit"}
+                    onUpgrade={openUpgrade}
+                    autoOpenTab={autoAdd?.tab === "credit" ? "credit" : autoAdd?.tab === "aso" ? "ajo" : null}
                     onAutoOpened={clearAutoAdd}
-                    onUpgrade={openUpgrade} />,
-    aso:          <Aso
-                    store={store}
-                    plan={plan}
-                    autoOpen={autoAdd?.tab === "aso"}
-                    onAutoOpened={clearAutoAdd}
-                    onUpgrade={openUpgrade} />,
+                    userId={userId}
+                    session={session}
+                    onSelectCoopOrg={setCoopOrg} />,
     inventory:    <Inventory
                     inventory={inventory}
                     isOwner={true}
@@ -328,8 +342,8 @@ export default function App() {
 
   return (
     <div className={isDark ? "dark" : ""}>
-      <div className="h-[100dvh] bg-slate-50 dark:bg-slate-900 flex justify-center transition-colors duration-200">
-        <div className="w-full max-w-md relative flex flex-col h-[100dvh]">
+      <div className="h-[100dvh] bg-slate-50 dark:bg-slate-900 flex flex-col transition-colors duration-200" style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}>
+        <div className="w-full flex-1 relative flex flex-col min-h-0">
           <SyncBar isOnline={store.isOnline} pending={store.pendingSync} isSyncing={store.isSyncing} onSync={store.runSync} />
 
           {upgradeAvailable && !upgradeBannerDismissed && (
@@ -347,8 +361,9 @@ export default function App() {
             <Routes>
               <Route path="/"             element={SCREENS.home}         />
               <Route path="/transactions" element={SCREENS.transactions}  />
-              <Route path="/credit"       element={SCREENS.credit}        />
-              <Route path="/aso"          element={SCREENS.aso}           />
+              <Route path="/finance"      element={SCREENS.finance}       />
+              <Route path="/credit"       element={SCREENS.finance}       />
+              <Route path="/aso"          element={SCREENS.finance}       />
               <Route path="/inventory"    element={SCREENS.inventory}     />
               <Route path="/bills"        element={SCREENS.bills}         />
               <Route path="/insights"     element={SCREENS.insights}      />
@@ -456,10 +471,10 @@ export default function App() {
           onClose={() => setShowCoop(false)}
         />
       )}
-      {showCoop && coopOrg && (
+      {coopOrg && (
         <CoopDashboard
           org={coopOrg}
-          onBack={() => setCoopOrg(null)}
+          onBack={() => { setCoopOrg(null); }}
           adminEmail={session?.user?.email}
         />
       )}

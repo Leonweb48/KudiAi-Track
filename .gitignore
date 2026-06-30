@@ -23,3 +23,6 @@ yarn-error.log*
 Thumbs.db
 
 .vercel
+
+# Claude Code local config (contains API keys / PATs)
+.claude/

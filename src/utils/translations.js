@@ -2,6 +2,7 @@
 export const TRANSLATIONS = {
 
   /* Navigation */
+  "nav.finance":  { en:"Finance",  pidgin:"Finance", ha:"Kudi",    ig:"Ego",      yo:"Owo"     },
   "nav.home":     { en:"Home",    pidgin:"Home",    ha:"Gida",    ig:"Ụlọ",      yo:"Ile"     },
   "nav.sales":    { en:"Sales",   pidgin:"Sales",   ha:"Tallace", ig:"Ahịa",     yo:"Tita"    },
   "nav.stock":    { en:"Stock",   pidgin:"Stock",   ha:"Kaya",    ig:"Ngwaahịa", yo:"Ile-oja" },
