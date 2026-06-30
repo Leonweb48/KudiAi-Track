@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Capacitor } from "@capacitor/core";
+import { LocalNotifications } from "@capacitor/local-notifications";
 
 /* ── helpers ─────────────────────────────────────────────────────── */
 function timeAgo(ts) {
@@ -63,19 +64,30 @@ function Toggle({ checked, onChange, disabled }) {
 
 /* ── Settings Panel ──────────────────────────────────────────────── */
 function SettingsView({ settings, updateSetting, requestPush, speak, onBack, allowedTypeKeys }) {
-  const [pushStatus, setPushStatus] = useState(null);
+  const [pushStatus,  setPushStatus]  = useState(null);
+  const [systemPerm,  setSystemPerm]  = useState(null); // null = still checking
+
+  // Check actual OS permission state on mount so the toggle reflects reality immediately
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    LocalNotifications.checkPermissions()
+      .then(r => setSystemPerm(r.display))
+      .catch(() => setSystemPerm("prompt"));
+  }, []);
 
   const handlePushToggle = async (val) => {
     if (!val) { updateSetting("push", false); return; }
     const result = await requestPush();
-    if (result === "denied")      setPushStatus("denied");
+    if (result === "denied")           { setPushStatus("denied"); setSystemPerm("denied"); }
     else if (result === "unsupported") setPushStatus("unsupported");
-    else setPushStatus(null);
+    else                               { setPushStatus(null); setSystemPerm("granted"); }
   };
 
-  // On native (Capacitor) always treat push as supported — we use LocalNotifications, not browser API
   const pushSupported = Capacitor.isNativePlatform() || "Notification" in window;
-  const pushDenied    = !Capacitor.isNativePlatform() && pushSupported && Notification.permission === "denied";
+  // On native, use the real OS state; on web, use the browser Notification API
+  const pushDenied = Capacitor.isNativePlatform()
+    ? systemPerm === "denied"
+    : pushSupported && Notification.permission === "denied";
 
   const ALL_TYPE_SETTINGS = [
     { key: "sales",    label: "Sales & Expenses",  icon: "💰", desc: "Every recorded sale and expense" },
@@ -122,7 +134,8 @@ function SettingsView({ settings, updateSetting, requestPush, speak, onBack, all
                   <p className="text-sm font-semibold text-slate-800 dark:text-white">Push Notifications</p>
                   <p className="text-xs text-slate-400 dark:text-slate-500">
                     {!pushSupported ? "Not supported on this device"
-                      : pushDenied ? "Blocked — enable in device settings"
+                      : pushDenied ? "Blocked — go to Settings → Apps → KudiAI Track → Notifications"
+                      : systemPerm === null && Capacitor.isNativePlatform() ? "Checking permission…"
                       : "Alerts even when the app is in the background"}
                   </p>
                 </div>
@@ -133,9 +146,11 @@ function SettingsView({ settings, updateSetting, requestPush, speak, onBack, all
                 disabled={!pushSupported || pushDenied}
               />
             </div>
-            {pushStatus === "denied" && (
+            {(pushDenied || pushStatus === "denied") && (
               <p className="text-xs text-red-500 px-4 pb-3">
-                Permission denied. Go to device Settings → Apps → KudiAI Track → Notifications to enable.
+                Notifications are blocked. Open your phone&apos;s{" "}
+                <strong>Settings → Apps → KudiAI Track → Notifications</strong>{" "}
+                and turn them on, then come back here.
               </p>
             )}
           </div>
