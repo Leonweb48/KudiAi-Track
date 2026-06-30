@@ -14,6 +14,10 @@ const config: CapacitorConfig = {
     CapacitorUpdater: {
       autoUpdate: true,
     },
+    LocalNotifications: {
+      smallIcon: 'ic_notification',
+      iconColor: '#1B2A5E',
+    },
   },
 };
 
