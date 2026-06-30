@@ -351,8 +351,8 @@ export default function App() {
 
   return (
     <div className={isDark ? "dark" : ""}>
-      <div className="h-[100dvh] bg-slate-50 dark:bg-slate-900 flex justify-center transition-colors duration-200">
-        <div className="w-full max-w-md relative flex flex-col h-[100dvh]" style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}>
+      <div className="h-[100dvh] bg-slate-50 dark:bg-slate-900 flex flex-col transition-colors duration-200" style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}>
+        <div className="w-full flex-1 relative flex flex-col min-h-0">
           <SyncBar isOnline={store.isOnline} pending={store.pendingSync} isSyncing={store.isSyncing} onSync={store.runSync} />
 
           {upgradeAvailable && !upgradeBannerDismissed && (
