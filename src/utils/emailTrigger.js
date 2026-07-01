@@ -1,30 +1,11 @@
-import { Capacitor, CapacitorHttp } from "@capacitor/core";
-
-const EMAIL_URL = "https://admin.kudiai.app/api/public/email-trigger";
-// .env is gitignored so REACT_APP_EMAIL_SECRET is undefined on Vercel builds.
-// Fall back to the known value so production deployments can fire email triggers.
-const SECRET    = process.env.REACT_APP_EMAIL_SECRET || "kuditrack-email-trigger-2026-amaya";
+import { supabase } from "./supabase";
 
 /**
- * Fire-and-forget email trigger.
- * On native: uses CapacitorHttp (bypasses WebView CORS from https://localhost).
- * On web: uses regular fetch.
+ * Fire-and-forget email trigger via the server-side edge function proxy.
+ * The secret never touches the client bundle — it lives only in Supabase secrets.
  */
 export function sendEmailTrigger(event, data) {
-  const headers = {
-    "Content-Type":     "application/json",
-    "x-trigger-secret": SECRET || "",
-  };
-  const body = JSON.stringify({ event, data });
-
-  if (Capacitor.isNativePlatform()) {
-    CapacitorHttp.post({ url: EMAIL_URL, headers, data: body })
-      .then(r => { if (r.status >= 400) console.warn("[Email]", event, r.status); })
-      .catch(e => console.warn("[Email] native fetch failed:", e));
-  } else {
-    fetch(EMAIL_URL, { method: "POST", headers, body })
-      .then(r => r.json())
-      .then(res => console.log("[Email]", event, res))
-      .catch(e => console.warn("[Email] fetch failed:", e));
-  }
+  supabase.functions.invoke("email-trigger", { body: { event, data } })
+    .then(({ error }) => { if (error) console.warn("[Email]", event, error.message); })
+    .catch(e => console.warn("[Email] trigger failed:", e));
 }

@@ -38,19 +38,29 @@ serve(async (req) => {
   }
 
   try {
-    // Verify Supabase hook JWT
-    const hookSecret = Deno.env.get("HOOK_SECRET") || "";
+    // Verify Supabase hook JWT — reject all requests when secret is not configured
+    const hookSecret = Deno.env.get("HOOK_SECRET") ?? "";
+    if (!hookSecret) {
+      console.error("[auth-email-hook] HOOK_SECRET env var not set — rejecting request");
+      return new Response(JSON.stringify({ error: "Hook not configured" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
     const authHeader = req.headers.get("Authorization") || "";
     const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-
-    if (hookSecret && token) {
-      const payload = await verifyHS256(token, hookSecret);
-      if (!payload) {
-        return new Response(JSON.stringify({ error: "Invalid hook signature" }), {
-          status: 401,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
+    if (!token) {
+      return new Response(JSON.stringify({ error: "Missing authorization" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    const payload = await verifyHS256(token, hookSecret);
+    if (!payload) {
+      return new Response(JSON.stringify({ error: "Invalid hook signature" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
     const body = await req.json() as {

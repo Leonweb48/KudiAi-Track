@@ -39,9 +39,12 @@ serve(async (req) => {
     }
 
     // Create Supabase Auth user for SuperAdmin
+    const initialPassword = Deno.env.get("SUPERADMIN_INITIAL_PASSWORD");
+    if (!initialPassword) return json({ error: "SUPERADMIN_INITIAL_PASSWORD env var not set" }, 500);
+
     const { data: authUser, error: createErr } = await sb.auth.admin.createUser({
       email: "superadmin@kuditrack.app",
-      password: "HI2026@pass1word",
+      password: initialPassword,
       email_confirm: true,
       user_metadata: {
         account_type: "super_admin",

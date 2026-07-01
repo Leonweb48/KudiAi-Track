@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -41,6 +42,17 @@ function cableServiceId(provider: string) {
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+
+  // Require a valid Supabase session — prevents anonymous wallet drain via VTPass
+  const authToken = (req.headers.get("Authorization") ?? "").replace("Bearer ", "");
+  if (!authToken) return json({ error: "Unauthorized" }, 401);
+  const sbAuth = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    { auth: { persistSession: false } },
+  );
+  const { data: { user: authedUser } } = await sbAuth.auth.getUser(authToken);
+  if (!authedUser) return json({ error: "Unauthorized" }, 401);
 
   try {
     const { action, payload = {} } = await req.json();

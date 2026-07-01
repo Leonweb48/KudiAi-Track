@@ -11,6 +11,19 @@ serve(async (req) => {
     return new Response("ok", { headers: cors });
   }
 
+  // Require a valid Supabase session — prevents unauthenticated Paystack initialization
+  const authHeader = req.headers.get("Authorization") ?? "";
+  const token = authHeader.replace("Bearer ", "");
+  if (!token) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...cors, "Content-Type": "application/json" } });
+  }
+  const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
+  const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+  const { data: { user } } = await sb.auth.getUser(token);
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...cors, "Content-Type": "application/json" } });
+  }
+
   try {
     const { email, amount, reference, planId, userId, yearly } = await req.json();
 

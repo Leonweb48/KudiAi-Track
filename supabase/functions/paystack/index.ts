@@ -39,6 +39,12 @@ serve(async (req) => {
 
     // ── Initialize a standard transaction ─────────────────────────────────
     if (action === "initialize") {
+      // Require auth — prevents unauthenticated Paystack initialization
+      const token = authHeader.replace("Bearer ", "");
+      if (!token) return json({ error: "Unauthorized" }, 401);
+      const { data: { user: initUser } } = await sb.auth.getUser(token);
+      if (!initUser) return json({ error: "Unauthorized" }, 401);
+
       const { email, amount, reference, metadata, subaccount, bearer, channels } = body as {
         email: string; amount: number; reference: string;
         metadata?: Record<string, unknown>; subaccount?: string;

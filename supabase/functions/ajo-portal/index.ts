@@ -141,6 +141,16 @@ serve(async (req) => {
         payment_method?: string; paystack_ref?: string; notes?: string;
       };
 
+      // Verify business owner is authenticated and matches owner_id
+      const rcToken = (req.headers.get("Authorization") ?? "").replace("Bearer ", "");
+      if (!rcToken) return json({ error: "Unauthorized" }, 401);
+      const { data: { user: rcUser } } = await sb.auth.getUser(rcToken);
+      if (!rcUser || rcUser.id !== owner_id) return json({ error: "Forbidden" }, 403);
+
+      // Prevent negative or zero contributions from corrupting balances
+      const numAmount = Number(amount);
+      if (!numAmount || numAmount <= 0) return json({ error: "amount must be greater than zero" }, 400);
+
       await sb.from("ajo_contributions").insert({
         aso_client_id:  client_id,
         owner_id,
@@ -306,6 +316,12 @@ serve(async (req) => {
     if (action === "approve-withdrawal") {
       const { request_id, owner_id } = body as { request_id: string; owner_id: string };
       if (!request_id || !owner_id) return json({ error: "request_id and owner_id required" }, 400);
+
+      // Verify the caller is the authenticated business owner — prevents forged approvals
+      const awToken = (req.headers.get("Authorization") ?? "").replace("Bearer ", "");
+      if (!awToken) return json({ error: "Unauthorized" }, 401);
+      const { data: { user: awUser } } = await sb.auth.getUser(awToken);
+      if (!awUser || awUser.id !== owner_id) return json({ error: "Forbidden" }, 403);
 
       const { data: req } = await sb.from("ajo_withdrawal_requests")
         .select("*")
