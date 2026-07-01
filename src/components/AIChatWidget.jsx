@@ -1,7 +1,14 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useLanguage, useT } from "../contexts/LanguageContext";
 import { buildContext } from "../utils/buildContext";
 import { askGemini } from "../utils/gemini";
+
+const LS_POS    = "kt_ai_fab_pos";
+const LS_HIDDEN = "kt_ai_widget_hidden";
+
+function loadPos() {
+  try { return JSON.parse(localStorage.getItem(LS_POS)); } catch { return null; }
+}
 
 function FormattedText({ text }) {
   return text.split("\n").map((line, i) => (
@@ -15,38 +22,44 @@ function FormattedText({ text }) {
 }
 
 /**
- * Floating AI chat widget.
+ * Floating AI chat widget — draggable FAB with show/hide toggle.
  *
  * Business-owner mode: pass store + inventory + branches.
- * Portal override mode: pass portalContext (pre-built string), quickChips, greeting, inputPlaceholder.
+ * Portal override mode: pass portalContext, quickChips, greeting, inputPlaceholder.
  */
 export default function AIChatWidget({
-  // Business owner mode
   store, inventory, branches = [],
-  // Portal override mode
   portalContext, quickChips, greeting: greetingProp, inputPlaceholder,
 }) {
   const t = useT();
   const { lang } = useLanguage();
 
   const defaultQuick = useMemo(() => [
-    { label: t("aiChip.todaySales")  || "Today's Sales",    q: "How were today's sales?"                                   },
-    { label: t("aiChip.totalProfit") || "Total Profit",     q: "What is my total profit?"                                  },
-    { label: t("aiChip.outstanding") || "Outstanding",      q: "Who owes me money and how much in total?"                  },
-    { label: t("aiChip.stockStatus") || "Stock Status",     q: "What is my current stock status and what is running low?"  },
-    { label: t("aiChip.ajoSummary")  || "Ajo Summary",      q: "Give me a full Ajo savings summary with all client details" },
+    { label: t("aiChip.todaySales")   || "Today's Sales",   q: "How were today's sales?"                                   },
+    { label: t("aiChip.totalProfit")  || "Total Profit",    q: "What is my total profit?"                                  },
+    { label: t("aiChip.outstanding")  || "Outstanding",     q: "Who owes me money and how much in total?"                  },
+    { label: t("aiChip.stockStatus")  || "Stock Status",    q: "What is my current stock status and what is running low?"  },
+    { label: t("aiChip.ajoSummary")   || "Ajo Summary",     q: "Give me a full Ajo savings summary with all client details" },
     { label: t("aiChip.monthlyReport")|| "Monthly Report",  q: "Give me a full monthly business report"                    },
   ], [t]);
 
   const defaultGreeting = `${t("home.welcome") || "Hi"}! I'm **KudiAI**, your AI business assistant powered by Gemini.\n\nAsk me anything about your sales, credit, stock, Ajo savings, staff, or branches — I know your real data!`;
 
-  const effectiveQuick    = quickChips    || defaultQuick;
-  const effectiveGreeting = greetingProp  || defaultGreeting;
+  const effectiveQuick    = quickChips   || defaultQuick;
+  const effectiveGreeting = greetingProp || defaultGreeting;
 
-  const [open,     setOpen]     = useState(false);
-  const [messages, setMessages] = useState([{ role: "assistant", text: effectiveGreeting }]);
-  const [input,    setInput]    = useState("");
-  const [thinking, setThinking] = useState(false);
+  const [open,        setOpen]        = useState(false);
+  const [messages,    setMessages]    = useState([{ role: "assistant", text: effectiveGreeting }]);
+  const [input,       setInput]       = useState("");
+  const [thinking,    setThinking]    = useState(false);
+  const [widgetHidden, setWidgetHidden] = useState(() => localStorage.getItem(LS_HIDDEN) === "1");
+
+  // FAB position: { side: "left"|"right", bottom: px }
+  const posRef  = useRef(loadPos() ?? { side: "right", bottom: 72 });
+  const [fabPos, setFabPos] = useState(posRef.current);
+
+  // Drag tracking — all in a ref so handlers are stable
+  const dragRef = useRef({ active: false, startX: 0, startY: 0, startBottom: 0, moved: false });
 
   const listRef        = useRef(null);
   const inputRef       = useRef(null);
@@ -62,11 +75,79 @@ export default function AIChatWidget({
     if (open && inputRef.current) setTimeout(() => inputRef.current?.focus(), 150);
   }, [open]);
 
+  // ── Drag handlers (stable via useCallback) ───────────────────────────────
+
+  const handleDragMove = useCallback((e) => {
+    if (!dragRef.current.active) return;
+    const pt = e.touches ? e.touches[0] : e;
+    const dx = pt.clientX - dragRef.current.startX;
+    const dy = pt.clientY - dragRef.current.startY;
+    if (!dragRef.current.moved && Math.hypot(dx, dy) < 8) return;
+    dragRef.current.moved = true;
+    e.preventDefault();
+    const newBottom = Math.max(72, Math.min(window.innerHeight - 120, dragRef.current.startBottom - dy));
+    const side = pt.clientX < window.innerWidth / 2 ? "left" : "right";
+    const newPos = { side, bottom: Math.round(newBottom) };
+    posRef.current = newPos;
+    setFabPos(newPos);
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    if (!dragRef.current.active) return;
+    const moved = dragRef.current.moved;
+    dragRef.current.active = false;
+    dragRef.current.moved  = false;
+    if (moved) {
+      localStorage.setItem(LS_POS, JSON.stringify(posRef.current));
+    } else {
+      setOpen(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener("mousemove", handleDragMove);
+    window.addEventListener("mouseup",   handleDragEnd);
+    window.addEventListener("touchmove", handleDragMove, { passive: false });
+    window.addEventListener("touchend",  handleDragEnd);
+    return () => {
+      window.removeEventListener("mousemove", handleDragMove);
+      window.removeEventListener("mouseup",   handleDragEnd);
+      window.removeEventListener("touchmove", handleDragMove);
+      window.removeEventListener("touchend",  handleDragEnd);
+    };
+  }, [handleDragMove, handleDragEnd]);
+
+  function onFabPointerDown(e) {
+    if (open) return;
+    if (e.button !== undefined && e.button !== 0) return;
+    const pt = e.touches ? e.touches[0] : e;
+    dragRef.current = {
+      active:      true,
+      startX:      pt.clientX,
+      startY:      pt.clientY,
+      startBottom: posRef.current.bottom,
+      moved:       false,
+    };
+  }
+
+  function hideWidget() {
+    setWidgetHidden(true);
+    setOpen(false);
+    localStorage.setItem(LS_HIDDEN, "1");
+  }
+
+  function showWidget() {
+    setWidgetHidden(false);
+    localStorage.removeItem(LS_HIDDEN);
+  }
+
+  // ── AI logic (unchanged) ─────────────────────────────────────────────────
+
   async function runAI(userMsg) {
     let context = "";
     let history = [];
     try {
-      const products     = inventory?.products || [];
+      const products = inventory?.products || [];
       context = portalContext ?? buildContext(store, products, branches);
       history = msgRef.current
         .slice(1)
@@ -79,13 +160,9 @@ export default function AIChatWidget({
     }
 
     let firstChunk = true;
-
     try {
       await askGemini({
-        message: userMsg,
-        context,
-        history,
-        lang,
+        message: userMsg, context, history, lang,
         onChunk: (chunk) => {
           if (firstChunk) {
             firstChunk = false;
@@ -94,16 +171,12 @@ export default function AIChatWidget({
           } else {
             setMessages(prev => {
               const updated = [...prev];
-              updated[updated.length - 1] = {
-                ...updated[updated.length - 1],
-                text: updated[updated.length - 1].text + chunk,
-              };
+              updated[updated.length - 1] = { ...updated[updated.length - 1], text: updated[updated.length - 1].text + chunk };
               return updated;
             });
           }
         },
       });
-
       if (firstChunk) {
         setThinking(false);
         setMessages(prev => [...prev, { role: "assistant", text: "No response received. Please try again.", isError: true }]);
@@ -148,21 +221,64 @@ export default function AIChatWidget({
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(input); }
   };
 
+  // ── FAB position style ────────────────────────────────────────────────────
+
+  const fabStyle = {
+    position: "fixed",
+    zIndex: 55,
+    bottom: fabPos.bottom,
+    ...(fabPos.side === "right" ? { right: 16 } : { left: 16 }),
+  };
+
+  // ── Restore tab (shown when hidden) ──────────────────────────────────────
+
+  if (widgetHidden) {
+    return (
+      <button
+        onClick={showWidget}
+        style={{ position: "fixed", zIndex: 55, bottom: fabPos.bottom, ...(fabPos.side === "right" ? { right: 0 } : { left: 0 }) }}
+        className={`w-6 h-12 bg-gradient-to-b from-brand-500 to-brand-700 text-white flex items-center justify-center shadow-lg ${fabPos.side === "right" ? "rounded-l-xl" : "rounded-r-xl"}`}
+        aria-label="Show AI Assistant"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" className="w-3 h-3">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+        </svg>
+      </button>
+    );
+  }
+
   return (
     <>
-      {/* Floating button */}
+      {/* ── Draggable FAB ── */}
       {!open && (
-        <button
-          onClick={() => setOpen(true)}
-          className="fixed right-4 z-[55] rounded-full shadow-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-white transition-transform active:scale-90"
-          style={{ width: 52, height: 52, bottom: "calc(env(safe-area-inset-bottom, 0px) + 72px)" }}
-          aria-label="Open AI Assistant"
-        >
-          <span className="text-xl leading-none">🤖</span>
-        </button>
+        <div style={fabStyle} className="relative select-none">
+          {/* Main button */}
+          <div
+            onMouseDown={onFabPointerDown}
+            onTouchStart={onFabPointerDown}
+            className="w-[52px] h-[52px] rounded-full shadow-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-white cursor-grab active:cursor-grabbing touch-none"
+            role="button"
+            aria-label="Open AI Assistant"
+          >
+            <span className="text-xl leading-none select-none">🤖</span>
+          </div>
+
+          {/* Hide button — always visible, small corner chip */}
+          <button
+            onMouseDown={e => e.stopPropagation()}
+            onTouchStart={e => e.stopPropagation()}
+            onClick={hideWidget}
+            className="absolute -top-1 -right-1 w-[18px] h-[18px] rounded-full bg-slate-500 border border-slate-300 dark:border-slate-600 text-white flex items-center justify-center shadow"
+            aria-label="Hide AI widget"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" className="w-2.5 h-2.5">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
       )}
 
-      {/* Chat panel */}
+      {/* ── Chat panel (fixed bottom sheet, unchanged) ── */}
       {open && (
         <div className="fixed inset-x-0 bottom-0 z-[55] flex justify-center pointer-events-none">
           <div
@@ -178,14 +294,30 @@ export default function AIChatWidget({
                 <p className="text-sm font-bold text-slate-800 dark:text-white leading-tight">KudiAI Assistant</p>
                 <p className="text-[10px] text-brand-500 dark:text-brand-400 font-medium">Powered by Gemini · knows your real data</p>
               </div>
-              <button
-                onClick={() => setOpen(false)}
-                className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600"
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="w-3.5 h-3.5">
-                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
+              <div className="flex items-center gap-1.5">
+                {/* Hide widget from header too */}
+                <button
+                  onClick={hideWidget}
+                  className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-red-100 hover:text-red-500 dark:hover:bg-red-900/30 dark:hover:text-red-400 transition-colors"
+                  title="Hide widget"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" className="w-3.5 h-3.5">
+                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+                    <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                    <line x1="1" y1="1" x2="23" y2="23" />
+                  </svg>
+                </button>
+                {/* Close panel */}
+                <button
+                  onClick={() => setOpen(false)}
+                  className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600"
+                  title="Close chat"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="w-3.5 h-3.5">
+                    <polyline points="18 15 12 9 6 15" />
+                  </svg>
+                </button>
+              </div>
             </div>
 
             {/* Messages */}
