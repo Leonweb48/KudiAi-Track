@@ -300,8 +300,9 @@ function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCance
       `\nThank you!`
     );
     const url = `mailto:${inv.customer_email}?subject=${subject}&body=${body}`;
-    if (Capacitor.isNativePlatform()) Browser.open({ url });
-    else window.open(url, "_blank");
+    // '_system' tells Capacitor to hand the URL to the OS (opens mail app on native, mail client on web)
+    // Browser.open only handles http/https and freezes on mailto:
+    window.open(url, "_system");
   };
 
   const handleShare = async () => {
