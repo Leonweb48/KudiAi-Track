@@ -4,6 +4,10 @@ import { today }    from "../utils/helpers";
 
 const nairaToKobo = (n) => Math.round((parseFloat(n) || 0) * 100);
 
+function getInitials(name) {
+  return (name || "").trim().split(/\s+/).map(w => w[0] || "").join("").toUpperCase().slice(0, 4) || "X";
+}
+
 function enrichStatus(inv) {
   if (inv.status === "sent" && inv.due_date && inv.due_date < today()) {
     return { ...inv, status: "overdue" };
@@ -75,6 +79,7 @@ export function useInvoices(userId) {
     payment_instructions,
     notes,
     source_transaction_id,
+    business_name,
   }) => {
     // 1. Upsert customer
     let customerId = customer.id || null;
@@ -95,10 +100,14 @@ export function useInvoices(userId) {
     const vat_kobo       = vat_enabled ? Math.round(after_discount * 0.075) : 0;
     const total_kobo     = after_discount + vat_kobo;
 
-    // 3. Generate invoice number (atomic, server-side sequence)
-    const { data: invNum, error: numErr } = await supabase
+    // 3. Generate invoice number (atomic counter + client-side formatting)
+    const { data: seq, error: numErr } = await supabase
       .rpc("next_invoice_number", { p_user_id: userId });
     if (numErr) return { error: numErr };
+    const mm  = String(new Date().getMonth() + 1).padStart(2, "0");
+    const bizI   = getInitials(business_name || "BIZ");
+    const clientI = getInitials(customer.name);
+    const invNum  = `${bizI}/${clientI}/${mm}/${Math.max(1, 5000 - seq)}`;
 
     // 4. Insert invoice
     const { data: inv, error: invErr } = await supabase
@@ -158,6 +167,14 @@ export function useInvoices(userId) {
     return { error };
   };
 
+  // ── Delete draft invoice ──────────────────────────────────────────────────
+  const deleteInvoice = async (id) => {
+    const { error } = await supabase
+      .from("invoices").delete().eq("id", id).eq("user_id", userId).eq("status", "draft");
+    if (!error) setInvoices(prev => prev.filter(i => i.id !== id));
+    return { error };
+  };
+
   // ── Phase 4: Record payment ───────────────────────────────────────────────
   // provider: 'manual' (default) | 'anchor' (future Anchor DVA webhook).
   // All providers go through the same status-update logic below.
@@ -205,5 +222,5 @@ export function useInvoices(userId) {
     return { data: { amountKobo, newStatus } };
   };
 
-  return { invoices, customers, loading, reload: load, createDraft, markSent, cancelInvoice, recordInvoicePayment };
+  return { invoices, customers, loading, reload: load, createDraft, markSent, cancelInvoice, deleteInvoice, recordInvoicePayment };
 }

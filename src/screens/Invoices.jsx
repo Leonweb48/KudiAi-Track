@@ -6,6 +6,8 @@ import { sendEmailTrigger }          from "../utils/emailTrigger";
 import { fmt, today }            from "../utils/helpers";
 import { exportInvoicePdf }      from "../utils/generateInvoicePdf";
 import InvoiceBuilder            from "../components/InvoiceBuilder";
+import { useInvoiceSettings }    from "../hooks/useInvoiceSettings";
+import InvoiceSettingsModal      from "../components/InvoiceSettingsModal";
 
 const koboToNaira = (k) => (k || 0) / 100;
 const fmtK        = (k) => fmt(koboToNaira(k));
@@ -201,7 +203,7 @@ function RecordPaymentModal({ inv, onClose, onSave }) {
 }
 
 // ── Invoice detail sheet ──────────────────────────────────────────────────
-function InvoiceDetail({ inv, profile, onClose, onSent, onCancel, onPayment }) {
+function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCancel, onPayment, onDelete, onResend }) {
   const [acting,      setActing]      = useState(false);
   const [showPayment, setShowPayment] = useState(false);
   const [pdfLoading,  setPdfLoading]  = useState(false);
@@ -223,14 +225,24 @@ function InvoiceDetail({ inv, profile, onClose, onSent, onCancel, onPayment }) {
     onClose();
   };
 
+  const handleDelete = async () => {
+    if (!window.confirm("Delete this draft invoice permanently?")) return;
+    setActing(true);
+    await onDelete(inv.id);
+    setActing(false);
+    onClose();
+  };
+
   const handlePdf = async () => {
     setPdfLoading(true);
-    try { await exportInvoicePdf(inv, profile); }
+    try { await exportInvoicePdf(inv, profile, invoiceSettings || {}); }
     catch (e) { console.error("[PDF]", e); }
     setPdfLoading(false);
   };
 
   const handleWhatsApp = () => openWhatsApp(buildWhatsAppUrl(inv, profile));
+
+  const handleResend = () => onResend && onResend(inv);
 
   const canRecordPayment = ["sent", "overdue", "partially_paid"].includes(inv.status);
 
@@ -255,17 +267,31 @@ function InvoiceDetail({ inv, profile, onClose, onSent, onCancel, onPayment }) {
           </div>
 
           {/* Action shortcuts row */}
-          <div className="flex gap-2 px-5 pt-3 pb-1 flex-shrink-0">
+          <div className="flex flex-wrap gap-2 px-5 pt-3 pb-1 flex-shrink-0">
             <button onClick={handlePdf} disabled={pdfLoading}
-              className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold active:scale-95 transition">
+              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold active:scale-95 transition min-w-[70px]">
               <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
               {pdfLoading ? "…" : "PDF"}
             </button>
             {inv.customer_phone && (
               <button onClick={handleWhatsApp}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 text-xs font-bold active:scale-95 transition">
+                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 text-xs font-bold active:scale-95 transition min-w-[70px]">
                 <svg width={13} height={13} viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.025.502 3.935 1.385 5.608L0 24l6.585-1.328A11.946 11.946 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.85 0-3.596-.467-5.12-1.286l-.369-.213-3.811.97.997-3.701-.231-.381A9.972 9.972 0 012 12C2 6.478 6.478 2 12 2s10 4.478 10 10-4.478 10-10 10z"/></svg>
                 WhatsApp
+              </button>
+            )}
+            {["sent", "overdue"].includes(inv.status) && (
+              <button onClick={handleResend}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 text-xs font-bold active:scale-95 transition min-w-[70px]">
+                <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+                Resend
+              </button>
+            )}
+            {inv.status === "draft" && (
+              <button onClick={handleDelete} disabled={acting}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-xs font-bold active:scale-95 transition min-w-[70px]">
+                <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
+                Delete
               </button>
             )}
           </div>
@@ -404,10 +430,12 @@ function InvoiceDetail({ inv, profile, onClose, onSent, onCancel, onPayment }) {
 
 // ── Main Invoices screen ──────────────────────────────────────────────────
 export default function Invoices({ invoiceHook, plan, onUpgrade, profile, inventory, addTransaction, userId }) {
-  const { invoices, customers, loading, reload, createDraft, markSent, cancelInvoice, recordInvoicePayment } = invoiceHook;
-  const [filter,      setFilter]      = useState("all");
-  const [showBuilder, setShowBuilder] = useState(false);
-  const [detailInv,   setDetailInv]   = useState(null);
+  const { invoices, customers, loading, reload, createDraft, markSent, cancelInvoice, deleteInvoice, recordInvoicePayment } = invoiceHook;
+  const [filter,       setFilter]      = useState("all");
+  const [showBuilder,  setShowBuilder] = useState(false);
+  const [detailInv,    setDetailInv]   = useState(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const { settings: invoiceSettings, save: saveInvoiceSettings } = useInvoiceSettings(userId);
 
   if (!canDo(plan, "invoices")) {
     return (
@@ -431,13 +459,15 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
 
   const handleBuilderSave = async (data) => {
     const { _saveAs, ...rest } = data;
-    return await createDraft(rest);
+    return await createDraft({ ...rest, business_name: profile?.business_name || "" });
   };
 
   const outstanding_total = invoices
     .filter(i => ["sent", "overdue", "partially_paid"].includes(i.status))
     .reduce((s, i) => s + (i.total_kobo - i.amount_paid_kobo), 0);
-  const overdue_count = invoices.filter(i => i.status === "overdue").length;
+  const paid_total = invoices
+    .filter(i => i.status === "paid")
+    .reduce((s, i) => s + i.amount_paid_kobo, 0);
 
   const counts = {
     all:       invoices.length,
@@ -448,37 +478,56 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
     cancelled: invoices.filter(i => i.status === "cancelled").length,
   };
 
+  const SUMMARY_CARDS = [
+    { label: "Outstanding", value: fmtK(outstanding_total),     g1: "#1B2A5E", g2: "#2563eb", textBig: true },
+    { label: "Paid",        value: fmtK(paid_total),            g1: "#14532d", g2: "#16a34a", textBig: true },
+    { label: "Overdue",     value: String(counts.overdue),      g1: "#7f1d1d", g2: "#ef4444", textBig: false },
+    { label: "Sent",        value: String(counts.sent),         g1: "#1e3a8a", g2: "#3b82f6", textBig: false },
+    { label: "Draft",       value: String(counts.draft),        g1: "#334155", g2: "#64748b", textBig: false },
+  ];
+
   return (
     <div className="pb-6">
-      {/* Summary dashboard card */}
+      {/* 5 Summary cards */}
       {invoices.length > 0 && (
-        <div className="mx-4 mt-4 mb-3 rounded-2xl p-4 text-white shadow-md"
-          style={{ background: "linear-gradient(135deg, #1B2A5E 0%, #2563eb 100%)" }}>
-          <p className="text-[10px] font-bold uppercase tracking-widest opacity-60 mb-3">Invoice Summary</p>
-          <div className="grid grid-cols-3 gap-2">
-            <div>
-              <p className="text-[10px] opacity-60 mb-0.5">Outstanding</p>
-              <p className="text-base font-black leading-tight">{fmtK(outstanding_total)}</p>
-            </div>
-            <div className="border-l border-white/20 pl-3">
-              <p className="text-[10px] opacity-60 mb-0.5">Total</p>
-              <p className="text-base font-black leading-tight">{invoices.length}</p>
-            </div>
-            <div className="border-l border-white/20 pl-3">
-              <p className="text-[10px] opacity-60 mb-0.5">Overdue</p>
-              <p className={`text-base font-black leading-tight ${overdue_count > 0 ? "text-red-300" : "text-white"}`}>
-                {overdue_count}
-              </p>
-            </div>
+        <div className="mx-4 mt-4 mb-3">
+          {/* Row 1: Outstanding + Paid (wider cards) */}
+          <div className="flex gap-2.5 mb-2.5">
+            {SUMMARY_CARDS.slice(0, 2).map(c => (
+              <div key={c.label} className="flex-1 rounded-2xl px-4 py-3.5 text-white shadow"
+                style={{ background: `linear-gradient(135deg,${c.g1},${c.g2})` }}>
+                <p className="text-[10px] font-bold uppercase tracking-widest opacity-70 mb-1">{c.label}</p>
+                <p className="text-lg font-black leading-tight">{c.value}</p>
+              </div>
+            ))}
+          </div>
+          {/* Row 2: Overdue + Sent + Draft */}
+          <div className="flex gap-2.5">
+            {SUMMARY_CARDS.slice(2).map(c => (
+              <div key={c.label} className="flex-1 rounded-2xl px-3 py-3 text-white shadow"
+                style={{ background: `linear-gradient(135deg,${c.g1},${c.g2})` }}>
+                <p className="text-[10px] font-bold uppercase tracking-widest opacity-70 mb-1">{c.label}</p>
+                <p className="text-xl font-black leading-tight">{c.value}</p>
+              </div>
+            ))}
           </div>
         </div>
       )}
 
-      {/* Status filter tiles — Quick Services style */}
+      {/* Status filter tiles */}
       {invoices.length > 0 && (
         <div className="mx-4 mb-3">
           <div className="bg-white dark:bg-slate-800 rounded-3xl p-4 shadow-card border border-slate-100 dark:border-slate-700/50">
-            <p className="text-[12px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-4">Filter by Status</p>
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-[12px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Filter by Status</p>
+              <button onClick={() => setShowSettings(true)}
+                className="w-8 h-8 flex items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-700 active:scale-90 transition">
+                <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-slate-500 dark:text-slate-400">
+                  <path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/>
+                  <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/>
+                </svg>
+              </button>
+            </div>
             <div className="grid grid-cols-3 gap-y-4 gap-x-2">
               {STATUS_TILES.map(s => {
                 const active = filter === s.id;
@@ -530,13 +579,18 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
         </div>
       )}
 
-      {/* FAB */}
-      {invoices.length > 0 && (
-        <button onClick={() => setShowBuilder(true)}
-          className="fixed bottom-24 right-4 z-30 w-14 h-14 bg-brand-600 hover:bg-brand-700 text-white rounded-full shadow-lg flex items-center justify-center active:scale-95 transition">
-          <svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M12 5v14M5 12h14"/></svg>
-        </button>
-      )}
+      {/* FABs */}
+      <button onClick={() => setShowBuilder(true)}
+        className="fixed bottom-24 right-4 z-30 w-14 h-14 bg-brand-600 hover:bg-brand-700 text-white rounded-full shadow-lg flex items-center justify-center active:scale-95 transition">
+        <svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+      <button onClick={() => setShowSettings(true)}
+        className="fixed bottom-24 right-20 z-30 w-12 h-12 bg-slate-700 dark:bg-slate-600 text-white rounded-full shadow-lg flex items-center justify-center active:scale-95 transition">
+        <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+          <path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/>
+          <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/>
+        </svg>
+      </button>
 
       {/* Invoice builder modal */}
       {showBuilder && (
@@ -554,12 +608,14 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
         <InvoiceDetail
           inv={detailInv}
           profile={profile}
+          invoiceSettings={invoiceSettings}
           onClose={() => setDetailInv(null)}
           onSent={async (id) => {
             const { error } = await markSent(id);
             if (!error) {
               sendEmailTrigger("invoice_sent", {
                 owner_id:       userId,
+                owner_email:    profile?.email || "",
                 business_name:  profile?.business_name || "",
                 invoice_number: detailInv.invoice_number,
                 customer_name:  detailInv.customer_name,
@@ -575,6 +631,7 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
             if (!error) {
               sendEmailTrigger("invoice_cancelled", {
                 owner_id:       userId,
+                owner_email:    profile?.email || "",
                 business_name:  profile?.business_name || "",
                 invoice_number: detailInv.invoice_number,
                 customer_name:  detailInv.customer_name,
@@ -583,6 +640,22 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
               });
             }
             await reload();
+          }}
+          onDelete={async (id) => {
+            await deleteInvoice(id);
+            await reload();
+          }}
+          onResend={(inv) => {
+            sendEmailTrigger("invoice_sent", {
+              owner_id:       userId,
+              owner_email:    profile?.email || "",
+              business_name:  profile?.business_name || "",
+              invoice_number: inv.invoice_number,
+              customer_name:  inv.customer_name,
+              customer_email: inv.customer_email || "",
+              total_amount:   koboToNaira(inv.total_kobo),
+              due_date:       inv.due_date || "",
+            });
           }}
           onPayment={async (payData) => {
             const result = await recordInvoicePayment({ invoiceId: detailInv.id, ...payData });
@@ -598,6 +671,7 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
               });
               sendEmailTrigger("invoice_paid", {
                 owner_id:       userId,
+                owner_email:    profile?.email || "",
                 business_name:  profile?.business_name || "",
                 invoice_number: detailInv.invoice_number,
                 customer_name:  detailInv.customer_name,
@@ -610,6 +684,15 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
             await reload();
             return result;
           }}
+        />
+      )}
+
+      {/* Invoice settings modal */}
+      {showSettings && (
+        <InvoiceSettingsModal
+          settings={invoiceSettings}
+          onSave={saveInvoiceSettings}
+          onClose={() => setShowSettings(false)}
         />
       )}
     </div>
