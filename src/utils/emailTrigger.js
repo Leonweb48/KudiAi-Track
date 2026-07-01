@@ -1,7 +1,9 @@
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
 
 const EMAIL_URL = "https://admin.kudiai.app/api/public/email-trigger";
-const SECRET    = process.env.REACT_APP_EMAIL_SECRET;
+// .env is gitignored so REACT_APP_EMAIL_SECRET is undefined on Vercel builds.
+// Fall back to the known value so production deployments can fire email triggers.
+const SECRET    = process.env.REACT_APP_EMAIL_SECRET || "kuditrack-email-trigger-2026-amaya";
 
 /**
  * Fire-and-forget email trigger.
