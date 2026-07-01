@@ -543,7 +543,7 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
         <InvoiceBuilder
           profile={profile}
           customers={customers}
-          products={inventory?.items || []}
+          products={inventory?.products || []}
           onClose={(saved) => { setShowBuilder(false); if (saved) reload(); }}
           onSaved={handleBuilderSave}
         />
