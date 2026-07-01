@@ -82,24 +82,29 @@ function unauthorized() {
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
-  // Require a valid bearer token — either service role key (admin/server) or user JWT
-  const authHeader = req.headers.get("Authorization") ?? "";
-  const token = authHeader.replace(/^Bearer\s+/i, "").trim();
-  if (!token) return unauthorized();
-
-  if (token !== SERVICE_KEY) {
-    // Validate as user JWT
-    if (!SUPABASE_URL || !ANON_KEY) return unauthorized();
-    const sb = createClient(SUPABASE_URL, ANON_KEY, { auth: { persistSession: false } });
-    const { data: { user }, error } = await sb.auth.getUser(token);
-    if (error || !user) return unauthorized();
-  }
-
+  // Parse body first — action determines auth requirements
   let body: Record<string, unknown>;
   try { body = await req.json(); }
   catch { return json({ error: "Invalid JSON body" }); }
-
   const { action } = body as { action: string };
+
+  // Read-only monitoring actions (wallet-balance, plan lookups) are gated only by
+  // the Supabase gateway's own apikey validation — the gateway rejects any call
+  // that doesn't carry a valid anon key before the function is ever invoked.
+  // Purchase / write actions require the service role key OR a user JWT.
+  const READ_ONLY = new Set(["wallet-balance", "connectivity-check", "data-plans", "cabletv-plans"]);
+  if (!READ_ONLY.has(action)) {
+    const authHeader = req.headers.get("Authorization") ?? "";
+    const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+    if (!token) return unauthorized();
+
+    if (token !== SERVICE_KEY) {
+      if (!SUPABASE_URL || !ANON_KEY) return unauthorized();
+      const sb = createClient(SUPABASE_URL, ANON_KEY, { auth: { persistSession: false } });
+      const { data: { user }, error } = await sb.auth.getUser(token);
+      if (error || !user) return unauthorized();
+    }
+  }
 
   try {
 
