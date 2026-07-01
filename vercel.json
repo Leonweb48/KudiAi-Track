@@ -50,7 +50,11 @@
       "destination": "/payment-return.html"
     },
     {
-      "source": "/((?!api/|service-worker\\.js|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp|woff|woff2|ttf|eot|json|txt|xml|pdf)$).*)",
+      "source": "/sb/:path*",
+      "destination": "https://eztohcuzbxxxvnondxfz.supabase.co/:path*"
+    },
+    {
+      "source": "/((?!api/|sb/|service-worker\\.js|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp|woff|woff2|ttf|eot|json|txt|xml|pdf)$).*)",
       "destination": "/index.html"
     }
   ]
