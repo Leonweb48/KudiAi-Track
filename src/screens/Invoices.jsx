@@ -783,6 +783,7 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
           settings={invoiceSettings}
           onSave={saveInvoiceSettings}
           onClose={() => setShowSettings(false)}
+          userId={userId}
         />
       )}
     </div>
