@@ -17,7 +17,7 @@ export default function BottomNav({ active, onNavigate }) {
       className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md z-40 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 shadow-float will-change-transform"
       role="navigation" aria-label="Main navigation"
     >
-      <div className="flex items-stretch h-[64px]">
+      <div className="flex items-stretch h-[64px] px-1">
         {NAV_IDS.map((n) => {
           const isActive = active === n.id;
           const label = t(n.tkey);
@@ -27,18 +27,18 @@ export default function BottomNav({ active, onNavigate }) {
               onClick={() => onNavigate(n.id)}
               aria-label={label}
               aria-current={isActive ? "page" : undefined}
-              className="flex-1 flex flex-col items-center justify-center gap-0.5 relative transition-colors duration-150 focus-visible:outline-none"
+              className="flex-1 flex flex-col items-center justify-center gap-0.5 relative transition-colors duration-150 focus-visible:outline-none py-1.5"
             >
-              {/* Active indicator dot at top */}
+              {/* Active pill background */}
               {isActive && (
-                <span className="absolute top-0 left-1/2 -translate-x-1/2 w-5 h-0.5 rounded-full bg-brand-600 dark:bg-brand-400" />
+                <span className="absolute inset-x-0.5 top-1.5 bottom-1.5 rounded-2xl bg-brand-50 dark:bg-brand-900/20 transition-all duration-200" />
               )}
 
               {/* Icon */}
-              <div className={`transition-all duration-200 ${isActive ? "scale-110" : "scale-100"}`}>
+              <div className={`relative z-10 transition-all duration-200 ${isActive ? "scale-110" : "scale-100"}`}>
                 <Icon
                   name={n.icon}
-                  size={24}
+                  size={22}
                   className={isActive
                     ? "text-brand-600 dark:text-brand-400"
                     : "text-slate-400 dark:text-slate-500"}
@@ -46,7 +46,7 @@ export default function BottomNav({ active, onNavigate }) {
               </div>
 
               {/* Label */}
-              <span className={`text-[9px] font-bold uppercase tracking-wide leading-none transition-colors duration-150 ${
+              <span className={`relative z-10 text-[9px] font-bold uppercase tracking-wide leading-none transition-colors duration-150 ${
                 isActive
                   ? "text-brand-600 dark:text-brand-400"
                   : "text-slate-400 dark:text-slate-500"
@@ -59,7 +59,7 @@ export default function BottomNav({ active, onNavigate }) {
       </div>
 
       {/* Safe area spacer for iOS home indicator */}
-      <div className="h-safe-bottom bg-white dark:bg-slate-900" style={{ height: "env(safe-area-inset-bottom, 0px)" }} />
+      <div className="bg-white dark:bg-slate-900" style={{ height: "env(safe-area-inset-bottom, 0px)" }} />
     </nav>
   );
 }

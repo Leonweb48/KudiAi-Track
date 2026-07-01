@@ -329,7 +329,12 @@ export default function App() {
                     store={store}
                     plan={plan}
                     onUpgrade={openUpgrade}
-                    autoOpenTab={autoAdd?.tab === "credit" ? "credit" : autoAdd?.tab === "aso" ? "ajo" : null}
+                    autoOpenTab={
+                      autoAdd?.tab === "credit"  ? "credit"      :
+                      autoAdd?.tab === "aso"     ? "ajo"         :
+                      autoAdd?.tab === "finance" && autoAdd?.type ? autoAdd.type :
+                      null
+                    }
                     onAutoOpened={clearAutoAdd}
                     userId={userId}
                     session={session}

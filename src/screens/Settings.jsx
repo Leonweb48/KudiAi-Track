@@ -432,10 +432,37 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
 
   return (
     <div className="pb-32 screen-enter">
-      <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700/60 px-4 py-3 mb-6">
-        <h1 className="text-[26px] font-bold text-slate-900 dark:text-white tracking-tight">{t("settings.title")}</h1>
+      <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700/60 px-4 py-3">
+        <h1 className="text-[22px] font-bold text-slate-900 dark:text-white tracking-tight">{t("settings.title")}</h1>
       </div>
       <div className="px-4">
+
+      {/* ── PROFILE CARD ───────────────────────────────────────────── */}
+      <div className="mt-4 mb-5 bg-white dark:bg-slate-800 rounded-3xl px-4 py-4 shadow-card border border-slate-100 dark:border-slate-700/50 flex items-center gap-4">
+        <div className="w-14 h-14 rounded-2xl overflow-hidden flex-shrink-0 border-2 border-slate-100 dark:border-slate-700">
+          {avatarSrc
+            ? <img src={avatarSrc} alt="Profile" className="w-full h-full object-cover" />
+            : <div className="w-full h-full bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-white font-bold text-xl">{initials}</div>
+          }
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-[15px] font-extrabold text-slate-800 dark:text-white truncate">{profile.business_name || profile.owner_name || "Business"}</p>
+          {profile.business_name && profile.owner_name && (
+            <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{profile.owner_name}</p>
+          )}
+          <span className="inline-block mt-1 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full"
+            style={{
+              background: plan === "enterprise" ? "#1B2A5E18" : plan === "growth" ? "#16a34a18" : "#64748b12",
+              color:      plan === "enterprise" ? "#1B2A5E"   : plan === "growth" ? "#16a34a"   : "#64748b",
+            }}>
+            {plan === "enterprise" ? "Enterprise" : plan === "growth" ? "Growth" : "Starter"} Plan
+          </span>
+        </div>
+        <button onClick={openEdit}
+          className="flex-shrink-0 text-xs font-bold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-900/20 px-3 py-1.5 rounded-xl active:scale-95 transition">
+          Edit
+        </button>
+      </div>
 
       {/* ── STAFF MANAGEMENT BANNER ────────────────────────────────── */}
       <button

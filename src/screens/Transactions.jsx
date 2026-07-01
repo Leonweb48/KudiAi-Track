@@ -309,6 +309,20 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
         </div>
       </div>
 
+      {/* Net position chip */}
+      {transactions.length > 0 && (
+        <div className={`flex items-center justify-between rounded-2xl px-4 py-2.5 mb-4 ${
+          totIn - totOut >= 0
+            ? "bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800/40"
+            : "bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800/40"
+        }`}>
+          <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400">Net Position</p>
+          <p className={`text-sm font-extrabold tabular ${totIn - totOut >= 0 ? "text-green-600" : "text-red-500"}`}>
+            {totIn - totOut >= 0 ? "+" : "−"}{fmt(Math.abs(totIn - totOut))}
+          </p>
+        </div>
+      )}
+
       {/* Quick add */}
       <div className="flex gap-2 mb-4">
         <button onClick={() => openAdd("in")}
@@ -363,13 +377,20 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
         <div className="space-y-2.5">
           {filtered.map(t => {
             const isIn = t.type === "in";
+            const iconStyle = (() => {
+              if (t.payment_type === "bill_payment") return { bg: "bg-cyan-100 dark:bg-cyan-900/30",   color: "#0891b2", paths: ["M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2","M9 5a2 2 0 002 2h2a2 2 0 002-2","M9 5a2 2 0 012-2h2a2 2 0 012 2","M9 13h6","M9 17h4"] };
+              if (t.category === "credit sale")      return { bg: "bg-amber-100 dark:bg-amber-900/30", color: "#d97706", paths: ["M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2","M9 11a4 4 0 100-8 4 4 0 000 8"] };
+              if (t.category === "debt repayment")   return { bg: "bg-blue-100 dark:bg-blue-900/30",   color: "#2563eb", paths: ["M3 22h18","M6 18v-7","M10 18v-7","M14 18v-7","M18 18v-7","M12 2L2 7h20L12 2z"] };
+              if (isIn) return { bg: "bg-green-100 dark:bg-green-900/30", color: "#16a34a", paths: ["M12 19V5","M5 12l7-7 7 7"] };
+              return          { bg: "bg-red-100 dark:bg-red-900/30",     color: "#ef4444", paths: ["M12 5v14","M19 12l-7 7-7-7"] };
+            })();
             return (
               <div key={t.id} className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 shadow-card border border-slate-100 dark:border-slate-700/60">
                 <div className="flex items-start gap-3">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${isIn ? "bg-green-100 dark:bg-green-900/30" : "bg-red-100 dark:bg-red-900/30"}`}>
-                    <span className={`text-base font-black leading-none ${isIn ? "text-green-600" : "text-red-500"}`}>
-                      {isIn ? "+" : "−"}
-                    </span>
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${iconStyle.bg}`}>
+                    <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke={iconStyle.color} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                      {iconStyle.paths.map((d, i) => <path key={i} d={d} />)}
+                    </svg>
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">

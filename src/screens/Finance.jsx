@@ -35,40 +35,44 @@ const SECTION_LABELS = {
   org: "Organisation", invoices: "Invoices",
 };
 
-// ── Credit tracker card — tappable, opens Credit sub-screen ──────────────────
-function CreditSummaryCard({ credits, onClick }) {
+// ── Financial overview card — credit + ajo in one glanceable card ────────────
+function FinanceOverviewCard({ credits, ajoClients, hasCreditAccess, onCreditClick, onAjoClick }) {
   const totalOut     = credits.reduce((s, c) => s + (c.outstanding || 0), 0);
-  const activeCount  = credits.filter(c => c.status !== "paid").length;
   const overdueCount = credits.filter(c => c.status === "overdue").length;
+  const ajoBalance   = ajoClients.reduce((s, c) => s + (c.current_balance || 0), 0);
+  const ajoActive    = ajoClients.filter(c => c.status === "active").length;
 
   return (
-    <button onClick={onClick} className="w-full text-left active:scale-[0.98] transition-transform duration-150">
-      <div className="rounded-2xl p-4 text-white shadow-md"
-        style={{ background: "linear-gradient(135deg, #1B2A5E 0%, #2d4a8a 100%)" }}>
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-[10px] font-bold uppercase tracking-widest opacity-60">Credit Tracker</p>
-          <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="opacity-60">
-            <path d="M9 18l6-6-6-6"/>
-          </svg>
-        </div>
-        <div className="grid grid-cols-3 gap-2">
-          <div>
-            <p className="text-[10px] opacity-60 mb-0.5">Outstanding</p>
-            <p className="text-base font-black leading-tight">{fmt(totalOut)}</p>
-          </div>
-          <div className="border-l border-white/20 pl-3">
-            <p className="text-[10px] opacity-60 mb-0.5">Debtors</p>
-            <p className="text-base font-black leading-tight">{activeCount}</p>
-          </div>
-          <div className="border-l border-white/20 pl-3">
-            <p className="text-[10px] opacity-60 mb-0.5">Overdue</p>
-            <p className={`text-base font-black leading-tight ${overdueCount > 0 ? "text-red-300" : "text-white"}`}>
-              {overdueCount}
+    <div className="rounded-2xl p-4 text-white shadow-md relative overflow-hidden"
+      style={{ background: "linear-gradient(135deg, #1B2A5E 0%, #2d4a8a 100%)" }}>
+      <div className="absolute -top-8 -right-8 w-28 h-28 rounded-full bg-white/5 pointer-events-none" />
+      <div className="absolute -bottom-10 -left-6 w-32 h-32 rounded-full bg-white/5 pointer-events-none" />
+      <p className="text-[10px] font-bold uppercase tracking-widest opacity-60 mb-3 relative">Financial Overview</p>
+      <div className="grid grid-cols-2 gap-3 relative">
+        <button onClick={onCreditClick}
+          className="bg-white/10 rounded-2xl p-3 text-left active:bg-white/20 transition">
+          <p className="text-[9px] font-bold opacity-60 uppercase tracking-wider mb-1.5">
+            {hasCreditAccess ? "Credit Outstanding" : "🔒 Credit"}
+          </p>
+          <p className="text-xl font-black leading-tight tabular">
+            {hasCreditAccess ? fmt(totalOut) : "Upgrade"}
+          </p>
+          {hasCreditAccess && (
+            <p className="text-[10px] opacity-60 mt-1.5">
+              {overdueCount > 0 ? `⚠ ${overdueCount} overdue` : `${credits.length} record${credits.length !== 1 ? "s" : ""}`}
             </p>
-          </div>
-        </div>
+          )}
+        </button>
+        <button onClick={onAjoClick}
+          className="bg-white/10 rounded-2xl p-3 text-left active:bg-white/20 transition">
+          <p className="text-[9px] font-bold opacity-60 uppercase tracking-wider mb-1.5">Ajo Savings</p>
+          <p className="text-xl font-black leading-tight tabular">{fmt(ajoBalance)}</p>
+          <p className="text-[10px] opacity-60 mt-1.5">
+            {ajoActive} active client{ajoActive !== 1 ? "s" : ""}
+          </p>
+        </button>
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -205,8 +209,11 @@ export default function Finance({
   const [showLoan, setShowLoan] = useState(false);
 
   useEffect(() => {
-    if (autoOpenTab) setSection(autoOpenTab);
-  }, [autoOpenTab]);
+    if (autoOpenTab) {
+      setSection(autoOpenTab);
+      onAutoOpened?.();
+    }
+  }, [autoOpenTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const credits         = store.credits || [];
   const hasCreditAccess = canDo(plan, "credit");
@@ -271,9 +278,13 @@ export default function Finance({
   // ── Finance dashboard ───────────────────────────────────────────────────────
   return (
     <div className="px-4 pt-4 pb-28 space-y-4">
-      {hasCreditAccess && (
-        <CreditSummaryCard credits={credits} onClick={() => openSection("credit")} />
-      )}
+      <FinanceOverviewCard
+        credits={credits}
+        ajoClients={store.asoClients || []}
+        hasCreditAccess={hasCreditAccess}
+        onCreditClick={() => hasCreditAccess ? openSection("credit") : onUpgrade?.()}
+        onAjoClick={() => openSection("ajo")}
+      />
       <FinanceToolsCard tiles={FINANCE_TILES} onSelect={openSection} />
     </div>
   );

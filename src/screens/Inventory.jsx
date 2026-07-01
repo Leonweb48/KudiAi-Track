@@ -491,8 +491,16 @@ function ProductCard({ product, onView, onSale, onRestock, isOwner, onEdit, staf
           {m !== null && (
             <span className={`text-[10px] font-extrabold ${m > 0 ? "text-green-600" : "text-red-500"}`}>{m > 0 ? "+" : ""}{m}%</span>
           )}
-          {low && !zero && <span className="text-[10px] font-bold text-amber-500 ml-auto">⚠ Low stock</span>}
-          {zero          && <span className="text-[10px] font-bold text-red-500 ml-auto">✕ Out of stock</span>}
+          {low && !zero && <span className="text-[10px] font-bold text-amber-500 ml-auto">⚠ Low</span>}
+          {zero          && <span className="text-[10px] font-bold text-red-500 ml-auto">✕ Out</span>}
+        </div>
+
+        {/* Stock level bar */}
+        <div className="mt-2.5 h-1 bg-slate-100 dark:bg-slate-700/60 rounded-full overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all duration-300 ${zero ? "bg-red-400" : low ? "bg-amber-400" : "bg-green-500"}`}
+            style={{ width: `${Math.max(2, Math.min(100, Math.round((product.quantity / Math.max(product.low_stock_threshold * 3, 1)) * 100)))}%` }}
+          />
         </div>
       </div>
 
