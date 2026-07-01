@@ -1,4 +1,4 @@
-// v2 — deployed via CI
+// v3 — auth via service role key (no separate EMAIL_TRIGGER_SECRET to sync)
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -7,10 +7,9 @@ const CORS = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const ADMIN_URL            = "https://admin.kudiai.app/api/public/email-trigger";
-const EMAIL_TRIGGER_SECRET = Deno.env.get("EMAIL_TRIGGER_SECRET") ?? "";
-const SUPABASE_URL         = Deno.env.get("SUPABASE_URL")         ?? "";
-const SERVICE_KEY          = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const ADMIN_URL    = "https://admin.kudiai.app/api/public/email-trigger";
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")             ?? "";
+const SERVICE_KEY  = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -44,10 +43,10 @@ serve(async (req) => {
     ...(body.data || {}),
   };
 
-  // Forward to admin API — secret stays server-side
+  // Forward to admin API — authenticated with service role key (already in both systems)
   const resp = await fetch(ADMIN_URL, {
     method:  "POST",
-    headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
+    headers: { "Content-Type": "application/json", "x-trigger-secret": SERVICE_KEY },
     body:    JSON.stringify({ event: body.event, data: enrichedData }),
   }).catch(() => null);
 
