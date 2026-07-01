@@ -76,25 +76,25 @@ function FinanceOverviewCard({ credits, ajoClients, hasCreditAccess, onCreditCli
   );
 }
 
-// ── Finance Tools card — Quick Services style tile grid ───────────────────────
+// ── Finance Tools card — prominent tile grid ─────────────────────────────────
 function FinanceToolsCard({ tiles, onSelect }) {
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-3xl p-4 shadow-card border border-slate-100 dark:border-slate-700/50">
-      <p className="text-[12px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-4">
+    <div className="bg-white dark:bg-slate-800 rounded-3xl p-5 shadow-card border border-slate-100 dark:border-slate-700/50">
+      <p className="text-[12px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-5">
         Finance Tools
       </p>
-      <div className="grid grid-cols-4 gap-y-5">
+      <div className="grid grid-cols-4 gap-y-6">
         {tiles.map(s => (
           <button key={s.id} onClick={() => onSelect(s.id)}
-            className="flex flex-col items-center gap-2 active:scale-90 transition-transform duration-150">
-            <div className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm"
+            className="flex flex-col items-center gap-2.5 active:scale-90 transition-transform duration-150">
+            <div className="w-[60px] h-[60px] rounded-[18px] flex items-center justify-center shadow-md"
               style={{ background: `linear-gradient(135deg,${s.g1},${s.g2})` }}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
-                stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none"
+                stroke="white" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
                 {s.icon.split("|").map((d, i) => <path key={i} d={d} />)}
               </svg>
             </div>
-            <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 text-center leading-tight max-w-[64px]">
+            <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400 text-center leading-tight max-w-[64px]">
               {s.label}
             </span>
           </button>
@@ -275,16 +275,84 @@ export default function Finance({
     );
   }
 
+  const asoClients = store.asoClients || [];
+  const urgentCredits = hasCreditAccess
+    ? [...credits].sort((a, b) => {
+        if (a.status === "overdue" && b.status !== "overdue") return -1;
+        if (b.status === "overdue" && a.status !== "overdue") return 1;
+        return 0;
+      }).slice(0, 2)
+    : [];
+  const activeAjo = asoClients.filter(c => c.status === "active").slice(0, 2);
+
   // ── Finance dashboard ───────────────────────────────────────────────────────
   return (
     <div className="px-4 pt-4 pb-28 space-y-4">
       <FinanceOverviewCard
         credits={credits}
-        ajoClients={store.asoClients || []}
+        ajoClients={asoClients}
         hasCreditAccess={hasCreditAccess}
         onCreditClick={() => hasCreditAccess ? openSection("credit") : onUpgrade?.()}
         onAjoClick={() => openSection("ajo")}
       />
+
+      {/* ── Recent credit entries preview ── */}
+      {hasCreditAccess && urgentCredits.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-2.5">
+            <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Pending Credits</p>
+            <button onClick={() => openSection("credit")}
+              className="text-[11px] font-bold text-brand-600 dark:text-brand-400">See all</button>
+          </div>
+          {urgentCredits.map(c => (
+            <div key={c.id}
+              className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 mb-2 border border-slate-100 dark:border-slate-700/50 shadow-card flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
+                <span className="text-sm font-black text-amber-600 dark:text-amber-400">{c.customer_name?.[0]?.toUpperCase() || "?"}</span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-slate-800 dark:text-white truncate">{c.customer_name}</p>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                    c.status === "overdue"
+                      ? "bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400"
+                      : "bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400"
+                  }`}>{c.status}</span>
+                  {c.due_date && <span className="text-[10px] text-slate-400">Due {c.due_date}</span>}
+                </div>
+              </div>
+              <p className="text-sm font-extrabold text-amber-600 dark:text-amber-400 tabular flex-shrink-0">{fmt(c.outstanding)}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Active ajo clients preview ── */}
+      {activeAjo.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-2.5">
+            <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Active Ajo</p>
+            <button onClick={() => openSection("ajo")}
+              className="text-[11px] font-bold text-brand-600 dark:text-brand-400">See all</button>
+          </div>
+          {activeAjo.map(c => (
+            <div key={c.id}
+              className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 mb-2 border border-slate-100 dark:border-slate-700/50 shadow-card flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center flex-shrink-0">
+                <span className="text-sm font-black text-violet-600 dark:text-violet-400">{c.name?.[0]?.toUpperCase() || "?"}</span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-slate-800 dark:text-white truncate">{c.name}</p>
+                {c.next_contribution_date && (
+                  <p className="text-[10px] text-slate-400 mt-0.5">Next: {c.next_contribution_date}</p>
+                )}
+              </div>
+              <p className="text-sm font-extrabold text-violet-600 dark:text-violet-400 tabular flex-shrink-0">{fmt(c.current_balance || 0)}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
       <FinanceToolsCard tiles={FINANCE_TILES} onSelect={openSection} />
     </div>
   );

@@ -117,6 +117,7 @@ export default function Home({ store, setTab, onQuickAction, onVoiceOpen, notif 
   const { transactions, credits, asoClients, profile, loading } = store;
   const t = useT();
   const [balanceHidden, setBalanceHidden] = useState(false);
+  const [search, setSearch] = useState("");
 
   const todayTx     = transactions.filter(tx => tx.transaction_date === today());
   const cashIn      = todayTx.filter(tx => tx.type === "in" ).reduce((s, tx) => s + tx.amount, 0);
@@ -210,6 +211,23 @@ export default function Home({ store, setTab, onQuickAction, onVoiceOpen, notif 
           </div>
         </div>
       </div>
+
+      {/* ── Daily summary chip ──────────────────────────────────── */}
+      {!loading && todayTx.length > 0 && (
+        <div className="flex justify-center">
+          <div className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-[11px] font-bold border ${
+            profit >= 0
+              ? "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-green-100 dark:border-green-800/40"
+              : "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border-red-100 dark:border-red-800/40"
+          }`}>
+            <span>Today</span>
+            <span className="opacity-40">·</span>
+            <span>{todayTx.length} transaction{todayTx.length !== 1 ? "s" : ""}</span>
+            <span className="opacity-40">·</span>
+            <span>{profit >= 0 ? "+" : "−"}{fmt(Math.abs(profit))} net</span>
+          </div>
+        </div>
+      )}
 
       {/* ── Quick Actions + Services (single card) ────────────────── */}
       <div className="bg-white dark:bg-slate-800 rounded-3xl p-4 shadow-card border border-slate-100 dark:border-slate-700/50">
@@ -325,11 +343,38 @@ export default function Home({ store, setTab, onQuickAction, onVoiceOpen, notif 
 
       {/* ── Recent Transactions ──────────────────────────────────── */}
       <div>
+        {/* Search bar */}
+        <div className="relative mb-3">
+          <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none"
+            viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+          </svg>
+          <input
+            type="search"
+            placeholder="Search transactions, items, customers…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="w-full pl-10 pr-4 py-2.5 rounded-2xl text-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/40 transition"
+          />
+          {search && (
+            <button onClick={() => setSearch("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center">
+              <svg className="w-3 h-3 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M18 6L6 18M6 6l12 12"/>
+              </svg>
+            </button>
+          )}
+        </div>
+
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-[13px] font-bold text-slate-700 dark:text-slate-300 tracking-wide">{t("home.recentTxns")}</h2>
-          <button onClick={() => setTab("transactions")} className="text-xs text-brand-600 dark:text-brand-400 font-bold">
-            {t("home.seeAll")}
-          </button>
+          <h2 className="text-[13px] font-bold text-slate-700 dark:text-slate-300 tracking-wide">
+            {search ? `Results for "${search}"` : t("home.recentTxns")}
+          </h2>
+          {!search && (
+            <button onClick={() => setTab("transactions")} className="text-xs text-brand-600 dark:text-brand-400 font-bold">
+              {t("home.seeAll")}
+            </button>
+          )}
         </div>
 
         {loading ? (
@@ -338,7 +383,23 @@ export default function Home({ store, setTab, onQuickAction, onVoiceOpen, notif 
               <div key={i} className="h-16 bg-white dark:bg-slate-800 rounded-2xl animate-pulse border border-slate-100 dark:border-slate-700/50" />
             ))}
           </div>
-        ) : transactions.length === 0 ? (
+        ) : search ? (() => {
+          const q = search.toLowerCase();
+          const results = transactions.filter(tx =>
+            tx.item_name?.toLowerCase().includes(q) ||
+            tx.customer_name?.toLowerCase().includes(q) ||
+            tx.category?.toLowerCase().includes(q) ||
+            tx.payment_type?.toLowerCase().includes(q)
+          ).slice(0, 10);
+          return results.length === 0 ? (
+            <div className="text-center py-8 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700/50">
+              <p className="text-slate-400 text-sm font-semibold">No transactions found</p>
+              <p className="text-slate-300 dark:text-slate-600 text-xs mt-1">Try a different search term</p>
+            </div>
+          ) : (
+            <div className="space-y-2">{results.map(tx => <TxRow key={tx.id} tx={tx} />)}</div>
+          );
+        })() : transactions.length === 0 ? (
           <div className="text-center py-12 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700/50">
             <div className="w-14 h-14 bg-slate-100 dark:bg-slate-700 rounded-full flex items-center justify-center mx-auto mb-3">
               <Svg d={P.report} size={22} color="#94a3b8" sw={1.5} />

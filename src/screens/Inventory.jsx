@@ -489,7 +489,11 @@ function ProductCard({ product, onView, onSale, onRestock, isOwner, onEdit, staf
         <div className="flex items-center gap-3 mt-2">
           <p className="text-xs text-slate-400 dark:text-slate-500">{fmt(product.cost_price)} → <span className="font-bold text-slate-600 dark:text-slate-300">{fmt(product.selling_price)}</span></p>
           {m !== null && (
-            <span className={`text-[10px] font-extrabold ${m > 0 ? "text-green-600" : "text-red-500"}`}>{m > 0 ? "+" : ""}{m}%</span>
+            <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded-full flex-shrink-0 ${
+              m > 0
+                ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
+                : "bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400"
+            }`}>{m > 0 ? "+" : ""}{m}%</span>
           )}
           {low && !zero && <span className="text-[10px] font-bold text-amber-500 ml-auto">⚠ Low</span>}
           {zero          && <span className="text-[10px] font-bold text-red-500 ml-auto">✕ Out</span>}

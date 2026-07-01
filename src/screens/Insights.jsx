@@ -319,42 +319,43 @@ Top items this period: ${topItems.join(", ") || "None recorded"}`;
         )}
       </div>
 
+      {/* ── AI Quick Shortcuts — most actionable, at top for premium users ── */}
+      {onAIOpen && !isStaffView && isPremium && (
+        <div className="mb-5">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center">
+                <span className="text-[11px] leading-none">✨</span>
+              </div>
+              <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Quick AI Insights</p>
+            </div>
+            <button onClick={() => onAIOpen("")}
+              className="text-[11px] font-bold text-brand-600 dark:text-brand-400 flex items-center gap-1">
+              Open Chat
+              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M9 18l6-6-6-6"/>
+              </svg>
+            </button>
+          </div>
+          <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 pb-1">
+            {AI_QUICK.map(({ label, q }) => (
+              <button key={label} onClick={() => onAIOpen(q)}
+                className="flex-shrink-0 flex items-center gap-1.5 text-[11px] font-bold px-3.5 py-2.5 rounded-2xl whitespace-nowrap transition-all active:scale-95 shadow-sm"
+                style={{ background: "linear-gradient(135deg,#1e293b,#0f172a)", color: "white" }}>
+                <span className="opacity-60">✦</span>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ── Sales Prediction (all plans) ── */}
       {!isStaffView && prediction && <SalesPredictionSection pred={prediction} t={t} />}
       {!isStaffView && !prediction && !store.loading && (
         <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 text-center mb-5">
           <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">📈 {t("pred.title")}</p>
           <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">{t("pred.noData")}</p>
-        </div>
-      )}
-
-      {/* ── AI Assistant card (premium) ── */}
-      {onAIOpen && !isStaffView && isPremium && (
-        <div className="rounded-3xl overflow-hidden shadow-md mb-5"
-          style={{ background: "linear-gradient(135deg,#1e293b 0%,#0f172a 100%)" }}>
-          <div className="flex items-center justify-between px-4 pt-4 pb-3">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center flex-shrink-0">
-                <span className="text-base leading-none">✨</span>
-              </div>
-              <div>
-                <p className="text-sm font-bold text-white leading-tight">KudiAI Business Assistant</p>
-                <p className="text-[10px] text-white/50 leading-tight">Powered by Gemini · knows your real data</p>
-              </div>
-            </div>
-            <button onClick={() => onAIOpen("")}
-              className="bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold px-3.5 py-1.5 rounded-xl active:scale-95 transition-all flex-shrink-0">
-              Open Chat
-            </button>
-          </div>
-          <div className="px-4 pb-4 flex gap-2 overflow-x-auto no-scrollbar">
-            {AI_QUICK.map(({ label, q }) => (
-              <button key={label} onClick={() => onAIOpen(q)}
-                className="flex-shrink-0 text-[11px] font-semibold bg-white/10 hover:bg-white/20 text-white/80 px-3 py-1.5 rounded-full whitespace-nowrap transition-colors active:scale-95">
-                {label}
-              </button>
-            ))}
-          </div>
         </div>
       )}
 
