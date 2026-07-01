@@ -167,6 +167,50 @@ export function useInvoices(userId) {
     return { error };
   };
 
+  // ── Update existing draft ─────────────────────────────────────────────────
+  const updateDraft = async (invoiceId, {
+    customer, items, discount_naira, vat_enabled, due_date,
+    payment_instructions, notes,
+  }) => {
+    const subtotal_kobo  = items.reduce((s, i) => s + i.line_total_kobo, 0);
+    const discount_kobo  = nairaToKobo(discount_naira || 0);
+    const after_discount = Math.max(0, subtotal_kobo - discount_kobo);
+    const vat_kobo       = vat_enabled ? Math.round(after_discount * 0.075) : 0;
+    const total_kobo     = after_discount + vat_kobo;
+
+    // Update invoice header
+    const { error: invErr } = await supabase
+      .from("invoices")
+      .update({
+        customer_name:        customer.name.trim(),
+        customer_phone:       customer.phone || "",
+        customer_email:       customer.email || "",
+        due_date:             due_date   || null,
+        subtotal_kobo, discount_kobo, vat_kobo, total_kobo,
+        payment_instructions: payment_instructions || "",
+        notes:                notes || "",
+      })
+      .eq("id", invoiceId)
+      .eq("user_id", userId)
+      .eq("status", "draft");
+    if (invErr) return { error: invErr };
+
+    // Replace all line items
+    await supabase.from("invoice_items").delete().eq("invoice_id", invoiceId);
+    if (items.length > 0) {
+      const rows = items.map((item, i) => ({
+        invoice_id: invoiceId, description: item.description,
+        quantity: item.quantity, unit_price_kobo: item.unit_price_kobo,
+        line_total_kobo: item.line_total_kobo, sort_order: i,
+      }));
+      const { error: itemErr } = await supabase.from("invoice_items").insert(rows);
+      if (itemErr) return { error: itemErr };
+    }
+
+    await load();
+    return { data: { id: invoiceId } };
+  };
+
   // ── Delete draft invoice ──────────────────────────────────────────────────
   const deleteInvoice = async (id) => {
     const { error } = await supabase
@@ -222,5 +266,5 @@ export function useInvoices(userId) {
     return { data: { amountKobo, newStatus } };
   };
 
-  return { invoices, customers, loading, reload: load, createDraft, markSent, cancelInvoice, deleteInvoice, recordInvoicePayment };
+  return { invoices, customers, loading, reload: load, createDraft, updateDraft, markSent, cancelInvoice, deleteInvoice, recordInvoicePayment };
 }

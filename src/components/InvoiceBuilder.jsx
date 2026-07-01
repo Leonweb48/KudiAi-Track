@@ -408,36 +408,62 @@ export default function InvoiceBuilder({
   userId, profile, customers, products,
   onClose, onSaved,
   sourceTransaction,
+  initialData,   // pass existing draft invoice to pre-fill for editing
 }) {
+  const isEditing = !!initialData;
+
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error,  setError]  = useState("");
 
-  // Step state
-  const [customer, setCustomer] = useState(
-    sourceTransaction
-      ? { id: null, name: sourceTransaction.customer_name || "", phone: "", email: "" }
-      : { id: null, name: "", phone: "", email: "" }
-  );
+  // Step state — pre-fill from initialData when editing
+  const [customer, setCustomer] = useState(() => {
+    if (initialData) {
+      return {
+        id:    initialData.customer_id    || null,
+        name:  initialData.customer_name  || "",
+        phone: initialData.customer_phone || "",
+        email: initialData.customer_email || "",
+      };
+    }
+    if (sourceTransaction) {
+      return { id: null, name: sourceTransaction.customer_name || "", phone: "", email: "" };
+    }
+    return { id: null, name: "", phone: "", email: "" };
+  });
 
-  const defaultItem = sourceTransaction
-    ? [{
+  const [items, setItems] = useState(() => {
+    if (initialData?.invoice_items?.length) {
+      return initialData.invoice_items.map(i => ({
+        description:     i.description     || "",
+        quantity:        String(i.quantity  || 1),
+        unit_price:      String((i.unit_price_kobo || 0) / 100),
+        unit_price_kobo: i.unit_price_kobo || 0,
+        line_total_kobo: i.line_total_kobo || 0,
+      }));
+    }
+    if (sourceTransaction) {
+      return [{
         description:     sourceTransaction.item_name || sourceTransaction.category || "Sale",
         quantity:        String(sourceTransaction.quantity || 1),
         unit_price:      String(sourceTransaction.amount || ""),
         unit_price_kobo: Math.round((parseFloat(sourceTransaction.amount) || 0) * 100),
         line_total_kobo: Math.round((parseFloat(sourceTransaction.amount) || 0) * 100),
-      }]
-    : [];
-
-  const [items,   setItems]   = useState(defaultItem);
-  const [adjust,  setAdjust]  = useState({
-    discount_naira: "",
-    vat_enabled:    profile?.vat_enabled || false,
-    due_date:       "",
-    notes:          "",
+      }];
+    }
+    return [];
   });
-  const [payment, setPayment] = useState({ payment_instructions: "" });
+
+  const [adjust, setAdjust] = useState(() => ({
+    discount_naira: initialData ? String((initialData.discount_kobo || 0) / 100) : "",
+    vat_enabled:    initialData ? (initialData.vat_kobo || 0) > 0 : (profile?.vat_enabled || false),
+    due_date:       initialData?.due_date || "",
+    notes:          initialData?.notes    || "",
+  }));
+
+  const [payment, setPayment] = useState({
+    payment_instructions: initialData?.payment_instructions || "",
+  });
 
   // ── Validation per step ──────────────────────────────────────
   const canNext = useMemo(() => {
@@ -461,7 +487,8 @@ export default function InvoiceBuilder({
       notes:                adjust.notes,
       payment_instructions: payment.payment_instructions,
       source_transaction_id: sourceTransaction?.id || null,
-      _saveAs: saveAs,
+      _saveAs:  saveAs,
+      _editId:  isEditing ? initialData.id : null,
     });
     setSaving(false);
     if (err) { setError(err.message || "Failed to save invoice"); return; }
@@ -476,7 +503,7 @@ export default function InvoiceBuilder({
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex-shrink-0">
           <span className="font-bold text-slate-800 dark:text-white text-base">
-            {sourceTransaction ? "Convert to Invoice" : "New Invoice"}
+            {isEditing ? "Edit Invoice" : sourceTransaction ? "Convert to Invoice" : "New Invoice"}
           </span>
           <button onClick={() => onClose()} className="p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700">
             <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M18 6L6 18M6 6l12 12"/></svg>

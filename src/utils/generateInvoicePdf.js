@@ -32,7 +32,7 @@ function ribbonText(status) {
 
 const SLOGAN = "Talk your money. Track your profit. Grow your business.";
 
-export async function exportInvoicePdf(inv, profile, invoiceSettings = {}) {
+export async function exportInvoicePdf(inv, profile, invoiceSettings = {}, { isReceipt = false } = {}) {
   const { jsPDF } = await import("jspdf");
   const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
   const W = doc.internal.pageSize.getWidth();   // 210
@@ -102,12 +102,11 @@ export async function exportInvoicePdf(inv, profile, invoiceSettings = {}) {
   doc.line(ML, y, MR, y);
   y += 7;
 
-  // ── 4. INVOICE title + meta block ────────────────────────────────────────
-  // Left: "INVOICE" title
+  // ── 4. INVOICE / RECEIPT title + meta block ──────────────────────────────
   doc.setFont("helvetica", "bold");
   doc.setFontSize(22);
-  doc.setTextColor(15, 23, 42);
-  doc.text("INVOICE", ML, y + 2);
+  doc.setTextColor(isReceipt ? 22 : 15, isReceipt ? 163 : 23, isReceipt ? 74 : 42);
+  doc.text(isReceipt ? "RECEIPT" : "INVOICE", ML, y + 2);
 
   // Right: Invoice No + Dates (stacked)
   const metaLX = MR - 65;
@@ -126,14 +125,15 @@ export async function exportInvoicePdf(inv, profile, invoiceSettings = {}) {
     my += 5.5;
   };
 
-  addMeta("INVOICE NO", inv.invoice_number || "—");
-  addMeta("ISSUE DATE", dateFmt(inv.issue_date) || dateFmt(new Date().toISOString().slice(0, 10)));
-  if (inv.due_date) addMeta("DUE DATE", dateFmt(inv.due_date));
+  addMeta(isReceipt ? "RECEIPT NO" : "INVOICE NO", inv.invoice_number || "—");
+  addMeta("DATE", dateFmt(inv.issue_date) || dateFmt(new Date().toISOString().slice(0, 10)));
+  if (!isReceipt && inv.due_date) addMeta("DUE DATE", dateFmt(inv.due_date));
+  if (isReceipt) addMeta("PAID DATE", dateFmt(new Date().toISOString().slice(0, 10)));
 
   y = Math.max(y + 14, my + 4);
 
   // ── 5. Status ribbon (diagonal watermark) ────────────────────────────────
-  const rb = ribbonText(inv.status);
+  const rb = isReceipt ? { text: "PAID", color: [22, 163, 74] } : ribbonText(inv.status);
   doc.saveGraphicsState();
   const cx = W / 2 + 30;
   const cy = H / 2 - 20;
@@ -384,5 +384,6 @@ export async function exportInvoicePdf(inv, profile, invoiceSettings = {}) {
     W / 2, footerY + 6, { align: "center" }
   );
 
-  await savePdf(doc, `invoice_${inv.invoice_number || Date.now()}.pdf`);
+  const prefix = isReceipt ? "receipt" : "invoice";
+  await savePdf(doc, `${prefix}_${inv.invoice_number || Date.now()}.pdf`);
 }

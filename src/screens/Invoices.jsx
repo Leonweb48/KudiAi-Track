@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Capacitor }             from "@capacitor/core";
 import { Browser }               from "@capacitor/browser";
+import { Share }                 from "@capacitor/share";
 import { canDo, planAvailableText } from "../utils/plans";
 import { sendEmailTrigger }          from "../utils/emailTrigger";
 import { fmt, today }            from "../utils/helpers";
@@ -203,7 +204,7 @@ function RecordPaymentModal({ inv, onClose, onSave }) {
 }
 
 // ── Invoice detail sheet ──────────────────────────────────────────────────
-function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCancel, onPayment, onDelete, onResend }) {
+function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCancel, onPayment, onDelete, onResend, onEdit }) {
   const [acting,      setActing]      = useState(false);
   const [showPayment, setShowPayment] = useState(false);
   const [pdfLoading,  setPdfLoading]  = useState(false);
@@ -244,7 +245,55 @@ function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCance
 
   const handleResend = () => onResend && onResend(inv);
 
+  const handleEdit = () => { onEdit && onEdit(inv); onClose(); };
+
+  const handleReceipt = async () => {
+    setPdfLoading(true);
+    try { await exportInvoicePdf(inv, profile, invoiceSettings || {}, { isReceipt: true }); }
+    catch (e) { console.error("[Receipt]", e); }
+    setPdfLoading(false);
+  };
+
+  const handleEmail = () => {
+    if (!inv.customer_email) return;
+    const outstanding = inv.total_kobo - inv.amount_paid_kobo;
+    const subject = encodeURIComponent(`Invoice ${inv.invoice_number}`);
+    const body = encodeURIComponent(
+      `Hello ${inv.customer_name},\n\nPlease find your invoice details below.\n\n` +
+      `Invoice No: ${inv.invoice_number}\nTotal: ${fmtK(inv.total_kobo)}\n` +
+      (outstanding > 0 ? `Outstanding: ${fmtK(outstanding)}\n` : "Status: FULLY PAID\n") +
+      (inv.due_date ? `Due Date: ${new Date(inv.due_date + "T00:00:00").toLocaleDateString("en-NG")}\n` : "") +
+      (inv.payment_instructions ? `\n${inv.payment_instructions}\n` : "") +
+      `\nThank you!`
+    );
+    const url = `mailto:${inv.customer_email}?subject=${subject}&body=${body}`;
+    if (Capacitor.isNativePlatform()) Browser.open({ url });
+    else window.open(url, "_blank");
+  };
+
+  const handleShare = async () => {
+    const outstanding = inv.total_kobo - inv.amount_paid_kobo;
+    const text = [
+      `Invoice: ${inv.invoice_number}`,
+      `Customer: ${inv.customer_name}`,
+      `Total: ${fmtK(inv.total_kobo)}`,
+      outstanding > 0 ? `Outstanding: ${fmtK(outstanding)}` : "Status: FULLY PAID",
+      inv.due_date ? `Due: ${new Date(inv.due_date + "T00:00:00").toLocaleDateString("en-NG")}` : "",
+      inv.payment_instructions || "",
+    ].filter(Boolean).join("\n");
+    try {
+      if (Capacitor.isNativePlatform()) {
+        await Share.share({ title: `Invoice ${inv.invoice_number}`, text, dialogTitle: "Share Invoice" });
+      } else if (navigator.share) {
+        await navigator.share({ title: `Invoice ${inv.invoice_number}`, text });
+      } else {
+        await navigator.clipboard?.writeText(text);
+      }
+    } catch {}
+  };
+
   const canRecordPayment = ["sent", "overdue", "partially_paid"].includes(inv.status);
+  const canReceipt = inv.status === "paid" || inv.amount_paid_kobo > 0;
 
   return (
     <>
@@ -273,6 +322,25 @@ function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCance
               <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
               {pdfLoading ? "…" : "PDF"}
             </button>
+            {canReceipt && (
+              <button onClick={handleReceipt} disabled={pdfLoading}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 text-xs font-bold active:scale-95 transition min-w-[70px]">
+                <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M9 14l2 2 4-4"/><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+                Receipt
+              </button>
+            )}
+            {inv.customer_email && (
+              <button onClick={handleEmail}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 text-xs font-bold active:scale-95 transition min-w-[70px]">
+                <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                Email
+              </button>
+            )}
+            <button onClick={handleShare}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 text-xs font-bold active:scale-95 transition min-w-[70px]">
+              <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+              Share
+            </button>
             {inv.customer_phone && (
               <button onClick={handleWhatsApp}
                 className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 text-xs font-bold active:scale-95 transition min-w-[70px]">
@@ -285,6 +353,13 @@ function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCance
                 className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 text-xs font-bold active:scale-95 transition min-w-[70px]">
                 <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
                 Resend
+              </button>
+            )}
+            {inv.status === "draft" && (
+              <button onClick={handleEdit}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 text-xs font-bold active:scale-95 transition min-w-[70px]">
+                <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                Edit
               </button>
             )}
             {inv.status === "draft" && (
@@ -430,9 +505,10 @@ function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCance
 
 // ── Main Invoices screen ──────────────────────────────────────────────────
 export default function Invoices({ invoiceHook, plan, onUpgrade, profile, inventory, addTransaction, userId }) {
-  const { invoices, customers, loading, reload, createDraft, markSent, cancelInvoice, deleteInvoice, recordInvoicePayment } = invoiceHook;
+  const { invoices, customers, loading, reload, createDraft, updateDraft, markSent, cancelInvoice, deleteInvoice, recordInvoicePayment } = invoiceHook;
   const [filter,       setFilter]      = useState("all");
   const [showBuilder,  setShowBuilder] = useState(false);
+  const [editInv,      setEditInv]     = useState(null);
   const [detailInv,    setDetailInv]   = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const { settings: invoiceSettings, save: saveInvoiceSettings } = useInvoiceSettings(userId);
@@ -458,7 +534,8 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
   const filtered = filter === "all" ? invoices : invoices.filter(i => i.status === filter);
 
   const handleBuilderSave = async (data) => {
-    const { _saveAs, ...rest } = data;
+    const { _saveAs, _editId, ...rest } = data;
+    if (_editId) return await updateDraft(_editId, rest);
     return await createDraft({ ...rest, business_name: profile?.business_name || "" });
   };
 
@@ -592,13 +669,25 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
         </svg>
       </button>
 
-      {/* Invoice builder modal */}
+      {/* Invoice builder modal — new invoice */}
       {showBuilder && (
         <InvoiceBuilder
           profile={profile}
           customers={customers}
           products={inventory?.products || []}
           onClose={(saved) => { setShowBuilder(false); if (saved) reload(); }}
+          onSaved={handleBuilderSave}
+        />
+      )}
+
+      {/* Invoice builder modal — edit draft */}
+      {editInv && (
+        <InvoiceBuilder
+          profile={profile}
+          customers={customers}
+          products={inventory?.products || []}
+          initialData={editInv}
+          onClose={(saved) => { setEditInv(null); if (saved) reload(); }}
           onSaved={handleBuilderSave}
         />
       )}
@@ -657,6 +746,7 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
               due_date:       inv.due_date || "",
             });
           }}
+          onEdit={(inv) => { setDetailInv(null); setEditInv(inv); }}
           onPayment={async (payData) => {
             const result = await recordInvoicePayment({ invoiceId: detailInv.id, ...payData });
             if (!result.error && parseFloat(payData.amount_naira) > 0) {
