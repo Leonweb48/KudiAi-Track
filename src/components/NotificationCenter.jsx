@@ -18,13 +18,25 @@ function timeAgo(ts) {
 
 /* ── type config ─────────────────────────────────────────────────── */
 const TYPE = {
-  sales:    { label: "Sales",          dot: "bg-green-500",  ring: "bg-green-100 dark:bg-green-900/30",   text: "text-green-600 dark:text-green-400"   },
-  credits:  { label: "Credits",        dot: "bg-amber-500",  ring: "bg-amber-100 dark:bg-amber-900/30",   text: "text-amber-600 dark:text-amber-400"   },
-  payments: { label: "Payments",       dot: "bg-blue-500",   ring: "bg-blue-100 dark:bg-blue-900/30",     text: "text-blue-600 dark:text-blue-400"     },
-  stock:    { label: "Stock",          dot: "bg-orange-500", ring: "bg-orange-100 dark:bg-orange-900/30", text: "text-orange-600 dark:text-orange-400" },
-  bills:    { label: "Bills",          dot: "bg-red-500",    ring: "bg-red-100 dark:bg-red-900/30",       text: "text-red-600 dark:text-red-400"       },
-  aso:      { label: "Ajo",            dot: "bg-violet-500", ring: "bg-violet-100 dark:bg-violet-900/30", text: "text-violet-600 dark:text-violet-400" },
-  system:   { label: "System",         dot: "bg-slate-400",  ring: "bg-slate-100 dark:bg-slate-700",      text: "text-slate-500 dark:text-slate-400"   },
+  sales:    { label: "Sales",    dot: "bg-green-500",  ring: "bg-green-100 dark:bg-green-900/30",   text: "text-green-600 dark:text-green-400"   },
+  credits:  { label: "Credits",  dot: "bg-amber-500",  ring: "bg-amber-100 dark:bg-amber-900/30",   text: "text-amber-600 dark:text-amber-400"   },
+  payments: { label: "Payments", dot: "bg-blue-500",   ring: "bg-blue-100 dark:bg-blue-900/30",     text: "text-blue-600 dark:text-blue-400"     },
+  stock:    { label: "Stock",    dot: "bg-orange-500", ring: "bg-orange-100 dark:bg-orange-900/30", text: "text-orange-600 dark:text-orange-400" },
+  bills:    { label: "Bills",    dot: "bg-red-500",    ring: "bg-red-100 dark:bg-red-900/30",       text: "text-red-600 dark:text-red-400"       },
+  aso:      { label: "Ajo",      dot: "bg-violet-500", ring: "bg-violet-100 dark:bg-violet-900/30", text: "text-violet-600 dark:text-violet-400" },
+  invoices: { label: "Invoices", dot: "bg-sky-500",    ring: "bg-sky-100 dark:bg-sky-900/30",       text: "text-sky-600 dark:text-sky-400"       },
+  system:   { label: "System",   dot: "bg-slate-400",  ring: "bg-slate-100 dark:bg-slate-700",      text: "text-slate-500 dark:text-slate-400"   },
+};
+
+/* ── type → route mapping for action buttons ────────────────────── */
+const TYPE_ROUTES = {
+  sales:    "/transactions",
+  credits:  "/credit",
+  payments: "/credit",
+  stock:    "/inventory",
+  bills:    "/bills",
+  aso:      "/aso",
+  invoices: "/finance",
 };
 
 function getType(t) { return TYPE[t] || TYPE.system; }
@@ -215,38 +227,97 @@ function SettingsView({ settings, updateSetting, requestPush, speak, onBack, all
   );
 }
 
+/* ── Date grouping helper ────────────────────────────────────────── */
+function dateLabel(ts) {
+  const d    = new Date(ts);
+  const now  = new Date();
+  const diff = Math.floor((now - d) / 86400000);
+  if (diff === 0) return "Today";
+  if (diff === 1) return "Yesterday";
+  if (diff < 7)  return `${diff} days ago`;
+  return d.toLocaleDateString("en-NG", { day: "numeric", month: "short" });
+}
+
+function groupByDate(notifications) {
+  const groups = [];
+  const seen   = {};
+  for (const n of notifications) {
+    const label = dateLabel(n.ts);
+    if (!seen[label]) { seen[label] = true; groups.push({ label, items: [] }); }
+    groups[groups.length - 1].items.push(n);
+  }
+  return groups;
+}
+
 /* ── Notification item ───────────────────────────────────────────── */
-function NotifItem({ n, onRead }) {
-  const cfg = getType(n.type);
+function NotifItem({ n, onRead, onNavigate }) {
+  const cfg    = getType(n.type);
+  const route  = TYPE_ROUTES[n.type];
+
+  const handleTap = () => {
+    onRead(n.id);
+    if (route && onNavigate) onNavigate(route);
+  };
+
   return (
-    <button onClick={() => !n.read && onRead(n.id)}
-      className={`w-full text-left flex items-start gap-3 px-4 py-3.5 border-b border-slate-50 dark:border-slate-700/60 transition-colors ${
-        n.read ? "bg-white dark:bg-slate-800" : "bg-green-50/60 dark:bg-green-900/10"
-      } active:bg-slate-50 dark:active:bg-slate-700/40`}>
-      <div className={`w-9 h-9 rounded-xl flex-shrink-0 flex items-center justify-center ${cfg.ring} ${cfg.text}`}>
-        <TypeIcon type={n.type} />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className={`text-sm font-bold truncate ${n.read ? "text-slate-600 dark:text-slate-300" : "text-slate-800 dark:text-white"}`}>
-          {n.title}
-        </p>
-        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-2 leading-relaxed">{n.message}</p>
-        <div className="flex items-center gap-2 mt-1">
-          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${cfg.ring} ${cfg.text}`}>
-            {getType(n.type).label}
-          </span>
-          <span className="text-[10px] text-slate-400 dark:text-slate-500">{timeAgo(n.ts)}</span>
+    <div className={`mx-3 mb-2 rounded-2xl border transition-colors shadow-sm ${
+      n.read
+        ? "bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700"
+        : "bg-green-50/70 dark:bg-green-900/10 border-green-100 dark:border-green-800/40"
+    }`}>
+      <button onClick={handleTap} className="w-full text-left flex items-start gap-3 px-3.5 py-3 active:opacity-70">
+        {/* Icon */}
+        <div className={`w-9 h-9 rounded-xl flex-shrink-0 flex items-center justify-center ${cfg.ring} ${cfg.text}`}>
+          <TypeIcon type={n.type} />
         </div>
-      </div>
-      {!n.read && (
-        <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0 mt-1.5" />
+
+        {/* Content */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 mb-0.5">
+            <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full ${cfg.ring} ${cfg.text}`}>
+              {cfg.label}
+            </span>
+            <span className="text-[10px] text-slate-400 dark:text-slate-500">{timeAgo(n.ts)}</span>
+            {!n.read && <span className="w-1.5 h-1.5 rounded-full bg-green-500 flex-shrink-0" />}
+          </div>
+          <p className={`text-sm font-bold leading-tight ${n.read ? "text-slate-600 dark:text-slate-300" : "text-slate-800 dark:text-white"}`}>
+            {n.title}
+          </p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed line-clamp-2">{n.message}</p>
+        </div>
+
+        {/* Chevron — only if navigatable */}
+        {route && (
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"
+            className="w-4 h-4 text-slate-300 dark:text-slate-600 flex-shrink-0 mt-2.5">
+            <path d="M9 18l6-6-6-6" />
+          </svg>
+        )}
+      </button>
+
+      {/* Action button row */}
+      {route && (
+        <div className="px-3.5 pb-3 pt-0">
+          <button
+            onClick={handleTap}
+            className={`text-[11px] font-bold px-3 py-1.5 rounded-lg transition-colors active:scale-95 ${cfg.ring} ${cfg.text}`}>
+            {n.type === "sales"    ? "View Transactions →"
+            : n.type === "credits"  ? "View Credits →"
+            : n.type === "payments" ? "View Credits →"
+            : n.type === "stock"    ? "View Inventory →"
+            : n.type === "bills"    ? "Go to Bills →"
+            : n.type === "aso"      ? "View Ajo →"
+            : n.type === "invoices" ? "View Invoices →"
+            : "View →"}
+          </button>
+        </div>
       )}
-    </button>
+    </div>
   );
 }
 
 /* ── Notification list view ──────────────────────────────────────── */
-function NotifList({ notifications, unreadCount, markRead, markAllRead, clearAll, onSettings, allowedTypeKeys }) {
+function NotifList({ notifications, unreadCount, markRead, markAllRead, clearAll, onSettings, allowedTypeKeys, onNavigate }) {
   const [activeFilter, setActiveFilter] = useState("all");
 
   const filtered = activeFilter === "unread"
@@ -313,7 +384,7 @@ function NotifList({ notifications, unreadCount, markRead, markAllRead, clearAll
       </div>
 
       {/* List */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto pt-2">
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full pb-20 px-6 text-center">
             <div className="w-16 h-16 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mb-4">
@@ -330,11 +401,18 @@ function NotifList({ notifications, unreadCount, markRead, markAllRead, clearAll
             </p>
           </div>
         ) : (
-          <div className="bg-white dark:bg-slate-800">
-            {filtered.map(n => (
-              <NotifItem key={n.id} n={n} onRead={markRead} />
+          <div>
+            {groupByDate(filtered).map(group => (
+              <div key={group.label}>
+                <p className="px-4 pt-3 pb-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
+                  {group.label}
+                </p>
+                {group.items.map(n => (
+                  <NotifItem key={n.id} n={n} onRead={markRead} onNavigate={onNavigate} />
+                ))}
+              </div>
             ))}
-            <div className="h-20" />
+            <div className="h-24" />
           </div>
         )}
       </div>
@@ -362,13 +440,16 @@ export function NotificationBell({ unreadCount = 0, onClick }) {
 }
 
 /* ── Main panel (full-screen overlay, rendered in App.jsx) ───────── */
-export default function NotificationCenter({ notif, allowedTypeKeys }) {
+export default function NotificationCenter({ notif, allowedTypeKeys, onNavigate }) {
   const {
     notifications, settings, unreadCount,
     open, setOpen, showSettings, setShowSettings,
     markRead, markAllRead, clearAll,
     updateSetting, requestPush, speak,
   } = notif;
+
+  // Wrap onNavigate to close the panel first
+  const handleNavigate = onNavigate ? (route) => { setOpen(false); setShowSettings(false); onNavigate(route); } : null;
 
   if (!open) return null;
 
@@ -407,6 +488,7 @@ export default function NotificationCenter({ notif, allowedTypeKeys }) {
               clearAll={clearAll}
               onSettings={() => setShowSettings(true)}
               allowedTypeKeys={allowedTypeKeys}
+              onNavigate={handleNavigate}
             />
           )}
         </div>

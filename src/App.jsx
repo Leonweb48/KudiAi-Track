@@ -440,7 +440,7 @@ export default function App() {
       </div>
 
       {/* Notification panel — full-screen overlay, z-50 */}
-      <NotificationCenter notif={notif} />
+      <NotificationCenter notif={notif} onNavigate={navigate} />
 
       {/* Report generator — full-screen overlay, z-60 */}
       {showReports && <Reports store={store} onClose={() => setShowReports(false)} />}
