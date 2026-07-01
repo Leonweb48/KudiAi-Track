@@ -35,7 +35,7 @@ import CoopDashboard         from "./screens/CoopDashboard";
 import CoopMemberPortal, { CoopMemberFirstLogin } from "./screens/CoopMemberPortal";
 import PaymentReturn         from "./screens/PaymentReturn";
 import { Browser }           from "@capacitor/browser";
-import { StatusBar }         from "@capacitor/status-bar";
+import { StatusBar, Style }  from "@capacitor/status-bar";
 import { Capacitor }         from "@capacitor/core";
 import { App as CapApp }     from "@capacitor/app";
 import Finance               from "./screens/Finance";
@@ -227,11 +227,13 @@ export default function App() {
     return () => { listener?.remove(); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Disable status-bar overlay so it doesn't cover app content (edge-to-edge off)
+  // Edge-to-edge status bar: transparent + icon colour adapts to light/dark mode.
+  // CSS env(safe-area-inset-top) on the container keeps content below the bar.
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
-    StatusBar.setOverlaysWebView({ overlay: false }).catch(() => {});
-  }, []);
+    StatusBar.setOverlaysWebView({ overlay: true }).catch(() => {});
+    StatusBar.setStyle({ style: isDark ? Style.Dark : Style.Light }).catch(() => {});
+  }, [isDark]);
 
   // Android hardware back button
   useEffect(() => {
@@ -373,7 +375,7 @@ export default function App() {
   return (
     <div className={isDark ? "dark" : ""}>
       <div className="h-[100dvh] bg-slate-50 dark:bg-slate-900 flex justify-center transition-colors duration-200">
-        <div className="w-full max-w-md relative flex flex-col h-[100dvh]">
+        <div className="w-full max-w-md relative flex flex-col h-[100dvh] safe-top">
           <SyncBar isOnline={store.isOnline} pending={store.pendingSync} isSyncing={store.isSyncing} onSync={store.runSync} />
 
           {upgradeAvailable && !upgradeBannerDismissed && (
