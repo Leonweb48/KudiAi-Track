@@ -1,7 +1,7 @@
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
+import { supabase } from "./supabase";
 
 const CHAT_URL = "https://admin.kudiai.app/api/public/chat";
-const SECRET   = process.env.REACT_APP_EMAIL_SECRET;
 
 function errorMessage(err, status) {
   if (typeof navigator !== "undefined" && !navigator.onLine)
@@ -26,9 +26,16 @@ export async function askGemini({
   timeout     = 90000,
   maxAttempts = 3,
 }) {
+  // Use the authenticated user's JWT — works on web and APK, no client secret needed
+  let userJwt = "";
+  try {
+    const { data } = await supabase?.auth.getSession() ?? { data: null };
+    userJwt = data?.session?.access_token ?? "";
+  } catch { /* supabase not configured — proceed without auth */ }
+
   const reqHeaders = {
-    "Content-Type":     "application/json",
-    "x-trigger-secret": SECRET || "",
+    "Content-Type":  "application/json",
+    ...(userJwt ? { "Authorization": `Bearer ${userJwt}` } : {}),
   };
 
   // Native Android: CapacitorHttp bypasses WebView CORS; request no_stream so
