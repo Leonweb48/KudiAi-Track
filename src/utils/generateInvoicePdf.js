@@ -162,16 +162,17 @@ export async function exportInvoicePdf(inv, profile, invoiceSettings = {}, { isR
   const perRow  = 2;
   for (let i = 0; i < metaRows.length; i += perRow) {
     const rowPairs = metaRows.slice(i, i + perRow);
+    const curY = y;
     rowPairs.forEach(([label, val], j) => {
       const cx = ML + j * (colW + 8);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(6.5);
       doc.setTextColor(...SLATE);
-      doc.text(label, cx, y);
+      doc.text(label, cx, curY);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(8.5);
       doc.setTextColor(...DARK);
-      doc.text(String(val || "—"), cx, y + 5);
+      doc.text(String(val || "—"), cx, curY + 5);
     });
     y += 12;
   }
