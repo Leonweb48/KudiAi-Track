@@ -191,8 +191,7 @@ export function useInvoices(userId) {
         notes:                notes || "",
       })
       .eq("id", invoiceId)
-      .eq("user_id", userId)
-      .eq("status", "draft");
+      .eq("user_id", userId);
     if (invErr) return { error: invErr };
 
     // Replace all line items
@@ -214,7 +213,7 @@ export function useInvoices(userId) {
   // ── Delete draft invoice ──────────────────────────────────────────────────
   const deleteInvoice = async (id) => {
     const { error } = await supabase
-      .from("invoices").delete().eq("id", id).eq("user_id", userId).eq("status", "draft");
+      .from("invoices").delete().eq("id", id).eq("user_id", userId);
     if (!error) setInvoices(prev => prev.filter(i => i.id !== id));
     return { error };
   };

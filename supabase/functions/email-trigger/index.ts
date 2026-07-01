@@ -30,15 +30,24 @@ serve(async (req) => {
   const { data: { user }, error: authErr } = await sb.auth.getUser(token);
   if (authErr || !user) return json({ error: "Unauthorized" }, 401);
 
-  let body: { event?: string; data?: unknown };
+  let body: { event?: string; data?: Record<string, unknown> };
   try { body = await req.json(); } catch { return json({ error: "Invalid JSON" }, 400); }
   if (!body.event) return json({ error: "event is required" }, 400);
+
+  // Inject the authenticated user's email as fallback so invoice emails
+  // always reach the business owner even if profiles.email is null
+  const authEmail = user.email || "";
+  const enrichedData = {
+    owner_email: authEmail,
+    user_email:  authEmail,
+    ...(body.data || {}),
+  };
 
   // Forward to admin API — secret stays server-side
   const resp = await fetch(ADMIN_URL, {
     method:  "POST",
     headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
-    body:    JSON.stringify(body),
+    body:    JSON.stringify({ event: body.event, data: enrichedData }),
   }).catch(() => null);
 
   return json({ ok: resp?.ok ?? false });

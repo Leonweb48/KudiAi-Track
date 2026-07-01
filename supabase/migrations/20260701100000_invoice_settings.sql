@@ -29,6 +29,7 @@ CREATE POLICY "invoice_settings_update" ON public.invoice_settings
   FOR UPDATE USING (auth.uid() = user_id);
 
 -- Return integer counter so client formats BIZ/CLIENT/MM/(5000-seq)
+DROP FUNCTION IF EXISTS public.next_invoice_number(uuid);
 CREATE OR REPLACE FUNCTION public.next_invoice_number(p_user_id uuid)
 RETURNS integer
 LANGUAGE plpgsql

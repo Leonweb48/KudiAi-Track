@@ -51,8 +51,9 @@ export default function InvoiceSettingsModal({ settings, onSave, onClose, userId
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-white dark:bg-slate-900 overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center gap-3 px-4 pt-4 pb-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
+      {/* Header — padded past status bar */}
+      <div className="flex items-center gap-3 px-4 pb-3 border-b border-slate-100 dark:border-slate-800 shrink-0"
+        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 16px)" }}>
         <button onClick={onClose} className="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-800 active:scale-95 transition">
           <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="text-slate-600 dark:text-slate-300">
             <path d="M19 12H5M12 5l-7 7 7 7"/>
