@@ -13,6 +13,9 @@ const config: CapacitorConfig = {
   plugins: {
     CapacitorUpdater: {
       autoUpdate: true,
+      updateUrl: "https://api.capgo.app/updates",
+      statsUrl: "https://api.capgo.app/stats",
+      channelUrl: "https://api.capgo.app/channel_self",
     },
     LocalNotifications: {
       smallIcon: 'ic_notification',
