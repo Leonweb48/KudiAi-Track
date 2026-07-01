@@ -1,8 +1,8 @@
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import { LocalNotifications }       from "@capacitor/local-notifications";
+import { supabase } from "./supabase";
 
-const TTS_URL = "https://kudiai.app/api/tts";
-const SECRET  = process.env.REACT_APP_EMAIL_SECRET;
+const TTS_URL = "https://admin.kudiai.app/api/public/tts";
 
 let _current = null;
 
@@ -63,9 +63,15 @@ function deviceSpeak(text) {
 }
 
 async function serverTTS(text) {
+  let userJwt = "";
+  try {
+    const { data } = await supabase?.auth.getSession() ?? { data: null };
+    userJwt = data?.session?.access_token ?? "";
+  } catch { /* proceed without auth */ }
+
   const headers = {
-    "Content-Type":     "application/json",
-    "x-trigger-secret": SECRET || "",
+    "Content-Type": "application/json",
+    ...(userJwt ? { "Authorization": `Bearer ${userJwt}` } : {}),
   };
   const body = JSON.stringify({ text });
 

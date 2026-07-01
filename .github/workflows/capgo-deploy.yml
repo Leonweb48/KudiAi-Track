@@ -24,7 +24,6 @@ jobs:
           REACT_APP_SUPABASE_URL: ${{ secrets.REACT_APP_SUPABASE_URL }}
           REACT_APP_SUPABASE_ANON_KEY: ${{ secrets.REACT_APP_SUPABASE_ANON_KEY }}
           REACT_APP_PAYSTACK_PUBLIC_KEY: ${{ secrets.REACT_APP_PAYSTACK_PUBLIC_KEY }}
-          REACT_APP_EMAIL_SECRET: ${{ secrets.EMAIL_TRIGGER_SECRET }}
         run: npm run build
 
       - name: Ensure APK deep-link is in Supabase redirect allowlist

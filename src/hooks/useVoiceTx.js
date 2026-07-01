@@ -1,8 +1,8 @@
 import { useState, useRef } from "react";
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
+import { supabase } from "../utils/supabase";
 
-const VOICE_PARSE_URL  = "https://admin.kudiai.app/api/public/voice-parse";
-const TRIGGER_SECRET   = process.env.REACT_APP_EMAIL_SECRET;
+const VOICE_PARSE_URL = "https://admin.kudiai.app/api/public/voice-parse";
 const MAX_RECORD_SECS  = 60;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -32,9 +32,16 @@ function blobToBase64(blob) {
 async function sendToGemini(audioBlob, mimeType) {
   const base64 = await blobToBase64(audioBlob);
   const payload = { audio_base64: base64, mime_type: mimeType || "audio/webm" };
+
+  let userJwt = "";
+  try {
+    const { data } = await supabase?.auth.getSession() ?? { data: null };
+    userJwt = data?.session?.access_token ?? "";
+  } catch { /* proceed without auth */ }
+
   const voiceHeaders = {
-    "Content-Type":     "application/json",
-    "x-trigger-secret": TRIGGER_SECRET || "",
+    "Content-Type": "application/json",
+    ...(userJwt ? { "Authorization": `Bearer ${userJwt}` } : {}),
   };
 
   let data;
