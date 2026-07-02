@@ -147,7 +147,10 @@ export function useAuth() {
         setAjoClient({ ...ajoClientRow, owner_id: ajoClientRow.user_id });
         subVerified.current = true;
         logPlatformSession(supabase, uid, "ajo_client", ajoClientRow.full_name, email);
-        if (mustChange) {
+        const emailVerified = sess.user.user_metadata?.email_verified !== false;
+        if (!emailVerified) {
+          setStatus("ajo_client_otp");
+        } else if (mustChange) {
           fireWelcomeEmail("ajo_client_first_login", { name: ajoClientRow.full_name || "", email: email || "" });
           setStatus("ajo_client_setup");
         } else {
@@ -289,7 +292,8 @@ export function useAuth() {
         setOrg(orgPreCheck);
         subVerified.current = true;
         logPlatformSession(supabase, uid, "organisation", orgPreCheck.name, email);
-        if (mustChange) { setStatus("org_setup"); } else { setStatus("organisation"); }
+        const emailVerified = sess.user.user_metadata?.email_verified !== false;
+        if (!emailVerified) { setStatus("org_otp"); } else if (mustChange) { setStatus("org_setup"); } else { setStatus("organisation"); }
         return;
       }
     }
@@ -345,7 +349,10 @@ export function useAuth() {
         setStaff({ ...staffRow, user_id: uid });
         subVerified.current = true;
         logPlatformSession(supabase, uid, "staff", staffRow.full_name, email);
-        if (mustChange) {
+        const emailVerified = sess.user.user_metadata?.email_verified !== false;
+        if (!emailVerified) {
+          setStatus("staff_otp");
+        } else if (mustChange) {
           fireWelcomeEmail("staff_first_login", { name: staffRow.full_name || "", email: email || "" });
           setStatus("staff_setup");
         } else if (staffRow.role === "manager" && staffRow.branch_id) {
@@ -366,7 +373,10 @@ export function useAuth() {
       if (ajoClientRow) {
         setAjoClient({ ...ajoClientRow, owner_id: ajoClientRow.user_id });
         subVerified.current = true;
-        if (mustChange) {
+        const emailVerified2 = sess.user.user_metadata?.email_verified !== false;
+        if (!emailVerified2) {
+          setStatus("ajo_client_otp");
+        } else if (mustChange) {
           fireWelcomeEmail("ajo_client_first_login", { name: ajoClientRow.full_name || "", email: email || "" });
           setStatus("ajo_client_setup");
         } else {

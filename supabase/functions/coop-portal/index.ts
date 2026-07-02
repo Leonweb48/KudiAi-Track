@@ -93,31 +93,110 @@ serve(async (req) => {
         password: tempPwd,
         email_confirm: true,
         user_metadata: {
-          account_type: "organisation",
+          account_type:         "organisation",
           org_id,
-          org_name: org.name,
+          org_name:             org.name,
           must_change_password: true,
+          email_verified:       false,
+          temp_password:        tempPwd,
         },
       });
       if (authError) return json({ error: authError.message }, 400);
 
-      const { error: linkError } = await sb.from("organizations").update({ portal_user_id: authData.user.id, status: "active" }).eq("id", org_id);
+      // Generate OTP and store in organizations table
+      const orgOtp = String(Math.floor(100000 + Math.random() * 900000));
+      const orgOtpExpiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+
+      const { error: linkError } = await sb.from("organizations").update({
+        portal_user_id: authData.user.id,
+        status: "active",
+        otp_code: orgOtp,
+        otp_expires_at: orgOtpExpiresAt,
+      }).eq("id", org_id);
       if (linkError) {
         await sb.auth.admin.deleteUser(authData.user.id).catch(() => null);
         return json({ error: `Portal user created but could not be linked: ${linkError.message}` }, 400);
       }
 
-      // Send credentials email to org
+      // Send credentials + OTP email to org
       fetch("https://admin.kudiai.app/api/public/email-trigger", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
         body: JSON.stringify({
           event: "org_portal_created",
-          data: { org_name: org.name, email: org.email, temp_password: tempPwd, reg_number: org.reg_number },
+          data: { org_name: org.name, email: org.email, temp_password: tempPwd, reg_number: org.reg_number, otp_code: orgOtp },
         }),
       }).catch(() => null);
 
       return json({ success: true, email: org.email, temp_password: tempPwd });
+    }
+
+    // ── verify-org-otp: logged-in org verifies their email OTP ──────────
+    if (action === "verify-org-otp") {
+      const authHeader = req.headers.get("Authorization");
+      const jwt = authHeader?.replace("Bearer ", "") || "";
+      const { data: { user }, error: jwtErr } = await sb.auth.getUser(jwt);
+      if (!user || jwtErr) return json({ error: "Not authenticated" }, 401);
+
+      const { otp_code } = body as { otp_code: string };
+      if (!otp_code) return json({ error: "otp_code required" }, 400);
+
+      const orgId = user.user_metadata?.org_id as string | undefined;
+      if (!orgId) return json({ error: "Organisation not found" }, 404);
+
+      const { data: orgRow } = await sb.from("organizations")
+        .select("id, otp_code, otp_expires_at")
+        .eq("id", orgId)
+        .maybeSingle();
+
+      if (!orgRow) return json({ error: "Organisation not found" }, 404);
+      if (!orgRow.otp_code || orgRow.otp_code !== otp_code.trim()) {
+        return json({ error: "Invalid verification code" }, 400);
+      }
+      if (orgRow.otp_expires_at && new Date() > new Date(orgRow.otp_expires_at)) {
+        return json({ error: "Code has expired. Tap 'Resend' to get a new one." }, 400);
+      }
+
+      await sb.from("organizations").update({ otp_code: null, otp_expires_at: null }).eq("id", orgRow.id);
+      const { temp_password: _tp, ...restMeta } = user.user_metadata || {};
+      await sb.auth.admin.updateUserById(user.id, {
+        user_metadata: { ...restMeta, email_verified: true },
+      });
+
+      return json({ success: true });
+    }
+
+    // ── resend-org-otp: regenerate and resend OTP to the logged-in org ───
+    if (action === "resend-org-otp") {
+      const authHeader = req.headers.get("Authorization");
+      const jwt = authHeader?.replace("Bearer ", "") || "";
+      const { data: { user }, error: jwtErr } = await sb.auth.getUser(jwt);
+      if (!user || jwtErr) return json({ error: "Not authenticated" }, 401);
+
+      const orgId = user.user_metadata?.org_id as string | undefined;
+      if (!orgId) return json({ error: "Organisation not found" }, 404);
+
+      const { data: orgRow } = await sb.from("organizations")
+        .select("id, name, email")
+        .eq("id", orgId)
+        .maybeSingle();
+
+      if (!orgRow) return json({ error: "Organisation not found" }, 404);
+
+      const otp = String(Math.floor(100000 + Math.random() * 900000));
+      const otpExpiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+      await sb.from("organizations").update({ otp_code: otp, otp_expires_at: otpExpiresAt }).eq("id", orgRow.id);
+
+      fetch("https://admin.kudiai.app/api/public/email-trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
+        body: JSON.stringify({
+          event: "org_portal_otp_resend",
+          data: { org_name: orgRow.name, email: orgRow.email, otp_code: otp },
+        }),
+      }).catch(() => null);
+
+      return json({ success: true });
     }
 
     if (action === "delete-org") {

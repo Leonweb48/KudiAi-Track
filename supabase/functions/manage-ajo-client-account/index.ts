@@ -15,6 +15,18 @@ const json = (body: unknown, status = 200) =>
     headers: { ...cors, "Content-Type": "application/json" },
   });
 
+function genOtp(): string {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+async function fireEmail(event: string, data: Record<string, unknown>) {
+  fetch("https://admin.kudiai.app/api/public/email-trigger", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
+    body: JSON.stringify({ event, data }),
+  }).catch(() => null);
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -43,7 +55,62 @@ serve(async (req) => {
       return json({ error: "Invalid or expired session" }, 401);
     }
 
-    const { clientId, password } = await req.json();
+    const body = await req.json() as Record<string, unknown>;
+    const action = (body.action as string) || "create";
+
+    // ── verify-otp: logged-in ajo client verifies their email OTP ────────
+    if (action === "verify-otp") {
+      const { otp_code } = body as { otp_code: string };
+      if (!otp_code) return json({ error: "otp_code required" }, 400);
+
+      const { data: clientRow } = await adminClient
+        .from("aso_clients")
+        .select("id, otp_code, otp_expires_at")
+        .eq("client_user_id", userData.user.id)
+        .maybeSingle();
+
+      if (!clientRow) return json({ error: "Client account not found" }, 404);
+      if (!clientRow.otp_code || clientRow.otp_code !== otp_code.trim()) {
+        return json({ error: "Invalid verification code" }, 400);
+      }
+      if (clientRow.otp_expires_at && new Date() > new Date(clientRow.otp_expires_at)) {
+        return json({ error: "Code has expired. Tap 'Resend' to get a new one." }, 400);
+      }
+
+      await adminClient.from("aso_clients").update({ otp_code: null, otp_expires_at: null }).eq("id", clientRow.id);
+      const { temp_password: _tp, ...restMeta } = userData.user.user_metadata || {};
+      await adminClient.auth.admin.updateUserById(userData.user.id, {
+        user_metadata: { ...restMeta, email_verified: true },
+      });
+
+      return json({ success: true });
+    }
+
+    // ── resend-otp: regenerate and resend OTP to the logged-in ajo client ──
+    if (action === "resend-otp") {
+      const { data: clientRow } = await adminClient
+        .from("aso_clients")
+        .select("id, email, full_name")
+        .eq("client_user_id", userData.user.id)
+        .maybeSingle();
+
+      if (!clientRow) return json({ error: "Client account not found" }, 404);
+
+      const otp = genOtp();
+      const otpExpiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+      await adminClient.from("aso_clients").update({ otp_code: otp, otp_expires_at: otpExpiresAt }).eq("id", clientRow.id);
+
+      fireEmail("ajo_client_otp_resend", {
+        client_name:  clientRow.full_name || "",
+        client_email: clientRow.email,
+        otp_code:     otp,
+      });
+
+      return json({ success: true });
+    }
+
+    // ── create (default): business owner sets up an ajo client login ──────
+    const { clientId, password } = body as { clientId: string; password: string };
     if (!clientId || typeof clientId !== "string") {
       return json({ error: "Client ID is required" }, 400);
     }
@@ -51,7 +118,6 @@ serve(async (req) => {
       return json({ error: "Password must be at least 8 characters" }, 400);
     }
 
-    // Load the ajo client, then verify caller is the owner or active staff for the owner
     const { data: client, error: clientError } = await adminClient
       .from("aso_clients")
       .select("id, user_id, client_user_id, email, full_name")
@@ -63,7 +129,6 @@ serve(async (req) => {
 
     const callerId = userData.user.id;
     if (client.user_id !== callerId) {
-      // Not the owner — check if caller is active staff for this owner
       const { data: staffRow } = await adminClient
         .from("staff")
         .select("id")
@@ -81,6 +146,8 @@ serve(async (req) => {
       aso_client_id:        client.id,
       owner_id:             client.user_id,
       must_change_password: true,
+      email_verified:       false,
+      temp_password:        password,
     };
 
     let authUserId = client.client_user_id;
@@ -101,9 +168,7 @@ serve(async (req) => {
       });
       if (error) {
         if (error.message.toLowerCase().includes("already")) {
-          throw new Error(
-            "This email already has an account. Use a different email for this client.",
-          );
+          throw new Error("This email already has an account. Use a different email for this client.");
         }
         throw error;
       }
@@ -122,42 +187,43 @@ serve(async (req) => {
       }
     }
 
-    if (created) {
-      // Fire welcome email to client + notifications to staff + business owner
-      const emailData: Record<string, string> = {
-        client_name: client.full_name || "",
-        client_email: client.email,
-        membership_number: "", // populated below
-      };
-      try {
-        const { data: freshClient } = await adminClient
-          .from("aso_clients")
-          .select("membership_number, staff_id, user_id")
-          .eq("id", client.id)
-          .maybeSingle();
-        if (freshClient?.membership_number) emailData.membership_number = freshClient.membership_number;
-        if (freshClient?.staff_id) {
-          const { data: staffRow } = await adminClient
-            .from("staff")
-            .select("email, full_name")
-            .eq("id", freshClient.staff_id)
-            .maybeSingle();
-          if (staffRow?.email) emailData.staff_email = staffRow.email;
-        }
-        const { data: owner } = await adminClient
-          .from("profiles")
-          .select("email, business_name")
-          .eq("id", client.user_id)
-          .maybeSingle();
-        if (owner?.email) { emailData.owner_email = owner.email; emailData.owner_name = owner.business_name || ""; }
-      } catch { /* email data lookup is non-fatal */ }
+    // Generate and store OTP
+    const otp = genOtp();
+    const otpExpiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+    await adminClient.from("aso_clients").update({ otp_code: otp, otp_expires_at: otpExpiresAt }).eq("id", client.id);
 
-      fetch("https://admin.kudiai.app/api/public/email-trigger", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
-        body: JSON.stringify({ event: "ajo_client_registered", data: emailData }),
-      }).catch(() => null);
-    }
+    // Send OTP + credentials email to client; notify business owner + staff
+    const emailData: Record<string, string> = {
+      client_name:       client.full_name || "",
+      client_email:      client.email,
+      membership_number: "",
+      otp_code:          otp,
+      temp_password:     password,
+    };
+    try {
+      const { data: freshClient } = await adminClient
+        .from("aso_clients")
+        .select("membership_number, staff_id, user_id")
+        .eq("id", client.id)
+        .maybeSingle();
+      if (freshClient?.membership_number) emailData.membership_number = freshClient.membership_number;
+      if (freshClient?.staff_id) {
+        const { data: staffRow } = await adminClient
+          .from("staff")
+          .select("email, full_name")
+          .eq("id", freshClient.staff_id)
+          .maybeSingle();
+        if (staffRow?.email) emailData.staff_email = staffRow.email;
+      }
+      const { data: owner } = await adminClient
+        .from("profiles")
+        .select("email, business_name")
+        .eq("id", client.user_id)
+        .maybeSingle();
+      if (owner?.email) { emailData.owner_email = owner.email; emailData.owner_name = owner.business_name || ""; }
+    } catch { /* non-fatal */ }
+
+    fireEmail("ajo_client_otp", emailData);
 
     return json({
       success: true,

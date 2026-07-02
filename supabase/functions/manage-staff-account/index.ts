@@ -15,15 +15,34 @@ const json = (body: unknown, status = 200) =>
     headers: { ...cors, "Content-Type": "application/json" },
   });
 
+function genTempPassword(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+  const values = new Uint8Array(12);
+  crypto.getRandomValues(values);
+  return Array.from(values, n => chars[n % chars.length]).join("");
+}
+
+function genOtp(): string {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+async function fireEmail(event: string, data: Record<string, unknown>) {
+  fetch("https://admin.kudiai.app/api/public/email-trigger", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
+    body: JSON.stringify({ event, data }),
+  }).catch(() => null);
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+    const supabaseUrl    = Deno.env.get("SUPABASE_URL");
+    const anonKey        = Deno.env.get("SUPABASE_ANON_KEY");
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    const authHeader = req.headers.get("Authorization");
+    const authHeader     = req.headers.get("Authorization");
 
     if (!supabaseUrl || !anonKey || !serviceRoleKey) {
       throw new Error("Supabase function secrets are not configured");
@@ -34,15 +53,68 @@ serve(async (req) => {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
-    // Pass the JWT explicitly — getUser() without args uses internal session (null when persistSession:false)
     const jwt = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : authHeader;
-    const { data: userData, error: userError } =
-      await adminClient.auth.getUser(jwt);
+    const { data: userData, error: userError } = await adminClient.auth.getUser(jwt);
     if (userError || !userData.user) {
       return json({ error: "Invalid or expired session" }, 401);
     }
 
-    const { staffId, password } = await req.json();
+    const body = await req.json() as Record<string, unknown>;
+    const action = (body.action as string) || "create";
+
+    // ── verify-otp: logged-in staff member verifies their email OTP ──────
+    if (action === "verify-otp") {
+      const { otp_code } = body as { otp_code: string };
+      if (!otp_code) return json({ error: "otp_code required" }, 400);
+
+      const { data: staffRow } = await adminClient
+        .from("staff")
+        .select("id, otp_code, otp_expires_at")
+        .eq("user_id", userData.user.id)
+        .maybeSingle();
+
+      if (!staffRow) return json({ error: "Staff account not found" }, 404);
+      if (!staffRow.otp_code || staffRow.otp_code !== otp_code.trim()) {
+        return json({ error: "Invalid verification code" }, 400);
+      }
+      if (staffRow.otp_expires_at && new Date() > new Date(staffRow.otp_expires_at)) {
+        return json({ error: "Code has expired. Tap 'Resend' to get a new one." }, 400);
+      }
+
+      await adminClient.from("staff").update({ otp_code: null, otp_expires_at: null }).eq("id", staffRow.id);
+      const { temp_password: _tp, ...restMeta } = userData.user.user_metadata || {};
+      await adminClient.auth.admin.updateUserById(userData.user.id, {
+        user_metadata: { ...restMeta, email_verified: true },
+      });
+
+      return json({ success: true });
+    }
+
+    // ── resend-otp: regenerate and resend OTP to the logged-in staff member ──
+    if (action === "resend-otp") {
+      const { data: staffRow } = await adminClient
+        .from("staff")
+        .select("id, email, full_name")
+        .eq("user_id", userData.user.id)
+        .maybeSingle();
+
+      if (!staffRow) return json({ error: "Staff account not found" }, 404);
+
+      const otp = genOtp();
+      const otpExpiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+      await adminClient.from("staff").update({ otp_code: otp, otp_expires_at: otpExpiresAt }).eq("id", staffRow.id);
+
+      fireEmail("staff_otp_resend", {
+        staff_name: staffRow.full_name || "",
+        staff_email: staffRow.email,
+        otp_code: otp,
+      });
+
+      return json({ success: true });
+    }
+
+    // ── create (default): business owner sets up a staff login ───────────
+    const { staffId, password } = body as { staffId: string; password: string };
     if (!staffId || typeof staffId !== "string") {
       return json({ error: "Staff member is required" }, 400);
     }
@@ -64,15 +136,17 @@ serve(async (req) => {
     }
 
     const userMetadata = {
-      full_name: staff.full_name,
-      account_type: "staff",
-      staff_id: staff.id,
-      owner_id: staff.owner_id,
+      full_name:            staff.full_name,
+      account_type:         "staff",
+      staff_id:             staff.id,
+      owner_id:             staff.owner_id,
       must_change_password: true,
+      email_verified:       false,
+      temp_password:        password,
     };
 
     let authUserId = staff.user_id;
-    let created = false;
+    let created    = false;
 
     if (authUserId) {
       const { error } = await adminClient.auth.admin.updateUserById(
@@ -82,21 +156,19 @@ serve(async (req) => {
       if (error) throw error;
     } else {
       const { data, error } = await adminClient.auth.admin.createUser({
-        email: staff.email,
+        email:         staff.email,
         password,
         email_confirm: true,
         user_metadata: userMetadata,
       });
       if (error) {
         if (error.message.toLowerCase().includes("already")) {
-          throw new Error(
-            "This email already has an account. Use a different staff email.",
-          );
+          throw new Error("This email already has an account. Use a different staff email.");
         }
         throw error;
       }
       authUserId = data.user.id;
-      created = true;
+      created    = true;
 
       const { error: linkError } = await adminClient
         .from("staff")
@@ -110,36 +182,38 @@ serve(async (req) => {
       }
     }
 
-    if (created) {
-      // Fire welcome email to staff + notification to business owner
-      const emailData: Record<string, string> = {
-        staff_name: staff.full_name || "",
-        staff_email: staff.email,
-        role: "Staff",
-      };
-      try {
-        const { data: owner } = await adminClient
-          .from("profiles")
-          .select("email, business_name")
-          .eq("id", staff.owner_id)
-          .maybeSingle();
-        if (owner?.email) { emailData.owner_email = owner.email; emailData.business_name = owner.business_name || ""; }
-      } catch { /* non-fatal */ }
+    // Generate and store OTP
+    const otp = genOtp();
+    const otpExpiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+    await adminClient.from("staff").update({ otp_code: otp, otp_expires_at: otpExpiresAt }).eq("id", staff.id);
 
-      fetch("https://admin.kudiai.app/api/public/email-trigger", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
-        body: JSON.stringify({ event: "staff_created", data: emailData }),
-      }).catch(() => null);
-    }
+    // Send OTP + credentials email to staff; notify business owner
+    const emailData: Record<string, string> = {
+      staff_name:    staff.full_name || "",
+      staff_email:   staff.email,
+      role:          "Staff",
+      otp_code:      otp,
+      temp_password: password,
+    };
+    try {
+      const { data: owner } = await adminClient
+        .from("profiles")
+        .select("email, business_name")
+        .eq("id", staff.owner_id)
+        .maybeSingle();
+      if (owner?.email) {
+        emailData.owner_email    = owner.email;
+        emailData.business_name  = owner.business_name || "";
+      }
+    } catch { /* non-fatal */ }
+
+    fireEmail("staff_otp", emailData);
 
     return json({
       success: true,
       created,
       userId: authUserId,
-      message: created
-        ? "Staff login created"
-        : "Staff password reset successfully",
+      message: created ? "Staff login created" : "Staff password reset successfully",
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Request failed";

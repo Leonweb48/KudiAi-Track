@@ -42,6 +42,9 @@ import Finance               from "./screens/Finance";
 import OrgPortal             from "./screens/OrgPortal";
 import OrgFirstLogin         from "./screens/OrgFirstLogin";
 import OrgMemberOtpVerify   from "./screens/OrgMemberOtpVerify";
+import StaffOtpVerify       from "./screens/StaffOtpVerify";
+import AjoClientOtpVerify   from "./screens/AjoClientOtpVerify";
+import OrgOtpVerify         from "./screens/OrgOtpVerify";
 import AdminDashboard        from "./screens/AdminDashboard";
 import { useInventory }      from "./hooks/useInventory";
 import { useInvoices }      from "./hooks/useInvoices";
@@ -268,14 +271,19 @@ export default function App() {
   // Super Admin — full command center
   if (status === "admin") return <AdminDashboard session={session} adminUser={adminUser} />;
 
-  // Organisation self-registered portal — setup flow (no PIN gate)
+  // Organisation — OTP first, then password setup
+  if (status === "org_otp")   return <OrgOtpVerify org={org} />;
   if (status === "org_setup") return <OrgFirstLogin org={org} />;
 
-  // Org member — setup flows first, PIN gate after
+  // Org member — OTP first, then password setup
   if (status === "org_member_otp")   return <OrgMemberOtpVerify member={orgMember} />;
   if (status === "org_member_setup") return <CoopMemberFirstLogin member={orgMember} />;
 
-  // Ajo / staff / marketer — setup flows first
+  // Staff — OTP first, then password setup
+  if (status === "staff_otp") return <StaffOtpVerify staff={staff} />;
+
+  // Ajo client — OTP first, then password setup
+  if (status === "ajo_client_otp")   return <AjoClientOtpVerify ajoClient={ajoClient} />;
   if (status === "ajo_client_setup") return <AjoMemberPortal session={session} ajoClient={ajoClient} />;
   if (status === "unauthenticated")  return <Auth />;
   if (status === "onboarding")       return <Onboarding session={session} onComplete={refetch} />;
