@@ -182,17 +182,11 @@ serve(async (req) => {
       }
     }
 
-    // Generate and store OTP
-    const otp = genOtp();
-    const otpExpiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
-    await adminClient.from("staff").update({ otp_code: otp, otp_expires_at: otpExpiresAt }).eq("id", staff.id);
-
-    // Send OTP + credentials email to staff; notify business owner
+    // Send credentials-only email to staff; OTP is sent separately when they first log in
     const emailData: Record<string, string> = {
       staff_name:    staff.full_name || "",
       staff_email:   staff.email,
       role:          "Staff",
-      otp_code:      otp,
       temp_password: password,
     };
     try {
@@ -207,7 +201,7 @@ serve(async (req) => {
       }
     } catch { /* non-fatal */ }
 
-    fireEmail("staff_otp", emailData);
+    fireEmail("staff_credentials", emailData);
 
     return json({
       success: true,
