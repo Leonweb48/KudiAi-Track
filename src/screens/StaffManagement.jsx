@@ -1,9 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
-import { createClient } from "@supabase/supabase-js";
 import { supabase } from "../utils/supabase";
 import { canDo, featureLimit, upgradeLabel, planRequiredLabel, planAvailableText } from "../utils/plans";
 import { useT } from "../contexts/LanguageContext";
-import { sendEmailTrigger } from "../utils/emailTrigger";
 
 function makeRoles(t) {
   return [
@@ -98,16 +96,8 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
   const [perms, setPerms] = useState({}); // { module: { can_view, can_create } }
-  const [loginPassword, setLoginPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [accountMessage, setAccountMessage] = useState("");
-  const [createdCredentials, setCreatedCredentials] = useState(null);
-  const [staffOtpData,      setStaffOtpData]      = useState(null); // { email, client }
-  const [staffOtpCode,      setStaffOtpCode]      = useState("");
-  const [otpVerifying,      setOtpVerifying]      = useState(false);
-  const [otpError,          setOtpError]          = useState("");
-  const [otpVerified,       setOtpVerified]       = useState(false);
+  const [addedStaffEmail, setAddedStaffEmail] = useState("");
 
   // Performance report
   const [reportStaff,       setReportStaff]       = useState(null);
@@ -200,56 +190,11 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
     setError("");
   };
 
-  const generatePassword = () => {
+  const genTempPassword = () => {
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$";
     const values = new Uint32Array(12);
     crypto.getRandomValues(values);
-    const next = Array.from(values, n => chars[n % chars.length]).join("");
-    setLoginPassword(next);
-    setConfirmPassword(next);
-    setShowPassword(true);
-  };
-
-  // Send OTP to staff email using a non-persistent client so the owner's session is untouched
-  const sendStaffOtp = async (staffEmail) => {
-    const c = createClient(
-      process.env.REACT_APP_SUPABASE_URL,
-      process.env.REACT_APP_SUPABASE_ANON_KEY,
-      { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } },
-    );
-    const { error } = await c.auth.signInWithOtp({
-      email: staffEmail,
-      options: { shouldCreateUser: false },
-    });
-    if (error) throw error;
-    return c;
-  };
-
-  const verifyStaffEmail = async () => {
-    if (!staffOtpData || staffOtpCode.length < 6) return;
-    setOtpVerifying(true);
-    setOtpError("");
-    try {
-      const { error } = await staffOtpData.client.auth.verifyOtp({
-        email: staffOtpData.email,
-        token: staffOtpCode,
-        type: "email",
-      });
-      if (error) throw error;
-      setOtpVerified(true);
-    } catch (e) {
-      setOtpError(e.message || "Invalid or expired code");
-    } finally {
-      setOtpVerifying(false);
-    }
-  };
-
-  const closeCredentials = () => {
-    setCreatedCredentials(null);
-    setStaffOtpData(null);
-    setStaffOtpCode("");
-    setOtpError("");
-    setOtpVerified(false);
+    return Array.from(values, n => chars[n % chars.length]).join("");
   };
 
   const provisionLogin = async (staffRecord, password) => {
@@ -344,8 +289,6 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
     setError("");
     if (!form.full_name.trim()) { setError("Full name is required"); return; }
     if (!form.email.trim())     { setError("Email is required"); return; }
-    if (loginPassword.length < 8) { setError("Temporary password must be at least 8 characters"); return; }
-    if (loginPassword !== confirmPassword) { setError("Passwords do not match"); return; }
 
     const staffLimit = featureLimit(plan, "staffManagement");
     if (staffLimit !== Infinity && staffList.length >= staffLimit) {
@@ -385,25 +328,11 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
       const { error: permError } = await supabase.from("staff_permissions").insert(permRows);
       if (permError) throw permError;
 
-      const tempPwd = loginPassword;
-      await provisionLogin(staffRow, tempPwd);
-
-      // Email staff their login credentials so they don't depend on owner verbally sharing them
-      sendEmailTrigger("staff_created", {
-        owner_id:  userId,
-        name:      form.full_name,
-        email:     form.email,
-        password:  tempPwd,
-        role:      form.role || "",
-      });
-
-      // Send OTP to confirm staff email — owner will enter code from staff
-      let otpClient = null;
-      try { otpClient = await sendStaffOtp(staffRow.email); } catch (_) {}
+      // Auto-generate temp password and provision login — manage-staff-account sends the staff_otp email
+      await provisionLogin(staffRow, genTempPassword());
 
       setShowAdd(false);
-      setCreatedCredentials({ name: form.full_name, email: form.email, password: tempPwd });
-      if (otpClient) setStaffOtpData({ email: staffRow.email, client: otpClient });
+      setAddedStaffEmail(form.email);
       await loadStaff();
     } catch (e) {
       if (staffRow?.id && !staffRow.user_id) {
@@ -485,27 +414,12 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
       setError("Activate this staff member before enabling login");
       return;
     }
-    if (loginPassword.length < 8) {
-      setError("Temporary password must be at least 8 characters");
-      return;
-    }
-    if (loginPassword !== confirmPassword) {
-      setError("Passwords do not match");
-      return;
-    }
 
     setSaving(true);
     try {
-      const tempPwd = loginPassword;
-      const result = await provisionLogin(selected, tempPwd);
-      setAccountMessage(result?.message || "Login access updated");
-      setLoginPassword("");
-      setConfirmPassword("");
-      let otpClient = null;
-      try { otpClient = await sendStaffOtp(selected.email); } catch (_) {}
-
-      setCreatedCredentials({ name: selected.full_name, email: selected.email, password: tempPwd });
-      if (otpClient) setStaffOtpData({ email: selected.email, client: otpClient });
+      // Auto-generate temp password — manage-staff-account sends staff_otp email with credentials
+      const result = await provisionLogin(selected, genTempPassword());
+      setAccountMessage(result?.message || "Login credentials sent to staff email");
       await loadStaff();
       const { data: refreshed } = await supabase
         .from("staff")
@@ -755,45 +669,6 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
                 </div>
               ))}
 
-              {/* Login credentials */}
-              <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900/40 rounded-2xl p-4 space-y-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-bold text-green-800 dark:text-green-300">Staff Login (Temporary Password)</p>
-                    <p className="text-[11px] text-green-700/70 dark:text-green-400/70 mt-0.5">
-                      Staff use this to log in the first time, then set their own password via OTP.
-                    </p>
-                  </div>
-                  <button type="button" onClick={generatePassword}
-                    className="shrink-0 text-[11px] font-bold text-green-700 dark:text-green-300 bg-white dark:bg-slate-800 border border-green-200 dark:border-green-800 px-2.5 py-1.5 rounded-lg">
-                    Generate
-                  </button>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Temporary Password *</label>
-                  <div className="relative">
-                    <input type={showPassword ? "text" : "password"} value={loginPassword}
-                      onChange={e => setLoginPassword(e.target.value)}
-                      placeholder="Minimum 8 characters"
-                      className="w-full border border-slate-200 dark:border-slate-700 rounded-xl pl-3 pr-14 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500" />
-                    <button type="button" onClick={() => setShowPassword(v => !v)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-green-600">
-                      {showPassword ? "Hide" : "Show"}
-                    </button>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Confirm Password *</label>
-                  <input type={showPassword ? "text" : "password"} value={confirmPassword}
-                    onChange={e => setConfirmPassword(e.target.value)}
-                    placeholder="Repeat temporary password"
-                    className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500" />
-                </div>
-                <p className="text-[10px] text-slate-500 dark:text-slate-400">
-                  On first login they'll verify via email OTP then set their own password.
-                </p>
-              </div>
-
               {/* Role */}
               <div>
                 <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">Role *</label>
@@ -883,11 +758,10 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
         </div>
       )}
 
-      {/* ── Credentials Modal ──────────────────────────────────── */}
-      {createdCredentials && (
+      {/* ── Staff Added Success Banner ──────────────────────────── */}
+      {addedStaffEmail && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-5">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-sm shadow-2xl max-h-[88vh] flex flex-col">
-          <div className="overflow-y-auto flex-1 p-6">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-sm shadow-2xl p-6">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-11 h-11 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center flex-shrink-0">
                 <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-green-600" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
@@ -896,95 +770,21 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
               </div>
               <div>
                 <p className="text-sm font-extrabold text-slate-800 dark:text-white">Staff Account Created</p>
-                <p className="text-xs text-slate-400 dark:text-slate-500">Share these credentials with {createdCredentials.name.split(" ")[0]}</p>
+                <p className="text-xs text-slate-400 dark:text-slate-500">Login credentials sent automatically</p>
               </div>
             </div>
-
-            <div className="space-y-3 mb-5">
-              <div className="bg-slate-50 dark:bg-slate-800 rounded-2xl px-4 py-3">
-                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">Email</p>
-                <p className="text-sm font-bold text-slate-800 dark:text-white">{createdCredentials.email}</p>
-              </div>
-              <div className="bg-slate-50 dark:bg-slate-800 rounded-2xl px-4 py-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">Temporary Password</p>
-                    <p className="text-sm font-bold text-slate-800 dark:text-white font-mono">{createdCredentials.password}</p>
-                  </div>
-                  <button
-                    onClick={() => navigator.clipboard?.writeText(createdCredentials.password)}
-                    className="ml-3 text-[11px] font-bold text-green-600 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 px-2.5 py-1.5 rounded-lg flex-shrink-0"
-                  >
-                    Copy
-                  </button>
-                </div>
-              </div>
+            <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900/40 rounded-2xl px-4 py-3 mb-5">
+              <p className="text-[11px] text-green-800 dark:text-green-300 font-medium leading-relaxed">
+                An email with login credentials and a one-time verification code has been sent to{" "}
+                <span className="font-bold">{addedStaffEmail}</span>. The staff member will verify their email and set a new password on first login.
+              </p>
             </div>
-
-            {/* OTP verification section */}
-            {staffOtpData && (
-              <div className="border border-slate-200 dark:border-slate-700 rounded-2xl p-4 mb-4 space-y-3">
-                {otpVerified ? (
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center flex-shrink-0">
-                      <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-green-600" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
-                        <path d="M20 6L9 17l-5-5" />
-                      </svg>
-                    </div>
-                    <p className="text-xs font-semibold text-green-700 dark:text-green-400">
-                      Email verified — staff can log in directly
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    <div>
-                      <p className="text-sm font-bold text-slate-800 dark:text-white">Verify Staff Email</p>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                        Ask {createdCredentials.name.split(" ")[0]} for the 6-digit code just sent to their email, then enter it below.
-                      </p>
-                    </div>
-
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      maxLength={6}
-                      value={staffOtpCode}
-                      onChange={e => setStaffOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                      placeholder="6-digit code"
-                      className="w-full text-center text-xl font-bold tracking-[0.4em] border-2 rounded-xl py-3 bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:border-green-500 border-slate-200 dark:border-slate-700"
-                    />
-
-                    {otpError && (
-                      <p className="text-[11px] text-red-500">{otpError}</p>
-                    )}
-
-                    <button
-                      onClick={verifyStaffEmail}
-                      disabled={otpVerifying || staffOtpCode.length < 6}
-                      className="w-full bg-slate-800 dark:bg-slate-100 hover:bg-slate-900 dark:hover:bg-white disabled:opacity-50 text-white dark:text-slate-900 font-bold rounded-xl py-2.5 text-sm transition-colors"
-                    >
-                      {otpVerifying ? "Verifying…" : "Verify Email →"}
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
-
-            {!staffOtpData && (
-              <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-xl px-4 py-3 mb-4">
-                <p className="text-[11px] text-amber-700 dark:text-amber-300 font-medium leading-relaxed">
-                  Staff use this temporary password to log in. They'll set a permanent password on first login.
-                </p>
-              </div>
-            )}
-
             <button
-              onClick={closeCredentials}
+              onClick={() => setAddedStaffEmail("")}
               className="w-full bg-green-600 hover:bg-green-700 text-white font-bold rounded-2xl py-3.5 text-sm transition-colors"
             >
-              {otpVerified ? "Done ✓" : "Done"}
+              Done
             </button>
-          </div>
           </div>
         </div>
       )}
@@ -1102,29 +902,9 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
                   </span>
                 </div>
 
-                <div className="flex items-center justify-end">
-                  <button type="button" onClick={generatePassword}
-                    className="text-[11px] font-bold text-green-600">
-                    Generate secure password
-                  </button>
-                </div>
-                <div className="relative">
-                  <input type={showPassword ? "text" : "password"} value={loginPassword}
-                    onChange={e => setLoginPassword(e.target.value)}
-                    placeholder={selected.user_id ? "New temporary password" : "Temporary password"}
-                    className="w-full border border-slate-200 dark:border-slate-700 rounded-xl pl-3 pr-14 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500" />
-                  <button type="button" onClick={() => setShowPassword(v => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-green-600">
-                    {showPassword ? "Hide" : "Show"}
-                  </button>
-                </div>
-                <input type={showPassword ? "text" : "password"} value={confirmPassword}
-                  onChange={e => setConfirmPassword(e.target.value)}
-                  placeholder="Confirm temporary password"
-                  className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500" />
                 <button type="button" onClick={saveLoginAccess} disabled={saving || selected.status !== "active"}
                   className="w-full border-2 border-green-200 dark:border-green-800 text-green-700 dark:text-green-300 disabled:opacity-50 font-bold rounded-xl py-2.5 text-sm hover:bg-green-50 dark:hover:bg-green-950/20 transition-colors">
-                  {selected.user_id ? "Reset Staff Password" : "Create Login Account"}
+                  {selected.user_id ? "Resend Login Credentials" : "Create Login Account"}
                 </button>
                 {accountMessage && (
                   <p className="text-xs text-green-700 bg-green-50 border border-green-200 rounded-xl px-3 py-2">
