@@ -155,16 +155,9 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
   };
 
   const openAdd = () => {
-    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$";
-    const values = new Uint32Array(12);
-    crypto.getRandomValues(values);
-    const tempPwd = Array.from(values, n => chars[n % chars.length]).join("");
     setForm({ full_name: "", email: "", phone: "", role: "cashier", status: "active", branch_id: "" });
     setPhotoFile(null);
     setPhotoPreview(null);
-    setLoginPassword(tempPwd);
-    setConfirmPassword(tempPwd);
-    setShowPassword(true);
     setAccountMessage("");
     initPermsForRole("cashier");
     setError("");
@@ -183,9 +176,6 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
     p["print-airtime"] = { can_view: pa?.can_view || false, can_create: false };
     p["print-data"]    = { can_view: pd?.can_view || false, can_create: false };
     setPerms(p);
-    setLoginPassword("");
-    setConfirmPassword("");
-    setShowPassword(false);
     setAccountMessage("");
     setError("");
   };
