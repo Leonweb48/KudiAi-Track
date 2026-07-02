@@ -113,7 +113,7 @@ serve(async (req) => {
       }
 
       // Send credentials-only email; OTP is generated and sent when org first logs in
-      fetch("https://admin.kudiai.app/api/public/email-trigger", {
+      await fetch("https://admin.kudiai.app/api/public/email-trigger", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
         body: JSON.stringify({
@@ -181,7 +181,7 @@ serve(async (req) => {
       const otpExpiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
       await sb.from("organizations").update({ otp_code: otp, otp_expires_at: otpExpiresAt }).eq("id", orgRow.id);
 
-      fetch("https://admin.kudiai.app/api/public/email-trigger", {
+      await fetch("https://admin.kudiai.app/api/public/email-trigger", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
         body: JSON.stringify({
@@ -370,7 +370,7 @@ serve(async (req) => {
             orgOwnerEmail = authUser?.user?.email || "";
           }
         }
-        fetch("https://admin.kudiai.app/api/public/email-trigger", {
+        await fetch("https://admin.kudiai.app/api/public/email-trigger", {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
           body: JSON.stringify({
@@ -466,7 +466,7 @@ serve(async (req) => {
 
       const { data: orgRow } = await sb.from("organizations").select("name").eq("id", member.org_id).maybeSingle();
 
-      fetch("https://admin.kudiai.app/api/public/email-trigger", {
+      await fetch("https://admin.kudiai.app/api/public/email-trigger", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
         body: JSON.stringify({
@@ -497,7 +497,7 @@ serve(async (req) => {
 
       const { data: orgRow } = await sb.from("organizations").select("name").eq("id", member.org_id).maybeSingle();
 
-      fetch("https://admin.kudiai.app/api/public/email-trigger", {
+      await fetch("https://admin.kudiai.app/api/public/email-trigger", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
         body: JSON.stringify({
@@ -590,7 +590,7 @@ serve(async (req) => {
       if (error) return json({ error: error.message }, 400);
 
       // Send OTP to member's email
-      fetch("https://admin.kudiai.app/api/public/email-trigger", {
+      await fetch("https://admin.kudiai.app/api/public/email-trigger", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
         body: JSON.stringify({
@@ -685,7 +685,7 @@ serve(async (req) => {
         target_amount:     target_amount ? parseFloat(String(target_amount)) : null,
         members:           (progMembers || []).map((m: { id: string; full_name: string; email: string }) => ({ name: m.full_name, email: m.email })),
       };
-      fetch("https://admin.kudiai.app/api/public/email-trigger", {
+      await fetch("https://admin.kudiai.app/api/public/email-trigger", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
         body: JSON.stringify({ event: "org_new_program", data: emailPayload }),
@@ -773,7 +773,7 @@ serve(async (req) => {
       }
 
       if (memberInfo?.email) {
-        fetch("https://admin.kudiai.app/api/public/email-trigger", {
+        await fetch("https://admin.kudiai.app/api/public/email-trigger", {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
           body: JSON.stringify({
@@ -900,7 +900,7 @@ serve(async (req) => {
       for (const m of (memberEmailRows || [])) {
         if (m.email) {
           const mAmt = affectedMembers.find(am => am.id === m.id)?.amount || 0;
-          fetch("https://admin.kudiai.app/api/public/email-trigger", {
+          await fetch("https://admin.kudiai.app/api/public/email-trigger", {
             method: "POST",
             headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
             body: JSON.stringify({
@@ -912,7 +912,7 @@ serve(async (req) => {
         }
       }
       if (wdOwnerEmail) {
-        fetch("https://admin.kudiai.app/api/public/email-trigger", {
+        await fetch("https://admin.kudiai.app/api/public/email-trigger", {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
           body: JSON.stringify({
@@ -983,7 +983,7 @@ serve(async (req) => {
       if (loanOrg?.owner_id) {
         const { data: ownerProf } = await sb.from("profiles").select("email").eq("id", loanOrg.owner_id).maybeSingle();
         if (ownerProf?.email) {
-          fetch("https://admin.kudiai.app/api/public/email-trigger", {
+          await fetch("https://admin.kudiai.app/api/public/email-trigger", {
             method: "POST", headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
             body: JSON.stringify({ event: "org_loan_request", data: {
               owner_email: ownerProf.email, org_name: loanOrg.name,
@@ -1033,7 +1033,7 @@ serve(async (req) => {
           "loans", existingLoan.member_id);
         if (memberEmail) {
           const { data: approvedOrg } = await sb.from("organizations").select("name").eq("id", existingLoan.org_id).maybeSingle();
-          fetch("https://admin.kudiai.app/api/public/email-trigger", {
+          await fetch("https://admin.kudiai.app/api/public/email-trigger", {
             method: "POST", headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
             body: JSON.stringify({ event: "org_loan_approved", data: {
               member_email: memberEmail, member_name: memberName, org_name: approvedOrg?.name || "",
@@ -1055,7 +1055,7 @@ serve(async (req) => {
         const memberName  = (existingLoan.org_members as Record<string, string>)?.full_name;
         if (memberEmail) {
           const { data: rejOrg } = await sb.from("organizations").select("name").eq("id", existingLoan.org_id).maybeSingle();
-          fetch("https://admin.kudiai.app/api/public/email-trigger", {
+          await fetch("https://admin.kudiai.app/api/public/email-trigger", {
             method: "POST", headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
             body: JSON.stringify({ event: "org_loan_rejected", data: {
               member_email: memberEmail, member_name: memberName, org_name: rejOrg?.name || "",
@@ -1105,7 +1105,7 @@ serve(async (req) => {
         const memberName  = (existingLoan.org_members as Record<string, string>)?.full_name;
         if (memberEmail) {
           const { data: disbOrg } = await sb.from("organizations").select("name").eq("id", existingLoan.org_id).maybeSingle();
-          fetch("https://admin.kudiai.app/api/public/email-trigger", {
+          await fetch("https://admin.kudiai.app/api/public/email-trigger", {
             method: "POST", headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
             body: JSON.stringify({ event: "org_loan_disbursed", data: {
               member_email: memberEmail, member_name: memberName, org_name: disbOrg?.name || "",
@@ -1190,7 +1190,7 @@ serve(async (req) => {
         loan_purpose: loan.loan_purpose || "",
       };
       if (memberEmail) {
-        fetch("https://admin.kudiai.app/api/public/email-trigger", {
+        await fetch("https://admin.kudiai.app/api/public/email-trigger", {
           method: "POST", headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
           body: JSON.stringify({ event: "org_loan_repayment", data: { ...emailData, send_to: "member" } }),
         }).catch(() => null);
@@ -1198,7 +1198,7 @@ serve(async (req) => {
       if (repayOrg?.owner_id) {
         const { data: ownerP } = await sb.from("profiles").select("email").eq("id", repayOrg.owner_id).maybeSingle();
         if (ownerP?.email) {
-          fetch("https://admin.kudiai.app/api/public/email-trigger", {
+          await fetch("https://admin.kudiai.app/api/public/email-trigger", {
             method: "POST", headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
             body: JSON.stringify({ event: "org_loan_repayment", data: { ...emailData, send_to: "org", owner_email: ownerP.email } }),
           }).catch(() => null);
@@ -1260,7 +1260,7 @@ serve(async (req) => {
           amount_outstanding: ol.outstanding_balance, due_date: ol.due_date,
           loan_purpose: ol.loan_purpose || "",
         };
-        fetch("https://admin.kudiai.app/api/public/email-trigger", {
+        await fetch("https://admin.kudiai.app/api/public/email-trigger", {
           method: "POST", headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
           body: JSON.stringify({ event: "org_loan_overdue", data: payload }),
         }).catch(() => null);
@@ -1309,7 +1309,7 @@ serve(async (req) => {
             .map((m: { id: string; full_name: string; email: string }) => ({ email: m.email, name: m.full_name, is_org: false })),
         ];
         for (const r of recipients) {
-          fetch("https://admin.kudiai.app/api/public/email-trigger", {
+          await fetch("https://admin.kudiai.app/api/public/email-trigger", {
             method: "POST",
             headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
             body: JSON.stringify({ event: "org_broadcast", data: {
@@ -1450,7 +1450,7 @@ serve(async (req) => {
             .map((m: { id: string; full_name: string; email: string }) => ({ email: m.email, name: m.full_name, is_org: false })),
         ];
         for (const r of recipients) {
-          fetch("https://admin.kudiai.app/api/public/email-trigger", {
+          await fetch("https://admin.kudiai.app/api/public/email-trigger", {
             method: "POST",
             headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
             body: JSON.stringify({ event: "org_broadcast", data: {
@@ -1838,7 +1838,7 @@ serve(async (req) => {
           ownerEmail = op?.email || "";
         }
         if (mem?.email) {
-          fetch("https://admin.kudiai.app/api/public/email-trigger", {
+          await fetch("https://admin.kudiai.app/api/public/email-trigger", {
             method: "POST",
             headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
             body: JSON.stringify({
@@ -1994,7 +1994,7 @@ serve(async (req) => {
         payment_method:     "Paystack",
       };
       if (repayMem?.email) {
-        fetch("https://admin.kudiai.app/api/public/email-trigger", {
+        await fetch("https://admin.kudiai.app/api/public/email-trigger", {
           method: "POST", headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
           body: JSON.stringify({ event: "org_loan_repayment", data: { ...emailData, send_to: "member" } }),
         }).catch(() => null);
@@ -2002,7 +2002,7 @@ serve(async (req) => {
       if (repayOrg?.owner_id) {
         const { data: ownerP } = await sb.from("profiles").select("email").eq("id", repayOrg.owner_id).maybeSingle();
         if (ownerP?.email) {
-          fetch("https://admin.kudiai.app/api/public/email-trigger", {
+          await fetch("https://admin.kudiai.app/api/public/email-trigger", {
             method: "POST", headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
             body: JSON.stringify({ event: "org_loan_repayment", data: { ...emailData, send_to: "org", owner_email: ownerP.email } }),
           }).catch(() => null);
@@ -2043,7 +2043,7 @@ serve(async (req) => {
       if (org?.owner_id) {
         const { data: ownerP } = await sb.from("profiles").select("email").eq("id", org.owner_id).maybeSingle();
         if (ownerP?.email) {
-          fetch("https://admin.kudiai.app/api/public/email-trigger", {
+          await fetch("https://admin.kudiai.app/api/public/email-trigger", {
             method: "POST",
             headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
             body: JSON.stringify({ event: "org_member_support_ticket", data: { ...ticketData, send_to: "org", owner_email: ownerP.email } }),
@@ -2052,7 +2052,7 @@ serve(async (req) => {
       }
       // Confirmation email to member
       if (mem.email) {
-        fetch("https://admin.kudiai.app/api/public/email-trigger", {
+        await fetch("https://admin.kudiai.app/api/public/email-trigger", {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
           body: JSON.stringify({ event: "org_member_support_ticket", data: { ...ticketData, send_to: "member" } }),
@@ -2100,7 +2100,7 @@ serve(async (req) => {
 
       // Confirmation to org owner
       if (ownerEmail) {
-        fetch("https://admin.kudiai.app/api/public/email-trigger", {
+        await fetch("https://admin.kudiai.app/api/public/email-trigger", {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
           body: JSON.stringify({ event: "org_member_support_ticket", data: { ...ticketData, send_to: "member" } }),
@@ -2146,7 +2146,7 @@ serve(async (req) => {
         const { data: op } = await sb.from("profiles")
           .select("email").eq("id", orgFull.owner_id).maybeSingle();
         if (op?.email) {
-          fetch("https://admin.kudiai.app/api/public/email-trigger", {
+          await fetch("https://admin.kudiai.app/api/public/email-trigger", {
             method: "POST",
             headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
             body: JSON.stringify({
@@ -2235,7 +2235,7 @@ serve(async (req) => {
           `Your withdrawal request of ₦${Number(req.amount).toLocaleString("en-NG")} has been approved${admin_notes ? ". " + String(admin_notes).slice(0, 60) : ""}`,
           "contributions", req.member_id);
         if (mem.email) {
-          fetch("https://admin.kudiai.app/api/public/email-trigger", {
+          await fetch("https://admin.kudiai.app/api/public/email-trigger", {
             method: "POST",
             headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
             body: JSON.stringify({
@@ -2260,7 +2260,7 @@ serve(async (req) => {
           `Your withdrawal of ₦${Number(req.amount).toLocaleString("en-NG")} was not approved${admin_notes ? ". " + String(admin_notes).slice(0, 60) : ""}`,
           "contributions", req.member_id);
         if (mem?.email) {
-          fetch("https://admin.kudiai.app/api/public/email-trigger", {
+          await fetch("https://admin.kudiai.app/api/public/email-trigger", {
             method: "POST",
             headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
             body: JSON.stringify({
@@ -2381,7 +2381,7 @@ serve(async (req) => {
             .map((m: { id: string; full_name: string; email: string }) => ({ email: m.email, name: m.full_name, is_org: false })),
         ];
         for (const r of recipients) {
-          fetch("https://admin.kudiai.app/api/public/email-trigger", {
+          await fetch("https://admin.kudiai.app/api/public/email-trigger", {
             method: "POST",
             headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
             body: JSON.stringify({ event: "org_broadcast", data: {
@@ -2454,7 +2454,7 @@ serve(async (req) => {
             .map((m: { id: string; full_name: string; email: string }) => ({ email: m.email, name: m.full_name, is_org: false })),
         ];
         for (const r of recipients) {
-          fetch("https://admin.kudiai.app/api/public/email-trigger", {
+          await fetch("https://admin.kudiai.app/api/public/email-trigger", {
             method: "POST",
             headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
             body: JSON.stringify({ event: "org_broadcast", data: {

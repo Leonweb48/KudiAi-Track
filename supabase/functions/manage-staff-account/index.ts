@@ -28,7 +28,7 @@ function genOtp(): string {
 }
 
 async function fireEmail(event: string, data: Record<string, unknown>) {
-  fetch("https://admin.kudiai.app/api/public/email-trigger", {
+  await fetch("https://admin.kudiai.app/api/public/email-trigger", {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
     body: JSON.stringify({ event, data }),
@@ -105,7 +105,7 @@ serve(async (req) => {
       const otpExpiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
       await adminClient.from("staff").update({ otp_code: otp, otp_expires_at: otpExpiresAt }).eq("id", staffRow.id);
 
-      fireEmail("staff_otp_resend", {
+      await fireEmail("staff_otp_resend", {
         staff_name: staffRow.full_name || "",
         staff_email: staffRow.email,
         otp_code: otp,
@@ -202,7 +202,7 @@ serve(async (req) => {
       }
     } catch { /* non-fatal */ }
 
-    fireEmail("staff_credentials", emailData);
+    await fireEmail("staff_credentials", emailData);
 
     return json({
       success: true,
