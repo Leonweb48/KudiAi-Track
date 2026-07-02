@@ -78,7 +78,7 @@ serve(async (req) => {
         .eq("id", client.id);
 
       if (isFirstLogin && client.email) {
-        fetch("https://admin.kudiai.app/api/public/email-trigger", {
+        await fetch("https://admin.kudiai.app/api/public/email-trigger", {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
           body: JSON.stringify({ event: "ajo_client_first_login", data: { name: client.full_name || "", email: client.email } }),
@@ -559,7 +559,7 @@ serve(async (req) => {
           }
 
           // Fire email notifications — non-blocking, never delays the response
-          fetch("https://admin.kudiai.app/api/public/email-trigger", {
+          await fetch("https://admin.kudiai.app/api/public/email-trigger", {
             method:  "POST",
             headers: {
               "Content-Type":     "application/json",
