@@ -103,28 +103,22 @@ serve(async (req) => {
       });
       if (authError) return json({ error: authError.message }, 400);
 
-      // Generate OTP and store in organizations table
-      const orgOtp = String(Math.floor(100000 + Math.random() * 900000));
-      const orgOtpExpiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
-
       const { error: linkError } = await sb.from("organizations").update({
         portal_user_id: authData.user.id,
         status: "active",
-        otp_code: orgOtp,
-        otp_expires_at: orgOtpExpiresAt,
       }).eq("id", org_id);
       if (linkError) {
         await sb.auth.admin.deleteUser(authData.user.id).catch(() => null);
         return json({ error: `Portal user created but could not be linked: ${linkError.message}` }, 400);
       }
 
-      // Send credentials + OTP email to org
+      // Send credentials-only email; OTP is generated and sent when org first logs in
       fetch("https://admin.kudiai.app/api/public/email-trigger", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
         body: JSON.stringify({
-          event: "org_portal_created",
-          data: { org_name: org.name, email: org.email, temp_password: tempPwd, reg_number: org.reg_number, otp_code: orgOtp },
+          event: "org_portal_credentials",
+          data: { org_name: org.name, email: org.email, temp_password: tempPwd, reg_number: org.reg_number },
         }),
       }).catch(() => null);
 
@@ -360,13 +354,8 @@ serve(async (req) => {
         await sb.auth.admin.updateUserById(authData.user.id, { email_confirm: true });
         await sb.from("org_members").update({ user_id: authData.user.id }).eq("id", member.id);
         (member as Record<string, unknown>).user_id = authData.user.id;
-        // Generate a 6-digit OTP and store in the member record (sent in welcome email)
-        const otp = String(Math.floor(100000 + Math.random() * 900000));
-        const otpExpiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 min
-        await sb.from("org_members").update({ otp_code: otp, otp_expires_at: otpExpiresAt }).eq("id", member.id);
-        (member as Record<string, unknown>).otp_code = otp;
       }
-      // Fire welcome email to member + notification to org owner
+      // Fire credentials-only email to member + notification to org owner; OTP sent on first login
       if (b.email) {
         let orgOwnerEmail = "";
         const { data: orgOwnerRow } = await sb
@@ -385,7 +374,7 @@ serve(async (req) => {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
           body: JSON.stringify({
-            event: "org_member_created",
+            event: "org_member_credentials",
             data: {
               member_name: b.full_name,
               member_email: b.email,
@@ -393,7 +382,6 @@ serve(async (req) => {
               membership_id,
               role: b.role || "member",
               temp_password,
-              otp_code: (member as Record<string, unknown>).otp_code || "",
               owner_email: orgOwnerEmail,
             },
           }),

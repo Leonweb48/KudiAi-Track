@@ -187,17 +187,11 @@ serve(async (req) => {
       }
     }
 
-    // Generate and store OTP
-    const otp = genOtp();
-    const otpExpiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
-    await adminClient.from("aso_clients").update({ otp_code: otp, otp_expires_at: otpExpiresAt }).eq("id", client.id);
-
-    // Send OTP + credentials email to client; notify business owner + staff
+    // Send credentials-only email; OTP is generated and sent when client first logs in
     const emailData: Record<string, string> = {
       client_name:       client.full_name || "",
       client_email:      client.email,
       membership_number: "",
-      otp_code:          otp,
       temp_password:     password,
     };
     try {
@@ -223,7 +217,7 @@ serve(async (req) => {
       if (owner?.email) { emailData.owner_email = owner.email; emailData.owner_name = owner.business_name || ""; }
     } catch { /* non-fatal */ }
 
-    fireEmail("ajo_client_otp", emailData);
+    fireEmail("ajo_client_credentials", emailData);
 
     return json({
       success: true,

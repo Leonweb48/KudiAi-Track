@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "../utils/supabase";
 
 const coopFn = async (action, body = {}) => {
@@ -25,12 +25,23 @@ export default function OrgMemberOtpVerify({ member }) {
   const [resent,      setResent]      = useState(false);
   const [tempPwd,     setTempPwd]     = useState("");
   const [showTempPwd, setShowTempPwd] = useState(false);
+  const [otpSending,  setOtpSending]  = useState(true);
+  const sentRef = useRef(false);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       const tp = data?.user?.user_metadata?.temp_password;
       if (tp) setTempPwd(tp);
     });
+  }, []);
+
+  // Auto-send OTP on first login — fires when this screen mounts
+  useEffect(() => {
+    if (sentRef.current) return;
+    sentRef.current = true;
+    coopFn("resend-member-otp")
+      .catch(() => null)
+      .finally(() => setOtpSending(false));
   }, []);
 
   const verify = async () => {
@@ -74,7 +85,9 @@ export default function OrgMemberOtpVerify({ member }) {
         </div>
         <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white">Verify Your Email</h1>
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-          Hi {firstName}! Enter the 6-digit verification code from your welcome email.
+          {otpSending
+            ? "Sending a verification code to your email…"
+            : `Hi ${firstName}! A 6-digit verification code has been sent to your email.`}
         </p>
         {email && (
           <span className="inline-block mt-2 text-xs font-bold text-violet-600 bg-violet-50 dark:bg-violet-900/20 rounded-xl px-3 py-1.5">
@@ -158,7 +171,9 @@ export default function OrgMemberOtpVerify({ member }) {
 
         <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 rounded-xl px-4 py-3">
           <p className="text-xs text-amber-700 dark:text-amber-400">
-            The code was included in your welcome email from your organisation. Check your inbox (and spam folder). Codes expire after 30 minutes.
+            {otpSending
+              ? "Please wait — sending your verification code…"
+              : "Check your email inbox (and spam folder) for the code. It expires in 30 minutes."}
           </p>
         </div>
 
