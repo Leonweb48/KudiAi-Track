@@ -4,14 +4,27 @@ const ADMIN_URL      = "https://admin.kudiai.app";
 const TRIGGER_SECRET = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
 // Verify a HS256 JWT using Deno Web Crypto (no external deps)
+// Handles Supabase webhook secret format: "v1,whsec_<base64>" — the HMAC key is
+// the base64-decoded bytes of the whsec_ part, NOT the raw string.
 async function verifyHS256(token: string, secret: string): Promise<Record<string, unknown> | null> {
   try {
     const [rawHeader, rawPayload, rawSig] = token.split(".");
     if (!rawHeader || !rawPayload || !rawSig) return null;
 
+    // Parse Supabase "v1,whsec_<base64>" format
+    let keyBytes: Uint8Array;
+    const whsecMatch = secret.match(/whsec_([A-Za-z0-9+/=]+)$/);
+    if (whsecMatch) {
+      const bin = atob(whsecMatch[1]);
+      keyBytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) keyBytes[i] = bin.charCodeAt(i);
+    } else {
+      keyBytes = new TextEncoder().encode(secret);
+    }
+
     const key = await crypto.subtle.importKey(
       "raw",
-      new TextEncoder().encode(secret),
+      keyBytes,
       { name: "HMAC", hash: "SHA-256" },
       false,
       ["verify"],
