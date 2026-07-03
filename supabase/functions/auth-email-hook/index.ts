@@ -87,15 +87,15 @@ serve(async (req) => {
     // by not sending an event — they use different UX flows
 
     if (event && email && otpToken) {
-      // Fire-and-forget — don't block the hook response
-      fetch(`${ADMIN_URL}/api/public/email-trigger`, {
+      // Await the email send — undetached fetches may be killed when the isolate exits
+      await fetch(`${ADMIN_URL}/api/public/email-trigger`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "x-trigger-secret": TRIGGER_SECRET,
         },
         body: JSON.stringify({ event, data: { email, name, otp_token: otpToken } }),
-      }).catch(() => null);
+      }).catch((e) => console.error("[auth-email-hook] email trigger failed:", e));
     }
 
     // Returning {} with 200 tells Supabase we handled the email
