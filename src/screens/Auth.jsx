@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase, supabaseConfigured } from "../utils/supabase";
 import AppLogo from "../components/AppLogo";
 import { Capacitor } from "@capacitor/core";
@@ -89,30 +89,49 @@ function BgLayout({ children, center = false }) {
   );
 }
 
-/* ── 6-digit OTP input ─────────────────────────────────────────────── */
-function OtpInput({ value, onChange }) {
-  return (
-    <input
-      type="text"
-      inputMode="numeric"
-      maxLength={6}
-      value={value}
-      onChange={e => onChange(e.target.value.replace(/\D/g, "").slice(0, 6))}
-      placeholder="6-digit code"
-      className="w-full text-center text-2xl font-bold tracking-[0.5em] border-2 rounded-xl py-3
-        border-gray-200 focus:border-emerald-500 focus:outline-none
-        bg-gray-50 text-gray-900 transition-colors"
-    />
-  );
-}
-
-/* ── OTP verification screen ───────────────────────────────────────── */
+/* ── OTP verification screen — dark design matching marketer/admin ──── */
 function OtpScreen({ email, onBack, onVerified, otpType = "signup" }) {
   const t = useT();
-  const [otp, setOtp]         = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState("");
-  const [resent, setResent]   = useState(false);
+  const [digits, setDigits]       = useState(["", "", "", "", "", ""]);
+  const [loading, setLoading]     = useState(false);
+  const [error, setError]         = useState("");
+  const [resent, setResent]       = useState(false);
+  const [countdown, setCountdown] = useState(60);
+  const inputRefs = useRef([]);
+
+  useEffect(() => {
+    inputRefs.current[0]?.focus();
+  }, []);
+
+  useEffect(() => {
+    if (countdown <= 0) return;
+    const t = setTimeout(() => setCountdown(c => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [countdown]);
+
+  const handleDigit = (idx, val) => {
+    const v = val.replace(/\D/, "").slice(-1);
+    const next = [...digits];
+    next[idx] = v;
+    setDigits(next);
+    if (v && idx < 5) inputRefs.current[idx + 1]?.focus();
+  };
+
+  const handleKeyDown = (idx, e) => {
+    if (e.key === "Backspace" && !digits[idx] && idx > 0) {
+      inputRefs.current[idx - 1]?.focus();
+    }
+  };
+
+  const handlePaste = (e) => {
+    const text = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
+    if (text.length === 6) {
+      setDigits(text.split(""));
+      inputRefs.current[5]?.focus();
+    }
+  };
+
+  const otp = digits.join("");
 
   const handleVerify = async () => {
     if (otp.length < 6) return;
@@ -122,7 +141,6 @@ function OtpScreen({ email, onBack, onVerified, otpType = "signup" }) {
       const { error } = await supabase.auth.verifyOtp({ email, token: otp, type: otpType });
       if (error) throw error;
       onVerified();
-      // Stay loading — component unmounts when auth status changes to "onboarding"
     } catch (err) {
       setError(err.message);
       setLoading(false);
@@ -130,6 +148,7 @@ function OtpScreen({ email, onBack, onVerified, otpType = "signup" }) {
   };
 
   const handleResend = async () => {
+    if (countdown > 0) return;
     setError("");
     setResent(false);
     let resendError;
@@ -140,52 +159,145 @@ function OtpScreen({ email, onBack, onVerified, otpType = "signup" }) {
       const { error } = await supabase.auth.resend({ type: "signup", email });
       resendError = error;
     }
-    if (resendError) setError(resendError.message);
-    else setResent(true);
+    if (resendError) {
+      setError(resendError.message);
+    } else {
+      setResent(true);
+      setCountdown(60);
+      setDigits(["", "", "", "", "", ""]);
+      inputRefs.current[0]?.focus();
+    }
   };
 
   return (
-    <BgLayout center>
-      <div className="text-center mb-5">
-        <div className="w-14 h-14 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-3">
-          <svg className="w-7 h-7 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-              d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-          </svg>
+    <div className="fixed inset-0 flex items-center justify-center p-4"
+      style={{ background: "linear-gradient(135deg, #080a0f 0%, #0d0f1a 50%, #080a0f 100%)" }}>
+      <div className="w-full" style={{ maxWidth: 360 }}>
+
+        {/* Header */}
+        <div className="text-center mb-8">
+          <div className="flex justify-center mb-4">
+            <div className="bg-white/90 rounded-2xl p-2 shadow-lg">
+              <AppLogo className="h-10 w-auto" />
+            </div>
+          </div>
+          <div className="inline-flex items-center justify-center w-10 h-10 rounded-2xl mb-3"
+            style={{ background: "linear-gradient(135deg, rgba(99,102,241,0.2), rgba(124,58,237,0.2))", border: "1px solid rgba(99,102,241,0.3)" }}>
+            <svg width="18" height="18" fill="none" stroke="rgb(129,140,248)" strokeWidth="2" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round"
+                d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+          </div>
+          <h1 className="text-2xl font-extrabold" style={{ color: "#fff", margin: 0 }}>
+            {t("auth.checkEmail")}
+          </h1>
+          <p className="text-sm mt-2 leading-relaxed" style={{ color: "#6b7a99" }}>
+            We sent a 6-digit code to<br />
+            <span className="font-semibold" style={{ color: "#a5b4fc" }}>{email}</span>
+          </p>
         </div>
-        <h2 className="text-lg font-bold text-gray-800">{t("auth.checkEmail")}</h2>
-        <p className="text-sm text-gray-500 mt-0.5">{t("auth.codeSentTo")}</p>
-        <p className="text-sm font-semibold text-gray-700">{email}</p>
-      </div>
 
-      {error && (
-        <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5 text-center">
-          {error}
+        {/* Card */}
+        <div className="rounded-2xl p-6" style={{ background: "#0e1117", border: "1px solid #1e2433", boxShadow: "0 25px 50px rgba(0,0,0,0.5)" }}>
+
+          {/* Digit boxes */}
+          <div className="flex gap-2 justify-center mb-6" onPaste={handlePaste}>
+            {digits.map((d, i) => (
+              <input
+                key={i}
+                ref={el => { inputRefs.current[i] = el; }}
+                type="text"
+                inputMode="numeric"
+                maxLength={1}
+                value={d}
+                onChange={e => handleDigit(i, e.target.value)}
+                onKeyDown={e => handleKeyDown(i, e)}
+                style={{
+                  width: 44, height: 56,
+                  textAlign: "center",
+                  fontSize: 22,
+                  fontWeight: 700,
+                  borderRadius: 12,
+                  border: `1px solid ${d ? "rgba(99,102,241,0.6)" : "#1e2433"}`,
+                  background: "#141820",
+                  color: d ? "rgb(165,180,252)" : "#fff",
+                  outline: "none",
+                  transition: "border-color 0.15s, box-shadow 0.15s",
+                  boxShadow: d ? "0 0 0 3px rgba(99,102,241,0.15)" : "none",
+                }}
+              />
+            ))}
+          </div>
+
+          {/* Error */}
+          {error && (
+            <div className="flex items-center gap-2 rounded-xl px-4 py-3 mb-4 text-xs"
+              style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", color: "#f87171" }}>
+              ⚠ {error}
+            </div>
+          )}
+
+          {/* Code resent confirmation */}
+          {resent && !error && (
+            <div className="rounded-xl px-4 py-3 mb-4 text-center text-xs"
+              style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.2)", color: "#34d399" }}>
+              ✓ {t("auth.codeResent")}
+            </div>
+          )}
+
+          {/* Verify button */}
+          <button
+            onClick={handleVerify}
+            disabled={loading || otp.length < 6}
+            className="w-full py-3 rounded-xl text-white font-bold text-sm transition-all"
+            style={{
+              background: loading || otp.length < 6 ? "rgba(79,70,229,0.5)" : "#4f46e5",
+              border: "none",
+              cursor: otp.length < 6 || loading ? "not-allowed" : "pointer",
+              boxShadow: otp.length === 6 && !loading ? "0 4px 15px rgba(79,70,229,0.35)" : "none",
+            }}
+          >
+            {loading
+              ? <span className="inline-flex items-center justify-center gap-2">
+                  <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                  {t("auth.verifying")}
+                </span>
+              : t("auth.verifyCode")}
+          </button>
+
+          {/* Resend / countdown */}
+          <div className="mt-4 text-center">
+            {countdown > 0 ? (
+              <p className="text-xs" style={{ color: "#4a5568" }}>Resend code in {countdown}s</p>
+            ) : (
+              <button
+                onClick={handleResend}
+                className="text-xs inline-flex items-center gap-1.5 transition-colors"
+                style={{ background: "none", border: "none", cursor: "pointer", color: "#818cf8" }}
+              >
+                <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5M4 9a8 8 0 0114.93-2M20 15a8 8 0 01-14.93 2" />
+                </svg>
+                {t("auth.resendCode")}
+              </button>
+            )}
+          </div>
         </div>
-      )}
-      {resent && (
-        <div className="mb-4 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2.5 text-center">
-          {t("auth.codeResent")}
-        </div>
-      )}
 
-      <div className="mb-5">
-        <OtpInput value={otp} onChange={setOtp} />
+        {/* Back link */}
+        <button
+          onClick={onBack}
+          className="w-full text-center text-xs mt-4 transition-colors"
+          style={{ background: "none", border: "none", cursor: "pointer", color: "#4a5568" }}
+        >
+          ← {t("auth.back")}
+        </button>
+
+        <p className="text-center text-xs mt-4" style={{ color: "#2a3347" }}>
+          © Amaya &amp; Co. Technologies. All Rights Reserved.
+        </p>
       </div>
-
-      <button
-        onClick={handleVerify}
-        disabled={loading || otp.length < 6}
-        className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl py-3 text-sm transition-colors"
-      >
-        {loading ? t("auth.verifying") : t("auth.verifyCode")}
-      </button>
-
-      <div className="flex items-center justify-between mt-4 text-xs text-gray-500">
-        <button onClick={onBack} className="hover:text-gray-700 underline">{t("auth.back")}</button>
-        <button onClick={handleResend} className="text-emerald-600 font-medium hover:underline">{t("auth.resendCode")}</button>
-      </div>
-    </BgLayout>
+    </div>
   );
 }
 
