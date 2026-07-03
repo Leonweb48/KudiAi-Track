@@ -455,12 +455,26 @@ export function useAuth() {
 
     const { data: sub } = await supabase
       .from("subscriptions")
-      .select("id, plan")
+      .select("id, plan, expires_at, cancel_at_period_end, billing_cycle")
       .eq("user_id", uid)
       .eq("status", "active")
       .maybeSingle();
 
     if (sub) {
+      // If the user previously cancelled and their paid period has now expired,
+      // auto-move them to the free plan so they don't retain paid features.
+      if (sub.cancel_at_period_end && sub.expires_at && new Date(sub.expires_at) < new Date()) {
+        await supabase.from("subscriptions").update({
+          plan: "kobo",
+          expires_at: null,
+          cancel_at_period_end: false,
+          cancelled_at: null,
+        }).eq("id", sub.id).catch(() => {});
+        sub.plan = "kobo";
+        sub.expires_at = null;
+        sub.cancel_at_period_end = false;
+      }
+
       // DB confirmed — normalize slug (business→basic, premium→professional) and cache
       const resolvedPlan = normalizeSlug(sub.plan) || "starter";
       setPlan(resolvedPlan);

@@ -419,6 +419,44 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
     ? { background: "#1d4ed818", color: "#1d4ed8" }
     : { background: "#64748b12", color: "#64748b" };
 
+  // ── Subscription management ────────────────────────────────────
+  const [sub,           setSub]           = useState(null);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelling,    setCancelling]    = useState(false);
+  const [cancelDone,    setCancelDone]    = useState(false);
+
+  useEffect(() => {
+    if (!session?.user?.id) return;
+    supabase.from("subscriptions")
+      .select("id, plan, expires_at, billing_cycle, cancel_at_period_end, cancelled_at")
+      .eq("user_id", session.user.id)
+      .eq("status", "active")
+      .maybeSingle()
+      .then(({ data }) => {
+        setSub(data);
+        if (data?.cancel_at_period_end) setCancelDone(true);
+      });
+  }, [session?.user?.id]);
+
+  const fmt = (iso) => {
+    if (!iso) return "";
+    return new Date(iso).toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" });
+  };
+
+  const handleCancelSubscription = async () => {
+    if (!sub?.id) return;
+    setCancelling(true);
+    const { error } = await supabase.from("subscriptions")
+      .update({ cancel_at_period_end: true, cancelled_at: new Date().toISOString() })
+      .eq("id", sub.id);
+    if (!error) {
+      setSub(s => ({ ...s, cancel_at_period_end: true }));
+      setCancelDone(true);
+    }
+    setCancelling(false);
+    setShowCancelModal(false);
+  };
+
   const Toggle = (
     <button
       onClick={e => { e.stopPropagation(); toggleDark(); }}
@@ -485,6 +523,88 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
         </svg>
       </button>
 
+      {/* ── SUBSCRIPTION MANAGEMENT ────────────────────────────────── */}
+      <SectionLabel>Subscription</SectionLabel>
+      <div className="mb-5 bg-white dark:bg-slate-800 rounded-3xl shadow-card border border-slate-100 dark:border-slate-700/50 overflow-hidden">
+        {/* Plan info row */}
+        <div className="px-4 py-4 flex items-center justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-slate-800 dark:text-white">{planName}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              {planTier > 0 && sub?.expires_at
+                ? cancelDone
+                  ? `Cancels on ${fmt(sub.expires_at)} — moves to Free Plan`
+                  : `${sub?.billing_cycle === "yearly" ? "Annual" : "Monthly"} · Renews ${fmt(sub.expires_at)}`
+                : "Free forever"}
+            </p>
+          </div>
+          <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full flex-shrink-0"
+            style={planBadgeStyle}>
+            {planTier === 0 ? "Free" : sub?.billing_cycle === "yearly" ? "Yearly" : "Monthly"}
+          </span>
+        </div>
+
+        {/* Cancelled warning banner */}
+        {cancelDone && sub?.expires_at && (
+          <div className="mx-4 mb-3 flex items-start gap-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 rounded-2xl px-3 py-2.5">
+            <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
+              Your subscription is cancelled. You keep access to <strong>{planName}</strong> until <strong>{fmt(sub.expires_at)}</strong>, then your account moves to the Free Plan.
+            </p>
+          </div>
+        )}
+
+        {/* Action buttons */}
+        <div className="px-4 pb-4 flex gap-2">
+          {/* Upgrade / Change Plan */}
+          <button
+            onClick={onUpgrade}
+            className="flex-1 py-2.5 rounded-2xl text-sm font-bold text-white active:scale-95 transition"
+            style={{ background: planTier >= 2 ? "#1B2A5E" : planTier >= 1 ? "#1d4ed8" : "#059669" }}>
+            {planTier === 0 ? "Upgrade Plan" : hasHigherPlanAvailable(plan) ? "Upgrade Plan" : "Change Plan"}
+          </button>
+
+          {/* Cancel — only for active paid subscribers who haven't already cancelled */}
+          {planTier > 0 && !cancelDone && sub?.expires_at && (
+            <button
+              onClick={() => setShowCancelModal(true)}
+              className="px-4 py-2.5 rounded-2xl text-sm font-semibold text-red-500 border border-red-200 dark:border-red-800/50 bg-red-50 dark:bg-red-900/20 active:scale-95 transition">
+              Cancel
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Cancel confirmation modal */}
+      {showCancelModal && (
+        <div className="fixed inset-0 z-[80] bg-black/50 backdrop-blur-sm flex items-end justify-center p-4">
+          <div className="bg-white dark:bg-slate-800 rounded-3xl w-full max-w-sm p-6 shadow-2xl">
+            <div className="w-14 h-14 bg-red-100 dark:bg-red-900/30 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <svg viewBox="0 0 24 24" fill="none" className="w-7 h-7 text-red-500" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+            </div>
+            <h3 className="text-base font-bold text-slate-800 dark:text-white text-center mb-2">Cancel Subscription?</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 text-center leading-relaxed mb-6">
+              You'll keep full access to <strong className="text-slate-700 dark:text-slate-200">{planName}</strong> until{" "}
+              <strong className="text-slate-700 dark:text-slate-200">{fmt(sub?.expires_at)}</strong>.
+              After that, your account moves to the <strong className="text-slate-700 dark:text-slate-200">Free Plan</strong> automatically. You can resubscribe anytime.
+            </p>
+            <div className="space-y-2.5">
+              <button
+                onClick={handleCancelSubscription}
+                disabled={cancelling}
+                className="w-full py-3 rounded-2xl font-bold text-sm text-white bg-red-500 active:scale-[0.98] transition disabled:opacity-50">
+                {cancelling ? "Cancelling…" : "Yes, Cancel Subscription"}
+              </button>
+              <button
+                onClick={() => setShowCancelModal(false)}
+                className="w-full py-3 rounded-2xl font-bold text-sm text-white bg-green-600 active:scale-[0.98] transition">
+                Keep My Plan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── APPEARANCE ─────────────────────────────────────────────── */}
       <SectionLabel>{t("settings.appearance")}</SectionLabel>
       <SettingsCard>
@@ -512,7 +632,6 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
       <SectionLabel>{t("settings.account")}</SectionLabel>
       <SettingsCard>
         <Row icon={<PersonIcon />} label={t("settings.profile")}   sub={t("settings.profileSub")}  onClick={openEdit} />
-        <Row icon={<CrownIcon />}  label="Subscription & Plans"  sub={hasHigherPlanAvailable(plan) ? "Upgrade for more features" : "You're on the top plan"}  onClick={hasHigherPlanAvailable(plan) ? onUpgrade : undefined} />
         <Row icon={<UsersIcon />}  label={t("settings.staff")}     sub={canDo(plan, "staffManagement") ? t("settings.staffSub") : planAvailableText("staffManagement")}    onClick={() => canDo(plan, "staffManagement") ? setStaffMgmt(true) : onUpgrade?.()} />
         <Row icon={<BellIcon />}   label={t("settings.notif")}     sub={t("settings.notifSub")}    onClick={() => onNotifications?.()} />
       </SettingsCard>

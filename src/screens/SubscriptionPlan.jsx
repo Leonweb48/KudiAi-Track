@@ -373,6 +373,32 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
 
   const handleFree = () => saveSub("kobo", null, false, null);
 
+  // Downgrade to a lower paid plan — no payment needed, just update the subscription row.
+  // The user keeps their current expires_at; they must re-subscribe when it lapses.
+  const handleDowngrade = async (targetPlan) => {
+    setSaving(true);
+    setErr("");
+    try {
+      const uid = session?.user?.id;
+      const { data: existing, error: fetchErr } = await supabase
+        .from("subscriptions")
+        .select("id")
+        .eq("user_id", uid)
+        .eq("status", "active")
+        .maybeSingle();
+      if (fetchErr || !existing) throw new Error("No active subscription found");
+      const { error: updateErr } = await supabase
+        .from("subscriptions")
+        .update({ plan: targetPlan.slug })
+        .eq("id", existing.id);
+      if (updateErr) throw updateErr;
+      onComplete(targetPlan.slug);
+    } catch (e) {
+      setErr(e.message || "Could not change plan. Please try again.");
+      setSaving(false);
+    }
+  };
+
   // Detect return from Paystack web redirect
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -624,10 +650,11 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
                     ✓ Active Plan
                   </button>
                 ) : isDowngrade ? (
-                  <button onClick={plan.slug === "kobo" || plan.slug === "starter" ? handleFree : undefined}
-                    disabled={saving || (plan.slug !== "kobo" && plan.slug !== "starter")}
-                    className="w-full py-2.5 rounded-xl font-semibold text-sm border-2 border-gray-200 text-gray-400 hover:bg-gray-50 disabled:opacity-40 transition-colors text-xs">
-                    {plan.slug === "kobo" || plan.slug === "starter" ? "Downgrade to Free" : "Not available"}
+                  <button
+                    onClick={plan.price_monthly === 0 ? handleFree : () => handleDowngrade(plan)}
+                    disabled={saving}
+                    className="w-full py-2.5 rounded-xl font-semibold text-sm border-2 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 disabled:opacity-40 transition-colors">
+                    {saving ? "Changing…" : plan.price_monthly === 0 ? "Downgrade to Free" : `Downgrade to ${plan.name}`}
                   </button>
                 ) : plan.price_monthly === 0 ? (
                   <button onClick={handleFree} disabled={saving}
