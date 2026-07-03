@@ -26,3 +26,9 @@ export const supabase =
     : null;
 
 export const supabaseConfigured = Boolean(supabase);
+
+// The raw Supabase project URL (bypasses Vercel proxy).
+// Used to construct OAuth authorize URLs directly so Vercel's proxy
+// does not interfere with the 302 redirect chain to Google/providers.
+export const SUPABASE_DIRECT_URL = SUPABASE_DIRECT || "";
+export const SUPABASE_PROXY_URL  = isProd ? "https://kudiai.app/sb" : "";

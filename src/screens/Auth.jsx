@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { supabase, supabaseConfigured } from "../utils/supabase";
+import { supabase, supabaseConfigured, SUPABASE_DIRECT_URL, SUPABASE_PROXY_URL } from "../utils/supabase";
 import AppLogo from "../components/AppLogo";
 import { Capacitor } from "@capacitor/core";
 import { Browser } from "@capacitor/browser";
@@ -360,7 +360,9 @@ export default function Auth() {
     return () => window.removeEventListener("kuditrack_auth_error", handler);
   }, []);
 
-  // Web: surface ?error= that Google/Supabase puts in the URL after a rejected OAuth flow
+  // Web: surface OAuth errors that Google/Supabase puts in the URL (?error=access_denied etc.)
+  // Also detect silent PKCE exchange failure: if Auth is still mounted after 3 s and ?code=
+  // is still in the URL, the exchange failed without dispatching an error event.
   useEffect(() => {
     if (isNative) return;
     const params = new URLSearchParams(window.location.search);
@@ -369,6 +371,19 @@ export default function Auth() {
     if (oauthError) {
       setError(oauthDesc ? oauthDesc.replace(/\+/g, " ") : "Google sign-in failed. Please try again.");
       window.history.replaceState(null, "", window.location.pathname);
+      return;
+    }
+    if (params.has("code")) {
+      // A ?code= means we just came back from OAuth. Auth should unmount quickly if the
+      // exchange succeeds. If we're still here after 3 s, the exchange silently failed.
+      const t = setTimeout(() => {
+        const still = new URLSearchParams(window.location.search);
+        if (still.has("code")) {
+          window.history.replaceState(null, "", window.location.pathname);
+          setError("Google sign-in could not be completed. Please try again.");
+        }
+      }, 3000);
+      return () => clearTimeout(t);
     }
   }, []);
 
@@ -498,11 +513,20 @@ export default function Auth() {
         // browserFinished fires (cancel/failure) — both paths eventually reset loading.
         return;
       } else {
-        const { error } = await supabase.auth.signInWithOAuth({
+        // Use skipBrowserRedirect so we receive the URL and can navigate to the
+        // DIRECT Supabase URL, bypassing the Vercel proxy. Vercel's proxy rewrites
+        // can interfere with the 302 redirect chain to Google (the authorize endpoint
+        // returns a redirect, not data — proxying it can mangle the Location header).
+        // The PKCE code exchange after the callback still goes through the proxy (fine).
+        const { data, error } = await supabase.auth.signInWithOAuth({
           provider: "google",
-          options: { redirectTo: OAUTH_REDIRECT, queryParams: { prompt: "select_account" } },
+          options: { redirectTo: OAUTH_REDIRECT, skipBrowserRedirect: true, queryParams: { prompt: "select_account" } },
         });
         if (error) throw error;
+        const authUrl = SUPABASE_DIRECT_URL && SUPABASE_PROXY_URL && data.url?.startsWith(SUPABASE_PROXY_URL)
+          ? data.url.replace(SUPABASE_PROXY_URL, SUPABASE_DIRECT_URL)
+          : data.url;
+        window.location.href = authUrl;
       }
     } catch (err) {
       setError(err.message);
