@@ -245,6 +245,13 @@ export function planAvailableText(featureKey) {
   return p ? `Available on the ${p.name} plan and above.` : "Upgrade to access this feature.";
 }
 
+// Returns the plan's display name and sort_order from the live cache.
+// Use this instead of comparing slug strings — plan names can change in admin.
+export function getPlanInfo(slug) {
+  const p = getPlanData(slug);
+  return { name: p?.name ?? "Free", sortOrder: p?.sort_order ?? 0 };
+}
+
 export function isHigherPlan(currentSlug, targetSlug) {
   const cur = getPlanData(normalizeSlug(currentSlug));
   const tgt = getPlanData(normalizeSlug(targetSlug));

@@ -4,7 +4,7 @@ import Field           from "../components/shared/Field";
 import StaffManagement from "./StaffManagement";
 import LegalScreen      from "./LegalScreen";
 import { supabase }    from "../utils/supabase";
-import { canDo, planAvailableText, hasHigherPlanAvailable } from "../utils/plans";
+import { canDo, planAvailableText, hasHigherPlanAvailable, getPlanInfo } from "../utils/plans";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import { LANGUAGES, getLangMeta } from "../utils/i18n";
 import { useLanguage, useT } from "../contexts/LanguageContext";
@@ -412,6 +412,13 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
   const initials  = profile.owner_name?.[0]?.toUpperCase() || "A";
   const avatarSrc = photoPreview || profile.profile_image_url;
 
+  const { name: planName, sortOrder: planTier } = getPlanInfo(plan);
+  const planBadgeStyle = planTier >= 2
+    ? { background: "#1B2A5E18", color: "#1B2A5E" }
+    : planTier >= 1
+    ? { background: "#1d4ed818", color: "#1d4ed8" }
+    : { background: "#64748b12", color: "#64748b" };
+
   const Toggle = (
     <button
       onClick={e => { e.stopPropagation(); toggleDark(); }}
@@ -451,11 +458,8 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
             <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{profile.owner_name}</p>
           )}
           <span className="inline-block mt-1 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full"
-            style={{
-              background: plan === "enterprise" ? "#1B2A5E18" : plan === "growth" ? "#16a34a18" : "#64748b12",
-              color:      plan === "enterprise" ? "#1B2A5E"   : plan === "growth" ? "#16a34a"   : "#64748b",
-            }}>
-            {plan === "enterprise" ? "Enterprise" : plan === "growth" ? "Growth" : "Starter"} Plan
+            style={planBadgeStyle}>
+            {planName}
           </span>
         </div>
         <button onClick={openEdit}
