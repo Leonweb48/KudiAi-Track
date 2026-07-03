@@ -359,6 +359,19 @@ export default function Auth() {
     window.addEventListener("kuditrack_auth_error", handler);
     return () => window.removeEventListener("kuditrack_auth_error", handler);
   }, []);
+
+  // Web: surface ?error= that Google/Supabase puts in the URL after a rejected OAuth flow
+  useEffect(() => {
+    if (isNative) return;
+    const params = new URLSearchParams(window.location.search);
+    const oauthError = params.get("error");
+    const oauthDesc  = params.get("error_description");
+    if (oauthError) {
+      setError(oauthDesc ? oauthDesc.replace(/\+/g, " ") : "Google sign-in failed. Please try again.");
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+  }, []);
+
   const [info,         setInfo]         = useState("");
   const [staffConfirm, setStaffConfirm] = useState(false);
 
@@ -463,9 +476,26 @@ export default function Auth() {
           options: { redirectTo: OAUTH_REDIRECT, skipBrowserRedirect: true, queryParams: { prompt: "select_account" } },
         });
         if (error) throw error;
+
+        // Safety valve: Chrome Custom Tab sometimes blocks custom-scheme redirects,
+        // causing appUrlOpen to never fire and the loading spinner to freeze.
+        // When the browser closes, wait 1 s for appUrlOpen to arrive first;
+        // if no session exists after that, surface an error so the user can retry.
+        let browserDoneListener = null;
+        browserDoneListener = await Browser.addListener("browserFinished", async () => {
+          browserDoneListener?.remove();
+          await new Promise((r) => setTimeout(r, 1000));
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session) {
+            window.dispatchEvent(new CustomEvent("kuditrack_auth_error", {
+              detail: "Google sign-in was cancelled or failed. Please try again.",
+            }));
+          }
+        });
+
         await Browser.open({ url: data.url, windowName: "_self" });
-        // Keep loading — the browser is open. useAuth fires kuditrack_auth_error
-        // if the OAuth callback fails, which resets loading when Auth remounts.
+        // Stay loading — browser is open. Either appUrlOpen fires (success) or
+        // browserFinished fires (cancel/failure) — both paths eventually reset loading.
         return;
       } else {
         const { error } = await supabase.auth.signInWithOAuth({
