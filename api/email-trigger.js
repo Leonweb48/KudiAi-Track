@@ -70,20 +70,37 @@ async function send(transport, from, sb, to, subject, html) {
 
 // ─── Handler ──────────────────────────────────────────────────────────────────
 
+const CORS = {
+  "Access-Control-Allow-Origin":  "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+};
+
 export default async function handler(req, res) {
+  // Capacitor webview origin is https://localhost — must handle preflight
+  if (req.method === "OPTIONS") {
+    return res.status(204).set(CORS).end();
+  }
+  Object.entries(CORS).forEach(([k, v]) => res.setHeader(k, v));
+
   if (req.method !== "POST") return res.status(405).end();
-  if (!SUPABASE_URL || !SERVICE_KEY) return res.status(503).json({ error: "Service unavailable" });
+  if (!SUPABASE_URL || !SERVICE_KEY) return res.status(503).json({ error: "Service unavailable — env vars missing" });
 
   // Validate JWT
   const authHeader = req.headers.authorization || "";
   const token = authHeader.replace("Bearer ", "");
-  if (!token) return res.status(401).json({ error: "Unauthorized" });
+  if (!token) return res.status(401).json({ error: "Unauthorized — no token" });
 
   const sb = createClient(SUPABASE_URL, SERVICE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
   const { data: { user }, error: authErr } = await sb.auth.getUser(token);
-  if (authErr || !user) return res.status(401).json({ error: "Unauthorized" });
+  if (authErr || !user) {
+    // Log so it's visible in admin delivery log
+    await logDelivery(sb, "auth-failure", "[email-trigger] JWT validation failed", "failed",
+      authErr?.message || "getUser returned no user");
+    return res.status(401).json({ error: "Unauthorized", detail: authErr?.message });
+  }
 
   const { event, data: rawData } = req.body || {};
   if (!event) return res.status(400).json({ error: "event required" });

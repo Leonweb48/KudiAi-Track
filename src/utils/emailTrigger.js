@@ -10,7 +10,8 @@ export async function sendEmailTrigger(event, data) {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.access_token) return;
 
-    fetch("/api/email-trigger", {
+    // Absolute URL so this works inside Capacitor webview (which loads from https://localhost)
+    fetch("https://kudiai.app/api/email-trigger", {
       method:  "POST",
       headers: {
         "Content-Type":  "application/json",
