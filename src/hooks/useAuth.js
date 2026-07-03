@@ -605,6 +605,7 @@ export function useAuth() {
   // Full re-check from DB (used on explicit logout/login cycle)
   const refetch = useCallback(() => {
     subVerified.current = false;
+    localStorage.removeItem(CACHE_KEY); // ensure subscription page is never skipped after onboarding
     setStatus("loading");
     supabase.auth.getSession().then(({ data }) => resolve(data.session));
   }, [resolve]);
