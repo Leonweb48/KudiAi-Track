@@ -335,8 +335,8 @@ function Overlay({ onClose, pdfName, children }) {
   }, []);
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col items-center justify-start overflow-y-auto py-6 px-4"
-      style={{ background: "rgba(8,12,30,0.94)", backdropFilter: "blur(12px)" }}>
+    <div className="fixed inset-0 z-[60] flex flex-col items-center justify-start overflow-y-auto py-6 px-4"
+      style={{ background: "rgba(8,12,30,0.94)", backdropFilter: "blur(12px)", WebkitOverflowScrolling: "touch", overscrollBehavior: "contain", paddingBottom: "calc(1.5rem + env(safe-area-inset-bottom, 0px))" }}>
 
       {/* Top bar */}
       <div className="flex items-center justify-between w-full max-w-[340px] mb-5">
@@ -364,7 +364,7 @@ function Overlay({ onClose, pdfName, children }) {
       <ShareButtons cardRef={cardRef} pdfName={pdfName} cachedPng={cachedPng} />
 
       {/* Ready indicator */}
-      <p className="text-white/20 text-xs mt-4 pb-4 flex items-center gap-1.5">
+      <p className="text-white/20 text-xs mt-4 pb-2 flex items-center gap-1.5">
         {cachedPng
           ? <><span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block"/>Ready to share</>
           : <><span className="w-1.5 h-1.5 rounded-full bg-white/30 inline-block animate-pulse"/>Preparing…</>
