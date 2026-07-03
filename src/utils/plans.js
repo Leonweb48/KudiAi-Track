@@ -16,9 +16,11 @@ export const FEATURE_KEYS = {
   aiChatbot:       "AI Chatbot",
   branches:        "Branch Management",
   organisation:    "Organisation / Coop",
+  invoices:        "Invoice Generation",
   apiAccess:       "API Access",
   loanAccess:      "Business Loan Access",
   printWholesale:  "Print Wholesale (Airtime & Data)",
+  prioritySupport: "Priority Support",
 };
 
 // Features that have a numeric cap (stored in feature_limits JSONB column)
@@ -44,9 +46,11 @@ export const ALL_FEATURE_LIST = [
   { key: "aiChatbot",       label: "AI chatbot" },
   { key: "branches",        label: "Branch management" },
   { key: "organisation",    label: "Organisation / Coop" },
+  { key: "invoices",        label: "Invoice generation" },
   { key: "apiAccess",       label: "API access" },
   { key: "loanAccess",      label: "Business loan access" },
   { key: "printWholesale",  label: "Print recharge & data wholesale" },
+  { key: "prioritySupport", label: "Priority support" },
 ];
 
 // ── Fallback hardcoded plans (shown only when DB is unreachable) ───────────────
@@ -66,7 +70,7 @@ const FALLBACK_PLANS = {
     description: "Everything your business needs to grow",
     price_monthly: 7000, price_yearly: 75600, sort_order: 1,
     max_transactions: 999999, max_organizations: 5, max_org_members: 50, max_ajo_groups: 10,
-    feature_keys: ["credit", "aso", "pdfExport", "staffManagement", "inventory", "loyalty", "aiInsights", "aiChatbot", "branches"],
+    feature_keys: ["credit", "aso", "pdfExport", "staffManagement", "inventory", "loyalty", "aiInsights", "aiChatbot", "branches", "invoices", "organisation"],
     feature_limits: { aso: 10, staffManagement: 10, branches: 3, inventory: 500, loyalty: 1000 },
     features: [
       "Unlimited transactions",
@@ -87,7 +91,7 @@ const FALLBACK_PLANS = {
     description: "Maximum power for serious business owners",
     price_monthly: 15000, price_yearly: 171000, sort_order: 2,
     max_transactions: 999999, max_organizations: 20, max_org_members: 200, max_ajo_groups: 50,
-    feature_keys: ["credit", "aso", "pdfExport", "staffManagement", "inventory", "loyalty", "aiInsights", "aiChatbot", "branches", "organisation", "apiAccess", "loanAccess", "printWholesale", "invoices"],
+    feature_keys: ["credit", "aso", "pdfExport", "staffManagement", "inventory", "loyalty", "aiInsights", "aiChatbot", "branches", "organisation", "invoices", "apiAccess", "loanAccess", "printWholesale", "prioritySupport"],
     feature_limits: { aso: 999999, staffManagement: 999999, branches: 999999, organisation: 999999, inventory: 999999, loyalty: 999999 },
     features: [
       "Everything in Standard",

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import Modal from "../components/shared/Modal";
 import { useBranches } from "../hooks/useBranches";
-import { featureLimit } from "../utils/plans";
+import { canDo, featureLimit, upgradeLabel, planAvailableText } from "../utils/plans";
 import { supabase } from "../utils/supabase";
 import { fmt } from "../utils/helpers";
 import { useT } from "../contexts/LanguageContext";
@@ -609,6 +609,36 @@ export default function Branches({ store, onClose, userId, inventory = {}, onRep
 
   const hqTx  = useMemo(() => transactions.filter(t => !t.branch_id), [transactions]);
   const hqCr  = useMemo(() => credits.filter(c => !c.branch_id), [credits]);
+
+  if (!canDo(plan, "branches")) {
+    return (
+      <div className="fixed inset-0 z-[60] bg-slate-50 dark:bg-slate-900 flex flex-col">
+        <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 py-4 flex items-center gap-3 flex-shrink-0">
+          <button onClick={onClose} className="p-2 -ml-1 rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
+            <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+          <h1 className="text-base font-bold text-slate-800 dark:text-white">Branch Management</h1>
+        </div>
+        <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
+          <div className="w-24 h-24 bg-violet-50 dark:bg-violet-900/20 rounded-full flex items-center justify-center mb-5">
+            <svg width={44} height={44} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" className="text-violet-600">
+              <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+              <polyline points="9 22 9 12 15 12 15 22" />
+            </svg>
+          </div>
+          <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-2">Branch Management</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 max-w-xs leading-relaxed">
+            Run multiple business locations from one dashboard. Compare performance, assign staff, and track sales per branch. {planAvailableText("branches")}
+          </p>
+          <button onClick={onUpgrade} className="bg-violet-600 hover:bg-violet-700 text-white px-6 py-3 rounded-2xl font-bold text-sm active:scale-95 transition shadow-md">
+            {upgradeLabel("branches")}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const openDetail = (branch) => { setSelected(branch); setView("detail"); };
   const closeDetail = () => { setView("list"); setSelected(null); };
