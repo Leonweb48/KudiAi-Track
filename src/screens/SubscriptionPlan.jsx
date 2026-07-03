@@ -315,12 +315,8 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
       const userName = profile?.full_name || session.user.email;
       const bizName  = profile?.business_name || "";
 
-      if (isFree) {
-        const upgradePlans = plans
-          .filter(p => p.price_monthly > 0)
-          .map(p => ({ name: p.name, slug: p.slug, price: p.price_monthly, features: getDisplayFeatures(p).slice(0, 4) }));
-        sendEmailTrigger("kobo_welcome", { user_email: session.user.email, user_name: userName, business_name: bizName, upgrade_plans: upgradePlans });
-      }
+      // Comprehensive welcome email for all new registrations (free and paid)
+      sendEmailTrigger("business_welcome", { user_email: session.user.email, user_name: userName, business_name: bizName, current_plan: planSlug });
 
       if (!isFree) {
         const features = planData ? getDisplayFeatures(planData) : [];
