@@ -917,7 +917,7 @@ function LoansTab({ member, org }) {
 
       {/* Loan application modal */}
       {showApply && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center p-4">
+        <div className="fixed inset-0 bg-black/50 z-[60] flex items-end justify-center p-4">
           <div className="bg-white dark:bg-slate-800 rounded-3xl w-full max-w-sm p-5 max-h-[85vh] overflow-y-auto">
             <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-4">Apply for a Loan</h3>
             {error && <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-3 text-xs text-red-600">{error}</div>}
@@ -965,7 +965,7 @@ function LoansTab({ member, org }) {
 
       {/* Loan detail sheet */}
       {selected && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center p-4">
+        <div className="fixed inset-0 bg-black/50 z-[60] flex items-end justify-center p-4">
           <div className="bg-white dark:bg-slate-800 rounded-3xl w-full max-w-sm p-5 max-h-[85vh] overflow-y-auto">
             <div className="flex justify-between items-start mb-3">
               <div>
@@ -1889,7 +1889,7 @@ export default function CoopMemberPortal({ member: initialMember }) {
 
         {/* ── Side Drawer — matches org portal ── */}
         {showMore && (
-          <div className="fixed inset-0 z-50 flex" onClick={() => setShowMore(false)}>
+          <div className="fixed inset-0 z-[60] flex" onClick={() => setShowMore(false)}>
             <div className="absolute inset-0 bg-black/50 backdrop-blur-[2px]" />
             <div
               className="relative flex flex-col h-full bg-white dark:bg-slate-900 shadow-2xl overflow-hidden"

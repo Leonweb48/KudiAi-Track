@@ -331,7 +331,7 @@ function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCance
 
   return (
     <>
-      <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ background: "rgba(0,0,0,0.6)" }}
+      <div className="fixed inset-0 z-[60] flex items-end justify-center" style={{ background: "rgba(0,0,0,0.6)" }}
         onClick={e => e.target === e.currentTarget && onClose()}>
         <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-t-2xl shadow-2xl max-h-[92vh] flex flex-col">
 

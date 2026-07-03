@@ -459,7 +459,7 @@ export default function NotificationCenter({ notif, allowedTypeKeys, onNavigate 
       <div className="fixed inset-0 z-40 bg-black/30" onClick={() => setOpen(false)} />
 
       {/* Panel */}
-      <div className="fixed inset-0 z-50 flex justify-center pointer-events-none">
+      <div className="fixed inset-0 z-[60] flex justify-center pointer-events-none">
         <div className="w-full max-w-md h-full bg-slate-50 dark:bg-slate-900 flex flex-col pointer-events-auto shadow-2xl">
 
           {/* Close button (absolute positioned top-right) */}

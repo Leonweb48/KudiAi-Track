@@ -117,7 +117,7 @@ function AsoClientHistoryModal({ client, contributions, businessName, onClose })
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex flex-col">
+    <div className="fixed inset-0 z-[60] bg-black/60 flex flex-col">
       {receipt && (
         <AjoTxReceipt
           txn={receipt}

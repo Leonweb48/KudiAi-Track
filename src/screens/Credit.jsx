@@ -678,7 +678,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
         const payments = debtPayments.filter(p => p.credit_id === historyFor.id);
         const bizName  = profile?.business_name || profile?.owner_name || "My Business";
         return (
-          <div className="fixed inset-0 z-50 bg-black/60 flex flex-col">
+          <div className="fixed inset-0 z-[60] bg-black/60 flex flex-col">
             {payReceipt && (
               <CreditPaymentReceipt
                 payment={payReceipt.payment}

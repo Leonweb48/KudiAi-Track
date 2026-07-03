@@ -882,7 +882,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
 
       {/* ── Staff Management full-screen overlay ───────────────────── */}
       {staffMgmt && (
-        <div className="fixed inset-0 z-50 bg-slate-50 dark:bg-slate-900">
+        <div className="fixed inset-0 z-[60] bg-slate-50 dark:bg-slate-900">
           <StaffManagement session={session} plan={plan} onBack={() => setStaffMgmt(false)} onUpgrade={() => { setStaffMgmt(false); onUpgrade?.(); }} />
         </div>
       )}

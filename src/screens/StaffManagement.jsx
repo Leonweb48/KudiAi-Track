@@ -615,7 +615,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
 
       {/* ── Add Staff Sheet ─────────────────────────────────────── */}
       {showAdd && (
-        <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40">
+        <div className="fixed inset-0 z-[60] flex flex-col justify-end bg-black/40">
           <div className="bg-white dark:bg-slate-900 rounded-t-3xl max-h-[92vh] flex flex-col">
             <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-800">
               <h2 className="text-base font-bold text-slate-800 dark:text-white">Add Staff Member</h2>
@@ -781,7 +781,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
 
       {/* ── Staff Detail Sheet ──────────────────────────────────── */}
       {selected && (
-        <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40">
+        <div className="fixed inset-0 z-[60] flex flex-col justify-end bg-black/40">
           <div className="bg-white dark:bg-slate-900 rounded-t-3xl max-h-[92vh] flex flex-col">
             <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-800">
               <h2 className="text-base font-bold text-slate-800 dark:text-white">Staff Details</h2>

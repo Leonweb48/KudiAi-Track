@@ -1040,7 +1040,7 @@ function PlansManager() {
 
       {/* Delete confirmation modal */}
       {confirmDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4">
           <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full space-y-4">
             <h4 className="font-bold text-slate-800 text-base">Delete "{confirmDelete.plan.name}"?</h4>
             {confirmDelete.subCount > 0 ? (

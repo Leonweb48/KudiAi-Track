@@ -3112,7 +3112,7 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
 
           {/* ── Side Drawer (X-app style) ── */}
           {showMore && (
-            <div className="fixed inset-0 z-50 flex" onClick={() => setShowMore(false)}>
+            <div className="fixed inset-0 z-[60] flex" onClick={() => setShowMore(false)}>
               <div className="absolute inset-0 bg-black/50 backdrop-blur-[2px]" />
               <div
                 className="relative flex flex-col h-full bg-white dark:bg-slate-900 shadow-2xl overflow-hidden"

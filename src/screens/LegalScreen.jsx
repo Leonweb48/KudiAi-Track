@@ -418,7 +418,7 @@ export default function LegalScreen({ type, onBack }) {
   const title   = isTerms ? "Terms & Conditions" : "Privacy Policy";
 
   return (
-    <div className="fixed inset-0 z-50 bg-white dark:bg-slate-900 flex flex-col">
+    <div className="fixed inset-0 z-[60] bg-white dark:bg-slate-900 flex flex-col">
       {/* Sticky header */}
       <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700/60 flex items-center gap-3 px-4 py-3 flex-shrink-0">
         <button

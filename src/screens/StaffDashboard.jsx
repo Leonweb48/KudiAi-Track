@@ -1134,7 +1134,7 @@ function StaffMe({ staff, session, store, inventory, livePerms, staffId, lock, p
 
       {/* FAQ inline view */}
       {view === "faq" && (
-        <div className="fixed inset-0 z-50 bg-slate-50 dark:bg-slate-900 flex flex-col">
+        <div className="fixed inset-0 z-[60] bg-slate-50 dark:bg-slate-900 flex flex-col">
           <div className="flex items-center gap-3 px-4 py-4 border-b border-slate-100 dark:border-slate-700/50 bg-white dark:bg-slate-900">
             <button onClick={() => setView("menu")} className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center active:scale-90 transition">
               <Svg d={P.back} size={18} color="#64748b" />

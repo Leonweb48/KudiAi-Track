@@ -178,7 +178,7 @@ export default function AIAssistant({ store, inventory, branches = [], invoices 
   function stopListening() { recogRef.current?.stop(); setListening(false); }
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-50 dark:bg-slate-900 flex flex-col">
+    <div className="fixed inset-0 z-[60] bg-slate-50 dark:bg-slate-900 flex flex-col">
 
       {/* ── Header ── */}
       <div

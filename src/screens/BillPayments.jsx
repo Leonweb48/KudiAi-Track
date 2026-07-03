@@ -2578,7 +2578,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
       {/* Bottom sheet */}
       {selectedCat && cat && (
-        <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40">
+        <div className="fixed inset-0 z-[60] flex flex-col justify-end bg-black/40">
           <div className="bg-white dark:bg-slate-900 rounded-t-3xl max-h-[94vh] flex flex-col transition-all duration-300"
           style={netTheme ? { borderTop: `3px solid ${netTheme.bg}` } : {}}>
 
