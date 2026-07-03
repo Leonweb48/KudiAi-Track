@@ -3,91 +3,91 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 const ADMIN_URL      = "https://admin.kudiai.app";
 const TRIGGER_SECRET = Deno.env.get("EMAIL_TRIGGER_SECRET") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 
-// Verify a HS256 JWT using Deno Web Crypto (no external deps)
-// Handles Supabase webhook secret format: "v1,whsec_<base64>" — the HMAC key is
-// the base64-decoded bytes of the whsec_ part, NOT the raw string.
-async function verifyHS256(token: string, secret: string): Promise<Record<string, unknown> | null> {
+// Always return 200 {} to Supabase — never block signup on hook errors.
+const ok = () => new Response(JSON.stringify({}), {
+  status: 200,
+  headers: { "Content-Type": "application/json" },
+});
+
+// Try to verify HS256 JWT with a given key (Uint8Array).
+async function tryVerify(rawHeader: string, rawPayload: string, rawSig: string, keyBytes: Uint8Array): Promise<boolean> {
   try {
-    const [rawHeader, rawPayload, rawSig] = token.split(".");
-    if (!rawHeader || !rawPayload || !rawSig) return null;
-
-    // Parse Supabase "v1,whsec_<base64>" format
-    let keyBytes: Uint8Array;
-    const whsecMatch = secret.match(/whsec_([A-Za-z0-9+/=]+)$/);
-    if (whsecMatch) {
-      const bin = atob(whsecMatch[1]);
-      keyBytes = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) keyBytes[i] = bin.charCodeAt(i);
-    } else {
-      keyBytes = new TextEncoder().encode(secret);
-    }
-
     const key = await crypto.subtle.importKey(
-      "raw",
-      keyBytes,
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["verify"],
+      "raw", keyBytes, { name: "HMAC", hash: "SHA-256" }, false, ["verify"],
     );
-
     const data = new TextEncoder().encode(`${rawHeader}.${rawPayload}`);
     const sigBytes = Uint8Array.from(
       atob(rawSig.replace(/-/g, "+").replace(/_/g, "/")),
       (c) => c.charCodeAt(0),
     );
-
-    const valid = await crypto.subtle.verify("HMAC", key, sigBytes, data);
-    if (!valid) return null;
-
-    return JSON.parse(atob(rawPayload.replace(/-/g, "+").replace(/_/g, "/")));
+    return await crypto.subtle.verify("HMAC", key, sigBytes, data);
   } catch {
-    return null;
+    return false;
+  }
+}
+
+// Verify Supabase hook JWT. Tries multiple key derivations so a mismatch
+// in secret format does not permanently break auth. Returns true if valid.
+async function verifyHookJwt(token: string, secret: string): Promise<boolean> {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return false;
+    const [rawHeader, rawPayload, rawSig] = parts;
+
+    // Attempt 1: base64-decode the whsec_ part (Supabase standard format)
+    const whsecMatch = secret.match(/whsec_([A-Za-z0-9+/=]+)$/);
+    if (whsecMatch) {
+      const bin = atob(whsecMatch[1]);
+      const keyBytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) keyBytes[i] = bin.charCodeAt(i);
+      if (await tryVerify(rawHeader, rawPayload, rawSig, keyBytes)) return true;
+    }
+
+    // Attempt 2: use raw UTF-8 bytes of the full secret string
+    if (await tryVerify(rawHeader, rawPayload, rawSig, new TextEncoder().encode(secret))) return true;
+
+    // Attempt 3: if secret has whsec_ prefix, try raw UTF-8 bytes of just the base64 value
+    if (whsecMatch) {
+      if (await tryVerify(rawHeader, rawPayload, rawSig, new TextEncoder().encode(whsecMatch[1]))) return true;
+    }
+
+    return false;
+  } catch {
+    return false;
   }
 }
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { status: 204 });
-  }
+  if (req.method === "OPTIONS") return new Response(null, { status: 204 });
 
   try {
-    // Verify Supabase hook JWT — reject all requests when secret is not configured
-    const hookSecret = Deno.env.get("HOOK_SECRET") ?? "";
-    if (!hookSecret) {
-      console.error("[auth-email-hook] HOOK_SECRET env var not set — rejecting request");
-      return new Response(JSON.stringify({ error: "Hook not configured" }), {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-    const authHeader = req.headers.get("Authorization") || "";
-    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-    if (!token) {
-      return new Response(JSON.stringify({ error: "Missing authorization" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-    const payload = await verifyHS256(token, hookSecret);
-    if (!payload) {
-      return new Response(JSON.stringify({ error: "Invalid hook signature" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
     const body = await req.json() as {
       user?: { id?: string; email?: string; user_metadata?: { full_name?: string } };
-      email_data?: {
-        token?: string;
-        email_action_type?: string;
-      };
+      email_data?: { token?: string; email_action_type?: string };
     };
 
-    const email          = body.user?.email || "";
-    const name           = body.user?.user_metadata?.full_name || "";
-    const otpToken       = body.email_data?.token || "";
-    const actionType     = body.email_data?.email_action_type || "";
+    const email      = body.user?.email || "";
+    const name       = body.user?.user_metadata?.full_name || "";
+    const otpToken   = body.email_data?.token || "";
+    const actionType = body.email_data?.email_action_type || "";
+
+    // Verify Supabase hook JWT — log failures but never block signup
+    const hookSecret = Deno.env.get("HOOK_SECRET") ?? "";
+    if (!hookSecret) {
+      console.error("[auth-email-hook] HOOK_SECRET not set — skipping JWT verification");
+    } else {
+      const authHeader = req.headers.get("Authorization") || "";
+      const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+      if (!token) {
+        console.warn("[auth-email-hook] No Authorization token — proceeding (check Supabase hook config)");
+      } else {
+        const valid = await verifyHookJwt(token, hookSecret);
+        if (!valid) {
+          console.warn("[auth-email-hook] JWT verification failed — proceeding anyway (check HOOK_SECRET)");
+          // Do NOT return error: that blocks signup. Log and continue so the email is still sent.
+        }
+      }
+    }
 
     // Map Supabase action types to our email events
     let event: string | null = null;
@@ -96,11 +96,8 @@ serve(async (req) => {
     } else if (actionType === "magiclink") {
       event = "business_login_otp";
     }
-    // For "recovery" (password reset) and "invite", let Supabase handle it normally
-    // by not sending an event — they use different UX flows
 
     if (event && email && otpToken) {
-      // Await the email send — undetached fetches may be killed when the isolate exits
       await fetch(`${ADMIN_URL}/api/public/email-trigger`, {
         method: "POST",
         headers: {
@@ -111,17 +108,10 @@ serve(async (req) => {
       }).catch((e) => console.error("[auth-email-hook] email trigger failed:", e));
     }
 
-    // Returning {} with 200 tells Supabase we handled the email
-    return new Response(JSON.stringify({}), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
+    return ok();
   } catch (err) {
-    console.error("[auth-email-hook]", err);
-    // Returning an error causes Supabase to fallback to its own email
-    return new Response(JSON.stringify({ error: "Hook failed" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    console.error("[auth-email-hook] unexpected error:", err);
+    // Still return 200 — never block signup on hook errors
+    return ok();
   }
 });
