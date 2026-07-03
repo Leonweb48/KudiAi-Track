@@ -8,7 +8,7 @@ const cors = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-const EMAIL_TRIGGER_SECRET = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const EMAIL_TRIGGER_SECRET = Deno.env.get("EMAIL_TRIGGER_SECRET") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {

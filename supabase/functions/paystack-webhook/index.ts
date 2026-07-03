@@ -14,7 +14,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { createHmac }   from "https://deno.land/std@0.168.0/node/crypto.ts";
 
 const CORS = { "Access-Control-Allow-Origin": "*" };
-const EMAIL_TRIGGER_SECRET = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const EMAIL_TRIGGER_SECRET = Deno.env.get("EMAIL_TRIGGER_SECRET") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 
 function ok(msg = "ok") {
   return new Response(msg, { status: 200, headers: CORS });

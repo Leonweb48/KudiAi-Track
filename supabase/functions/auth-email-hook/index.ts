@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const ADMIN_URL      = "https://admin.kudiai.app";
-const TRIGGER_SECRET = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const TRIGGER_SECRET = Deno.env.get("EMAIL_TRIGGER_SECRET") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 
 // Verify a HS256 JWT using Deno Web Crypto (no external deps)
 // Handles Supabase webhook secret format: "v1,whsec_<base64>" — the HMAC key is
