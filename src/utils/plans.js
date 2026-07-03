@@ -208,7 +208,10 @@ export function planLimits(slug) {
 
 export function getActivePlans() {
   const source = _cache ?? FALLBACK_PLANS;
-  return Object.values(source).sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+  const seen = new Set();
+  return Object.values(source)
+    .filter(p => { if (seen.has(p.id)) return false; seen.add(p.id); return true; })
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
 }
 
 // Returns the cheapest active plan that includes featureKey.
