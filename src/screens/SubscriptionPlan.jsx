@@ -377,7 +377,7 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
   // The user keeps their current expires_at; they must re-subscribe when it lapses.
   const handleDowngrade = async (targetPlan) => {
     setSaving(true);
-    setErr("");
+    setError("");
     try {
       const uid = session?.user?.id;
       const { data: existing, error: fetchErr } = await supabase
@@ -394,7 +394,7 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
       if (updateErr) throw updateErr;
       onComplete(targetPlan.slug);
     } catch (e) {
-      setErr(e.message || "Could not change plan. Please try again.");
+      setError(e.message || "Could not change plan. Please try again.");
       setSaving(false);
     }
   };
