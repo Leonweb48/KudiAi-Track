@@ -44,6 +44,8 @@ import OrgFirstLogin         from "./screens/OrgFirstLogin";
 import OrgMemberOtpVerify   from "./screens/OrgMemberOtpVerify";
 import StaffOtpVerify       from "./screens/StaffOtpVerify";
 import StaffFirstLogin      from "./screens/StaffFirstLogin";
+import { useConsent }       from "./hooks/useConsent";
+import ConsentModal         from "./components/ConsentModal";
 import AjoClientOtpVerify   from "./screens/AjoClientOtpVerify";
 import OrgOtpVerify         from "./screens/OrgOtpVerify";
 import AdminDashboard        from "./screens/AdminDashboard";
@@ -93,6 +95,9 @@ export default function App() {
   // eslint-disable-next-line no-unused-vars
   const { status, session, plan, setReady, refetch, upgradeAvailable, plansVersion, staff, ajoClient, orgMember, adminUser, marketer, org } = useAuth();
   const userId = session?.user?.id;
+
+  // Consent gate — checks once per userId whether the user has accepted legal docs
+  const consent = useConsent(userId);
 
   // Notification system — initialised before store so addNotification is stable
   const notif = useNotifications(userId);
@@ -291,6 +296,19 @@ export default function App() {
   if (status === "onboarding")       return <Onboarding session={session} onComplete={refetch} />;
   if (status === "subscribing")      return <SubscriptionPlan session={session} onComplete={setReady} />;
   if (status === "marketer_setup")   return <MarketerFirstLogin marketer={marketer} />;
+
+  // ── Consent gate — blocks portal entry until legal docs are accepted ──
+  const portalStatuses = ["ready", "staff", "branch_manager", "marketer", "organisation", "org_member", "ajo_client"];
+  if (portalStatuses.includes(status) && !consent.loading && consent.needsConsent) {
+    return (
+      <ConsentModal
+        userId={userId}
+        onGranted={() => consent.refetch()}
+        isReConsent={consent.isReConsent}
+        changeSummary={consent.changeSummary}
+      />
+    );
+  }
 
   // ── PIN setup gate — blocks all portals until the user sets a device PIN ──
   // Covers: organisation, org_member, ajo_client, staff, branch_manager, marketer, main app.

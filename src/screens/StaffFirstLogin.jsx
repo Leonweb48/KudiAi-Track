@@ -50,6 +50,7 @@ export default function StaffFirstLogin({ staff }) {
         </div>
         <h2 className="text-xl font-extrabold text-slate-800 dark:text-white mb-2">Password set!</h2>
         <p className="text-sm text-slate-500 dark:text-slate-400">Taking you to your staff portal…</p>
+        <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">You'll review our terms before entering</p>
         <div className="mt-6 w-8 h-8 border-[3px] border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto" />
       </div>
     </div>

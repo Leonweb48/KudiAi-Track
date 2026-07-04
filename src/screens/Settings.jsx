@@ -352,6 +352,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
   const [lockBusy,      setLockBusy]      = useState(false);
   const [showLangPick,  setShowLangPick]  = useState(false);
   const [legalScreen,   setLegalScreen]   = useState(null); // "terms" | "privacy"
+  const [acceptedConsent, setAcceptedConsent] = useState(null);
 
   const lockEnabled    = lock?.enabled    ?? false;
   const lockHasPIN     = lock?.hasPIN     ?? false;
@@ -361,6 +362,21 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
   useEffect(() => {
     if (!editProfile) setFp({ ...profile });
   }, [profile]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch user's latest accepted consent for display in Settings
+  useEffect(() => {
+    const uid = session?.user?.id;
+    if (!uid) return;
+    supabase
+      .from("user_consents")
+      .select("tnc_version, privacy_version, consented_at")
+      .eq("user_id", uid)
+      .order("consented_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => { if (data) setAcceptedConsent(data); })
+      .catch(() => {});
+  }, [session]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const lgas  = getLGAs(fp.state  || "");
   const wards = getWards(fp.state || "", fp.lga || "");
@@ -739,6 +755,13 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
       <SettingsCard>
         <Row icon={<DocIcon />}  label={t("settings.terms")}   sub="Last updated 1 July 2026"   onClick={() => setLegalScreen("terms")} />
         <Row icon={<DocIcon />}  label={t("settings.privacy")} sub="NDPA 2023 compliant"         onClick={() => setLegalScreen("privacy")} />
+        {acceptedConsent && (
+          <Row
+            icon={<DocIcon />}
+            label="Your accepted version"
+            sub={`T&C v${acceptedConsent.tnc_version} · Privacy v${acceptedConsent.privacy_version} · ${new Date(acceptedConsent.consented_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`}
+          />
+        )}
         <Row icon={<HelpIcon />} label="Help & Support"        onClick={() => setShowSupport(true)} />
       </SettingsCard>
 

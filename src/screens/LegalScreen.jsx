@@ -1,4 +1,8 @@
-/* LegalScreen — full-screen Terms & Conditions and Privacy Policy viewer */
+/* LegalScreen — full-screen Terms & Conditions and Privacy Policy viewer
+   Redesigned with reading progress bar, navy header, collapsible TOC,
+   and Supabase DB content with hardcoded fallback. */
+import { useState, useEffect, useRef } from "react";
+import { supabase } from "../utils/supabase";
 import { getActivePlans } from "../utils/plans";
 
 const COMPANY = {
@@ -9,7 +13,7 @@ const COMPANY = {
   updated: "1 July 2026",
 };
 
-/* ── Reusable section renderer ───────────────────────────────────────── */
+/* ── Reusable section renderers (kept as fallback) ───────────────── */
 function H2({ children }) {
   return (
     <h2 className="text-[13px] font-black text-slate-900 dark:text-white uppercase tracking-wider mt-7 mb-2 border-b border-slate-200 dark:border-slate-700 pb-1.5">
@@ -80,7 +84,7 @@ function DataTable({ rows }) {
   );
 }
 
-/* ── Terms & Conditions content ─────────────────────────────────────── */
+/* ── Terms & Conditions content (fallback) ───────────────────────── */
 function TermsContent() {
   return (
     <>
@@ -233,7 +237,7 @@ function TermsContent() {
   );
 }
 
-/* ── Privacy Policy content ──────────────────────────────────────────── */
+/* ── Privacy Policy content (fallback) ──────────────────────────── */
 function PrivacyContent() {
   return (
     <>
@@ -403,7 +407,56 @@ function PrivacyContent() {
   );
 }
 
-/* ── Shared back-arrow icon ─────────────────────────────────────────── */
+/* ── Known TOC sections for hardcoded content ────────────────────── */
+const TERMS_TOC = [
+  "1. Company Information",
+  "2. Definitions",
+  "3. Eligibility & Account Registration",
+  "4. Description of Services",
+  "5. Subscription Plans & Billing",
+  "6. Bill Payment Terms",
+  "7. Ajo/Esusu Savings Groups",
+  "8. Marketer Affiliate Programme",
+  "9. Staff Accounts",
+  "10. Acceptable Use Policy",
+  "11. Data Responsibilities for Business Owners",
+  "12. Limitation of Liability",
+  "13. Intellectual Property",
+  "14. Suspension & Termination",
+  "15. Governing Law & Dispute Resolution",
+  "16. Changes to These Terms",
+  "17. Contact",
+];
+
+const PRIVACY_TOC = [
+  "1. Data Controller Details",
+  "2. Who This Policy Applies To",
+  "3. Personal Data We Collect",
+  "4. Legal Basis for Processing",
+  "5. How We Use Your Data",
+  "6. Data Sharing & Disclosure",
+  "7. International Data Transfers",
+  "8. Data Retention",
+  "9. Your Data Rights",
+  "10. Data Security",
+  "11. Business Owners & Third-Party Data",
+  "12. AI & Automated Decision-Making",
+  "13. Children's Privacy",
+  "14. Marketing Communications",
+  "15. Changes to This Policy",
+  "16. Contact",
+];
+
+/* ── Chevron icon ───────────────────────────────────────────────── */
+function ChevronDown({ open }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={`w-4 h-4 transition-transform duration-200 ${open ? "rotate-180" : ""}`} stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 9l6 6 6-6" />
+    </svg>
+  );
+}
+
+/* ── Back arrow icon ────────────────────────────────────────────── */
 function BackArrow() {
   return (
     <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
@@ -412,39 +465,241 @@ function BackArrow() {
   );
 }
 
-/* ── Main exported component ─────────────────────────────────────────── */
+/* ── Main exported component ────────────────────────────────────── */
 export default function LegalScreen({ type, onBack }) {
   const isTerms = type === "terms";
   const title   = isTerms ? "Terms & Conditions" : "Privacy Policy";
 
+  const [dbContent,  setDbContent]  = useState(null);
+  const [dbMeta,     setDbMeta]     = useState(null);
+  const [progress,   setProgress]   = useState(0);
+  const [tocOpen,    setTocOpen]    = useState(false);
+  const scrollRef = useRef(null);
+
+  // Fetch from Supabase; fall back to hardcoded if unavailable
+  useEffect(() => {
+    const dbType = isTerms ? "tnc" : "privacy";
+    supabase
+      .from("legal_documents")
+      .select("content, version, published_at")
+      .eq("type", dbType)
+      .eq("status", "published")
+      .order("version", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.content) {
+          setDbContent(data.content);
+          setDbMeta({ version: data.version, publishedAt: data.published_at });
+        }
+      })
+      .catch(() => { /* fall through to hardcoded */ });
+  }, [type, isTerms]);
+
+  // Reading progress from scroll position
+  const handleScroll = (e) => {
+    const el = e.currentTarget;
+    const scrollable = el.scrollHeight - el.clientHeight;
+    if (scrollable <= 0) { setProgress(100); return; }
+    setProgress(Math.min(100, Math.round((el.scrollTop / scrollable) * 100)));
+  };
+
+  // Smooth-scroll to a section heading
+  const scrollToSection = (heading) => {
+    if (!scrollRef.current) return;
+    const h2s = scrollRef.current.querySelectorAll("h2");
+    for (const el of h2s) {
+      if (el.textContent.trim().toLowerCase().includes(heading.toLowerCase().replace(/^\d+\.\s*/, ""))) {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+        setTocOpen(false);
+        return;
+      }
+    }
+    // Fallback: match by full text
+    for (const el of h2s) {
+      if (el.textContent.trim() === heading) {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+        setTocOpen(false);
+        return;
+      }
+    }
+  };
+
+  // Build TOC sections
+  const tocSections = dbContent
+    ? [...dbContent.matchAll(/<h2[^>]*>(.*?)<\/h2>/gi)].map(m => m[1].replace(/<[^>]+>/g, "").trim())
+    : (isTerms ? TERMS_TOC : PRIVACY_TOC);
+
+  // Derived display values
+  const displayVersion = dbMeta
+    ? `v${dbMeta.version}`
+    : "v1.0";
+
+  const displayDate = dbMeta
+    ? new Date(dbMeta.publishedAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
+    : COMPANY.updated;
+
   return (
     <div className="fixed inset-0 z-[60] bg-white dark:bg-slate-900 flex flex-col">
-      {/* Sticky header */}
-      <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700/60 flex items-center gap-3 px-4 py-3 flex-shrink-0">
+
+      {/* Reading progress bar — 3px, brand green */}
+      <div className="flex-shrink-0 w-full" style={{ height: 3, backgroundColor: "rgba(0,0,0,0.08)" }}>
+        <div
+          style={{ width: `${progress}%`, height: "100%", backgroundColor: "#3DA829", transition: "width 0.12s linear" }}
+        />
+      </div>
+
+      {/* Sticky header — navy background */}
+      <div
+        className="flex items-center gap-3 px-4 py-3 flex-shrink-0"
+        style={{ backgroundColor: "#16255A" }}
+      >
         <button
           onClick={onBack}
-          className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors active:scale-95 flex-shrink-0"
+          className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors active:scale-95 flex-shrink-0"
           aria-label="Back"
         >
           <BackArrow />
         </button>
         <div className="flex-1 min-w-0">
-          <p className="text-[15px] font-bold text-slate-900 dark:text-white truncate">{title}</p>
-          <p className="text-[11px] text-slate-400 dark:text-slate-500">AMAYA & Co. Technologies · Effective {COMPANY.updated}</p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-[15px] font-bold text-white truncate leading-tight">{title}</p>
+            <span className="text-[10px] font-bold bg-white/20 text-white px-2 py-0.5 rounded-full flex-shrink-0">
+              {displayVersion}
+            </span>
+          </div>
+          <p className="text-[11px] text-white/60 mt-0.5">Last updated: {displayDate}</p>
         </div>
       </div>
 
       {/* Scrollable content */}
-      <div className="flex-1 overflow-y-auto">
+      <div
+        className="flex-1 overflow-y-auto overscroll-contain"
+        ref={scrollRef}
+        onScroll={handleScroll}
+      >
         <div className="px-4 pb-16 pt-4 max-w-2xl mx-auto">
-          {/* Version badge */}
-          <div className="flex items-center gap-2 mb-4">
-            <span className="text-[10px] font-bold bg-brand-100 dark:bg-brand-900/30 text-brand-700 dark:text-brand-400 px-2.5 py-1 rounded-full uppercase tracking-wide">
-              {isTerms ? "Terms & Conditions" : "Privacy Policy"} · Version 1.0
-            </span>
-          </div>
 
-          {isTerms ? <TermsContent /> : <PrivacyContent />}
+          {/* Table of Contents — collapsible dropdown */}
+          {tocSections.length > 0 && (
+            <div className="mb-5 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+              <button
+                onClick={() => setTocOpen(v => !v)}
+                className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 dark:bg-slate-800/60 text-left"
+              >
+                <div className="flex items-center gap-2">
+                  <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-500 dark:text-slate-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                    <line x1="3" y1="6"  x2="21" y2="6"  />
+                    <line x1="3" y1="12" x2="15" y2="12" />
+                    <line x1="3" y1="18" x2="18" y2="18" />
+                  </svg>
+                  <span className="text-[12px] font-semibold text-slate-700 dark:text-slate-300">Contents</span>
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500">({tocSections.length} sections)</span>
+                </div>
+                <span className="text-slate-400 dark:text-slate-500"><ChevronDown open={tocOpen} /></span>
+              </button>
+
+              {tocOpen && (
+                <div className="divide-y divide-slate-100 dark:divide-slate-700/60 bg-white dark:bg-slate-900">
+                  {tocSections.map((section, i) => (
+                    <button
+                      key={i}
+                      onClick={() => scrollToSection(section)}
+                      className="w-full text-left px-4 py-2.5 text-[12px] text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/60 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
+                    >
+                      {section}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Document content */}
+          {dbContent ? (
+            <>
+              {/* DB content rendered as HTML with prose-like styles */}
+              <style>{`
+                .legal-content h2 {
+                  color: #16255A;
+                  font-weight: 800;
+                  font-size: 13px;
+                  text-transform: uppercase;
+                  letter-spacing: 0.06em;
+                  border-bottom: 1px solid #e2e8f0;
+                  padding-bottom: 6px;
+                  margin: 24px 0 8px;
+                }
+                .legal-content h3 {
+                  color: #1e293b;
+                  font-weight: 700;
+                  font-size: 12.5px;
+                  margin: 14px 0 6px;
+                }
+                .legal-content p {
+                  color: #64748b;
+                  font-size: 12.5px;
+                  line-height: 1.65;
+                  margin-bottom: 8px;
+                }
+                .legal-content ul {
+                  list-style: none;
+                  padding: 0;
+                  margin-bottom: 12px;
+                }
+                .legal-content ul li {
+                  display: flex;
+                  gap: 8px;
+                  color: #64748b;
+                  font-size: 12.5px;
+                  line-height: 1.65;
+                  margin-bottom: 4px;
+                }
+                .legal-content ul li::before {
+                  content: "";
+                  display: inline-block;
+                  width: 6px;
+                  height: 6px;
+                  background: #3DA829;
+                  border-radius: 50%;
+                  flex-shrink: 0;
+                  margin-top: 7px;
+                }
+                .legal-content ol {
+                  list-style: decimal;
+                  padding-left: 18px;
+                  margin-bottom: 12px;
+                }
+                .legal-content ol li {
+                  color: #64748b;
+                  font-size: 12.5px;
+                  line-height: 1.65;
+                  margin-bottom: 4px;
+                }
+                .legal-content a {
+                  color: #3DA829;
+                  text-decoration: underline;
+                  text-underline-offset: 2px;
+                }
+                @media (prefers-color-scheme: dark) {
+                  .legal-content h2 { color: #7dd3fc; border-bottom-color: #334155; }
+                  .legal-content h3 { color: #e2e8f0; }
+                  .legal-content p, .legal-content li { color: #94a3b8; }
+                }
+              `}</style>
+              <div className="legal-content prose" dangerouslySetInnerHTML={{ __html: dbContent }} />
+            </>
+          ) : (
+            <>
+              {/* Hardcoded fallback content */}
+              <div className="flex items-center gap-2 mb-4">
+                <span className="text-[10px] font-bold bg-brand-100 dark:bg-brand-900/30 text-brand-700 dark:text-brand-400 px-2.5 py-1 rounded-full uppercase tracking-wide">
+                  {isTerms ? "Terms & Conditions" : "Privacy Policy"} · Version 1.0
+                </span>
+              </div>
+              {isTerms ? <TermsContent /> : <PrivacyContent />}
+            </>
+          )}
 
           {/* Footer */}
           <div className="mt-8 pt-5 border-t border-slate-200 dark:border-slate-700 text-center">
