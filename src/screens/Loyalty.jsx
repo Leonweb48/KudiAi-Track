@@ -265,6 +265,8 @@ function RedeemModal({ customer, onRedeem, onClose }) {
   );
 }
 
+const COMING_SOON = true;
+
 export default function Loyalty({ loyalty, plan, onUpgrade, onClose }) {
   const t = useT();
   const {
@@ -317,6 +319,37 @@ export default function Loyalty({ loyalty, plan, onUpgrade, onClose }) {
     totalPts:  customers.reduce((s, c) => s + (c.total_points_earned  || 0), 0),
     totalCash: customers.reduce((s, c) => s + Number(c.total_cashback_earned || 0), 0),
   }), [customers]);
+
+  if (COMING_SOON) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col">
+        <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 py-4 flex items-center gap-3">
+          {onClose && (
+            <button onClick={onClose} className="p-2 -ml-1 rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
+              <Icon name="x" size={20} />
+            </button>
+          )}
+          <h1 className="text-lg font-bold text-slate-800 dark:text-white">Loyalty Program</h1>
+        </div>
+        <div className="flex-1 flex items-center justify-center p-6">
+          <div className="text-center max-w-xs">
+            <div className="w-20 h-20 bg-brand-50 dark:bg-brand-900/20 rounded-3xl flex items-center justify-center mx-auto mb-5">
+              <svg width={40} height={40} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="text-brand-500 dark:text-brand-400">
+                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+              </svg>
+            </div>
+            <span className="inline-block px-3 py-1 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-xs font-bold tracking-wide mb-4">
+              COMING SOON
+            </span>
+            <h2 className="text-2xl font-extrabold text-slate-800 dark:text-white mb-3">Loyalty Program</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
+              We're building something great — reward your best customers with points, cashback, tiers, and referral bonuses. Stay tuned.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!canUseLoyalty) {
     return (
