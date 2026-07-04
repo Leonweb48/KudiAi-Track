@@ -56,11 +56,10 @@ async function invoke(action, params = {}) {
   const { data, error } = await supabase.functions.invoke("pin-manager", {
     body: { action, ...params },
   });
-  if (error) {
-    // data contains the edge function's JSON body even on non-2xx
-    const msg = data?.error || error.message;
-    throw new Error(msg);
-  }
+  // Network/deployment-level error (function unreachable, CORS, etc.)
+  if (error) throw new Error(error.message);
+  // Application-level error — edge function always returns 200; errors are in the body
+  if (data?.error) throw new Error(data.error);
   return { data };
 }
 

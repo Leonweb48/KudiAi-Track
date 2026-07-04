@@ -62,8 +62,10 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-function errorResponse(message: string, status = 400): Response {
-  return jsonResponse({ error: message }, status);
+function errorResponse(message: string, _status = 400): Response {
+  // Always return HTTP 200 so the JS client can read the body reliably.
+  // Callers distinguish success from error via the `success` / `error` fields.
+  return jsonResponse({ success: false, error: message });
 }
 
 function isLocked(lockedUntil: string | null): boolean {
