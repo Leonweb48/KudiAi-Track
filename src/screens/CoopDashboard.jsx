@@ -3052,47 +3052,44 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
           </main>
 
           {/* ── Bottom Navigation ── */}
-          <nav className="flex-none z-40 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 shadow-float">
-            <div className="flex items-stretch h-[60px]">
+          <nav className="flex-none z-40 bg-white dark:bg-[#0f1117] border-t border-slate-100 dark:border-slate-800">
+            <div className="flex items-stretch h-[54px]">
               {MAIN_TABS.map(t => {
                 const active = tab === t.id;
                 return (
                   <button key={t.id} onClick={() => { setTab(t.id); setShowMore(false); }}
-                    className="flex-1 flex flex-col items-center justify-center gap-0.5 relative focus-visible:outline-none">
-                    {active && <span className="absolute top-0 left-1/2 -translate-x-1/2 w-5 h-0.5 rounded-full bg-[#00A651] dark:bg-green-400" />}
-                    <div className={`relative transition-all duration-200 ${active ? "scale-110" : "scale-100"}`}>
-                      <svg viewBox="0 0 24 24" fill="none" className="w-[21px] h-[21px]"
-                        stroke={active ? "#00A651" : "#94a3b8"} strokeWidth={active ? 2.5 : 2} strokeLinecap="round" strokeLinejoin="round">
+                    className="flex-1 flex items-center justify-center relative focus-visible:outline-none">
+                    <div className="relative">
+                      <svg viewBox="0 0 24 24" className="w-6 h-6 transition-all duration-150"
+                        fill={active ? "#00A651" : "none"}
+                        stroke={active ? "#00A651" : "#94a3b8"}
+                        strokeWidth={active ? 2 : 1.75}
+                        strokeLinecap="round" strokeLinejoin="round">
                         <path d={t.icon} />
                       </svg>
                       {t.id === "messages" && chatUnread > 0 && !active && (
-                        <span className="absolute -top-1 -right-1.5 min-w-[16px] h-4 bg-green-500 text-white text-[9px] font-extrabold rounded-full flex items-center justify-center px-0.5 shadow-sm">
+                        <span className="absolute -top-1 -right-2 min-w-[15px] h-[15px] bg-[#00A651] text-white text-[8px] font-extrabold rounded-full flex items-center justify-center px-0.5">
                           {chatUnread > 99 ? "99+" : chatUnread}
                         </span>
                       )}
                     </div>
-                    <span className={`text-[8px] font-bold uppercase tracking-wide leading-none ${active ? "text-[#00A651] dark:text-green-400" : "text-slate-400 dark:text-slate-500"}`}>
-                      {t.label}
-                    </span>
                   </button>
                 );
               })}
-              {/* Hamburger / Menu */}
+              {/* Hamburger — opens Twitter-style left drawer */}
               <button onClick={() => setShowMore(p => !p)}
-                className="flex-1 flex flex-col items-center justify-center gap-0.5 relative focus-visible:outline-none">
-                {isMoreTab && <span className="absolute top-0 left-1/2 -translate-x-1/2 w-5 h-0.5 rounded-full bg-[#00A651] dark:bg-green-400" />}
-                <div className={`relative transition-all duration-200 ${showMore ? "scale-110" : "scale-100"}`}>
-                  <svg viewBox="0 0 24 24" fill="none" className="w-[21px] h-[21px]"
-                    stroke={isMoreTab || showMore ? "#00A651" : "#94a3b8"} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M4 6h16M4 12h16M4 18h16" />
-                  </svg>
-                </div>
-                <span className={`text-[8px] font-bold uppercase tracking-wide leading-none ${isMoreTab || showMore ? "text-[#00A651] dark:text-green-400" : "text-slate-400 dark:text-slate-500"}`}>
-                  Menu
-                </span>
+                className="flex-1 flex items-center justify-center relative focus-visible:outline-none">
+                <svg viewBox="0 0 24 24" className="w-6 h-6 transition-all duration-150"
+                  fill="none"
+                  stroke={isMoreTab || showMore ? "#00A651" : "#94a3b8"}
+                  strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="5" cy="12" r="1.5" fill={isMoreTab || showMore ? "#00A651" : "#94a3b8"} stroke="none" />
+                  <circle cx="12" cy="12" r="1.5" fill={isMoreTab || showMore ? "#00A651" : "#94a3b8"} stroke="none" />
+                  <circle cx="19" cy="12" r="1.5" fill={isMoreTab || showMore ? "#00A651" : "#94a3b8"} stroke="none" />
+                </svg>
               </button>
             </div>
-            <div style={{ height: "env(safe-area-inset-bottom, 0px)" }} className="bg-white dark:bg-slate-900" />
+            <div style={{ height: "env(safe-area-inset-bottom, 0px)" }} className="bg-white dark:bg-[#0f1117]" />
           </nav>
 
           {/* ── Chat message drop-in toasts ── */}
@@ -3110,27 +3107,50 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
             </div>
           )}
 
-          {/* ── Side Drawer (X-app style) ── */}
+          {/* ── Side Drawer (Twitter/X-style) ── */}
           {showMore && (
             <div className="fixed inset-0 z-[60] flex" onClick={() => setShowMore(false)}>
-              <div className="absolute inset-0 bg-black/50 backdrop-blur-[2px]" />
+              <div className="absolute inset-0 bg-black/40" />
               <div
-                className="relative flex flex-col h-full bg-white dark:bg-slate-900 shadow-2xl overflow-hidden"
-                style={{ width: "75%", maxWidth: 280 }}
+                className="relative flex flex-col h-full bg-white dark:bg-[#0f1117] shadow-2xl overflow-hidden"
+                style={{ width: "78%", maxWidth: 300 }}
                 onClick={e => e.stopPropagation()}
               >
-                {/* Org header */}
-                <div className="px-5 pt-12 pb-5 border-b border-slate-100 dark:border-slate-800 flex-shrink-0">
-                  {org.logo_url
-                    ? <img src={org.logo_url} alt="" className="w-12 h-12 rounded-2xl object-cover mb-3 ring-2 ring-green-200" />
-                    : <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl mb-3"
-                        style={{ background: "linear-gradient(145deg,#00A651,#0D2040)" }}>
-                        <span>{ORG_TYPE_ICONS[org.type] || "🏢"}</span>
-                      </div>
-                  }
-                  <p className="font-extrabold text-slate-800 dark:text-white text-sm leading-tight">{org.name}</p>
-                  <p className="text-[10px] text-slate-400 mt-0.5">{org.reg_number || org.type}</p>
+                {/* ── Twitter-style profile header ── */}
+                {/* Banner */}
+                <div className="relative flex-shrink-0" style={{ height: 88 }}>
+                  <div className="absolute inset-0"
+                    style={{ background: "linear-gradient(135deg,#00A651 0%,#065f46 55%,#0D2040 100%)" }} />
+                  {/* Avatar overlapping banner */}
+                  <div className="absolute left-4" style={{ bottom: -22 }}>
+                    {org.logo_url
+                      ? <img src={org.logo_url} alt=""
+                          className="w-14 h-14 rounded-full object-cover border-4 border-white dark:border-[#0f1117]" />
+                      : <div className="w-14 h-14 rounded-full flex items-center justify-center text-2xl border-4 border-white dark:border-[#0f1117]"
+                          style={{ background: "linear-gradient(145deg,#00A651,#0D2040)" }}>
+                          <span>{ORG_TYPE_ICONS[org.type] || "🏢"}</span>
+                        </div>
+                    }
+                  </div>
                 </div>
+
+                {/* Org identity */}
+                <div className="pt-9 pb-4 px-4 flex-shrink-0">
+                  <p className="font-black text-slate-900 dark:text-white text-sm leading-tight truncate">{org.name}</p>
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 font-mono leading-tight">
+                    {org.reg_number ? `@${org.reg_number.toLowerCase().replace(/\s+/g, "")}` : org.type}
+                  </p>
+                  {/* Followers-style member count */}
+                  <div className="flex items-center gap-1 mt-2">
+                    <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 text-slate-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                      <path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300">{org.member_count || 0}</span>
+                    <span className="text-[11px] text-slate-400 dark:text-slate-500">members</span>
+                  </div>
+                </div>
+
+                <div className="mx-4 border-t border-slate-100 dark:border-slate-800 flex-shrink-0" />
 
                 {/* Navigation list */}
                 <div className="flex-1 overflow-y-auto py-2">
@@ -3138,60 +3158,33 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
                     const active = tab === t.id;
                     return (
                       <button key={t.id} onClick={() => navigateTo(t.id)}
-                        className={`w-full flex items-center gap-4 px-5 py-3.5 transition-colors ${active ? "text-[#00A651]" : "text-slate-700 dark:text-slate-200"}`}>
-                        <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 flex-shrink-0"
-                          stroke={active ? "#00A651" : "currentColor"} strokeWidth={active ? 2.5 : 2} strokeLinecap="round" strokeLinejoin="round">
+                        className={`w-full flex items-center gap-4 px-5 py-3.5 transition-colors active:bg-slate-50 dark:active:bg-slate-800/50 ${active ? "text-[#00A651]" : "text-slate-800 dark:text-slate-100"}`}>
+                        <svg viewBox="0 0 24 24" fill="none" className="w-[22px] h-[22px] flex-shrink-0"
+                          stroke="currentColor" strokeWidth={active ? 2.5 : 2} strokeLinecap="round" strokeLinejoin="round">
                           <path d={t.icon} />
                         </svg>
-                        <span className={`text-sm ${active ? "font-extrabold" : "font-semibold"}`}>{t.label}</span>
-                        {active && <div className="ml-auto w-1 h-5 bg-[#00A651] rounded-full" />}
+                        <span className={`text-[15px] leading-none ${active ? "font-black" : "font-semibold"}`}>{t.label}</span>
                       </button>
                     );
                   })}
-                  <div className="mx-5 my-2 border-t border-slate-100 dark:border-slate-800" />
+                  <div className="mx-5 my-1.5 border-t border-slate-100 dark:border-slate-800" />
                   {visibleMoreTabs.map(t => {
                     const active = tab === t.id;
                     return (
                       <button key={t.id} onClick={() => navigateTo(t.id)}
-                        className={`w-full flex items-center gap-4 px-5 py-3.5 transition-colors ${active ? "text-[#00A651]" : "text-slate-700 dark:text-slate-200"}`}>
-                        <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
-                          style={{ background: (t.color || "#64748b") + "18" }}>
-                          <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                            style={{ stroke: active ? "#00A651" : (t.color || "#64748b") }}>
-                            {t.icon.split("|").map((p, i) => <path key={i} d={p} />)}
-                          </svg>
-                        </div>
-                        <span className={`text-sm ${active ? "font-extrabold" : "font-semibold"}`}>{t.label}</span>
-                        {active && <div className="ml-auto w-1 h-5 bg-[#00A651] rounded-full" />}
+                        className={`w-full flex items-center gap-4 px-5 py-3.5 transition-colors active:bg-slate-50 dark:active:bg-slate-800/50 ${active ? "text-[#00A651]" : "text-slate-800 dark:text-slate-100"}`}>
+                        <svg viewBox="0 0 24 24" fill="none" className="w-[22px] h-[22px] flex-shrink-0"
+                          stroke="currentColor" strokeWidth={active ? 2.5 : 2} strokeLinecap="round" strokeLinejoin="round">
+                          {t.icon.split("|").map((p, i) => <path key={i} d={p} />)}
+                        </svg>
+                        <span className={`text-[15px] leading-none ${active ? "font-black" : "font-semibold"}`}>{t.label}</span>
                       </button>
                     );
                   })}
                 </div>
 
-                {/* Dark mode toggle */}
-                <div className="px-5 py-3 border-t border-slate-100 dark:border-slate-800 flex-shrink-0 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
-                      style={{ background: isDark ? "#0D204022" : "#f0fdf4" }}>
-                      <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4"
-                        stroke={isDark ? "#00A651" : "#0D2040"} strokeWidth={2} strokeLinecap="round">
-                        {isDark
-                          ? <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
-                          : <><circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /></>
-                        }
-                      </svg>
-                    </div>
-                    <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">{isDark ? "Dark Mode" : "Light Mode"}</span>
-                  </div>
-                  <button onClick={toggleDark}
-                    className="w-11 h-6 rounded-full transition-all relative flex-shrink-0"
-                    style={{ background: isDark ? "#00A651" : "#e2e8f0" }}>
-                    <div className={`w-4.5 h-4.5 rounded-full bg-white shadow-md transition-transform absolute top-[3px] ${isDark ? "translate-x-[22px]" : "translate-x-[3px]"}`} />
-                  </button>
-                </div>
-
-                {/* Sign out */}
-                <div className="px-5 py-4 border-t border-slate-100 dark:border-slate-800 flex-shrink-0">
+                {/* Bottom actions */}
+                <div className="border-t border-slate-100 dark:border-slate-800 flex-shrink-0 px-5 py-3 flex items-center justify-between">
                   <button onClick={onBack}
                     className="flex items-center gap-3 text-slate-500 dark:text-slate-400 text-sm font-semibold active:opacity-70 transition-opacity">
                     <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
@@ -3199,7 +3192,13 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
                     </svg>
                     Sign Out
                   </button>
+                  <button onClick={toggleDark}
+                    className="w-10 h-[22px] rounded-full relative flex-shrink-0 transition-colors"
+                    style={{ background: isDark ? "#00A651" : "#e2e8f0" }}>
+                    <div className={`w-[16px] h-[16px] rounded-full bg-white shadow transition-transform absolute top-[3px] ${isDark ? "translate-x-[19px]" : "translate-x-[3px]"}`} />
+                  </button>
                 </div>
+                <div style={{ height: "env(safe-area-inset-bottom, 8px)" }} />
               </div>
             </div>
           )}
@@ -3224,33 +3223,61 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
     );
   }
 
-  // ─── ADMIN / NON-ORG PORTAL LAYOUT (horizontal scroll tabs) ───
+  // ─── ADMIN / NON-ORG PORTAL LAYOUT (Twitter-style text tabs) ───
   return (
-    <div className="fixed inset-0 z-[65] bg-slate-50 dark:bg-slate-900 flex justify-center">
+    <div className="fixed inset-0 z-[65] bg-white dark:bg-[#0f1117] flex justify-center">
       <div className="w-full max-w-md flex flex-col h-full">
-        <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 py-3 flex items-center gap-3">
-          <button onClick={onBack} className="w-8 h-8 flex items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
-            <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+
+        {/* ── Twitter-style profile header ── */}
+        {/* Banner */}
+        <div className="relative flex-shrink-0" style={{ height: 80 }}>
+          <div className="absolute inset-0"
+            style={{ background: "linear-gradient(135deg,#00A651 0%,#065f46 55%,#0D2040 100%)" }} />
+          {/* Back button */}
+          <button onClick={onBack}
+            className="absolute left-3 top-3 w-8 h-8 flex items-center justify-center rounded-full bg-black/30 text-white active:bg-black/50 transition">
+            <svg viewBox="0 0 24 24" fill="none" className="w-4.5 h-4.5" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
               <path d="M19 12H5M12 5l-7 7 7 7" />
             </svg>
           </button>
-          <span className="text-xl">{ORG_TYPE_ICONS[org.type] || "🏢"}</span>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-extrabold text-slate-800 dark:text-white truncate">{org.name}</p>
-            <p className="text-[10px] text-slate-400 font-mono">{org.reg_number}</p>
+          {loading && (
+            <div className="absolute right-4 top-4 w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+          )}
+          {/* Avatar overlapping banner */}
+          <div className="absolute left-4" style={{ bottom: -20 }}>
+            <div className="w-12 h-12 rounded-full flex items-center justify-center text-xl border-3 border-white dark:border-[#0f1117]"
+              style={{ background: "linear-gradient(145deg,#00A651,#0D2040)", borderWidth: 3 }}>
+              <span>{ORG_TYPE_ICONS[org.type] || "🏢"}</span>
+            </div>
           </div>
-          {loading && <div className="w-4 h-4 border-2 border-green-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />}
         </div>
 
-        <div className="bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 overflow-x-auto">
+        {/* Org identity */}
+        <div className="px-4 pt-7 pb-3 flex-shrink-0 border-b border-slate-100 dark:border-slate-800">
+          <p className="text-base font-black text-slate-900 dark:text-white leading-tight truncate">{org.name}</p>
+          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 font-mono">
+            {org.reg_number ? `@${org.reg_number.toLowerCase().replace(/\s+/g, "")}` : org.type}
+          </p>
+          <div className="flex items-center gap-1 mt-1.5">
+            <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 text-slate-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+              <path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300">{org.member_count || 0}</span>
+            <span className="text-[11px] text-slate-400 dark:text-slate-500">members</span>
+          </div>
+        </div>
+
+        {/* ── Twitter-style text-only tab bar ── */}
+        <div className="bg-white dark:bg-[#0f1117] border-b border-slate-100 dark:border-slate-800 overflow-x-auto flex-shrink-0">
           <div className="flex min-w-max">
             {TABS.filter(t => !t.orgOnly).map(t => (
               <button key={t.id} onClick={() => setTab(t.id)}
-                className={`flex flex-col items-center gap-0.5 px-3.5 py-2.5 border-b-2 transition-colors ${tab === t.id ? "border-green-600 text-green-600" : "border-transparent text-slate-400 dark:text-slate-500"}`}>
-                <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 flex-shrink-0" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-                  {t.icon.split("|").map((p, i) => <path key={i} d={p} />)}
-                </svg>
-                <span className="text-[9px] font-bold whitespace-nowrap">{t.label}</span>
+                className={`px-4 py-3.5 border-b-2 transition-colors whitespace-nowrap text-sm leading-none ${
+                  tab === t.id
+                    ? "border-[#00A651] text-slate-900 dark:text-white font-black"
+                    : "border-transparent text-slate-400 dark:text-slate-500 font-semibold"
+                }`}>
+                {t.label}
               </button>
             ))}
           </div>
