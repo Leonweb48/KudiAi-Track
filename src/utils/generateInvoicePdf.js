@@ -194,8 +194,6 @@ export async function exportInvoicePdf(
   const cX    = [ML, ML+cSN, ML+cSN+cDesc, ML+cSN+cDesc+cQty, ML+cSN+cDesc+cQty+cUnit];
 
   // ── Per-page helpers ─────────────────────────────────────────────────────
-  let pageCount = 1;
-
   function drawTopStrips() {
     doc.setFillColor(...NAVY);
     doc.rect(0, 0, W, 4, "F");
@@ -275,7 +273,6 @@ export async function exportInvoicePdf(
 
   function newPage(inTable) {
     doc.addPage();
-    pageCount++;
     drawTopStrips();
     drawWatermark();
     let ny = 8;
