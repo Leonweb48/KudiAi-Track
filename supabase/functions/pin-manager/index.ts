@@ -1,6 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import bcrypt from "npm:bcryptjs@2.4.3";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,38 +11,73 @@ const corsHeaders = {
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_MINUTES = 30;
 const MAX_LOCKOUTS = 3;
-const BCRYPT_ROUNDS = 10;
 const FRESH_SESSION_SECONDS = 600;
+
+// ── PIN hashing via Web Crypto (PBKDF2) — no external deps ───────────────────
+async function hashPin(pin: string): Promise<string> {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(pin),
+    "PBKDF2",
+    false,
+    ["deriveBits"],
+  );
+  const derived = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", salt, iterations: 100_000, hash: "SHA-256" },
+    key,
+    256,
+  );
+  const toB64 = (b: Uint8Array) => btoa(String.fromCharCode(...b));
+  return `pbkdf2$${toB64(salt)}$${toB64(new Uint8Array(derived))}`;
+}
+
+async function verifyPinHash(pin: string, stored: string): Promise<boolean> {
+  const parts = stored.split("$");
+  if (parts.length !== 3 || parts[0] !== "pbkdf2") return false;
+  const salt = Uint8Array.from(atob(parts[1]), c => c.charCodeAt(0));
+  const expectedBytes = Uint8Array.from(atob(parts[2]), c => c.charCodeAt(0));
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(pin),
+    "PBKDF2",
+    false,
+    ["deriveBits"],
+  );
+  const derived = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", salt, iterations: 100_000, hash: "SHA-256" },
+    key,
+    256,
+  );
+  const actualBytes = new Uint8Array(derived);
+  if (actualBytes.length !== expectedBytes.length) return false;
+  // Constant-time comparison
+  let diff = 0;
+  for (let i = 0; i < actualBytes.length; i++) {
+    diff |= actualBytes[i] ^ expectedBytes[i];
+  }
+  return diff === 0;
+}
 
 // ── Weak PIN detection ─────────────────────────────────────────────────────────
 const WEAK_6_DIGIT_PINS = new Set([
-  // All same digit
   "000000","111111","222222","333333","444444",
   "555555","666666","777777","888888","999999",
-  // Sequential ascending
   "123456","234567","345678","456789",
-  // Sequential descending
   "987654","876543","765432","654321",
-  // Hardcoded common
   "112233","123123","121212","101010","102030",
 ]);
 
 const WEAK_4_DIGIT_PINS = new Set([
-  // All same digit
   "0000","1111","2222","3333","4444",
   "5555","6666","7777","8888","9999",
-  // Sequential ascending
   "1234","2345","3456","4567","5678","6789",
-  // Sequential descending
   "9876","8765","7654","6543","5432","4321",
-  // Hardcoded common
   "1212","1122","1010","2580","0852",
 ]);
 
 function isWeakPin(pin: string, digits: 4 | 6): boolean {
-  return digits === 6
-    ? WEAK_6_DIGIT_PINS.has(pin)
-    : WEAK_4_DIGIT_PINS.has(pin);
+  return digits === 6 ? WEAK_6_DIGIT_PINS.has(pin) : WEAK_4_DIGIT_PINS.has(pin);
 }
 
 function validatePin(pin: unknown, digits: 4 | 6): string | null {
@@ -62,9 +96,8 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-function errorResponse(message: string, _status = 400): Response {
-  // Always return HTTP 200 so the JS client can read the body reliably.
-  // Callers distinguish success from error via the `success` / `error` fields.
+function errorResponse(message: string): Response {
+  // Always HTTP 200 — client reads success/error from body
   return jsonResponse({ success: false, error: message });
 }
 
@@ -87,11 +120,10 @@ serve(async (req: Request) => {
     // ── Auth ─────────────────────────────────────────────────────────────────
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
-      return errorResponse("Missing or invalid Authorization header", 401);
+      return errorResponse("Missing or invalid Authorization header");
     }
     const token = authHeader.replace("Bearer ", "");
 
-    // Anon client — used only to resolve the user from their JWT
     const anonClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
@@ -99,10 +131,9 @@ serve(async (req: Request) => {
 
     const { data: { user }, error: userError } = await anonClient.auth.getUser(token);
     if (userError || !user) {
-      return errorResponse("Unauthorized", 401);
+      return errorResponse("Unauthorized");
     }
 
-    // Service role client — used for all profile reads/writes
     const adminClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
@@ -126,7 +157,7 @@ serve(async (req: Request) => {
       .single();
 
     if (profileError || !profile) {
-      return errorResponse("Profile not found", 404);
+      return errorResponse(`Profile not found: ${profileError?.message ?? "no row"}`);
     }
 
     // ── Helper: update profile columns ────────────────────────────────────────
@@ -135,7 +166,7 @@ serve(async (req: Request) => {
         .from("profiles")
         .update(updates)
         .eq("id", user!.id);
-      if (updateError) throw new Error(`Profile update failed: ${updateError.message}`);
+      if (updateError) throw new Error(`DB update failed: ${updateError.message}`);
     }
 
     // ── check_status ──────────────────────────────────────────────────────────
@@ -166,7 +197,7 @@ serve(async (req: Request) => {
     if (action === "setup_app_pin") {
       const err = validatePin(params.pin, 6);
       if (err) return errorResponse(err);
-      const hash = await bcrypt.hash(params.pin as string, BCRYPT_ROUNDS);
+      const hash = await hashPin(params.pin as string);
       await updateProfile({
         app_pin_hash: hash,
         app_pin_attempts: 0,
@@ -180,7 +211,7 @@ serve(async (req: Request) => {
     if (action === "setup_txn_pin") {
       const err = validatePin(params.pin, 4);
       if (err) return errorResponse(err);
-      const hash = await bcrypt.hash(params.pin as string, BCRYPT_ROUNDS);
+      const hash = await hashPin(params.pin as string);
       await updateProfile({
         txn_pin_hash: hash,
         txn_pin_attempts: 0,
@@ -195,7 +226,6 @@ serve(async (req: Request) => {
       if (!profile.app_pin_hash) return errorResponse("App PIN not set");
       if (typeof params.pin !== "string") return errorResponse("PIN required");
 
-      // Check lockout
       if (isLocked(profile.app_pin_locked_until)) {
         return jsonResponse({
           success: false,
@@ -206,14 +236,13 @@ serve(async (req: Request) => {
         });
       }
 
-      const correct = await bcrypt.compare(params.pin, profile.app_pin_hash);
+      const correct = await verifyPinHash(params.pin, profile.app_pin_hash);
 
       if (correct) {
         await updateProfile({ app_pin_attempts: 0, app_pin_locked_until: null });
         return jsonResponse({ success: true });
       }
 
-      // Wrong PIN
       const newAttempts = profile.app_pin_attempts + 1;
       if (newAttempts >= MAX_ATTEMPTS) {
         const lockedUntil = new Date(Date.now() + LOCKOUT_MINUTES * 60 * 1000).toISOString();
@@ -246,7 +275,6 @@ serve(async (req: Request) => {
       if (!profile.txn_pin_hash) return errorResponse("Transaction PIN not set");
       if (typeof params.pin !== "string") return errorResponse("PIN required");
 
-      // Check lockout
       if (isLocked(profile.txn_pin_locked_until)) {
         return jsonResponse({
           success: false,
@@ -257,14 +285,13 @@ serve(async (req: Request) => {
         });
       }
 
-      const correct = await bcrypt.compare(params.pin, profile.txn_pin_hash);
+      const correct = await verifyPinHash(params.pin, profile.txn_pin_hash);
 
       if (correct) {
         await updateProfile({ txn_pin_attempts: 0, txn_pin_locked_until: null });
         return jsonResponse({ success: true });
       }
 
-      // Wrong PIN
       const newAttempts = profile.txn_pin_attempts + 1;
       if (newAttempts >= MAX_ATTEMPTS) {
         const lockedUntil = new Date(Date.now() + LOCKOUT_MINUTES * 60 * 1000).toISOString();
@@ -299,10 +326,10 @@ serve(async (req: Request) => {
       const err = validatePin(params.new_pin, 6);
       if (err) return errorResponse(err);
 
-      const correct = await bcrypt.compare(params.current_pin, profile.app_pin_hash);
+      const correct = await verifyPinHash(params.current_pin, profile.app_pin_hash);
       if (!correct) return jsonResponse({ success: false, error: "Current PIN is incorrect" });
 
-      const hash = await bcrypt.hash(params.new_pin as string, BCRYPT_ROUNDS);
+      const hash = await hashPin(params.new_pin as string);
       await updateProfile({
         app_pin_hash: hash,
         app_pin_attempts: 0,
@@ -319,10 +346,10 @@ serve(async (req: Request) => {
       const err = validatePin(params.new_pin, 4);
       if (err) return errorResponse(err);
 
-      const correct = await bcrypt.compare(params.current_pin, profile.txn_pin_hash);
+      const correct = await verifyPinHash(params.current_pin, profile.txn_pin_hash);
       if (!correct) return jsonResponse({ success: false, error: "Current PIN is incorrect" });
 
-      const hash = await bcrypt.hash(params.new_pin as string, BCRYPT_ROUNDS);
+      const hash = await hashPin(params.new_pin as string);
       await updateProfile({
         txn_pin_hash: hash,
         txn_pin_attempts: 0,
@@ -338,18 +365,14 @@ serve(async (req: Request) => {
       const err = validatePin(params.new_pin, 6);
       if (err) return errorResponse(err);
 
-      // Fresh session check — last_sign_in_at must be within FRESH_SESSION_SECONDS
       const lastSignIn = user.last_sign_in_at;
-      if (!lastSignIn) return errorResponse("Cannot verify session freshness", 403);
+      if (!lastSignIn) return errorResponse("Cannot verify session freshness");
       const ageSeconds = (Date.now() - new Date(lastSignIn).getTime()) / 1000;
       if (ageSeconds > FRESH_SESSION_SECONDS) {
-        return errorResponse(
-          "Session is not fresh enough — please sign in again to reset your PIN",
-          403,
-        );
+        return errorResponse("Session is not fresh enough — please sign in again to reset your PIN");
       }
 
-      const hash = await bcrypt.hash(params.new_pin as string, BCRYPT_ROUNDS);
+      const hash = await hashPin(params.new_pin as string);
       await updateProfile({
         app_pin_hash: hash,
         app_pin_attempts: 0,
@@ -364,18 +387,14 @@ serve(async (req: Request) => {
       const err = validatePin(params.new_pin, 4);
       if (err) return errorResponse(err);
 
-      // Fresh session check
       const lastSignIn = user.last_sign_in_at;
-      if (!lastSignIn) return errorResponse("Cannot verify session freshness", 403);
+      if (!lastSignIn) return errorResponse("Cannot verify session freshness");
       const ageSeconds = (Date.now() - new Date(lastSignIn).getTime()) / 1000;
       if (ageSeconds > FRESH_SESSION_SECONDS) {
-        return errorResponse(
-          "Session is not fresh enough — please sign in again to reset your PIN",
-          403,
-        );
+        return errorResponse("Session is not fresh enough — please sign in again to reset your PIN");
       }
 
-      const hash = await bcrypt.hash(params.new_pin as string, BCRYPT_ROUNDS);
+      const hash = await hashPin(params.new_pin as string);
       await updateProfile({
         txn_pin_hash: hash,
         txn_pin_attempts: 0,
@@ -408,10 +427,9 @@ serve(async (req: Request) => {
       return jsonResponse({ success: true });
     }
 
-    // ── Unknown action ────────────────────────────────────────────────────────
     return errorResponse(`Unknown action: ${action}`);
   } catch (err) {
     console.error("pin-manager error:", err);
-    return errorResponse("Internal server error", 500);
+    return jsonResponse({ success: false, error: `Internal error: ${(err as Error).message}` });
   }
 });

@@ -203,7 +203,11 @@ export function usePinLock(userId, session) {
   }, []);
 
   const updateSettings = useCallback(async (obj) => {
-    const result = await invoke("update_settings", obj);
+    // Convert camelCase keys to snake_case for the edge function
+    const snake = {};
+    if (typeof obj.autoLockTimeout === "number") snake.auto_lock_timeout = obj.autoLockTimeout;
+    if (typeof obj.biometricEnabled === "boolean") snake.biometric_enabled = obj.biometricEnabled;
+    const result = await invoke("update_settings", snake);
     await refetch();
     return result;
   }, [refetch]);
