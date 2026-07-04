@@ -13,6 +13,7 @@ import { fmt, today } from "../utils/helpers";
 import { useT } from "../contexts/LanguageContext";
 import { getLang, speakConfirmation } from "../utils/i18n";
 import { sendEmailTrigger } from "../utils/emailTrigger";
+import TransactionPinModal from "../components/TransactionPinModal";
 
 const BLANK = {
   full_name: "", contribution_frequency: "daily", contribution_amount: "",
@@ -240,6 +241,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
   const [withdrawalRequests, setWithdrawalRequests] = useState([]);
   const [processingId,       setProcessingId]       = useState(null);
+  const [txnPin,             setTxnPin]             = useState(null);
 
   // Ajo Groups management
   const [showGroups,     setShowGroups]     = useState(false);
@@ -867,7 +869,13 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                   </div>
                   <div className="flex gap-2 mt-3">
                     <button
-                      onClick={() => handleApproveRequest(req)}
+                      onClick={() => setTxnPin({
+                        title: "Approve Withdrawal",
+                        amount: Math.round((req.net_amount || 0) * 100),
+                        recipient: req.aso_clients?.full_name,
+                        description: "Savings withdrawal approval",
+                        onApprove: () => { setTxnPin(null); handleApproveRequest(req); },
+                      })}
                       disabled={isProc}
                       className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold text-xs transition active:scale-[0.99] disabled:opacity-50">
                       {isProc ? "…" : "Approve"}
@@ -1834,6 +1842,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           </div>
         </div>
       )}
+      {txnPin && <TransactionPinModal {...txnPin} onCancel={() => setTxnPin(null)} />}
     </div>
   );
 }

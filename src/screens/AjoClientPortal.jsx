@@ -5,6 +5,7 @@ import { peyflex } from "../utils/peyflex";
 import { fmt } from "../utils/helpers";
 import AppLogo from "../components/AppLogo";
 import { AjoTxReceipt } from "../components/shared/Receipt";
+import TransactionPinModal from "../components/TransactionPinModal";
 
 async function ajoFn(action, body = {}) {
   const { data, error } = await supabase.functions.invoke("ajo-portal", {
@@ -27,6 +28,7 @@ function PayContributionModal({ client, onClose, onSuccess }) {
   const [status,     setStatus]    = useState("idle"); // idle | loading | awaiting | verifying | done | error
   const [message,    setMessage]   = useState("");
   const [pendingRef, setPendingRef] = useState(null);
+  const [txnPin,     setTxnPin]    = useState(null);
   const popupCleanup = useRef(null);
   useEffect(() => () => popupCleanup.current?.(), []);
 
@@ -131,7 +133,15 @@ function PayContributionModal({ client, onClose, onSuccess }) {
             )}
 
             <button
-              onClick={handlePay}
+              onClick={() => {
+                if (!client?.contribution_amount) { setMessage("No contribution amount set by your savings agent."); return; }
+                setTxnPin({
+                  title: "Confirm Contribution",
+                  amount: Math.round(client.contribution_amount * 100),
+                  description: `${client.contribution_frequency || ""} contribution`.trim() || "Savings contribution",
+                  onApprove: () => { setTxnPin(null); handlePay(); },
+                });
+              }}
               disabled={status === "loading" || status === "awaiting" || status === "verifying"}
               className="w-full py-4 bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2 shadow-md">
               {status === "loading"
@@ -143,6 +153,7 @@ function PayContributionModal({ client, onClose, onSuccess }) {
               className="w-full mt-3 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition text-center py-2">
               Cancel
             </button>
+            {txnPin && <TransactionPinModal {...txnPin} onCancel={() => setTxnPin(null)} />}
           </>
         )}
       </div>
@@ -243,6 +254,7 @@ function BillSheet({ cat, onClose }) {
   });
   const [detectedNet, setDetectedNet] = useState(null);
   const [loading,     setLoading]     = useState(false);
+  const [txnPin,      setTxnPin]      = useState(null);
   const [result,      setResult]      = useState(null);
   const [cablePlans,  setCablePlans]  = useState([]);
   const [dataPlans,   setDataPlans]   = useState([]);
@@ -452,7 +464,15 @@ function BillSheet({ cat, onClose }) {
             </>
           )}
 
-          <button onClick={handlePay} disabled={loading}
+          <button onClick={() => {
+            const amt = parseFloat(form.amount) || 0;
+            setTxnPin({
+              title: `Pay Bill — ${cat.label}`,
+              amount: amt > 0 ? Math.round(amt * 100) : undefined,
+              description: cat.label,
+              onApprove: () => { setTxnPin(null); handlePay(); },
+            });
+          }} disabled={loading}
             className="w-full py-3.5 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] disabled:opacity-50 shadow-sm"
             style={{ background: loading ? "#a78bfa" : cat.color }}>
             {loading ? "Processing…" : `Pay — ${cat.label}`}
@@ -460,6 +480,7 @@ function BillSheet({ cat, onClose }) {
           <p className="text-[10px] text-center text-slate-400">Powered by VTpass · via KudiTrack</p>
         </div>
       </div>
+      {txnPin && <TransactionPinModal {...txnPin} onCancel={() => setTxnPin(null)} />}
     </div>
   );
 }
@@ -671,6 +692,7 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
   const [amount,  setAmount]  = useState("");
   const [saving,  setSaving]  = useState(false);
   const [error,   setError]   = useState("");
+  const [txnPin,  setTxnPin]  = useState(null);
   const [done,    setDone]    = useState(false);
 
   const isFirst  = (client.total_withdrawn || 0) === 0;
@@ -771,7 +793,17 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
             {error && <p className="text-xs text-red-500 mb-3">{error}</p>}
 
             <button
-              onClick={handleSubmit}
+              onClick={() => {
+                if (!amtNum || amtNum <= 0) { setError("Enter a valid amount"); return; }
+                if (amtNum > (client.current_balance || 0)) { setError("Amount exceeds your balance"); return; }
+                if (netAmt <= 0) { setError("Amount too small after fee deduction"); return; }
+                setTxnPin({
+                  title: "Request Withdrawal",
+                  amount: Math.round(netAmt * 100),
+                  description: "Savings withdrawal request",
+                  onApprove: () => { setTxnPin(null); handleSubmit(); },
+                });
+              }}
               disabled={saving || !amtNum || amtNum <= 0}
               className="w-full py-3.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] disabled:opacity-50 shadow-sm">
               {saving ? "Submitting…" : "Submit Request"}
@@ -779,6 +811,7 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
           </>
         )}
       </div>
+      {txnPin && <TransactionPinModal {...txnPin} onCancel={() => setTxnPin(null)} />}
     </div>
   );
 }

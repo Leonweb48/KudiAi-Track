@@ -9,6 +9,7 @@ import Icon from "../components/Icon";
 import Modal from "../components/shared/Modal";
 import { useBiometricLock } from "../hooks/useBiometricLock";
 import { useNotifications } from "../hooks/useNotifications";
+import TransactionPinModal from "../components/TransactionPinModal";
 import NotificationCenter, { NotificationBell } from "../components/NotificationCenter";
 import { AjoTxReceipt } from "../components/shared/Receipt";
 import AIChatWidget from "../components/AIChatWidget";
@@ -337,6 +338,7 @@ function PayContributionModal({ client, onClose, onSuccess }) {
   const [pendingRef, setPendingRef] = useState(null);
   const [paidAmt,    setPaidAmt]   = useState(0);
   const [customAmt,  setCustomAmt] = useState(String(client?.contribution_amount || ""));
+  const [txnPin,     setTxnPin]    = useState(null);
   const popupCleanup = useRef(null);
   useEffect(() => () => popupCleanup.current?.(), []);
 
@@ -511,7 +513,16 @@ function PayContributionModal({ client, onClose, onSuccess }) {
         )}
 
         <button
-          onClick={handlePay}
+          onClick={() => {
+            const amt = parseFloat(customAmt);
+            if (!amt || amt <= 0) { setMessage("Please enter a valid amount."); return; }
+            setTxnPin({
+              title: "Confirm Contribution",
+              amount: Math.round(amt * 100),
+              description: "Savings contribution via Paystack",
+              onApprove: () => { setTxnPin(null); handlePay(); },
+            });
+          }}
           disabled={status === "loading" || status === "awaiting" || status === "verifying"}
           className="w-full py-4 bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2 shadow-md">
           {status === "loading"
@@ -523,6 +534,7 @@ function PayContributionModal({ client, onClose, onSuccess }) {
           className="w-full mt-3 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition text-center py-2">
           Cancel
         </button>
+        {txnPin && <TransactionPinModal {...txnPin} onCancel={() => setTxnPin(null)} />}
       </div>
     </div>
   );
@@ -737,6 +749,7 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
   const [saving,  setSaving]  = useState(false);
   const [error,   setError]   = useState("");
   const [done,    setDone]    = useState(false);
+  const [txnPin,  setTxnPin]  = useState(null);
 
   const isFirst  = (client.total_withdrawn || 0) === 0;
   const regFee   = client.registration_charge || 0;
@@ -836,7 +849,17 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
             {error && <p className="text-xs text-red-500 mb-3">{error}</p>}
 
             <button
-              onClick={handleSubmit}
+              onClick={() => {
+                if (!amtNum || amtNum <= 0) { setError("Enter a valid amount"); return; }
+                if (amtNum > (client.current_balance || 0)) { setError("Amount exceeds your balance"); return; }
+                if (netAmt <= 0) { setError("Amount too small after fee deduction"); return; }
+                setTxnPin({
+                  title: "Request Withdrawal",
+                  amount: Math.round(netAmt * 100),
+                  description: "Savings withdrawal request",
+                  onApprove: () => { setTxnPin(null); handleSubmit(); },
+                });
+              }}
               disabled={saving || !amtNum || amtNum <= 0}
               className="w-full py-3.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] disabled:opacity-50 shadow-sm">
               {saving ? "Submitting…" : "Submit Request"}
@@ -844,6 +867,7 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
           </>
         )}
       </div>
+      {txnPin && <TransactionPinModal {...txnPin} onCancel={() => setTxnPin(null)} />}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import Icon   from "../components/Icon";
 import Modal  from "../components/shared/Modal";
+import TransactionPinModal from "../components/TransactionPinModal";
 import { canDo, upgradeLabel, planAvailableText } from "../utils/plans";
 import Field  from "../components/shared/Field";
 import Badge  from "../components/shared/Badge";
@@ -53,6 +54,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
   const t = useT();
   const [showAdd,      setShowAdd]      = useState(false);
   const [repaying,     setRepaying]     = useState(null);
+  const [txnPin,       setTxnPin]       = useState(null);
   const [repayAmt,     setRepayAmt]     = useState("");
   const [repayMethod,  setRepayMethod]  = useState("cash");
   const [repayNote,    setRepayNote]    = useState("");
@@ -585,9 +587,18 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
           <button
             onClick={() => {
               if (!repayAmt) return;
-              repayCredit(repaying.id, parseFloat(repayAmt), repayMethod, repayNote);
-              speakConfirmation("creditSaved", getLang());
-              setRepaying(null); setRepayAmt(""); setRepayMethod("cash"); setRepayNote("");
+              setTxnPin({
+                title: "Confirm Payment",
+                amount: Math.round(parseFloat(repayAmt) * 100),
+                recipient: repaying.customer_name || undefined,
+                description: `Credit repayment · ${repayMethod}`,
+                onApprove: () => {
+                  setTxnPin(null);
+                  repayCredit(repaying.id, parseFloat(repayAmt), repayMethod, repayNote);
+                  speakConfirmation("creditSaved", getLang());
+                  setRepaying(null); setRepayAmt(""); setRepayMethod("cash"); setRepayNote("");
+                },
+              });
             }}
             className="w-full py-3.5 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] shadow-sm">
             Confirm Payment
@@ -762,6 +773,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
       {profile_ && (
         <ClientProfile record={profile_} type="credit" onSave={updateCredit} onClose={() => setProfile_(null)} />
       )}
+      {txnPin && <TransactionPinModal {...txnPin} onCancel={() => setTxnPin(null)} />}
     </div>
   );
 }

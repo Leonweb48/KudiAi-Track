@@ -9,6 +9,7 @@ import { CoopSavingReceipt, CoopBulkWithdrawalReceipt, CoopWithdrawalRequestRece
 import { CoopNotificationBell, useChatUnread, ChatToast } from "../components/shared/CoopNotifications";
 import AIChatWidget from "../components/AIChatWidget";
 import { buildCoopOrgContext } from "../utils/buildContext";
+import TransactionPinModal from "../components/TransactionPinModal";
 
 const coopFn = async (action, body = {}) => {
   const r = await supabase.functions.invoke("coop-portal", { body: { action, ...body } });
@@ -823,6 +824,7 @@ function FinanceTab({ org, members, programs, onRefresh }) {
   const [viewSaving,   setViewSaving]   = useState(null);
   const [viewWd,       setViewWd]       = useState(null);
   const [viewReq,      setViewReq]      = useState(null);
+  const [txnPin,       setTxnPin]       = useState(null);
 
   const set  = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
   const setW = k => e => setWdForm(p => ({ ...p, [k]: e.target.value }));
@@ -1058,7 +1060,13 @@ function FinanceTab({ org, members, programs, onRefresh }) {
           </div>
           <div className="flex gap-2 mt-4">
             <button onClick={() => { setShowRecord(false); setError(""); }} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Cancel</button>
-            <button onClick={handleRecord} disabled={saving} className="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">{saving ? "Saving…" : "Record"}</button>
+            <button onClick={() => setTxnPin({
+              title: "Confirm Contribution Record",
+              amount: Math.round(parseFloat(form.amount || 0) * 100),
+              recipient: activeMembers.find(m => m.id === form.member_id)?.full_name,
+              description: `${form.type === "withdrawal" ? "Withdrawal" : "Deposit"} · ${form.payment_method}`,
+              onApprove: () => { setTxnPin(null); handleRecord(); },
+            })} disabled={saving} className="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">{saving ? "Saving…" : "Record"}</button>
           </div>
         </ModalWrap>
       )}
@@ -1107,7 +1115,12 @@ function FinanceTab({ org, members, programs, onRefresh }) {
           </div>
           <div className="flex gap-2 mt-4">
             <button onClick={() => { setShowWd(false); setError(""); }} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Cancel</button>
-            <button onClick={handleWithdraw} disabled={saving} className="flex-1 py-3 bg-red-500 text-white rounded-xl font-bold text-sm disabled:opacity-50">{saving ? "Processing…" : "Proceed"}</button>
+            <button onClick={() => setTxnPin({
+              title: "Confirm Bulk Withdrawal",
+              amount: Math.round(parseFloat(wdForm.per_member_amount || 0) * 100),
+              description: wdForm.purpose || "Bulk withdrawal from members",
+              onApprove: () => { setTxnPin(null); handleWithdraw(); },
+            })} disabled={saving} className="flex-1 py-3 bg-red-500 text-white rounded-xl font-bold text-sm disabled:opacity-50">{saving ? "Processing…" : "Proceed"}</button>
           </div>
         </ModalWrap>
       )}
@@ -1115,6 +1128,7 @@ function FinanceTab({ org, members, programs, onRefresh }) {
       {viewSaving && <CoopSavingReceipt saving={viewSaving} orgName={org.name} onClose={() => setViewSaving(null)} />}
       {viewWd && <CoopBulkWithdrawalReceipt withdrawal={viewWd} orgName={org.name} onClose={() => setViewWd(null)} />}
       {viewReq && <CoopWithdrawalRequestReceipt request={viewReq} orgName={org.name} onClose={() => setViewReq(null)} />}
+      {txnPin && <TransactionPinModal {...txnPin} onCancel={() => setTxnPin(null)} />}
     </div>
   );
 }
@@ -1147,6 +1161,7 @@ function LoansTab({ org, members, onRefresh }) {
   });
   const [saving, setSaving] = useState(false);
   const [error,  setError]  = useState("");
+  const [txnPin, setTxnPin] = useState(null);
 
   const load = useCallback(() => {
     coopFn("get-loans", { org_id: org.id })
@@ -1412,7 +1427,13 @@ function LoansTab({ org, members, onRefresh }) {
               <p className="text-[11px] text-blue-600 dark:text-blue-400 mb-3">
                 Disbursing will deduct <strong>{fmt(selected.amount_approved || selected.amount_requested)}</strong> from the org wallet and credit it to the member's savings account.
               </p>
-              <button onClick={() => handleLoanAction(selected, "disbursed", { repayment_months: selected.repayment_months })} disabled={saving}
+              <button onClick={() => setTxnPin({
+                title: "Disburse Loan",
+                amount: Math.round((selected.amount_approved || selected.amount_requested || 0) * 100),
+                recipient: members.find(m => m.id === selected.member_id)?.full_name,
+                description: `Loan disbursement · ${selected.repayment_months || 12} months`,
+                onApprove: () => { setTxnPin(null); handleLoanAction(selected, "disbursed", { repayment_months: selected.repayment_months }); },
+              })} disabled={saving}
                 className="w-full py-2.5 bg-blue-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">{saving ? "Processing…" : "Disburse Loan →"}</button>
             </div>
           )}
@@ -1429,7 +1450,13 @@ function LoansTab({ org, members, onRefresh }) {
                   <option value="bank_transfer">Bank</option>
                   <option value="paystack">Paystack</option>
                 </select>
-                <button onClick={handleRepay} disabled={saving} className="px-4 py-2 bg-amber-500 text-white rounded-xl font-bold text-sm">{saving ? "…" : "Pay"}</button>
+                <button onClick={() => setTxnPin({
+                  title: "Record Loan Repayment",
+                  amount: Math.round(parseFloat(repayForm.amount || 0) * 100),
+                  recipient: selected?.org_members?.full_name,
+                  description: `Repayment · ${repayForm.payment_method}`,
+                  onApprove: () => { setTxnPin(null); handleRepay(); },
+                })} disabled={saving} className="px-4 py-2 bg-amber-500 text-white rounded-xl font-bold text-sm">{saving ? "…" : "Pay"}</button>
               </div>
               <p className="text-[10px] text-slate-400">Monthly target: {fmt(selected.monthly_installment || 0)} · Pay any amount, meet target by month end</p>
             </div>
@@ -1459,6 +1486,7 @@ function LoansTab({ org, members, onRefresh }) {
             className="w-full py-2.5 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Close</button>
         </ModalWrap>
       )}
+      {txnPin && <TransactionPinModal {...txnPin} onCancel={() => setTxnPin(null)} />}
     </div>
   );
 }

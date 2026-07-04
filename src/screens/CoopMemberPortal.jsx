@@ -12,6 +12,7 @@ import { CoopSavingReceipt, CoopWithdrawalRequestReceipt } from "../components/s
 import { CoopNotificationBell, useChatUnread, ChatToast } from "../components/shared/CoopNotifications";
 import { sendEmailTrigger } from "../utils/emailTrigger";
 import AppLogo from "../components/AppLogo";
+import TransactionPinModal from "../components/TransactionPinModal";
 
 const coopFn = async (action, body = {}) => {
   const r = await supabase.functions.invoke("coop-portal", { body: { action, ...body } });
@@ -392,6 +393,7 @@ function PayOrgModal({ member, org, preProgram, history, onClose }) {
   const [amount,    setAmount]    = useState("");
   const [loading,   setLoading]   = useState(false);
   const [error,     setError]     = useState("");
+  const [txnPin,    setTxnPin]    = useState(null);
 
   useEffect(() => {
     if (preProgram) return;
@@ -514,7 +516,17 @@ function PayOrgModal({ member, org, preProgram, history, onClose }) {
 
         {error && <p className="text-xs px-3 py-2.5 rounded-xl mb-4 border bg-red-50 border-red-200 text-red-600">{error}</p>}
 
-        <button onClick={handlePay} disabled={loading || !amount}
+        <button onClick={() => {
+          const amt = parseFloat(amount);
+          if (!amt || amt <= 0) { setError("Enter a valid amount"); return; }
+          setTxnPin({
+            title: "Confirm Payment",
+            amount: Math.round(amt * 100),
+            recipient: org.name,
+            description: selectedProg?.name || "Savings contribution via Paystack",
+            onApprove: () => { setTxnPin(null); handlePay(); },
+          });
+        }} disabled={loading || !amount}
           className="w-full py-4 bg-green-600 text-white font-bold rounded-2xl text-sm disabled:opacity-60">
           {loading
             ? <span className="flex items-center justify-center gap-2"><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Preparing payment…</span>
@@ -524,6 +536,7 @@ function PayOrgModal({ member, org, preProgram, history, onClose }) {
         {!loading && (
           <button onClick={onClose} className="w-full py-3 text-xs text-slate-400 hover:text-slate-600 mt-1">Cancel</button>
         )}
+        {txnPin && <TransactionPinModal {...txnPin} onCancel={() => setTxnPin(null)} />}
       </div>
     </div>
   );
@@ -538,6 +551,7 @@ function RequestWithdrawalModal({ member, org, onClose, onSuccess }) {
   const [saving,  setSaving]  = useState(false);
   const [error,   setError]   = useState("");
   const [done,    setDone]    = useState(false);
+  const [txnPin,  setTxnPin]  = useState(null);
 
   const handleSubmit = async () => {
     const amt = parseFloat(amount);
@@ -586,7 +600,18 @@ function RequestWithdrawalModal({ member, org, onClose, onSuccess }) {
             </div>
             <div className="flex gap-2 mt-4">
               <button onClick={onClose} disabled={saving} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Cancel</button>
-              <button onClick={handleSubmit} disabled={saving || !amount}
+              <button onClick={() => {
+                const amt = parseFloat(amount);
+                if (!amt || amt <= 0) { setError("Enter a valid amount"); return; }
+                if (amt > (member.savings_balance || 0)) { setError(`Amount exceeds your balance of ${fmt(member.savings_balance)}`); return; }
+                setTxnPin({
+                  title: "Request Withdrawal",
+                  amount: Math.round(amt * 100),
+                  recipient: org.name,
+                  description: "Savings withdrawal request",
+                  onApprove: () => { setTxnPin(null); handleSubmit(); },
+                });
+              }} disabled={saving || !amount}
                 className="flex-1 py-3 bg-amber-500 text-white rounded-xl font-bold text-sm disabled:opacity-50">
                 {saving ? "Submitting…" : "Submit Request"}
               </button>
@@ -594,6 +619,7 @@ function RequestWithdrawalModal({ member, org, onClose, onSuccess }) {
           </>
         )}
       </div>
+      {txnPin && <TransactionPinModal {...txnPin} onCancel={() => setTxnPin(null)} />}
     </div>
   );
 }
@@ -830,6 +856,7 @@ function calcLoanPreview(principal, rate, months) {
 
 function LoansTab({ member, org }) {
   const [loans,      setLoans]      = useState([]);
+  const [txnPin,     setTxnPin]     = useState(null);
   const [repayments, setRepayments] = useState([]);
   const [loading,    setLoading]    = useState(true);
   const [selected,   setSelected]   = useState(null);
@@ -1025,7 +1052,16 @@ function LoansTab({ member, org }) {
             )}
 
             {selected.status === "disbursed" && selected.outstanding_balance > 0 && (
-              <button onClick={() => handlePaystackRepay(selected)} disabled={repaying}
+              <button onClick={() => {
+                const repayAmt = selected.monthly_installment || selected.outstanding_balance;
+                setTxnPin({
+                  title: "Repay Loan Instalment",
+                  amount: Math.round((repayAmt || 0) * 100),
+                  recipient: org.name,
+                  description: "Loan repayment via Paystack",
+                  onApprove: () => { setTxnPin(null); handlePaystackRepay(selected); },
+                });
+              }} disabled={repaying}
                 className="w-full py-3 bg-green-600 text-white rounded-2xl font-bold text-sm mb-3 flex items-center justify-center gap-2 disabled:opacity-70 active:scale-[0.98] transition-transform">
                 {repaying
                   ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Preparing payment…</>
@@ -1064,6 +1100,7 @@ function LoansTab({ member, org }) {
           </div>
         </div>
       )}
+      {txnPin && <TransactionPinModal {...txnPin} onCancel={() => setTxnPin(null)} />}
     </div>
   );
 }

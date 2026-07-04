@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import Icon   from "../components/Icon";
 import Modal  from "../components/shared/Modal";
+import TransactionPinModal from "../components/TransactionPinModal";
 import Field  from "../components/shared/Field";
 import { TransactionReceipt } from "../components/shared/Receipt";
 import { fmt, today } from "../utils/helpers";
@@ -27,6 +28,7 @@ export function AddTxnModal({ onAdd, onClose, defaultType = "in", inventory = nu
     transaction_date: today(),
   });
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [txnPin, setTxnPin] = useState(null);
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
 
   const products = inventory?.products || [];
@@ -205,10 +207,20 @@ export function AddTxnModal({ onAdd, onClose, defaultType = "in", inventory = nu
       <Field label="Date" type="date" value={f.transaction_date}
         onChange={e => set("transaction_date", e.target.value)} />
 
-      <button onClick={handleSubmit} disabled={!canSave}
+      <button onClick={() => {
+        if (!canSave) return;
+        setTxnPin({
+          title: f.type === "in" ? "Record Income" : "Record Expense",
+          amount: Math.round(parseFloat(f.amount || 0) * 100),
+          recipient: f.customer_name || undefined,
+          description: f.item_name || undefined,
+          onApprove: () => { setTxnPin(null); handleSubmit(); },
+        });
+      }} disabled={!canSave}
         className="w-full py-3.5 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold text-sm shadow-sm transition disabled:opacity-50 active:scale-[0.99]">
         Save Transaction
       </button>
+      {txnPin && <TransactionPinModal {...txnPin} onCancel={() => setTxnPin(null)} />}
     </Modal>
   );
 }

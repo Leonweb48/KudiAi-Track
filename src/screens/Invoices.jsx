@@ -1,4 +1,5 @@
 import { useState } from "react";
+import TransactionPinModal from "../components/TransactionPinModal";
 import { Capacitor }             from "@capacitor/core";
 import { Browser }               from "@capacitor/browser";
 import { Share }                 from "@capacitor/share";
@@ -550,6 +551,7 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
   const [editInv,      setEditInv]     = useState(null);
   const [detailInv,    setDetailInv]   = useState(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [txnPin,       setTxnPin]      = useState(null);
   const { settings: invoiceSettings, save: saveInvoiceSettings } = useInvoiceSettings(userId);
 
   if (!canDo(plan, "invoices")) {
@@ -807,53 +809,62 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
             })();
           }}
           onEdit={(inv) => { setDetailInv(null); setEditInv(inv); }}
-          onPayment={async (payData) => {
-            const result = await recordInvoicePayment({ invoiceId: detailInv.id, ...payData });
-            if (!result.error && parseFloat(payData.amount_naira) > 0) {
-              await addTransaction?.({
-                type:             "in",
-                category:         "invoice",
-                amount:           parseFloat(payData.amount_naira),
-                item_name:        `Invoice ${detailInv.invoice_number} — ${detailInv.customer_name}`,
-                payment_type:     payData.method || "cash",
-                customer_name:    detailInv.customer_name || "",
-                transaction_date: payData.paidAt ? payData.paidAt.slice(0, 10) : today(),
-              });
-              const _inv2 = detailInv;
-              const _pd   = payData;
-              const paidKoboNow   = Math.round(parseFloat(_pd.amount_naira || 0) * 100);
-              const totalPaidKobo = (_inv2.amount_paid_kobo || 0) + paidKoboNow;
-              const balanceDue    = koboToNaira(Math.max(0, _inv2.total_kobo - totalPaidKobo));
-              ;(async () => {
-                let pdfBase64 = null;
-                try { pdfBase64 = await exportInvoicePdf(_inv2, profile, invoiceSettings || {}, { returnBase64: true }); } catch {}
-                sendEmailTrigger("invoice_paid", {
-                  owner_id:            userId,
-                  owner_email:         profile?.email || "",
-                  business_name:       profile?.business_name || "",
-                  invoice_number:      _inv2.invoice_number,
-                  due_date:            _inv2.due_date || "",
-                  customer_name:       _inv2.customer_name,
-                  customer_email:      _inv2.customer_email || "",
-                  customer_phone:      _inv2.customer_phone || "",
-                  items:               (_inv2.invoice_items || []).map(i => ({ description: i.description, quantity: i.quantity, unit_price: koboToNaira(i.unit_price_kobo), line_total: koboToNaira(i.line_total_kobo) })),
-                  subtotal:            koboToNaira(_inv2.subtotal_kobo),
-                  discount:            koboToNaira(_inv2.discount_kobo || 0),
-                  vat:                 koboToNaira(_inv2.vat_kobo || 0),
-                  other_charges:       koboToNaira(_inv2.other_charges_kobo || 0),
-                  other_charges_label: _inv2.other_charges_label || "",
-                  total:               koboToNaira(_inv2.total_kobo),
-                  amount_paid:         parseFloat(_pd.amount_naira),
-                  balance_due:         balanceDue,
-                  payment_method:      _pd.method || "cash",
-                  pdf_base64:          pdfBase64,
-                  pdf_filename:        `invoice_${(_inv2.invoice_number || "").replace(/\//g, "-")}.pdf`,
-                });
-              })();
-            }
-            await reload();
-            return result;
-          }}
+          onPayment={(payData) => new Promise((resolve) => {
+            setTxnPin({
+              title: "Record Invoice Payment",
+              amount: Math.round(parseFloat(payData.amount_naira || 0) * 100),
+              recipient: detailInv?.customer_name,
+              description: `Invoice ${detailInv?.invoice_number}`,
+              onApprove: async () => {
+                setTxnPin(null);
+                const result = await recordInvoicePayment({ invoiceId: detailInv.id, ...payData });
+                if (!result.error && parseFloat(payData.amount_naira) > 0) {
+                  await addTransaction?.({
+                    type:             "in",
+                    category:         "invoice",
+                    amount:           parseFloat(payData.amount_naira),
+                    item_name:        `Invoice ${detailInv.invoice_number} — ${detailInv.customer_name}`,
+                    payment_type:     payData.method || "cash",
+                    customer_name:    detailInv.customer_name || "",
+                    transaction_date: payData.paidAt ? payData.paidAt.slice(0, 10) : today(),
+                  });
+                  const _inv2 = detailInv;
+                  const _pd   = payData;
+                  const paidKoboNow   = Math.round(parseFloat(_pd.amount_naira || 0) * 100);
+                  const totalPaidKobo = (_inv2.amount_paid_kobo || 0) + paidKoboNow;
+                  const balanceDue    = koboToNaira(Math.max(0, _inv2.total_kobo - totalPaidKobo));
+                  ;(async () => {
+                    let pdfBase64 = null;
+                    try { pdfBase64 = await exportInvoicePdf(_inv2, profile, invoiceSettings || {}, { returnBase64: true }); } catch {}
+                    sendEmailTrigger("invoice_paid", {
+                      owner_id:            userId,
+                      owner_email:         profile?.email || "",
+                      business_name:       profile?.business_name || "",
+                      invoice_number:      _inv2.invoice_number,
+                      due_date:            _inv2.due_date || "",
+                      customer_name:       _inv2.customer_name,
+                      customer_email:      _inv2.customer_email || "",
+                      customer_phone:      _inv2.customer_phone || "",
+                      items:               (_inv2.invoice_items || []).map(i => ({ description: i.description, quantity: i.quantity, unit_price: koboToNaira(i.unit_price_kobo), line_total: koboToNaira(i.line_total_kobo) })),
+                      subtotal:            koboToNaira(_inv2.subtotal_kobo),
+                      discount:            koboToNaira(_inv2.discount_kobo || 0),
+                      vat:                 koboToNaira(_inv2.vat_kobo || 0),
+                      other_charges:       koboToNaira(_inv2.other_charges_kobo || 0),
+                      other_charges_label: _inv2.other_charges_label || "",
+                      total:               koboToNaira(_inv2.total_kobo),
+                      amount_paid:         parseFloat(_pd.amount_naira),
+                      balance_due:         balanceDue,
+                      payment_method:      _pd.method || "cash",
+                      pdf_base64:          pdfBase64,
+                      pdf_filename:        `invoice_${(_inv2.invoice_number || "").replace(/\//g, "-")}.pdf`,
+                    });
+                  })();
+                }
+                await reload();
+                resolve(result);
+              },
+            });
+          })}
         />
       )}
 
@@ -866,6 +877,7 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
           userId={userId}
         />
       )}
+      {txnPin && <TransactionPinModal {...txnPin} onCancel={() => setTxnPin(null)} />}
     </div>
   );
 }

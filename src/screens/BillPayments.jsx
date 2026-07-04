@@ -11,7 +11,6 @@ import { supabase } from "../utils/supabase";
 import { lookupDataPrice } from "../data/billPrices";
 import LoanApplicationModal from "../components/LoanApplicationModal";
 import TransactionPinModal  from "../components/TransactionPinModal";
-import { LS_PIN_HASH }      from "../hooks/useBiometricLock";
 import { buildCallbackUrl, openPaystackCheckout } from "../utils/paystackCheckout";
 import { openPaystackInline } from "../utils/paystackInline";
 import { Browser } from "@capacitor/browser";
@@ -3035,13 +3034,8 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
               <div className="pb-6">
                 <button onClick={() => {
-                  // If user has a PIN set up, confirm before paying
-                  if (localStorage.getItem(LS_PIN_HASH)) {
-                    const displayAmt = uiChargeAmt - ptsSavings - cbSavings - billCouponSavings;
-                    setTxnPinAmount(Math.max(0, displayAmt));
-                  } else {
-                    handlePay();
-                  }
+                  const displayAmt = uiChargeAmt - ptsSavings - cbSavings - billCouponSavings;
+                  setTxnPinAmount(Math.max(0, displayAmt) * 100);
                 }} disabled={saving}
                   className="w-full text-white font-bold rounded-xl py-3.5 text-sm transition-all disabled:opacity-60"
                   style={{ background: "linear-gradient(135deg,#16a34a,#15803d)" }}>
@@ -3063,7 +3057,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       {txnPinAmount !== null && (
         <TransactionPinModal
           amount={txnPinAmount}
-          onConfirm={() => { setTxnPinAmount(null); handlePay(); }}
+          onApprove={() => { setTxnPinAmount(null); handlePay(); }}
           onCancel={() => setTxnPinAmount(null)}
         />
       )}
