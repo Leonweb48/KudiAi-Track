@@ -188,19 +188,19 @@ export function usePinLock(userId, session) {
   }, [refetch]);
 
   const changeAppPin = useCallback(async (currentPin, newPin) => {
-    return invoke("change_app_pin", { currentPin, newPin });
+    return invoke("change_app_pin", { current_pin: currentPin, new_pin: newPin });
   }, []);
 
   const changeTxnPin = useCallback(async (currentPin, newPin) => {
-    return invoke("change_txn_pin", { currentPin, newPin });
+    return invoke("change_txn_pin", { current_pin: currentPin, new_pin: newPin });
   }, []);
 
   const resetAppPin = useCallback(async (newPin) => {
-    return invoke("reset_app_pin", { newPin });
+    return invoke("reset_app_pin", { new_pin: newPin });
   }, []);
 
   const resetTxnPin = useCallback(async (newPin) => {
-    return invoke("reset_txn_pin", { newPin });
+    return invoke("reset_txn_pin", { new_pin: newPin });
   }, []);
 
   const updateSettings = useCallback(async (obj) => {
