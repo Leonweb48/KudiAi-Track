@@ -287,13 +287,8 @@ function OverviewTab({ org, wallet, programs, announcements, members = [], loans
 //  MEMBERS TAB
 // ═══════════════════════════════════════════════════
 function MembersTab({ org, members, onRefresh }) {
-  const [addStep,     setAddStep]     = useState(null); // null | "form"
-  const [pendingReg,  setPendingReg]  = useState(null); // { member_id, email, temp_password, name }
-  const [otpInput,    setOtpInput]    = useState("");
-  const [otpError,    setOtpError]    = useState("");
-  const [otpVerified, setOtpVerified] = useState(false);
-  const [verifying,   setVerifying]   = useState(false);
-  const [resending,   setResending]   = useState(false);
+  const [addStep,    setAddStep]    = useState(null); // null | "form"
+  const [pendingReg, setPendingReg] = useState(null); // { member_id, email, temp_password, name }
   const [selected,   setSelected]   = useState(null);
   const [editing,    setEditing]    = useState(false);
   const [creds,      setCreds]      = useState(null); // { email, temp_password, name, isReset? }
@@ -319,8 +314,7 @@ function MembersTab({ org, members, onRefresh }) {
   const EMPTY_FORM = { full_name: "", email: "", phone: "", role: "member", gender: "", date_of_birth: "", joined_date: "", address: "", occupation: "", next_of_kin: "", next_of_kin_phone: "" };
 
   const closeAddFlow = () => {
-    setAddStep(null); setPendingReg(null);
-    setOtpInput(""); setOtpError(""); setOtpVerified(false); setError(""); setForm(EMPTY_FORM);
+    setAddStep(null); setPendingReg(null); setError(""); setForm(EMPTY_FORM);
   };
 
   const handleAdd = async () => {
@@ -335,27 +329,6 @@ function MembersTab({ org, members, onRefresh }) {
       onRefresh();
     } catch (e) { setError(e.message || "Failed"); }
     finally { setLoading(false); }
-  };
-
-  const handleVerifyOtp = async () => {
-    if (otpInput.trim().length < 6) { setOtpError("Enter the 6-digit code"); return; }
-    setVerifying(true); setOtpError("");
-    try {
-      await coopFn("verify-member-registration-otp", { member_id: pendingReg.member_id, otp_code: otpInput.trim() });
-      setOtpVerified(true);
-    } catch (e) { setOtpError(e.message || "Invalid code. Please try again."); }
-    finally { setVerifying(false); }
-  };
-
-  const handleResendOtp = async () => {
-    setResending(true); setOtpError("");
-    try {
-      await coopFn("resend-registration-otp", { member_id: pendingReg.member_id });
-      setOtpError(""); setOtpInput("");
-      // show brief confirmation via a non-error message
-      setOtpError("✓ New code sent to " + pendingReg.email);
-    } catch (e) { setOtpError(e.message || "Could not resend"); }
-    finally { setResending(false); }
   };
 
   const handleEdit = async () => {
@@ -441,17 +414,11 @@ function MembersTab({ org, members, onRefresh }) {
         )}
       </div>
 
-      {/* ── Registration wizard (step 1: form, step 2: verify OTP, step 3: done) ── */}
+      {/* ── Registration form ── */}
       {addStep === "form" && (
         <ModalWrap onClose={closeAddFlow}>
-          {/* Step indicator */}
-          <div className="flex items-center gap-2 mb-4">
-            <div className="flex items-center justify-center w-6 h-6 rounded-full bg-green-600 text-white text-[10px] font-black">1</div>
-            <div className="flex-1 h-0.5 bg-green-200 dark:bg-green-800" />
-            <div className="flex items-center justify-center w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-600 text-slate-400 text-[10px] font-black">2</div>
-          </div>
           <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">Register Member</h3>
-          <p className="text-xs text-slate-400 mb-4">Fill in the member's details. A verification code will be sent to their email.</p>
+          <p className="text-xs text-slate-400 mb-4">Fill in the member's details. Login credentials will be emailed to them automatically.</p>
           {error && <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-3 text-xs text-red-600">{error}</div>}
           <div className="flex flex-col gap-3">
             {[["Full Name *","full_name","text","John Adeyemi"],
@@ -504,7 +471,6 @@ function MembersTab({ org, members, onRefresh }) {
 
       {pendingReg && !addStep && (
         <ModalWrap onClose={closeAddFlow}>
-          {/* Header */}
           <div className="text-center mb-5">
             <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-2xl flex items-center justify-center mx-auto mb-3">
               <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8 text-green-600" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
@@ -512,10 +478,9 @@ function MembersTab({ org, members, onRefresh }) {
               </svg>
             </div>
             <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">Member Account Created</h3>
-            <p className="text-xs text-slate-400">Share these credentials with {pendingReg.name}</p>
+            <p className="text-xs text-slate-400">Credentials emailed to {pendingReg.name}</p>
           </div>
 
-          {/* Credentials */}
           <div className="bg-slate-50 dark:bg-slate-700/40 rounded-2xl p-4 mb-3">
             <div className="flex justify-between items-center mb-3">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Email</span>
@@ -534,44 +499,11 @@ function MembersTab({ org, members, onRefresh }) {
             </div>
           </div>
 
-          <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-xl px-3 py-2.5 mb-4">
-            <p className="text-[11px] text-amber-700 dark:text-amber-300 font-medium">Share these credentials with the member now. After verification, they log in and set their own password.</p>
+          <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900/40 rounded-xl px-3 py-2.5 mb-4">
+            <p className="text-[11px] text-green-700 dark:text-green-300 font-medium">
+              Login credentials have been sent to {pendingReg.email}. When they log in for the first time, they will verify their email and set a new password.
+            </p>
           </div>
-
-          {/* OTP verification */}
-          {!otpVerified ? (
-            <>
-              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Verify Member Email</p>
-              <p className="text-xs text-slate-400 mb-3">Ask the member for the 6-digit code sent to their email.</p>
-              <input
-                type="text" inputMode="numeric" pattern="[0-9]*" maxLength={6}
-                value={otpInput}
-                onChange={e => { setOtpInput(e.target.value.replace(/\D/g, "").slice(0, 6)); setOtpError(""); }}
-                placeholder="000000"
-                className="w-full text-center text-3xl font-mono font-extrabold tracking-[0.5em] py-4 rounded-2xl border-2 border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-200 dark:focus:ring-green-900/40 transition mb-3"
-              />
-              {otpError && (
-                <div className={`rounded-xl px-3 py-2.5 mb-3 text-xs font-medium ${otpError.startsWith("✓") ? "bg-green-50 border border-green-200 text-green-700" : "bg-red-50 border border-red-200 text-red-600"}`}>
-                  {otpError}
-                </div>
-              )}
-              <button onClick={handleVerifyOtp} disabled={verifying || otpInput.length < 6}
-                className="w-full py-3.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-bold rounded-2xl text-sm transition mb-2">
-                {verifying ? "Verifying…" : "Verify Email →"}
-              </button>
-              <button onClick={handleResendOtp} disabled={resending}
-                className="w-full py-2.5 border border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400 rounded-xl font-semibold text-xs disabled:opacity-50 mb-3">
-                {resending ? "Sending…" : "Resend code to " + pendingReg.email}
-              </button>
-            </>
-          ) : (
-            <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl px-3 py-3 mb-4 flex items-center gap-2">
-              <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-green-600 flex-shrink-0" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
-                <path d="M20 6L9 17l-5-5" />
-              </svg>
-              <p className="text-xs font-bold text-green-700 dark:text-green-400">{pendingReg.name}'s email is verified. They can now log in.</p>
-            </div>
-          )}
 
           <button onClick={closeAddFlow} className="w-full py-3 bg-green-600 text-white rounded-xl font-bold text-sm">Done</button>
         </ModalWrap>
