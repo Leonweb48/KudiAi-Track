@@ -349,10 +349,11 @@ export function useAuth() {
         setStaff({ ...staffRow, user_id: uid });
         subVerified.current = true;
         logPlatformSession(supabase, uid, "staff", staffRow.full_name, email);
-        // Use strict === true so that undefined (new accounts without the flag) is
-        // treated as unverified, ensuring new staff always see the OTP screen first.
-        const emailVerified = sess.user.user_metadata?.email_verified === true;
-        if (mustChange && !emailVerified) {
+        // staff_otp_verified is our custom flag, set to true only after the staff
+        // enters the correct OTP code. We avoid email_verified because Supabase
+        // can set that automatically based on email_confirm:true at account creation.
+        const otpVerified = sess.user.user_metadata?.staff_otp_verified === true;
+        if (mustChange && !otpVerified) {
           setStatus("staff_otp");
         } else if (mustChange) {
           fireWelcomeEmail("staff_first_login", { name: staffRow.full_name || "", email: email || "" });

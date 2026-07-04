@@ -85,7 +85,7 @@ serve(async (req) => {
       await adminClient.from("staff").update({ otp_code: null, otp_expires_at: null }).eq("id", staffRow.id);
       const { temp_password: _tp, ...restMeta } = userData.user.user_metadata || {};
       await adminClient.auth.admin.updateUserById(userData.user.id, {
-        user_metadata: { ...restMeta, email_verified: true },
+        user_metadata: { ...restMeta, email_verified: true, staff_otp_verified: true },
       });
 
       return json({ success: true });
@@ -143,6 +143,7 @@ serve(async (req) => {
       owner_id:             staff.owner_id,
       must_change_password: true,
       email_verified:       false,
+      staff_otp_verified:   false,
       temp_password:        password,
     };
 
