@@ -43,6 +43,7 @@ import OrgPortal             from "./screens/OrgPortal";
 import OrgFirstLogin         from "./screens/OrgFirstLogin";
 import OrgMemberOtpVerify   from "./screens/OrgMemberOtpVerify";
 import StaffOtpVerify       from "./screens/StaffOtpVerify";
+import StaffFirstLogin      from "./screens/StaffFirstLogin";
 import AjoClientOtpVerify   from "./screens/AjoClientOtpVerify";
 import OrgOtpVerify         from "./screens/OrgOtpVerify";
 import AdminDashboard        from "./screens/AdminDashboard";
@@ -279,8 +280,9 @@ export default function App() {
   if (status === "org_member_otp")   return <OrgMemberOtpVerify member={orgMember} />;
   if (status === "org_member_setup") return <CoopMemberFirstLogin member={orgMember} />;
 
-  // Staff — OTP first, then password setup
-  if (status === "staff_otp") return <StaffOtpVerify staff={staff} />;
+  // Staff — OTP first, then password setup, then portal
+  if (status === "staff_otp")   return <StaffOtpVerify staff={staff} />;
+  if (status === "staff_setup") return <StaffFirstLogin staff={staff} />;
 
   // Ajo client — OTP first, then password setup
   if (status === "ajo_client_otp")   return <AjoClientOtpVerify ajoClient={ajoClient} />;
@@ -288,7 +290,6 @@ export default function App() {
   if (status === "unauthenticated")  return <Auth />;
   if (status === "onboarding")       return <Onboarding session={session} onComplete={refetch} />;
   if (status === "subscribing")      return <SubscriptionPlan session={session} onComplete={setReady} />;
-  if (status === "staff_setup")      return <StaffDashboard session={session} staff={staff} />;
   if (status === "marketer_setup")   return <MarketerFirstLogin marketer={marketer} />;
 
   // ── PIN setup gate — blocks all portals until the user sets a device PIN ──
