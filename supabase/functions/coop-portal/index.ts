@@ -80,29 +80,36 @@ serve(async (req) => {
       if (!org.email) return json({ error: "Please add an organisation email in Settings first" }, 400);
 
       const tempPwd = genTempPassword();
-      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-      const anonKey    = Deno.env.get("SUPABASE_ANON_KEY")!;
 
       // Remove old portal user if it exists
       if (org.portal_user_id) {
         await sb.auth.admin.deleteUser(org.portal_user_id).catch(() => null);
       }
 
+      const freshMeta = {
+        account_type:         "organisation",
+        org_id,
+        org_name:             org.name,
+        must_change_password: true,
+        email_verified:       false,
+        org_otp_verified:     false,
+        temp_password:        tempPwd,
+      };
+
       const { data: authData, error: authError } = await sb.auth.admin.createUser({
         email: org.email,
         password: tempPwd,
         email_confirm: true,
-        user_metadata: {
-          account_type:         "organisation",
-          org_id,
-          org_name:             org.name,
-          must_change_password: true,
-          email_verified:       false,
-          org_otp_verified:     false,
-          temp_password:        tempPwd,
-        },
+        user_metadata: freshMeta,
       });
       if (authError) return json({ error: authError.message }, 400);
+
+      // Hard-reset the OTP flag after creation — email_confirm:true internal
+      // processing can sometimes merge/overwrite user_metadata in Supabase.
+      // This ensures org_otp_verified is definitively false for every fresh account.
+      await sb.auth.admin.updateUserById(authData.user.id, {
+        user_metadata: freshMeta,
+      }).catch(() => null);
 
       const { error: linkError } = await sb.from("organizations").update({
         portal_user_id: authData.user.id,
