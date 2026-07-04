@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import * as bcrypt from "https://esm.sh/bcryptjs@2.4.3";
+import bcrypt from "npm:bcryptjs@2.4.3";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -131,7 +131,11 @@ serve(async (req: Request) => {
 
     // ── Helper: update profile columns ────────────────────────────────────────
     async function updateProfile(updates: Record<string, unknown>): Promise<void> {
-      await adminClient.from("profiles").update(updates).eq("id", user!.id);
+      const { error: updateError } = await adminClient
+        .from("profiles")
+        .update(updates)
+        .eq("id", user!.id);
+      if (updateError) throw new Error(`Profile update failed: ${updateError.message}`);
     }
 
     // ── check_status ──────────────────────────────────────────────────────────
