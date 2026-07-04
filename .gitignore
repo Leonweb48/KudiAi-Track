@@ -27,5 +27,4 @@ Thumbs.db
 # Claude Code local config (contains API keys / PATs)
 .claude/
 
-# Dev-only font stand-ins (replace with licensed NotoSans TTFs for production)
-/public/fonts/*.ttf
+# NotoSans TTFs are committed (OFL-1.1 license, freely distributable)
