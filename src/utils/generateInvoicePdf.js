@@ -1,499 +1,607 @@
 import { savePdf } from "./pdfSave";
 
-const koboToNaira = (k) => (k || 0) / 100;
-const fmtK = (k) => `₦${koboToNaira(k).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
+// ── Brand palette ──────────────────────────────────────────────────────────────
+const NAVY    = [22,  37,  90 ];   // #16255A — structure
+const GREEN   = [61,  168, 41 ];   // #3DA829 — accent
+const TGREEN  = [234, 246, 228];   // #EAF6E4 — paid tint
+const LTGREEN = [243, 250, 239];   // #F3FAEF — softer paid tint
+const DARK    = [44,  44,  42 ];   // #2c2c2a
+const SEC     = [95,  94,  90 ];   // #5f5e5a
+const MUTED   = [138, 138, 133];   // #8a8a85
+const HAIRLN  = [230, 228, 220];   // #e6e4dc
+const PANEL   = [246, 248, 252];   // #F6F8FC
+const WHITE   = [255, 255, 255];
+const RED     = [220, 38,  38 ];
+const AMBER   = [217, 119, 6  ];
+const TRED    = [254, 242, 242];
+const TAMBER  = [255, 251, 235];
+const LBLUE   = [148, 172, 220];   // light blue for footer text
 
-function dateFmt(str) {
+const SLOGAN = "Talk your money. Track your profit. Grow your business.";
+
+// ── Formatting ─────────────────────────────────────────────────────────────────
+const koboToNaira = (k) => (k || 0) / 100;
+const fmtK = (k) => fmtN(koboToNaira(k));
+const fmtN = (n) =>
+  "₦" + Number(n || 0).toLocaleString("en-NG", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+
+function dateFmtShort(str) {
   if (!str) return "";
-  return new Date(str + "T00:00:00").toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" });
+  return new Date(str + "T00:00:00").toLocaleDateString("en-NG", {
+    day: "numeric", month: "short", year: "numeric",
+  });
 }
 
-// Fetch image as base64 with a 4-second timeout
+// ── Asset loading ──────────────────────────────────────────────────────────────
 async function imgToBase64(url) {
   if (!url) return null;
   try {
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 4000);
-    const res = await fetch(url, { signal: ctrl.signal });
-    clearTimeout(timer);
+    const t    = setTimeout(() => ctrl.abort(), 5000);
+    const res  = await fetch(url, { signal: ctrl.signal });
+    clearTimeout(t);
     if (!res.ok) return null;
     const blob = await res.blob();
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result);
-      reader.onerror  = () => resolve(null);
-      reader.readAsDataURL(blob);
+    return new Promise((ok) => {
+      const r = new FileReader();
+      r.onloadend = () => ok(r.result);
+      r.onerror   = () => ok(null);
+      r.readAsDataURL(blob);
     });
   } catch { return null; }
 }
 
-function statusStyle(status, isReceipt) {
-  if (isReceipt)                    return { text: "RECEIPT",  bg: [22,163,74],   fg: [255,255,255] };
-  if (status === "paid")            return { text: "PAID",     bg: [22,163,74],   fg: [255,255,255] };
-  if (status === "overdue")         return { text: "OVERDUE",  bg: [220,38,38],   fg: [255,255,255] };
-  if (status === "cancelled")       return { text: "VOID",     bg: [100,116,139], fg: [255,255,255] };
-  if (status === "partially_paid")  return { text: "PARTIAL",  bg: [217,119,6],   fg: [255,255,255] };
-  if (status === "sent")            return { text: "SENT",     bg: [37,99,235],   fg: [255,255,255] };
-  return                                   { text: "DRAFT",    bg: [148,163,184], fg: [255,255,255] };
+async function loadFontBase64(url) {
+  try {
+    const ctrl = new AbortController();
+    const t    = setTimeout(() => ctrl.abort(), 5000);
+    const res  = await fetch(url, { signal: ctrl.signal });
+    clearTimeout(t);
+    if (!res.ok) return null;
+    const buf   = await res.arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    let binary  = "";
+    for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+    return btoa(binary);
+  } catch { return null; }
 }
 
-const NAVY  = [27, 42, 94];
-const BLUE  = [37, 99, 235];
-const SLATE = [71, 85, 105];
-const DARK  = [15, 23, 42];
-const LIGHT = [248, 250, 252];
-const MID   = [226, 232, 240];
-const WHITE = [255, 255, 255];
+function getImgFmt(dataUrl) {
+  if (!dataUrl) return "JPEG";
+  if (dataUrl.startsWith("data:image/png"))  return "PNG";
+  if (dataUrl.startsWith("data:image/webp")) return "WEBP";
+  return "JPEG";
+}
 
-const SLOGAN = "Talk your money. Track your profit. Grow your business.";
+function initials(name) {
+  return (name || "")
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map(w => (w[0] || "").toUpperCase())
+    .join("");
+}
 
-export async function exportInvoicePdf(inv, profile, invoiceSettings = {}, { isReceipt = false, returnBase64 = false } = {}) {
+// ── Merge identical line items (same description + unit price) ─────────────────
+function mergeItems(items) {
+  const seen = new Map();
+  for (const item of (items || [])) {
+    const key = `${(item.description || "").trim()}|${item.unit_price_kobo}`;
+    if (seen.has(key)) {
+      const ex = seen.get(key);
+      ex.quantity = Number(ex.quantity) + Number(item.quantity || 1);
+      ex.line_total_kobo = Math.round(ex.quantity * (item.unit_price_kobo || 0));
+    } else {
+      seen.set(key, { ...item, quantity: Number(item.quantity || 1) });
+    }
+  }
+  return Array.from(seen.values());
+}
+
+// ── Status config ──────────────────────────────────────────────────────────────
+function statusCfg(status, isReceipt) {
+  if (isReceipt)                   return { text:"RECEIPT", pill:GREEN,   tint:LTGREEN, border:GREEN  };
+  if (status === "paid")           return { text:"PAID",    pill:GREEN,   tint:LTGREEN, border:GREEN  };
+  if (status === "overdue")        return { text:"OVERDUE", pill:RED,     tint:TRED,    border:RED    };
+  if (status === "cancelled")      return { text:"VOID",    pill:MUTED,   tint:PANEL,   border:HAIRLN };
+  if (status === "partially_paid") return { text:"PARTIAL", pill:AMBER,   tint:TAMBER,  border:AMBER  };
+  if (status === "sent")           return { text:"SENT",    pill:[37,99,235], tint:[239,246,255], border:[37,99,235] };
+  return                                  { text:"DRAFT",   pill:MUTED,   tint:PANEL,   border:HAIRLN };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+export async function exportInvoicePdf(
+  inv,
+  profile,
+  invoiceSettings = {},
+  { isReceipt = false, returnBase64 = false } = {}
+) {
   const { jsPDF } = await import("jspdf");
   const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+
   const W  = doc.internal.pageSize.getWidth();   // 210mm
   const H  = doc.internal.pageSize.getHeight();  // 297mm
-  const ML = 18;
-  const MR = W - 18;
-  const TW = MR - ML;
+  const ML = 15;                                  // left margin
+  const MR = W - 15;                              // right margin
+  const TW = MR - ML;                             // content width (180mm)
+  const FOOTER_H    = 18;
+  const CONTENT_BOT = H - FOOTER_H - 3;          // safe bottom of content
 
   // ── Business info ────────────────────────────────────────────────────────
   const biz = {
-    name:     profile?.business_name      || "My Business",
-    phone:    invoiceSettings.contact_phone   || profile?.owner_phone    || "",
-    email:    invoiceSettings.contact_email   || profile?.email          || "",
-    address:  invoiceSettings.address         || profile?.address         || "",
+    name:     profile?.business_name          || "My Business",
+    phone:    invoiceSettings.contact_phone   || profile?.owner_phone          || "",
+    email:    invoiceSettings.contact_email   || profile?.email                || "",
+    address:  invoiceSettings.address         || profile?.address              || "",
     reg:      invoiceSettings.reg_number      || "",
-    bank:     invoiceSettings.bank_name       || profile?.bank_name       || "",
-    acctNo:   invoiceSettings.account_number  || profile?.bank_account_number || "",
-    acctName: invoiceSettings.account_name    || profile?.bank_account_name   || "",
+    bank:     invoiceSettings.bank_name       || profile?.bank_name            || "",
+    acctNo:   invoiceSettings.account_number  || profile?.bank_account_number  || "",
+    acctName: invoiceSettings.account_name    || profile?.bank_account_name    || "",
     logo:     invoiceSettings.logo_url        || "",
-    thanks:   invoiceSettings.thank_you_note  || "Thank you for your business. We truly value your patronage.",
+    thanks:   invoiceSettings.thank_you_note
+                || "Thank you for your business. We truly value your patronage.",
   };
 
-  // ── Load images in parallel ──────────────────────────────────────────────
-  const [logoB64, appLogoB64] = await Promise.all([
+  // ── Load assets ──────────────────────────────────────────────────────────
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const [logoB64, appLogoB64, fontRegB64, fontMedB64] = await Promise.all([
     biz.logo ? imgToBase64(biz.logo) : Promise.resolve(null),
-    imgToBase64(`${window.location.origin}/logo.png`),
+    imgToBase64(`${origin}/logo.png`),
+    loadFontBase64(`${origin}/fonts/NotoSans-Regular.ttf`),
+    loadFontBase64(`${origin}/fonts/NotoSans-Medium.ttf`),
   ]);
 
-  // ── HEADER BAND ──────────────────────────────────────────────────────────
-  // Full-width navy gradient band
-  const BAND_H = 38;
-  doc.setFillColor(...NAVY);
-  doc.rect(0, 0, W, BAND_H, "F");
-
-  // Decorative diagonal accent stripe inside band
-  doc.setFillColor(37, 58, 110); // slightly lighter navy
-  doc.triangle(W - 60, 0, W, 0, W, BAND_H, "F");
-
-  // Business logo inside band (top-left)
-  const LOGO_BOX = 24;
-  const LOGO_X   = ML;
-  const LOGO_Y   = (BAND_H - LOGO_BOX) / 2;
-  if (logoB64) {
-    // White rounded container behind logo
-    doc.setFillColor(...WHITE);
-    doc.roundedRect(LOGO_X - 1, LOGO_Y - 1, LOGO_BOX + 2, LOGO_BOX + 2, 3, 3, "F");
-    try { doc.addImage(logoB64, "JPEG", LOGO_X, LOGO_Y, LOGO_BOX, LOGO_BOX, "", "FAST"); } catch {}
-  }
-
-  // Business name + reg in band (right of logo or left-aligned)
-  const textStartX = logoB64 ? LOGO_X + LOGO_BOX + 6 : ML;
-  let bandY = LOGO_Y + 6;
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(14);
-  doc.setTextColor(...WHITE);
-  doc.text(biz.name, textStartX, bandY);
-  bandY += 5.5;
-
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(7.5);
-  doc.setTextColor(180, 196, 230);
-  if (biz.reg)     { doc.text(`Reg: ${biz.reg}`, textStartX, bandY); bandY += 4; }
-  if (biz.address) {
-    const aLines = doc.splitTextToSize(biz.address, 90);
-    doc.text(aLines[0], textStartX, bandY);
-    bandY += 4;
-  }
-  const contactParts = [biz.phone, biz.email].filter(Boolean).join("  ·  ");
-  if (contactParts) doc.text(contactParts, textStartX, bandY);
-
-  // ── INVOICE / RECEIPT TITLE ROW ─────────────────────────────────────────
-  let y = BAND_H + 10;
-
-  // Title left
-  const ss = statusStyle(inv.status, isReceipt);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(24);
-  doc.setTextColor(...NAVY);
-  doc.text(isReceipt ? "RECEIPT" : "INVOICE", ML, y);
-
-  // Status badge (pill) — right side of title
-  const badgeText  = ss.text;
-  doc.setFontSize(8);
-  const badgeW = doc.getTextWidth(badgeText) + 8;
-  const badgeX = MR - badgeW;
-  const badgeY = y - 7;
-  doc.setFillColor(...ss.bg);
-  doc.roundedRect(badgeX, badgeY, badgeW, 8, 2, 2, "F");
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(7.5);
-  doc.setTextColor(...ss.fg);
-  doc.text(badgeText, badgeX + 4, badgeY + 5.5);
-
-  y += 5;
-
-  // ── META GRID — invoice number, dates ───────────────────────────────────
-  // Light separator
-  doc.setDrawColor(...MID);
-  doc.setLineWidth(0.3);
-  doc.line(ML, y, MR, y);
-  y += 5;
-
-  // Two-column meta layout
-  const metaRows = [
-    [isReceipt ? "RECEIPT NO." : "INVOICE NO.", inv.invoice_number || "—"],
-    ["ISSUE DATE",   dateFmt(inv.issue_date) || dateFmt(new Date().toISOString().slice(0, 10))],
-    ...((!isReceipt && inv.due_date) ? [["DUE DATE", dateFmt(inv.due_date)]] : []),
-    ...(isReceipt ? [["PAID DATE", dateFmt(new Date().toISOString().slice(0, 10))]] : []),
-  ];
-
-  const colW    = TW / 2 - 4;
-  const perRow  = 2;
-  for (let i = 0; i < metaRows.length; i += perRow) {
-    const rowPairs = metaRows.slice(i, i + perRow);
-    const curY = y;
-    rowPairs.forEach(([label, val], j) => {
-      const cx = ML + j * (colW + 8);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(6.5);
-      doc.setTextColor(...SLATE);
-      doc.text(label, cx, curY);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(8.5);
-      doc.setTextColor(...DARK);
-      doc.text(String(val || "—"), cx, curY + 5);
-    });
-    y += 12;
-  }
-
-  y += 2;
-
-  // ── BILL TO + PAYMENT SUMMARY ─────────────────────────────────────────────
-  const halfW  = TW / 2 - 3;
-  const billX  = ML;
-  const summX  = ML + halfW + 6;
-
-  // Bill To box
-  doc.setFillColor(...LIGHT);
-  doc.roundedRect(billX, y, halfW, 32, 3, 3, "F");
-  doc.setDrawColor(...MID);
-  doc.setLineWidth(0.3);
-  doc.roundedRect(billX, y, halfW, 32, 3, 3, "S");
-
-  // Blue left accent on Bill To
-  doc.setFillColor(...BLUE);
-  doc.roundedRect(billX, y, 3, 32, 1.5, 1.5, "F");
-
-  let btY = y + 6;
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(6.5);
-  doc.setTextColor(...SLATE);
-  doc.text("BILL TO", billX + 6, btY);
-  btY += 5;
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(10);
-  doc.setTextColor(...DARK);
-  doc.text(doc.splitTextToSize(inv.customer_name || "—", halfW - 10)[0], billX + 6, btY);
-  btY += 5.5;
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
-  doc.setTextColor(...SLATE);
-  if (inv.customer_phone) { doc.text(inv.customer_phone, billX + 6, btY); btY += 4.5; }
-  if (inv.customer_email) { doc.text(doc.splitTextToSize(inv.customer_email, halfW - 10)[0], billX + 6, btY); }
-
-  // Summary box (right)
-  doc.setFillColor(...LIGHT);
-  doc.roundedRect(summX, y, halfW, 32, 3, 3, "F");
-  doc.setDrawColor(...MID);
-  doc.setLineWidth(0.3);
-  doc.roundedRect(summX, y, halfW, 32, 3, 3, "S");
-
-  const amtDue = inv.total_kobo - inv.amount_paid_kobo;
-  const isFullyPaid = amtDue <= 0;
-
-  let smY = y + 6;
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(6.5);
-  doc.setTextColor(...SLATE);
-  doc.text(isFullyPaid ? "AMOUNT PAID" : "AMOUNT DUE", summX + 5, smY);
-  smY += 5;
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(13);
-  doc.setTextColor(isFullyPaid ? 22 : 27, isFullyPaid ? 163 : 42, isFullyPaid ? 74 : 94);
-  doc.text(fmtK(isFullyPaid ? inv.total_kobo : amtDue), summX + 5, smY);
-  smY += 6;
-  if (inv.due_date && !isReceipt) {
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(7.5);
-    doc.setTextColor(...SLATE);
-    doc.text(`Due: ${dateFmt(inv.due_date)}`, summX + 5, smY);
-  }
-  if (inv.amount_paid_kobo > 0 && !isFullyPaid) {
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(7.5);
-    doc.setTextColor(22, 163, 74);
-    doc.text(`Paid: ${fmtK(inv.amount_paid_kobo)}`, summX + 5, smY);
-  }
-  if (isFullyPaid) {
-    smY += 1;
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(7.5);
-    doc.setTextColor(22, 163, 74);
-    doc.text("✓ Fully Paid", summX + 5, smY);
-  }
-
-  y += 38;
-
-  // ── ITEMS TABLE ──────────────────────────────────────────────────────────
-  // Column widths (mm): S/N=9, Desc=flexible, Qty=12, Unit=30, Amount=28
-  const cSN   = 9;
-  const cAmt  = 30;
-  const cUnit = 30;
-  const cQty  = 12;
-  const cDesc = TW - cSN - cQty - cUnit - cAmt;
-
-  const cX = [
-    ML,
-    ML + cSN,
-    ML + cSN + cDesc,
-    ML + cSN + cDesc + cQty,
-    ML + cSN + cDesc + cQty + cUnit,
-  ];
-
-  // Header row
-  const tHdrH = 9;
-  doc.setFillColor(...NAVY);
-  doc.roundedRect(ML, y, TW, tHdrH, 2, 2, "F");
-
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(7);
-  doc.setTextColor(...WHITE);
-  const hdrY = y + 6;
-  doc.text("#",          cX[0] + 2,   hdrY);
-  doc.text("DESCRIPTION",cX[1] + 2,   hdrY);
-  doc.text("QTY",        cX[2] + 2,   hdrY);
-  doc.text("UNIT PRICE", cX[3] + 2,   hdrY);
-  doc.text("AMOUNT",     MR,           hdrY, { align: "right" });
-  y += tHdrH;
-
-  const items = inv.invoice_items || [];
-  items.forEach((item, i) => {
-    const descLines = doc.splitTextToSize(item.description || "", cDesc - 4);
-    const rowH = Math.max(10, descLines.length * 4.5 + 4);
-
-    if (i % 2 === 0) {
-      doc.setFillColor(249, 250, 252);
-      doc.rect(ML, y, TW, rowH, "F");
+  // ── Register Unicode font ────────────────────────────────────────────────
+  let FONT = "helvetica";
+  try {
+    if (fontRegB64) {
+      doc.addFileToVFS("NotoSans-Regular.ttf", fontRegB64);
+      doc.addFont("NotoSans-Regular.ttf", "NotoSans", "normal");
+      FONT = "NotoSans";
     }
-    doc.setDrawColor(...MID);
-    doc.setLineWidth(0.15);
-    doc.line(ML, y + rowH, MR, y + rowH);
+    if (fontMedB64) {
+      doc.addFileToVFS("NotoSans-Medium.ttf", fontMedB64);
+      doc.addFont("NotoSans-Medium.ttf", "NotoSans", "bold");
+    } else if (FONT === "NotoSans") {
+      doc.addFont("NotoSans-Regular.ttf", "NotoSans", "bold");
+    }
+  } catch { /* fall back to helvetica */ }
 
-    const rY = y + 6.5;
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(7.5);
-    doc.setTextColor(...NAVY);
-    doc.text(String(i + 1), cX[0] + 2.5, rY);
+  const setReg  = (sz) => { doc.setFont(FONT, "normal"); if (sz) doc.setFontSize(sz); };
+  const setMed  = (sz) => { doc.setFont(FONT, FONT === "NotoSans" ? "bold" : "bold"); if (sz) doc.setFontSize(sz); };
+  const setItal = (sz) => { doc.setFont("helvetica", "italic"); if (sz) doc.setFontSize(sz); };
+  const col     = (...c) => doc.setTextColor(...c);
+  const splitW  = (txt, w) => doc.splitTextToSize(String(txt || ""), w);
 
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(8);
-    doc.setTextColor(...DARK);
-    descLines.forEach((line, li) => doc.text(line, cX[1] + 2, rY + li * 4.5));
+  // ── Derived state ────────────────────────────────────────────────────────
+  const ss           = statusCfg(inv.status, isReceipt);
+  const isPaid       = isReceipt || inv.status === "paid";
+  const isOverdue    = inv.status === "overdue";
+  const amtPaidKobo  = inv.amount_paid_kobo || 0;
+  const amtDueKobo   = Math.max(0, (inv.total_kobo || 0) - amtPaidKobo);
+  const fullyPaid    = isPaid || amtDueKobo <= 0;
+  const items        = mergeItems(inv.invoice_items || []);
 
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(...SLATE);
-    doc.text(String(item.quantity || 1), cX[2] + 2, rY);
-    doc.text(fmtK(item.unit_price_kobo),  cX[3] + 2, rY);
+  // ── Table column X positions ─────────────────────────────────────────────
+  const cSN   = 9;
+  const cAmt  = 33;
+  const cUnit = 33;
+  const cQty  = 14;
+  const cDesc = TW - cSN - cQty - cUnit - cAmt;   // ≈ 91mm
+  const cX    = [ML, ML+cSN, ML+cSN+cDesc, ML+cSN+cDesc+cQty, ML+cSN+cDesc+cQty+cUnit];
 
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(...DARK);
-    doc.text(fmtK(item.line_total_kobo), MR, rY, { align: "right" });
+  // ── Per-page helpers ─────────────────────────────────────────────────────
+  let pageCount = 1;
+
+  function drawTopStrips() {
+    doc.setFillColor(...NAVY);
+    doc.rect(0, 0, W, 4, "F");
+    doc.setFillColor(...GREEN);
+    doc.rect(0, 4, W, 2, "F");
+  }
+
+  function drawWatermark() {
+    if (!isPaid) return;
+    doc.saveGraphicsState();
+    setMed(72);
+    col(...GREEN);
+    doc.setGState(new doc.GState({ opacity: 0.055 }));
+    doc.text("PAID", W / 2, H / 2 + 10, { align: "center", angle: 45 });
+    doc.restoreGraphicsState();
+  }
+
+  function drawFooter(pageNum, total) {
+    const fy   = H - FOOTER_H;
+    const fcY  = fy + FOOTER_H / 2;
+    doc.setFillColor(...NAVY);
+    doc.rect(0, fy, W, FOOTER_H, "F");
+    doc.setFillColor(...GREEN);
+    doc.rect(0, H - 1.5, W, 1.5, "F");
+
+    // Logo tile
+    const ltSz = 10;
+    const ltX  = ML;
+    const ltY  = fy + (FOOTER_H - ltSz) / 2;
+    if (appLogoB64) {
+      doc.setFillColor(...WHITE);
+      doc.roundedRect(ltX - 1, ltY - 1, ltSz + 2, ltSz + 2, 2, 2, "F");
+      try { doc.addImage(appLogoB64, "PNG", ltX, ltY, ltSz, ltSz, "", "FAST"); } catch {}
+    }
+    const fTextX = appLogoB64 ? ML + ltSz + 4 : ML;
+
+    setMed(7.5); col(...WHITE);
+    doc.text("KudiAI Track", fTextX, fcY - 2.5);
+    setItal(5.5); col(...LBLUE);
+    doc.text(SLOGAN, fTextX, fcY + 2.5);
+
+    setReg(5.5); col(...LBLUE);
+    doc.text(
+      `A product of Amaya & Co. Technologies © ${new Date().getFullYear()}`,
+      MR, fcY - 2.5, { align: "right" }
+    );
+    doc.text(`Page ${pageNum} of ${total}`, MR, fcY + 2.5, { align: "right" });
+  }
+
+  function drawTableHeader(atY) {
+    const HDR_H = 9;
+    doc.setFillColor(...NAVY);
+    doc.roundedRect(ML, atY, TW, HDR_H, 2.5, 2.5, "F");
+    doc.rect(ML, atY + 3, TW, HDR_H - 3, "F");   // square off bottom corners
+    setMed(7); col(...WHITE);
+    const hY = atY + 6.2;
+    doc.text("#",           cX[0] + 2,       hY);
+    doc.text("DESCRIPTION", cX[1] + 2,       hY);
+    doc.text("QTY",         cX[2] + cQty/2,  hY, { align: "center" });
+    doc.text("UNIT PRICE",  cX[4] - 2,       hY, { align: "right" });
+    doc.text("AMOUNT",      MR,              hY, { align: "right" });
+    return atY + HDR_H;
+  }
+
+  function drawSlimHeader(atY) {
+    setMed(9); col(...NAVY);
+    doc.text(biz.name, ML, atY + 5);
+    setReg(8);  col(...SEC);
+    doc.text(
+      `${isReceipt ? "RECEIPT" : "INVOICE"} ${inv.invoice_number || ""}`,
+      MR, atY + 5, { align: "right" }
+    );
+    doc.setDrawColor(...HAIRLN); doc.setLineWidth(0.3);
+    doc.line(ML, atY + 8, MR, atY + 8);
+    return atY + 12;
+  }
+
+  function newPage(inTable) {
+    doc.addPage();
+    pageCount++;
+    drawTopStrips();
+    drawWatermark();
+    let ny = 8;
+    ny = drawSlimHeader(ny);
+    if (inTable) ny = drawTableHeader(ny);
+    return ny;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // PAGE 1 — start
+  // ══════════════════════════════════════════════════════════════════════════
+  drawTopStrips();
+  drawWatermark();
+
+  let y = 8;   // below top strips (4pt navy + 2pt green)
+
+  // ── HEADER SECTION ───────────────────────────────────────────────────────
+  const TILE = 19;       // logo tile size mm (≈54pt)
+  const tileX = ML;
+  const tileY = y;
+
+  if (logoB64) {
+    doc.setFillColor(...PANEL);
+    doc.roundedRect(tileX, tileY, TILE, TILE, 3, 3, "F");
+    try { doc.addImage(logoB64, getImgFmt(logoB64), tileX+1, tileY+1, TILE-2, TILE-2, "", "FAST"); } catch {}
+  } else {
+    doc.setFillColor(...NAVY);
+    doc.roundedRect(tileX, tileY, TILE, TILE, 3, 3, "F");
+    setMed(initials(biz.name).length > 2 ? 8 : 11);
+    col(...WHITE);
+    doc.text(initials(biz.name) || "?", tileX + TILE/2, tileY + TILE/2 + 1.5, { align: "center" });
+  }
+
+  // Business info (right of tile)
+  let bizY = tileY + 4;
+  const bizInfoX = tileX + TILE + 5;
+  setMed(13); col(...NAVY);
+  doc.text(splitW(biz.name, 80)[0], bizInfoX, bizY);
+  bizY += 5.5;
+  setReg(7.5); col(...MUTED);
+  if (biz.reg)     { doc.text(`RC: ${biz.reg}`, bizInfoX, bizY); bizY += 4; }
+  if (biz.address) { doc.text(splitW(biz.address, 75)[0], bizInfoX, bizY); bizY += 4; }
+  const contact = [biz.phone, biz.email].filter(Boolean).join("  ·  ");
+  if (contact) doc.text(contact, bizInfoX, bizY);
+
+  // "INVOICE" title (top-right)
+  let invY = tileY + 5.5;
+  setMed(24); col(...NAVY);
+  doc.setCharSpace(1.2);
+  doc.text(isReceipt ? "RECEIPT" : "INVOICE", MR, invY, { align: "right" });
+  doc.setCharSpace(0);
+  invY += 7;
+
+  // Status badge (pill)
+  setMed(7.5);
+  const bw   = doc.getTextWidth(ss.text) + 10;
+  const bh   = 7;
+  const bx   = MR - bw;
+  doc.setFillColor(...ss.tint);
+  doc.setDrawColor(...ss.border); doc.setLineWidth(0.6);
+  doc.roundedRect(bx, invY, bw, bh, 2, 2, "FD");
+  col(...ss.pill);
+  doc.text(ss.text, bx + bw/2, invY + 4.9, { align: "center" });
+
+  y = Math.max(tileY + TILE + 6, invY + bh + 6);
+
+  // ── META BAR ─────────────────────────────────────────────────────────────
+  const metaH = 18;
+  doc.setFillColor(...PANEL);
+  doc.roundedRect(ML, y, TW, metaH, 3, 3, "F");
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const metaCols = [
+    { label: isReceipt ? "RECEIPT NO." : "INVOICE NO.", val: inv.invoice_number || "—" },
+    { label: "ISSUE DATE",  val: dateFmtShort(inv.issue_date || todayStr) },
+    ...(!isReceipt && inv.due_date ? [{ label: "DUE DATE",  val: dateFmtShort(inv.due_date) }] : []),
+    ...(fullyPaid ? [{ label: "PAID ON", val: dateFmtShort(todayStr), green: true }] : []),
+  ];
+  const mStep = TW / Math.max(metaCols.length, 3);
+  metaCols.forEach((mc, i) => {
+    const cx = ML + i * mStep + 6;
+    setReg(6.5); col(...MUTED); doc.setCharSpace(0.7);
+    doc.text(mc.label, cx, y + 6);
+    doc.setCharSpace(0);
+    setMed(8.5);
+    col(...(mc.green ? GREEN : DARK));
+    doc.text(mc.val, cx, y + 13.5);
+  });
+  y += metaH + 6;
+
+  // ── BILL TO + AMOUNT PANELS ───────────────────────────────────────────────
+  const panelW = (TW - 6) / 2;
+  const panelH = 34;
+  const billX  = ML;
+  const amtPX  = ML + panelW + 6;
+
+  // Bill To
+  doc.setFillColor(...LTGREEN);
+  doc.roundedRect(billX, y, panelW, panelH, 3, 3, "F");
+  doc.setFillColor(...GREEN);
+  doc.roundedRect(billX, y, 3, panelH, 1.5, 1.5, "F");
+
+  let btY = y + 5.5;
+  setReg(6.5); col(...SEC); doc.setCharSpace(0.7);
+  doc.text("BILL TO", billX + 7, btY); doc.setCharSpace(0); btY += 5;
+  setMed(10); col(...NAVY);
+  doc.text(splitW(inv.customer_name || "—", panelW - 12)[0], billX + 7, btY); btY += 5.5;
+  setReg(8); col(...SEC);
+  if (inv.customer_phone) { doc.text(inv.customer_phone, billX + 7, btY); btY += 4.5; }
+  if (inv.customer_email) { doc.text(splitW(inv.customer_email, panelW - 12)[0], billX + 7, btY); }
+
+  // Amount panel
+  if (fullyPaid) {
+    doc.setFillColor(...TGREEN);
+    doc.setDrawColor(...GREEN); doc.setLineWidth(0.6);
+  } else if (isOverdue) {
+    doc.setFillColor(...TRED);
+    doc.setDrawColor(...RED); doc.setLineWidth(0.6);
+  } else {
+    doc.setFillColor(...PANEL);
+    doc.setDrawColor(...HAIRLN); doc.setLineWidth(0.4);
+  }
+  doc.roundedRect(amtPX, y, panelW, panelH, 3, 3, "FD");
+
+  let amY = y + 5.5;
+  setReg(6.5); col(...SEC); doc.setCharSpace(0.7);
+  doc.text(fullyPaid ? "AMOUNT PAID" : "AMOUNT DUE", amtPX + 6, amY);
+  doc.setCharSpace(0); amY += 6;
+  setMed(14);
+  col(...(fullyPaid ? GREEN : isOverdue ? RED : NAVY));
+  doc.text(fmtK(fullyPaid ? inv.total_kobo : amtDueKobo), amtPX + 6, amY);
+  amY += 6;
+  setReg(7.5);
+  if (fullyPaid) {
+    col(...GREEN);
+    doc.text("✓ Fully paid  ·  Balance ₦0.00", amtPX + 6, amY);
+  } else {
+    col(...SEC);
+    if (inv.due_date) { doc.text(`Due: ${dateFmtShort(inv.due_date)}`, amtPX + 6, amY); amY += 4.5; }
+    if (amtPaidKobo > 0) {
+      col(...GREEN);
+      doc.text(`Paid: ${fmtK(amtPaidKobo)}`, amtPX + 6, amY);
+    }
+  }
+
+  y += panelH + 8;
+
+  // ── LINE ITEMS TABLE ──────────────────────────────────────────────────────
+  y = drawTableHeader(y);
+
+  for (let i = 0; i < items.length; i++) {
+    const item     = items[i];
+    const descLns  = splitW(item.description || "", cDesc - 4);
+    const rowH     = Math.max(10, descLns.length * 4.8 + 6);
+
+    // Page break before drawing — move whole row
+    if (y + rowH > CONTENT_BOT) {
+      y = newPage(true);
+    }
+
+    // Hairline
+    doc.setDrawColor(...HAIRLN); doc.setLineWidth(0.2);
+    doc.line(ML, y, MR, y);
+
+    const rMidY  = y + rowH / 2 + 1.8;   // vertically centered baseline
+    const descT  = y + 5;                  // description starts from top
+
+    // # (green)
+    setMed(7.5); col(...GREEN);
+    doc.text(String(i + 1), cX[0] + 2.5, rMidY);
+
+    // Description
+    setReg(9); col(...DARK);
+    descLns.forEach((ln, li) => doc.text(ln, cX[1] + 2, descT + li * 4.8));
+
+    // QTY (centered)
+    setReg(8.5); col(...SEC);
+    doc.text(String(item.quantity || 1), cX[2] + cQty / 2, rMidY, { align: "center" });
+
+    // Unit price (right-aligned to end of unit col)
+    doc.text(fmtK(item.unit_price_kobo), cX[4] - 2, rMidY, { align: "right" });
+
+    // Amount (right-aligned, medium)
+    setMed(8.5); col(...DARK);
+    doc.text(fmtK(item.line_total_kobo), MR, rMidY, { align: "right" });
 
     y += rowH;
-  });
+  }
 
+  // Closing hairline
+  doc.setDrawColor(...HAIRLN); doc.setLineWidth(0.2);
+  doc.line(ML, y, MR, y);
   y += 6;
 
-  // ── TOTALS BLOCK ─────────────────────────────────────────────────────────
-  const tBW  = 78;
-  const tBX  = MR - tBW;
+  // ── TOTALS + PAYMENT DETAILS ──────────────────────────────────────────────
+  // Gather totals rows
+  const totRows = [
+    { label: "Subtotal",  val: fmtK(inv.subtotal_kobo) },
+    ...(inv.discount_kobo > 0
+      ? [{ label: "Discount", val: `−${fmtK(inv.discount_kobo)}`, red: true }] : []),
+    ...(inv.vat_kobo > 0
+      ? [{ label: `VAT (7.5%)`, val: fmtK(inv.vat_kobo) }] : []),
+    ...((inv.other_charges_kobo || 0) > 0
+      ? [{ label: inv.other_charges_label || "Other Charges", val: fmtK(inv.other_charges_kobo) }] : []),
+  ];
 
-  const drawTotRow = (label, val, highlight = false, isRed = false, isGreen = false) => {
-    if (highlight) {
-      doc.setFillColor(...NAVY);
-      doc.roundedRect(tBX - 2, y - 5, tBW + 2, 10, 2, 2, "F");
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(9.5);
-      doc.setTextColor(...WHITE);
-      doc.text(label, tBX + 2, y);
-      doc.text(val,   MR,      y, { align: "right" });
-      y += 13;
-    } else {
-      doc.setFont("helvetica", isRed || isGreen ? "bold" : "normal");
-      doc.setFontSize(8);
-      const [lr, lg, lb] = isRed ? [220,38,38] : isGreen ? [22,163,74] : SLATE;
-      const [vr, vg, vb] = isRed ? [220,38,38] : isGreen ? [22,163,74] : DARK;
-      doc.setTextColor(lr, lg, lb);
-      doc.text(label, tBX + 2, y);
-      doc.setFont("helvetica", "bold");
-      doc.setTextColor(vr, vg, vb);
-      doc.text(val, MR, y, { align: "right" });
-      y += 7;
+  // Payment details items
+  const pmtRows = [
+    biz.bank     ? ["Bank",         biz.bank    ] : null,
+    biz.acctNo   ? ["Account No.",  biz.acctNo  ] : null,
+    biz.acctName ? ["Account Name", biz.acctName] : null,
+    inv.payment_instructions ? ["Instructions", inv.payment_instructions] : null,
+  ].filter(Boolean);
+
+  // Thank-you lines
+  const thanksLns = biz.thanks ? splitW(biz.thanks, TW - 8) : [];
+
+  // Estimate block height
+  const totH =
+    totRows.length * 7 +
+    13 +   // TOTAL DUE bar
+    (amtPaidKobo > 0 ? 7 : 0) +
+    (amtDueKobo > 0 && amtPaidKobo > 0 ? 7 : 0) +
+    4;
+  const payH = pmtRows.length > 0 ? pmtRows.length * 13 + 14 : 0;
+  const notesH = inv.notes ? (splitW(inv.notes, TW).length * 4.5 + 12) : 0;
+  const thankH = thanksLns.length > 0 ? thanksLns.length * 5.2 + 12 : 0;
+  const blockH = Math.max(totH, payH) + notesH + thankH + 6;
+
+  if (y + blockH > CONTENT_BOT) {
+    y = newPage(false);
+  }
+
+  const blockTop = y;
+
+  // ── Totals column (right 48%)
+  const TOT_W = Math.floor(TW * 0.48);
+  const TOT_X = MR - TOT_W;
+  let ty = blockTop;
+
+  for (const row of totRows) {
+    setReg(8.5);
+    col(...(row.red ? RED : SEC));
+    doc.text(row.label, TOT_X, ty);
+    setMed(8.5);
+    col(...(row.red ? RED : DARK));
+    doc.text(row.val, MR, ty, { align: "right" });
+    ty += 7;
+  }
+
+  // TOTAL DUE bar
+  const tdH = 10;
+  doc.setFillColor(...NAVY);
+  doc.roundedRect(TOT_X - 2, ty - 1, TOT_W + 2, tdH, 2.5, 2.5, "F");
+  setMed(9.5); col(...WHITE);
+  const tdLabel = isReceipt ? "TOTAL RECEIVED" : "TOTAL DUE";
+  doc.text(tdLabel, TOT_X + 3, ty + 6.2);
+  doc.text(fmtK(inv.total_kobo), MR, ty + 6.2, { align: "right" });
+  ty += tdH + 4;
+
+  if (amtPaidKobo > 0) {
+    setReg(8.5); col(...GREEN);
+    doc.text("Amount Paid", TOT_X, ty);
+    setMed(8.5); col(...GREEN);
+    doc.text(fmtK(amtPaidKobo), MR, ty, { align: "right" });
+    ty += 7;
+    if (amtDueKobo > 0) {
+      setReg(8.5); col(...RED);
+      doc.text("Balance Due", TOT_X, ty);
+      setMed(8.5); col(...RED);
+      doc.text(fmtK(amtDueKobo), MR, ty, { align: "right" });
+      ty += 7;
     }
-  };
-
-  doc.setDrawColor(...MID);
-  doc.setLineWidth(0.3);
-  doc.line(tBX - 2, y - 3, MR, y - 3);
-  y += 2;
-
-  drawTotRow("Subtotal",    fmtK(inv.subtotal_kobo));
-  if (inv.discount_kobo > 0)       drawTotRow("Discount",   `−${fmtK(inv.discount_kobo)}`, false, true);
-  if (inv.vat_kobo > 0)            drawTotRow("VAT (7.5%)", fmtK(inv.vat_kobo));
-  if ((inv.other_charges_kobo || 0) > 0) drawTotRow(inv.other_charges_label || "Other Charges", fmtK(inv.other_charges_kobo));
-
-  drawTotRow(isReceipt ? "TOTAL RECEIVED" : "TOTAL DUE", fmtK(inv.total_kobo), true);
-
-  if (inv.amount_paid_kobo > 0) {
-    drawTotRow("Amount Paid",  fmtK(inv.amount_paid_kobo), false, false, true);
-    const bal = inv.total_kobo - inv.amount_paid_kobo;
-    if (bal > 0) drawTotRow("Balance Due", fmtK(bal), false, true);
   }
 
-  y += 4;
-
-  // ── PAYMENT DETAILS ───────────────────────────────────────────────────────
-  const hasBank = biz.bank || biz.acctNo;
-  if (hasBank || inv.payment_instructions) {
-    doc.setFillColor(...LIGHT);
-    doc.setDrawColor(...MID);
-    doc.setLineWidth(0.3);
-
-    // Section heading with left accent
+  // ── Payment details column (left ~48%)
+  const PAY_W = TOT_X - ML - 8;
+  if (pmtRows.length > 0) {
+    let py = blockTop;
+    setMed(7); col(...NAVY); doc.setCharSpace(0.5);
+    doc.text("PAYMENT DETAILS", ML, py); doc.setCharSpace(0);
     doc.setFillColor(...NAVY);
-    doc.roundedRect(ML, y, 3, 5, 1, 1, "F");
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(7.5);
-    doc.setTextColor(...NAVY);
-    doc.text("PAYMENT DETAILS", ML + 5, y + 4);
-    y += 9;
+    doc.rect(ML, py + 2.5, 22, 0.5, "F");
+    py += 8;
 
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(8.5);
-    doc.setTextColor(...DARK);
-    const pmtLines = [
-      hasBank && biz.bank     ? `Bank: ${biz.bank}` : null,
-      hasBank && biz.acctNo   ? `Account Number: ${biz.acctNo}` : null,
-      hasBank && biz.acctName ? `Account Name: ${biz.acctName}` : null,
-      inv.payment_instructions || null,
-    ].filter(Boolean);
-
-    pmtLines.forEach(l => {
-      const wrapped = doc.splitTextToSize(l, TW);
-      doc.text(wrapped, ML, y);
-      y += wrapped.length * 5;
-    });
-    y += 4;
+    for (const [lbl, val] of pmtRows) {
+      setReg(7); col(...MUTED);
+      doc.text(lbl, ML, py); py += 3.5;
+      setMed(8); col(...DARK);
+      const vLines = splitW(val, PAY_W);
+      doc.text(vLines, ML, py);
+      py += vLines.length * 4.5 + 3;
+    }
   }
 
-  // ── NOTES ─────────────────────────────────────────────────────────────────
+  y = Math.max(ty, blockTop + Math.max(totH, payH)) + 5;
+
+  // ── NOTES ────────────────────────────────────────────────────────────────
   if (inv.notes) {
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(7.5);
-    doc.setTextColor(...SLATE);
-    doc.text("NOTES", ML, y);
-    y += 5;
-    doc.setFont("helvetica", "italic");
-    doc.setFontSize(8);
-    doc.setTextColor(...SLATE);
-    const noteLines = doc.splitTextToSize(inv.notes, TW);
-    doc.text(noteLines, ML, y);
-    y += noteLines.length * 5 + 4;
+    setReg(7); col(...MUTED); doc.setCharSpace(0.5);
+    doc.text("NOTES", ML, y); doc.setCharSpace(0); y += 5;
+    setItal(8); col(...SEC);
+    const nLns = splitW(inv.notes, TW);
+    doc.text(nLns, ML, y);
+    y += nLns.length * 4.5 + 6;
   }
 
   // ── THANK-YOU NOTE ────────────────────────────────────────────────────────
-  if (biz.thanks && y < H - 35) {
-    // Decorative thank-you box
-    doc.setFillColor(239, 246, 255);
-    doc.setDrawColor(191, 219, 254);
-    doc.setLineWidth(0.3);
-    const thankLines = doc.splitTextToSize(biz.thanks, TW - 12);
-    const boxH = thankLines.length * 5 + 10;
-    doc.roundedRect(ML, y, TW, boxH, 3, 3, "FD");
-    doc.setFont("helvetica", "italic");
-    doc.setFontSize(8.5);
-    doc.setTextColor(30, 64, 175);
-    doc.text(thankLines, ML + 6, y + 7);
-    y += boxH + 4;
+  if (thanksLns.length > 0) {
+    doc.setDrawColor(...HAIRLN); doc.setLineWidth(0.3);
+    doc.line(ML, y, MR, y);
+    y += 6;
+    setItal(8.5); col(...MUTED);
+    doc.text(thanksLns, ML + TW / 2, y, { align: "center" });
   }
 
-  // ── WATERMARK (diagonal status text) ─────────────────────────────────────
-  doc.saveGraphicsState();
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(56);
-  doc.setTextColor(...ss.bg);
-  doc.setGState(new doc.GState({ opacity: 0.05 }));
-  doc.text(ss.text, W / 2 + 20, H / 2 - 10, { align: "center", angle: 45 });
-  doc.restoreGraphicsState();
-
-  // ── FOOTER ─────────────────────────────────────────────────────────────────
-  const footH = 20;
-  doc.setFillColor(...NAVY);
-  doc.rect(0, H - footH, W, footH, "F");
-
-  // KudiAI Track logo in footer
-  const fIconSize = 10;
-  const fIconX    = ML;
-  const fIconY    = H - footH + (footH - fIconSize) / 2;
-  if (appLogoB64) {
-    try {
-      doc.setFillColor(...WHITE);
-      doc.roundedRect(fIconX - 1, fIconY - 1, fIconSize + 2, fIconSize + 2, 2, 2, "F");
-      doc.addImage(appLogoB64, "PNG", fIconX, fIconY, fIconSize, fIconSize, "", "FAST");
-    } catch {}
+  // ── FOOTERS (all pages, with accurate page count) ─────────────────────────
+  const totalPages = doc.internal.pages.length - 1;
+  for (let p = 1; p <= totalPages; p++) {
+    doc.setPage(p);
+    drawFooter(p, totalPages);
   }
 
-  const fTextX  = appLogoB64 ? ML + fIconSize + 5 : ML;
-  const fCenterY = H - footH / 2;
-
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(7.5);
-  doc.setTextColor(...WHITE);
-  doc.text("KudiAI Track", fTextX, fCenterY - 3);
-
-  doc.setFont("helvetica", "italic");
-  doc.setFontSize(6);
-  doc.setTextColor(148, 172, 220);
-  doc.text(SLOGAN, fTextX, fCenterY + 2);
-
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(5.5);
-  doc.setTextColor(100, 126, 180);
-  doc.text(
-    `A product of Amaya & Co. Technologies © ${new Date().getFullYear()}`,
-    MR, fCenterY, { align: "right" }
-  );
-
-  // Page number
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(6);
-  doc.setTextColor(148, 172, 220);
-  doc.text("Page 1 of 1", MR, fCenterY + 5, { align: "right" });
-
+  // ── OUTPUT ───────────────────────────────────────────────────────────────
   const prefix = isReceipt ? "receipt" : "invoice";
-  if (returnBase64) {
-    return doc.output("datauristring").split(",")[1];
-  }
-  await savePdf(doc, `${prefix}_${(inv.invoice_number || Date.now()).toString().replace(/\//g, "-")}.pdf`);
+  const fname  = `${prefix}_${(inv.invoice_number || Date.now()).toString().replace(/\//g, "-")}.pdf`;
+  if (returnBase64) return doc.output("datauristring").split(",")[1];
+  await savePdf(doc, fname);
 }
