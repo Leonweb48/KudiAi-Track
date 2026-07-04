@@ -47,7 +47,7 @@ const WHITE = [255, 255, 255];
 
 const SLOGAN = "Talk your money. Track your profit. Grow your business.";
 
-export async function exportInvoicePdf(inv, profile, invoiceSettings = {}, { isReceipt = false } = {}) {
+export async function exportInvoicePdf(inv, profile, invoiceSettings = {}, { isReceipt = false, returnBase64 = false } = {}) {
   const { jsPDF } = await import("jspdf");
   const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
   const W  = doc.internal.pageSize.getWidth();   // 210mm
@@ -359,8 +359,9 @@ export async function exportInvoicePdf(inv, profile, invoiceSettings = {}, { isR
   y += 2;
 
   drawTotRow("Subtotal",    fmtK(inv.subtotal_kobo));
-  if (inv.discount_kobo > 0) drawTotRow("Discount",   `−${fmtK(inv.discount_kobo)}`, false, true);
-  if (inv.vat_kobo > 0)      drawTotRow("VAT (7.5%)", fmtK(inv.vat_kobo));
+  if (inv.discount_kobo > 0)       drawTotRow("Discount",   `−${fmtK(inv.discount_kobo)}`, false, true);
+  if (inv.vat_kobo > 0)            drawTotRow("VAT (7.5%)", fmtK(inv.vat_kobo));
+  if ((inv.other_charges_kobo || 0) > 0) drawTotRow(inv.other_charges_label || "Other Charges", fmtK(inv.other_charges_kobo));
 
   drawTotRow(isReceipt ? "TOTAL RECEIVED" : "TOTAL DUE", fmtK(inv.total_kobo), true);
 
@@ -491,5 +492,8 @@ export async function exportInvoicePdf(inv, profile, invoiceSettings = {}, { isR
   doc.text("Page 1 of 1", MR, fCenterY + 5, { align: "right" });
 
   const prefix = isReceipt ? "receipt" : "invoice";
+  if (returnBase64) {
+    return doc.output("datauristring").split(",")[1];
+  }
   await savePdf(doc, `${prefix}_${(inv.invoice_number || Date.now()).toString().replace(/\//g, "-")}.pdf`);
 }

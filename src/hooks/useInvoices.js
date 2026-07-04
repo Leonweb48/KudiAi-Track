@@ -80,6 +80,8 @@ export function useInvoices(userId) {
     notes,
     source_transaction_id,
     business_name,
+    other_charges_kobo = 0,
+    other_charges_label = "",
   }) => {
     // 1. Upsert customer
     let customerId = customer.id || null;
@@ -98,7 +100,7 @@ export function useInvoices(userId) {
     const discount_kobo  = nairaToKobo(discount_naira || 0);
     const after_discount = Math.max(0, subtotal_kobo - discount_kobo);
     const vat_kobo       = vat_enabled ? Math.round(after_discount * 0.075) : 0;
-    const total_kobo     = after_discount + vat_kobo;
+    const total_kobo     = after_discount + vat_kobo + (other_charges_kobo || 0);
 
     // 3. Generate invoice number (atomic counter + client-side formatting)
     const { data: seq, error: numErr } = await supabase
@@ -124,6 +126,8 @@ export function useInvoices(userId) {
         subtotal_kobo,
         discount_kobo,
         vat_kobo,
+        other_charges_kobo:    other_charges_kobo || 0,
+        other_charges_label:   other_charges_label || "",
         total_kobo,
         amount_paid_kobo:      0,
         payment_instructions:  payment_instructions || "",
@@ -170,13 +174,13 @@ export function useInvoices(userId) {
   // ── Update existing draft ─────────────────────────────────────────────────
   const updateDraft = async (invoiceId, {
     customer, items, discount_naira, vat_enabled, due_date,
-    payment_instructions, notes,
+    payment_instructions, notes, other_charges_kobo = 0, other_charges_label = "",
   }) => {
     const subtotal_kobo  = items.reduce((s, i) => s + i.line_total_kobo, 0);
     const discount_kobo  = nairaToKobo(discount_naira || 0);
     const after_discount = Math.max(0, subtotal_kobo - discount_kobo);
     const vat_kobo       = vat_enabled ? Math.round(after_discount * 0.075) : 0;
-    const total_kobo     = after_discount + vat_kobo;
+    const total_kobo     = after_discount + vat_kobo + (other_charges_kobo || 0);
 
     // Update invoice header
     const { error: invErr } = await supabase
@@ -186,7 +190,10 @@ export function useInvoices(userId) {
         customer_phone:       customer.phone || "",
         customer_email:       customer.email || "",
         due_date:             due_date   || null,
-        subtotal_kobo, discount_kobo, vat_kobo, total_kobo,
+        subtotal_kobo, discount_kobo, vat_kobo,
+        other_charges_kobo:  other_charges_kobo || 0,
+        other_charges_label: other_charges_label || "",
+        total_kobo,
         payment_instructions: payment_instructions || "",
         notes:                notes || "",
       })

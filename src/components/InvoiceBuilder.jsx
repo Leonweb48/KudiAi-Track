@@ -250,7 +250,11 @@ function StepAdjust({ items, value, onChange, profileVatEnabled }) {
   const discount_kobo  = nairaToKobo(value.discount_naira || 0);
   const after_discount = Math.max(0, subtotal_kobo - discount_kobo);
   const vat_kobo       = value.vat_enabled ? Math.round(after_discount * 0.075) : 0;
-  const total_kobo     = after_discount + vat_kobo;
+  const ocv            = parseFloat(value.other_charges_value) || 0;
+  const other_charges_kobo = value.other_charges_enabled
+    ? (value.other_charges_mode === "pct" ? Math.round(after_discount * ocv / 100) : nairaToKobo(ocv))
+    : 0;
+  const total_kobo     = after_discount + vat_kobo + other_charges_kobo;
 
   return (
     <div>
@@ -271,6 +275,49 @@ function StepAdjust({ items, value, onChange, profileVatEnabled }) {
           <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${value.vat_enabled ? "translate-x-6" : "translate-x-0.5"}`} />
         </button>
       </div>
+
+      <div className="flex items-center justify-between mb-2 bg-slate-50 dark:bg-slate-700/50 rounded-xl px-4 py-3">
+        <div>
+          <p className="text-sm font-bold text-slate-700 dark:text-slate-200">Other Charges</p>
+          <p className="text-xs text-slate-400">
+            {value.other_charges_enabled ? (other_charges_kobo > 0 ? `+${fmtK(other_charges_kobo)}` : "Set amount below") : "Off"}
+          </p>
+        </div>
+        <button onClick={() => onChange({ ...value, other_charges_enabled: !value.other_charges_enabled })}
+          className={`w-12 h-6 rounded-full transition-colors relative ${value.other_charges_enabled ? "bg-brand-600" : "bg-slate-200 dark:bg-slate-600"}`}>
+          <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${value.other_charges_enabled ? "translate-x-6" : "translate-x-0.5"}`} />
+        </button>
+      </div>
+
+      {value.other_charges_enabled && (
+        <div className="bg-slate-50 dark:bg-slate-700/30 rounded-xl px-4 pt-3 pb-4 mb-4 space-y-2">
+          <Field label="Charge Label"
+            value={value.other_charges_label}
+            onChange={e => onChange({ ...value, other_charges_label: e.target.value })}
+            placeholder="e.g. Delivery Fee, Service Charge" />
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 tracking-wide uppercase">Type</label>
+              <select
+                value={value.other_charges_mode}
+                onChange={e => onChange({ ...value, other_charges_mode: e.target.value })}
+                className="w-full border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500"
+              >
+                <option value="fixed">Fixed (₦)</option>
+                <option value="pct">Percentage (%)</option>
+              </select>
+            </div>
+            <div className="flex-1">
+              <Field
+                label={value.other_charges_mode === "pct" ? "Rate (%)" : "Amount (₦)"}
+                type="number" inputMode="decimal"
+                value={value.other_charges_value}
+                onChange={e => onChange({ ...value, other_charges_value: e.target.value })}
+                placeholder="0" />
+            </div>
+          </div>
+        </div>
+      )}
 
       <Field label="Due Date" type="date"
         value={value.due_date}
@@ -293,6 +340,11 @@ function StepAdjust({ items, value, onChange, profileVatEnabled }) {
         {vat_kobo > 0 && (
           <div className="flex justify-between text-sm text-slate-600 dark:text-slate-400">
             <span>VAT (7.5%)</span><span>{fmtK(vat_kobo)}</span>
+          </div>
+        )}
+        {other_charges_kobo > 0 && (
+          <div className="flex justify-between text-sm text-slate-600 dark:text-slate-400">
+            <span>{value.other_charges_label || "Other Charges"}</span><span>{fmtK(other_charges_kobo)}</span>
           </div>
         )}
         <div className="flex justify-between text-base font-extrabold text-slate-800 dark:text-white border-t border-slate-200 dark:border-slate-700 pt-2 mt-2">
@@ -344,7 +396,11 @@ function StepReview({ customer, items, adjust, payment }) {
   const discount_kobo  = nairaToKobo(adjust.discount_naira || 0);
   const after_discount = Math.max(0, subtotal_kobo - discount_kobo);
   const vat_kobo       = adjust.vat_enabled ? Math.round(after_discount * 0.075) : 0;
-  const total_kobo     = after_discount + vat_kobo;
+  const ocv            = parseFloat(adjust.other_charges_value) || 0;
+  const other_charges_kobo = adjust.other_charges_enabled
+    ? (adjust.other_charges_mode === "pct" ? Math.round(after_discount * ocv / 100) : nairaToKobo(ocv))
+    : 0;
+  const total_kobo     = after_discount + vat_kobo + other_charges_kobo;
 
   return (
     <div className="space-y-4">
@@ -379,6 +435,11 @@ function StepReview({ customer, items, adjust, payment }) {
         {vat_kobo > 0 && (
           <div className="flex justify-between text-sm text-slate-600 dark:text-slate-400">
             <span>VAT (7.5%)</span><span>{fmtK(vat_kobo)}</span>
+          </div>
+        )}
+        {other_charges_kobo > 0 && (
+          <div className="flex justify-between text-sm text-slate-600 dark:text-slate-400">
+            <span>{adjust.other_charges_label || "Other Charges"}</span><span>{fmtK(other_charges_kobo)}</span>
           </div>
         )}
         <div className="flex justify-between text-base font-extrabold text-slate-800 dark:text-white pt-1.5 border-t border-slate-200 dark:border-slate-700">
@@ -455,10 +516,14 @@ export default function InvoiceBuilder({
   });
 
   const [adjust, setAdjust] = useState(() => ({
-    discount_naira: initialData ? String((initialData.discount_kobo || 0) / 100) : "",
-    vat_enabled:    initialData ? (initialData.vat_kobo || 0) > 0 : (profile?.vat_enabled || false),
-    due_date:       initialData?.due_date || "",
-    notes:          initialData?.notes    || "",
+    discount_naira:       initialData ? String((initialData.discount_kobo || 0) / 100) : "",
+    vat_enabled:          initialData ? (initialData.vat_kobo || 0) > 0 : (profile?.vat_enabled || false),
+    due_date:             initialData?.due_date || "",
+    notes:                initialData?.notes    || "",
+    other_charges_enabled: initialData ? (initialData.other_charges_kobo || 0) > 0 : false,
+    other_charges_label:   initialData?.other_charges_label || "",
+    other_charges_mode:    "fixed",
+    other_charges_value:   initialData ? String((initialData.other_charges_kobo || 0) / 100) : "",
   }));
 
   const [payment, setPayment] = useState({
@@ -478,6 +543,16 @@ export default function InvoiceBuilder({
   const handleSave = async (saveAs) => {
     setSaving(true);
     setError("");
+    const subtotal_kobo  = items.reduce((s, i) => s + i.line_total_kobo, 0);
+    const discount_kobo  = nairaToKobo(adjust.discount_naira || 0);
+    const after_discount = Math.max(0, subtotal_kobo - discount_kobo);
+    let other_charges_kobo = 0;
+    if (adjust.other_charges_enabled) {
+      const v = parseFloat(adjust.other_charges_value) || 0;
+      other_charges_kobo = adjust.other_charges_mode === "pct"
+        ? Math.round(after_discount * v / 100)
+        : nairaToKobo(v);
+    }
     const { data, error: err } = await onSaved({
       customer,
       items,
@@ -487,6 +562,8 @@ export default function InvoiceBuilder({
       notes:                adjust.notes,
       payment_instructions: payment.payment_instructions,
       source_transaction_id: sourceTransaction?.id || null,
+      other_charges_kobo,
+      other_charges_label:  adjust.other_charges_enabled ? (adjust.other_charges_label || "Other Charges") : "",
       _saveAs:  saveAs,
       _editId:  isEditing ? initialData.id : null,
     });

@@ -418,6 +418,11 @@ function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCance
                   <span>VAT (7.5%)</span><span>{fmtK(inv.vat_kobo)}</span>
                 </div>
               )}
+              {(inv.other_charges_kobo || 0) > 0 && (
+                <div className="flex justify-between text-sm text-slate-500 dark:text-slate-400">
+                  <span>{inv.other_charges_label || "Other Charges"}</span><span>{fmtK(inv.other_charges_kobo)}</span>
+                </div>
+              )}
               <div className="flex justify-between font-extrabold text-slate-800 dark:text-white text-base pt-1.5 border-t border-slate-200 dark:border-slate-700">
                 <span>Total</span><span>{fmtK(inv.total_kobo)}</span>
               </div>
@@ -728,16 +733,31 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
           onSent={async (id) => {
             const { error } = await markSent(id);
             if (!error) {
-              sendEmailTrigger("invoice_sent", {
-                owner_id:       userId,
-                owner_email:    profile?.email || "",
-                business_name:  profile?.business_name || "",
-                invoice_number: detailInv.invoice_number,
-                customer_name:  detailInv.customer_name,
-                customer_email: detailInv.customer_email || "",
-                total_amount:   koboToNaira(detailInv.total_kobo),
-                due_date:       detailInv.due_date || "",
-              });
+              const _inv = detailInv;
+              ;(async () => {
+                let pdfBase64 = null;
+                try { pdfBase64 = await exportInvoicePdf(_inv, profile, invoiceSettings || {}, { returnBase64: true }); } catch {}
+                sendEmailTrigger("invoice_sent", {
+                  owner_id:            userId,
+                  owner_email:         profile?.email || "",
+                  business_name:       profile?.business_name || "",
+                  invoice_number:      _inv.invoice_number,
+                  issue_date:          _inv.created_at ? new Date(_inv.created_at).toLocaleDateString("en-NG") : "",
+                  due_date:            _inv.due_date || "",
+                  customer_name:       _inv.customer_name,
+                  customer_email:      _inv.customer_email || "",
+                  customer_phone:      _inv.customer_phone || "",
+                  items:               (_inv.invoice_items || []).map(i => ({ description: i.description, quantity: i.quantity, unit_price: koboToNaira(i.unit_price_kobo), line_total: koboToNaira(i.line_total_kobo) })),
+                  subtotal:            koboToNaira(_inv.subtotal_kobo),
+                  discount:            koboToNaira(_inv.discount_kobo || 0),
+                  vat:                 koboToNaira(_inv.vat_kobo || 0),
+                  other_charges:       koboToNaira(_inv.other_charges_kobo || 0),
+                  other_charges_label: _inv.other_charges_label || "",
+                  total:               koboToNaira(_inv.total_kobo),
+                  pdf_base64:          pdfBase64,
+                  pdf_filename:        `invoice_${(_inv.invoice_number || "").replace(/\//g, "-")}.pdf`,
+                });
+              })();
             }
             await reload();
           }}
@@ -761,16 +781,30 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
             await reload();
           }}
           onResend={(inv) => {
-            sendEmailTrigger("invoice_sent", {
-              owner_id:       userId,
-              owner_email:    profile?.email || "",
-              business_name:  profile?.business_name || "",
-              invoice_number: inv.invoice_number,
-              customer_name:  inv.customer_name,
-              customer_email: inv.customer_email || "",
-              total_amount:   koboToNaira(inv.total_kobo),
-              due_date:       inv.due_date || "",
-            });
+            ;(async () => {
+              let pdfBase64 = null;
+              try { pdfBase64 = await exportInvoicePdf(inv, profile, invoiceSettings || {}, { returnBase64: true }); } catch {}
+              sendEmailTrigger("invoice_sent", {
+                owner_id:            userId,
+                owner_email:         profile?.email || "",
+                business_name:       profile?.business_name || "",
+                invoice_number:      inv.invoice_number,
+                issue_date:          inv.created_at ? new Date(inv.created_at).toLocaleDateString("en-NG") : "",
+                due_date:            inv.due_date || "",
+                customer_name:       inv.customer_name,
+                customer_email:      inv.customer_email || "",
+                customer_phone:      inv.customer_phone || "",
+                items:               (inv.invoice_items || []).map(i => ({ description: i.description, quantity: i.quantity, unit_price: koboToNaira(i.unit_price_kobo), line_total: koboToNaira(i.line_total_kobo) })),
+                subtotal:            koboToNaira(inv.subtotal_kobo),
+                discount:            koboToNaira(inv.discount_kobo || 0),
+                vat:                 koboToNaira(inv.vat_kobo || 0),
+                other_charges:       koboToNaira(inv.other_charges_kobo || 0),
+                other_charges_label: inv.other_charges_label || "",
+                total:               koboToNaira(inv.total_kobo),
+                pdf_base64:          pdfBase64,
+                pdf_filename:        `invoice_${(inv.invoice_number || "").replace(/\//g, "-")}.pdf`,
+              });
+            })();
           }}
           onEdit={(inv) => { setDetailInv(null); setEditInv(inv); }}
           onPayment={async (payData) => {
@@ -785,17 +819,37 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
                 customer_name:    detailInv.customer_name || "",
                 transaction_date: payData.paidAt ? payData.paidAt.slice(0, 10) : today(),
               });
-              sendEmailTrigger("invoice_paid", {
-                owner_id:       userId,
-                owner_email:    profile?.email || "",
-                business_name:  profile?.business_name || "",
-                invoice_number: detailInv.invoice_number,
-                customer_name:  detailInv.customer_name,
-                customer_email: detailInv.customer_email || "",
-                total_amount:   koboToNaira(detailInv.total_kobo),
-                amount_paid:    parseFloat(payData.amount_naira),
-                payment_method: payData.method || "cash",
-              });
+              const _inv2 = detailInv;
+              const _pd   = payData;
+              const paidKoboNow   = Math.round(parseFloat(_pd.amount_naira || 0) * 100);
+              const totalPaidKobo = (_inv2.amount_paid_kobo || 0) + paidKoboNow;
+              const balanceDue    = koboToNaira(Math.max(0, _inv2.total_kobo - totalPaidKobo));
+              ;(async () => {
+                let pdfBase64 = null;
+                try { pdfBase64 = await exportInvoicePdf(_inv2, profile, invoiceSettings || {}, { returnBase64: true }); } catch {}
+                sendEmailTrigger("invoice_paid", {
+                  owner_id:            userId,
+                  owner_email:         profile?.email || "",
+                  business_name:       profile?.business_name || "",
+                  invoice_number:      _inv2.invoice_number,
+                  due_date:            _inv2.due_date || "",
+                  customer_name:       _inv2.customer_name,
+                  customer_email:      _inv2.customer_email || "",
+                  customer_phone:      _inv2.customer_phone || "",
+                  items:               (_inv2.invoice_items || []).map(i => ({ description: i.description, quantity: i.quantity, unit_price: koboToNaira(i.unit_price_kobo), line_total: koboToNaira(i.line_total_kobo) })),
+                  subtotal:            koboToNaira(_inv2.subtotal_kobo),
+                  discount:            koboToNaira(_inv2.discount_kobo || 0),
+                  vat:                 koboToNaira(_inv2.vat_kobo || 0),
+                  other_charges:       koboToNaira(_inv2.other_charges_kobo || 0),
+                  other_charges_label: _inv2.other_charges_label || "",
+                  total:               koboToNaira(_inv2.total_kobo),
+                  amount_paid:         parseFloat(_pd.amount_naira),
+                  balance_due:         balanceDue,
+                  payment_method:      _pd.method || "cash",
+                  pdf_base64:          pdfBase64,
+                  pdf_filename:        `invoice_${(_inv2.invoice_number || "").replace(/\//g, "-")}.pdf`,
+                });
+              })();
             }
             await reload();
             return result;
