@@ -9,79 +9,132 @@ import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import { LANGUAGES, getLangMeta } from "../utils/i18n";
 import { useLanguage, useT } from "../contexts/LanguageContext";
 
-/* ── PIN Setup Modal ──────────────────────────────────────────────── */
-function PinSetupModal({ onDone, onClose }) {
-  const [step, setStep]   = useState(1);
-  const [pin1, setPin1]   = useState("");
-  const [pin2, setPin2]   = useState("");
-  const [error, setError] = useState("");
+/* ── Change PIN Modal (3-step: verify current → enter new → confirm new) ── */
+function ChangePinModal({ pinLength = 6, title, onVerifyCurrent, onSetNew, onClose }) {
+  // pinLength: 6 for app lock, 4 for transaction
+  const [step,        setStep]       = useState("current");  // "current" | "new" | "confirm"
+  const [verifiedPin, setVerifiedPin] = useState("");         // current PIN after it passed verification
+  const [newPin,      setNewPin]      = useState("");
+  const [pin,         setPin]         = useState("");         // active input
+  const [error,       setError]       = useState("");
+  const [checking,    setChecking]    = useState(false);
 
-  const active    = step === 1 ? pin1 : pin2;
-  const setActive = step === 1 ? setPin1 : setPin2;
+  const maxLen = pinLength;
+  const stepTitle = step === "current" ? `Enter current PIN`
+    : step === "new"     ? `Enter new PIN`
+    : `Confirm new PIN`;
+  const stepSub = step === "current"
+    ? `Your ${pinLength}-digit PIN`
+    : step === "new"
+    ? `Choose a new ${pinLength}-digit PIN`
+    : `Re-enter your new PIN to confirm`;
 
-  const handleDigit = (d) => {
-    if (active.length >= 4) return;
-    const next = active + d;
-    setActive(next);
+  const handleDigit = async (d) => {
+    if (pin.length >= maxLen || checking) return;
+    const next = pin + d;
+    setPin(next);
     setError("");
-    if (next.length === 4) {
-      if (step === 1) {
-        setTimeout(() => setStep(2), 250);
-      } else {
-        if (pin1 === next) {
-          onDone(pin1);
+
+    if (next.length < maxLen) return;
+
+    setTimeout(async () => {
+      if (step === "current") {
+        setChecking(true);
+        const result = await onVerifyCurrent(next);
+        setChecking(false);
+        if (result.success) {
+          setVerifiedPin(next);
+          setPin("");
+          setStep("new");
         } else {
-          setError("PINs don't match. Try again.");
-          setPin2("");
-          setPin1("");
-          setTimeout(() => setStep(1), 800);
+          setPin("");
+          setError(result.error || "Incorrect PIN.");
         }
+        return;
       }
-    }
+
+      if (step === "new") {
+        setNewPin(next);
+        setPin("");
+        setStep("confirm");
+        return;
+      }
+
+      if (step === "confirm") {
+        if (next !== newPin) {
+          setPin("");
+          setError("PINs don't match. Try again.");
+          setStep("new");
+          setNewPin("");
+          return;
+        }
+        setChecking(true);
+        await onSetNew(verifiedPin, next);
+        setChecking(false);
+        onClose();
+      }
+    }, 150);
   };
 
   const handleDelete = () => {
-    setActive(v => v.slice(0, -1));
+    setPin(p => p.slice(0, -1));
     setError("");
   };
 
   return (
-    <Modal title={step === 1 ? "Set App PIN" : "Confirm PIN"} onClose={onClose}>
+    <Modal title={title} onClose={onClose}>
       <div className="flex flex-col items-center gap-6 py-2">
-        <p className="text-sm text-slate-500 dark:text-slate-400 text-center">
-          {step === 1
-            ? "Choose a 4-digit PIN to protect your app"
-            : "Enter your PIN again to confirm"}
-        </p>
+        {/* Step indicator */}
+        <div className="flex items-center gap-2">
+          {["current","new","confirm"].map((s, i) => (
+            <div key={s} className="flex items-center gap-2">
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold transition-colors ${
+                step === s ? "bg-brand-600 text-white"
+                  : ["current","new","confirm"].indexOf(step) > i
+                    ? "bg-brand-200 dark:bg-brand-800 text-brand-700 dark:text-brand-300"
+                    : "bg-slate-100 dark:bg-slate-700 text-slate-400"
+              }`}>{i + 1}</div>
+              {i < 2 && <div className="w-8 h-0.5 rounded-full bg-slate-200 dark:bg-slate-700" />}
+            </div>
+          ))}
+        </div>
+
+        <div className="text-center">
+          <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{stepTitle}</p>
+          <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{stepSub}</p>
+        </div>
 
         {/* dots */}
-        <div className="flex gap-4">
-          {[0, 1, 2, 3].map(i => (
-            <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all ${
-              active.length > i
+        <div className="flex gap-4 justify-center">
+          {Array.from({ length: maxLen }).map((_, i) => (
+            <div key={i} className={`rounded-full border-2 transition-all ${
+              maxLen === 6 ? "w-3 h-3" : "w-4 h-4"
+            } ${
+              pin.length > i
                 ? "bg-brand-500 border-brand-500 scale-110"
                 : "border-slate-300 dark:border-slate-600"
             }`} />
           ))}
         </div>
 
-        {error && <p className="text-xs text-red-500 font-semibold -mt-2">{error}</p>}
+        {error && <p className="text-xs text-red-500 font-semibold -mt-2 text-center">{error}</p>}
+        {checking && <p className="text-xs text-slate-400 -mt-2">Checking…</p>}
 
         {/* numpad */}
         <div className="grid grid-cols-3 gap-3 w-full max-w-[240px]">
           {[1,2,3,4,5,6,7,8,9].map(n => (
-            <button key={n} onClick={() => handleDigit(String(n))}
-              className="h-14 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-800 dark:text-white text-lg font-bold transition active:scale-95">
+            <button key={n} onClick={() => handleDigit(String(n))} disabled={checking}
+              className="h-14 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-800 dark:text-white text-lg font-bold transition active:scale-95 disabled:opacity-50">
               {n}
             </button>
           ))}
           <div />
-          <button onClick={() => handleDigit("0")}
-            className="h-14 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-800 dark:text-white text-lg font-bold transition active:scale-95">
+          <button onClick={() => handleDigit("0")} disabled={checking}
+            className="h-14 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-800 dark:text-white text-lg font-bold transition active:scale-95 disabled:opacity-50">
             0
           </button>
-          <button onClick={handleDelete}
-            className="h-14 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 flex items-center justify-center transition active:scale-95">
+          <button onClick={handleDelete} disabled={checking}
+            className="h-14 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 flex items-center justify-center transition active:scale-95 disabled:opacity-50">
             <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
               <path d="M21 4H8l-7 8 7 8h13a2 2 0 002-2V6a2 2 0 00-2-2z" />
               <line x1="18" y1="9" x2="13" y2="14" />
@@ -89,14 +142,11 @@ function PinSetupModal({ onDone, onClose }) {
             </svg>
           </button>
         </div>
-
-        <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center px-4">
-          Your PIN is stored securely on this device only
-        </p>
       </div>
     </Modal>
   );
 }
+
 
 const GENDERS = ["Male", "Female", "Prefer not to say"];
 
@@ -347,17 +397,14 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
   const [saving,        setSaving]        = useState(false);
   const [saveError,     setSaveError]     = useState("");
   const [signingOut,    setSigningOut]    = useState(false);
-  const [showPinSetup,  setShowPinSetup]  = useState(false);
+  const [showChangePin, setShowChangePin] = useState(false);
+  const [changePinType, setChangePinType] = useState("app");  // "app" | "txn"
+  const [showAutoLock,  setShowAutoLock]  = useState(false);
   const [showSupport,   setShowSupport]   = useState(false);
-  const [lockBusy,      setLockBusy]      = useState(false);
   const [showLangPick,  setShowLangPick]  = useState(false);
   const [legalScreen,   setLegalScreen]   = useState(null); // "terms" | "privacy"
   const [acceptedConsent, setAcceptedConsent] = useState(null);
 
-  const lockEnabled    = lock?.enabled    ?? false;
-  const lockHasPIN     = lock?.hasPIN     ?? false;
-  const lockHasBio     = lock?.hasBiometric ?? false;
-  const lockBioAvail   = lock?.bioAvailable ?? false;
 
   useEffect(() => {
     if (!editProfile) setFp({ ...profile });
@@ -678,75 +725,66 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
       {/* ── SECURITY ───────────────────────────────────────────────── */}
       <SectionLabel>{t("settings.security")}</SectionLabel>
       <SettingsCard>
-        {/* App Lock toggle */}
+        {/* App Lock PIN */}
         <Row
           icon={<LockIcon />}
-          label={t("settings.appLock")}
-          sub={
-            lockEnabled
-              ? lockHasBio
-                ? "Locked · Fingerprint / Face + PIN"
-                : "Locked · PIN only"
-              : lockHasPIN
-                ? "PIN set but lock is off"
-                : "Protect app when you leave"
-          }
-          onClick={async () => {
-            if (!lock) return;
-            if (lockEnabled) {
-              lock.disableLock();
-            } else if (lockHasPIN) {
-              setLockBusy(true);
-              await lock.enableLock();
-              setLockBusy(false);
-            } else {
-              setShowPinSetup(true);
-            }
-          }}
-          right={
-            <button
-              onClick={async (e) => {
-                e.stopPropagation();
-                if (!lock) return;
-                if (lockEnabled) {
-                  lock.disableLock();
-                } else if (lockHasPIN) {
-                  setLockBusy(true);
-                  await lock.enableLock();
-                  setLockBusy(false);
-                } else {
-                  setShowPinSetup(true);
-                }
-              }}
-              className={`w-12 h-6 rounded-full transition-colors duration-200 relative focus-visible:outline-none flex-shrink-0 ${
-                lockEnabled ? "bg-brand-600" : "bg-slate-200 dark:bg-slate-600"
-              }`}
-            >
-              {lockBusy
-                ? <span className="absolute inset-0 flex items-center justify-center">
-                    <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  </span>
-                : <span
-                    className="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all duration-200"
-                    style={{ left: lockEnabled ? "calc(100% - 22px)" : "2px" }}
-                  />
-              }
-            </button>
-          }
+          label="App Lock PIN"
+          sub={lock?.status?.appPinSet ? "Change your 6-digit unlock PIN" : "Not set"}
+          onClick={() => { setChangePinType("app"); setShowChangePin(true); }}
         />
 
-        {/* Change / Set PIN */}
+        {/* Transaction PIN */}
         <Row
           icon={<ShieldIcon />}
-          label={lockHasPIN ? t("settings.changePin") : t("settings.setPin")}
-          sub={
-            lockHasPIN
-              ? lockBioAvail && lockHasBio
-                ? "Biometric registered · tap to change PIN"
-                : "Change your 4-digit unlock PIN"
-              : "Set a 4-digit PIN to enable App Lock"
+          label="Transaction PIN"
+          sub={lock?.status?.txnPinSet
+            ? lock?.status?.txnPinResetAt
+              ? "Recently reset — high-value ops under 24h review"
+              : "Change your 4-digit payment PIN"
+            : "Not set"}
+          onClick={() => { setChangePinType("txn"); setShowChangePin(true); }}
+        />
+
+        {/* Biometric toggle */}
+        {lock?.biometricAvailable && (
+          <Row
+            icon={
+              <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M2 12a10 10 0 0020 0" />
+                <path d="M5.5 12a6.5 6.5 0 0013 0" />
+                <path d="M9 12a3 3 0 016 0" />
+                <path d="M12 12v5" />
+                <circle cx="12" cy="12" r="1" fill="currentColor" />
+              </svg>
+            }
+            label="Biometric Unlock"
+            sub={lock?.biometricEnabled ? "Fingerprint / Face ID enabled" : "Use biometrics to unlock faster"}
+            onClick={async () => {
+              if (lock?.biometricEnabled) {
+                await lock.disableBiometric();
+              } else {
+                await lock.registerBiometric();
+              }
+            }}
+            right={
+              <div className={`w-12 h-6 rounded-full transition-colors duration-200 relative flex-shrink-0 ${lock?.biometricEnabled ? "bg-brand-600" : "bg-slate-200 dark:bg-slate-600"}`}>
+                <span className="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all duration-200" style={{ left: lock?.biometricEnabled ? "calc(100% - 22px)" : "2px" }} />
+              </div>
+            }
+          />
+        )}
+
+        {/* Auto-lock timeout */}
+        <Row
+          icon={
+            <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 7v5l3 3" />
+            </svg>
           }
-          onClick={() => setShowPinSetup(true)}
+          label="Auto-lock"
+          sub={`Locks after ${lock?.autoLockTimeout ?? 5} minute${(lock?.autoLockTimeout ?? 5) === 1 ? "" : "s"} of inactivity`}
+          onClick={() => setShowAutoLock(true)}
         />
       </SettingsCard>
 
@@ -787,19 +825,62 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
         />
       )}
 
-      {/* ── PIN setup modal ────────────────────────────────────────── */}
-      {showPinSetup && (
-        <PinSetupModal
-          onClose={() => setShowPinSetup(false)}
-          onDone={async (pin) => {
-            setShowPinSetup(false);
-            if (!lock) return;
-            await lock.setupPIN(pin);
-            setLockBusy(true);
-            await lock.enableLock();
-            setLockBusy(false);
+      {/* ── Change PIN modal ───────────────────────────────────────── */}
+      {showChangePin && (
+        <ChangePinModal
+          title={changePinType === "app" ? "Change App Lock PIN" : "Change Transaction PIN"}
+          pinLength={changePinType === "app" ? 6 : 4}
+          onVerifyCurrent={async (pin) => {
+            const action = changePinType === "app" ? "verify_app_pin" : "verify_txn_pin";
+            const { data } = await (supabase?.functions.invoke("pin-manager", {
+              body: { action, pin },
+            }) ?? Promise.resolve({ data: null }));
+            return {
+              success: !!data?.success,
+              error: data?.success ? null : (data?.locked ? "Too many attempts — try later" : "Incorrect PIN"),
+            };
           }}
+          onSetNew={async (currentPinVerified, newPin) => {
+            const action = changePinType === "app" ? "change_app_pin" : "change_txn_pin";
+            await (supabase?.functions.invoke("pin-manager", {
+              body: { action, currentPin: currentPinVerified, newPin },
+            }) ?? Promise.resolve({}));
+            await lock?.refetch?.();
+          }}
+          onClose={() => setShowChangePin(false)}
         />
+      )}
+
+      {/* ── Auto-lock timeout picker ────────────────────────────────── */}
+      {showAutoLock && (
+        <Modal title="Auto-lock Timeout" onClose={() => setShowAutoLock(false)}>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+            App will lock automatically after this period of inactivity.
+          </p>
+          <div className="space-y-2">
+            {[1, 2, 5, 10, 15, 30].map(mins => (
+              <button
+                key={mins}
+                onClick={async () => {
+                  await lock?.updateSettings?.({ autoLockTimeout: mins });
+                  setShowAutoLock(false);
+                }}
+                className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-colors active:scale-[0.98] ${
+                  (lock?.autoLockTimeout ?? 5) === mins
+                    ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20 text-brand-700 dark:text-brand-400"
+                    : "border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/50 text-slate-800 dark:text-slate-100"
+                }`}
+              >
+                <span className="font-semibold text-sm">{mins} minute{mins === 1 ? "" : "s"}</span>
+                {(lock?.autoLockTimeout ?? 5) === mins && (
+                  <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-brand-600 dark:text-brand-400" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 6L9 17l-5-5" />
+                  </svg>
+                )}
+              </button>
+            ))}
+          </div>
+        </Modal>
       )}
 
       {/* ── Support ticket modal ───────────────────────────────────── */}

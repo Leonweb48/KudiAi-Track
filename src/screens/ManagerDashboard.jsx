@@ -1294,9 +1294,6 @@ export default function ManagerDashboard({ session, staff: staffProp }) {
     <div className="h-[100dvh] bg-slate-50 dark:bg-slate-900 flex justify-center transition-colors duration-200">
       <div className="w-full max-w-md flex flex-col h-full relative">
 
-        {/* Lock screen */}
-        {lock.locked && <LockScreen lock={lock} />}
-
         {/* Header */}
         <header className="flex-none z-30 h-14 flex items-center justify-between px-4 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shadow-sm">
           <AppLogo className="h-8 w-8" />

@@ -24,7 +24,7 @@ import Inventory             from "./screens/Inventory";
 import Reports               from "./screens/Reports";
 import AIAssistant           from "./screens/AIAssistant";
 import LockScreen            from "./components/LockScreen";
-import PinSetupModal         from "./components/PinSetupModal";
+import PinSetupFlow          from "./components/PinSetupFlow";
 import AIChatWidget         from "./components/AIChatWidget";
 import Loyalty               from "./screens/Loyalty";
 import Branches              from "./screens/Branches";
@@ -51,7 +51,7 @@ import OrgOtpVerify         from "./screens/OrgOtpVerify";
 import AdminDashboard        from "./screens/AdminDashboard";
 import { useInventory }      from "./hooks/useInventory";
 import { useInvoices }      from "./hooks/useInvoices";
-import { useBiometricLock }  from "./hooks/useBiometricLock";
+import { usePinLock }        from "./hooks/usePinLock";
 import { useLoyalty }        from "./hooks/useLoyalty";
 import { useBranches }       from "./hooks/useBranches";
 import { usePermissions }    from "./hooks/usePermissions";
@@ -112,8 +112,8 @@ export default function App() {
   // Invoices — lifted here so daily alerts + AI context can use invoice data
   const invoiceHook = useInvoices(userId);
 
-  // Biometric / PIN lock
-  const lock = useBiometricLock(userId);
+  // Two-tier PIN lock (server-side via pin-manager edge function)
+  const pinLock = usePinLock(userId, session);
 
   // Loyalty program
   const loyalty = useLoyalty(userId);
@@ -310,9 +310,19 @@ export default function App() {
     );
   }
 
-  // ── PIN setup gate — blocks all portals until the user sets a device PIN ──
+  // ── PIN setup gate — blocks all portals until both PINs are configured ──
   // Covers: organisation, org_member, ajo_client, staff, branch_manager, marketer, main app.
-  if (!lock.hasPIN) return <PinSetupModal lock={lock} />;
+  if (!pinLock.loading && (!pinLock.appPinSet || !pinLock.txnPinSet)) {
+    return <PinSetupFlow pinLock={pinLock} userId={userId} session={session} />;
+  }
+  // Lock screen (inactivity or new device)
+  if (pinLock.locked) {
+    return <LockScreen pinLock={pinLock} businessName={store.profile?.business_name || store.profile?.owner_name} />;
+  }
+  // New device step-up — verify transaction PIN once per device
+  if (pinLock.needsDeviceVerification) {
+    return <LockScreen pinLock={pinLock} isDeviceVerify={true} />;
+  }
 
   // ── Authenticated portals (PIN already set) ──
   if (status === "organisation")  return <OrgPortal session={session} org={org} />;
@@ -397,7 +407,7 @@ export default function App() {
                     session={session}
                     plan={plan}
                     onUpgrade={openUpgrade}
-                    lock={lock}
+                    lock={pinLock}
                     onNotifications={() => notif.setOpen(true)}
                     onLoyalty={() => setShowLoyalty(true)}
                     onBranches={() => setShowBranches(true)}
@@ -544,10 +554,7 @@ export default function App() {
         />
       )}
 
-      {/* Biometric / PIN lock screen — z-[100], covers everything */}
-      {lock.locked && lock.enabled && (
-        <LockScreen lock={lock} businessName={store.profile?.business_name || store.profile?.owner_name} />
-      )}
+      {/* PIN lock screen removed — now handled as full-page gate above */}
     </div>
   );
 }

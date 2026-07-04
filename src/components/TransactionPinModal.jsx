@@ -1,175 +1,250 @@
-import { useState } from "react";
-import { sha256, LS_PIN_HASH, LS_CRED_ID } from "../hooks/useBiometricLock";
-import { fmt } from "../utils/helpers";
+import { useState, useCallback } from "react";
+import { supabase } from "../utils/supabase";
+
+const shakeCSS = `
+@keyframes shake {
+  0%,100% { transform: translateX(0); }
+  20%,60%  { transform: translateX(-6px); }
+  40%,80%  { transform: translateX(6px); }
+}
+.txn-pin-shake { animation: shake 0.5s ease; }
+`;
 
 const BackspaceIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor"
     strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
     <path d="M21 4H8l-7 8 7 8h13a2 2 0 002-2V6a2 2 0 00-2-2z" />
-    <line x1="18" y1="9" x2="13" y2="14" /><line x1="13" y1="9" x2="18" y2="14" />
+    <line x1="18" y1="9" x2="13" y2="14" />
+    <line x1="13" y1="9" x2="18" y2="14" />
   </svg>
 );
 
-const FingerprintIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6" stroke="currentColor"
-    strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
-    <path d="M2 12a10 10 0 0120 0" />
-    <path d="M5.5 12a6.5 6.5 0 0113 0" />
-    <path d="M9 12a3 3 0 016 0" />
-    <path d="M12 12v5" />
-    <circle cx="12" cy="12" r="1" fill="currentColor" />
-  </svg>
-);
-
-async function verifyBiometric() {
-  const credId = localStorage.getItem(LS_CRED_ID);
-  if (!credId) return false;
-  try {
-    const b64 = credId.replace(/-/g, "+").replace(/_/g, "/");
-    await navigator.credentials.get({
-      publicKey: {
-        challenge:        crypto.getRandomValues(new Uint8Array(32)),
-        allowCredentials: [{ type: "public-key", id: Uint8Array.from(atob(b64), c => c.charCodeAt(0)).buffer, transports: ["internal"] }],
-        userVerification: "required",
-        timeout:          60000,
-      },
-    });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function checkBioAvailable() {
-  try { return !!(await window.PublicKeyCredential?.isUserVerifyingPlatformAuthenticatorAvailable?.()); }
-  catch { return false; }
+function computeLockedMsg(data) {
+  if (!data?.lockedUntil) return "Too many attempts. Try again later.";
+  const ms = new Date(data.lockedUntil) - Date.now();
+  if (ms <= 0) return "Too many attempts. Try again shortly.";
+  const mins = Math.ceil(ms / 60000);
+  return `Too many attempts. Try again in ${mins} minute${mins === 1 ? "" : "s"}.`;
 }
 
 const PAD = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 
-export default function TransactionPinModal({ amount, label = "payment", onConfirm, onCancel }) {
-  const [pin,        setPin]        = useState("");
-  const [error,      setError]      = useState("");
-  const [bioLoading, setBioLoading] = useState(false);
+export default function TransactionPinModal({
+  title = "Confirm Payment",
+  amount,
+  recipient,
+  description,
+  onApprove,
+  onCancel,
+}) {
+  const [pin,   setPin]   = useState("");
+  const [error, setError] = useState("");
+  const [shake, setShake] = useState(false);
 
-  const hasCred    = !!localStorage.getItem(LS_CRED_ID);
-  const [bioAvail] = useState(() => {
-    // sync guess — will show bio button if credential stored
-    return hasCred;
-  });
+  const triggerShake = useCallback(() => {
+    setShake(true);
+    setTimeout(() => setShake(false), 600);
+  }, []);
 
-  const handleDigit = async (d) => {
+  const handleVerify = useCallback(async (enteredPin) => {
+    try {
+      const { data, error: fnError } = await (supabase?.functions.invoke("pin-manager", {
+        body: { action: "verify_txn_pin", pin: enteredPin },
+      }) ?? Promise.resolve({ data: null, error: new Error("Supabase not configured") }));
+
+      if (fnError) throw fnError;
+
+      if (data?.success) {
+        onApprove?.();
+        return;
+      }
+
+      triggerShake();
+      setPin("");
+
+      if (data?.locked) {
+        setError(computeLockedMsg(data));
+        return;
+      }
+      const left = data?.attemptsLeft ?? "";
+      setError(`Incorrect PIN.${left ? ` ${left} attempt${left === 1 ? "" : "s"} remaining.` : ""}`);
+    } catch {
+      triggerShake();
+      setPin("");
+      setError("Something went wrong. Try again.");
+    }
+  }, [onApprove, triggerShake]);
+
+  const handleDigit = useCallback((d) => {
     if (pin.length >= 4) return;
     const next = pin + d;
     setPin(next);
     setError("");
     if (next.length === 4) {
-      const entered = await sha256(next);
-      const stored  = localStorage.getItem(LS_PIN_HASH);
-      if (entered === stored) {
-        onConfirm();
-      } else {
-        setPin("");
-        setError("Incorrect PIN. Please try again.");
-      }
+      setTimeout(() => handleVerify(next), 150);
     }
-  };
+  }, [pin, handleVerify]);
 
-  const handleBio = async () => {
-    if (bioLoading) return;
-    setBioLoading(true);
+  const handleDelete = useCallback(() => {
+    setPin(p => p.slice(0, -1));
     setError("");
-    const platformOk = await checkBioAvailable();
-    if (!platformOk) { setBioLoading(false); setError("Biometric not available on this device."); return; }
-    const ok = await verifyBiometric();
-    setBioLoading(false);
-    if (ok) { onConfirm(); } else { setError("Biometric failed. Enter your PIN instead."); }
-  };
+  }, []);
 
   return (
-    /* Backdrop */
-    <div className="fixed inset-0 z-[90] flex items-end justify-center" style={{ background: "rgba(0,0,0,0.55)" }}
-      onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
+    <>
+      <style>{shakeCSS}</style>
 
-      {/* Sheet */}
-      <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-t-3xl pb-safe select-none"
-        style={{ paddingBottom: "env(safe-area-inset-bottom, 24px)" }}>
+      {/* Scrim */}
+      <div
+        onClick={onCancel}
+        style={{
+          position: "fixed", inset: 0, zIndex: 300,
+          background: "rgba(0,0,0,0.55)",
+        }}
+      />
 
-        {/* Handle */}
-        <div className="flex justify-center pt-3 pb-1">
-          <div className="w-10 h-1 rounded-full bg-slate-200 dark:bg-slate-700" />
+      {/* Bottom sheet */}
+      <div style={{
+        position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 301,
+        background: "white",
+        borderRadius: "24px 24px 0 0",
+        paddingBottom: "env(safe-area-inset-bottom, 16px)",
+        boxShadow: "0 -8px 40px rgba(0,0,0,0.18)",
+        animation: "slideUp 0.28s cubic-bezier(0.34,1.56,0.64,1)",
+      }}>
+        <style>{`@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }`}</style>
+
+        {/* Handle bar */}
+        <div style={{ display: "flex", justifyContent: "center", paddingTop: 12, paddingBottom: 8 }}>
+          <div style={{ width: 40, height: 4, borderRadius: 2, background: "#e2e8f0" }} />
         </div>
 
-        {/* Amount header */}
-        <div className="px-6 pt-4 pb-5 text-center border-b border-slate-100 dark:border-slate-800">
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Authorize {label}</p>
-          {amount > 0
-            ? <p className="text-3xl font-extrabold text-slate-900 dark:text-white">{fmt(amount)}</p>
-            : <p className="text-xl font-extrabold text-green-600 dark:text-green-400">Free Transaction</p>
-          }
-          <p className="text-xs text-slate-400 mt-1">Enter your PIN to confirm</p>
-        </div>
+        {/* Title */}
+        <p style={{ textAlign: "center", fontWeight: 700, fontSize: 17, color: "#0f172a", padding: "0 24px", marginBottom: 16 }}>
+          {title}
+        </p>
 
-        <div className="px-6 pt-5 pb-3">
-          {/* PIN dots */}
-          <div className="flex justify-center gap-5 mb-2">
+        {/* Transaction summary */}
+        {(amount != null || recipient || description) && (
+          <div style={{
+            margin: "0 16px 20px",
+            background: "#f8fafc",
+            borderRadius: 16,
+            padding: "16px",
+          }}>
+            {amount != null && (
+              <p style={{ textAlign: "center", fontSize: 28, fontWeight: 800, color: "#3DA829", marginBottom: 8 }}>
+                ₦{(amount / 100).toLocaleString("en-NG", { minimumFractionDigits: 2 })}
+              </p>
+            )}
+            {recipient && (
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                <span style={{ fontSize: 12, color: "#94a3b8" }}>To</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}>{recipient}</span>
+              </div>
+            )}
+            {description && (
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ fontSize: 12, color: "#94a3b8" }}>Note</span>
+                <span style={{ fontSize: 13, color: "#475569", maxWidth: 200, textAlign: "right" }}>{description}</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* PIN entry area */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, padding: "0 24px" }}>
+          <p style={{ fontSize: 13, color: "#64748b", textAlign: "center" }}>
+            Enter your transaction PIN to confirm
+          </p>
+
+          {/* Dots */}
+          <div
+            className={shake ? "txn-pin-shake" : ""}
+            style={{ display: "flex", gap: 16, justifyContent: "center" }}
+          >
             {[0, 1, 2, 3].map(i => (
-              <div key={i} className={`w-3.5 h-3.5 rounded-full border-2 transition-all duration-150 ${
-                pin.length > i
-                  ? "bg-brand-600 border-brand-600 scale-110"
-                  : "border-slate-300 dark:border-slate-600"
-              }`} />
+              <div key={i} style={{
+                width: 16, height: 16, borderRadius: "50%",
+                border: "2px solid",
+                borderColor: pin.length > i ? "#3DA829" : "#cbd5e1",
+                background: pin.length > i ? "#3DA829" : "transparent",
+                transition: "all 0.15s",
+                transform: pin.length > i ? "scale(1.1)" : "scale(1)",
+              }} />
             ))}
           </div>
 
           {/* Error */}
-          <div className="h-5 flex items-center justify-center mb-3">
-            {error && <p className="text-xs font-semibold text-red-500">{error}</p>}
+          <div style={{ height: 16, marginTop: -8 }}>
+            {error && (
+              <p style={{ color: "#ef4444", fontSize: 12, fontWeight: 600, textAlign: "center" }}>
+                {error}
+              </p>
+            )}
           </div>
 
-          {/* Number pad */}
-          <div className="grid grid-cols-3 gap-2.5">
+          {/* Keypad */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, width: "100%", maxWidth: 280 }}>
             {PAD.map(n => (
               <button key={n} onClick={() => handleDigit(String(n))}
-                className="h-14 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 active:bg-slate-300 dark:active:bg-slate-600 text-slate-900 dark:text-white text-xl font-bold transition-all active:scale-95 focus-visible:outline-none">
+                style={{
+                  height: 56, borderRadius: 14,
+                  background: "#f1f5f9", border: "none",
+                  color: "#0f172a", fontSize: 19, fontWeight: 700,
+                  cursor: "pointer", transition: "transform 0.1s, background 0.1s",
+                }}
+                onMouseDown={e => e.currentTarget.style.transform = "scale(0.95)"}
+                onMouseUp={e => e.currentTarget.style.transform = "scale(1)"}
+                onTouchStart={e => e.currentTarget.style.background = "#e2e8f0"}
+                onTouchEnd={e => e.currentTarget.style.background = "#f1f5f9"}
+              >
                 {n}
               </button>
             ))}
 
-            {/* Biometric or empty */}
-            <button
-              onClick={bioAvail ? handleBio : undefined}
-              disabled={!bioAvail || bioLoading}
-              className={`h-14 rounded-2xl flex items-center justify-center transition-all active:scale-95 focus-visible:outline-none ${
-                bioAvail
-                  ? "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300"
-                  : "bg-transparent cursor-default"
-              }`}>
-              {bioAvail && (
-                bioLoading
-                  ? <div className="w-5 h-5 border-2 border-brand-600 border-t-transparent rounded-full animate-spin" />
-                  : <FingerprintIcon />
-              )}
-            </button>
+            {/* Empty slot */}
+            <div />
 
             <button onClick={() => handleDigit("0")}
-              className="h-14 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 active:bg-slate-300 text-slate-900 dark:text-white text-xl font-bold transition-all active:scale-95 focus-visible:outline-none">
+              style={{
+                height: 56, borderRadius: 14,
+                background: "#f1f5f9", border: "none",
+                color: "#0f172a", fontSize: 19, fontWeight: 700,
+                cursor: "pointer", transition: "transform 0.1s",
+              }}
+              onMouseDown={e => e.currentTarget.style.transform = "scale(0.95)"}
+              onMouseUp={e => e.currentTarget.style.transform = "scale(1)"}
+            >
               0
             </button>
 
-            <button onClick={() => { setPin(p => p.slice(0, -1)); setError(""); }}
-              className="h-14 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center transition-all active:scale-95 focus-visible:outline-none">
+            <button onClick={handleDelete}
+              style={{
+                height: 56, borderRadius: 14,
+                background: "#f1f5f9", border: "none",
+                color: "#475569", cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                transition: "transform 0.1s",
+              }}
+              onMouseDown={e => e.currentTarget.style.transform = "scale(0.95)"}
+              onMouseUp={e => e.currentTarget.style.transform = "scale(1)"}
+            >
               <BackspaceIcon />
             </button>
           </div>
 
           {/* Cancel */}
           <button onClick={onCancel}
-            className="w-full mt-4 py-3 text-sm font-semibold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors">
+            style={{
+              background: "none", border: "none",
+              color: "#94a3b8", fontSize: 14, cursor: "pointer",
+              padding: "8px 24px", marginBottom: 4,
+            }}>
             Cancel
           </button>
         </div>
       </div>
-    </div>
+    </>
   );
 }
