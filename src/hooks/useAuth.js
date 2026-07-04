@@ -349,8 +349,10 @@ export function useAuth() {
         setStaff({ ...staffRow, user_id: uid });
         subVerified.current = true;
         logPlatformSession(supabase, uid, "staff", staffRow.full_name, email);
-        const emailVerified = sess.user.user_metadata?.email_verified !== false;
-        if (!emailVerified) {
+        // Use strict === true so that undefined (new accounts without the flag) is
+        // treated as unverified, ensuring new staff always see the OTP screen first.
+        const emailVerified = sess.user.user_metadata?.email_verified === true;
+        if (mustChange && !emailVerified) {
           setStatus("staff_otp");
         } else if (mustChange) {
           fireWelcomeEmail("staff_first_login", { name: staffRow.full_name || "", email: email || "" });
