@@ -98,6 +98,7 @@ serve(async (req) => {
           org_name:             org.name,
           must_change_password: true,
           email_verified:       false,
+          org_otp_verified:     false,
           temp_password:        tempPwd,
         },
       });
@@ -154,7 +155,7 @@ serve(async (req) => {
       await sb.from("organizations").update({ otp_code: null, otp_expires_at: null }).eq("id", orgRow.id);
       const { temp_password: _tp, ...restMeta } = user.user_metadata || {};
       await sb.auth.admin.updateUserById(user.id, {
-        user_metadata: { ...restMeta, email_verified: true },
+        user_metadata: { ...restMeta, email_verified: true, org_otp_verified: true },
       });
 
       return json({ success: true });

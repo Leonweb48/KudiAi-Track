@@ -220,7 +220,12 @@ export function useAuth() {
         setOrg(orgRow);
         subVerified.current = true;
         logPlatformSession(supabase, uid, "organisation", orgRow.name, email);
-        if (mustChange) {
+        // org_otp_verified is our custom flag — never auto-set by Supabase.
+        // email_verified CAN be overwritten by email_confirm:true at account creation.
+        const orgOtpVerified = sess.user.user_metadata?.org_otp_verified === true;
+        if (mustChange && !orgOtpVerified) {
+          setStatus("org_otp");
+        } else if (mustChange) {
           setStatus("org_setup");
         } else {
           setStatus("organisation");
