@@ -106,13 +106,13 @@ export default function OrgMemberOtpVerify({ member }) {
     }
   };
 
+  const firstName = member?.full_name?.split(" ")[0] || "there";
   const email     = member?.email || "";
-  const firstName = member?.full_name?.split(" ")[0] || "";
 
   return (
     <div
       className="fixed inset-0 flex flex-col items-center justify-center p-5"
-      style={{ background: "linear-gradient(135deg, #0d0a1e 0%, #150f2b 50%, #0d0a1e 100%)" }}
+      style={{ background: "linear-gradient(135deg, #080a0f 0%, #0d0f1a 50%, #080a0f 100%)" }}
     >
       <div className="w-full" style={{ maxWidth: 360 }}>
 
@@ -126,62 +126,58 @@ export default function OrgMemberOtpVerify({ member }) {
           <div
             className="inline-flex items-center justify-center w-10 h-10 rounded-2xl mb-3"
             style={{
-              background: "linear-gradient(135deg, rgba(139,92,246,0.2), rgba(109,40,217,0.2))",
-              border: "1px solid rgba(139,92,246,0.3)",
+              background: "linear-gradient(135deg, rgba(99,102,241,0.2), rgba(124,58,237,0.2))",
+              border: "1px solid rgba(99,102,241,0.3)",
             }}
           >
-            <svg width="18" height="18" fill="none" stroke="rgb(167,139,250)" strokeWidth="2" viewBox="0 0 24 24">
+            <svg width="18" height="18" fill="none" stroke="rgb(129,140,248)" strokeWidth="2" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round"
                 d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
             </svg>
           </div>
           <h1 className="text-2xl font-extrabold" style={{ color: "#fff" }}>
-            Verify Your Email
+            Check Your Email
           </h1>
           <p className="text-sm mt-2 leading-relaxed" style={{ color: "#6b7a99" }}>
             {otpSending
               ? "Sending a verification code…"
-              : <>
-                  A 6-digit code was sent to<br />
-                  <span className="font-semibold" style={{ color: "#c4b5fd" }}>{email}</span>
+              : <>Hi {firstName}! We sent a 6-digit code to<br />
+                  <span className="font-semibold" style={{ color: "#a5b4fc" }}>{email}</span>
                 </>
             }
           </p>
-          {firstName && (
-            <p className="text-xs mt-1.5 font-bold" style={{ color: "#4b3a7a" }}>Hi, {firstName}!</p>
-          )}
         </div>
 
         {/* Card */}
         <div
           className="rounded-2xl p-6"
-          style={{ background: "#13102a", border: "1px solid #1e1a40", boxShadow: "0 25px 50px rgba(0,0,0,0.5)" }}
+          style={{ background: "#0e1117", border: "1px solid #1e2433", boxShadow: "0 25px 50px rgba(0,0,0,0.5)" }}
         >
           {/* Temp password reminder */}
           {tempPwd && (
             <div
               className="rounded-xl px-4 py-3 mb-5"
-              style={{ background: "#100d24", border: "1px solid #1e1a40" }}
+              style={{ background: "#141820", border: "1px solid #1e2433" }}
             >
-              <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: "#3a2e60" }}>
+              <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: "#4a5568" }}>
                 Your Temp Password
               </p>
               <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-extrabold font-mono" style={{ color: showTempPwd ? "rgb(167,139,250)" : "#3a2e60" }}>
+                <span className="text-sm font-extrabold font-mono" style={{ color: showTempPwd ? "#a5b4fc" : "#4a5568" }}>
                   {showTempPwd ? tempPwd : "••••••••••"}
                 </span>
                 <div className="flex gap-1.5 flex-shrink-0">
                   <button
                     onClick={() => setShowTempPwd(v => !v)}
                     className="text-[10px] font-bold rounded-lg px-2 py-1 transition"
-                    style={{ background: "#1e1a40", border: "1px solid #2d2460", color: "#7c6aac" }}
+                    style={{ background: "#1e2433", border: "1px solid #2a3347", color: "#6b7a99" }}
                   >
                     {showTempPwd ? "Hide" : "Show"}
                   </button>
                   <button
                     onClick={() => navigator.clipboard?.writeText(tempPwd)}
                     className="text-[10px] font-bold rounded-lg px-2 py-1 transition"
-                    style={{ background: "rgba(139,92,246,0.15)", border: "1px solid rgba(139,92,246,0.3)", color: "#a78bfa" }}
+                    style={{ background: "rgba(99,102,241,0.15)", border: "1px solid rgba(99,102,241,0.3)", color: "#818cf8" }}
                   >
                     Copy
                   </button>
@@ -208,12 +204,12 @@ export default function OrgMemberOtpVerify({ member }) {
                   fontSize: 22,
                   fontWeight: 700,
                   borderRadius: 12,
-                  border: `1px solid ${d ? "rgba(139,92,246,0.6)" : "#1e1a40"}`,
-                  background: "#100d24",
-                  color: d ? "rgb(167,139,250)" : "#fff",
+                  border: `1px solid ${d ? "rgba(99,102,241,0.6)" : "#1e2433"}`,
+                  background: "#141820",
+                  color: d ? "rgb(165,180,252)" : "#fff",
                   outline: "none",
                   transition: "border-color 0.15s, box-shadow 0.15s",
-                  boxShadow: d ? "0 0 0 3px rgba(139,92,246,0.15)" : "none",
+                  boxShadow: d ? "0 0 0 3px rgba(99,102,241,0.15)" : "none",
                   caretColor: "transparent",
                 }}
               />
@@ -234,7 +230,7 @@ export default function OrgMemberOtpVerify({ member }) {
           {resent && !error && (
             <div
               className="rounded-xl px-4 py-3 mb-4 text-center text-xs"
-              style={{ background: "rgba(139,92,246,0.1)", border: "1px solid rgba(139,92,246,0.2)", color: "#a78bfa" }}
+              style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.2)", color: "#34d399" }}
             >
               ✓ New code sent — check your inbox.
             </div>
@@ -246,10 +242,10 @@ export default function OrgMemberOtpVerify({ member }) {
             disabled={loading || otp.length < 6}
             className="w-full py-3 rounded-xl text-white font-bold text-sm transition-all"
             style={{
-              background: loading || otp.length < 6 ? "rgba(139,92,246,0.4)" : "#7c3aed",
+              background: loading || otp.length < 6 ? "rgba(79,70,229,0.5)" : "#4f46e5",
               border: "none",
               cursor: otp.length < 6 || loading ? "not-allowed" : "pointer",
-              boxShadow: otp.length === 6 && !loading ? "0 4px 15px rgba(139,92,246,0.3)" : "none",
+              boxShadow: otp.length === 6 && !loading ? "0 4px 15px rgba(79,70,229,0.35)" : "none",
             }}
           >
             {loading
@@ -263,14 +259,14 @@ export default function OrgMemberOtpVerify({ member }) {
           {/* Resend / countdown */}
           <div className="mt-4 text-center">
             {countdown > 0 ? (
-              <p className="text-xs" style={{ color: "#2e1f5e" }}>
+              <p className="text-xs" style={{ color: "#4a5568" }}>
                 Resend code in {countdown}s
               </p>
             ) : (
               <button
                 onClick={resend}
                 className="text-xs inline-flex items-center gap-1.5 transition-colors"
-                style={{ background: "none", border: "none", cursor: "pointer", color: "#a78bfa" }}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "#818cf8" }}
               >
                 <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round"
@@ -283,7 +279,7 @@ export default function OrgMemberOtpVerify({ member }) {
         </div>
 
         {/* Tip */}
-        <p className="text-center text-xs mt-4" style={{ color: "#2e1f5e" }}>
+        <p className="text-center text-xs mt-4" style={{ color: "#4a5568" }}>
           Check your spam folder if you don't see the email.
         </p>
 
@@ -291,7 +287,7 @@ export default function OrgMemberOtpVerify({ member }) {
         <button
           onClick={() => supabase.auth.signOut()}
           className="w-full text-center text-xs mt-3 transition-colors"
-          style={{ background: "none", border: "none", cursor: "pointer", color: "#1e1540" }}
+          style={{ background: "none", border: "none", cursor: "pointer", color: "#374151" }}
         >
           Sign out
         </button>
