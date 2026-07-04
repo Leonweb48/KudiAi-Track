@@ -336,30 +336,33 @@ serve(async (req) => {
       await sb.from("organizations").update({ member_count: (count || 0) + 1 }).eq("id", b.org_id);
 
       // Create Supabase Auth account. email_confirm: true lets member sign in immediately
-      // with the temp password. Our custom email_verified: false in user_metadata controls
-      // the in-app OTP step (separate from Supabase's email confirmation).
+      // with the temp password. member_otp_verified: false (our custom flag, never auto-set
+      // by Supabase) controls the in-app OTP step — avoids collision with email_confirm.
       const temp_password = genTempPassword();
+      const memberMeta = {
+        account_type: "org_member",
+        org_member_id: member.id,
+        org_id: b.org_id,
+        must_change_password: true,
+        email_verified: false,
+        member_otp_verified: false,
+        full_name: b.full_name,
+        temp_password, // shown on OTP screen; cleared after email verification
+      };
       const { data: authData, error: authErr } = await sb.auth.admin.createUser({
         email: b.email,
         password: temp_password,
-        user_metadata: {
-          account_type: "org_member",
-          org_member_id: member.id,
-          org_id: b.org_id,
-          must_change_password: true,
-          email_verified: false,
-          full_name: b.full_name,
-          temp_password, // shown on OTP screen; cleared after email verification
-        },
+        user_metadata: memberMeta,
         email_confirm: true,
       });
       if (authErr) {
         return json({ member, temp_password: null, auth_error: authErr.message });
       }
       if (authData?.user) {
-        // Belt-and-suspenders: explicitly confirm the email so signInWithPassword never
-        // returns "email not confirmed" regardless of project-level settings.
-        await sb.auth.admin.updateUserById(authData.user.id, { email_confirm: true });
+        // Hard-reset: email_confirm:true can re-merge metadata, overwriting member_otp_verified.
+        await sb.auth.admin.updateUserById(authData.user.id, {
+          user_metadata: memberMeta,
+        }).catch(() => null);
         await sb.from("org_members").update({ user_id: authData.user.id }).eq("id", member.id);
         (member as Record<string, unknown>).user_id = authData.user.id;
       }
@@ -427,7 +430,7 @@ serve(async (req) => {
       await sb.from("org_members").update({ otp_code: null, otp_expires_at: null }).eq("id", member.id);
       const { temp_password: _tp, ...restMeta } = user.user_metadata || {};
       await sb.auth.admin.updateUserById(user.id, {
-        user_metadata: { ...restMeta, email_verified: true },
+        user_metadata: { ...restMeta, email_verified: true, member_otp_verified: true },
       });
 
       return json({ success: true });
@@ -591,7 +594,8 @@ serve(async (req) => {
           ...existingMeta,
           account_type: "org_member",
           must_change_password: true,
-          email_verified: false, // force OTP re-verification on next login
+          email_verified: false,
+          member_otp_verified: false, // force OTP re-verification on next login
           temp_password, // shown on OTP screen; cleared after email verification
         },
       });

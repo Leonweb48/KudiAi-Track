@@ -111,16 +111,16 @@ export function useAuth() {
     // Bypass the profile check entirely so a member who accidentally ended
     // up with a profiles row is still routed to their member portal.
     if (accountType === "org_member") {
-      // email_verified: false means new member who hasn't verified their OTP yet.
-      // undefined (old members) is treated as verified for backward compatibility.
-      const emailVerified = sess.user.user_metadata?.email_verified !== false;
+      // member_otp_verified is our custom flag — never auto-set by Supabase.
+      // Old members (must_change_password: false) skip directly to org_member.
+      const memberOtpVerified = sess.user.user_metadata?.member_otp_verified === true;
 
       const { data: orgMemberRow } = await supabase.rpc("get_my_membership");
       if (orgMemberRow) {
         setOrgMember({ ...orgMemberRow, org: orgMemberRow.organizations });
         subVerified.current = true;
         logPlatformSession(supabase, uid, "org_member", orgMemberRow.full_name, email);
-        if (!emailVerified) {
+        if (mustChange && !memberOtpVerified) {
           // New member — must verify email OTP before changing password
           setStatus("org_member_otp");
         } else if (mustChange) {
@@ -399,8 +399,8 @@ export function useAuth() {
       if (orgMemberRow) {
         setOrgMember({ ...orgMemberRow, org: orgMemberRow.organizations });
         subVerified.current = true;
-        const emailVerified = sess.user.user_metadata?.email_verified !== false;
-        if (!emailVerified) {
+        const memberOtpVerified = sess.user.user_metadata?.member_otp_verified === true;
+        if (mustChange && !memberOtpVerified) {
           setStatus("org_member_otp");
         } else if (mustChange) {
           setStatus("org_member_setup");
