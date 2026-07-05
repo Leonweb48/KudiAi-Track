@@ -64,9 +64,14 @@ async function invoke(action, params = {}) {
 }
 
 export function usePinLock(userId, session) {
-  const [locked,  setLocked]  = useState(true);
-  const [loading, setLoading] = useState(true);
-  const [status,  setStatus]  = useState(null);
+  const [locked,         setLocked]         = useState(true);
+  const [loading,        setLoading]        = useState(true);
+  const [status,         setStatus]         = useState(null);
+  // React state mirror of localStorage flag — needed so needsDeviceVerification
+  // re-evaluates immediately when completeDeviceVerification() is called
+  const [deviceVerified, setDeviceVerified] = useState(
+    () => !!localStorage.getItem("kt_device_txn_verified_" + userId)
+  );
 
   const inactivityTimer = useRef(null);
 
@@ -77,8 +82,7 @@ export function usePinLock(userId, session) {
   const autoLockTimeout   = status?.autoLockTimeout   ?? 5;
   const biometricAvailable = !!(navigator?.credentials);
 
-  const needsDeviceVerification =
-    !locked && txnPinSet && !localStorage.getItem("kt_device_txn_verified_" + userId);
+  const needsDeviceVerification = !locked && txnPinSet && !deviceVerified;
 
   // ── Fetch status from server ───────────────────────────────────────
   const refetch = useCallback(async () => {
@@ -245,6 +249,7 @@ export function usePinLock(userId, session) {
   const completeDeviceVerification = useCallback(() => {
     if (!userId) return;
     localStorage.setItem("kt_device_txn_verified_" + userId, "1");
+    setDeviceVerified(true); // triggers re-render so needsDeviceVerification recomputes
   }, [userId]);
 
   const lock   = useCallback(() => setLocked(true),  []);
