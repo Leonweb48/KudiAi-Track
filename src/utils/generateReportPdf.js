@@ -115,8 +115,7 @@ export async function createReportPdf({
   const HDR_H   = Math.max(40, 7 + hrItems.reduce((h, it) => h + (it.sub ? 5 : 6), 0) + 3);
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
-  const [bizLogoB64, appLogoB64, fontRegB64, fontMedB64] = await Promise.all([
-    logoUrl ? imgToBase64(logoUrl) : Promise.resolve(null),
+  const [appLogoB64, fontRegB64, fontMedB64] = await Promise.all([
     imgToBase64(`${origin}/logo.png`),
     loadFontBase64(`${origin}/fonts/NotoSans-Regular.ttf`),
     loadFontBase64(`${origin}/fonts/NotoSans-Medium.ttf`),
