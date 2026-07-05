@@ -8,6 +8,33 @@ const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const str = (v) => String(v || "");
 const fmt = (n) => "₦" + Number(n || 0).toLocaleString("en-NG");
 
+function renderEmailItems(items) {
+  if (!Array.isArray(items) || !items.length) return "";
+  const rows = items.flatMap(item => {
+    const parentRow = `<tr>
+      <td style="font-size:12px;color:#374151;padding:7px 0;border-bottom:1px solid #f1f5f9;">${str(item.description)}</td>
+      <td style="font-size:12px;color:#64748b;text-align:center;padding:7px 0;border-bottom:1px solid #f1f5f9;">${str(item.quantity)}</td>
+      <td style="font-size:12px;font-weight:700;color:#0f172a;text-align:right;padding:7px 0;border-bottom:1px solid #f1f5f9;">${fmt(item.line_total)}</td>
+    </tr>`;
+    const subRows = (item.sub_items || []).map(sub => `<tr>
+      <td style="font-size:11px;color:#64748b;padding:4px 0 4px 14px;border-bottom:1px solid #f8fafc;">
+        <span style="color:#6d28d9;margin-right:4px;">•</span>${str(sub.description)}
+      </td>
+      <td style="font-size:11px;color:#94a3b8;text-align:center;padding:4px 0;border-bottom:1px solid #f8fafc;">${str(sub.quantity)}</td>
+      <td style="font-size:11px;color:#94a3b8;text-align:right;padding:4px 0;border-bottom:1px solid #f8fafc;">${sub.line_total ? fmt(sub.line_total) : ""}</td>
+    </tr>`);
+    return [parentRow, ...subRows];
+  });
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 12px;border-collapse:collapse;">
+    <thead><tr>
+      <th style="text-align:left;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;padding:0 0 6px;border-bottom:1px solid #e4e8f0;">Item</th>
+      <th style="text-align:center;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;padding:0 0 6px;border-bottom:1px solid #e4e8f0;">Qty</th>
+      <th style="text-align:right;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;padding:0 0 6px;border-bottom:1px solid #e4e8f0;">Total</th>
+    </tr></thead>
+    <tbody>${rows.join("")}</tbody>
+  </table>`;
+}
+
 function emailHtml(title, body, headerColor = "#4f46e5") {
   return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
@@ -475,20 +502,7 @@ export default async function handler(req, res) {
       ? [{ filename: str(d.pdf_filename) || "invoice.pdf", content: Buffer.from(str(d.pdf_base64), "base64"), contentType: "application/pdf" }]
       : [];
 
-    const itemsHtml = Array.isArray(d.items) && d.items.length
-      ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 12px;border-collapse:collapse;">
-          <thead><tr>
-            <th style="text-align:left;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;padding:0 0 6px;border-bottom:1px solid #e4e8f0;">Item</th>
-            <th style="text-align:center;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;padding:0 0 6px;border-bottom:1px solid #e4e8f0;">Qty</th>
-            <th style="text-align:right;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;padding:0 0 6px;border-bottom:1px solid #e4e8f0;">Total</th>
-          </tr></thead>
-          <tbody>${d.items.map(i => `<tr>
-            <td style="font-size:12px;color:#374151;padding:7px 0;border-bottom:1px solid #f1f5f9;">${str(i.description)}</td>
-            <td style="font-size:12px;color:#64748b;text-align:center;padding:7px 0;border-bottom:1px solid #f1f5f9;">${str(i.quantity)}</td>
-            <td style="font-size:12px;font-weight:700;color:#0f172a;text-align:right;padding:7px 0;border-bottom:1px solid #f1f5f9;">${fmt(i.line_total)}</td>
-          </tr>`).join("")}</tbody>
-        </table>`
-      : "";
+    const itemsHtml = renderEmailItems(d.items);
 
     const totalsHtml = `
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 20px;">
@@ -534,20 +548,7 @@ export default async function handler(req, res) {
     const amtPaid    = fmt(d.amount_paid || d.total);
     const balanceDue = Number(d.balance_due || 0);
 
-    const itemsHtml2 = Array.isArray(d.items) && d.items.length
-      ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 12px;border-collapse:collapse;">
-          <thead><tr>
-            <th style="text-align:left;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;padding:0 0 6px;border-bottom:1px solid #e4e8f0;">Item</th>
-            <th style="text-align:center;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;padding:0 0 6px;border-bottom:1px solid #e4e8f0;">Qty</th>
-            <th style="text-align:right;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;padding:0 0 6px;border-bottom:1px solid #e4e8f0;">Total</th>
-          </tr></thead>
-          <tbody>${d.items.map(i => `<tr>
-            <td style="font-size:12px;color:#374151;padding:7px 0;border-bottom:1px solid #f1f5f9;">${str(i.description)}</td>
-            <td style="font-size:12px;color:#64748b;text-align:center;padding:7px 0;border-bottom:1px solid #f1f5f9;">${str(i.quantity)}</td>
-            <td style="font-size:12px;font-weight:700;color:#0f172a;text-align:right;padding:7px 0;border-bottom:1px solid #f1f5f9;">${fmt(i.line_total)}</td>
-          </tr>`).join("")}</tbody>
-        </table>`
-      : "";
+    const itemsHtml2 = renderEmailItems(d.items);
 
     qa(d.customer_email, `Payment Confirmed — Invoice ${str(d.invoice_number)}`,
       emailHtml("Payment Received", `

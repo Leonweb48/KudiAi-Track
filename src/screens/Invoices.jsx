@@ -441,21 +441,52 @@ function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCance
               )}
             </div>
 
-            {/* Line items */}
-            {inv.invoice_items?.length > 0 && (
-              <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Items</p>
-                {inv.invoice_items.map(item => (
-                  <div key={item.id} className="flex items-start justify-between mb-2">
-                    <div className="flex-1 mr-4">
-                      <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">{item.description}</p>
-                      <p className="text-xs text-slate-400">{item.quantity} × {fmtK(item.unit_price_kobo)}</p>
-                    </div>
-                    <span className="text-sm font-bold text-slate-800 dark:text-white">{fmtK(item.line_total_kobo)}</span>
-                  </div>
-                ))}
-              </div>
-            )}
+            {/* Line items — reconstructed hierarchy */}
+            {inv.invoice_items?.length > 0 && (() => {
+              const allRows = inv.invoice_items;
+              const topRows = allRows.filter(r => !r.parent_item_id).sort((a, b) => (a.sort_order||0) - (b.sort_order||0));
+              const children = allRows.filter(r => r.parent_item_id);
+              return (
+                <div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Items</p>
+                  {topRows.map(item => {
+                    const subs = children.filter(c => c.parent_item_id === item.id).sort((a, b) => (a.sort_order||0) - (b.sort_order||0));
+                    return (
+                      <div key={item.id} className="mb-3 last:mb-0">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1 mr-4">
+                            <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">{item.description}</p>
+                            <p className="text-xs text-slate-400">
+                              {item.pricing_mode === "auto"
+                                ? `${item.quantity}× bundle`
+                                : `${item.quantity} × ${fmtK(item.unit_price_kobo)}`}
+                            </p>
+                          </div>
+                          <span className="text-sm font-bold text-slate-800 dark:text-white">{fmtK(item.line_total_kobo)}</span>
+                        </div>
+                        {subs.length > 0 && (
+                          <div className="ml-2 pl-3 border-l-2 border-slate-100 dark:border-slate-700 mt-1 space-y-0.5">
+                            {subs.map(sub => (
+                              <div key={sub.id} className="flex items-start justify-between">
+                                <div className="flex-1 mr-3">
+                                  <p className="text-xs text-slate-500 dark:text-slate-400">• {sub.description}</p>
+                                  {sub.unit_price_kobo > 0 && (
+                                    <p className="text-[10px] text-slate-400">{sub.quantity} × {fmtK(sub.unit_price_kobo)}</p>
+                                  )}
+                                </div>
+                                {sub.line_total_kobo > 0 && (
+                                  <span className="text-xs text-slate-500 dark:text-slate-400">{fmtK(sub.line_total_kobo)}</span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
 
             {/* Meta */}
             <div className="space-y-1.5 text-sm text-slate-600 dark:text-slate-400">
@@ -749,7 +780,17 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
                   customer_name:       _inv.customer_name,
                   customer_email:      _inv.customer_email || "",
                   customer_phone:      _inv.customer_phone || "",
-                  items:               (_inv.invoice_items || []).map(i => ({ description: i.description, quantity: i.quantity, unit_price: koboToNaira(i.unit_price_kobo), line_total: koboToNaira(i.line_total_kobo) })),
+                  items:               (() => {
+                    const allRows  = _inv.invoice_items || [];
+                    const topRows  = allRows.filter(r => !r.parent_item_id).sort((a, b) => (a.sort_order||0) - (b.sort_order||0));
+                    const children = allRows.filter(r => r.parent_item_id);
+                    return topRows.map(i => ({
+                      description: i.description, quantity: i.quantity,
+                      unit_price:  koboToNaira(i.unit_price_kobo), line_total: koboToNaira(i.line_total_kobo),
+                      sub_items:   children.filter(c => c.parent_item_id === i.id).sort((a, b) => (a.sort_order||0) - (b.sort_order||0))
+                        .map(sub => ({ description: sub.description, quantity: sub.quantity, unit_price: koboToNaira(sub.unit_price_kobo), line_total: koboToNaira(sub.line_total_kobo) })),
+                    }));
+                  })(),
                   subtotal:            koboToNaira(_inv.subtotal_kobo),
                   discount:            koboToNaira(_inv.discount_kobo || 0),
                   vat:                 koboToNaira(_inv.vat_kobo || 0),

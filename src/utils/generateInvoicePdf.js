@@ -85,20 +85,36 @@ function initials(name) {
     .join("");
 }
 
-// ── Merge identical line items ─────────────────────────────────────────────────
-function mergeItems(items) {
-  const seen = new Map();
-  for (const item of (items || [])) {
-    const key = `${(item.description || "").trim()}|${item.unit_price_kobo}`;
-    if (seen.has(key)) {
-      const ex = seen.get(key);
-      ex.quantity = Number(ex.quantity) + Number(item.quantity || 1);
-      ex.line_total_kobo = Math.round(ex.quantity * (item.unit_price_kobo || 0));
+// ── Build item tree: top-level items with nested sub_items array ───────────────
+// Merges duplicate parent rows (same desc + price) only when they have no children.
+function buildItemTree(rawItems) {
+  const all      = rawItems || [];
+  const parents  = all.filter(i => !i.parent_item_id).sort((a, b) => (a.sort_order||0) - (b.sort_order||0));
+  const children = all.filter(i => i.parent_item_id);
+  const seen     = new Map();
+  const result   = [];
+
+  for (const p of parents) {
+    const subs = children
+      .filter(c => c.parent_item_id === p.id)
+      .sort((a, b) => (a.sort_order||0) - (b.sort_order||0));
+
+    if (subs.length > 0) {
+      result.push({ ...p, quantity: Number(p.quantity || 1), sub_items: subs });
     } else {
-      seen.set(key, { ...item, quantity: Number(item.quantity || 1) });
+      const key = `${(p.description || "").trim()}|${p.unit_price_kobo}`;
+      if (seen.has(key)) {
+        const ex = seen.get(key);
+        ex.quantity += Number(p.quantity || 1);
+        ex.line_total_kobo = Math.round(ex.quantity * (p.unit_price_kobo || 0));
+      } else {
+        const item = { ...p, quantity: Number(p.quantity || 1), sub_items: [] };
+        seen.set(key, item);
+        result.push(item);
+      }
     }
   }
-  return Array.from(seen.values());
+  return result;
 }
 
 // ── Status config ──────────────────────────────────────────────────────────────
@@ -239,7 +255,7 @@ export async function exportInvoicePdf(
   const amtPaidKobo = inv.amount_paid_kobo || 0;
   const amtDueKobo  = Math.max(0, (inv.total_kobo || 0) - amtPaidKobo);
   const fullyPaid   = isPaid || amtDueKobo <= 0;
-  const items       = mergeItems(inv.invoice_items || []);
+  const items       = buildItemTree(inv.invoice_items || []);
 
   // ══════════════════════════════════════════════════════════════════════════
   // Per-page draw functions
@@ -516,53 +532,121 @@ export async function exportInvoicePdf(
   // ── LINE ITEMS TABLE ────────────────────────────────────────────────────────
   y = drawTableHeader(y);
 
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i];
+  const SUB_INDENT  = 4;    // mm indent for sub-item descriptions
+  const SUB_MIN_H   = 8;    // min sub-item row height (shorter than parent rows)
 
-    // Description: max 3 lines, ellipsis on overflow
-    const descLns = wrapCapped(doc, item.description || "", C_DESC - PAD_H * 2, 3);
-    const rowH    = Math.max(MIN_ROW_H, descLns.length * ROW_LINE_H + 5);
+  let itemIdx = 0;
 
-    if (y + rowH > CONTENT_BOT) {
+  for (const item of items) {
+    itemIdx++;
+    const subs = item.sub_items || [];
+
+    // ── Calculate heights for the whole group ────────────────────────────────
+    const descLns   = wrapCapped(doc, item.description || "", C_DESC - PAD_H * 2, 3);
+    const parentRowH = Math.max(MIN_ROW_H, descLns.length * ROW_LINE_H + 5);
+    const subHeights = subs.map(sub => {
+      const lns = wrapCapped(doc, sub.description || "", C_DESC - PAD_H * 2 - SUB_INDENT, 2);
+      return Math.max(SUB_MIN_H, lns.length * ROW_LINE_H + 3);
+    });
+    const groupH = parentRowH + subHeights.reduce((s, h) => s + h, 0);
+
+    // ── Group pagination: prefer to keep together ────────────────────────────
+    // If the group doesn't fit here but would fit on a fresh page, break first.
+    // (Skip if we're right at the top of a page to avoid infinite loops.)
+    if (groupH > CONTENT_BOT - y && y > 50 && groupH <= CONTENT_BOT - 30) {
       y = newPage(true);
     }
 
-    // Row hairline
+    // ── Render parent row ────────────────────────────────────────────────────
+    if (y + parentRowH > CONTENT_BOT) y = newPage(true);
+
     doc.setDrawColor(...HAIRLN); doc.setLineWidth(0.2);
     doc.line(ML, y, MR, y);
 
-    // Vertical midpoint for single-value cells
-    const rMidY = y + rowH / 2 + 1.8;
+    const rMidY      = y + parentRowH / 2 + 1.8;
+    const descStartY = y + (parentRowH - descLns.length * ROW_LINE_H) / 2 + ROW_LINE_H - 0.5;
 
-    // Description start: vertically centred block
-    const descStartY = y + (rowH - descLns.length * ROW_LINE_H) / 2 + ROW_LINE_H - 0.5;
-
-    // # — centred in SN column
     setMed(8); col(...GREEN);
-    doc.text(String(i + 1), SN_C, rMidY, { align: "center" });
+    doc.text(String(itemIdx), SN_C, rMidY, { align: "center" });
 
-    // Description
     setReg(9.5); col(...DARK);
     descLns.forEach((ln, li) => doc.text(ln, DESC_L, descStartY + li * ROW_LINE_H));
 
-    // QTY — centred
     setReg(9.5); col(...SEC);
     doc.text(String(item.quantity || 1), QTY_C, rMidY, { align: "center" });
 
-    // Unit price — right-aligned at UNIT_R, auto-shrink
-    const unitTxt = fmtK(item.unit_price_kobo);
-    fitText(doc, unitTxt, C_UNIT - PAD_H * 2, 9.5, 7.5);
-    doc.text(unitTxt, UNIT_R, rMidY, { align: "right" });
-    doc.setFontSize(9.5);
+    if (item.pricing_mode === "auto") {
+      setItal(7.5); col(...MUTED);
+      doc.text("auto", UNIT_R, rMidY, { align: "right" });
+    } else {
+      setReg(9.5); col(...SEC);
+      const unitTxt = fmtK(item.unit_price_kobo);
+      fitText(doc, unitTxt, C_UNIT - PAD_H * 2, 9.5, 7.5);
+      doc.text(unitTxt, UNIT_R, rMidY, { align: "right" });
+      doc.setFontSize(9.5);
+    }
 
-    // Amount — right-aligned at AMT_R, auto-shrink, medium weight
     setMed(9.5); col(...DARK);
     const amtTxt = fmtK(item.line_total_kobo);
     fitText(doc, amtTxt, C_AMT - PAD_H * 2, 9.5, 7.5);
     doc.text(amtTxt, AMT_R, rMidY, { align: "right" });
     doc.setFontSize(9.5);
 
-    y += rowH;
+    y += parentRowH;
+
+    // ── Render sub-items ─────────────────────────────────────────────────────
+    for (let si = 0; si < subs.length; si++) {
+      const sub  = subs[si];
+      const subH = subHeights[si];
+
+      // Page break mid-group: add "(continued)" context for the parent
+      if (y + subH > CONTENT_BOT) {
+        y = newPage(true);
+        const contH = 8;
+        doc.setDrawColor(...HAIRLN); doc.setLineWidth(0.1);
+        doc.line(ML, y, MR, y);
+        setItal(8); col(...MUTED);
+        doc.text(`${descLns[0]} (continued)`, DESC_L + SUB_INDENT, y + 5.5);
+        y += contH;
+      }
+
+      // Sub-item separator (thinner than parent)
+      doc.setDrawColor(...HAIRLN); doc.setLineWidth(0.1);
+      doc.line(ML + SUB_INDENT - 1, y, MR, y);
+
+      const subDescLns  = wrapCapped(doc, sub.description || "", C_DESC - PAD_H * 2 - SUB_INDENT, 2);
+      const subMidY     = y + subH / 2 + 1.4;
+      const subDescStartY = y + (subH - subDescLns.length * ROW_LINE_H) / 2 + ROW_LINE_H - 0.5;
+
+      // Bullet
+      setMed(7); col(...GREEN);
+      doc.text("•", DESC_L + SUB_INDENT, subMidY);
+
+      // Sub-item description
+      setReg(8); col(...SEC);
+      subDescLns.forEach((ln, li) => doc.text(ln, DESC_L + SUB_INDENT + 3, subDescStartY + li * ROW_LINE_H));
+
+      // Sub-item qty
+      setReg(8); col(...MUTED);
+      doc.text(String(sub.quantity || 1), QTY_C, subMidY, { align: "center" });
+
+      // Sub-item unit price + amount (only if priced)
+      if (sub.unit_price_kobo > 0) {
+        const subUnitTxt = fmtK(sub.unit_price_kobo);
+        fitText(doc, subUnitTxt, C_UNIT - PAD_H * 2, 8, 7);
+        doc.text(subUnitTxt, UNIT_R, subMidY, { align: "right" });
+        doc.setFontSize(8);
+
+        if (sub.line_total_kobo > 0) {
+          const subAmtTxt = fmtK(sub.line_total_kobo);
+          fitText(doc, subAmtTxt, C_AMT - PAD_H * 2, 8, 7);
+          doc.text(subAmtTxt, AMT_R, subMidY, { align: "right" });
+          doc.setFontSize(8);
+        }
+      }
+
+      y += subH;
+    }
   }
 
   // Table closing hairline

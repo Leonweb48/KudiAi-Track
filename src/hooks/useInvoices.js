@@ -137,18 +137,43 @@ export function useInvoices(userId) {
       .select().single();
     if (invErr) return { error: invErr };
 
-    // 5. Insert line items
-    if (items.length > 0) {
-      const rows = items.map((item, i) => ({
-        invoice_id:      inv.id,
-        description:     item.description,
-        quantity:        item.quantity,
-        unit_price_kobo: item.unit_price_kobo,
-        line_total_kobo: item.line_total_kobo,
-        sort_order:      i,
-      }));
-      const { error: itemErr } = await supabase.from("invoice_items").insert(rows);
+    // 5. Insert line items (parents first to get IDs, then sub-items)
+    const topItems = items.filter(item => item.description.trim());
+    if (topItems.length > 0) {
+      const { data: parentRows, error: itemErr } = await supabase
+        .from("invoice_items")
+        .insert(topItems.map((item, i) => ({
+          invoice_id:      inv.id,
+          description:     item.description,
+          quantity:        item.quantity,
+          unit_price_kobo: item.unit_price_kobo,
+          line_total_kobo: item.line_total_kobo,
+          pricing_mode:    item.pricing_mode || "manual",
+          sort_order:      i,
+          parent_item_id:  null,
+        })))
+        .select("id");
       if (itemErr) return { error: itemErr };
+
+      const subRows = [];
+      topItems.forEach((item, i) => {
+        (item.sub_items || []).filter(s => s.description.trim()).forEach((sub, j) => {
+          subRows.push({
+            invoice_id:      inv.id,
+            parent_item_id:  parentRows[i].id,
+            description:     sub.description,
+            quantity:        sub.quantity,
+            unit_price_kobo: sub.unit_price_kobo,
+            line_total_kobo: sub.line_total_kobo,
+            pricing_mode:    "manual",
+            sort_order:      j,
+          });
+        });
+      });
+      if (subRows.length > 0) {
+        const { error: subErr } = await supabase.from("invoice_items").insert(subRows);
+        if (subErr) return { error: subErr };
+      }
     }
 
     await load();
@@ -201,16 +226,44 @@ export function useInvoices(userId) {
       .eq("user_id", userId);
     if (invErr) return { error: invErr };
 
-    // Replace all line items
+    // Replace all line items (delete all, re-insert parents then sub-items)
     await supabase.from("invoice_items").delete().eq("invoice_id", invoiceId);
-    if (items.length > 0) {
-      const rows = items.map((item, i) => ({
-        invoice_id: invoiceId, description: item.description,
-        quantity: item.quantity, unit_price_kobo: item.unit_price_kobo,
-        line_total_kobo: item.line_total_kobo, sort_order: i,
-      }));
-      const { error: itemErr } = await supabase.from("invoice_items").insert(rows);
+    const topItems = items.filter(item => item.description.trim());
+    if (topItems.length > 0) {
+      const { data: parentRows, error: itemErr } = await supabase
+        .from("invoice_items")
+        .insert(topItems.map((item, i) => ({
+          invoice_id:      invoiceId,
+          description:     item.description,
+          quantity:        item.quantity,
+          unit_price_kobo: item.unit_price_kobo,
+          line_total_kobo: item.line_total_kobo,
+          pricing_mode:    item.pricing_mode || "manual",
+          sort_order:      i,
+          parent_item_id:  null,
+        })))
+        .select("id");
       if (itemErr) return { error: itemErr };
+
+      const subRows = [];
+      topItems.forEach((item, i) => {
+        (item.sub_items || []).filter(s => s.description.trim()).forEach((sub, j) => {
+          subRows.push({
+            invoice_id:      invoiceId,
+            parent_item_id:  parentRows[i].id,
+            description:     sub.description,
+            quantity:        sub.quantity,
+            unit_price_kobo: sub.unit_price_kobo,
+            line_total_kobo: sub.line_total_kobo,
+            pricing_mode:    "manual",
+            sort_order:      j,
+          });
+        });
+      });
+      if (subRows.length > 0) {
+        const { error: subErr } = await supabase.from("invoice_items").insert(subRows);
+        if (subErr) return { error: subErr };
+      }
     }
 
     await load();

@@ -115,41 +115,82 @@ function StepCustomer({ customers, value, onChange }) {
 }
 
 // ── Step 2: Line Items ───────────────────────────────────────────
+function recalcItem(item) {
+  const qty = parseFloat(item.quantity) || 0;
+  const hasPricedSubs = (item.sub_items || []).some(s => s.unit_price_kobo > 0);
+  if (hasPricedSubs) {
+    const subTotal = (item.sub_items || []).reduce((s, sub) => s + sub.line_total_kobo, 0);
+    return { ...item, pricing_mode: "auto", line_total_kobo: Math.round(qty * subTotal) };
+  }
+  return { ...item, pricing_mode: "manual", line_total_kobo: Math.round(item.unit_price_kobo * qty) };
+}
+
 function StepItems({ items, onChange, products }) {
   const [showPicker, setShowPicker] = useState(false);
   const [pickerQ,    setPickerQ]    = useState("");
 
-  const addBlank = () => onChange([...items, { description: "", quantity: "1", unit_price: "", unit_price_kobo: 0, line_total_kobo: 0 }]);
+  const addBlank = () => onChange([...items, {
+    description: "", quantity: "1", unit_price: "", unit_price_kobo: 0,
+    line_total_kobo: 0, pricing_mode: "manual", sub_items: [],
+  }]);
 
   const addFromProduct = (p) => {
     const up_kobo = nairaToKobo(p.selling_price || 0);
     onChange([...items, {
-      description:     p.product_name,
-      quantity:        "1",
-      unit_price:      String(p.selling_price || ""),
-      unit_price_kobo: up_kobo,
-      line_total_kobo: up_kobo,
+      description: p.product_name, quantity: "1",
+      unit_price: String(p.selling_price || ""), unit_price_kobo: up_kobo,
+      line_total_kobo: up_kobo, pricing_mode: "manual", sub_items: [],
     }]);
-    setShowPicker(false);
-    setPickerQ("");
+    setShowPicker(false); setPickerQ("");
   };
 
   const update = (i, field, val) => {
     const next = items.map((item, idx) => {
       if (idx !== i) return item;
       const updated = { ...item, [field]: val };
-      if (field === "unit_price" || field === "quantity") {
-        const up_kobo = nairaToKobo(field === "unit_price" ? val : updated.unit_price);
-        const qty     = parseFloat(field === "quantity" ? val : updated.quantity) || 0;
-        updated.unit_price_kobo = up_kobo;
-        updated.line_total_kobo = Math.round(up_kobo * qty);
-      }
-      return updated;
+      if (field === "unit_price") updated.unit_price_kobo = nairaToKobo(val);
+      return recalcItem(updated);
     });
     onChange(next);
   };
 
   const remove = (i) => onChange(items.filter((_, idx) => idx !== i));
+
+  const addSubItem = (parentIdx) => {
+    const next = items.map((item, i) => {
+      if (i !== parentIdx) return item;
+      const newSub = { description: "", quantity: "1", unit_price: "", unit_price_kobo: 0, line_total_kobo: 0 };
+      return { ...item, sub_items: [...(item.sub_items || []), newSub] };
+    });
+    onChange(next);
+  };
+
+  const removeSubItem = (parentIdx, subIdx) => {
+    const next = items.map((item, i) => {
+      if (i !== parentIdx) return item;
+      return recalcItem({ ...item, sub_items: (item.sub_items || []).filter((_, j) => j !== subIdx) });
+    });
+    onChange(next);
+  };
+
+  const updateSubItem = (parentIdx, subIdx, field, val) => {
+    const next = items.map((item, i) => {
+      if (i !== parentIdx) return item;
+      const updatedSubs = (item.sub_items || []).map((sub, j) => {
+        if (j !== subIdx) return sub;
+        const updated = { ...sub, [field]: val };
+        if (field === "unit_price" || field === "quantity") {
+          const up_kobo = nairaToKobo(field === "unit_price" ? val : updated.unit_price);
+          const qty     = parseFloat(field === "quantity" ? val : updated.quantity) || 0;
+          updated.unit_price_kobo = up_kobo;
+          updated.line_total_kobo = Math.round(up_kobo * qty);
+        }
+        return updated;
+      });
+      return recalcItem({ ...item, sub_items: updatedSubs });
+    });
+    onChange(next);
+  };
 
   const filteredProducts = useMemo(() => {
     if (!pickerQ.trim()) return (products || []).slice(0, 10);
@@ -161,38 +202,105 @@ function StepItems({ items, onChange, products }) {
 
   return (
     <div>
-      {items.map((item, i) => (
-        <div key={i} className="bg-slate-50 dark:bg-slate-700/50 rounded-2xl p-3 mb-3">
-          <div className="flex items-start gap-2">
-            <div className="flex-1">
-              <Field label="Description *"
-                value={item.description}
-                onChange={e => update(i, "description", e.target.value)}
-                placeholder="Product or service" />
+      {items.map((item, i) => {
+        const isAuto = item.pricing_mode === "auto";
+        const subs   = item.sub_items || [];
+        return (
+          <div key={i} className="bg-slate-50 dark:bg-slate-700/50 rounded-2xl p-3 mb-3">
+            {/* Parent row */}
+            <div className="flex items-start gap-2">
+              <div className="flex-1">
+                <Field label="Description *"
+                  value={item.description}
+                  onChange={e => update(i, "description", e.target.value)}
+                  placeholder="Product or service" />
+              </div>
+              <button onClick={() => remove(i)}
+                className="mt-6 p-1.5 text-red-400 hover:text-red-600 flex-shrink-0">
+                <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M3 6h18M19 6l-1 14H6L5 6M10 11v6M14 11v6M9 6V4h6v2"/></svg>
+              </button>
             </div>
-            <button onClick={() => remove(i)}
-              className="mt-6 p-1.5 text-red-400 hover:text-red-600 flex-shrink-0">
-              <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M3 6h18M19 6l-1 14H6L5 6M10 11v6M14 11v6M9 6V4h6v2"/></svg>
-            </button>
-          </div>
-          <div className="flex gap-2">
-            <div className="flex-1">
-              <Field label="Qty" type="number" inputMode="numeric" value={item.quantity}
-                onChange={e => update(i, "quantity", e.target.value)} />
-            </div>
-            <div className="flex-1">
-              <Field label="Unit Price (₦)" type="number" inputMode="decimal" value={item.unit_price}
-                onChange={e => update(i, "unit_price", e.target.value)} />
-            </div>
-            <div className="flex-1">
-              <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 tracking-wide uppercase">Total</label>
-              <div className="py-3 text-sm font-bold text-slate-800 dark:text-slate-100">
-                {fmtK(item.line_total_kobo)}
+            <div className="flex gap-2">
+              <div className="w-16 flex-shrink-0">
+                <Field label="Qty" type="number" inputMode="numeric" value={item.quantity}
+                  onChange={e => update(i, "quantity", e.target.value)} />
+              </div>
+              <div className="flex-1">
+                {isAuto ? (
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-400 mb-1.5 tracking-wide uppercase">Unit Price</label>
+                    <div className="py-2.5 px-3 text-xs text-slate-400 italic bg-white dark:bg-slate-600 rounded-xl border border-slate-100 dark:border-slate-600">
+                      Auto-sum ↑
+                    </div>
+                  </div>
+                ) : (
+                  <Field label="Unit Price (₦)" type="number" inputMode="decimal" value={item.unit_price}
+                    onChange={e => update(i, "unit_price", e.target.value)} />
+                )}
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 tracking-wide uppercase">Total</label>
+                <div className="py-3 text-sm font-bold text-slate-800 dark:text-slate-100">
+                  {fmtK(item.line_total_kobo)}
+                </div>
               </div>
             </div>
+
+            {/* Sub-items — indented with left connector */}
+            {subs.length > 0 && (
+              <div className="mt-2 ml-2 pl-3 border-l-2 border-brand-300 dark:border-brand-700 space-y-2">
+                {subs.map((sub, si) => (
+                  <div key={si} className="bg-white dark:bg-slate-700 rounded-xl p-2 border border-slate-100 dark:border-slate-600">
+                    <div className="flex items-start gap-2">
+                      <div className="flex-1">
+                        <Field
+                          label={`Sub-item ${si + 1}`}
+                          value={sub.description}
+                          onChange={e => updateSubItem(i, si, "description", e.target.value)}
+                          placeholder="e.g. Jollof rice ×25" />
+                      </div>
+                      <button onClick={() => removeSubItem(i, si)}
+                        className="mt-6 p-1 text-red-400 hover:text-red-600 flex-shrink-0">
+                        <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                      </button>
+                    </div>
+                    <div className="flex gap-2">
+                      <div className="w-14 flex-shrink-0">
+                        <Field label="Qty" type="number" inputMode="numeric" value={sub.quantity}
+                          onChange={e => updateSubItem(i, si, "quantity", e.target.value)} />
+                      </div>
+                      <div className="flex-1">
+                        <Field label="Price (₦)" type="number" inputMode="decimal" value={sub.unit_price}
+                          onChange={e => updateSubItem(i, si, "unit_price", e.target.value)}
+                          placeholder="Blank = descriptive" />
+                      </div>
+                      {sub.line_total_kobo > 0 && (
+                        <div className="flex-1">
+                          <label className="block text-xs font-semibold text-slate-400 mb-1.5 tracking-wide uppercase">Sub-total</label>
+                          <div className="py-3 text-xs font-bold text-slate-600 dark:text-slate-300">{fmtK(sub.line_total_kobo)}</div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Bottom row: add sub-item + mode hint */}
+            <div className="flex items-center justify-between mt-2 pt-1.5">
+              <button onClick={() => addSubItem(i)}
+                className="text-xs text-brand-600 dark:text-brand-400 font-semibold active:scale-95 transition py-1">
+                + Add sub-item
+              </button>
+              {isAuto && (
+                <span className="text-[10px] text-slate-400 italic">
+                  {item.quantity}× bundle · sub-items drive the price
+                </span>
+              )}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
 
       <div className="flex gap-2 mb-4">
         <button onClick={addBlank}
@@ -413,12 +521,35 @@ function StepReview({ customer, items, adjust, payment }) {
       <div className="bg-slate-50 dark:bg-slate-700/50 rounded-2xl p-4">
         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Line Items</p>
         {items.map((item, i) => (
-          <div key={i} className="flex items-start justify-between mb-2 last:mb-0">
-            <div className="flex-1 mr-4">
-              <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">{item.description}</p>
-              <p className="text-xs text-slate-400">{item.quantity} × {fmt(koboToNaira(item.unit_price_kobo))}</p>
+          <div key={i} className="mb-3 last:mb-0">
+            <div className="flex items-start justify-between">
+              <div className="flex-1 mr-4">
+                <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">{item.description}</p>
+                <p className="text-xs text-slate-400">
+                  {item.pricing_mode === "auto"
+                    ? `${item.quantity}× bundle (sub-items drive price)`
+                    : `${item.quantity} × ${fmt(koboToNaira(item.unit_price_kobo))}`}
+                </p>
+              </div>
+              <span className="text-sm font-bold text-slate-800 dark:text-white">{fmtK(item.line_total_kobo)}</span>
             </div>
-            <span className="text-sm font-bold text-slate-800 dark:text-white">{fmtK(item.line_total_kobo)}</span>
+            {(item.sub_items || []).length > 0 && (
+              <div className="ml-2 pl-3 border-l-2 border-slate-100 dark:border-slate-700 mt-1 space-y-1">
+                {item.sub_items.map((sub, si) => (
+                  <div key={si} className="flex items-start justify-between">
+                    <div className="flex-1 mr-3">
+                      <p className="text-xs text-slate-500 dark:text-slate-400">• {sub.description}</p>
+                      {sub.unit_price_kobo > 0 && (
+                        <p className="text-[10px] text-slate-400">{sub.quantity} × {fmt(koboToNaira(sub.unit_price_kobo))}</p>
+                      )}
+                    </div>
+                    {sub.line_total_kobo > 0 && (
+                      <span className="text-xs text-slate-500">{fmtK(sub.line_total_kobo)}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -495,12 +626,26 @@ export default function InvoiceBuilder({
 
   const [items, setItems] = useState(() => {
     if (initialData?.invoice_items?.length) {
-      return initialData.invoice_items.map(i => ({
+      const allRows = initialData.invoice_items;
+      const topRows = allRows.filter(i => !i.parent_item_id).sort((a, b) => (a.sort_order||0) - (b.sort_order||0));
+      const children = allRows.filter(i => i.parent_item_id);
+      return topRows.map(i => ({
         description:     i.description     || "",
         quantity:        String(i.quantity  || 1),
         unit_price:      String((i.unit_price_kobo || 0) / 100),
         unit_price_kobo: i.unit_price_kobo || 0,
         line_total_kobo: i.line_total_kobo || 0,
+        pricing_mode:    i.pricing_mode    || "manual",
+        sub_items:       children
+          .filter(c => c.parent_item_id === i.id)
+          .sort((a, b) => (a.sort_order||0) - (b.sort_order||0))
+          .map(sub => ({
+            description:     sub.description || "",
+            quantity:        String(sub.quantity || 1),
+            unit_price:      String((sub.unit_price_kobo || 0) / 100),
+            unit_price_kobo: sub.unit_price_kobo || 0,
+            line_total_kobo: sub.line_total_kobo || 0,
+          })),
       }));
     }
     if (sourceTransaction) {
