@@ -140,7 +140,9 @@ CREATE TABLE IF NOT EXISTS public.invoice_items (
   quantity        numeric NOT NULL DEFAULT 1 CHECK (quantity > 0),
   unit_price_kobo bigint  NOT NULL DEFAULT 0 CHECK (unit_price_kobo >= 0),
   line_total_kobo bigint  NOT NULL DEFAULT 0 CHECK (line_total_kobo >= 0),
-  sort_order      integer NOT NULL DEFAULT 0
+  sort_order      integer NOT NULL DEFAULT 0,
+  parent_item_id  uuid    REFERENCES public.invoice_items(id) ON DELETE CASCADE,
+  pricing_mode    text    NOT NULL DEFAULT 'manual'
 );
 
 CREATE INDEX IF NOT EXISTS idx_invoice_items_invoice ON public.invoice_items(invoice_id);
