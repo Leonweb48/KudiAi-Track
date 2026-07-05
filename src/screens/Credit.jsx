@@ -710,6 +710,12 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
           const pdf = await createReportPdf({
             title: "Credit Payment History", businessName: bizName,
             period: historyFor.customer_name,
+            headerRight: [
+              { value: bizName },
+              { value: historyFor.customer_name, sub: true },
+              profile?.phone ? { value: profile.phone, sub: true } : null,
+              profile?.email ? { value: profile.email, sub: true } : null,
+            ].filter(Boolean),
             entityDetails: [
               { label: "Debtor",      value: historyFor.customer_name },
               { label: "Total Debt",  value: pdfFmt(totalAmt) },

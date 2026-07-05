@@ -125,6 +125,10 @@ function AsoClientHistoryModal({ client, contributions, businessName, onClose })
     const pdf = await createReportPdf({
       title: "Ajo Statement", businessName: businessName || "My Business",
       period: client.full_name,
+      headerRight: [
+        { value: businessName || "My Business" },
+        { value: client.full_name, sub: true },
+      ].filter(item => item.value),
       entityDetails: [
         { label: "Client Name", value: client.full_name },
         { label: "Current Balance", value: pdfFmt(client.current_balance || 0) },

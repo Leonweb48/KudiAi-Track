@@ -294,6 +294,12 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
     const pdf = await createReportPdf({
       title: "Transaction Statement", businessName: biz,
       period: labels[filter] || "All Transactions",
+      headerRight: [
+        { value: biz },
+        store.profile?.owner_name ? { value: store.profile.owner_name, sub: true } : null,
+        store.profile?.phone      ? { value: store.profile.phone,      sub: true } : null,
+        store.profile?.email      ? { value: store.profile.email,      sub: true } : null,
+      ].filter(Boolean),
       entityDetails: [
         { label: "Business", value: biz },
         { label: "Total Records", value: String(filtered.length) },

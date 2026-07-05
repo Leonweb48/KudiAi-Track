@@ -1270,6 +1270,11 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
     const pdf = await createReportPdf({
       title: "Ajo Savings Statement", businessName: bizName,
       period: client?.full_name || "Member",
+      headerRight: [
+        { value: bizName },
+        client?.full_name                ? { value: client.full_name,          sub: true } : null,
+        ownerInfo?.staff?.phone          ? { value: ownerInfo.staff.phone,      sub: true } : null,
+      ].filter(Boolean),
       entityDetails: [
         { label: "Member",          value: client?.full_name || "—" },
         { label: "Current Balance", value: pdfFmt(client?.current_balance || 0) },

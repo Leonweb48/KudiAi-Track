@@ -94,6 +94,7 @@ export async function createReportPdf({
   logoUrl       = "",
   landscape     = false,
   entityDetails = null,  // [{label, value}] — auto-rendered on page 1 below header
+  headerRight   = null,  // [{value, sub?}]  — identity block on right side of header
 } = {}) {
   const { jsPDF } = await import("jspdf");
   const doc = new jsPDF({
@@ -106,9 +107,12 @@ export async function createReportPdf({
   const ML = 12;
   const MR = W - 12;
   const CW = MR - ML;
-  const HDR_H     = 34;
   const FOOTER_H  = 14;
   const CONTENT_BOT = H - FOOTER_H - 2;
+
+  // Header height scales with number of identity lines on the right
+  const hrItems = (headerRight || []).filter(item => item?.value);
+  const HDR_H   = Math.max(40, 7 + hrItems.reduce((h, it) => h + (it.sub ? 5 : 6), 0) + 3);
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const [bizLogoB64, appLogoB64, fontRegB64, fontMedB64] = await Promise.all([
@@ -139,46 +143,56 @@ export async function createReportPdf({
   const setItal = sz => { doc.setFont("helvetica", "italic"); if (sz) doc.setFontSize(sz); };
   const col     = (...c) => doc.setTextColor(...c);
 
-  // ── Page 1 header ──────────────────────────────────────────────────────────
+  // ── Page 1 header — plain white, logo+title left, identity block right ────
   function drawPage1Header() {
-    doc.setFillColor(...NAVY);
-    doc.rect(0, 0, W, HDR_H, "F");
-    doc.setFillColor(...GREEN);
-    doc.rect(0, HDR_H, W, 2, "F");
+    // Logo top-left
+    if (appLogoB64) doc.addImage(appLogoB64, "PNG", ML, 5, 13, 13);
+    // Brand label
+    setMed(6); col(...GREEN);
+    doc.text("KudiAI Track", ML + 17, 11);
+    // Report title
+    setMed(13); col(...NAVY);
+    doc.text(doc.splitTextToSize(String(title), CW * 0.50)[0], ML, 23);
+    // Period · subtitle
+    const meta = [period, subtitle].filter(Boolean).join("  ·  ");
+    if (meta) { setReg(7); col(...MUTED); doc.text(doc.splitTextToSize(meta, CW * 0.50)[0], ML, 30); }
+    // Business name fallback when no identity block supplied
+    if (!hrItems.length) { setReg(7); col(...DARK); doc.text(doc.splitTextToSize(String(businessName), CW * 0.50)[0], ML, 36); }
 
-    if (appLogoB64) doc.addImage(appLogoB64, "PNG", ML, 8, 14, 14);
-    if (bizLogoB64) doc.addImage(bizLogoB64, "JPEG", MR - 16, 8, 14, 14);
+    // Right-side identity block
+    if (hrItems.length) {
+      let hy = 7;
+      hrItems.forEach(item => {
+        item.sub ? setReg(6) : setMed(8);
+        col(...(item.sub ? SEC : DARK));
+        doc.text(doc.splitTextToSize(String(item.value), CW * 0.46)[0], MR, hy, { align: "right" });
+        hy += item.sub ? 5 : 6;
+      });
+    }
 
-    setMed(6.5); col(180, 220, 165);
-    doc.text("KudiAI Track", W / 2, 11, { align: "center" });
-    setMed(13); col(...WHITE);
-    doc.text(String(businessName), W / 2, 21, { align: "center" });
-    setReg(7); col(200, 220, 245);
-    const metaTxt = [title, period, subtitle].filter(Boolean).join("  ·  ");
-    doc.text(metaTxt, W / 2, 30, { align: "center" });
+    // Hairline divider + green accent rule
+    doc.setDrawColor(...HAIRLN); doc.setLineWidth(0.2);
+    doc.line(ML, HDR_H - 2, MR, HDR_H - 2);
+    doc.setFillColor(...GREEN); doc.rect(0, HDR_H, W, 2, "F");
   }
 
+  // Continuation pages: plain white, title left, business right, green rule bottom
   function drawContinuationHeader() {
-    doc.setFillColor(...NAVY);
-    doc.rect(0, 0, W, 10, "F");
-    doc.setFillColor(...GREEN);
-    doc.rect(0, 10, W, 1.5, "F");
-    setMed(6); col(...WHITE);
-    doc.text(`${title} (continued)`, ML, 7);
-    setReg(6); col(200, 220, 245);
-    doc.text(String(businessName), MR, 7, { align: "right" });
+    setMed(6.5); col(...NAVY);
+    doc.text(`${title} (continued)`, ML, 8);
+    setReg(6); col(...MUTED);
+    doc.text(doc.splitTextToSize(String(businessName), CW * 0.50)[0], MR, 8, { align: "right" });
+    doc.setFillColor(...GREEN); doc.rect(0, 11, W, 1.5, "F");
   }
 
   drawPage1Header();
-  let y = HDR_H + 8;
+  let y = HDR_H + 7;  // 7mm gap after green stripe before first content element
 
   // ── Page management ────────────────────────────────────────────────────────
-  // Continuation header: 10mm navy + 1.5mm green = 11.5mm total.
-  // Start content at 15mm — tight but clear of the stripe.
   function newPage() {
     doc.addPage();
     drawContinuationHeader();
-    y = 15;
+    y = 17;  // green stripe ends at 12.5mm; 4.5mm gap to content
   }
 
   function need(h) {

@@ -877,6 +877,12 @@ function FinanceTab({ org, members, programs, onRefresh }) {
     const pdf = await createReportPdf({
       title: "Contributions Statement", businessName: org.name || "Coop",
       period: "All Members",
+      headerRight: [
+        { value: org.name || "Coop" },
+        org.phone      ? { value: org.phone,    sub: true } : null,
+        org.email      ? { value: org.email,    sub: true } : null,
+        org.reg_number ? { value: `Reg: ${org.reg_number}`, sub: true } : null,
+      ].filter(Boolean),
       entityDetails: [
         { label: "Organisation",    value: org.name },
         { label: "Total Records",   value: String(savings.length) },

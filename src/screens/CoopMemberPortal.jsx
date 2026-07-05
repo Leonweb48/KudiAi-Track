@@ -680,6 +680,13 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
     const pdf = await createReportPdf({
       title: "Savings Statement", businessName: org.name || "Coop",
       period: member.full_name,
+      headerRight: [
+        { value: org.name || "Coop" },
+        { value: member.full_name, sub: true },
+        org.phone    ? { value: org.phone,    sub: true } : null,
+        org.email    ? { value: org.email,    sub: true } : null,
+        org.reg_number ? { value: `Reg: ${org.reg_number}`, sub: true } : null,
+      ].filter(Boolean),
       entityDetails: [
         { label: "Member",          value: member.full_name },
         { label: "Membership ID",   value: member.membership_id || "—" },
