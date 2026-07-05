@@ -4,7 +4,9 @@ import Icon   from "../components/Icon";
 import Modal  from "../components/shared/Modal";
 import Field  from "../components/shared/Field";
 import Badge  from "../components/shared/Badge";
-import { AsoReceipt, AjoTxReceipt } from "../components/shared/Receipt";
+import { AsoReceipt } from "../components/shared/Receipt";
+import TransactionDetailModal from "../components/shared/TransactionDetailModal";
+import { buildAsoContributionReceipt } from "../utils/receiptConfig";
 import { ClientProfile } from "../components/shared/ClientProfile";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import { supabase } from "../utils/supabase";
@@ -161,10 +163,8 @@ function AsoClientHistoryModal({ client, contributions, businessName, onClose })
   return (
     <div className="fixed inset-0 z-[60] bg-black/60 flex flex-col">
       {receipt && (
-        <AjoTxReceipt
-          txn={receipt}
-          clientName={client.full_name}
-          businessName={businessName}
+        <TransactionDetailModal
+          data={buildAsoContributionReceipt(receipt, client.full_name, businessName)}
           onClose={() => setReceipt(null)}
         />
       )}

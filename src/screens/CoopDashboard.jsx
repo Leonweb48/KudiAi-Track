@@ -5,7 +5,9 @@ import { useT } from "../contexts/LanguageContext";
 import BillPayments from "./BillPayments";
 import CashbackCard from "../components/CashbackCard";
 import GroupChat from "./GroupChat";
-import { CoopSavingReceipt, CoopBulkWithdrawalReceipt, CoopWithdrawalRequestReceipt } from "../components/shared/Receipt";
+import { CoopBulkWithdrawalReceipt } from "../components/shared/Receipt";
+import TransactionDetailModal from "../components/shared/TransactionDetailModal";
+import { buildCoopSavingsReceipt, buildCoopWithdrawalRequestReceipt } from "../utils/receiptConfig";
 import { maxDobDate, isAtLeast18, AGE_ERROR } from "../utils/ageValidation";
 import { CoopNotificationBell, useChatUnread, ChatToast } from "../components/shared/CoopNotifications";
 import AIChatWidget from "../components/AIChatWidget";
@@ -1180,9 +1182,19 @@ function FinanceTab({ org, members, programs, onRefresh }) {
         </ModalWrap>
       )}
 
-      {viewSaving && <CoopSavingReceipt saving={viewSaving} orgName={org.name} onClose={() => setViewSaving(null)} />}
+      {viewSaving && (
+        <TransactionDetailModal
+          data={buildCoopSavingsReceipt(viewSaving, viewSaving.org_members?.full_name || "", org.name)}
+          onClose={() => setViewSaving(null)}
+        />
+      )}
       {viewWd && <CoopBulkWithdrawalReceipt withdrawal={viewWd} orgName={org.name} onClose={() => setViewWd(null)} />}
-      {viewReq && <CoopWithdrawalRequestReceipt request={viewReq} orgName={org.name} onClose={() => setViewReq(null)} />}
+      {viewReq && (
+        <TransactionDetailModal
+          data={buildCoopWithdrawalRequestReceipt(viewReq, viewReq.member_name || viewReq.org_members?.full_name || "", org.name)}
+          onClose={() => setViewReq(null)}
+        />
+      )}
       {txnPin && <TransactionPinModal {...txnPin} onCancel={() => setTxnPin(null)} />}
     </div>
   );

@@ -3,7 +3,8 @@ import Icon   from "../components/Icon";
 import Modal  from "../components/shared/Modal";
 import TransactionPinModal from "../components/TransactionPinModal";
 import Field  from "../components/shared/Field";
-import { TransactionReceipt } from "../components/shared/Receipt";
+import TransactionDetailModal from "../components/shared/TransactionDetailModal";
+import { buildTransactionReceipt } from "../utils/receiptConfig";
 import { fmt, today } from "../utils/helpers";
 import { canDo, planLimits } from "../utils/plans";
 import { createReportPdf, fmtCurrency, fmtDate } from "../utils/generateReportPdf";
@@ -483,7 +484,7 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
                 {/* Actions row */}
                 <div className="flex items-center gap-3 mt-2.5 pt-2.5 border-t border-slate-50 dark:border-slate-700/60">
                   <button
-                    onClick={() => setReceipt(t)}
+                    onClick={() => setReceipt(buildTransactionReceipt(t, profile))}
                     className="flex items-center gap-1.5 text-[11px] font-bold text-brand-600 dark:text-brand-400 hover:text-brand-700 transition"
                   >
                     <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
@@ -518,9 +519,8 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
       )}
 
       {receipt && (
-        <TransactionReceipt
-          txn={receipt}
-          profile={profile}
+        <TransactionDetailModal
+          data={receipt}
           onClose={() => setReceipt(null)}
         />
       )}

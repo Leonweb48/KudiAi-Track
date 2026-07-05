@@ -8,7 +8,8 @@ import CashbackCard from "../components/CashbackCard";
 import GroupChat from "./GroupChat";
 import AIChatWidget from "../components/AIChatWidget";
 import { buildCoopMemberContext } from "../utils/buildContext";
-import { CoopSavingReceipt, CoopWithdrawalRequestReceipt } from "../components/shared/Receipt";
+import TransactionDetailModal from "../components/shared/TransactionDetailModal";
+import { buildCoopSavingsReceipt, buildCoopWithdrawalRequestReceipt } from "../utils/receiptConfig";
 import { CoopNotificationBell, useChatUnread, ChatToast } from "../components/shared/CoopNotifications";
 import { sendEmailTrigger } from "../utils/emailTrigger";
 import AppLogo from "../components/AppLogo";
@@ -877,17 +878,14 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
         />
       )}
       {selectedHistory && (
-        <CoopSavingReceipt
-          saving={{ ...selectedHistory, org_members: { full_name: member.full_name, membership_id: member.membership_id } }}
-          orgName={org.name}
+        <TransactionDetailModal
+          data={buildCoopSavingsReceipt(selectedHistory, member.full_name, org.name)}
           onClose={() => setSelectedHistory(null)}
         />
       )}
       {selectedRequest && (
-        <CoopWithdrawalRequestReceipt
-          request={selectedRequest}
-          orgName={org.name}
-          memberName={member.full_name}
+        <TransactionDetailModal
+          data={buildCoopWithdrawalRequestReceipt(selectedRequest, member.full_name, org.name)}
           onClose={() => setSelectedRequest(null)}
         />
       )}

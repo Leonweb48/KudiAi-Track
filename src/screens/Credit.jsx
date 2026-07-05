@@ -5,7 +5,9 @@ import TransactionPinModal from "../components/TransactionPinModal";
 import { canDo, upgradeLabel, planAvailableText } from "../utils/plans";
 import Field  from "../components/shared/Field";
 import Badge  from "../components/shared/Badge";
-import { CreditReceipt, CreditPaymentReceipt } from "../components/shared/Receipt";
+import { CreditReceipt } from "../components/shared/Receipt";
+import TransactionDetailModal from "../components/shared/TransactionDetailModal";
+import { buildCreditPaymentReceipt } from "../utils/receiptConfig";
 import { ClientProfile }  from "../components/shared/ClientProfile";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import { supabase } from "../utils/supabase";
@@ -677,10 +679,8 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
 
       {/* Payment receipt overlay */}
       {payReceipt && (
-        <CreditPaymentReceipt
-          payment={payReceipt.payment}
-          credit={payReceipt.credit}
-          businessName={profile?.business_name || profile?.owner_name || "My Business"}
+        <TransactionDetailModal
+          data={buildCreditPaymentReceipt(payReceipt.payment, payReceipt.credit, profile?.business_name || profile?.owner_name || "My Business")}
           onClose={() => setPayReceipt(null)}
         />
       )}
@@ -736,10 +736,8 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
         return (
           <div className="fixed inset-0 z-[60] bg-black/60 flex flex-col">
             {payReceipt && (
-              <CreditPaymentReceipt
-                payment={payReceipt.payment}
-                credit={payReceipt.credit}
-                businessName={bizName}
+              <TransactionDetailModal
+                data={buildCreditPaymentReceipt(payReceipt.payment, payReceipt.credit, bizName)}
                 onClose={() => setPayReceipt(null)}
               />
             )}

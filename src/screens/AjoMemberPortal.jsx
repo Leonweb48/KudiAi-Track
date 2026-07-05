@@ -11,7 +11,8 @@ import { useBiometricLock } from "../hooks/useBiometricLock";
 import { useNotifications } from "../hooks/useNotifications";
 import TransactionPinModal from "../components/TransactionPinModal";
 import NotificationCenter, { NotificationBell } from "../components/NotificationCenter";
-import { AjoTxReceipt } from "../components/shared/Receipt";
+import TransactionDetailModal from "../components/shared/TransactionDetailModal";
+import { buildAjoContributionReceipt, buildAjoWithdrawalReceipt } from "../utils/receiptConfig";
 import AIChatWidget from "../components/AIChatWidget";
 import { buildAjoMemberContext } from "../utils/buildContext";
 import { useT, useLanguage } from "../contexts/LanguageContext";
@@ -1295,10 +1296,12 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
   return (
     <div className="px-4 pt-5 pb-28">
       {receipt && (
-        <AjoTxReceipt
-          txn={receipt}
-          clientName={client?.full_name || ""}
-          businessName={bizName}
+        <TransactionDetailModal
+          data={
+            receipt._type === "withdrawal_request"
+              ? buildAjoWithdrawalReceipt(receipt, client?.full_name || "", bizName)
+              : buildAjoContributionReceipt(receipt, client?.full_name || "", bizName)
+          }
           onClose={() => setReceipt(null)}
         />
       )}

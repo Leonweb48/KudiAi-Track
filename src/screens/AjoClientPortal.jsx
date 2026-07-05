@@ -4,7 +4,8 @@ import { supabase } from "../utils/supabase";
 import { peyflex } from "../utils/peyflex";
 import { fmt } from "../utils/helpers";
 import AppLogo from "../components/AppLogo";
-import { AjoTxReceipt } from "../components/shared/Receipt";
+import TransactionDetailModal from "../components/shared/TransactionDetailModal";
+import { buildAjoContributionReceipt } from "../utils/receiptConfig";
 import TransactionPinModal from "../components/TransactionPinModal";
 
 async function ajoFn(action, body = {}) {
@@ -1062,10 +1063,8 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
   return (
     <div className="px-4 pt-5 pb-28">
       {receipt && (
-        <AjoTxReceipt
-          txn={receipt}
-          clientName={client?.full_name || ""}
-          businessName={bizName}
+        <TransactionDetailModal
+          data={buildAjoContributionReceipt(receipt, client?.full_name || "", bizName)}
           onClose={() => setReceipt(null)}
         />
       )}
