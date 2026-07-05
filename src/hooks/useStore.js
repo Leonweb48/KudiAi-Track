@@ -700,8 +700,12 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
       ward:              next.ward              || null,
       currency:          next.currency          || null,
       dark_mode:         next.dark_mode,
-      profile_image_url: next.profile_image_url ? next.profile_image_url.split("?")[0] : null,
-      store_image_url:   next.store_image_url   ? next.store_image_url.split("?")[0]   : null,
+      profile_image_url:            next.profile_image_url            ? next.profile_image_url.split("?")[0] : null,
+      store_image_url:              next.store_image_url              ? next.store_image_url.split("?")[0]   : null,
+      business_category:            next.business_category            || null,
+      business_registration_number: next.business_registration_number || null,
+      business_phone:               next.business_phone               || null,
+      business_email:               next.business_email               || null,
     }).eq("id", userId);
 
     if (error) {
