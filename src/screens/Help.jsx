@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../utils/supabase";
+import { askGemini } from "../utils/gemini";
 
 // ── Icons ────────────────────────────────────────────────────────────────────
 const ArrowLeft   = () => <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>;
@@ -17,12 +18,12 @@ const TICKET_TYPES = ["general", "payment", "account", "invoice", "subscription"
 const PRIORITIES   = ["low", "medium", "high"];
 
 const STATUS_META = {
-  open:               { label: "Open",            cls: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"     },
-  in_progress:        { label: "In Progress",     cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"  },
-  escalated:          { label: "Escalated",       cls: "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300" },
-  awaiting_response:  { label: "Awaiting Reply",  cls: "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300" },
-  resolved:           { label: "Resolved",        cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" },
-  closed:             { label: "Closed",          cls: "bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400"    },
+  open:              { label: "Open",           cls: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"           },
+  in_progress:       { label: "In Progress",    cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"       },
+  escalated:         { label: "Escalated",      cls: "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300"   },
+  awaiting_response: { label: "Awaiting Reply", cls: "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300"   },
+  resolved:          { label: "Resolved",       cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" },
+  closed:            { label: "Closed",         cls: "bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400"          },
 };
 
 function StatusBadge({ status }) {
@@ -32,19 +33,84 @@ function StatusBadge({ status }) {
 
 function fmtDate(iso) {
   if (!iso) return "";
-  const d = new Date(iso);
-  return d.toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" });
+  return new Date(iso).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" });
 }
 function fmtTime(iso) {
   if (!iso) return "";
-  const d = new Date(iso);
-  return d.toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" });
+  return new Date(iso).toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" });
 }
 function daysSince(iso) {
   return (Date.now() - new Date(iso).getTime()) / 864e5;
 }
 
-// ── FAQ Accordion Item ───────────────────────────────────────────────────────
+// Build context string for Gemini from FAQ items
+function buildFaqContext(items) {
+  const qa = items.slice(0, 30).map(item => {
+    const plain = item.answer.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    return `Q: ${item.question}\nA: ${plain}`;
+  }).join("\n\n");
+
+  return `You are KudiAI, the friendly support assistant built into KudiAI Track — a business management app for Nigerian SMEs. A user is searching the help centre and needs an answer.
+
+Answer the user's question in 2–4 short, warm sentences. Be direct and helpful. No markdown headers, no bullet points — plain conversational text only. Keep it under 100 words.
+
+If the question is clearly answered by the FAQ knowledge base below, use that information. Otherwise, use your general knowledge about business management apps, invoicing, payments, and Nigerian SME operations.
+
+=== FAQ Knowledge Base ===
+${qa}
+=== End FAQ ===`;
+}
+
+// ── Typing dots indicator ─────────────────────────────────────────────────────
+function TypingDots() {
+  return (
+    <div className="flex items-center gap-1">
+      {[0, 1, 2].map(i => (
+        <div
+          key={i}
+          className="w-1.5 h-1.5 rounded-full bg-brand-400 animate-bounce"
+          style={{ animationDelay: `${i * 0.15}s` }}
+        />
+      ))}
+    </div>
+  );
+}
+
+// ── KudiAI answer card shown in FAQ search ────────────────────────────────────
+function KudiAICard({ loading, answer, onContactSupport }) {
+  if (!loading && !answer) return null;
+  return (
+    <div className="mb-4 rounded-2xl overflow-hidden border border-brand-200 dark:border-brand-700/50 shadow-sm">
+      {/* Header */}
+      <div className="flex items-center gap-2 px-4 py-2.5 bg-brand-600">
+        <span className="text-sm">✨</span>
+        <span className="text-xs font-extrabold tracking-widest text-white uppercase">KudiAI</span>
+        <span className="ml-auto text-[10px] text-brand-200 font-medium">AI answer</span>
+      </div>
+      {/* Body */}
+      <div className="px-4 py-4 bg-brand-50 dark:bg-brand-900/20">
+        {loading ? (
+          <div className="flex items-center gap-3 text-sm text-slate-400 dark:text-slate-500">
+            <TypingDots />
+            <span>KudiAI is thinking…</span>
+          </div>
+        ) : (
+          <>
+            <p className="text-sm text-slate-700 dark:text-slate-200 leading-relaxed">{answer}</p>
+            <button
+              onClick={onContactSupport}
+              className="mt-3 text-xs font-semibold text-brand-600 dark:text-brand-400 hover:underline"
+            >
+              Still need help? Open a support ticket →
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── FAQ Accordion Item ────────────────────────────────────────────────────────
 function FaqItem({ item, expanded, onToggle, feedback, onFeedback }) {
   const fb = feedback[item.id];
   return (
@@ -112,13 +178,13 @@ function StarRating({ value, onChange }) {
 
 // ── Ticket Detail View ────────────────────────────────────────────────────────
 function TicketDetail({ ticket, userId, profile, onBack, onUpdate }) {
-  const [messages,  setMessages]  = useState([]);
-  const [adminMsgs, setAdminMsgs] = useState([]);
-  const [reply,     setReply]     = useState("");
-  const [sending,   setSending]   = useState(false);
-  const [rating,    setRating]    = useState(0);
+  const [messages,   setMessages]   = useState([]);
+  const [adminMsgs,  setAdminMsgs]  = useState([]);
+  const [reply,      setReply]      = useState("");
+  const [sending,    setSending]    = useState(false);
+  const [rating,     setRating]     = useState(0);
   const [ratingDone, setRatingDone] = useState(false);
-  const [reopening, setReopening] = useState(false);
+  const [reopening,  setReopening]  = useState(false);
   const bottomRef = useRef(null);
 
   const canReply  = ["open", "in_progress", "awaiting_response", "escalated"].includes(ticket.status);
@@ -142,11 +208,10 @@ function TicketDetail({ ticket, userId, profile, onBack, onUpdate }) {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, adminMsgs]);
 
-  // Merge user messages + admin comments into a single timeline
   const timeline = [
-    { type: "initial", created_at: ticket.created_at, content: ticket.description, sender: profile?.owner_name || profile?.business_name || "You" },
-    ...(messages  || []).map(m => ({ ...m, type: "user_msg"   })),
-    ...(adminMsgs || []).map(m => ({ ...m, type: "admin_msg"  })),
+    { type: "initial",   created_at: ticket.created_at, content: ticket.description, sender: profile?.owner_name || profile?.business_name || "You" },
+    ...(messages  || []).map(m => ({ ...m, type: "user_msg"  })),
+    ...(adminMsgs || []).map(m => ({ ...m, type: "admin_msg" })),
   ].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 
   const sendReply = async () => {
@@ -161,7 +226,6 @@ function TicketDetail({ ticket, userId, profile, onBack, onUpdate }) {
       content:     text,
     }).select().single();
     if (msg) setMessages(m => [...m, msg]);
-    // Update ticket updated_at
     await supabase.from("support_tickets").update({ updated_at: new Date().toISOString() }).eq("id", ticket.id);
     setReply("");
     setSending(false);
@@ -183,9 +247,9 @@ function TicketDetail({ ticket, userId, profile, onBack, onUpdate }) {
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col" style={{ height: "calc(100vh - 64px)" }}>
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700/60 px-4 py-3 flex items-center gap-3">
+      <div className="flex-shrink-0 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700/60 px-4 py-3 flex items-center gap-3">
         <button onClick={onBack} className="text-slate-600 dark:text-slate-300 active:scale-90 transition">
           <ArrowLeft />
         </button>
@@ -201,7 +265,7 @@ function TicketDetail({ ticket, userId, profile, onBack, onUpdate }) {
       </div>
 
       {/* Thread */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 pb-2">
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
         {timeline.map((item, i) => {
           const isAdmin = item.type === "admin_msg";
           return (
@@ -223,7 +287,6 @@ function TicketDetail({ ticket, userId, profile, onBack, onUpdate }) {
           );
         })}
 
-        {/* Needs info message */}
         {ticket.status === "awaiting_response" && ticket.needs_info_message && (
           <div className="bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-700/40 rounded-2xl px-4 py-3 text-sm text-violet-700 dark:text-violet-300">
             <p className="font-semibold text-xs uppercase tracking-wide mb-1">Additional info needed</p>
@@ -231,7 +294,6 @@ function TicketDetail({ ticket, userId, profile, onBack, onUpdate }) {
           </div>
         )}
 
-        {/* Resolution */}
         {ticket.resolution && (ticket.status === "resolved" || ticket.status === "closed") && (
           <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700/40 rounded-2xl px-4 py-3">
             <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 uppercase tracking-wide mb-1">Resolution</p>
@@ -239,7 +301,6 @@ function TicketDetail({ ticket, userId, profile, onBack, onUpdate }) {
           </div>
         )}
 
-        {/* Rating */}
         {canRate && !ratingDone && (
           <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 rounded-2xl px-4 py-4">
             <p className="text-sm font-bold text-amber-800 dark:text-amber-300 mb-1">How was our support?</p>
@@ -263,7 +324,7 @@ function TicketDetail({ ticket, userId, profile, onBack, onUpdate }) {
       </div>
 
       {/* Reply / Action bar */}
-      <div className="border-t border-slate-100 dark:border-slate-700/60 bg-white dark:bg-slate-900 px-4 py-3 pb-safe flex flex-col gap-2">
+      <div className="flex-shrink-0 border-t border-slate-100 dark:border-slate-700/60 bg-white dark:bg-slate-900 px-4 py-3 flex flex-col gap-2">
         {canReopen && (
           <button onClick={reopen} disabled={reopening}
             className="w-full py-2.5 rounded-2xl border border-brand-500 text-brand-600 dark:text-brand-400 text-sm font-bold active:scale-[0.98] transition disabled:opacity-50">
@@ -287,7 +348,7 @@ function TicketDetail({ ticket, userId, profile, onBack, onUpdate }) {
           </div>
         )}
         {!canReply && !canReopen && (
-          <p className="text-center text-xs text-slate-400 dark:text-slate-500">
+          <p className="text-center text-xs text-slate-400 dark:text-slate-500 py-1">
             This ticket is {ticket.status}.
           </p>
         )}
@@ -298,9 +359,9 @@ function TicketDetail({ ticket, userId, profile, onBack, onUpdate }) {
 
 // ── Create Ticket Form ────────────────────────────────────────────────────────
 function CreateTicket({ userId, profile, session, onBack, onCreated }) {
-  const [form, setForm] = useState({ subject: "", description: "", type: "general", priority: "medium" });
+  const [form,   setForm]   = useState({ subject: "", description: "", type: "general", priority: "medium" });
   const [saving, setSaving] = useState(false);
-  const [error, setError]   = useState("");
+  const [error,  setError]  = useState("");
 
   const submit = async () => {
     if (!form.subject.trim() || !form.description.trim()) {
@@ -310,14 +371,14 @@ function CreateTicket({ userId, profile, session, onBack, onCreated }) {
     setSaving(true);
     setError("");
     const { data: ticket, error: err } = await supabase.from("support_tickets").insert({
-      user_id:    userId,
-      user_email: session?.user?.email,
-      user_name:  profile?.owner_name || profile?.business_name || "",
-      subject:    form.subject.trim(),
+      user_id:     userId,
+      user_email:  session?.user?.email,
+      user_name:   profile?.owner_name || profile?.business_name || "",
+      subject:     form.subject.trim(),
       description: form.description.trim(),
-      type:       form.type,
-      priority:   form.priority,
-      status:     "open",
+      type:        form.type,
+      priority:    form.priority,
+      status:      "open",
     }).select().single();
 
     if (err) { setError(err.message); setSaving(false); return; }
@@ -327,13 +388,17 @@ function CreateTicket({ userId, profile, session, onBack, onCreated }) {
   const inputCls = "w-full border border-slate-200 dark:border-slate-600 rounded-2xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500";
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="pb-32 screen-enter">
+      {/* Sticky header */}
       <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700/60 px-4 py-3 flex items-center gap-3">
-        <button onClick={onBack} className="text-slate-600 dark:text-slate-300 active:scale-90 transition"><ArrowLeft /></button>
+        <button onClick={onBack} className="text-slate-600 dark:text-slate-300 active:scale-90 transition">
+          <ArrowLeft />
+        </button>
         <h2 className="text-[17px] font-bold text-slate-900 dark:text-white">New Support Ticket</h2>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-5 space-y-4">
+      {/* Form fields */}
+      <div className="px-4 py-5 space-y-4">
         {error && (
           <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 rounded-2xl px-4 py-3 text-sm text-red-700 dark:text-red-300">
             {error}
@@ -383,15 +448,16 @@ function CreateTicket({ userId, profile, session, onBack, onCreated }) {
         <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl px-4 py-3 text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
           Your ticket will be assigned a reference number and our support team will respond within 24 hours.
         </div>
-      </div>
 
-      <div className="border-t border-slate-100 dark:border-slate-700/60 px-4 py-4 bg-white dark:bg-slate-900">
+        {/* Submit button lives inside the scrollable area so it's always reachable */}
         <button
           onClick={submit}
           disabled={saving}
-          className="w-full py-3.5 rounded-2xl bg-brand-600 text-white font-bold text-sm active:scale-[0.98] transition disabled:opacity-50 flex items-center justify-center gap-2"
+          className="w-full py-3.5 rounded-2xl bg-brand-600 text-white font-bold text-sm active:scale-[0.98] transition disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg"
         >
-          {saving ? <><div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Submitting…</> : <><TicketIcon /> Submit Ticket</>}
+          {saving
+            ? <><div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Submitting…</>
+            : <><TicketIcon /> Submit Ticket</>}
         </button>
       </div>
     </div>
@@ -399,31 +465,35 @@ function CreateTicket({ userId, profile, session, onBack, onCreated }) {
 }
 
 // ── Main Help Screen ──────────────────────────────────────────────────────────
-export default function Help({ store, session, plan }) {
+export default function Help({ store, session }) {
   const navigate = useNavigate();
   const profile  = store?.profile || {};
   const userId   = session?.user?.id;
 
-  // Tabs
   const [tab, setTab] = useState("faq");
 
   // FAQ state
-  const [categories,      setCategories]      = useState([]);
-  const [faqItems,        setFaqItems]        = useState([]);
-  const [faqLoading,      setFaqLoading]      = useState(true);
-  const [search,          setSearch]          = useState("");
-  const [activeCategory,  setActiveCategory]  = useState(null);
-  const [expandedId,      setExpandedId]      = useState(null);
-  const [feedback,        setFeedback]        = useState({});
+  const [categories,     setCategories]     = useState([]);
+  const [faqItems,       setFaqItems]       = useState([]);
+  const [faqLoading,     setFaqLoading]     = useState(true);
+  const [search,         setSearch]         = useState("");
+  const [activeCategory, setActiveCategory] = useState(null);
+  const [expandedId,     setExpandedId]     = useState(null);
+  const [feedback,       setFeedback]       = useState({});
+
+  // KudiAI search answer
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiAnswer,  setAiAnswer]  = useState("");
+  const aiReqId = useRef(0);
 
   // Ticket state
   const [tickets,        setTickets]        = useState([]);
   const [ticketLoading,  setTicketLoading]  = useState(false);
-  const [ticketView,     setTicketView]     = useState("list");  // "list" | "create" | "detail"
+  const [ticketView,     setTicketView]     = useState("list");
   const [selectedTicket, setSelectedTicket] = useState(null);
-  const [successTicket,  setSuccessTicket]  = useState(null);   // newly created
+  const [successTicket,  setSuccessTicket]  = useState(null);
 
-  // ── Load FAQ ────────────────────────────────────────────────────────────────
+  // ── Load FAQ ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     async function loadFAQ() {
       setFaqLoading(true);
@@ -438,14 +508,43 @@ export default function Help({ store, session, plan }) {
     loadFAQ();
   }, []);
 
-  // ── Load Tickets ─────────────────────────────────────────────────────────────
+  // ── Gemini FAQ search — debounced, fires after 600ms of inactivity ────────────
+  useEffect(() => {
+    if (search.trim().length < 3) {
+      setAiAnswer("");
+      setAiLoading(false);
+      return;
+    }
+
+    setAiLoading(true);
+    setAiAnswer("");
+
+    const timer = setTimeout(async () => {
+      const reqId = ++aiReqId.current;
+      try {
+        const context = buildFaqContext(faqItems);
+        const answer  = await askGemini({ message: search.trim(), context, timeout: 20000 });
+        if (reqId === aiReqId.current) {
+          setAiAnswer(answer || "I couldn't find a specific answer. Please try rephrasing or open a support ticket.");
+          setAiLoading(false);
+        }
+      } catch {
+        if (reqId === aiReqId.current) {
+          setAiAnswer("I'm having trouble connecting right now. Try again or open a support ticket.");
+          setAiLoading(false);
+        }
+      }
+    }, 600);
+
+    return () => clearTimeout(timer);
+  }, [search, faqItems]);
+
+  // ── Load Tickets ──────────────────────────────────────────────────────────────
   const loadTickets = useCallback(async () => {
     if (!userId) return;
     setTicketLoading(true);
     const { data } = await supabase.from("support_tickets")
-      .select("*")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false });
+      .select("*").eq("user_id", userId).order("created_at", { ascending: false });
     setTickets(data || []);
     setTicketLoading(false);
   }, [userId]);
@@ -454,10 +553,10 @@ export default function Help({ store, session, plan }) {
     if (tab === "tickets") loadTickets();
   }, [tab, loadTickets]);
 
-  // ── FAQ helpers ──────────────────────────────────────────────────────────────
+  // ── FAQ helpers ───────────────────────────────────────────────────────────────
   const filteredFAQ = faqItems.filter(item => {
-    const matchCat = !activeCategory || item.category_id === activeCategory;
-    const q = search.toLowerCase();
+    const matchCat    = !activeCategory || item.category_id === activeCategory;
+    const q           = search.toLowerCase();
     const matchSearch = !q || item.question.toLowerCase().includes(q) || item.answer.toLowerCase().includes(q);
     return matchCat && matchSearch;
   });
@@ -471,42 +570,41 @@ export default function Help({ store, session, plan }) {
     );
   };
 
-  // ── Render ───────────────────────────────────────────────────────────────────
+  const goToCreateTicket = () => { setTab("tickets"); setTicketView("create"); };
+
+  // ── Full-screen sub-views ─────────────────────────────────────────────────────
   if (tab === "tickets" && ticketView === "create") {
     return (
-      <div className="h-full flex flex-col">
-        <CreateTicket
-          userId={userId}
-          profile={profile}
-          session={session}
-          onBack={() => setTicketView("list")}
-          onCreated={(ticket) => {
-            setTickets(t => [ticket, ...t]);
-            setSuccessTicket(ticket);
-            setTicketView("list");
-          }}
-        />
-      </div>
+      <CreateTicket
+        userId={userId}
+        profile={profile}
+        session={session}
+        onBack={() => setTicketView("list")}
+        onCreated={(ticket) => {
+          setTickets(t => [ticket, ...t]);
+          setSuccessTicket(ticket);
+          setTicketView("list");
+        }}
+      />
     );
   }
 
   if (tab === "tickets" && ticketView === "detail" && selectedTicket) {
     return (
-      <div className="h-full flex flex-col">
-        <TicketDetail
-          ticket={selectedTicket}
-          userId={userId}
-          profile={profile}
-          onBack={() => { setTicketView("list"); setSelectedTicket(null); }}
-          onUpdate={loadTickets}
-        />
-      </div>
+      <TicketDetail
+        ticket={selectedTicket}
+        userId={userId}
+        profile={profile}
+        onBack={() => { setTicketView("list"); setSelectedTicket(null); }}
+        onUpdate={loadTickets}
+      />
     );
   }
 
+  // ── Main tabbed view ──────────────────────────────────────────────────────────
   return (
     <div className="pb-32 screen-enter">
-      {/* ── Header ────────────────────────────────────────────────────── */}
+      {/* Header */}
       <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700/60 px-4 py-3 flex items-center gap-3">
         <button onClick={() => navigate("/settings")} className="text-slate-600 dark:text-slate-300 active:scale-90 transition">
           <ArrowLeft />
@@ -514,7 +612,7 @@ export default function Help({ store, session, plan }) {
         <h1 className="text-[22px] font-bold text-slate-900 dark:text-white flex-1">Help & Support</h1>
       </div>
 
-      {/* ── Tabs ──────────────────────────────────────────────────────── */}
+      {/* Tabs */}
       <div className="flex border-b border-slate-100 dark:border-slate-700/60 bg-white dark:bg-slate-900 px-4">
         {[{ key: "faq", label: "FAQs" }, { key: "tickets", label: "My Tickets" }].map(({ key, label }) => (
           <button
@@ -531,23 +629,38 @@ export default function Help({ store, session, plan }) {
         ))}
       </div>
 
-      {/* ── FAQ Tab ───────────────────────────────────────────────────── */}
+      {/* ── FAQ Tab ─────────────────────────────────────────────────────────── */}
       {tab === "faq" && (
         <div className="px-4 pt-4">
-          {/* Search */}
+          {/* Search box */}
           <div className="relative mb-4">
             <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
               <SearchIcon />
             </div>
             <input
               value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search frequently asked questions…"
+              onChange={e => { setSearch(e.target.value); setActiveCategory(null); }}
+              placeholder="Ask KudiAI anything…"
               className="w-full pl-9 pr-4 py-2.5 border border-slate-200 dark:border-slate-600 rounded-2xl text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
             />
+            {search.length > 0 && (
+              <button
+                onClick={() => setSearch("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-lg leading-none"
+              >
+                ×
+              </button>
+            )}
           </div>
 
-          {/* Category chips */}
+          {/* KudiAI answer card — appears when searching */}
+          <KudiAICard
+            loading={aiLoading}
+            answer={aiAnswer}
+            onContactSupport={goToCreateTicket}
+          />
+
+          {/* Category chips — hide while searching */}
           {!search && (
             <div className="flex gap-2 mb-4 overflow-x-auto pb-1 scrollbar-none">
               <button
@@ -583,17 +696,19 @@ export default function Help({ store, session, plan }) {
                 <div key={i} className="h-14 bg-slate-100 dark:bg-slate-800 rounded-2xl animate-pulse" />
               ))}
             </div>
-          ) : filteredFAQ.length === 0 ? (
+          ) : filteredFAQ.length === 0 && !search ? (
             <div className="text-center py-12">
-              <p className="text-4xl mb-3">🔍</p>
-              <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">No results found</p>
-              <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
-                {search ? `No FAQs match "${search}"` : "No FAQs in this category"}
+              <p className="text-4xl mb-3">📚</p>
+              <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">No FAQs available yet</p>
+            </div>
+          ) : filteredFAQ.length === 0 && search ? (
+            <div className="text-center py-8">
+              <p className="text-sm text-slate-400 dark:text-slate-500">
+                No FAQ matches found — see KudiAI's answer above
               </p>
             </div>
           ) : (
             <div className="space-y-2">
-              {/* Group by category when not searching */}
               {!search && !activeCategory ? (
                 categories.map(cat => {
                   const catItems = filteredFAQ.filter(i => i.category_id === cat.id);
@@ -640,7 +755,7 @@ export default function Help({ store, session, plan }) {
               Our support team is ready to help you. Create a ticket and we'll get back to you within 24 hours.
             </p>
             <button
-              onClick={() => { setTab("tickets"); setTicketView("create"); }}
+              onClick={goToCreateTicket}
               className="flex items-center gap-2 bg-white text-brand-700 font-bold text-sm px-4 py-2.5 rounded-2xl active:scale-95 transition"
             >
               <TicketIcon /> Contact Support
@@ -649,10 +764,9 @@ export default function Help({ store, session, plan }) {
         </div>
       )}
 
-      {/* ── Tickets Tab ───────────────────────────────────────────────── */}
+      {/* ── Tickets Tab ──────────────────────────────────────────────────────── */}
       {tab === "tickets" && (
         <div className="px-4 pt-4">
-          {/* Success banner */}
           {successTicket && (
             <div className="mb-4 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700/40 rounded-2xl px-4 py-3 flex items-start gap-3">
               <span className="text-emerald-600 dark:text-emerald-400 font-bold text-lg">✓</span>
@@ -666,7 +780,6 @@ export default function Help({ store, session, plan }) {
             </div>
           )}
 
-          {/* Create ticket button */}
           <button
             onClick={() => setTicketView("create")}
             className="w-full flex items-center justify-center gap-2 py-3 mb-4 rounded-2xl border-2 border-dashed border-brand-300 dark:border-brand-700 text-brand-600 dark:text-brand-400 font-bold text-sm active:scale-[0.98] transition hover:bg-brand-50 dark:hover:bg-brand-900/10"
@@ -674,7 +787,6 @@ export default function Help({ store, session, plan }) {
             <PlusIcon /> New Ticket
           </button>
 
-          {/* Ticket list */}
           {ticketLoading ? (
             <div className="space-y-3">
               {[1, 2, 3].map(i => (
