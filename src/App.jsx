@@ -321,11 +321,6 @@ export default function App() {
   if (pinLock.locked) {
     return <LockScreen pinLock={pinLock} businessName={store.profile?.business_name || store.profile?.owner_name} />;
   }
-  // New device step-up — verify transaction PIN once per device
-  if (pinLock.needsDeviceVerification) {
-    return <LockScreen pinLock={pinLock} isDeviceVerify={true} />;
-  }
-
   // ── Authenticated portals (PIN already set) ──
   if (status === "organisation")  return <OrgPortal session={session} org={org} />;
   if (status === "org_member")    return <CoopMemberPortal member={orgMember} />;

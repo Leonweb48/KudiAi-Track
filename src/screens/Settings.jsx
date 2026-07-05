@@ -11,6 +11,83 @@ import { LANGUAGES, getLangMeta } from "../utils/i18n";
 import { useLanguage, useT } from "../contexts/LanguageContext";
 import { maxDobDate, isAtLeast18, AGE_ERROR } from "../utils/ageValidation";
 
+/* ── Txn PIN gate (one-step verify before changing app lock PIN) ────────── */
+function TxnPinGate({ onSuccess, onClose }) {
+  const [pin,      setPin]      = useState("");
+  const [error,    setError]    = useState("");
+  const [checking, setChecking] = useState(false);
+
+  const handleDigit = async (d) => {
+    if (pin.length >= 4 || checking) return;
+    const next = pin + d;
+    setPin(next);
+    setError("");
+    if (next.length < 4) return;
+    setTimeout(async () => {
+      setChecking(true);
+      try {
+        const { data } = await (supabase?.functions.invoke("pin-manager", {
+          body: { action: "verify_txn_pin", pin: next },
+        }) ?? Promise.resolve({ data: null }));
+        if (data?.success) {
+          onSuccess();
+        } else {
+          setPin("");
+          setError(data?.locked ? "Too many attempts — try later" : "Incorrect transaction PIN.");
+        }
+      } catch {
+        setPin("");
+        setError("Something went wrong. Try again.");
+      } finally {
+        setChecking(false);
+      }
+    }, 150);
+  };
+
+  const handleDelete = () => { setPin(p => p.slice(0, -1)); setError(""); };
+
+  return (
+    <Modal title="Confirm Transaction PIN" onClose={onClose}>
+      <div className="flex flex-col items-center gap-6 py-2">
+        <div className="text-center">
+          <p className="text-sm font-bold text-slate-700 dark:text-slate-200">Verify your identity</p>
+          <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Enter your 4-digit transaction PIN to continue</p>
+        </div>
+        <div className="flex gap-4 justify-center">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all ${
+              pin.length > i ? "bg-brand-500 border-brand-500 scale-110" : "border-slate-300 dark:border-slate-600"
+            }`} />
+          ))}
+        </div>
+        {error && <p className="text-xs text-red-500 font-semibold -mt-2 text-center">{error}</p>}
+        {checking && <p className="text-xs text-slate-400 -mt-2">Checking…</p>}
+        <div className="grid grid-cols-3 gap-3 w-full max-w-[240px]">
+          {[1,2,3,4,5,6,7,8,9].map(n => (
+            <button key={n} onClick={() => handleDigit(String(n))} disabled={checking}
+              className="h-14 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-800 dark:text-white text-lg font-bold transition active:scale-95 disabled:opacity-50">
+              {n}
+            </button>
+          ))}
+          <div />
+          <button onClick={() => handleDigit("0")} disabled={checking}
+            className="h-14 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-800 dark:text-white text-lg font-bold transition active:scale-95 disabled:opacity-50">
+            0
+          </button>
+          <button onClick={handleDelete} disabled={checking}
+            className="h-14 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 flex items-center justify-center transition active:scale-95 disabled:opacity-50">
+            <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+              <path d="M21 4H8l-7 8 7 8h13a2 2 0 002-2V6a2 2 0 00-2-2z" />
+              <line x1="18" y1="9" x2="13" y2="14" />
+              <line x1="13" y1="9" x2="18" y2="14" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 /* ── Change PIN Modal (3-step: verify current → enter new → confirm new) ── */
 function ChangePinModal({ pinLength = 6, title, onVerifyCurrent, onSetNew, onClose }) {
   // pinLength: 6 for app lock, 4 for transaction
@@ -401,6 +478,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
   const [saveError,     setSaveError]     = useState("");
   const [signingOut,    setSigningOut]    = useState(false);
   const [showChangePin, setShowChangePin] = useState(false);
+  const [showTxnGate,   setShowTxnGate]   = useState(false);
   const [changePinType, setChangePinType] = useState("app");  // "app" | "txn"
   const [showAutoLock,  setShowAutoLock]  = useState(false);
   const [showSupport,   setShowSupport]   = useState(false);
@@ -729,7 +807,14 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
           icon={<LockIcon />}
           label="App Lock PIN"
           sub={lock?.status?.appPinSet ? "Change your 6-digit unlock PIN" : "Not set"}
-          onClick={() => { setChangePinType("app"); setShowChangePin(true); }}
+          onClick={() => {
+            setChangePinType("app");
+            if (lock?.status?.txnPinSet) {
+              setShowTxnGate(true);
+            } else {
+              setShowChangePin(true);
+            }
+          }}
         />
 
         {/* Transaction PIN */}
@@ -821,6 +906,14 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
         <LanguageModal
           current={langCode}
           onClose={() => setShowLangPick(false)}
+        />
+      )}
+
+      {/* ── Txn PIN gate (before changing app lock PIN) ────────────── */}
+      {showTxnGate && (
+        <TxnPinGate
+          onSuccess={() => { setShowTxnGate(false); setShowChangePin(true); }}
+          onClose={() => setShowTxnGate(false)}
         />
       )}
 

@@ -132,9 +132,6 @@ export default function ForgotPinFlow({ pinLock, onCancel }) {
         setLoading(true);
         try {
           await pinLock.resetTxnPin(newTxnPin);
-          // Mark this device as txn-verified (OTP already proved identity)
-          // so the device-verify gate doesn't show after unlocking
-          pinLock.completeDeviceVerification();
           await pinLock.refetch();
           pinLock.unlock();
         } catch (err) {

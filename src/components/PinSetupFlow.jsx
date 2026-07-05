@@ -123,7 +123,6 @@ export default function PinSetupFlow({ pinLock }) {
         setSaving(true);
         try {
           await pinLock.setupTxnPin(txnPin);
-          pinLock.completeDeviceVerification?.(); // mark this device as verified so device-verify screen doesn't appear immediately
           await pinLock.refetch();
         } catch (err) {
           setPin("");

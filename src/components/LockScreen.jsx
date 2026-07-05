@@ -45,8 +45,8 @@ function computeLockedMsg(data) {
   return `Too many attempts. Try again in ${mins} minute${mins === 1 ? "" : "s"}.`;
 }
 
-export default function LockScreen({ pinLock, businessName, isDeviceVerify = false }) {
-  const maxLen = isDeviceVerify ? 4 : 6;
+export default function LockScreen({ pinLock, businessName }) {
+  const maxLen = 6;
 
   const [pin,            setPin]            = useState("");
   const [error,          setError]          = useState("");
@@ -65,19 +65,10 @@ export default function LockScreen({ pinLock, businessName, isDeviceVerify = fal
 
   const handleVerify = useCallback(async (enteredPin) => {
     try {
-      let result;
-      if (isDeviceVerify) {
-        result = await pinLock.verifyTxnPin(enteredPin);
-      } else {
-        result = await pinLock.verifyAppPin(enteredPin);
-      }
-
+      const result = await pinLock.verifyAppPin(enteredPin);
       const d = result?.data;
 
       if (d?.success) {
-        if (isDeviceVerify) {
-          pinLock.completeDeviceVerification();
-        }
         setPin("");
         setError("");
         return;
@@ -102,7 +93,7 @@ export default function LockScreen({ pinLock, businessName, isDeviceVerify = fal
       setPin("");
       setError("Something went wrong. Try again.");
     }
-  }, [pinLock, isDeviceVerify, triggerShake]);
+  }, [pinLock, triggerShake]);
 
   const handleDigit = useCallback((d) => {
     if (pin.length >= maxLen) return;
@@ -136,7 +127,7 @@ export default function LockScreen({ pinLock, businessName, isDeviceVerify = fal
     await supabase?.auth.signOut();
   };
 
-  const showBio = pinLock?.biometricEnabled && pinLock?.biometricAvailable && !isDeviceVerify;
+  const showBio = pinLock?.biometricEnabled && pinLock?.biometricAvailable;
 
   const PAD = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 
@@ -199,14 +190,10 @@ export default function LockScreen({ pinLock, businessName, isDeviceVerify = fal
         <ShieldIcon />
         <div style={{ textAlign: "center", padding: "0 24px" }}>
           <p style={{ color: "white", fontSize: 20, fontWeight: 700, lineHeight: 1.3 }}>
-            {isDeviceVerify
-              ? "Verify Your Identity"
-              : `Welcome back${businessName ? ", " + businessName : ""}`}
+            {`Welcome back${businessName ? ", " + businessName : ""}`}
           </p>
           <p style={{ color: "rgba(255,255,255,0.6)", fontSize: 13, marginTop: 6 }}>
-            {isDeviceVerify
-              ? "Enter your transaction PIN to trust this device"
-              : "Enter your app lock PIN to continue"}
+            Enter your app lock PIN to continue
           </p>
         </div>
       </div>
@@ -315,12 +302,10 @@ export default function LockScreen({ pinLock, businessName, isDeviceVerify = fal
             Tap the fingerprint icon above to use face or fingerprint unlock
           </p>
         )}
-        {!isDeviceVerify && (
-          <button onClick={handleForgotPin}
-            style={{ background: "none", border: "none", color: "rgba(255,255,255,0.4)", fontSize: 13, cursor: "pointer" }}>
-            Forgot PIN?
-          </button>
-        )}
+        <button onClick={handleForgotPin}
+          style={{ background: "none", border: "none", color: "rgba(255,255,255,0.4)", fontSize: 13, cursor: "pointer" }}>
+          Forgot PIN?
+        </button>
       </div>
     </div>
   );
