@@ -197,6 +197,7 @@ export async function createReportPdf({
     for (let i = 0; i < stats.length; i += perRow) {
       need(boxH + 3);
       const slice = stats.slice(i, i + perRow);
+      // eslint-disable-next-line no-loop-func
       slice.forEach((s, j) => {
         const x  = ML + j * (boxW + 3);
         const bg = Array.isArray(s.bg) ? s.bg : hexToRgb(typeof s.bg === "string" ? s.bg : "#f8fafc");

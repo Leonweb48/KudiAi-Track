@@ -163,7 +163,7 @@ export function usePinLock(userId, session) {
       removeCapacitor?.remove?.();
       document.removeEventListener("visibilitychange", onVis);
     };
-  }, []);
+  }, [autoLockTimeout]); // re-register listeners when timeout setting changes
 
   // ── Methods ────────────────────────────────────────────────────────
   const verifyAppPin = useCallback(async (pin) => {
