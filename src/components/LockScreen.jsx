@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import ForgotPinFlow from "./ForgotPinFlow";
 
 const shakeCSS = `
 @keyframes shake {
@@ -52,6 +53,7 @@ export default function LockScreen({ pinLock, businessName, isDeviceVerify = fal
   const [shake,          setShake]          = useState(false);
   const [bioLoading,     setBioLoading]     = useState(false);
   const [signingOut,     setSigningOut]     = useState(false);
+  const [showForgotPin,  setShowForgotPin]  = useState(false);
   const [requiresReauth, setRequiresReauth] = useState(
     () => !!pinLock?.status?.requiresReauth
   );
@@ -126,12 +128,7 @@ export default function LockScreen({ pinLock, businessName, isDeviceVerify = fal
     if (!ok) setError("Biometric failed. Use your PIN instead.");
   };
 
-  const handleForgotPin = async () => {
-    const ok = window.confirm("You'll be signed out to reset your PIN. Continue?");
-    if (!ok) return;
-    const { supabase } = await import("../utils/supabase");
-    supabase?.auth.signOut();
-  };
+  const handleForgotPin = () => setShowForgotPin(true);
 
   const handleSignOut = async () => {
     setSigningOut(true);
@@ -142,6 +139,11 @@ export default function LockScreen({ pinLock, businessName, isDeviceVerify = fal
   const showBio = pinLock?.biometricEnabled && pinLock?.biometricAvailable && !isDeviceVerify;
 
   const PAD = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+
+  // ── Forgot PIN flow ────────────────────────────────────────────────
+  if (showForgotPin) {
+    return <ForgotPinFlow pinLock={pinLock} onCancel={() => setShowForgotPin(false)} />;
+  }
 
   // ── Reauth / account-locked state ─────────────────────────────────
   if (requiresReauth) {

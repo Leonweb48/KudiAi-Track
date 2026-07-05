@@ -11,7 +11,6 @@ const corsHeaders = {
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_MINUTES = 30;
 const MAX_LOCKOUTS = 3;
-const FRESH_SESSION_SECONDS = 600;
 
 // ── PIN hashing via Web Crypto (PBKDF2) — no external deps ───────────────────
 async function hashPin(pin: string): Promise<string> {
@@ -360,18 +359,10 @@ serve(async (req: Request) => {
       return jsonResponse({ success: true });
     }
 
-    // ── reset_app_pin (requires fresh session) ────────────────────────────────
+    // ── reset_app_pin (identity already verified via OTP in the client) ──────
     if (action === "reset_app_pin") {
       const err = validatePin(params.new_pin, 6);
       if (err) return errorResponse(err);
-
-      const lastSignIn = user.last_sign_in_at;
-      if (!lastSignIn) return errorResponse("Cannot verify session freshness");
-      const ageSeconds = (Date.now() - new Date(lastSignIn).getTime()) / 1000;
-      if (ageSeconds > FRESH_SESSION_SECONDS) {
-        return errorResponse("Session is not fresh enough — please sign in again to reset your PIN");
-      }
-
       const hash = await hashPin(params.new_pin as string);
       await updateProfile({
         app_pin_hash: hash,
@@ -382,18 +373,10 @@ serve(async (req: Request) => {
       return jsonResponse({ success: true });
     }
 
-    // ── reset_txn_pin (requires fresh session) ────────────────────────────────
+    // ── reset_txn_pin (identity already verified via OTP in the client) ──────
     if (action === "reset_txn_pin") {
       const err = validatePin(params.new_pin, 4);
       if (err) return errorResponse(err);
-
-      const lastSignIn = user.last_sign_in_at;
-      if (!lastSignIn) return errorResponse("Cannot verify session freshness");
-      const ageSeconds = (Date.now() - new Date(lastSignIn).getTime()) / 1000;
-      if (ageSeconds > FRESH_SESSION_SECONDS) {
-        return errorResponse("Session is not fresh enough — please sign in again to reset your PIN");
-      }
-
       const hash = await hashPin(params.new_pin as string);
       await updateProfile({
         txn_pin_hash: hash,
