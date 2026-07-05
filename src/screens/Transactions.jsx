@@ -6,6 +6,7 @@ import Field  from "../components/shared/Field";
 import { TransactionReceipt } from "../components/shared/Receipt";
 import { fmt, today } from "../utils/helpers";
 import { canDo, planLimits } from "../utils/plans";
+import { createReportPdf, fmtCurrency, fmtDate } from "../utils/generateReportPdf";
 import { useT } from "../contexts/LanguageContext";
 import { getLang, speakConfirmation } from "../utils/i18n";
 import { speakEvent } from "../utils/tts";
@@ -272,6 +273,44 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
     setShowAdd(true);
   };
 
+  const handleExportPdf = async () => {
+    const biz    = store.profile?.business_name || store.profile?.owner_name || "My Business";
+    const labels = { all: "All Transactions", in: "Income", out: "Expenses", bills: "Bill Payments", credit: "Credit" };
+    const sorted = [...filtered].sort((a, b) => new Date(a.transaction_date) - new Date(b.transaction_date));
+    let runBal = 0, totD = 0, totC = 0;
+    const rows = sorted.map(t => {
+      const isIn = t.type === "in";
+      const amt  = parseFloat(t.amount) || 0;
+      if (isIn) { runBal += amt; totC += amt; } else { runBal -= amt; totD += amt; }
+      return {
+        date:        fmtDate(t.transaction_date),
+        description: t.item_name || "—",
+        reference:   t.payment_type || "—",
+        debit:       isIn ? "" : fmtCurrency(amt),
+        credit:      isIn ? fmtCurrency(amt) : "",
+        balance:     fmtCurrency(runBal),
+      };
+    });
+    const pdf = await createReportPdf({
+      title: "Transaction Statement", businessName: biz,
+      period: labels[filter] || "All Transactions",
+      entityDetails: [
+        { label: "Business", value: biz },
+        { label: "Total Records", value: String(filtered.length) },
+        { label: "Total Income", value: fmtCurrency(totIn) },
+        { label: "Total Expenses", value: fmtCurrency(totOut) },
+      ],
+    });
+    pdf.addStats([
+      { label: "Total Income",   value: fmtCurrency(totIn),        color: "#22c55e" },
+      { label: "Total Expenses", value: fmtCurrency(totOut),       color: "#ef4444" },
+      { label: "Net Cash Flow",  value: fmtCurrency(totIn - totOut), color: totIn >= totOut ? "#22c55e" : "#ef4444" },
+      { label: "Records",        value: String(filtered.length) },
+    ]);
+    pdf.addStatement(rows, { openingBalance: 0, totalDebits: totD, totalCredits: totC });
+    await pdf.save("Transaction_Statement.pdf");
+  };
+
   return (
     <div className="px-4 pt-5 pb-28 screen-enter">
 
@@ -296,6 +335,14 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
       <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 -mx-4 px-4 py-3 mb-4 border-b border-slate-100 dark:border-slate-700/60 flex items-center justify-between">
         <h1 className="text-xl font-extrabold text-slate-800 dark:text-white tracking-tight">{t("txn.title")}</h1>
         <div className="flex gap-2">
+          {pdfAllowed && filtered.length > 0 && (
+            <button onClick={handleExportPdf}
+              className="w-9 h-9 bg-slate-100 dark:bg-slate-700 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform">
+              <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 15V3m0 12l-4-4m4 4l4-4"/><path d="M2 17l.621 2.485A2 2 0 004.561 21h14.878a2 2 0 001.94-1.515L22 17"/>
+              </svg>
+            </button>
+          )}
           {onVoiceOpen && !txLimitReached && (
             <button onClick={onVoiceOpen}
               className="w-9 h-9 bg-slate-800 dark:bg-slate-700 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform">

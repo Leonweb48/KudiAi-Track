@@ -15,6 +15,7 @@ import { AjoTxReceipt } from "../components/shared/Receipt";
 import AIChatWidget from "../components/AIChatWidget";
 import { buildAjoMemberContext } from "../utils/buildContext";
 import { useT, useLanguage } from "../contexts/LanguageContext";
+import { createReportPdf, fmtCurrency as pdfFmt, fmtDate as pdfFmtDate } from "../utils/generateReportPdf";
 
 async function ajoFn(action, body = {}) {
   const { data, error } = await supabase.functions.invoke("ajo-portal", {
@@ -1250,6 +1251,42 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
 
   const bizName = ownerInfo?.business_name || ownerInfo?.full_name || "My Business";
 
+  const handleExportPdf = async () => {
+    const sorted = [...allItems].sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+    const rows = sorted.map(item => {
+      const isWd  = item._type === "withdrawal_request" || item.type === "withdrawal";
+      const amt   = parseFloat(item.amount) || 0;
+      return {
+        date:        pdfFmtDate(item.created_at || item.date),
+        description: isWd ? "Withdrawal Request" : "Contribution",
+        reference:   item.payment_method || item.status || "—",
+        debit:       isWd ? pdfFmt(amt) : "",
+        credit:      isWd ? "" : pdfFmt(amt),
+        balance:     "",
+      };
+    });
+    const totC = contributions.filter(c => c.type === "contribution").reduce((s, c) => s + (parseFloat(c.amount) || 0), 0);
+    const totD = withdrawRequests.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+    const pdf = await createReportPdf({
+      title: "Ajo Savings Statement", businessName: bizName,
+      period: client?.full_name || "Member",
+      entityDetails: [
+        { label: "Member",          value: client?.full_name || "—" },
+        { label: "Current Balance", value: pdfFmt(client?.current_balance || 0) },
+        { label: "Total Saved",     value: pdfFmt(client?.total_saved || totC) },
+        { label: "Records",         value: String(allItems.length) },
+      ],
+    });
+    pdf.addStats([
+      { label: "Total Contributed", value: pdfFmt(totC),                        color: "#22c55e" },
+      { label: "Total Withdrawn",   value: pdfFmt(totD),                        color: "#ef4444" },
+      { label: "Current Balance",   value: pdfFmt(client?.current_balance || 0) },
+      { label: "Records",           value: String(allItems.length) },
+    ]);
+    pdf.addStatement(rows, { totalDebits: totD, totalCredits: totC });
+    await pdf.save(`Ajo_Savings_${(client?.full_name || "Statement").replace(/\s+/g, "_")}.pdf`);
+  };
+
   return (
     <div className="px-4 pt-5 pb-28">
       {receipt && (
@@ -1261,18 +1298,29 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
         />
       )}
 
-      {/* Type filter chips */}
-      <div className="flex gap-2 overflow-x-auto no-scrollbar mb-4">
-        {FILTERS.map(f => (
-          <button key={f.id}
-            onClick={() => setTypeFilter(f.id)}
-            className={`px-4 py-1.5 rounded-full text-xs font-bold flex-shrink-0 transition-colors
-              ${typeFilter === f.id
-                ? "bg-violet-600 text-white shadow-sm"
-                : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300"}`}>
-            {f.label}
+      {/* Type filter chips + PDF export */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex gap-2 overflow-x-auto no-scrollbar">
+          {FILTERS.map(f => (
+            <button key={f.id}
+              onClick={() => setTypeFilter(f.id)}
+              className={`px-4 py-1.5 rounded-full text-xs font-bold flex-shrink-0 transition-colors
+                ${typeFilter === f.id
+                  ? "bg-violet-600 text-white shadow-sm"
+                  : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300"}`}>
+              {f.label}
+            </button>
+          ))}
+        </div>
+        {allItems.length > 0 && (
+          <button onClick={handleExportPdf}
+            className="flex-shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-700 active:scale-95 transition ml-2">
+            <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 text-slate-500 dark:text-slate-300" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 15V3m0 12l-4-4m4 4l4-4"/><path d="M2 17l.621 2.485A2 2 0 004.561 21h14.878a2 2 0 001.94-1.515L22 17"/>
+            </svg>
+            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-300">PDF</span>
           </button>
-        ))}
+        )}
       </div>
 
       <div className="space-y-2">

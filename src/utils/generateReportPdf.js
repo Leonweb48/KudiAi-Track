@@ -1,13 +1,14 @@
 // ── Shared KudiAI Report/Statement PDF Engine ─────────────────────────────────
 // Single source of truth for every report and statement across the platform.
 // Usage:
-//   const pdf = await createReportPdf({ title, businessName, period, logoUrl })
+//   const pdf = await createReportPdf({ title, businessName, period, logoUrl, entityDetails })
 //   pdf.addStats([{ label, value, color?, bg? }])
 //   pdf.addSectionTitle("Section")
-//   pdf.addTable(cols, rows)        // cols: { key, label, w, right?, bold?, color? }
-//   pdf.addTotalsBlock(rows)        // rows: { label, value, bold?, highlight?, sep? }
+//   pdf.addTable(cols, rows)           // cols: { key, label, w, right?, bold?, color? }
+//   pdf.addTotalsBlock(rows)           // rows: { label, value, bold?, highlight?, sep?, green?, red? }
 //   pdf.addBarChart(bars)
-//   pdf.addStatement(txns)          // bank-statement rows
+//   pdf.addEntityPanel(details)        // [{label,value}] — account holder card
+//   pdf.addStatement(txns, opts)       // opts: { openingBalance?, totalDebits?, totalCredits? }
 //   await pdf.save("filename.pdf")
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -17,9 +18,9 @@ import { savePdf } from "./pdfSave";
 const NAVY   = [15,  28,  69];
 const GREEN  = [61,  168, 41];
 const DARK   = [44,  44,  42];
-const SEC    = [95,  94,  90];
-const MUTED  = [138, 138, 133];
-const HAIRLN = [230, 228, 220];
+const SEC    = [65,  64,  60];
+const MUTED  = [100, 99,  94];
+const HAIRLN = [195, 193, 186];
 const PANEL  = [246, 248, 252];
 const WHITE  = [255, 255, 255];
 const RED    = [220, 38,  38];
@@ -46,9 +47,9 @@ export function fmtCurrency(n) {
 
 export function fmtDate(d) {
   if (!d) return "—";
-  return new Date(d + "T00:00:00").toLocaleDateString("en-NG", {
-    day: "numeric", month: "short", year: "numeric",
-  });
+  const s = String(d);
+  const dt = s.includes("T") ? new Date(s) : new Date(s + "T00:00:00");
+  return dt.toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" });
 }
 
 async function imgToBase64(url) {
@@ -86,12 +87,13 @@ async function loadFontBase64(url) {
 
 // ── Factory ───────────────────────────────────────────────────────────────────
 export async function createReportPdf({
-  title        = "Report",
-  businessName = "Business",
-  period       = "",
-  subtitle     = "",
-  logoUrl      = "",
-  landscape    = false,
+  title         = "Report",
+  businessName  = "Business",
+  period        = "",
+  subtitle      = "",
+  logoUrl       = "",
+  landscape     = false,
+  entityDetails = null,  // [{label, value}] — auto-rendered on page 1 below header
 } = {}) {
   const { jsPDF } = await import("jspdf");
   const doc = new jsPDF({
@@ -139,26 +141,21 @@ export async function createReportPdf({
 
   // ── Page 1 header ──────────────────────────────────────────────────────────
   function drawPage1Header() {
-    // Navy band
     doc.setFillColor(...NAVY);
     doc.rect(0, 0, W, HDR_H, "F");
-    // Green accent strip below navy
     doc.setFillColor(...GREEN);
     doc.rect(0, HDR_H, W, 2, "F");
 
-    // App logo (left)
     if (appLogoB64) doc.addImage(appLogoB64, "PNG", ML, 8, 14, 14);
-    // Business logo (right, if provided)
     if (bizLogoB64) doc.addImage(bizLogoB64, "JPEG", MR - 16, 8, 14, 14);
 
-    // Text (centered)
     setMed(6.5); col(180, 220, 165);
     doc.text("KudiAI Track", W / 2, 11, { align: "center" });
     setMed(13); col(...WHITE);
     doc.text(String(businessName), W / 2, 21, { align: "center" });
     setReg(7); col(200, 220, 245);
-    const meta = [title, period, subtitle].filter(Boolean).join("  ·  ");
-    doc.text(meta, W / 2, 30, { align: "center" });
+    const metaTxt = [title, period, subtitle].filter(Boolean).join("  ·  ");
+    doc.text(metaTxt, W / 2, 30, { align: "center" });
   }
 
   function drawContinuationHeader() {
@@ -186,13 +183,49 @@ export async function createReportPdf({
     if (y + h > CONTENT_BOT) newPage();
   }
 
+  // ── Entity details panel ───────────────────────────────────────────────────
+  function addEntityPanel(details) {
+    if (!details?.length) return;
+    const ITEM_H  = 7.5;
+    const rowCount = Math.ceil(details.length / 2);
+    const panH    = rowCount * ITEM_H + 8;
+    need(panH + 4);
+
+    doc.setFillColor(...PANEL);
+    doc.rect(ML, y, CW, panH, "F");
+    doc.setFillColor(...GREEN);
+    doc.rect(ML, y, 2.5, panH, "F");
+    doc.setDrawColor(...HAIRLN); doc.setLineWidth(0.15);
+    doc.rect(ML, y, CW, panH, "S");
+
+    const halfW = CW / 2;
+    const baseY = y + 5.5;
+
+    details.forEach((d, i) => {
+      const xOff = ML + 6 + (i % 2) * halfW;
+      const yOff = baseY + Math.floor(i / 2) * ITEM_H;
+      setReg(5.5); col(...MUTED);
+      doc.text(String(d.label || "").toUpperCase(), xOff, yOff);
+      setMed(7); col(...DARK);
+      doc.text(String(d.value || "—"), xOff, yOff + 4.5, { maxWidth: halfW - 10 });
+    });
+
+    y += panH + 4;
+  }
+
+  // Auto-render entity panel on page 1 if provided
+  if (entityDetails?.length > 0) {
+    y += 2;
+    addEntityPanel(entityDetails);
+  }
+
   // ── Public API: content methods ────────────────────────────────────────────
 
   function addStats(stats) {
     if (!stats?.length) return;
     const perRow = stats.length <= 2 ? 2 : Math.min(4, stats.length);
-    const boxW = (CW - (perRow - 1) * 3) / perRow;
-    const boxH = 18;
+    const boxW   = (CW - (perRow - 1) * 3) / perRow;
+    const boxH   = 18;
 
     for (let i = 0; i < stats.length; i += perRow) {
       need(boxH + 3);
@@ -203,10 +236,8 @@ export async function createReportPdf({
         const bg = Array.isArray(s.bg) ? s.bg : hexToRgb(typeof s.bg === "string" ? s.bg : "#f8fafc");
         doc.setFillColor(...bg);
         doc.rect(x, y, boxW, boxH, "F");
-        // Label
         setReg(5.5); col(...MUTED);
         doc.text(String(s.label || "").toUpperCase(), x + 3, y + 6);
-        // Value
         const vc = Array.isArray(s.color) ? s.color : hexToRgb(typeof s.color === "string" ? s.color : "#2c2c2a");
         setMed(11); col(...vc);
         doc.text(String(s.value ?? ""), x + 3, y + 14, { maxWidth: boxW - 5 });
@@ -219,7 +250,6 @@ export async function createReportPdf({
   function addSectionTitle(text) {
     need(14);
     y += 4;
-    // Left accent bar
     doc.setFillColor(...GREEN);
     doc.rect(ML, y - 3.5, 2.5, 9, "F");
     setMed(7.5); col(...NAVY);
@@ -231,24 +261,24 @@ export async function createReportPdf({
 
   function addTable(cols, rows, opts = {}) {
     if (!cols?.length) return;
-    const RH    = opts.rowHeight    || 7;
-    const HDR_H = opts.headerHeight || 7;
+    const RH = opts.rowHeight    || 7;
+    const TH = opts.headerHeight || 7;
 
-    need(HDR_H + RH);
+    need(TH + RH);
 
     function drawHeader() {
       doc.setFillColor(...NAVY);
-      doc.rect(ML, y, CW, HDR_H, "F");
+      doc.rect(ML, y, CW, TH, "F");
       let x = ML + 1.5;
       cols.forEach(c => {
-        const cw = CW * (c.w || c.width || (1 / cols.length));
-        setMed(6); col(...WHITE);
+        const cw  = CW * (c.w || c.width || (1 / cols.length));
+        setMed(6.5); col(...WHITE);
         const lbl = String(c.label || "").toUpperCase();
-        if (c.right) doc.text(lbl, x + cw - 2, y + 4.8, { align: "right" });
-        else         doc.text(lbl, x, y + 4.8);
+        if (c.right) doc.text(lbl, x + cw - 2, y + TH / 2 + 2, { align: "right" });
+        else         doc.text(lbl, x,            y + TH / 2 + 2);
         x += cw;
       });
-      y += HDR_H;
+      y += TH;
     }
 
     drawHeader();
@@ -274,10 +304,10 @@ export async function createReportPdf({
         const cw  = CW * (c.w || c.width || (1 / cols.length));
         const val = String(r[c.key] ?? "—");
         const tc  = resolveColor(c.color, r);
-        c.bold ? setMed(6.5) : setReg(6.5);
+        c.bold ? setMed(7) : setReg(7);
         col(...tc);
-        if (c.right) doc.text(val, x + cw - 2, y + 4.8, { align: "right", maxWidth: cw - 3 });
-        else         doc.text(val, x, y + 4.8, { maxWidth: cw - 2 });
+        if (c.right) doc.text(val, x + cw - 2, y + RH / 2 + 2, { align: "right", maxWidth: cw - 3 });
+        else         doc.text(val, x,            y + RH / 2 + 2, { maxWidth: cw - 2 });
         x += cw;
       });
       y += RH;
@@ -285,14 +315,14 @@ export async function createReportPdf({
     y += 4;
   }
 
-  // Right-aligned totals block (occupies right ~45% of page)
+  // Right-aligned totals block (occupies right ~47% of page)
   function addTotalsBlock(items) {
     if (!items?.length) return;
     const RH    = 7;
     const TOT_X = ML + CW * 0.53;
     need(items.length * RH + 6);
 
-    items.forEach((item, i) => {
+    items.forEach((item) => {
       if (item.sep) {
         doc.setDrawColor(...HAIRLN); doc.setLineWidth(0.2);
         doc.line(TOT_X, y + 1, MR, y + 1);
@@ -363,18 +393,46 @@ export async function createReportPdf({
     }
   }
 
-  // Bank-statement format: chronological rows with running balance
-  // txns: [{ date, description, reference, debit, credit, balance, highlight? }]
-  function addStatement(txns) {
+  // Bank-statement format with optional opening/closing balance and summary totals.
+  // txns: [{ date, description, reference, debit, credit, balance }]
+  // opts: { openingBalance?: number, totalDebits?: number, totalCredits?: number }
+  function addStatement(txns, { openingBalance, totalDebits, totalCredits } = {}) {
+    const hasOB = typeof openingBalance === "number";
+
     const COLS = [
-      { key: "date",        label: "Date",        w: 0.12 },
-      { key: "description", label: "Description", w: 0.30, bold: true },
-      { key: "reference",   label: "Reference",   w: 0.16 },
-      { key: "debit",       label: "Debit",       w: 0.14, right: true, color: r => r.debit && r.debit !== "—" ? RED : MUTED },
-      { key: "credit",      label: "Credit",      w: 0.14, right: true, color: r => r.credit && r.credit !== "—" ? GREEN : MUTED },
-      { key: "balance",     label: "Balance",     w: 0.14, right: true, bold: true },
+      { key: "date",        label: "Date",          w: 0.13 },
+      { key: "description", label: "Description",   w: 0.30, bold: true },
+      { key: "reference",   label: "Reference",     w: 0.15 },
+      { key: "debit",       label: "Debit (₦)",   w: 0.14, right: true, color: r => r.debit ? RED : MUTED },
+      { key: "credit",      label: "Credit (₦)",  w: 0.14, right: true, color: r => r.credit ? GREEN : MUTED },
+      { key: "balance",     label: "Balance (₦)", w: 0.14, right: true, bold: true },
     ];
-    addTable(COLS, txns, { rowHeight: 7 });
+
+    const allRows = [];
+    if (hasOB) {
+      allRows.push({
+        date: "", description: "Opening Balance", reference: "",
+        debit: "", credit: "", balance: fmtCurrency(openingBalance),
+      });
+    }
+    allRows.push(...(txns || []));
+
+    addTable(COLS, allRows, { rowHeight: 8 });
+
+    const hasSummary = typeof totalDebits === "number" || typeof totalCredits === "number";
+    if (hasSummary) {
+      const closing = hasOB
+        ? openingBalance + (totalCredits || 0) - (totalDebits || 0)
+        : null;
+      const items = [];
+      if (typeof totalDebits  === "number") items.push({ label: "Total Debits",  value: fmtCurrency(totalDebits),  red:  true });
+      if (typeof totalCredits === "number") items.push({ label: "Total Credits", value: fmtCurrency(totalCredits), green: true });
+      if (closing !== null) {
+        items.push({ sep: true });
+        items.push({ label: "Closing Balance", value: fmtCurrency(closing), bold: true, highlight: true });
+      }
+      addTotalsBlock(items);
+    }
   }
 
   // ── Finalize and save ──────────────────────────────────────────────────────
@@ -386,17 +444,13 @@ export async function createReportPdf({
 
     for (let i = 1; i <= totalPg; i++) {
       doc.setPage(i);
-      // Footer band
       doc.setFillColor(...PANEL);
       doc.rect(0, H - FOOTER_H, W, FOOTER_H, "F");
       doc.setDrawColor(...HAIRLN); doc.setLineWidth(0.2);
       doc.line(0, H - FOOTER_H, W, H - FOOTER_H);
-      // Green bottom strip
       doc.setFillColor(...GREEN);
       doc.rect(0, H - 1.5, W, 1.5, "F");
-      // App logo in footer
       if (appLogoB64) doc.addImage(appLogoB64, "PNG", ML, H - 11, 7, 7);
-      // Footer text
       setReg(5.5); col(...MUTED);
       doc.text(`KudiAI Track  ·  Generated ${genDate}`, ML + 10, H - 6);
       setMed(5.5); col(...NAVY);
@@ -410,6 +464,5 @@ export async function createReportPdf({
     return doc.output("datauristring").split(",")[1];
   }
 
-  // Expose formatting helpers so callers can format their own data
-  return { addStats, addSectionTitle, addTable, addTotalsBlock, addBarChart, addStatement, save, getBase64, fmtN: fmtCurrency, fmtD: fmtDate };
+  return { addStats, addSectionTitle, addTable, addTotalsBlock, addBarChart, addEntityPanel, addStatement, save, getBase64, fmtN: fmtCurrency, fmtD: fmtDate };
 }

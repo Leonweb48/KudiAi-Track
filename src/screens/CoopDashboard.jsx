@@ -11,6 +11,7 @@ import { CoopNotificationBell, useChatUnread, ChatToast } from "../components/sh
 import AIChatWidget from "../components/AIChatWidget";
 import { buildCoopOrgContext } from "../utils/buildContext";
 import TransactionPinModal from "../components/TransactionPinModal";
+import { createReportPdf, fmtCurrency as pdfFmt, fmtDate as pdfFmtDate } from "../utils/generateReportPdf";
 
 const coopFn = async (action, body = {}) => {
   const r = await supabase.functions.invoke("coop-portal", { body: { action, ...body } });
@@ -854,8 +855,44 @@ function FinanceTab({ org, members, programs, onRefresh }) {
     finally { setHandlingReq(null); }
   };
 
-  const activeMembers = members.filter(m => m.status === "active");
+  const activeMembers  = members.filter(m => m.status === "active");
   const activePrograms = programs.filter(p => p.status === "active");
+
+  const handleExportSavingsPdf = async () => {
+    const sorted = [...savings].sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
+    const rows = sorted.map(s => {
+      const isWd = s.type === "withdrawal";
+      const amt  = parseFloat(s.amount) || 0;
+      return {
+        date:        pdfFmtDate(s.created_at),
+        description: `${s.org_members?.full_name || "—"} · ${s.org_contribution_programs?.name || (isWd ? "Withdrawal" : "Deposit")}`,
+        reference:   s.payment_method || "—",
+        debit:       isWd ? pdfFmt(amt) : "",
+        credit:      isWd ? "" : pdfFmt(amt),
+        balance:     pdfFmt(parseFloat(s.balance_after) || 0),
+      };
+    });
+    const totC = savings.filter(s => s.type !== "withdrawal").reduce((sum, s) => sum + (parseFloat(s.amount) || 0), 0);
+    const totD = savings.filter(s => s.type === "withdrawal").reduce((sum, s) => sum + (parseFloat(s.amount) || 0), 0);
+    const pdf = await createReportPdf({
+      title: "Contributions Statement", businessName: org.name || "Coop",
+      period: "All Members",
+      entityDetails: [
+        { label: "Organisation",    value: org.name },
+        { label: "Total Records",   value: String(savings.length) },
+        { label: "Total Deposited", value: pdfFmt(totC) },
+        { label: "Total Withdrawn", value: pdfFmt(totD) },
+      ],
+    });
+    pdf.addStats([
+      { label: "Total Deposited", value: pdfFmt(totC), color: "#22c55e" },
+      { label: "Total Withdrawn", value: pdfFmt(totD), color: "#ef4444" },
+      { label: "Net",             value: pdfFmt(totC - totD) },
+      { label: "Records",         value: String(savings.length) },
+    ]);
+    pdf.addStatement(rows, { openingBalance: 0, totalDebits: totD, totalCredits: totC });
+    await pdf.save(`${(org.name || "Coop").replace(/\s+/g, "_")}_Contributions.pdf`);
+  };
 
   const handleRecord = async () => {
     if (!form.member_id || !form.amount) { setError("Member and amount required"); return; }
@@ -899,7 +936,16 @@ function FinanceTab({ org, members, programs, onRefresh }) {
 
       {subTab === "contributions" && (
         <>
-          <div className="px-4 pb-2 flex justify-end">
+          <div className="px-4 pb-2 flex justify-end gap-2">
+            {savings.length > 0 && (
+              <button onClick={handleExportSavingsPdf}
+                className="flex items-center gap-1 px-3 py-2.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl text-xs font-bold active:scale-95 transition">
+                <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 15V3m0 12l-4-4m4 4l4-4"/><path d="M2 17l.621 2.485A2 2 0 004.561 21h14.878a2 2 0 001.94-1.515L22 17"/>
+                </svg>
+                PDF
+              </button>
+            )}
             <button onClick={() => setShowRecord(true)} className="px-4 py-2.5 bg-green-600 text-white rounded-xl text-xs font-bold">+ Record</button>
           </div>
           <div className="flex-1 overflow-y-auto px-4 pb-24">

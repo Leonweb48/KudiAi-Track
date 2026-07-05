@@ -13,6 +13,7 @@ import { CoopNotificationBell, useChatUnread, ChatToast } from "../components/sh
 import { sendEmailTrigger } from "../utils/emailTrigger";
 import AppLogo from "../components/AppLogo";
 import TransactionPinModal from "../components/TransactionPinModal";
+import { createReportPdf, fmtCurrency as pdfFmt, fmtDate as pdfFmtDate } from "../utils/generateReportPdf";
 
 const coopFn = async (action, body = {}) => {
   const r = await supabase.functions.invoke("coop-portal", { body: { action, ...body } });
@@ -658,6 +659,43 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
 
   const totalContributed = history.filter(h => h.type === "deposit").reduce((sum, h) => sum + Number(h.amount), 0);
   const hasPaystack = !!org.paystack_subaccount_code;
+
+  const handleExportSavingsPdf = async () => {
+    const sorted = [...history].sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
+    const rows = sorted.map(h => {
+      const isWd = h.type === "withdrawal";
+      const amt  = parseFloat(h.amount) || 0;
+      return {
+        date:        pdfFmtDate(h.created_at),
+        description: (h.org_contribution_programs?.name || (isWd ? "Withdrawal" : "Deposit")),
+        reference:   h.payment_method || "—",
+        debit:       isWd ? pdfFmt(amt) : "",
+        credit:      isWd ? "" : pdfFmt(amt),
+        balance:     pdfFmt(parseFloat(h.balance_after) || 0),
+      };
+    });
+    const totD = history.filter(h => h.type === "withdrawal").reduce((s, h) => s + (parseFloat(h.amount) || 0), 0);
+    const totC = history.filter(h => h.type !== "withdrawal").reduce((s, h) => s + (parseFloat(h.amount) || 0), 0);
+    const lastBal = history.length > 0 ? (parseFloat(history[history.length - 1].balance_after) || 0) : 0;
+    const pdf = await createReportPdf({
+      title: "Savings Statement", businessName: org.name || "Coop",
+      period: member.full_name,
+      entityDetails: [
+        { label: "Member",          value: member.full_name },
+        { label: "Membership ID",   value: member.membership_id || "—" },
+        { label: "Organisation",    value: org.name },
+        { label: "Savings Balance", value: pdfFmt(member.savings_balance || lastBal) },
+      ],
+    });
+    pdf.addStats([
+      { label: "Total Deposited", value: pdfFmt(totC),                 color: "#22c55e" },
+      { label: "Total Withdrawn", value: pdfFmt(totD),                 color: "#ef4444" },
+      { label: "Net Savings",     value: pdfFmt(member.savings_balance || lastBal) },
+      { label: "Records",         value: String(history.length) },
+    ]);
+    pdf.addStatement(rows, { openingBalance: 0, totalDebits: totD, totalCredits: totC });
+    await pdf.save(`Savings_Statement_${member.full_name.replace(/\s+/g, "_")}.pdf`);
+  };
   const pendingWd = wdRequests.filter(r => r.status === "pending").length;
 
   const getMonthPaid = (programId) => {
@@ -781,7 +819,18 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
       )}
 
       <div>
-        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Contribution History</p>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Contribution History</p>
+          {history.length > 0 && (
+            <button onClick={handleExportSavingsPdf}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-700 active:scale-95 transition">
+              <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 text-slate-500 dark:text-slate-300" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 15V3m0 12l-4-4m4 4l4-4"/><path d="M2 17l.621 2.485A2 2 0 004.561 21h14.878a2 2 0 001.94-1.515L22 17"/>
+              </svg>
+              <span className="text-[10px] font-bold text-slate-500 dark:text-slate-300">PDF</span>
+            </button>
+          )}
+        </div>
         {history.length === 0 ? (
           <div className="text-center py-10 text-slate-400 text-sm">No contributions yet</div>
         ) : (

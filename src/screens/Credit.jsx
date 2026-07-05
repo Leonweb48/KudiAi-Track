@@ -10,6 +10,7 @@ import { ClientProfile }  from "../components/shared/ClientProfile";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import { supabase } from "../utils/supabase";
 import { fmt } from "../utils/helpers";
+import { createReportPdf, fmtCurrency as pdfFmt, fmtDate as pdfFmtDate } from "../utils/generateReportPdf";
 import { getLang, speakConfirmation } from "../utils/i18n";
 import { useT } from "../contexts/LanguageContext";
 
@@ -688,6 +689,44 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
       {historyFor && (() => {
         const payments = debtPayments.filter(p => p.credit_id === historyFor.id);
         const bizName  = profile?.business_name || profile?.owner_name || "My Business";
+
+        const exportCreditPdf = async () => {
+          const totalAmt = parseFloat(historyFor.total_amount) || 0;
+          const sorted   = [...payments].sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
+          let outstanding = totalAmt;
+          const rows = sorted.map(p => {
+            const amt = parseFloat(p.amount) || 0;
+            outstanding -= amt;
+            return {
+              date:        pdfFmtDate(p.created_at || p.payment_date),
+              description: `Payment · ${(p.payment_method || "cash").replace(/_/g, " ")}`,
+              reference:   p.notes || "—",
+              debit:       "",
+              credit:      pdfFmt(amt),
+              balance:     pdfFmt(Math.max(0, outstanding)),
+            };
+          });
+          const totPaid = payments.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+          const pdf = await createReportPdf({
+            title: "Credit Payment History", businessName: bizName,
+            period: historyFor.customer_name,
+            entityDetails: [
+              { label: "Debtor",      value: historyFor.customer_name },
+              { label: "Total Debt",  value: pdfFmt(totalAmt) },
+              { label: "Total Paid",  value: pdfFmt(historyFor.amount_paid || totPaid) },
+              { label: "Outstanding", value: pdfFmt(historyFor.outstanding || Math.max(0, totalAmt - totPaid)) },
+            ],
+          });
+          pdf.addStats([
+            { label: "Total Debt",   value: pdfFmt(totalAmt),                               color: "#64748b" },
+            { label: "Amount Paid",  value: pdfFmt(historyFor.amount_paid || totPaid),        color: "#22c55e" },
+            { label: "Outstanding",  value: pdfFmt(historyFor.outstanding || Math.max(0, totalAmt - totPaid)), color: "#ef4444" },
+            { label: "Payments",     value: String(payments.length) },
+          ]);
+          pdf.addStatement(rows, { openingBalance: totalAmt, totalCredits: totPaid });
+          await pdf.save(`Credit_Payments_${historyFor.customer_name.replace(/\s+/g, "_")}.pdf`);
+        };
+
         return (
           <div className="fixed inset-0 z-[60] bg-black/60 flex flex-col">
             {payReceipt && (
@@ -705,12 +744,22 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                   <h2 className="text-base font-black text-slate-800 dark:text-white">{historyFor.customer_name}</h2>
                   <p className="text-xs text-slate-400 mt-0.5">Payment History · {payments.length} record{payments.length !== 1 ? "s" : ""}</p>
                 </div>
-                <button onClick={() => setHistoryFor(null)}
-                  className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center active:scale-90 transition">
-                  <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
-                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                  </svg>
-                </button>
+                <div className="flex items-center gap-2">
+                  {payments.length > 0 && (
+                    <button onClick={exportCreditPdf}
+                      className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center active:scale-90 transition">
+                      <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 15V3m0 12l-4-4m4 4l4-4"/><path d="M2 17l.621 2.485A2 2 0 004.561 21h14.878a2 2 0 001.94-1.515L22 17"/>
+                      </svg>
+                    </button>
+                  )}
+                  <button onClick={() => setHistoryFor(null)}
+                    className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center active:scale-90 transition">
+                    <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+                      <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                  </button>
+                </div>
               </div>
 
               {/* Credit summary bar */}

@@ -10,6 +10,7 @@ import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import { supabase } from "../utils/supabase";
 import { canDo, featureLimit, upgradeLabel, planRequiredLabel, planAvailableText } from "../utils/plans";
 import { fmt, today } from "../utils/helpers";
+import { createReportPdf, fmtCurrency as pdfFmt, fmtDate as pdfFmtDate } from "../utils/generateReportPdf";
 import { useT } from "../contexts/LanguageContext";
 import { getLang, speakConfirmation } from "../utils/i18n";
 import { sendEmailTrigger } from "../utils/emailTrigger";
@@ -105,6 +106,42 @@ function AsoClientHistoryModal({ client, contributions, businessName, onClose })
     ? contributions
     : contributions.filter(c => c.type === typeFilter);
 
+  const handleExportPdf = async () => {
+    const sorted = [...contributions].sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
+    const rows = sorted.map(c => {
+      const isWd  = c.type === "withdrawal";
+      const amt   = parseFloat(c.amount) || 0;
+      return {
+        date:        pdfFmtDate(c.created_at),
+        description: isWd ? "Withdrawal" : "Contribution",
+        reference:   c.payment_method || "—",
+        debit:       isWd ? pdfFmt(amt) : "",
+        credit:      isWd ? "" : pdfFmt(amt),
+        balance:     "",
+      };
+    });
+    const totContrib = contributions.filter(c => c.type !== "withdrawal").reduce((s, c) => s + (parseFloat(c.amount) || 0), 0);
+    const totWd      = contributions.filter(c => c.type === "withdrawal").reduce((s, c) => s + (parseFloat(c.amount) || 0), 0);
+    const pdf = await createReportPdf({
+      title: "Ajo Statement", businessName: businessName || "My Business",
+      period: client.full_name,
+      entityDetails: [
+        { label: "Client Name", value: client.full_name },
+        { label: "Current Balance", value: pdfFmt(client.current_balance || 0) },
+        { label: "Total Contributed", value: pdfFmt(client.total_saved || totContrib) },
+        { label: "Records", value: String(contributions.length) },
+      ],
+    });
+    pdf.addStats([
+      { label: "Total Contributed", value: pdfFmt(totContrib), color: "#22c55e" },
+      { label: "Total Withdrawn",   value: pdfFmt(totWd),      color: "#ef4444" },
+      { label: "Current Balance",   value: pdfFmt(client.current_balance || 0) },
+      { label: "Records",           value: String(contributions.length) },
+    ]);
+    pdf.addStatement(rows, { totalDebits: totWd, totalCredits: totContrib });
+    await pdf.save(`Ajo_Statement_${client.full_name.replace(/\s+/g, "_")}.pdf`);
+  };
+
   const FILTERS = [
     { id: "all", label: "All" },
     { id: "contribution", label: "Contributions" },
@@ -134,12 +171,22 @@ function AsoClientHistoryModal({ client, contributions, businessName, onClose })
             <h2 className="text-base font-black text-slate-800 dark:text-white">{client.full_name}</h2>
             <p className="text-xs text-slate-400 mt-0.5">Ajo Transaction History</p>
           </div>
-          <button onClick={onClose}
-            className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center active:scale-90 transition">
-            <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
-              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
+          <div className="flex items-center gap-2">
+            {contributions.length > 0 && (
+              <button onClick={handleExportPdf}
+                className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center active:scale-90 transition">
+                <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 15V3m0 12l-4-4m4 4l4-4"/><path d="M2 17l.621 2.485A2 2 0 004.561 21h14.878a2 2 0 001.94-1.515L22 17"/>
+                </svg>
+              </button>
+            )}
+            <button onClick={onClose}
+              className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center active:scale-90 transition">
+              <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
         </div>
 
         {/* Filter chips */}
