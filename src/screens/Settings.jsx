@@ -9,6 +9,7 @@ import { canDo, planAvailableText, hasHigherPlanAvailable, getPlanInfo } from ".
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import { LANGUAGES, getLangMeta } from "../utils/i18n";
 import { useLanguage, useT } from "../contexts/LanguageContext";
+import { maxDobDate, isAtLeast18, AGE_ERROR } from "../utils/ageValidation";
 
 /* ── Change PIN Modal (3-step: verify current → enter new → confirm new) ── */
 function ChangePinModal({ pinLength = 6, title, onVerifyCurrent, onSetNew, onClose }) {
@@ -441,6 +442,10 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
   const handleLgaChange   = (l) => setFp(p => ({ ...p, lga: l, ward: "" }));
 
   const handleSaveProfile = async () => {
+    if (fp.date_of_birth && !isAtLeast18(fp.date_of_birth)) {
+      setSaveError(AGE_ERROR);
+      return;
+    }
     setSaving(true);
     setSaveError("");
     let imageUrl = fp.profile_image_url;
@@ -777,7 +782,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
             </svg>
           }
           label="Auto-lock"
-          sub={`Locks after ${lock?.autoLockTimeout ?? 5} minute${(lock?.autoLockTimeout ?? 5) === 1 ? "" : "s"} of inactivity`}
+          sub={(lock?.autoLockTimeout ?? 5) === 0 ? "Auto-lock is disabled" : `Locks after ${lock?.autoLockTimeout ?? 5} minute${(lock?.autoLockTimeout ?? 5) === 1 ? "" : "s"} of inactivity`}
           onClick={() => setShowAutoLock(true)}
         />
       </SettingsCard>
@@ -852,21 +857,29 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
             App will lock automatically after this period of inactivity.
           </p>
           <div className="space-y-2">
-            {[1, 2, 5, 10, 15, 30].map(mins => (
+            {[
+              { value: 1,  label: "1 minute" },
+              { value: 5,  label: "5 minutes" },
+              { value: 15, label: "15 minutes" },
+              { value: 30, label: "30 minutes" },
+              { value: 0,  label: "Never" },
+            ].map(({ value, label }) => (
               <button
-                key={mins}
+                key={value}
                 onClick={async () => {
-                  await lock?.updateSettings?.({ autoLockTimeout: mins });
+                  await lock?.updateSettings?.({ autoLockTimeout: value });
                   setShowAutoLock(false);
                 }}
                 className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-colors active:scale-[0.98] ${
-                  (lock?.autoLockTimeout ?? 5) === mins
+                  (lock?.autoLockTimeout ?? 5) === value
                     ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20 text-brand-700 dark:text-brand-400"
-                    : "border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/50 text-slate-800 dark:text-slate-100"
+                    : value === 0
+                      ? "border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/10 hover:bg-amber-100 dark:hover:bg-amber-900/20 text-amber-800 dark:text-amber-300"
+                      : "border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/50 text-slate-800 dark:text-slate-100"
                 }`}
               >
-                <span className="font-semibold text-sm">{mins} minute{mins === 1 ? "" : "s"}</span>
-                {(lock?.autoLockTimeout ?? 5) === mins && (
+                <span className="font-semibold text-sm">{label}</span>
+                {(lock?.autoLockTimeout ?? 5) === value && (
                   <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-brand-600 dark:text-brand-400" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
                     <path d="M20 6L9 17l-5-5" />
                   </svg>
@@ -874,6 +887,11 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
               </button>
             ))}
           </div>
+          {(lock?.autoLockTimeout ?? 5) === 0 && (
+            <p className="mt-3 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-3 py-2.5 leading-relaxed">
+              Your app won&apos;t lock automatically. Anyone with access to your phone may be able to open it.
+            </p>
+          )}
         </Modal>
       )}
 
@@ -927,7 +945,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
 
             <div>
               <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">Date of Birth</label>
-              <input type="date" value={fp.date_of_birth || ""} max={new Date().toISOString().split("T")[0]}
+              <input type="date" value={fp.date_of_birth || ""} max={maxDobDate()}
                 onChange={e => setFp(p => ({ ...p, date_of_birth: e.target.value }))} className={inputCls} />
             </div>
 

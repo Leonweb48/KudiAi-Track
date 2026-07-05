@@ -1,8 +1,7 @@
 import { useState, useMemo } from "react";
-import { jsPDF }      from "jspdf";
 import { fmt }        from "../utils/helpers";
 import { useT }       from "../contexts/LanguageContext";
-import { savePdf }    from "../utils/pdfSave";
+import { createReportPdf } from "../utils/generateReportPdf";
 
 /* ── date helpers ──────────────────────────────────────────────────── */
 const todayStr = () => new Date().toISOString().split("T")[0];
@@ -659,315 +658,159 @@ function makePeriods(t) {
   ];
 }
 
-function hexToRgb(hex) {
-  if (!hex || !hex.startsWith("#")) return [51, 65, 85];
-  return [parseInt(hex.slice(1,3),16), parseInt(hex.slice(3,5),16), parseInt(hex.slice(5,7),16)];
-}
 async function buildNativeReportPDF(type, data, profile, from, to) {
-  const doc = new jsPDF({ orientation:"p", unit:"mm", format:"a4" });
-  const W  = doc.internal.pageSize.getWidth();
-  const H  = doc.internal.pageSize.getHeight();
-  const M  = 10;
-  const CW = W - 2*M;
-  const fmtN = n => `N${Number(n||0).toLocaleString("en-NG",{minimumFractionDigits:2})}`;
-
   const TNAMES = {
     sales:"Sales Report", credit:"Credit Report", aso:"Ajo Savings Report",
     bills:"Bills Report", staff:"Staff Performance Report", stock:"Stock Report",
   };
-  const THEME = {
-    sales:[22,163,74], credit:[220,38,38], aso:[124,58,237],
-    bills:[234,88,12], staff:[37,99,235],  stock:[14,116,144],
-  };
-  const tc  = THEME[type] || [22,163,74];
+  const PNAMES = { sales:"Sales", credit:"Credit", aso:"Ajo", bills:"Bills", staff:"Staff", stock:"Stock" };
   const biz = profile?.business_name || "My Business";
-  const prd = from===to ? fmtD(from) : `${fmtD(from)} - ${fmtD(to)}`;
+  const prd = from === to ? fmtD(from) : `${fmtD(from)} – ${fmtD(to)}`;
 
-  let logo = null;
-  try { const blob = await (await fetch('/logo.png')).blob(); logo = await new Promise(res => { const fr = new FileReader(); fr.onloadend = () => res(fr.result); fr.readAsDataURL(blob); }); } catch {}
+  const pdf = await createReportPdf({ title: TNAMES[type] || "Report", businessName: biz, period: prd });
+  const { addStats, addSectionTitle, addTable, addBarChart, fmtN } = pdf;
 
-  // Header band
-  doc.setFillColor(...tc);
-  doc.rect(0,0,W,28,"F");
-  if (logo) doc.addImage(logo, 'PNG', M, 5, 18, 18);
-  doc.setTextColor(255,255,255);
-  doc.setFont("helvetica","bold");
-  doc.setFontSize(8);
-  doc.text("KudiAI Track", W/2, 8, {align:"center"});
-  doc.setFontSize(13);
-  doc.text(biz, W/2, 18, {align:"center"});
-  doc.setFontSize(8);
-  doc.setFont("helvetica","normal");
-  doc.text(`${TNAMES[type]}  .  ${prd}`, W/2, 26, {align:"center"});
-
-  let y = 36;
-
-  function newPage() { doc.addPage(); y = 14; }
-  function need(h)   { if (y+h > H-14) newPage(); }
-
-  function sectionTitle(title) {
-    need(16); y += 3;
-    doc.setFont("helvetica","bold"); doc.setFontSize(7.5);
-    doc.setTextColor(...tc);
-    doc.text(title.toUpperCase(), M, y);
-    doc.setDrawColor(226,232,240); doc.setLineWidth(0.3);
-    doc.line(M, y+2, W-M, y+2);
-    y += 9;
-  }
-
-  function drawStats(stats) {
-    const bw=(CW-4)/2, bh=18;
-    for (let i=0; i<stats.length; i+=2) {
-      need(bh+3);
-      for (let j=0; j<2 && i+j<stats.length; j++) {
-        const s=stats[i+j], x=M+j*(bw+4);
-        const bg=typeof s.bg==="string"?hexToRgb(s.bg):[248,250,252];
-        doc.setFillColor(...bg); doc.rect(x,y,bw,bh,"F");
-        doc.setFont("helvetica","bold"); doc.setFontSize(6); doc.setTextColor(148,163,184);
-        doc.text(String(s.label||"").toUpperCase(), x+4, y+6);
-        const vc=typeof s.color==="string"?hexToRgb(s.color):[30,41,59];
-        doc.setTextColor(...vc); doc.setFont("helvetica","bold"); doc.setFontSize(11);
-        doc.text(String(s.value??""), x+4, y+14, {maxWidth:bw-6});
-      }
-      y += bh+3;
-    }
-    y += 2;
-  }
-
-  function drawBarChart(bars) {
-    if (!bars?.length) return;
-    const ch=40;
-    need(ch+18);
-    const maxV=Math.max(...bars.map(b=>Math.max(b.v1||0,b.v2||b.v||0)),1);
-    const slot=CW/bars.length;
-    const bw=Math.min(slot*0.4,7);
-    const isDual=bars[0]?.v1!==undefined;
-    doc.setDrawColor(226,232,240); doc.setLineWidth(0.2);
-    [0.25,0.5,0.75,1].forEach(f=>{ const ly=y+ch-ch*f; doc.line(M,ly,W-M,ly); });
-    const skip=Math.ceil(bars.length/14);
-    bars.forEach((b,i)=>{
-      const cx=M+i*slot+slot/2;
-      if (isDual) {
-        const h1=Math.max(0.5,(b.v1/maxV)*ch), h2=Math.max(0.5,(b.v2/maxV)*ch);
-        doc.setFillColor(22,163,74);  doc.rect(cx-bw-0.5, y+ch-h1, bw, h1, "F");
-        doc.setFillColor(239,68,68);  doc.rect(cx+0.5,    y+ch-h2, bw, h2, "F");
-      } else {
-        const h=Math.max(0.5,((b.v||0)/maxV)*ch);
-        doc.setFillColor(...(b.color?hexToRgb(b.color):tc));
-        doc.rect(cx-bw/2, y+ch-h, bw, h, "F");
-      }
-      if (i%skip===0) {
-        doc.setFont("helvetica","normal"); doc.setFontSize(5.5); doc.setTextColor(100,116,139);
-        doc.text(String(b.label||"").slice(0,7), cx, y+ch+5, {align:"center"});
-      }
-    });
-    y += ch+10;
-    if (isDual) {
-      doc.setFillColor(22,163,74);  doc.rect(M,    y, 5, 3.5, "F");
-      doc.setFont("helvetica","normal"); doc.setFontSize(6.5); doc.setTextColor(100,116,139);
-      doc.text("Income",   M+7,  y+3);
-      doc.setFillColor(239,68,68); doc.rect(M+30, y, 5, 3.5, "F");
-      doc.text("Expenses", M+37, y+3);
-      y += 8;
-    }
-  }
-
-  function drawTable(cols, rows) {
-    const rh=6.5;
-    need(rh*2);
-    const drawHdr=()=>{
-      doc.setFillColor(241,245,249); doc.rect(M,y,CW,rh,"F");
-      doc.setFont("helvetica","bold"); doc.setFontSize(6.5); doc.setTextColor(71,85,105);
-      let x=M+2;
-      cols.forEach(c=>{
-        const cw=CW*(parseFloat(c.w)||1/cols.length);
-        if (c.right) doc.text(String(c.label||"").toUpperCase(), x+cw-3, y+4.5, {align:"right"});
-        else         doc.text(String(c.label||"").toUpperCase(), x, y+4.5);
-        x+=cw;
-      });
-      y+=rh;
-    };
-    drawHdr();
-    if (!rows?.length) {
-      doc.setFont("helvetica","italic"); doc.setFontSize(7); doc.setTextColor(148,163,184);
-      doc.text("No data for this period", M+CW/2, y+5, {align:"center"}); y+=10; return;
-    }
-    rows.forEach((r,ri)=>{
-      if (y+rh>H-14) { newPage(); drawHdr(); }
-      if (ri%2===1) { doc.setFillColor(248,250,252); doc.rect(M,y,CW,rh,"F"); }
-      doc.setDrawColor(241,245,249); doc.setLineWidth(0.15); doc.line(M,y+rh,W-M,y+rh);
-      let x=M+2;
-      cols.forEach(c=>{
-        const cw=CW*(parseFloat(c.w)||1/cols.length);
-        const val=String(r[c.key]??"—");
-        if (c.color) {
-          const hx=typeof c.color==="function"?c.color(r):c.color;
-          doc.setTextColor(...(hx&&hx.startsWith("#")?hexToRgb(hx):[51,65,85]));
-        } else { doc.setTextColor(51,65,85); }
-        doc.setFont("helvetica", c.bold?"bold":"normal"); doc.setFontSize(7);
-        if (c.right) doc.text(val, x+cw-3, y+4.5, {align:"right", maxWidth:cw-4});
-        else         doc.text(val, x, y+4.5, {maxWidth:cw-3});
-        x+=cw;
-      });
-      y+=rh;
-    });
-    y+=4;
-  }
-
-  /* ── report sections ── */
-  if (type==="sales") {
-    const {cashIn,cashOut,profit,tx,bars,byCat}=data;
-    drawStats([
-      {label:"Cash In",     value:fmtN(cashIn),  color:"#16a34a",bg:"#f0fdf4"},
-      {label:"Cash Out",    value:fmtN(cashOut), color:"#ef4444",bg:"#fef2f2"},
-      {label:"Net Profit",  value:fmtN(profit),  color:profit>=0?"#16a34a":"#ef4444",bg:"#f8fafc"},
-      {label:"Transactions",value:tx.length,     color:"#0284c7",bg:"#eff6ff"},
+  if (type === "sales") {
+    const { cashIn, cashOut, profit, tx, bars, byCat } = data;
+    addStats([
+      { label:"Cash In",      value:fmtN(cashIn),  color:"#16a34a", bg:"#f0fdf4" },
+      { label:"Cash Out",     value:fmtN(cashOut), color:"#ef4444", bg:"#fef2f2" },
+      { label:"Net Profit",   value:fmtN(profit),  color:profit>=0?"#16a34a":"#ef4444", bg:"#f8fafc" },
+      { label:"Transactions", value:tx.length,     color:"#0284c7", bg:"#eff6ff" },
     ]);
-    sectionTitle("Income vs Expenses");
-    drawBarChart(bars);
-    sectionTitle("Category Breakdown");
-    drawTable(
-      [{key:"cat",  label:"Category", bold:true, w:0.35},
-       {key:"in_",  label:"Income",   right:true, color:()=>"#16a34a", w:0.20},
-       {key:"out_", label:"Expenses", right:true, color:()=>"#ef4444", w:0.20},
-       {key:"net",  label:"Net",      right:true, w:0.14},
-       {key:"count",label:"Count",    right:true, w:0.11}],
+    addSectionTitle("Income vs Expenses");
+    addBarChart(bars);
+    addSectionTitle("Category Breakdown");
+    addTable(
+      [{ key:"cat",   label:"Category", bold:true, w:0.35 },
+       { key:"in_",   label:"Income",   right:true, color:()=>[22,163,74], w:0.20 },
+       { key:"out_",  label:"Expenses", right:true, color:()=>[220,38,38], w:0.20 },
+       { key:"net",   label:"Net",      right:true, w:0.14 },
+       { key:"count", label:"Count",    right:true, w:0.11 }],
       Object.entries(byCat).sort((a,b)=>b[1].in-a[1].in).map(([cat,v])=>({
         cat, in_:fmtN(v.in), out_:fmtN(v.out), net:fmtN(v.in-v.out), count:v.count
       }))
     );
-    sectionTitle("Transaction Log");
-    drawTable(
-      [{key:"date",  label:"Date",     w:0.14},
-       {key:"item",  label:"Item",     bold:true, w:0.24},
-       {key:"type",  label:"Type",     bold:true, color:r=>r._t==="in"?"#16a34a":"#ef4444", w:0.11},
-       {key:"amount",label:"Amount",   right:true, bold:true, w:0.17},
-       {key:"cat",   label:"Category", w:0.17},
-       {key:"pay",   label:"Payment",  w:0.17}],
+    addSectionTitle("Transaction Log");
+    addTable(
+      [{ key:"date",   label:"Date",     w:0.14 },
+       { key:"item",   label:"Item",     bold:true, w:0.24 },
+       { key:"type",   label:"Type",     bold:true, color:r=>r._t==="in"?[22,163,74]:[220,38,38], w:0.11 },
+       { key:"amount", label:"Amount",   right:true, bold:true, w:0.17 },
+       { key:"cat",    label:"Category", w:0.17 },
+       { key:"pay",    label:"Payment",  w:0.17 }],
       tx.slice(0,80).map(t=>({
         date:fmtD(t.transaction_date), item:t.item_name||"—",
         type:t.type==="in"?"Income":"Expense", amount:fmtN(t.amount),
         cat:t.category||"—", pay:t.payment_type||"—", _t:t.type
       }))
     );
-  }
-  else if (type==="credit") {
-    const {credits,totalDebt,totalPaid,totalOut,overdueCount,overdueDue}=data;
-    drawStats([
-      {label:"Total Debt",  value:fmtN(totalDebt),  color:"#334155",bg:"#f8fafc"},
-      {label:"Outstanding", value:fmtN(totalOut),   color:"#ef4444",bg:"#fef2f2"},
-      {label:"Recovered",   value:fmtN(totalPaid),  color:"#16a34a",bg:"#f0fdf4"},
-      {label:"Overdue Accs",value:overdueCount,     color:"#dc2626",bg:"#fff1f2"},
+  } else if (type === "credit") {
+    const { credits, totalDebt, totalPaid, totalOut, overdueCount } = data;
+    addStats([
+      { label:"Total Debt",   value:fmtN(totalDebt), color:"#334155", bg:"#f8fafc" },
+      { label:"Outstanding",  value:fmtN(totalOut),  color:"#ef4444", bg:"#fef2f2" },
+      { label:"Recovered",    value:fmtN(totalPaid), color:"#16a34a", bg:"#f0fdf4" },
+      { label:"Overdue Accs", value:overdueCount,    color:"#dc2626", bg:"#fff1f2" },
     ]);
-    if (overdueCount>0) {
-      need(14);
-      doc.setFillColor(254,242,242); doc.rect(M,y,CW,12,"F");
-      doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(220,38,38);
-      doc.text(`${overdueCount} overdue account${overdueCount>1?"s":""}  -  ${fmtN(overdueDue)} outstanding`, M+4, y+8);
-      y+=16;
-    }
-    sectionTitle("Credit Accounts");
-    drawTable(
-      [{key:"name",  label:"Customer", bold:true, w:0.24},
-       {key:"total", label:"Total",    right:true, w:0.16},
-       {key:"paid",  label:"Paid",     right:true, color:()=>"#16a34a", w:0.16},
-       {key:"owed",  label:"Owed",     right:true, color:r=>r._s==="overdue"?"#ef4444":undefined, w:0.16},
-       {key:"due",   label:"Due Date", w:0.14},
-       {key:"status",label:"Status",   bold:true, color:r=>r._s==="overdue"?"#ef4444":r._s==="paid"?"#16a34a":undefined, w:0.14}],
+    addSectionTitle("Credit Accounts");
+    addTable(
+      [{ key:"name",   label:"Customer", bold:true, w:0.24 },
+       { key:"total",  label:"Total",    right:true, w:0.16 },
+       { key:"paid",   label:"Paid",     right:true, color:()=>[22,163,74], w:0.16 },
+       { key:"owed",   label:"Owed",     right:true, color:r=>r._s==="overdue"?[220,38,38]:null, w:0.16 },
+       { key:"due",    label:"Due Date", w:0.14 },
+       { key:"status", label:"Status",   bold:true, color:r=>r._s==="overdue"?[220,38,38]:r._s==="paid"?[22,163,74]:null, w:0.14 }],
       credits.map(c=>({
         name:c.customer_name, total:fmtN(c.total_amount||0), paid:fmtN(c.amount_paid||0),
         owed:fmtN(c.outstanding||0), due:fmtD(c.due_date),
         status:(c.status||"active").replace(/_/g," ").toUpperCase(), _s:c.status
       }))
     );
-  }
-  else if (type==="aso") {
-    const {enriched,totalBal,totalSaved,totalWithdr,bars}=data;
-    drawStats([
-      {label:"Total Balance",  value:fmtN(totalBal),   color:"#7c3aed",bg:"#f5f3ff"},
-      {label:"Total Saved",    value:fmtN(totalSaved), color:"#16a34a",bg:"#f0fdf4"},
-      {label:"Total Withdrawn",value:fmtN(totalWithdr),color:"#334155",bg:"#f8fafc"},
-      {label:"Total Clients",  value:enriched.length,  color:"#0284c7",bg:"#eff6ff"},
+  } else if (type === "aso") {
+    const { enriched, totalBal, totalSaved, totalWithdr, bars } = data;
+    addStats([
+      { label:"Total Balance",   value:fmtN(totalBal),   color:"#7c3aed", bg:"#f5f3ff" },
+      { label:"Total Saved",     value:fmtN(totalSaved), color:"#16a34a", bg:"#f0fdf4" },
+      { label:"Total Withdrawn", value:fmtN(totalWithdr),color:"#334155", bg:"#f8fafc" },
+      { label:"Total Clients",   value:enriched.length,  color:"#0284c7", bg:"#eff6ff" },
     ]);
-    sectionTitle("Balance by Client");
-    drawBarChart(bars);
-    sectionTitle("Client Details");
-    drawTable(
-      [{key:"name", label:"Client",       bold:true, w:0.24},
-       {key:"freq", label:"Frequency",    w:0.15},
-       {key:"amt",  label:"Contribution", right:true, w:0.18},
-       {key:"bal",  label:"Balance",      right:true, bold:true, color:()=>"#7c3aed", w:0.18},
-       {key:"saved",label:"Total Saved",  right:true, w:0.14},
-       {key:"miss", label:"Missed",       right:true, color:r=>Number(r.miss)>0?"#ef4444":undefined, w:0.11}],
+    addSectionTitle("Balance by Client");
+    addBarChart(bars);
+    addSectionTitle("Client Details");
+    addTable(
+      [{ key:"name",  label:"Client",       bold:true, w:0.24 },
+       { key:"freq",  label:"Frequency",    w:0.15 },
+       { key:"amt",   label:"Contribution", right:true, w:0.18 },
+       { key:"bal",   label:"Balance",      right:true, bold:true, color:()=>[124,58,237], w:0.18 },
+       { key:"saved", label:"Total Saved",  right:true, w:0.14 },
+       { key:"miss",  label:"Missed",       right:true, color:r=>Number(r.miss)>0?[220,38,38]:null, w:0.11 }],
       enriched.map(c=>({
         name:c.full_name||"—", freq:c.contribution_frequency||"—",
         amt:fmtN(c.contribution_amount||0), bal:fmtN(c.current_balance||0),
         saved:fmtN(c.total_saved||0), miss:c.missed
       }))
     );
-  }
-  else if (type==="bills") {
-    const {bills, total: billTotal, byCat}=data;
-    drawStats([
-      {label:"Total Bills",value:fmtN(billTotal),color:"#ea580c",bg:"#fff7ed"},
-      {label:"Bill Count", value:bills.length,   color:"#0284c7",bg:"#eff6ff"},
+  } else if (type === "bills") {
+    const { bills, total: billTotal, byCat } = data;
+    addStats([
+      { label:"Total Bills", value:fmtN(billTotal), color:"#ea580c", bg:"#fff7ed" },
+      { label:"Bill Count",  value:bills.length,    color:"#0284c7", bg:"#eff6ff" },
     ]);
-    sectionTitle("By Category");
-    drawTable(
-      [{key:"cat",  label:"Category",bold:true, w:0.50},
-       {key:"count",label:"Count",   right:true, w:0.20},
-       {key:"total",label:"Total",   right:true, bold:true, w:0.30}],
+    addSectionTitle("By Category");
+    addTable(
+      [{ key:"cat",   label:"Category", bold:true, w:0.50 },
+       { key:"count", label:"Count",    right:true, w:0.20 },
+       { key:"total", label:"Total",    right:true, bold:true, w:0.30 }],
       Object.entries(byCat).sort((a,b)=>b[1].total-a[1].total).map(([cat,v])=>({
         cat, count:v.count, total:fmtN(v.total)
       }))
     );
-    sectionTitle("Bill Transactions");
-    drawTable(
-      [{key:"date",  label:"Date",     w:0.18},
-       {key:"item",  label:"Item",     bold:true, w:0.36},
-       {key:"cat",   label:"Category", w:0.22},
-       {key:"amount",label:"Amount",   right:true, bold:true, color:()=>"#ea580c", w:0.24}],
+    addSectionTitle("Bill Transactions");
+    addTable(
+      [{ key:"date",   label:"Date",     w:0.18 },
+       { key:"item",   label:"Item",     bold:true, w:0.36 },
+       { key:"cat",    label:"Category", w:0.22 },
+       { key:"amount", label:"Amount",   right:true, bold:true, color:()=>[234,88,12], w:0.24 }],
       bills.map(t=>({
         date:fmtD(t.transaction_date), item:t.item_name||"—",
         cat:t.category||"Bills", amount:fmtN(t.amount)
       }))
     );
-  }
-  else if (type==="staff") {
-    const {rows,bars}=data;
-    drawStats([{label:"Staff Members",value:rows.length,color:"#1d4ed8",bg:"#eff6ff"}]);
-    sectionTitle("Sales by Staff");
-    drawBarChart(bars);
-    sectionTitle("Staff Performance");
-    drawTable(
-      [{key:"name",    label:"Staff",     bold:true, w:0.26},
-       {key:"salesIn", label:"Sales In",  right:true, color:()=>"#16a34a", w:0.18},
-       {key:"salesOut",label:"Sales Out", right:true, color:()=>"#ef4444", w:0.18},
-       {key:"txCount", label:"Txns",      right:true, w:0.12},
-       {key:"credits", label:"Credits",   right:true, w:0.13},
-       {key:"aso",     label:"Ajo",       right:true, w:0.13}],
+  } else if (type === "staff") {
+    const { rows, bars } = data;
+    addStats([{ label:"Staff Members", value:rows.length, color:"#1d4ed8", bg:"#eff6ff" }]);
+    addSectionTitle("Sales by Staff");
+    addBarChart(bars);
+    addSectionTitle("Staff Performance");
+    addTable(
+      [{ key:"name",     label:"Staff",     bold:true, w:0.26 },
+       { key:"salesIn",  label:"Sales In",  right:true, color:()=>[22,163,74], w:0.18 },
+       { key:"salesOut", label:"Sales Out", right:true, color:()=>[220,38,38], w:0.18 },
+       { key:"txCount",  label:"Txns",      right:true, w:0.12 },
+       { key:"credits",  label:"Credits",   right:true, w:0.13 },
+       { key:"aso",      label:"Ajo",       right:true, w:0.13 }],
       rows.map(r=>({
         name:r.name, salesIn:fmtN(r.salesIn), salesOut:fmtN(r.salesOut),
         txCount:r.txCount, credits:r.creditsAdded, aso:r.asoContribs
       }))
     );
-  }
-  else if (type==="stock") {
-    const {rows,totalRevenue,bars}=data;
-    drawStats([
-      {label:"Total Revenue",value:fmtN(totalRevenue),color:"#0e7490",bg:"#ecfeff"},
-      {label:"Unique Items", value:rows.length,       color:"#0284c7",bg:"#eff6ff"},
+  } else if (type === "stock") {
+    const { rows, totalRevenue, bars } = data;
+    addStats([
+      { label:"Total Revenue", value:fmtN(totalRevenue), color:"#0e7490", bg:"#ecfeff" },
+      { label:"Unique Items",  value:rows.length,         color:"#0284c7", bg:"#eff6ff" },
     ]);
-    sectionTitle("Revenue by Item");
-    drawBarChart(bars);
-    sectionTitle("Item Details");
-    drawTable(
-      [{key:"item",      label:"Item",      bold:true, w:0.28},
-       {key:"cat",       label:"Category",  w:0.18},
-       {key:"qtySold",   label:"Qty Sold",  right:true, w:0.13},
-       {key:"revenue",   label:"Revenue",   right:true, bold:true, color:()=>"#16a34a", w:0.17},
-       {key:"qtyBought", label:"Bought",    right:true, w:0.13},
-       {key:"cost",      label:"Cost",      right:true, color:()=>"#ef4444", w:0.11}],
+    addSectionTitle("Revenue by Item");
+    addBarChart(bars);
+    addSectionTitle("Item Details");
+    addTable(
+      [{ key:"item",      label:"Item",     bold:true, w:0.28 },
+       { key:"cat",       label:"Category", w:0.18 },
+       { key:"qtySold",   label:"Qty Sold", right:true, w:0.13 },
+       { key:"revenue",   label:"Revenue",  right:true, bold:true, color:()=>[22,163,74], w:0.17 },
+       { key:"qtyBought", label:"Bought",   right:true, w:0.13 },
+       { key:"cost",      label:"Cost",     right:true, color:()=>[220,38,38], w:0.11 }],
       rows.map(r=>({
         item:r.item, cat:r.category, qtySold:r.qtySold, revenue:fmtN(r.revenue),
         qtyBought:r.qtyBought, cost:fmtN(r.cost)
@@ -975,22 +818,7 @@ async function buildNativeReportPDF(type, data, profile, from, to) {
     );
   }
 
-  // Footer on every page
-  const totalPg = doc.internal.getNumberOfPages();
-  const genDate = new Date().toLocaleString("en-NG");
-  for (let i=1; i<=totalPg; i++) {
-    doc.setPage(i);
-    doc.setFillColor(248,250,252); doc.rect(0, H-10, W, 10, "F");
-    doc.setDrawColor(226,232,240); doc.setLineWidth(0.2); doc.line(0, H-10, W, H-10);
-    doc.setFont("helvetica","italic"); doc.setFontSize(6); doc.setTextColor(148,163,184);
-    doc.text(
-      `Generated by KudiAI Track  .  ${genDate}  .  Page ${i} of ${totalPg}`,
-      W/2, H-5, {align:"center"}
-    );
-  }
-
-  const PNAMES={sales:"Sales",credit:"Credit",aso:"Ajo",bills:"Bills",staff:"Staff",stock:"Stock"};
-  await savePdf(doc, `KudiAITrack_${PNAMES[type]}_Report_${from}_${to}.pdf`);
+  await pdf.save(`KudiAITrack_${PNAMES[type] || "Report"}_Report_${from}_${to}.pdf`);
 }
 
 /* ── Main screen ────────────────────────────────────────────────────── */

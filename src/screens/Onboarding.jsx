@@ -3,6 +3,7 @@ import { supabase } from "../utils/supabase";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import AppLogo from "../components/AppLogo";
 import { sendEmailTrigger } from "../utils/emailTrigger";
+import { maxDobDate, isAtLeast18, AGE_ERROR } from "../utils/ageValidation";
 
 /* ── Constants ─────────────────────────────────────────────────── */
 const CURRENCIES = ["Nigerian Naira (₦)", "US Dollar ($)", "British Pound (£)", "Euro (€)"];
@@ -249,6 +250,7 @@ export default function Onboarding({ session, onComplete }) {
     setError("");
     if (!profileFile) { setError("Please upload a profile photo to continue."); return; }
     if (!phone.trim()) { setError("Phone number is required."); return; }
+    if (dob && !isAtLeast18(dob)) { setError(AGE_ERROR); return; }
     setStep(2);
   };
 
@@ -434,7 +436,7 @@ export default function Onboarding({ session, onComplete }) {
 
             <Field label="Date of Birth" type="date" value={dob}
               onChange={(e) => setDob(e.target.value)}
-              max={new Date().toISOString().split("T")[0]} />
+              max={maxDobDate()} />
 
             <Select label="State"
               value={state} onChange={(e) => handleStateChange(e.target.value)}

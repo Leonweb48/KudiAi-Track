@@ -2,6 +2,7 @@ import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../utils/supabase";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
+import { maxDobDate, isAtLeast18, AGE_ERROR } from "../utils/ageValidation";
 
 // ── Icons ────────────────────────────────────────────────────────────────────
 const ArrowLeft  = () => <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>;
@@ -269,6 +270,9 @@ export default function Profile({ store, session, plan }) {
     }
     if (fp.email && fp.email !== email && !isValidEmail(fp.email)) {
       errs.email = "Enter a valid email address";
+    }
+    if (fp.date_of_birth && !isAtLeast18(fp.date_of_birth)) {
+      errs.date_of_birth = AGE_ERROR;
     }
     setFieldErrors(errs);
     return Object.keys(errs).length === 0;
@@ -645,8 +649,9 @@ export default function Profile({ store, session, plan }) {
 
             <div>
               <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Date of Birth</label>
-              <input type="date" value={fp.date_of_birth || ""} max={new Date().toISOString().split("T")[0]}
+              <input type="date" value={fp.date_of_birth || ""} max={maxDobDate()}
                 onChange={e => setFp(p => ({ ...p, date_of_birth: e.target.value }))} className={inputCls} />
+              {fieldErrors?.date_of_birth && <p className="text-xs text-red-500 mt-1">{fieldErrors.date_of_birth}</p>}
             </div>
 
             <div>

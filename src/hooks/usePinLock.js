@@ -118,6 +118,7 @@ export function usePinLock(userId, session) {
 
   const resetTimer = useCallback(() => {
     if (locked) return;
+    if (autoLockTimeout === 0) return; // Never mode — no inactivity timer
     clearTimer();
     inactivityTimer.current = setTimeout(() => {
       setLocked(true);
@@ -147,14 +148,14 @@ export function usePinLock(userId, session) {
     import("@capacitor/app")
       .then(({ App: CapApp }) => {
         CapApp.addListener("appStateChange", ({ isActive }) => {
-          if (!isActive) setLocked(true);
+          if (!isActive && autoLockTimeout !== 0) setLocked(true);
         }).then(l => { removeCapacitor = l; });
       })
       .catch(() => {});
 
     // Web
     const onVis = () => {
-      if (document.hidden) setLocked(true);
+      if (document.hidden && autoLockTimeout !== 0) setLocked(true);
     };
     document.addEventListener("visibilitychange", onVis);
 
@@ -207,8 +208,8 @@ export function usePinLock(userId, session) {
   }, []);
 
   const updateSettings = useCallback(async (obj) => {
-    // Convert camelCase keys to snake_case for the edge function
     const snake = {};
+    // Allow 0 (Never) as a valid autoLockTimeout
     if (typeof obj.autoLockTimeout === "number") snake.auto_lock_timeout = obj.autoLockTimeout;
     if (typeof obj.biometricEnabled === "boolean") snake.biometric_enabled = obj.biometricEnabled;
     const result = await invoke("update_settings", snake);

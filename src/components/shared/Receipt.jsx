@@ -9,7 +9,8 @@ import { jsPDF }   from "jspdf";
 import { Capacitor } from "@capacitor/core";
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
-import { savePdf }   from "../../utils/pdfSave";
+import { savePdf }        from "../../utils/pdfSave";
+import { createReportPdf } from "../../utils/generateReportPdf";
 
 const fmt  = (n) => `₦${Number(n || 0).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
 const NAVY = "#1B2A5E";
@@ -936,126 +937,88 @@ export function CreditPaymentReceipt({ payment, credit, businessName, onClose })
 }
 
 async function buildNativeActivityStatementPDF(staffName, businessName, from, to, txns, cashIn, cashOut, profit, credits, asoClients) {
-  const hx = h => { if (!h||!h.startsWith("#")) return [51,65,85]; return [parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)]; };
-  const fmtN = n => `N${Number(n||0).toLocaleString("en-NG",{minimumFractionDigits:2})}`;
-  const doc = new jsPDF({orientation:"p",unit:"mm",format:"a4"});
-  const W=doc.internal.pageSize.getWidth(), H=doc.internal.pageSize.getHeight(), M=10, CW=W-2*M;
-  const tc=[22,163,74];
-  const prd = from===to ? stmtFmtD(from) : `${stmtFmtD(from)} - ${stmtFmtD(to)}`;
+  const prd  = from === to ? stmtFmtD(from) : `${stmtFmtD(from)} – ${stmtFmtD(to)}`;
+  const sname = staffName || "Staff";
 
-  let logo = null;
-  try { const blob = await (await fetch('/logo.png')).blob(); logo = await new Promise(res => { const fr = new FileReader(); fr.onloadend = () => res(fr.result); fr.readAsDataURL(blob); }); } catch {}
+  const pdf = await createReportPdf({
+    title: "Staff Activity Statement",
+    businessName: businessName || "My Business",
+    period: prd,
+    subtitle: sname,
+  });
+  const { addStats, addSectionTitle, addTable, fmtN } = pdf;
 
-  doc.setFillColor(...tc); doc.rect(0,0,W,28,"F");
-  if (logo) doc.addImage(logo, 'PNG', M, 5, 18, 18);
-  doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(8);
-  doc.text("KudiAI Track · Staff Activity Statement", W/2, 8, {align:"center"});
-  doc.setFontSize(12); doc.text(businessName||"My Business", W/2, 17, {align:"center"});
-  doc.setFontSize(7.5); doc.setFont("helvetica","normal");
-  doc.text(`${staffName||"Staff"}  ·  ${prd}`, W/2, 25, {align:"center"});
-
-  let y=36;
-  function newPage(){ doc.addPage(); y=14; }
-  function need(h){ if(y+h>H-14) newPage(); }
-
-  function drawStats(stats) {
-    const bw=(CW-4)/2, bh=18;
-    for (let i=0;i<stats.length;i+=2) {
-      need(bh+3);
-      for (let j=0;j<2&&i+j<stats.length;j++) {
-        const s=stats[i+j], x=M+j*(bw+4);
-        doc.setFillColor(...hx(s.bg||"#f8fafc")); doc.rect(x,y,bw,bh,"F");
-        doc.setFont("helvetica","bold"); doc.setFontSize(6); doc.setTextColor(148,163,184);
-        doc.text(String(s.label||"").toUpperCase(), x+4, y+6);
-        doc.setTextColor(...hx(s.color||"#1e293b")); doc.setFont("helvetica","bold"); doc.setFontSize(11);
-        doc.text(String(s.value??""), x+4, y+14, {maxWidth:bw-6});
-      }
-      y+=bh+3;
-    }
-    y+=2;
-  }
-
-  function drawSection(title) {
-    need(16); y+=3;
-    doc.setFont("helvetica","bold"); doc.setFontSize(7.5); doc.setTextColor(...tc);
-    doc.text(title.toUpperCase(), M, y);
-    doc.setDrawColor(226,232,240); doc.setLineWidth(0.3); doc.line(M,y+2,W-M,y+2);
-    y+=9;
-  }
-
-  function drawTable(cols, rows) {
-    const rh=6.5; need(rh*2);
-    const drawHdr=()=>{
-      doc.setFillColor(241,245,249); doc.rect(M,y,CW,rh,"F");
-      doc.setFont("helvetica","bold"); doc.setFontSize(6.5); doc.setTextColor(71,85,105);
-      let x=M+2;
-      cols.forEach(c=>{ const cw=CW*(parseFloat(c.w)||1/cols.length); if(c.right) doc.text(String(c.label||"").toUpperCase(),x+cw-3,y+4.5,{align:"right"}); else doc.text(String(c.label||"").toUpperCase(),x,y+4.5); x+=cw; });
-      y+=rh;
-    };
-    drawHdr();
-    if (!rows?.length) { doc.setFont("helvetica","italic"); doc.setFontSize(7); doc.setTextColor(148,163,184); doc.text("No data for this period",M+CW/2,y+5,{align:"center"}); y+=10; return; }
-    rows.forEach((r,ri)=>{
-      if(y+rh>H-14){ newPage(); drawHdr(); }
-      if(ri%2===1){ doc.setFillColor(248,250,252); doc.rect(M,y,CW,rh,"F"); }
-      doc.setDrawColor(241,245,249); doc.setLineWidth(0.15); doc.line(M,y+rh,W-M,y+rh);
-      let x=M+2;
-      cols.forEach(c=>{ const cw=CW*(parseFloat(c.w)||1/cols.length),val=String(r[c.key]??"—"); if(c.color){ const ch=typeof c.color==="function"?c.color(r):c.color; doc.setTextColor(...(ch&&ch.startsWith("#")?hx(ch):[51,65,85])); } else { doc.setTextColor(51,65,85); } doc.setFont("helvetica",c.bold?"bold":"normal"); doc.setFontSize(7); if(c.right) doc.text(val,x+cw-3,y+4.5,{align:"right",maxWidth:cw-4}); else doc.text(val,x,y+4.5,{maxWidth:cw-3}); x+=cw; });
-      y+=rh;
-    });
-    y+=4;
-  }
-
-  drawStats([
-    {label:"Cash In",     value:fmtN(cashIn),  color:"#16a34a",bg:"#f0fdf4"},
-    {label:"Cash Out",    value:fmtN(cashOut), color:"#ef4444",bg:"#fef2f2"},
-    {label:"Net Profit",  value:fmtN(profit),  color:profit>=0?"#16a34a":"#ef4444",bg:"#f8fafc"},
-    {label:"Transactions",value:txns.length,   color:"#0284c7",bg:"#eff6ff"},
+  addStats([
+    { label:"Cash In",      value:fmtN(cashIn),  color:"#16a34a", bg:"#f0fdf4" },
+    { label:"Cash Out",     value:fmtN(cashOut), color:"#ef4444", bg:"#fef2f2" },
+    { label:"Net Profit",   value:fmtN(profit),  color:profit>=0?"#16a34a":"#ef4444", bg:"#f8fafc" },
+    { label:"Transactions", value:txns.length,   color:"#0284c7", bg:"#eff6ff" },
   ]);
-  drawSection("Transaction Log");
-  drawTable(
-    [{key:"date",label:"Date",w:0.13},{key:"item",label:"Item",bold:true,w:0.26},{key:"cat",label:"Category",w:0.16},{key:"type",label:"Type",bold:true,color:r=>r._t==="in"?"#16a34a":"#ef4444",w:0.11},{key:"amount",label:"Amount",right:true,bold:true,w:0.17},{key:"pay",label:"Payment",w:0.17}],
-    txns.slice(0,80).map(t=>({date:stmtFmtD(t.transaction_date),item:t.item_name||"—",cat:t.category||"—",type:t.type==="in"?"Income":"Expense",amount:fmtN(t.amount),pay:t.payment_type||"—",_t:t.type}))
+  addSectionTitle("Transaction Log");
+  addTable(
+    [{ key:"date",   label:"Date",     w:0.13 },
+     { key:"item",   label:"Item",     bold:true, w:0.26 },
+     { key:"cat",    label:"Category", w:0.16 },
+     { key:"type",   label:"Type",     bold:true, color:r=>r._t==="in"?[22,163,74]:[220,38,38], w:0.11 },
+     { key:"amount", label:"Amount",   right:true, bold:true, w:0.17 },
+     { key:"pay",    label:"Payment",  w:0.17 }],
+    txns.slice(0,80).map(t=>({
+      date:stmtFmtD(t.transaction_date), item:t.item_name||"—", cat:t.category||"—",
+      type:t.type==="in"?"Income":"Expense", amount:fmtN(t.amount),
+      pay:t.payment_type||"—", _t:t.type
+    }))
   );
-  const crAmt=credits.reduce((s,c)=>s+(c.outstanding||0),0);
-  const overdue=credits.filter(c=>c.status==="overdue");
-  drawStats([
-    {label:"Outstanding Credit",value:fmtN(crAmt),      color:"#d97706",bg:"#fffbeb"},
-    {label:"Credit Records",    value:credits.length,   color:"#334155",bg:"#f8fafc"},
-    {label:"Overdue Accounts",  value:overdue.length,   color:"#dc2626",bg:"#fef2f2"},
-    {label:"Overdue Amount",    value:fmtN(overdue.reduce((s,c)=>s+(c.outstanding||0),0)),color:"#dc2626",bg:"#fff1f2"},
+
+  const crAmt   = credits.reduce((s,c) => s+(c.outstanding||0), 0);
+  const overdue = credits.filter(c => c.status === "overdue");
+  addStats([
+    { label:"Outstanding Credit", value:fmtN(crAmt),     color:"#d97706", bg:"#fffbeb" },
+    { label:"Credit Records",     value:credits.length,  color:"#334155", bg:"#f8fafc" },
+    { label:"Overdue Accounts",   value:overdue.length,  color:"#dc2626", bg:"#fef2f2" },
+    { label:"Overdue Amount",     value:fmtN(overdue.reduce((s,c)=>s+(c.outstanding||0),0)), color:"#dc2626", bg:"#fff1f2" },
   ]);
-  if (credits.length>0) {
-    drawSection("Credit Records");
-    drawTable(
-      [{key:"name",label:"Customer",bold:true,w:0.24},{key:"total",label:"Total",right:true,w:0.15},{key:"paid",label:"Paid",right:true,color:()=>"#16a34a",w:0.15},{key:"owed",label:"Owed",right:true,bold:true,color:r=>r._s==="overdue"?"#dc2626":"#ef4444",w:0.15},{key:"due",label:"Due Date",w:0.17},{key:"status",label:"Status",bold:true,color:r=>r._s==="overdue"?"#dc2626":r._s==="paid"?"#16a34a":"#64748b",w:0.14}],
-      credits.map(c=>({name:c.customer_name||"—",total:fmtN(c.total_amount||0),paid:fmtN(c.amount_paid||0),owed:fmtN(c.outstanding||0),due:stmtFmtD(c.due_date),status:(c.status||"active").replace(/_/g," ").toUpperCase(),_s:c.status}))
-    );
-  }
-  const ajoBal=asoClients.reduce((s,c)=>s+(c.current_balance||0),0);
-  drawStats([
-    {label:"Ajo Balance",value:fmtN(ajoBal),       color:"#7c3aed",bg:"#faf5ff"},
-    {label:"Ajo Clients",value:asoClients.length,  color:"#0284c7",bg:"#eff6ff"},
-    {label:"Total Saved",value:fmtN(asoClients.reduce((s,c)=>s+(c.total_saved||0),0)),color:"#16a34a",bg:"#f0fdf4"},
-    {label:"Withdrawn",  value:fmtN(asoClients.reduce((s,c)=>s+(c.total_withdrawn||0),0)),color:"#ef4444",bg:"#fef2f2"},
-  ]);
-  if (asoClients.length>0) {
-    drawSection("Ajo / Savings Clients");
-    drawTable(
-      [{key:"name",label:"Client",bold:true,w:0.26},{key:"freq",label:"Frequency",w:0.16},{key:"contrib",label:"Contribution",right:true,w:0.18},{key:"saved",label:"Total Saved",right:true,color:()=>"#16a34a",w:0.18},{key:"balance",label:"Balance",right:true,bold:true,color:()=>"#7c3aed",w:0.22}],
-      asoClients.map(c=>({name:c.full_name||"—",freq:c.contribution_frequency||"—",contrib:fmtN(c.contribution_amount||0),saved:fmtN(c.total_saved||0),balance:fmtN(c.current_balance||0)}))
+  if (credits.length > 0) {
+    addSectionTitle("Credit Records");
+    addTable(
+      [{ key:"name",   label:"Customer", bold:true, w:0.24 },
+       { key:"total",  label:"Total",    right:true, w:0.15 },
+       { key:"paid",   label:"Paid",     right:true, color:()=>[22,163,74], w:0.15 },
+       { key:"owed",   label:"Owed",     right:true, bold:true, color:r=>r._s==="overdue"?[220,38,38]:[220,38,38], w:0.15 },
+       { key:"due",    label:"Due Date", w:0.17 },
+       { key:"status", label:"Status",   bold:true, color:r=>r._s==="overdue"?[220,38,38]:r._s==="paid"?[22,163,74]:[100,116,139], w:0.14 }],
+      credits.map(c=>({
+        name:c.customer_name||"—", total:fmtN(c.total_amount||0), paid:fmtN(c.amount_paid||0),
+        owed:fmtN(c.outstanding||0), due:stmtFmtD(c.due_date),
+        status:(c.status||"active").replace(/_/g," ").toUpperCase(), _s:c.status
+      }))
     );
   }
 
-  const totalPg=doc.internal.getNumberOfPages(), genDate=new Date().toLocaleString("en-NG");
-  for (let i=1;i<=totalPg;i++) {
-    doc.setPage(i); doc.setFillColor(248,250,252); doc.rect(0,H-10,W,10,"F");
-    doc.setDrawColor(226,232,240); doc.setLineWidth(0.2); doc.line(0,H-10,W,H-10);
-    doc.setFont("helvetica","italic"); doc.setFontSize(6); doc.setTextColor(148,163,184);
-    doc.text(`KudiAI Track  ·  ${staffName||"Staff"}  ·  ${genDate}  ·  Page ${i} of ${totalPg}`, W/2, H-5, {align:"center"});
+  const ajoBal = asoClients.reduce((s,c) => s+(c.current_balance||0), 0);
+  addStats([
+    { label:"Ajo Balance",  value:fmtN(ajoBal),                                                color:"#7c3aed", bg:"#faf5ff" },
+    { label:"Ajo Clients",  value:asoClients.length,                                           color:"#0284c7", bg:"#eff6ff" },
+    { label:"Total Saved",  value:fmtN(asoClients.reduce((s,c)=>s+(c.total_saved||0),0)),     color:"#16a34a", bg:"#f0fdf4" },
+    { label:"Withdrawn",    value:fmtN(asoClients.reduce((s,c)=>s+(c.total_withdrawn||0),0)), color:"#ef4444", bg:"#fef2f2" },
+  ]);
+  if (asoClients.length > 0) {
+    addSectionTitle("Ajo / Savings Clients");
+    addTable(
+      [{ key:"name",    label:"Client",       bold:true, w:0.26 },
+       { key:"freq",    label:"Frequency",    w:0.16 },
+       { key:"contrib", label:"Contribution", right:true, w:0.18 },
+       { key:"saved",   label:"Total Saved",  right:true, color:()=>[22,163,74], w:0.18 },
+       { key:"balance", label:"Balance",      right:true, bold:true, color:()=>[124,58,237], w:0.22 }],
+      asoClients.map(c=>({
+        name:c.full_name||"—", freq:c.contribution_frequency||"—",
+        contrib:fmtN(c.contribution_amount||0), saved:fmtN(c.total_saved||0),
+        balance:fmtN(c.current_balance||0)
+      }))
+    );
   }
 
-  const name=(staffName||"staff").replace(/\s+/g,"_");
-  await savePdf(doc, `KudiAITrack_Staff_Statement_${name}_${from}_${to}.pdf`);
+  const name = sname.replace(/\s+/g, "_");
+  await pdf.save(`KudiAITrack_Staff_Statement_${name}_${from}_${to}.pdf`);
 }
 
 export function StaffActivityStatement({ store, staffName, businessName, onClose }) {

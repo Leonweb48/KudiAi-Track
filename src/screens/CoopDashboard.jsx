@@ -6,6 +6,7 @@ import BillPayments from "./BillPayments";
 import CashbackCard from "../components/CashbackCard";
 import GroupChat from "./GroupChat";
 import { CoopSavingReceipt, CoopBulkWithdrawalReceipt, CoopWithdrawalRequestReceipt } from "../components/shared/Receipt";
+import { maxDobDate, isAtLeast18, AGE_ERROR } from "../utils/ageValidation";
 import { CoopNotificationBell, useChatUnread, ChatToast } from "../components/shared/CoopNotifications";
 import AIChatWidget from "../components/AIChatWidget";
 import { buildCoopOrgContext } from "../utils/buildContext";
@@ -321,6 +322,7 @@ function MembersTab({ org, members, onRefresh }) {
   const handleAdd = async () => {
     if (!form.full_name.trim()) { setError("Full name required"); return; }
     if (!form.email.trim()) { setError("Email address required"); return; }
+    if (form.date_of_birth && !isAtLeast18(form.date_of_birth)) { setError(AGE_ERROR); return; }
     setLoading(true); setError("");
     try {
       const result = await coopFn("add-member", { org_id: org.id, ...form });
@@ -333,6 +335,7 @@ function MembersTab({ org, members, onRefresh }) {
   };
 
   const handleEdit = async () => {
+    if (form.date_of_birth && !isAtLeast18(form.date_of_birth)) { setError(AGE_ERROR); return; }
     setSaving(true); setError("");
     try {
       await coopFn("update-member", { member_id: selected.id, org_id: org.id, ...form });
@@ -455,7 +458,7 @@ function MembersTab({ org, members, onRefresh }) {
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Date of Birth</label>
-                <input className={input} type="date" value={form.date_of_birth} onChange={set("date_of_birth")} />
+                <input className={input} type="date" value={form.date_of_birth} max={maxDobDate()} onChange={set("date_of_birth")} />
               </div>
               <div>
                 <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Date Joined</label>
@@ -617,7 +620,7 @@ function MembersTab({ org, members, onRefresh }) {
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Date of Birth</label>
-                <input className={input} type="date" value={form.date_of_birth} onChange={set("date_of_birth")} />
+                <input className={input} type="date" value={form.date_of_birth} max={maxDobDate()} onChange={set("date_of_birth")} />
               </div>
               <div>
                 <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Date Joined</label>
