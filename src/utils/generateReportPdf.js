@@ -173,10 +173,12 @@ export async function createReportPdf({
   let y = HDR_H + 8;
 
   // ── Page management ────────────────────────────────────────────────────────
+  // Continuation header: 10mm navy + 1.5mm green = 11.5mm total.
+  // Start content at 15mm — tight but clear of the stripe.
   function newPage() {
     doc.addPage();
     drawContinuationHeader();
-    y = 18;
+    y = 15;
   }
 
   function need(h) {
@@ -205,9 +207,11 @@ export async function createReportPdf({
       const xOff = ML + 6 + (i % 2) * halfW;
       const yOff = baseY + Math.floor(i / 2) * ITEM_H;
       setReg(5.5); col(...MUTED);
-      doc.text(String(d.label || "").toUpperCase(), xOff, yOff);
+      const lblLines = doc.splitTextToSize(String(d.label || "").toUpperCase(), halfW - 10);
+      doc.text(lblLines[0], xOff, yOff);
       setMed(7); col(...DARK);
-      doc.text(String(d.value || "—"), xOff, yOff + 4.5, { maxWidth: halfW - 10 });
+      const valLines = doc.splitTextToSize(String(d.value || "—"), halfW - 10);
+      doc.text(valLines[0] + (valLines.length > 1 ? "…" : ""), xOff, yOff + 4.5);
     });
 
     y += panH + 4;
@@ -240,7 +244,8 @@ export async function createReportPdf({
         doc.text(String(s.label || "").toUpperCase(), x + 3, y + 6);
         const vc = Array.isArray(s.color) ? s.color : hexToRgb(typeof s.color === "string" ? s.color : "#2c2c2a");
         setMed(11); col(...vc);
-        doc.text(String(s.value ?? ""), x + 3, y + 14, { maxWidth: boxW - 5 });
+        const vLines = doc.splitTextToSize(String(s.value ?? ""), boxW - 5);
+        doc.text(vLines[0] + (vLines.length > 1 ? "…" : ""), x + 3, y + 14);
       });
       y += boxH + 3;
     }
@@ -274,8 +279,9 @@ export async function createReportPdf({
         const cw  = CW * (c.w || c.width || (1 / cols.length));
         setMed(6.5); col(...WHITE);
         const lbl = String(c.label || "").toUpperCase();
-        if (c.right) doc.text(lbl, x + cw - 2, y + TH / 2 + 2, { align: "right" });
-        else         doc.text(lbl, x,            y + TH / 2 + 2);
+        const lblClipped = doc.splitTextToSize(lbl, cw - 3)[0];
+        if (c.right) doc.text(lblClipped, x + cw - 2, y + TH / 2 + 2, { align: "right" });
+        else         doc.text(lblClipped, x,            y + TH / 2 + 2);
         x += cw;
       });
       y += TH;
@@ -306,8 +312,11 @@ export async function createReportPdf({
         const tc  = resolveColor(c.color, r);
         c.bold ? setMed(7) : setReg(7);
         col(...tc);
-        if (c.right) doc.text(val, x + cw - 2, y + RH / 2 + 2, { align: "right", maxWidth: cw - 3 });
-        else         doc.text(val, x,            y + RH / 2 + 2, { maxWidth: cw - 2 });
+        const maxW = cw - 3;
+        const lines = doc.splitTextToSize(val, maxW);
+        const display = lines.length > 1 ? lines[0].trimEnd() + "…" : lines[0];
+        if (c.right) doc.text(display, x + cw - 2, y + RH / 2 + 2, { align: "right" });
+        else         doc.text(display, x,            y + RH / 2 + 2);
         x += cw;
       });
       y += RH;
