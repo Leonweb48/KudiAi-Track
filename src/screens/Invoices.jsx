@@ -766,7 +766,7 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
           onSent={async (id) => {
             const { error } = await markSent(id);
             if (!error) {
-              const _inv = detailInv;
+              const _inv = { ...detailInv, status: "sent" };
               ;(async () => {
                 let pdfBase64 = null;
                 try { pdfBase64 = await exportInvoicePdf(_inv, profile, invoiceSettings || {}, { returnBase64: true }); } catch {}
@@ -869,11 +869,12 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
                     customer_name:    detailInv.customer_name || "",
                     transaction_date: payData.paidAt ? payData.paidAt.slice(0, 10) : today(),
                   });
-                  const _inv2 = detailInv;
-                  const _pd   = payData;
+                  const _pd           = payData;
                   const paidKoboNow   = Math.round(parseFloat(_pd.amount_naira || 0) * 100);
-                  const totalPaidKobo = (_inv2.amount_paid_kobo || 0) + paidKoboNow;
-                  const balanceDue    = koboToNaira(Math.max(0, _inv2.total_kobo - totalPaidKobo));
+                  const totalPaidKobo = (detailInv.amount_paid_kobo || 0) + paidKoboNow;
+                  const balanceDue    = koboToNaira(Math.max(0, detailInv.total_kobo - totalPaidKobo));
+                  const _newStatus    = totalPaidKobo >= detailInv.total_kobo ? "paid" : "partially_paid";
+                  const _inv2 = { ...detailInv, status: _newStatus, amount_paid_kobo: totalPaidKobo };
                   ;(async () => {
                     let pdfBase64 = null;
                     try { pdfBase64 = await exportInvoicePdf(_inv2, profile, invoiceSettings || {}, { returnBase64: true }); } catch {}

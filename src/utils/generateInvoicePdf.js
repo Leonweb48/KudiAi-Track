@@ -6,9 +6,9 @@ const GREEN   = [61,  168, 41];
 const TGREEN  = [234, 246, 228];
 const LTGREEN = [243, 250, 239];
 const DARK    = [44,  44,  42];
-const SEC     = [95,  94,  90];
-const MUTED   = [138, 138, 133];
-const HAIRLN  = [230, 228, 220];
+const SEC     = [65,  64,  60];
+const MUTED   = [100, 99,  94];
+const HAIRLN  = [195, 193, 186];
 const PANEL   = [246, 248, 252];
 const WHITE   = [255, 255, 255];
 const RED     = [220, 38,  38];
@@ -124,8 +124,8 @@ function statusCfg(status, isReceipt) {
   if (status === "overdue")        return { text: "OVERDUE", pill: RED,         tint: TRED,           border: RED         };
   if (status === "cancelled")      return { text: "VOID",    pill: MUTED,       tint: PANEL,          border: HAIRLN      };
   if (status === "partially_paid") return { text: "PARTIAL", pill: AMBER,       tint: TAMBER,         border: AMBER       };
-  if (status === "sent")           return { text: "SENT",    pill: [37,99,235], tint: [239,246,255],  border: [37,99,235] };
-  return                                  { text: "DRAFT",   pill: MUTED,       tint: PANEL,          border: HAIRLN      };
+  if (status === "sent")           return { text: "UNPAID",  pill: AMBER,       tint: TAMBER,         border: AMBER       };
+  return                                  { text: "DRAFT",   pill: [90,88,83],  tint: [232,231,227],  border: [175,173,167] };
 }
 
 // ── Auto-shrink font to fit text within maxW (mm). Font face must be set first. ─
@@ -198,9 +198,9 @@ export async function exportInvoicePdf(
   const PAY_W       = TOT_X - ML - 6;  //  95 mm — payment details column
 
   // Row sizing
-  const ROW_LINE_H = 4.8;  // mm per wrapped line
-  const MIN_ROW_H  = 10;   // minimum row height
-  const TOT_ROW_H  = 8;    // totals section row height
+  const ROW_LINE_H = 6.0;  // mm per wrapped line
+  const MIN_ROW_H  = 14;   // minimum row height
+  const TOT_ROW_H  = 10;   // totals section row height
 
   // ── Business info ──────────────────────────────────────────────────────────
   const biz = {
@@ -311,13 +311,13 @@ export async function exportInvoicePdf(
 
   // Table header band — returns Y after the band
   function drawTableHeader(atY) {
-    const HDR_H = 9.5;
+    const HDR_H = 11;
     doc.setFillColor(...NAVY);
     doc.roundedRect(ML, atY, TW, HDR_H, 2.5, 2.5, "F");
     // Square off the bottom two corners
     doc.rect(ML, atY + 3, TW, HDR_H - 3, "F");
 
-    setMed(7.5); col(...WHITE);
+    setMed(9); col(...WHITE);
     const hY = atY + HDR_H / 2 + 2;   // vertically centred baseline
 
     doc.text("#",           SN_C,  hY, { align: "center" });
@@ -332,9 +332,9 @@ export async function exportInvoicePdf(
   // Slim repeat header for continuation pages — returns Y after header
   function drawSlimHeader(atY) {
     const nameW = TW / 2 - 4;
-    setMed(9); col(...NAVY);
+    setMed(10); col(...NAVY);
     doc.text(splitW(biz.name, nameW)[0], ML, atY + 5);
-    setReg(8);  col(...SEC);
+    setReg(9);  col(...SEC);
     doc.text(
       `${isReceipt ? "RECEIPT" : "INVOICE"} ${inv.invoice_number || ""}`,
       MR, atY + 5, { align: "right" }
@@ -392,12 +392,12 @@ export async function exportInvoicePdf(
   const bizInfoW = HDR_LEFT_LIM - bizInfoX;
   let bizY = tileY + 4;
 
-  setMed(11); col(...NAVY);
+  setMed(12); col(...NAVY);
   const bizNameLines = splitW(biz.name, bizInfoW).slice(0, 2);
   doc.text(bizNameLines, bizInfoX, bizY);
-  bizY += bizNameLines.length * 5.2 + 1;
+  bizY += bizNameLines.length * 5.5 + 1;
 
-  setReg(7.5); col(...MUTED);
+  setReg(9); col(...MUTED);
   if (biz.reg) {
     doc.text(`RC: ${biz.reg}`, bizInfoX, bizY); bizY += 4;
   }
@@ -417,8 +417,8 @@ export async function exportInvoicePdf(
   doc.setCharSpace(0);
   invY += 7;
 
-  setMed(7.5);
-  const bw = doc.getTextWidth(ss.text) + 10;
+  setMed(8.5);
+  const bw = doc.getTextWidth(ss.text) + 12;
   const bh = 7;
   const bx = MR - bw;
   doc.setFillColor(...ss.tint);
@@ -430,7 +430,7 @@ export async function exportInvoicePdf(
   y = Math.max(tileY + TILE + 6, invY + bh + 6);
 
   // ── META BAR ───────────────────────────────────────────────────────────────
-  const metaH = 18;
+  const metaH = 22;
   doc.setFillColor(...PANEL);
   doc.roundedRect(ML, y, TW, metaH, 3, 3, "F");
 
@@ -448,23 +448,23 @@ export async function exportInvoicePdf(
     const colL = ML + i * mStep + PAD_H + 2;
     const colW = mStep - (PAD_H + 2) * 2;
 
-    setReg(6.5); col(...MUTED); doc.setCharSpace(0.7);
-    doc.text(mc.label, colL, y + 6);
+    setReg(8); col(...MUTED); doc.setCharSpace(0.7);
+    doc.text(mc.label, colL, y + 7);
     doc.setCharSpace(0);
 
     // Value — one line, auto-shrink if too long for the column
-    setMed(8.5); col(...(mc.green ? GREEN : DARK));
+    setMed(10); col(...(mc.green ? GREEN : DARK));
     const valText = splitW(mc.val, colW)[0] || mc.val;
-    fitText(doc, valText, colW, 8.5, 6.5);
-    doc.text(valText, colL, y + 13.5);
-    doc.setFontSize(8.5);
+    fitText(doc, valText, colW, 10, 8);
+    doc.text(valText, colL, y + 16);
+    doc.setFontSize(10);
   });
 
   y += metaH + 6;
 
   // ── BILL TO + AMOUNT PANELS ────────────────────────────────────────────────
   const panelW  = (TW - 6) / 2;   // ~88 mm each
-  const panelH  = 34;
+  const panelH  = 38;
   const billX   = ML;
   const amtPX   = ML + panelW + 6;
   const cardPad = 4;               // inner padding for both panels
@@ -479,15 +479,15 @@ export async function exportInvoicePdf(
   const billCW = panelW - cardPad * 2 - 3;
   let btY = y + cardPad + 1.5;
 
-  setReg(6.5); col(...SEC); doc.setCharSpace(0.7);
-  doc.text("BILL TO", billCX, btY); doc.setCharSpace(0); btY += 5;
+  setReg(8); col(...SEC); doc.setCharSpace(0.7);
+  doc.text("BILL TO", billCX, btY); doc.setCharSpace(0); btY += 6;
 
-  setMed(10); col(...NAVY);
+  setMed(11); col(...NAVY);
   const custLines = splitW(inv.customer_name || "—", billCW).slice(0, 2);
-  doc.text(custLines, billCX, btY); btY += custLines.length * 5 + 1;
+  doc.text(custLines, billCX, btY); btY += custLines.length * 5.5 + 1;
 
-  setReg(8); col(...SEC);
-  if (inv.customer_phone) { doc.text(inv.customer_phone, billCX, btY); btY += 4.5; }
+  setReg(9); col(...SEC);
+  if (inv.customer_phone) { doc.text(inv.customer_phone, billCX, btY); btY += 5; }
   if (inv.customer_email) { doc.text(splitW(inv.customer_email, billCW)[0], billCX, btY); }
 
   // Amount panel
@@ -507,23 +507,23 @@ export async function exportInvoicePdf(
   const amtCW = panelW - cardPad * 2;
   let amY = y + cardPad + 1.5;
 
-  setReg(6.5); col(...SEC); doc.setCharSpace(0.7);
+  setReg(8); col(...SEC); doc.setCharSpace(0.7);
   doc.text(fullyPaid ? "AMOUNT PAID" : "AMOUNT DUE", amtCX, amY);
-  doc.setCharSpace(0); amY += 6;
+  doc.setCharSpace(0); amY += 7;
 
-  setMed(14); col(...(fullyPaid ? GREEN : isOverdue ? RED : NAVY));
+  setMed(15); col(...(fullyPaid ? GREEN : isOverdue ? RED : NAVY));
   const heroAmt = fmtK(fullyPaid ? inv.total_kobo : amtDueKobo);
-  fitText(doc, heroAmt, amtCW, 14, 9);
+  fitText(doc, heroAmt, amtCW, 15, 10);
   doc.text(heroAmt, amtCX, amY);
-  doc.setFontSize(14); amY += 6;
+  doc.setFontSize(15); amY += 7;
 
-  setReg(7.5);
+  setReg(9);
   if (fullyPaid) {
     col(...GREEN);
     doc.text("✓ Fully paid  ·  Balance ₦0.00", amtCX, amY);
   } else {
     col(...SEC);
-    if (inv.due_date) { doc.text(`Due: ${dateFmtShort(inv.due_date)}`, amtCX, amY); amY += 4.5; }
+    if (inv.due_date) { doc.text(`Due: ${dateFmtShort(inv.due_date)}`, amtCX, amY); amY += 5; }
     if (amtPaidKobo > 0) { col(...GREEN); doc.text(`Paid: ${fmtK(amtPaidKobo)}`, amtCX, amY); }
   }
 
@@ -542,9 +542,11 @@ export async function exportInvoicePdf(
     const subs = item.sub_items || [];
 
     // ── Calculate heights for the whole group ────────────────────────────────
+    setReg(12);  // match description render size for accurate word-wrap measurement
     const descLns   = wrapCapped(doc, item.description || "", C_DESC - PAD_H * 2, 3);
     const parentRowH = Math.max(MIN_ROW_H, descLns.length * ROW_LINE_H + 5);
     const subHeights = subs.map(sub => {
+      setReg(10);  // match sub-item render size
       const lns = wrapCapped(doc, sub.description || "", C_DESC - PAD_H * 2 - SUB_INDENT, 2);
       return Math.max(SUB_MIN_H, lns.length * ROW_LINE_H + 3);
     });
@@ -566,31 +568,31 @@ export async function exportInvoicePdf(
     const rMidY      = y + parentRowH / 2 + 1.8;
     const descStartY = y + (parentRowH - descLns.length * ROW_LINE_H) / 2 + ROW_LINE_H - 0.5;
 
-    setMed(8); col(...GREEN);
+    setMed(9); col(...GREEN);
     doc.text(String(itemIdx), SN_C, rMidY, { align: "center" });
 
-    setReg(9.5); col(...DARK);
+    setReg(12); col(...DARK);
     descLns.forEach((ln, li) => doc.text(ln, DESC_L, descStartY + li * ROW_LINE_H));
 
-    setReg(9.5); col(...SEC);
+    setReg(11); col(...SEC);
     doc.text(String(item.quantity || 1), QTY_C, rMidY, { align: "center" });
 
     if (item.pricing_mode === "auto") {
-      setItal(7.5); col(...MUTED);
+      setItal(8.5); col(...MUTED);
       doc.text("auto", UNIT_R, rMidY, { align: "right" });
     } else {
-      setReg(9.5); col(...SEC);
+      setReg(11); col(...SEC);
       const unitTxt = fmtK(item.unit_price_kobo);
-      fitText(doc, unitTxt, C_UNIT - PAD_H * 2, 9.5, 7.5);
+      fitText(doc, unitTxt, C_UNIT - PAD_H * 2, 11, 8);
       doc.text(unitTxt, UNIT_R, rMidY, { align: "right" });
-      doc.setFontSize(9.5);
+      doc.setFontSize(11);
     }
 
-    setMed(9.5); col(...DARK);
+    setMed(11); col(...DARK);
     const amtTxt = fmtK(item.line_total_kobo);
-    fitText(doc, amtTxt, C_AMT - PAD_H * 2, 9.5, 7.5);
+    fitText(doc, amtTxt, C_AMT - PAD_H * 2, 11, 8);
     doc.text(amtTxt, AMT_R, rMidY, { align: "right" });
-    doc.setFontSize(9.5);
+    doc.setFontSize(11);
 
     y += parentRowH;
 
@@ -605,7 +607,7 @@ export async function exportInvoicePdf(
         const contH = 8;
         doc.setDrawColor(...HAIRLN); doc.setLineWidth(0.1);
         doc.line(ML, y, MR, y);
-        setItal(8); col(...MUTED);
+        setItal(9); col(...MUTED);
         doc.text(`${descLns[0]} (continued)`, DESC_L + SUB_INDENT, y + 5.5);
         y += contH;
       }
@@ -619,29 +621,29 @@ export async function exportInvoicePdf(
       const subDescStartY = y + (subH - subDescLns.length * ROW_LINE_H) / 2 + ROW_LINE_H - 0.5;
 
       // Bullet
-      setMed(7); col(...GREEN);
+      setMed(8); col(...GREEN);
       doc.text("•", DESC_L + SUB_INDENT, subMidY);
 
       // Sub-item description
-      setReg(8); col(...SEC);
+      setReg(10); col(...SEC);
       subDescLns.forEach((ln, li) => doc.text(ln, DESC_L + SUB_INDENT + 3, subDescStartY + li * ROW_LINE_H));
 
       // Sub-item qty
-      setReg(8); col(...MUTED);
+      setReg(9); col(...MUTED);
       doc.text(String(sub.quantity || 1), QTY_C, subMidY, { align: "center" });
 
       // Sub-item unit price + amount (only if priced)
       if (sub.unit_price_kobo > 0) {
         const subUnitTxt = fmtK(sub.unit_price_kobo);
-        fitText(doc, subUnitTxt, C_UNIT - PAD_H * 2, 8, 7);
+        fitText(doc, subUnitTxt, C_UNIT - PAD_H * 2, 9, 7.5);
         doc.text(subUnitTxt, UNIT_R, subMidY, { align: "right" });
-        doc.setFontSize(8);
+        doc.setFontSize(9);
 
         if (sub.line_total_kobo > 0) {
           const subAmtTxt = fmtK(sub.line_total_kobo);
-          fitText(doc, subAmtTxt, C_AMT - PAD_H * 2, 8, 7);
+          fitText(doc, subAmtTxt, C_AMT - PAD_H * 2, 9, 7.5);
           doc.text(subAmtTxt, AMT_R, subMidY, { align: "right" });
-          doc.setFontSize(8);
+          doc.setFontSize(9);
         }
       }
 
@@ -674,13 +676,13 @@ export async function exportInvoicePdf(
 
   const thanksLns = biz.thanks ? splitW(biz.thanks, TW - 8) : [];
 
-  const TOTAL_BAR_H = 11;
+  const TOTAL_BAR_H = 13;
   const totH  = totRows.length * TOT_ROW_H + TOTAL_BAR_H + 6
     + (amtPaidKobo > 0 ? TOT_ROW_H : 0)
     + (amtDueKobo > 0 && amtPaidKobo > 0 ? TOT_ROW_H : 0);
-  const payH  = pmtRows.length > 0 ? pmtRows.length * 14 + 14 : 0;
-  const notesH  = inv.notes ? (splitW(inv.notes, TW).length * 5.2 + 14) : 0;
-  const thankH  = thanksLns.length > 0 ? thanksLns.length * 5.5 + 14 : 0;
+  const payH  = pmtRows.length > 0 ? pmtRows.length * 21 + 15 : 0;
+  const notesH  = inv.notes ? (splitW(inv.notes, TW).length * 6.0 + 14) : 0;
+  const thankH  = thanksLns.length > 0 ? thanksLns.length * 6.5 + 14 : 0;
   const blockH  = Math.max(totH, payH) + notesH + thankH + 8;
 
   if (y + blockH > CONTENT_BOT) {
@@ -692,13 +694,13 @@ export async function exportInvoicePdf(
 
   // Totals column — labels at TOT_LABEL_X, amounts at AMT_R
   for (const row of totRows) {
-    const rowBase = ty + 5.5;
-    setReg(9.5); col(...(row.red ? RED : SEC));
+    const rowBase = ty + 6;
+    setReg(11); col(...(row.red ? RED : SEC));
     doc.text(row.label, TOT_LABEL_X, rowBase);
-    setMed(9.5); col(...(row.red ? RED : DARK));
-    fitText(doc, row.val, C_AMT - PAD_H * 2, 9.5, 7.5);
+    setMed(11); col(...(row.red ? RED : DARK));
+    fitText(doc, row.val, C_AMT - PAD_H * 2, 11, 8);
     doc.text(row.val, AMT_R, rowBase, { align: "right" });
-    doc.setFontSize(9.5);
+    doc.setFontSize(11);
     ty += TOT_ROW_H;
   }
 
@@ -706,35 +708,35 @@ export async function exportInvoicePdf(
   const tdBarW = MR - TOT_X;
   doc.setFillColor(...NAVY);
   doc.roundedRect(TOT_X, ty, tdBarW, TOTAL_BAR_H, 2.5, 2.5, "F");
-  const tdBase = ty + TOTAL_BAR_H / 2 + 2.5;
-  setMed(9.5); col(...WHITE);
+  const tdBase = ty + TOTAL_BAR_H / 2 + 3;
+  setMed(11); col(...WHITE);
   doc.text(isReceipt ? "TOTAL RECEIVED" : "TOTAL DUE", TOT_LABEL_X, tdBase);
   const totalTxt = fmtK(inv.total_kobo);
-  fitText(doc, totalTxt, C_AMT - PAD_H * 2, 9.5, 7.5);
+  fitText(doc, totalTxt, C_AMT - PAD_H * 2, 11, 8);
   doc.text(totalTxt, AMT_R, tdBase, { align: "right" });
-  doc.setFontSize(9.5);
+  doc.setFontSize(11);
   ty += TOTAL_BAR_H + 5;
 
   if (amtPaidKobo > 0) {
-    const paidBase = ty + 5.5;
-    setReg(9.5); col(...GREEN);
+    const paidBase = ty + 6;
+    setReg(11); col(...GREEN);
     doc.text("Amount Paid", TOT_LABEL_X, paidBase);
-    setMed(9.5); col(...GREEN);
+    setMed(11); col(...GREEN);
     const paidTxt = fmtK(amtPaidKobo);
-    fitText(doc, paidTxt, C_AMT - PAD_H * 2, 9.5, 7.5);
+    fitText(doc, paidTxt, C_AMT - PAD_H * 2, 11, 8);
     doc.text(paidTxt, AMT_R, paidBase, { align: "right" });
-    doc.setFontSize(9.5);
+    doc.setFontSize(11);
     ty += TOT_ROW_H;
 
     if (amtDueKobo > 0) {
-      const balBase = ty + 5.5;
-      setReg(9.5); col(...RED);
+      const balBase = ty + 6;
+      setReg(11); col(...RED);
       doc.text("Balance Due", TOT_LABEL_X, balBase);
-      setMed(9.5); col(...RED);
+      setMed(11); col(...RED);
       const balTxt = fmtK(amtDueKobo);
-      fitText(doc, balTxt, C_AMT - PAD_H * 2, 9.5, 7.5);
+      fitText(doc, balTxt, C_AMT - PAD_H * 2, 11, 8);
       doc.text(balTxt, AMT_R, balBase, { align: "right" });
-      doc.setFontSize(9.5);
+      doc.setFontSize(11);
       ty += TOT_ROW_H;
     }
   }
@@ -742,18 +744,18 @@ export async function exportInvoicePdf(
   // Payment details — left column
   if (pmtRows.length > 0) {
     let py = blockTop;
-    setMed(7.5); col(...NAVY); doc.setCharSpace(0.5);
-    doc.text("PAYMENT DETAILS", ML, py + 5.5); doc.setCharSpace(0);
+    setMed(9); col(...NAVY); doc.setCharSpace(0.5);
+    doc.text("PAYMENT DETAILS", ML, py + 6); doc.setCharSpace(0);
     doc.setFillColor(...NAVY);
-    doc.rect(ML, py + 8, 24, 0.5, "F");
-    py += 14;
+    doc.rect(ML, py + 9, 28, 0.5, "F");
+    py += 15;
 
     for (const [lbl, val] of pmtRows) {
-      setReg(8);   col(...MUTED); doc.text(lbl, ML, py); py += 4;
-      setMed(9.5); col(...DARK);
+      setReg(9);   col(...MUTED); doc.text(lbl, ML, py); py += 4.5;
+      setMed(10); col(...DARK);
       const vLines = splitW(val, PAY_W).slice(0, 2);
       doc.text(vLines, ML, py);
-      py += vLines.length * 5.2 + 3;
+      py += vLines.length * 6 + 4;
     }
   }
 
@@ -761,19 +763,19 @@ export async function exportInvoicePdf(
 
   // ── NOTES ──────────────────────────────────────────────────────────────────
   if (inv.notes) {
-    setReg(7.5); col(...MUTED); doc.setCharSpace(0.5);
-    doc.text("NOTES", ML, y); doc.setCharSpace(0); y += 5;
-    setItal(9.5); col(...SEC);
+    setReg(9); col(...MUTED); doc.setCharSpace(0.5);
+    doc.text("NOTES", ML, y); doc.setCharSpace(0); y += 6;
+    setItal(11); col(...SEC);
     const nLns = splitW(inv.notes, TW);
     doc.text(nLns, ML, y);
-    y += nLns.length * 5.2 + 6;
+    y += nLns.length * 6.0 + 6;
   }
 
   // ── THANK-YOU ──────────────────────────────────────────────────────────────
   if (thanksLns.length > 0) {
     doc.setDrawColor(...HAIRLN); doc.setLineWidth(0.3);
     doc.line(ML, y, MR, y); y += 6;
-    setItal(9); col(...MUTED);
+    setItal(10); col(...MUTED);
     doc.text(thanksLns, ML + TW / 2, y, { align: "center" });
   }
 
