@@ -49,6 +49,8 @@ import ConsentModal         from "./components/ConsentModal";
 import AjoClientOtpVerify   from "./screens/AjoClientOtpVerify";
 import OrgOtpVerify         from "./screens/OrgOtpVerify";
 import AdminDashboard        from "./screens/AdminDashboard";
+import Help                  from "./screens/Help";
+import Profile               from "./screens/Profile";
 import { useInventory }      from "./hooks/useInventory";
 import { useInvoices }      from "./hooks/useInvoices";
 import { usePinLock }        from "./hooks/usePinLock";
@@ -443,6 +445,8 @@ export default function App() {
               <Route path="/insights"     element={SCREENS.insights}      />
               <Route path="/loyalty"      element={SCREENS.loyalty}       />
               <Route path="/settings"     element={SCREENS.settings}      />
+              <Route path="/help"          element={<Help store={store} session={session} plan={plan} />} />
+              <Route path="/profile"      element={<Profile store={store} session={session} plan={plan} lock={pinLock} />} />
               <Route path="/payment-return" element={<PaymentReturn />}     />
               <Route path="*"             element={SCREENS.home}          />
             </Routes>

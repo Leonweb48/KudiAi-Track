@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import Modal           from "../components/shared/Modal";
 import Field           from "../components/shared/Field";
 import StaffManagement from "./StaffManagement";
@@ -389,6 +390,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
   const { profile, setProfile } = store;
   const { lang: langCode }      = useLanguage();
   const t                       = useT();
+  const navigate                = useNavigate();
   const [staffMgmt,     setStaffMgmt]     = useState(false);
   const [editProfile,   setEditProfile]   = useState(false);
   const [fp,            setFp]            = useState({ ...profile });
@@ -563,7 +565,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
             {planName}
           </span>
         </div>
-        <button onClick={openEdit}
+        <button onClick={() => navigate("/profile")}
           className="flex-shrink-0 text-xs font-bold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-900/20 px-3 py-1.5 rounded-xl active:scale-95 transition">
           Edit
         </button>
@@ -694,7 +696,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
       {/* ── ACCOUNT ────────────────────────────────────────────────── */}
       <SectionLabel>{t("settings.account")}</SectionLabel>
       <SettingsCard>
-        <Row icon={<PersonIcon />} label={t("settings.profile")}   sub={t("settings.profileSub")}  onClick={openEdit} />
+        <Row icon={<PersonIcon />} label={t("settings.profile")}   sub={t("settings.profileSub")}  onClick={() => navigate("/profile")} />
         <Row icon={<UsersIcon />}  label={t("settings.staff")}     sub={canDo(plan, "staffManagement") ? t("settings.staffSub") : planAvailableText("staffManagement")}    onClick={() => canDo(plan, "staffManagement") ? setStaffMgmt(true) : onUpgrade?.()} />
         <Row icon={<BellIcon />}   label={t("settings.notif")}     sub={t("settings.notifSub")}    onClick={() => onNotifications?.()} />
       </SettingsCard>
@@ -800,7 +802,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
             sub={`T&C v${acceptedConsent.tnc_version} · Privacy v${acceptedConsent.privacy_version} · ${new Date(acceptedConsent.consented_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`}
           />
         )}
-        <Row icon={<HelpIcon />} label="Help & Support"        onClick={() => setShowSupport(true)} />
+        <Row icon={<HelpIcon />} label="Help & Support"        onClick={() => navigate("/help")} />
       </SettingsCard>
 
       {/* ── LOG OUT ────────────────────────────────────────────────── */}
