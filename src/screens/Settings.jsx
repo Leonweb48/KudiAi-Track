@@ -430,14 +430,6 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
   const lgas  = getLGAs(fp.state  || "");
   const wards = getWards(fp.state || "", fp.lga || "");
 
-  const openEdit = () => {
-    setFp({ ...profile });
-    setPhotoFile(null);
-    setPhotoPreview(null);
-    setSaveError("");
-    setEditProfile(true);
-  };
-
   const handlePhotoChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;

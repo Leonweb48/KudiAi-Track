@@ -204,7 +204,6 @@ function TicketDetail({ ticket, userId, profile, onBack, onUpdate }) {
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 pb-2">
         {timeline.map((item, i) => {
           const isAdmin = item.type === "admin_msg";
-          const isUser  = item.type === "user_msg" || item.type === "initial";
           return (
             <div key={i} className={`flex ${isAdmin ? "justify-start" : "justify-end"}`}>
               <div className={`max-w-[82%] ${isAdmin ? "bg-slate-100 dark:bg-slate-800" : "bg-brand-600"} rounded-2xl ${isAdmin ? "rounded-tl-sm" : "rounded-tr-sm"} px-4 py-3`}>
