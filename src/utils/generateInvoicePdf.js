@@ -1,21 +1,21 @@
 import { savePdf } from "./pdfSave";
 
 // ── Brand palette ──────────────────────────────────────────────────────────────
-const NAVY    = [22,  37,  90 ];   // #16255A — structure
-const GREEN   = [61,  168, 41 ];   // #3DA829 — accent
-const TGREEN  = [234, 246, 228];   // #EAF6E4 — paid tint
-const LTGREEN = [243, 250, 239];   // #F3FAEF — softer paid tint
-const DARK    = [44,  44,  42 ];   // #2c2c2a
-const SEC     = [95,  94,  90 ];   // #5f5e5a
-const MUTED   = [138, 138, 133];   // #8a8a85
-const HAIRLN  = [230, 228, 220];   // #e6e4dc
-const PANEL   = [246, 248, 252];   // #F6F8FC
+const NAVY    = [22,  37,  90];
+const GREEN   = [61,  168, 41];
+const TGREEN  = [234, 246, 228];
+const LTGREEN = [243, 250, 239];
+const DARK    = [44,  44,  42];
+const SEC     = [95,  94,  90];
+const MUTED   = [138, 138, 133];
+const HAIRLN  = [230, 228, 220];
+const PANEL   = [246, 248, 252];
 const WHITE   = [255, 255, 255];
-const RED     = [220, 38,  38 ];
-const AMBER   = [217, 119, 6  ];
+const RED     = [220, 38,  38];
+const AMBER   = [217, 119, 6];
 const TRED    = [254, 242, 242];
 const TAMBER  = [255, 251, 235];
-const LBLUE   = [148, 172, 220];   // light blue for footer text
+const LBLUE   = [148, 172, 220];
 
 const SLOGAN = "Talk your money. Track your profit. Grow your business.";
 
@@ -85,7 +85,7 @@ function initials(name) {
     .join("");
 }
 
-// ── Merge identical line items (same description + unit price) ─────────────────
+// ── Merge identical line items ─────────────────────────────────────────────────
 function mergeItems(items) {
   const seen = new Map();
   for (const item of (items || [])) {
@@ -103,13 +103,34 @@ function mergeItems(items) {
 
 // ── Status config ──────────────────────────────────────────────────────────────
 function statusCfg(status, isReceipt) {
-  if (isReceipt)                   return { text:"RECEIPT", pill:GREEN,   tint:LTGREEN, border:GREEN  };
-  if (status === "paid")           return { text:"PAID",    pill:GREEN,   tint:LTGREEN, border:GREEN  };
-  if (status === "overdue")        return { text:"OVERDUE", pill:RED,     tint:TRED,    border:RED    };
-  if (status === "cancelled")      return { text:"VOID",    pill:MUTED,   tint:PANEL,   border:HAIRLN };
-  if (status === "partially_paid") return { text:"PARTIAL", pill:AMBER,   tint:TAMBER,  border:AMBER  };
-  if (status === "sent")           return { text:"SENT",    pill:[37,99,235], tint:[239,246,255], border:[37,99,235] };
-  return                                  { text:"DRAFT",   pill:MUTED,   tint:PANEL,   border:HAIRLN };
+  if (isReceipt)                   return { text: "RECEIPT", pill: GREEN,       tint: LTGREEN,        border: GREEN       };
+  if (status === "paid")           return { text: "PAID",    pill: GREEN,       tint: LTGREEN,        border: GREEN       };
+  if (status === "overdue")        return { text: "OVERDUE", pill: RED,         tint: TRED,           border: RED         };
+  if (status === "cancelled")      return { text: "VOID",    pill: MUTED,       tint: PANEL,          border: HAIRLN      };
+  if (status === "partially_paid") return { text: "PARTIAL", pill: AMBER,       tint: TAMBER,         border: AMBER       };
+  if (status === "sent")           return { text: "SENT",    pill: [37,99,235], tint: [239,246,255],  border: [37,99,235] };
+  return                                  { text: "DRAFT",   pill: MUTED,       tint: PANEL,          border: HAIRLN      };
+}
+
+// ── Auto-shrink font to fit text within maxW (mm). Font face must be set first. ─
+function fitText(doc, text, maxW, startSize, minSize = 7.5) {
+  let fs = startSize;
+  doc.setFontSize(fs);
+  while (fs > minSize && doc.getTextWidth(text) > maxW) {
+    fs -= 0.5;
+    doc.setFontSize(fs);
+  }
+  return fs;
+}
+
+// ── Wrap + cap at maxLines, adding ellipsis if truncated ──────────────────────
+function wrapCapped(doc, text, maxW, maxLines) {
+  const lines = doc.splitTextToSize(String(text || ""), maxW);
+  if (lines.length <= maxLines) return lines;
+  const capped = lines.slice(0, maxLines);
+  const last   = capped[maxLines - 1];
+  capped[maxLines - 1] = last.length > 2 ? last.slice(0, -2) + "…" : last + "…";
+  return capped;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -122,30 +143,65 @@ export async function exportInvoicePdf(
   const { jsPDF } = await import("jspdf");
   const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
 
-  const W  = doc.internal.pageSize.getWidth();   // 210mm
-  const H  = doc.internal.pageSize.getHeight();  // 297mm
-  const ML = 15;                                  // left margin
-  const MR = W - 15;                              // right margin
-  const TW = MR - ML;                             // content width (180mm)
-  const FOOTER_H    = 18;
-  const CONTENT_BOT = H - FOOTER_H - 3;          // safe bottom of content
+  const W = doc.internal.pageSize.getWidth();   // 210 mm
+  const H = doc.internal.pageSize.getHeight();  // 297 mm
 
-  // ── Business info ────────────────────────────────────────────────────────
+  // ── Layout grid ───────────────────────────────────────────────────────────
+  const ML       = 14;           // left margin
+  const MR       = W - 14;       // right margin  (196 mm)
+  const TW       = MR - ML;      // content width (182 mm)
+  const PAD_H    = 3;            // horizontal inner padding for cells / cards
+  const FOOTER_H = 20;
+  const CONTENT_BOT = H - FOOTER_H - 4;  // 273 mm
+
+  // Table column widths — must sum to TW
+  const C_SN   = Math.round(TW * 0.06);  // 11 mm  — #
+  const C_QTY  = Math.round(TW * 0.08);  // 15 mm  — QTY
+  const C_UNIT = Math.round(TW * 0.18);  // 33 mm  — UNIT PRICE
+  const C_AMT  = Math.round(TW * 0.18);  // 33 mm  — AMOUNT
+  const C_DESC = TW - C_SN - C_QTY - C_UNIT - C_AMT;  // 90 mm — DESCRIPTION
+
+  // Column left-edge X positions
+  const X_SN   = ML;
+  const X_DESC = X_SN   + C_SN;
+  const X_QTY  = X_DESC + C_DESC;
+  const X_UNIT = X_QTY  + C_QTY;
+  const X_AMT  = X_UNIT + C_UNIT;
+  // X_AMT + C_AMT === MR ✓
+
+  // Anchor points used throughout (all amounts right-align at AMT_R)
+  const AMT_R  = MR - PAD_H;           // 193 mm — right edge for all amounts
+  const UNIT_R = X_AMT - PAD_H;        // 160 mm — right edge for unit prices
+  const QTY_C  = X_QTY + C_QTY / 2;   // 122.5 mm — centre for QTY column
+  const DESC_L = X_DESC + PAD_H;       //  28 mm — left for description text
+  const SN_C   = X_SN + C_SN / 2;     //  19.5 mm — centre for # column
+
+  // Totals block (starts aligned with QTY column — ~63% across the page)
+  const TOT_X       = X_QTY;           // 115 mm
+  const TOT_LABEL_X = TOT_X + PAD_H;   // 118 mm — labels left-align here
+  const PAY_W       = TOT_X - ML - 6;  //  95 mm — payment details column
+
+  // Row sizing
+  const ROW_LINE_H = 4.8;  // mm per wrapped line
+  const MIN_ROW_H  = 10;   // minimum row height
+  const TOT_ROW_H  = 8;    // totals section row height
+
+  // ── Business info ──────────────────────────────────────────────────────────
   const biz = {
-    name:     profile?.business_name          || "My Business",
-    phone:    invoiceSettings.contact_phone   || profile?.owner_phone          || "",
-    email:    invoiceSettings.contact_email   || profile?.email                || "",
-    address:  invoiceSettings.address         || profile?.address              || "",
-    reg:      invoiceSettings.reg_number      || "",
-    bank:     invoiceSettings.bank_name       || profile?.bank_name            || "",
-    acctNo:   invoiceSettings.account_number  || profile?.bank_account_number  || "",
-    acctName: invoiceSettings.account_name    || profile?.bank_account_name    || "",
-    logo:     invoiceSettings.logo_url        || "",
+    name:     profile?.business_name         || "My Business",
+    phone:    invoiceSettings.contact_phone  || profile?.owner_phone         || "",
+    email:    invoiceSettings.contact_email  || profile?.email               || "",
+    address:  invoiceSettings.address        || profile?.address             || "",
+    reg:      invoiceSettings.reg_number     || "",
+    bank:     invoiceSettings.bank_name      || profile?.bank_name           || "",
+    acctNo:   invoiceSettings.account_number || profile?.bank_account_number || "",
+    acctName: invoiceSettings.account_name   || profile?.bank_account_name   || "",
+    logo:     invoiceSettings.logo_url       || "",
     thanks:   invoiceSettings.thank_you_note
                 || "Thank you for your business. We truly value your patronage.",
   };
 
-  // ── Load assets ──────────────────────────────────────────────────────────
+  // ── Load assets ────────────────────────────────────────────────────────────
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const [logoB64, appLogoB64, fontRegB64, fontMedB64] = await Promise.all([
     biz.logo ? imgToBase64(biz.logo) : Promise.resolve(null),
@@ -154,7 +210,7 @@ export async function exportInvoicePdf(
     loadFontBase64(`${origin}/fonts/NotoSans-Medium.ttf`),
   ]);
 
-  // ── Register Unicode font ────────────────────────────────────────────────
+  // ── Register Unicode font ──────────────────────────────────────────────────
   let FONT = "helvetica";
   try {
     if (fontRegB64) {
@@ -171,29 +227,24 @@ export async function exportInvoicePdf(
   } catch { /* fall back to helvetica */ }
 
   const setReg  = (sz) => { doc.setFont(FONT, "normal"); if (sz) doc.setFontSize(sz); };
-  const setMed  = (sz) => { doc.setFont(FONT, FONT === "NotoSans" ? "bold" : "bold"); if (sz) doc.setFontSize(sz); };
+  const setMed  = (sz) => { doc.setFont(FONT, "bold");   if (sz) doc.setFontSize(sz); };
   const setItal = (sz) => { doc.setFont("helvetica", "italic"); if (sz) doc.setFontSize(sz); };
   const col     = (...c) => doc.setTextColor(...c);
   const splitW  = (txt, w) => doc.splitTextToSize(String(txt || ""), w);
 
-  // ── Derived state ────────────────────────────────────────────────────────
-  const ss           = statusCfg(inv.status, isReceipt);
-  const isPaid       = isReceipt || inv.status === "paid";
-  const isOverdue    = inv.status === "overdue";
-  const amtPaidKobo  = inv.amount_paid_kobo || 0;
-  const amtDueKobo   = Math.max(0, (inv.total_kobo || 0) - amtPaidKobo);
-  const fullyPaid    = isPaid || amtDueKobo <= 0;
-  const items        = mergeItems(inv.invoice_items || []);
+  // ── Derived state ──────────────────────────────────────────────────────────
+  const ss          = statusCfg(inv.status, isReceipt);
+  const isPaid      = isReceipt || inv.status === "paid";
+  const isOverdue   = inv.status === "overdue";
+  const amtPaidKobo = inv.amount_paid_kobo || 0;
+  const amtDueKobo  = Math.max(0, (inv.total_kobo || 0) - amtPaidKobo);
+  const fullyPaid   = isPaid || amtDueKobo <= 0;
+  const items       = mergeItems(inv.invoice_items || []);
 
-  // ── Table column X positions ─────────────────────────────────────────────
-  const cSN   = 9;
-  const cAmt  = 33;
-  const cUnit = 33;
-  const cQty  = 14;
-  const cDesc = TW - cSN - cQty - cUnit - cAmt;   // ≈ 91mm
-  const cX    = [ML, ML+cSN, ML+cSN+cDesc, ML+cSN+cDesc+cQty, ML+cSN+cDesc+cQty+cUnit];
+  // ══════════════════════════════════════════════════════════════════════════
+  // Per-page draw functions
+  // ══════════════════════════════════════════════════════════════════════════
 
-  // ── Per-page helpers ─────────────────────────────────────────────────────
   function drawTopStrips() {
     doc.setFillColor(...NAVY);
     doc.rect(0, 0, W, 4, "F");
@@ -212,14 +263,13 @@ export async function exportInvoicePdf(
   }
 
   function drawFooter(pageNum, total) {
-    const fy   = H - FOOTER_H;
-    const fcY  = fy + FOOTER_H / 2;
+    const fy  = H - FOOTER_H;
+    const fcY = fy + FOOTER_H / 2;
     doc.setFillColor(...NAVY);
     doc.rect(0, fy, W, FOOTER_H, "F");
     doc.setFillColor(...GREEN);
     doc.rect(0, H - 1.5, W, 1.5, "F");
 
-    // Logo tile
     const ltSz = 10;
     const ltX  = ML;
     const ltY  = fy + (FOOTER_H - ltSz) / 2;
@@ -228,47 +278,55 @@ export async function exportInvoicePdf(
       doc.roundedRect(ltX - 1, ltY - 1, ltSz + 2, ltSz + 2, 2, 2, "F");
       try { doc.addImage(appLogoB64, "PNG", ltX, ltY, ltSz, ltSz, "", "FAST"); } catch {}
     }
-    const fTextX = appLogoB64 ? ML + ltSz + 4 : ML;
+    const fTX = appLogoB64 ? ML + ltSz + 4 : ML;
 
-    setMed(7.5); col(...WHITE);
-    doc.text("KudiAI Track", fTextX, fcY - 2.5);
-    setItal(5.5); col(...LBLUE);
-    doc.text(SLOGAN, fTextX, fcY + 2.5);
+    setMed(8);   col(...WHITE);
+    doc.text("KudiAI Track", fTX, fcY - 3);
+    setItal(7);  col(...LBLUE);
+    doc.text(SLOGAN, fTX, fcY + 2.5);
 
-    setReg(5.5); col(...LBLUE);
+    setReg(7); col(...LBLUE);
     doc.text(
       `A product of Amaya & Co. Technologies © ${new Date().getFullYear()}`,
-      MR, fcY - 2.5, { align: "right" }
+      MR, fcY - 3, { align: "right" }
     );
     doc.text(`Page ${pageNum} of ${total}`, MR, fcY + 2.5, { align: "right" });
   }
 
+  // Table header band — returns Y after the band
   function drawTableHeader(atY) {
-    const HDR_H = 9;
+    const HDR_H = 9.5;
     doc.setFillColor(...NAVY);
     doc.roundedRect(ML, atY, TW, HDR_H, 2.5, 2.5, "F");
-    doc.rect(ML, atY + 3, TW, HDR_H - 3, "F");   // square off bottom corners
-    setMed(7); col(...WHITE);
-    const hY = atY + 6.2;
-    doc.text("#",           cX[0] + 2,       hY);
-    doc.text("DESCRIPTION", cX[1] + 2,       hY);
-    doc.text("QTY",         cX[2] + cQty/2,  hY, { align: "center" });
-    doc.text("UNIT PRICE",  cX[4] - 2,       hY, { align: "right" });
-    doc.text("AMOUNT",      MR,              hY, { align: "right" });
+    // Square off the bottom two corners
+    doc.rect(ML, atY + 3, TW, HDR_H - 3, "F");
+
+    setMed(7.5); col(...WHITE);
+    const hY = atY + HDR_H / 2 + 2;   // vertically centred baseline
+
+    doc.text("#",           SN_C,  hY, { align: "center" });
+    doc.text("DESCRIPTION", DESC_L, hY);
+    doc.text("QTY",         QTY_C, hY, { align: "center" });
+    doc.text("UNIT PRICE",  UNIT_R, hY, { align: "right"  });
+    doc.text("AMOUNT",      AMT_R,  hY, { align: "right"  });
+
     return atY + HDR_H;
   }
 
+  // Slim repeat header for continuation pages — returns Y after header
   function drawSlimHeader(atY) {
+    const nameW = TW / 2 - 4;
     setMed(9); col(...NAVY);
-    doc.text(biz.name, ML, atY + 5);
+    doc.text(splitW(biz.name, nameW)[0], ML, atY + 5);
     setReg(8);  col(...SEC);
     doc.text(
       `${isReceipt ? "RECEIPT" : "INVOICE"} ${inv.invoice_number || ""}`,
       MR, atY + 5, { align: "right" }
     );
-    doc.setDrawColor(...HAIRLN); doc.setLineWidth(0.3);
+    doc.setDrawColor(...HAIRLN);
+    doc.setLineWidth(0.3);
     doc.line(ML, atY + 8, MR, atY + 8);
-    return atY + 12;
+    return atY + 13;
   }
 
   function newPage(inTable) {
@@ -282,43 +340,60 @@ export async function exportInvoicePdf(
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // PAGE 1 — start
+  // PAGE 1
   // ══════════════════════════════════════════════════════════════════════════
   drawTopStrips();
   drawWatermark();
 
-  let y = 8;   // below top strips (4pt navy + 2pt green)
+  let y = 8;   // below the 6 mm top strips
 
-  // ── HEADER SECTION ───────────────────────────────────────────────────────
-  const TILE = 19;       // logo tile size mm (≈54pt)
+  // ── HEADER: logo/biz-info (left) + INVOICE title/badge (right) ────────────
+  // Reserve HDR_RIGHT_W mm for the right block; enforce HDR_GAP min gap.
+  const TILE        = 19;
+  const HDR_GAP     = 8;
+  const HDR_RIGHT_W = 70;
+  const HDR_LEFT_LIM = MR - HDR_RIGHT_W - HDR_GAP;  // max x for left content
+
   const tileX = ML;
   const tileY = y;
 
   if (logoB64) {
     doc.setFillColor(...PANEL);
     doc.roundedRect(tileX, tileY, TILE, TILE, 3, 3, "F");
-    try { doc.addImage(logoB64, getImgFmt(logoB64), tileX+1, tileY+1, TILE-2, TILE-2, "", "FAST"); } catch {}
+    try {
+      doc.addImage(logoB64, getImgFmt(logoB64), tileX + 1, tileY + 1, TILE - 2, TILE - 2, "", "FAST");
+    } catch {}
   } else {
     doc.setFillColor(...NAVY);
     doc.roundedRect(tileX, tileY, TILE, TILE, 3, 3, "F");
     setMed(initials(biz.name).length > 2 ? 8 : 11);
     col(...WHITE);
-    doc.text(initials(biz.name) || "?", tileX + TILE/2, tileY + TILE/2 + 1.5, { align: "center" });
+    doc.text(initials(biz.name) || "?", tileX + TILE / 2, tileY + TILE / 2 + 1.5, { align: "center" });
   }
 
-  // Business info (right of tile)
-  let bizY = tileY + 4;
+  // Business info — constrained to the left block
   const bizInfoX = tileX + TILE + 5;
-  setMed(13); col(...NAVY);
-  doc.text(splitW(biz.name, 80)[0], bizInfoX, bizY);
-  bizY += 5.5;
-  setReg(7.5); col(...MUTED);
-  if (biz.reg)     { doc.text(`RC: ${biz.reg}`, bizInfoX, bizY); bizY += 4; }
-  if (biz.address) { doc.text(splitW(biz.address, 75)[0], bizInfoX, bizY); bizY += 4; }
-  const contact = [biz.phone, biz.email].filter(Boolean).join("  ·  ");
-  if (contact) doc.text(contact, bizInfoX, bizY);
+  const bizInfoW = HDR_LEFT_LIM - bizInfoX;
+  let bizY = tileY + 4;
 
-  // "INVOICE" title (top-right)
+  setMed(11); col(...NAVY);
+  const bizNameLines = splitW(biz.name, bizInfoW).slice(0, 2);
+  doc.text(bizNameLines, bizInfoX, bizY);
+  bizY += bizNameLines.length * 5.2 + 1;
+
+  setReg(7.5); col(...MUTED);
+  if (biz.reg) {
+    doc.text(`RC: ${biz.reg}`, bizInfoX, bizY); bizY += 4;
+  }
+  if (biz.address) {
+    doc.text(splitW(biz.address, bizInfoW)[0], bizInfoX, bizY); bizY += 4;
+  }
+  const contact = [biz.phone, biz.email].filter(Boolean).join("  ·  ");
+  if (contact) {
+    doc.text(splitW(contact, bizInfoW)[0], bizInfoX, bizY);
+  }
+
+  // Right block: INVOICE / RECEIPT title + status badge
   let invY = tileY + 5.5;
   setMed(24); col(...NAVY);
   doc.setCharSpace(1.2);
@@ -326,20 +401,19 @@ export async function exportInvoicePdf(
   doc.setCharSpace(0);
   invY += 7;
 
-  // Status badge (pill)
   setMed(7.5);
-  const bw   = doc.getTextWidth(ss.text) + 10;
-  const bh   = 7;
-  const bx   = MR - bw;
+  const bw = doc.getTextWidth(ss.text) + 10;
+  const bh = 7;
+  const bx = MR - bw;
   doc.setFillColor(...ss.tint);
   doc.setDrawColor(...ss.border); doc.setLineWidth(0.6);
   doc.roundedRect(bx, invY, bw, bh, 2, 2, "FD");
   col(...ss.pill);
-  doc.text(ss.text, bx + bw/2, invY + 4.9, { align: "center" });
+  doc.text(ss.text, bx + bw / 2, invY + 4.9, { align: "center" });
 
   y = Math.max(tileY + TILE + 6, invY + bh + 6);
 
-  // ── META BAR ─────────────────────────────────────────────────────────────
+  // ── META BAR ───────────────────────────────────────────────────────────────
   const metaH = 18;
   doc.setFillColor(...PANEL);
   doc.roundedRect(ML, y, TW, metaH, 3, 3, "F");
@@ -347,42 +421,58 @@ export async function exportInvoicePdf(
   const todayStr = new Date().toISOString().slice(0, 10);
   const metaCols = [
     { label: isReceipt ? "RECEIPT NO." : "INVOICE NO.", val: inv.invoice_number || "—" },
-    { label: "ISSUE DATE",  val: dateFmtShort(inv.issue_date || todayStr) },
-    ...(!isReceipt && inv.due_date ? [{ label: "DUE DATE",  val: dateFmtShort(inv.due_date) }] : []),
+    { label: "ISSUE DATE", val: dateFmtShort(inv.issue_date || todayStr) },
+    ...(!isReceipt && inv.due_date ? [{ label: "DUE DATE", val: dateFmtShort(inv.due_date) }] : []),
     ...(fullyPaid ? [{ label: "PAID ON", val: dateFmtShort(todayStr), green: true }] : []),
   ];
-  const mStep = TW / Math.max(metaCols.length, 3);
+  const colCount = Math.max(metaCols.length, 3);
+  const mStep    = TW / colCount;
+
   metaCols.forEach((mc, i) => {
-    const cx = ML + i * mStep + 6;
+    const colL = ML + i * mStep + PAD_H + 2;
+    const colW = mStep - (PAD_H + 2) * 2;
+
     setReg(6.5); col(...MUTED); doc.setCharSpace(0.7);
-    doc.text(mc.label, cx, y + 6);
+    doc.text(mc.label, colL, y + 6);
     doc.setCharSpace(0);
-    setMed(8.5);
-    col(...(mc.green ? GREEN : DARK));
-    doc.text(mc.val, cx, y + 13.5);
+
+    // Value — one line, auto-shrink if too long for the column
+    setMed(8.5); col(...(mc.green ? GREEN : DARK));
+    const valText = splitW(mc.val, colW)[0] || mc.val;
+    fitText(doc, valText, colW, 8.5, 6.5);
+    doc.text(valText, colL, y + 13.5);
+    doc.setFontSize(8.5);
   });
+
   y += metaH + 6;
 
-  // ── BILL TO + AMOUNT PANELS ───────────────────────────────────────────────
-  const panelW = (TW - 6) / 2;
-  const panelH = 34;
-  const billX  = ML;
-  const amtPX  = ML + panelW + 6;
+  // ── BILL TO + AMOUNT PANELS ────────────────────────────────────────────────
+  const panelW  = (TW - 6) / 2;   // ~88 mm each
+  const panelH  = 34;
+  const billX   = ML;
+  const amtPX   = ML + panelW + 6;
+  const cardPad = 4;               // inner padding for both panels
 
-  // Bill To
+  // Bill To panel
   doc.setFillColor(...LTGREEN);
   doc.roundedRect(billX, y, panelW, panelH, 3, 3, "F");
   doc.setFillColor(...GREEN);
   doc.roundedRect(billX, y, 3, panelH, 1.5, 1.5, "F");
 
-  let btY = y + 5.5;
+  const billCX = billX + cardPad + 3;
+  const billCW = panelW - cardPad * 2 - 3;
+  let btY = y + cardPad + 1.5;
+
   setReg(6.5); col(...SEC); doc.setCharSpace(0.7);
-  doc.text("BILL TO", billX + 7, btY); doc.setCharSpace(0); btY += 5;
+  doc.text("BILL TO", billCX, btY); doc.setCharSpace(0); btY += 5;
+
   setMed(10); col(...NAVY);
-  doc.text(splitW(inv.customer_name || "—", panelW - 12)[0], billX + 7, btY); btY += 5.5;
+  const custLines = splitW(inv.customer_name || "—", billCW).slice(0, 2);
+  doc.text(custLines, billCX, btY); btY += custLines.length * 5 + 1;
+
   setReg(8); col(...SEC);
-  if (inv.customer_phone) { doc.text(inv.customer_phone, billX + 7, btY); btY += 4.5; }
-  if (inv.customer_email) { doc.text(splitW(inv.customer_email, panelW - 12)[0], billX + 7, btY); }
+  if (inv.customer_phone) { doc.text(inv.customer_phone, billCX, btY); btY += 4.5; }
+  if (inv.customer_email) { doc.text(splitW(inv.customer_email, billCW)[0], billCX, btY); }
 
   // Amount panel
   if (fullyPaid) {
@@ -397,89 +487,100 @@ export async function exportInvoicePdf(
   }
   doc.roundedRect(amtPX, y, panelW, panelH, 3, 3, "FD");
 
-  let amY = y + 5.5;
+  const amtCX = amtPX + cardPad;
+  const amtCW = panelW - cardPad * 2;
+  let amY = y + cardPad + 1.5;
+
   setReg(6.5); col(...SEC); doc.setCharSpace(0.7);
-  doc.text(fullyPaid ? "AMOUNT PAID" : "AMOUNT DUE", amtPX + 6, amY);
+  doc.text(fullyPaid ? "AMOUNT PAID" : "AMOUNT DUE", amtCX, amY);
   doc.setCharSpace(0); amY += 6;
-  setMed(14);
-  col(...(fullyPaid ? GREEN : isOverdue ? RED : NAVY));
-  doc.text(fmtK(fullyPaid ? inv.total_kobo : amtDueKobo), amtPX + 6, amY);
-  amY += 6;
+
+  setMed(14); col(...(fullyPaid ? GREEN : isOverdue ? RED : NAVY));
+  const heroAmt = fmtK(fullyPaid ? inv.total_kobo : amtDueKobo);
+  fitText(doc, heroAmt, amtCW, 14, 9);
+  doc.text(heroAmt, amtCX, amY);
+  doc.setFontSize(14); amY += 6;
+
   setReg(7.5);
   if (fullyPaid) {
     col(...GREEN);
-    doc.text("✓ Fully paid  ·  Balance ₦0.00", amtPX + 6, amY);
+    doc.text("✓ Fully paid  ·  Balance ₦0.00", amtCX, amY);
   } else {
     col(...SEC);
-    if (inv.due_date) { doc.text(`Due: ${dateFmtShort(inv.due_date)}`, amtPX + 6, amY); amY += 4.5; }
-    if (amtPaidKobo > 0) {
-      col(...GREEN);
-      doc.text(`Paid: ${fmtK(amtPaidKobo)}`, amtPX + 6, amY);
-    }
+    if (inv.due_date) { doc.text(`Due: ${dateFmtShort(inv.due_date)}`, amtCX, amY); amY += 4.5; }
+    if (amtPaidKobo > 0) { col(...GREEN); doc.text(`Paid: ${fmtK(amtPaidKobo)}`, amtCX, amY); }
   }
 
   y += panelH + 8;
 
-  // ── LINE ITEMS TABLE ──────────────────────────────────────────────────────
+  // ── LINE ITEMS TABLE ────────────────────────────────────────────────────────
   y = drawTableHeader(y);
 
   for (let i = 0; i < items.length; i++) {
-    const item     = items[i];
-    const descLns  = splitW(item.description || "", cDesc - 4);
-    const rowH     = Math.max(10, descLns.length * 4.8 + 6);
+    const item = items[i];
 
-    // Page break before drawing — move whole row
+    // Description: max 3 lines, ellipsis on overflow
+    const descLns = wrapCapped(doc, item.description || "", C_DESC - PAD_H * 2, 3);
+    const rowH    = Math.max(MIN_ROW_H, descLns.length * ROW_LINE_H + 5);
+
     if (y + rowH > CONTENT_BOT) {
       y = newPage(true);
     }
 
-    // Hairline
+    // Row hairline
     doc.setDrawColor(...HAIRLN); doc.setLineWidth(0.2);
     doc.line(ML, y, MR, y);
 
-    const rMidY  = y + rowH / 2 + 1.8;   // vertically centered baseline
-    const descT  = y + 5;                  // description starts from top
+    // Vertical midpoint for single-value cells
+    const rMidY = y + rowH / 2 + 1.8;
 
-    // # (green)
-    setMed(7.5); col(...GREEN);
-    doc.text(String(i + 1), cX[0] + 2.5, rMidY);
+    // Description start: vertically centred block
+    const descStartY = y + (rowH - descLns.length * ROW_LINE_H) / 2 + ROW_LINE_H - 0.5;
+
+    // # — centred in SN column
+    setMed(8); col(...GREEN);
+    doc.text(String(i + 1), SN_C, rMidY, { align: "center" });
 
     // Description
-    setReg(9); col(...DARK);
-    descLns.forEach((ln, li) => doc.text(ln, cX[1] + 2, descT + li * 4.8));
+    setReg(9.5); col(...DARK);
+    descLns.forEach((ln, li) => doc.text(ln, DESC_L, descStartY + li * ROW_LINE_H));
 
-    // QTY (centered)
-    setReg(8.5); col(...SEC);
-    doc.text(String(item.quantity || 1), cX[2] + cQty / 2, rMidY, { align: "center" });
+    // QTY — centred
+    setReg(9.5); col(...SEC);
+    doc.text(String(item.quantity || 1), QTY_C, rMidY, { align: "center" });
 
-    // Unit price (right-aligned to end of unit col)
-    doc.text(fmtK(item.unit_price_kobo), cX[4] - 2, rMidY, { align: "right" });
+    // Unit price — right-aligned at UNIT_R, auto-shrink
+    const unitTxt = fmtK(item.unit_price_kobo);
+    fitText(doc, unitTxt, C_UNIT - PAD_H * 2, 9.5, 7.5);
+    doc.text(unitTxt, UNIT_R, rMidY, { align: "right" });
+    doc.setFontSize(9.5);
 
-    // Amount (right-aligned, medium)
-    setMed(8.5); col(...DARK);
-    doc.text(fmtK(item.line_total_kobo), MR, rMidY, { align: "right" });
+    // Amount — right-aligned at AMT_R, auto-shrink, medium weight
+    setMed(9.5); col(...DARK);
+    const amtTxt = fmtK(item.line_total_kobo);
+    fitText(doc, amtTxt, C_AMT - PAD_H * 2, 9.5, 7.5);
+    doc.text(amtTxt, AMT_R, rMidY, { align: "right" });
+    doc.setFontSize(9.5);
 
     y += rowH;
   }
 
-  // Closing hairline
+  // Table closing hairline
   doc.setDrawColor(...HAIRLN); doc.setLineWidth(0.2);
   doc.line(ML, y, MR, y);
   y += 6;
 
-  // ── TOTALS + PAYMENT DETAILS ──────────────────────────────────────────────
-  // Gather totals rows
+  // ── TOTALS + PAYMENT DETAILS BLOCK ─────────────────────────────────────────
   const totRows = [
-    { label: "Subtotal",  val: fmtK(inv.subtotal_kobo) },
+    { label: "Subtotal",    val: fmtK(inv.subtotal_kobo) },
     ...(inv.discount_kobo > 0
-      ? [{ label: "Discount", val: `−${fmtK(inv.discount_kobo)}`, red: true }] : []),
+      ? [{ label: "Discount",   val: `−${fmtK(inv.discount_kobo)}`, red: true }] : []),
     ...(inv.vat_kobo > 0
-      ? [{ label: `VAT (7.5%)`, val: fmtK(inv.vat_kobo) }] : []),
+      ? [{ label: "VAT (7.5%)", val: fmtK(inv.vat_kobo) }] : []),
     ...((inv.other_charges_kobo || 0) > 0
       ? [{ label: inv.other_charges_label || "Other Charges", val: fmtK(inv.other_charges_kobo) }] : []),
   ];
 
-  // Payment details items
   const pmtRows = [
     biz.bank     ? ["Bank",         biz.bank    ] : null,
     biz.acctNo   ? ["Account No.",  biz.acctNo  ] : null,
@@ -487,116 +588,119 @@ export async function exportInvoicePdf(
     inv.payment_instructions ? ["Instructions", inv.payment_instructions] : null,
   ].filter(Boolean);
 
-  // Thank-you lines
   const thanksLns = biz.thanks ? splitW(biz.thanks, TW - 8) : [];
 
-  // Estimate block height
-  const totH =
-    totRows.length * 7 +
-    13 +   // TOTAL DUE bar
-    (amtPaidKobo > 0 ? 7 : 0) +
-    (amtDueKobo > 0 && amtPaidKobo > 0 ? 7 : 0) +
-    4;
-  const payH = pmtRows.length > 0 ? pmtRows.length * 13 + 14 : 0;
-  const notesH = inv.notes ? (splitW(inv.notes, TW).length * 4.5 + 12) : 0;
-  const thankH = thanksLns.length > 0 ? thanksLns.length * 5.2 + 12 : 0;
-  const blockH = Math.max(totH, payH) + notesH + thankH + 6;
+  const TOTAL_BAR_H = 11;
+  const totH  = totRows.length * TOT_ROW_H + TOTAL_BAR_H + 6
+    + (amtPaidKobo > 0 ? TOT_ROW_H : 0)
+    + (amtDueKobo > 0 && amtPaidKobo > 0 ? TOT_ROW_H : 0);
+  const payH  = pmtRows.length > 0 ? pmtRows.length * 14 + 14 : 0;
+  const notesH  = inv.notes ? (splitW(inv.notes, TW).length * 5.2 + 14) : 0;
+  const thankH  = thanksLns.length > 0 ? thanksLns.length * 5.5 + 14 : 0;
+  const blockH  = Math.max(totH, payH) + notesH + thankH + 8;
 
   if (y + blockH > CONTENT_BOT) {
     y = newPage(false);
   }
 
   const blockTop = y;
-
-  // ── Totals column (right 48%)
-  const TOT_W = Math.floor(TW * 0.48);
-  const TOT_X = MR - TOT_W;
   let ty = blockTop;
 
+  // Totals column — labels at TOT_LABEL_X, amounts at AMT_R
   for (const row of totRows) {
-    setReg(8.5);
-    col(...(row.red ? RED : SEC));
-    doc.text(row.label, TOT_X, ty);
-    setMed(8.5);
-    col(...(row.red ? RED : DARK));
-    doc.text(row.val, MR, ty, { align: "right" });
-    ty += 7;
+    const rowBase = ty + 5.5;
+    setReg(9.5); col(...(row.red ? RED : SEC));
+    doc.text(row.label, TOT_LABEL_X, rowBase);
+    setMed(9.5); col(...(row.red ? RED : DARK));
+    fitText(doc, row.val, C_AMT - PAD_H * 2, 9.5, 7.5);
+    doc.text(row.val, AMT_R, rowBase, { align: "right" });
+    doc.setFontSize(9.5);
+    ty += TOT_ROW_H;
   }
 
-  // TOTAL DUE bar
-  const tdH = 10;
+  // TOTAL DUE / TOTAL RECEIVED bar — spans from TOT_X to MR
+  const tdBarW = MR - TOT_X;
   doc.setFillColor(...NAVY);
-  doc.roundedRect(TOT_X - 2, ty - 1, TOT_W + 2, tdH, 2.5, 2.5, "F");
+  doc.roundedRect(TOT_X, ty, tdBarW, TOTAL_BAR_H, 2.5, 2.5, "F");
+  const tdBase = ty + TOTAL_BAR_H / 2 + 2.5;
   setMed(9.5); col(...WHITE);
-  const tdLabel = isReceipt ? "TOTAL RECEIVED" : "TOTAL DUE";
-  doc.text(tdLabel, TOT_X + 3, ty + 6.2);
-  doc.text(fmtK(inv.total_kobo), MR, ty + 6.2, { align: "right" });
-  ty += tdH + 4;
+  doc.text(isReceipt ? "TOTAL RECEIVED" : "TOTAL DUE", TOT_LABEL_X, tdBase);
+  const totalTxt = fmtK(inv.total_kobo);
+  fitText(doc, totalTxt, C_AMT - PAD_H * 2, 9.5, 7.5);
+  doc.text(totalTxt, AMT_R, tdBase, { align: "right" });
+  doc.setFontSize(9.5);
+  ty += TOTAL_BAR_H + 5;
 
   if (amtPaidKobo > 0) {
-    setReg(8.5); col(...GREEN);
-    doc.text("Amount Paid", TOT_X, ty);
-    setMed(8.5); col(...GREEN);
-    doc.text(fmtK(amtPaidKobo), MR, ty, { align: "right" });
-    ty += 7;
+    const paidBase = ty + 5.5;
+    setReg(9.5); col(...GREEN);
+    doc.text("Amount Paid", TOT_LABEL_X, paidBase);
+    setMed(9.5); col(...GREEN);
+    const paidTxt = fmtK(amtPaidKobo);
+    fitText(doc, paidTxt, C_AMT - PAD_H * 2, 9.5, 7.5);
+    doc.text(paidTxt, AMT_R, paidBase, { align: "right" });
+    doc.setFontSize(9.5);
+    ty += TOT_ROW_H;
+
     if (amtDueKobo > 0) {
-      setReg(8.5); col(...RED);
-      doc.text("Balance Due", TOT_X, ty);
-      setMed(8.5); col(...RED);
-      doc.text(fmtK(amtDueKobo), MR, ty, { align: "right" });
-      ty += 7;
+      const balBase = ty + 5.5;
+      setReg(9.5); col(...RED);
+      doc.text("Balance Due", TOT_LABEL_X, balBase);
+      setMed(9.5); col(...RED);
+      const balTxt = fmtK(amtDueKobo);
+      fitText(doc, balTxt, C_AMT - PAD_H * 2, 9.5, 7.5);
+      doc.text(balTxt, AMT_R, balBase, { align: "right" });
+      doc.setFontSize(9.5);
+      ty += TOT_ROW_H;
     }
   }
 
-  // ── Payment details column (left ~48%)
-  const PAY_W = TOT_X - ML - 8;
+  // Payment details — left column
   if (pmtRows.length > 0) {
     let py = blockTop;
-    setMed(7); col(...NAVY); doc.setCharSpace(0.5);
-    doc.text("PAYMENT DETAILS", ML, py); doc.setCharSpace(0);
+    setMed(7.5); col(...NAVY); doc.setCharSpace(0.5);
+    doc.text("PAYMENT DETAILS", ML, py + 5.5); doc.setCharSpace(0);
     doc.setFillColor(...NAVY);
-    doc.rect(ML, py + 2.5, 22, 0.5, "F");
-    py += 8;
+    doc.rect(ML, py + 8, 24, 0.5, "F");
+    py += 14;
 
     for (const [lbl, val] of pmtRows) {
-      setReg(7); col(...MUTED);
-      doc.text(lbl, ML, py); py += 3.5;
-      setMed(8); col(...DARK);
-      const vLines = splitW(val, PAY_W);
+      setReg(8);   col(...MUTED); doc.text(lbl, ML, py); py += 4;
+      setMed(9.5); col(...DARK);
+      const vLines = splitW(val, PAY_W).slice(0, 2);
       doc.text(vLines, ML, py);
-      py += vLines.length * 4.5 + 3;
+      py += vLines.length * 5.2 + 3;
     }
   }
 
-  y = Math.max(ty, blockTop + Math.max(totH, payH)) + 5;
+  y = Math.max(ty, blockTop + Math.max(totH, payH)) + 6;
 
-  // ── NOTES ────────────────────────────────────────────────────────────────
+  // ── NOTES ──────────────────────────────────────────────────────────────────
   if (inv.notes) {
-    setReg(7); col(...MUTED); doc.setCharSpace(0.5);
+    setReg(7.5); col(...MUTED); doc.setCharSpace(0.5);
     doc.text("NOTES", ML, y); doc.setCharSpace(0); y += 5;
-    setItal(8); col(...SEC);
+    setItal(9.5); col(...SEC);
     const nLns = splitW(inv.notes, TW);
     doc.text(nLns, ML, y);
-    y += nLns.length * 4.5 + 6;
+    y += nLns.length * 5.2 + 6;
   }
 
-  // ── THANK-YOU NOTE ────────────────────────────────────────────────────────
+  // ── THANK-YOU ──────────────────────────────────────────────────────────────
   if (thanksLns.length > 0) {
     doc.setDrawColor(...HAIRLN); doc.setLineWidth(0.3);
-    doc.line(ML, y, MR, y);
-    y += 6;
-    setItal(8.5); col(...MUTED);
+    doc.line(ML, y, MR, y); y += 6;
+    setItal(9); col(...MUTED);
     doc.text(thanksLns, ML + TW / 2, y, { align: "center" });
   }
 
-  // ── FOOTERS (all pages, with accurate page count) ─────────────────────────
+  // ── FOOTER on every page ────────────────────────────────────────────────────
   const totalPages = doc.internal.pages.length - 1;
   for (let p = 1; p <= totalPages; p++) {
     doc.setPage(p);
     drawFooter(p, totalPages);
   }
 
-  // ── OUTPUT ───────────────────────────────────────────────────────────────
+  // ── OUTPUT ──────────────────────────────────────────────────────────────────
   const prefix = isReceipt ? "receipt" : "invoice";
   const fname  = `${prefix}_${(inv.invoice_number || Date.now()).toString().replace(/\//g, "-")}.pdf`;
   if (returnBase64) return doc.output("datauristring").split(",")[1];
