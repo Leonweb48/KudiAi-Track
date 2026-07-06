@@ -3,10 +3,12 @@ import { supabase } from "../../utils/supabase";
 import Modal from "../../components/shared/Modal";
 import { StaffActivityStatement } from "../../components/shared/Receipt";
 import Insights from "../Insights";
+import LegalScreen from "../LegalScreen";
+import StaffHelp from "./StaffHelp";
 import {
   Svg, P, GK, YEAR,
   SectionLabel, SettingsCard, Row, RowIcon,
-  ChangePinModal, SupportModal, FAQ,
+  ChangePinModal, SupportModal,
   uploadAvatar,
 } from "./StaffShared";
 
@@ -50,6 +52,8 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
   const [showTimeoutPicker, setShowTimeoutPicker] = useState(false);
   const [showSupport,       setShowSupport]       = useState(false);
   const [showStatement,     setShowStatement]     = useState(false);
+  const [legalView,         setLegalView]         = useState(null); // "terms" | "privacy"
+  const [acceptedConsent,   setAcceptedConsent]   = useState(null);
   const fileRef = useRef(null);
 
   /* D2: My Activity */
@@ -71,6 +75,16 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
   const [reconcileMsg,    setReconcileMsg]    = useState("");
 
   useEffect(() => { if (initialView) setView(initialView); }, [initialView]);
+
+  /* Fetch user's accepted consent version for the Legal section */
+  useEffect(() => {
+    const uid = session?.user?.id;
+    if (!uid) return;
+    supabase.from("user_consents").select("tnc_version, privacy_version, consented_at")
+      .eq("user_id", uid).order("consented_at", { ascending: false }).limit(1).maybeSingle()
+      .then(({ data }) => { if (data) setAcceptedConsent(data); })
+      .catch(() => {});
+  }, [session]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (view === "activity") {
@@ -153,11 +167,13 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
     </div>
   );
 
-  /* ── FAQ ── */
-  if (view === "faq") return (
+  /* ── Legal screens ── */
+  if (legalView) return <LegalScreen type={legalView} onBack={() => setLegalView(null)} />;
+
+  /* ── Help & Support (FAQs + My Tickets) ── */
+  if (view === "help") return (
     <div className="h-full flex flex-col">
-      <SubHeader title="Frequently Asked Questions" />
-      <div className="flex-1 overflow-y-auto px-4 py-4 pb-6"><FAQ /></div>
+      <StaffHelp session={session} staff={staff} onBack={() => setView("menu")} />
     </div>
   );
 
@@ -573,8 +589,25 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
       <div className="px-4 mb-5">
         <SectionLabel>Help & Support</SectionLabel>
         <SettingsCard>
-          <Row icon={<RowIcon d={P.faq} />}  label="Frequently Asked Questions" sub="Browse common questions"  onClick={() => setView("faq")} />
-          <Row icon={<RowIcon d={P.help} />} label="Contact Support"            sub="Submit a support ticket"  onClick={() => setShowSupport(true)} />
+          <Row icon={<RowIcon d={P.faq} />}  label="FAQs & My Tickets" sub="Browse staff FAQs and manage support tickets" onClick={() => setView("help")} />
+          <Row icon={<RowIcon d={P.help} />} label="Contact Support"   sub="Submit a support ticket directly"              onClick={() => setView("help")} />
+        </SettingsCard>
+      </div>
+
+      {/* Legal */}
+      <div className="px-4 mb-5">
+        <SectionLabel>Legal</SectionLabel>
+        <SettingsCard>
+          <Row icon={<RowIcon d={P.doc} />} label="Terms & Conditions" sub="Last updated 1 July 2026"   onClick={() => setLegalView("terms")} />
+          <Row icon={<RowIcon d={P.doc} />} label="Privacy Policy"     sub="NDPA 2023 compliant"         onClick={() => setLegalView("privacy")} />
+          {acceptedConsent && (
+            <Row
+              icon={<RowIcon d={P.doc} />}
+              label="Your Accepted Version"
+              sub={`T&C v${acceptedConsent.tnc_version} · Privacy v${acceptedConsent.privacy_version} · ${new Date(acceptedConsent.consented_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`}
+              right={null}
+            />
+          )}
         </SettingsCard>
       </div>
 
