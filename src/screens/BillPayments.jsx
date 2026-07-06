@@ -870,8 +870,132 @@ function BillStatementModal({ bills, profile, onClose }) {
   );
 }
 
-/* ─── Premium result overlay (processing → success / disrupted / failed) ──── */
-function BillResultOverlay({ saving, fulfillResult, profile, businessName, staffName, onDone, onShareReceipt }) {
+/* ─── Stage 1: Confirm payment sheet (slides up before Paystack opens) ──── */
+function ConfirmPaymentSheet({ data, onConfirm, onCancel }) {
+  const { finalAmt, baseAmt, ptsSavings, cbSavings, couponSavings, catLabel, network, phone, planName, isFree } = data;
+  const hasDiscount = ptsSavings > 0 || cbSavings > 0 || couponSavings > 0;
+  const netCfg = NET_CONFIG[network] || null;
+  const [logoErr, setLogoErr] = useState(false);
+
+  return (
+    <div className="fixed inset-0 z-[70] flex flex-col justify-end" style={{ background: "rgba(0,0,0,0.55)" }}>
+      <div className="bg-white rounded-t-3xl shadow-2xl" style={{ maxHeight: "88vh", overflowY: "auto" }}>
+        {/* Drag handle */}
+        <div className="flex justify-center pt-3 pb-1">
+          <div className="w-10 h-1 rounded-full" style={{ background: "#e2e8f0" }} />
+        </div>
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 pt-3 pb-4">
+          <p className="text-lg font-black text-slate-900">Confirm Payment</p>
+          <button onClick={onCancel} className="w-8 h-8 rounded-full flex items-center justify-center"
+            style={{ background: "#f1f5f9" }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2.5" strokeLinecap="round">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+
+        {/* Provider + amount hero */}
+        <div className="mx-5 mb-4 rounded-2xl p-4 flex items-center gap-4"
+          style={{ background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+          <div className="w-14 h-14 rounded-xl overflow-hidden flex-shrink-0 flex items-center justify-center shadow-sm"
+            style={{ background: netCfg?.bg || "#0F1D42" }}>
+            {netCfg?.logo && !logoErr ? (
+              <img src={netCfg.logo} alt={network} className="w-11 h-11 object-contain"
+                onError={() => setLogoErr(true)} />
+            ) : (
+              <span className="text-sm font-black leading-none"
+                style={{ color: netCfg?.fg || "#fff" }}>
+                {(network || catLabel).slice(0, 3).toUpperCase()}
+              </span>
+            )}
+          </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider mb-0.5" style={{ color: "#94a3b8" }}>{catLabel}</p>
+            <p className="text-3xl font-black leading-none" style={{ color: isFree ? "#16a34a" : "#0f172a", letterSpacing: "-0.02em" }}>
+              {isFree ? "FREE" : fmt(finalAmt)}
+            </p>
+            {hasDiscount && !isFree && (
+              <p className="text-xs font-semibold mt-1" style={{ color: "#16a34a" }}>
+                Originally {fmt(baseAmt)} · discounts applied
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Details card */}
+        <div className="mx-5 rounded-2xl overflow-hidden shadow-sm mb-4" style={{ border: "1px solid #e2e8f0" }}>
+          {phone && (
+            <div className="px-4 py-3 flex justify-between items-center border-b border-slate-50">
+              <span className="text-[10px] font-black uppercase tracking-wider" style={{ color: "#94a3b8" }}>Recipient</span>
+              <span className="text-sm font-bold text-slate-800">{phone}</span>
+            </div>
+          )}
+          {network && (
+            <div className="px-4 py-3 flex justify-between items-center border-b border-slate-50">
+              <span className="text-[10px] font-black uppercase tracking-wider" style={{ color: "#94a3b8" }}>Network</span>
+              <span className="text-sm font-bold text-slate-800">{network}</span>
+            </div>
+          )}
+          {planName && (
+            <div className="px-4 py-3 flex justify-between items-center border-b border-slate-50">
+              <span className="text-[10px] font-black uppercase tracking-wider" style={{ color: "#94a3b8" }}>Plan / Value</span>
+              <span className="text-sm font-bold text-slate-800">{planName}</span>
+            </div>
+          )}
+          {ptsSavings > 0 && (
+            <div className="px-4 py-3 flex justify-between items-center border-b border-slate-50">
+              <span className="text-[10px] font-black uppercase tracking-wider" style={{ color: "#94a3b8" }}>Points Discount</span>
+              <span className="text-sm font-bold" style={{ color: "#16a34a" }}>−{fmt(ptsSavings)}</span>
+            </div>
+          )}
+          {cbSavings > 0 && (
+            <div className="px-4 py-3 flex justify-between items-center border-b border-slate-50">
+              <span className="text-[10px] font-black uppercase tracking-wider" style={{ color: "#94a3b8" }}>Cashback Applied</span>
+              <span className="text-sm font-bold" style={{ color: "#16a34a" }}>−{fmt(cbSavings)}</span>
+            </div>
+          )}
+          {couponSavings > 0 && (
+            <div className="px-4 py-3 flex justify-between items-center border-b border-slate-50">
+              <span className="text-[10px] font-black uppercase tracking-wider" style={{ color: "#94a3b8" }}>Coupon Discount</span>
+              <span className="text-sm font-bold" style={{ color: "#16a34a" }}>−{fmt(couponSavings)}</span>
+            </div>
+          )}
+          <div className="px-4 py-3 flex justify-between items-center" style={{ background: "#f0fdf4" }}>
+            <span className="text-[11px] font-black uppercase tracking-wider text-slate-700">Total to Pay</span>
+            <span className="text-lg font-black" style={{ color: "#16a34a" }}>{isFree ? "₦0.00" : fmt(finalAmt)}</span>
+          </div>
+        </div>
+
+        {/* Security badge */}
+        <div className="mx-5 mb-5 flex items-center gap-2 px-4 py-2.5 rounded-xl"
+          style={{ background: "#f0fdf4", border: "1px solid #bbf7d0" }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" strokeLinecap="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+          <p className="text-[10px] font-semibold" style={{ color: "#15803d" }}>Secured by Paystack · 256-bit SSL Encryption</p>
+        </div>
+
+        {/* Actions */}
+        <div className="px-5 pb-8 space-y-3">
+          <button onClick={onConfirm}
+            className="w-full py-4 rounded-2xl text-white font-black text-base active:scale-[0.98] transition-transform shadow-lg"
+            style={{ background: "linear-gradient(135deg,#16a34a,#059669)" }}>
+            {isFree ? "Activate Free Service" : "Confirm & Pay"}
+          </button>
+          <button onClick={onCancel}
+            className="w-full text-center text-sm font-semibold py-2"
+            style={{ color: "#94a3b8" }}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Stages 2–4: processing → delivery → receipt ──────────────────────── */
+function BillResultOverlay({ saving, fulfillResult, profile, businessName, staffName, onDone, onShareReceipt, onReportIssue }) {
   const catLabel = fulfillResult?.cat
     ? (CATS.find(c => c.id === fulfillResult.cat)?.label || "Bill Payment")
     : "Bill Payment";
@@ -1003,29 +1127,51 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
         </div>
       )}
 
-      {/* ── Success ── */}
+      {/* ── Success (Stage 4) ── */}
       {fulfillResult?.ok && !fulfillResult?.txnHistoryPending && (
         <div className="flex-1 overflow-y-auto">
-          {/* Amount hero */}
-          <div className="bg-white border-b border-slate-100 px-5 py-7 flex flex-col items-center text-center">
-            {/* Green glow circle + checkmark */}
-            <div className="relative mb-4">
-              <div className="absolute inset-0 rounded-full blur-xl" style={{ background: "rgba(22,163,74,0.25)", transform: "scale(1.3)" }} />
-              <div className="relative w-20 h-20 rounded-full shadow-xl flex items-center justify-center"
+          {/* OPay-style green gradient hero */}
+          <div className="px-5 pt-8 pb-7 flex flex-col items-center text-center"
+            style={{ background: "linear-gradient(180deg,#dcfce7 0%,#f0fdf4 55%,#ffffff 100%)" }}>
+            {/* Concentric rings + checkmark */}
+            <div className="relative mb-5" style={{ width: 100, height: 100 }}>
+              <div className="absolute rounded-full" style={{ inset: -22, background: "rgba(34,197,94,0.08)" }} />
+              <div className="absolute rounded-full" style={{ inset: -12, background: "rgba(34,197,94,0.13)" }} />
+              <div className="absolute rounded-full" style={{ inset: -4, background: "rgba(34,197,94,0.20)" }} />
+              <div className="relative w-full h-full rounded-full shadow-xl flex items-center justify-center"
                 style={{ background: "linear-gradient(135deg,#16a34a,#22c55e)" }}>
-                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="20 6 9 17 4 12"/>
                 </svg>
               </div>
             </div>
-            <p className="text-[10px] font-black uppercase tracking-widest mb-1" style={{ color: "#16a34a" }}>Transaction Successful</p>
-            <p className="text-4xl font-black text-slate-900 leading-none">{fmt(fulfillResult.amount || 0)}</p>
-            <p className="text-sm text-slate-500 mt-2 font-semibold">{fulfillResult.label}</p>
-            {/* Chip */}
+
+            {/* Provider badge pill */}
+            {fulfillResult.formSnap?.network && NET_CONFIG[fulfillResult.formSnap.network] && (
+              <div className="mb-3 flex items-center gap-1.5 px-3 py-1 rounded-full shadow-sm"
+                style={{ background: NET_CONFIG[fulfillResult.formSnap.network].bg }}>
+                <img src={NET_CONFIG[fulfillResult.formSnap.network].logo}
+                  alt={fulfillResult.formSnap.network}
+                  className="w-4 h-4 object-contain"
+                  onError={e => { e.target.style.display = "none"; }} />
+                <span className="text-[11px] font-black"
+                  style={{ color: NET_CONFIG[fulfillResult.formSnap.network].fg }}>
+                  {fulfillResult.formSnap.network}
+                </span>
+              </div>
+            )}
+
+            <p className="text-[10px] font-black uppercase tracking-widest mb-1.5" style={{ color: "#16a34a" }}>Transaction Successful</p>
+            <p className="font-black leading-none" style={{ fontSize: 46, letterSpacing: "-0.03em", color: "#0f172a" }}>
+              {fmt(fulfillResult.amount || 0)}
+            </p>
+            <p className="text-sm mt-2 font-semibold" style={{ color: "#64748b" }}>{fulfillResult.label}</p>
+
+            {/* Status chip */}
             <div className="mt-3 inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-black"
               style={fulfillResult.elecOrderId
                 ? { background: "#fffbeb", color: "#b45309", border: "1.5px solid #fde68a" }
-                : { background: "#f0fdf4", color: "#15803d", border: "1.5px solid #bbf7d0" }}>
+                : { background: "#dcfce7", color: "#15803d", border: "1.5px solid #86efac" }}>
               {fulfillResult.elecOrderId
                 ? <><div className="w-2.5 h-2.5 rounded-full border-2 border-transparent border-t-amber-500 animate-spin" />PAYMENT RECEIVED · FETCHING TOKEN</>
                 : <><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>DELIVERED SUCCESSFULLY</>
@@ -1163,24 +1309,29 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
           ) : null}
 
           {/* Action buttons */}
-          <div className="mx-4 mt-5 mb-4 space-y-2.5">
-            {/* WhatsApp quick-share: instant text summary, no canvas needed */}
+          <div className="mx-4 mt-5 mb-6 space-y-3">
+            {/* Share Receipt — PRIMARY */}
+            <button onClick={onShareReceipt}
+              className="w-full py-4 rounded-2xl text-white font-black text-base flex items-center justify-center gap-2.5 active:scale-[0.98] transition-transform shadow-lg"
+              style={{ background: "linear-gradient(135deg,#16a34a,#059669)" }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13"/>
+              </svg>
+              Share Receipt
+            </button>
+
+            {/* WhatsApp quick-share */}
             <button
               onClick={() => {
                 const fr = fulfillResult;
                 const dateStr = new Date().toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" });
                 const amtStr  = `₦${Number(fr.amount || 0).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
-                // Parse detail string "Key: val | Key: val" → structured lines
                 const detailLines = (fr.detail || "")
-                  .split("|")
-                  .map(s => s.trim())
-                  .filter(Boolean)
-                  .filter(s => !/^Refs?:/i.test(s))
-                  .map(s => `• ${s}`)
-                  .join("\n");
-                const tokenLine  = fr.elecToken ? `\n⚡ *Token:* \`${fr.elecToken}\`` : "";
-                const cardsLine  = fr.cardDetails ? `\n📄 *Card Details:* ${fr.cardDetails}` : "";
-                const pinsBlock  = fr.pinsArr?.length > 0
+                  .split("|").map(s => s.trim()).filter(Boolean)
+                  .filter(s => !/^Refs?:/i.test(s)).map(s => `• ${s}`).join("\n");
+                const tokenLine = fr.elecToken ? `\n⚡ *Token:* \`${fr.elecToken}\`` : "";
+                const cardsLine = fr.cardDetails ? `\n📄 *Card Details:* ${fr.cardDetails}` : "";
+                const pinsBlock = fr.pinsArr?.length > 0
                   ? "\n\n🔑 *PINs / Vouchers:*\n" + fr.pinsArr.map((p, i) => {
                       const code = p.EPIN ?? p.pin ?? p.code ?? "";
                       return `${i + 1}. ${p.network ? `[${p.network}] ` : ""}${code}`;
@@ -1190,36 +1341,34 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
                 const msg = `✅ *Payment Confirmed!*\n\n*${fr.label || catLabel}*\n━━━━━━━━━━━━━━\n${detailLines}\n• Amount: *${amtStr}*\n• Date: ${dateStr}${tokenLine}${cardsLine}${refLine}${pinsBlock}\n━━━━━━━━━━━━━━\n_Paid via KudiAI Track_`;
                 window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank", "noopener");
               }}
-              className="w-full py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform text-white"
-              style={{ background: "#25D366" }}>
+              className="w-full py-3.5 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
+              style={{ background: "#f0fdf4", color: "#15803d", border: "1.5px solid #86efac" }}>
               <svg viewBox="0 0 24 24" fill="currentColor" width="17" height="17">
                 <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
               </svg>
               Share via WhatsApp
             </button>
-            <button onClick={onShareReceipt}
-              className="w-full py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
-              style={{ border: "2px solid #1B2A5E", color: "#1B2A5E", background: "transparent" }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13"/>
-              </svg>
-              Share / Save Receipt
-            </button>
+
             {fulfillResult?.pinsArr?.length > 0 && (
               <button
                 onClick={() => generateTokenPDF({ fulfillResult, profile, businessName })}
-                className="w-full py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
-                style={{ border: "2px solid #7c3aed", color: "#7c3aed", background: "transparent" }}>
+                className="w-full py-3.5 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
+                style={{ border: "1.5px solid #7c3aed", color: "#7c3aed", background: "transparent" }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z"/>
                 </svg>
                 Download Print Cards PDF
               </button>
             )}
+
             <button onClick={onDone}
-              className="w-full py-4 text-white font-black rounded-xl text-sm active:scale-[0.98] transition-transform shadow-lg"
-              style={{ background: "linear-gradient(135deg,#16a34a,#059669)" }}>
+              className="w-full py-3.5 font-bold rounded-2xl text-sm active:scale-[0.98] transition-transform"
+              style={{ color: "#94a3b8" }}>
               Done
+            </button>
+            <button onClick={onReportIssue}
+              className="w-full text-center py-1">
+              <span className="text-xs font-semibold" style={{ color: "#cbd5e1" }}>Report an Issue</span>
             </button>
           </div>
         </div>
@@ -1263,66 +1412,73 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
         </div>
       )}
 
-      {/* ── Service Delivery Failed ── */}
+      {/* ── Service Delay — "We're Sorting This Out" ── */}
       {fulfillResult && !fulfillResult.ok && !fulfillResult.disrupted && (
         <div className="flex-1 overflow-y-auto px-5 py-6 flex flex-col gap-4">
-          {/* Red glow icon */}
-          <div className="flex flex-col items-center gap-3 pt-2">
-            <div className="relative">
-              <div className="absolute inset-0 rounded-full blur-xl" style={{ background: "rgba(239,68,68,0.25)", transform: "scale(1.4)" }} />
-              <div className="relative w-20 h-20 rounded-full shadow-xl flex items-center justify-center"
-                style={{ background: "linear-gradient(135deg,#fee2e2,#fecaca)" }}>
-                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2.5" strokeLinecap="round">
+          {/* Amber "working on it" icon */}
+          <div className="flex flex-col items-center gap-3 pt-4">
+            <div className="relative" style={{ width: 90, height: 90 }}>
+              <div className="absolute rounded-full" style={{ inset: -18, background: "rgba(245,158,11,0.08)" }} />
+              <div className="absolute rounded-full" style={{ inset: -8, background: "rgba(245,158,11,0.14)" }} />
+              <div className="relative w-full h-full rounded-full shadow-xl flex items-center justify-center"
+                style={{ background: "linear-gradient(135deg,#fffbeb,#fef3c7)" }}>
+                <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round">
                   <circle cx="12" cy="12" r="10"/>
-                  <line x1="12" y1="8" x2="12" y2="12"/>
-                  <line x1="12" y1="16" x2="12.01" y2="16"/>
+                  <polyline points="12 6 12 12 16 14"/>
                 </svg>
               </div>
             </div>
             <div className="text-center">
-              <p className="text-xl font-black text-slate-800">Service Delivery Failed</p>
-              <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                Payment received · Service could not be completed
-              </p>
+              <p className="text-xl font-black text-slate-800">We&apos;re Sorting This Out</p>
+              <p className="text-xs text-slate-400 mt-1 leading-relaxed">Payment received · Our team has been alerted</p>
             </div>
           </div>
 
-          {/* Reason from provider */}
-          <div className="rounded-2xl overflow-hidden shadow-sm" style={{ border: "1px solid #fecaca" }}>
-            <div className="px-4 py-2.5" style={{ background: "#fee2e2" }}>
-              <p className="text-[9px] font-black text-red-600 uppercase tracking-widest">Reason from Provider</p>
+          {/* Friendly explanation */}
+          <div className="rounded-2xl overflow-hidden shadow-sm" style={{ border: "1px solid #fde68a" }}>
+            <div className="px-4 py-2.5" style={{ background: "#fffbeb" }}>
+              <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: "#92400e" }}>What&apos;s Happening</p>
             </div>
             <div className="bg-white px-4 py-3">
-              <p className="text-sm font-semibold leading-relaxed" style={{ color: "#b91c1c" }}>{fulfillResult.detail}</p>
-            </div>
-          </div>
-
-          {/* Paystack ref (money safe) */}
-          <div className="rounded-2xl overflow-hidden shadow-sm" style={{ border: "1px solid #fde68a" }}>
-            <div className="px-4 py-2.5 flex items-center gap-1.5" style={{ background: "#fef3c7" }}>
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-              <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: "#92400e" }}>Your Payment Was Received · Keep This Reference</p>
-            </div>
-            <div className="bg-white px-4 py-3 space-y-2">
-              <p className="font-mono text-sm font-black break-all" style={{ color: "#b45309" }}>{fulfillResult.psRef}</p>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Our team has been automatically alerted. Your service will be fulfilled or a full refund will be issued shortly.
+              <p className="text-sm text-slate-700 leading-relaxed">
+                Your payment was successful. We&apos;re experiencing a brief delay fulfilling your service. Our team has been automatically notified and will resolve this within <strong>30 minutes</strong>.
               </p>
             </div>
           </div>
 
-          {/* Assurance notice */}
-          <div className="rounded-2xl px-4 py-3" style={{ background: "#eff6ff", border: "1px solid #bfdbfe" }}>
-            <p className="text-xs font-semibold text-center leading-relaxed" style={{ color: "#1d4ed8" }}>
-              A critical alert has been dispatched to the admin and finance team. No further action needed from you.
-            </p>
+          {/* Ref — preserve this */}
+          <div className="rounded-2xl overflow-hidden shadow-sm" style={{ border: "1px solid #bbf7d0" }}>
+            <div className="px-4 py-2.5 flex items-center gap-1.5" style={{ background: "#f0fdf4" }}>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" strokeLinecap="round">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+              <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: "#15803d" }}>Payment Confirmed · Save This Reference</p>
+            </div>
+            <div className="bg-white px-4 py-3">
+              <p className="font-mono text-sm font-black break-all" style={{ color: "#15803d" }}>{fulfillResult.psRef}</p>
+            </div>
           </div>
 
-          <button onClick={onDone}
-            className="w-full py-3.5 font-black rounded-xl text-sm text-white active:scale-[0.98] transition-transform shadow-lg mt-auto"
-            style={{ background: "linear-gradient(135deg,#1B2A5E,#2d4a8a)" }}>
-            Back to Bill Payments
-          </button>
+          {/* Actions */}
+          <div className="space-y-3 mt-2">
+            <button onClick={onShareReceipt}
+              className="w-full py-3.5 rounded-2xl text-white font-black text-sm flex items-center justify-center gap-2 active:scale-[0.98] transition-transform shadow-lg"
+              style={{ background: "linear-gradient(135deg,#16a34a,#059669)" }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13"/>
+              </svg>
+              Share Receipt
+            </button>
+            <button onClick={onDone}
+              className="w-full py-3.5 font-bold rounded-2xl text-sm active:scale-[0.98] transition-transform"
+              style={{ color: "#94a3b8" }}>
+              Done
+            </button>
+            <button onClick={onReportIssue}
+              className="w-full text-center py-1">
+              <span className="text-xs font-semibold" style={{ color: "#cbd5e1" }}>Report an Issue</span>
+            </button>
+          </div>
         </div>
       )}
 
@@ -1406,6 +1562,9 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     if (orphaned.length > 0) return null;
     return null;
   });
+
+  // Confirm overlay — shown before PIN modal / Paystack launch
+  const [confirmData, setConfirmData] = useState(null);
 
   // Transaction PIN confirmation — set to the display amount when PIN is required
   const [txnPinAmount, setTxnPinAmount] = useState(null); // null = hidden
@@ -2365,6 +2524,14 @@ export default function BillPayments({ store, plan, session = null, staffName = 
             sessionStorage.removeItem(BILL_LAST_RESULT);
             setFulfillResult(null);
           }}
+          onReportIssue={() => {
+            const fr = fulfillResult;
+            const ref = fr?.psRef || fr?.apiRef || "";
+            const svc = CATS.find(c => c.id === fr?.cat)?.label || "Bill Payment";
+            const amtStr = fr?.amount ? fmt(fr.amount) : "";
+            const msg = `🚨 Issue Report — KudiAI Track\n\nService: ${svc}\nAmount: ${amtStr}\nReference: ${ref}\n\nPlease assist with this transaction.`;
+            window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank", "noopener");
+          }}
         />
       )}
 
@@ -2989,8 +3156,20 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
               <div className="pb-6">
                 <button onClick={() => {
-                  const displayAmt = uiChargeAmt - ptsSavings - cbSavings - billCouponSavings;
-                  setTxnPinAmount(Math.max(0, displayAmt) * 100);
+                  const finalAmt = Math.max(0, uiChargeAmt - ptsSavings - cbSavings - billCouponSavings);
+                  const catInfo = CATS.find(c => c.id === selectedCat);
+                  setConfirmData({
+                    finalAmt,
+                    baseAmt: uiChargeAmt,
+                    ptsSavings,
+                    cbSavings,
+                    couponSavings: billCouponSavings,
+                    catLabel: catInfo?.label || "Bill Payment",
+                    network: form.network || "",
+                    phone: form.phone || form.meterNo || form.smartcard || form.customerId || form.accountNo || "",
+                    planName: form.planName || form.packageName || "",
+                    isFree: finalAmt <= 0,
+                  });
                 }} disabled={saving}
                   className="w-full text-white font-bold rounded-xl py-3.5 text-sm transition-all disabled:opacity-60"
                   style={{ background: "linear-gradient(135deg,#16a34a,#15803d)" }}>
@@ -3007,6 +3186,18 @@ export default function BillPayments({ store, plan, session = null, staffName = 
             </div>
           </div>
         </div>
+      )}
+
+      {confirmData && (
+        <ConfirmPaymentSheet
+          data={confirmData}
+          onConfirm={() => {
+            const displayAmt = confirmData.finalAmt;
+            setConfirmData(null);
+            setTxnPinAmount(Math.max(0, displayAmt) * 100);
+          }}
+          onCancel={() => setConfirmData(null)}
+        />
       )}
 
       {txnPinAmount !== null && (
