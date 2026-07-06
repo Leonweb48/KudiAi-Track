@@ -191,6 +191,53 @@ export function useAuth() {
       return;
     }
 
+    // ── Staff early routing ───────────────────────────────────────────
+    // Bypass the profile check entirely so a staff member who ended up
+    // with a profiles row (via DB trigger on auth user creation) is still
+    // routed to their staff portal, not to business onboarding.
+    if (accountType === "staff") {
+      let { data: staffRow } = await supabase
+        .from("staff")
+        .select("*, staff_permissions(*)")
+        .eq("user_id", uid)
+        .maybeSingle();
+
+      if (!staffRow) {
+        const { data: legacyStaff } = await supabase
+          .from("staff")
+          .select("*, staff_permissions(*)")
+          .eq("email", email)
+          .maybeSingle();
+        staffRow = legacyStaff;
+      }
+
+      if (staffRow) {
+        if (!staffRow.user_id) {
+          await supabase.from("staff").update({ user_id: uid }).eq("id", staffRow.id);
+        }
+        setStaff({ ...staffRow, user_id: uid });
+        subVerified.current = true;
+        logPlatformSession(supabase, uid, "staff", staffRow.full_name, email);
+        const otpVerified = sess.user.user_metadata?.staff_otp_verified === true;
+        if (mustChange && !otpVerified) {
+          setStatus("staff_otp");
+        } else if (mustChange) {
+          fireWelcomeEmail("staff_first_login", { name: staffRow.full_name || "", email: email || "" });
+          setStatus("staff_setup");
+        } else if (staffRow.role === "manager" && staffRow.branch_id) {
+          setStatus("branch_manager");
+        } else {
+          setStatus("staff");
+        }
+        return;
+      }
+
+      // No staff record found — block access rather than drop into business onboarding
+      await supabase.auth.signOut();
+      setStatus("unauthenticated");
+      return;
+    }
+
     // ── Organisation portal routing ───────────────────────────────────
     if (accountType === "organisation") {
       const isNetErr = (e) => e && (
