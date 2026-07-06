@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { supabase }           from "../utils/supabase";
 import { useStore }           from "../hooks/useStore";
 import { useInventory }       from "../hooks/useInventory";
-import { useBiometricLock }   from "../hooks/useBiometricLock";
 import { useNotifications }   from "../hooks/useNotifications";
 import NotificationCenter, { NotificationBell } from "../components/NotificationCenter";
 import { fmt, today }         from "../utils/helpers";
@@ -10,7 +9,6 @@ import { canDo, normalizeSlug, planAvailableText } from "../utils/plans";
 import AppLogo                from "../components/AppLogo";
 import Icon                   from "../components/Icon";
 import Modal                  from "../components/shared/Modal";
-import AIChatWidget           from "../components/AIChatWidget";
 import VoiceModal             from "../components/VoiceModal";
 import { TransactionReceipt, StaffActivityStatement } from "../components/shared/Receipt";
 import BillPayments           from "./BillPayments";
@@ -235,69 +233,105 @@ function TxRow({ t, onClick }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   PIN SETUP MODAL (matches business portal Settings.jsx exactly)
+   CHANGE PIN MODAL — wraps the server-side usePinLock PIN change flow
+   mode: "app" (6-digit app lock) | "txn" (4-digit transaction PIN)
+   Steps: 0=current PIN  1=new PIN  2=confirm new PIN
 ═══════════════════════════════════════════════════════════════════ */
-function PinSetupModal({ onDone, onClose }) {
-  const [step,  setStep]  = useState(1);
-  const [pin1,  setPin1]  = useState("");
-  const [pin2,  setPin2]  = useState("");
-  const [error, setError] = useState("");
+function ChangePinModal({ mode, onDone, onClose }) {
+  const digits = mode === "app" ? 6 : 4;
+  const label  = mode === "app" ? "App Lock PIN" : "Transaction PIN";
+  const [step,    setStep]    = useState(0);
+  const [current, setCurrent] = useState("");
+  const [newPin,  setNewPin]  = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [busy,    setBusy]    = useState(false);
+  const [err,     setErr]     = useState("");
+  const [ok,      setOk]      = useState(false);
 
-  const active    = step === 1 ? pin1 : pin2;
-  const setActive = step === 1 ? setPin1 : setPin2;
+  const stepPins    = [current, newPin, confirm];
+  const stepSetters = [setCurrent, setNewPin, setConfirm];
+  const active      = stepPins[step];
+  const setActive   = stepSetters[step];
 
-  const handleDigit = (d) => {
-    if (active.length >= 4) return;
+  const handleDigit = async (d) => {
+    if (busy || ok) return;
+    if (active.length >= digits) return;
     const next = active + d;
     setActive(next);
-    setError("");
-    if (next.length === 4) {
-      if (step === 1) {
-        setTimeout(() => setStep(2), 250);
-      } else {
-        if (pin1 === next) { onDone(pin1); }
-        else { setError("PINs don't match. Try again."); setPin2(""); setPin1(""); setTimeout(() => setStep(1), 800); }
-      }
+    setErr("");
+    if (next.length < digits) return;
+    if (step === 0) { setTimeout(() => setStep(1), 250); return; }
+    if (step === 1) { setTimeout(() => setStep(2), 250); return; }
+    // Confirm step — compare with newPin from step 1
+    if (newPin !== next) {
+      setErr("PINs don't match — try again");
+      setNewPin(""); setConfirm("");
+      setTimeout(() => setStep(1), 700);
+      return;
     }
+    setBusy(true);
+    try {
+      await onDone(current, newPin);
+      setOk(true);
+      setTimeout(onClose, 1400);
+    } catch (e) {
+      setErr(e.message || "Incorrect PIN — try again");
+      setCurrent(""); setNewPin(""); setConfirm("");
+      setTimeout(() => setStep(0), 700);
+    }
+    setBusy(false);
   };
 
-  const handleDel = () => { setActive(v => v.slice(0, -1)); setError(""); };
+  const handleDel = () => {
+    if (busy || ok) return;
+    setActive(v => v.slice(0, -1));
+    setErr("");
+  };
+
+  const titles = ["Enter current " + label, "Enter new " + label, "Confirm new " + label];
 
   return (
-    <Modal title={step === 1 ? "Set App PIN" : "Confirm PIN"} onClose={onClose}>
-      <div className="flex flex-col items-center gap-6 py-2">
-        <p className="text-sm text-slate-500 dark:text-slate-400 text-center">
-          {step === 1 ? "Choose a 4-digit PIN to protect your app" : "Enter your PIN again to confirm"}
-        </p>
-        <div className="flex gap-4">
-          {[0, 1, 2, 3].map(i => (
-            <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all ${active.length > i ? "bg-brand-500 border-brand-500 scale-110" : "border-slate-300 dark:border-slate-600"}`} />
-          ))}
-        </div>
-        {error && <p className="text-xs text-red-500 font-semibold -mt-2">{error}</p>}
-        <div className="grid grid-cols-3 gap-3 w-full max-w-[240px]">
-          {[1,2,3,4,5,6,7,8,9].map(n => (
-            <button key={n} onClick={() => handleDigit(String(n))}
-              className="h-14 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-800 dark:text-white text-lg font-bold transition active:scale-95">
-              {n}
-            </button>
-          ))}
-          <div />
-          <button onClick={() => handleDigit("0")}
-            className="h-14 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-800 dark:text-white text-lg font-bold transition active:scale-95">
-            0
-          </button>
-          <button onClick={handleDel}
-            className="h-14 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 flex items-center justify-center transition active:scale-95">
-            <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-              <path d="M21 4H8l-7 8 7 8h13a2 2 0 002-2V6a2 2 0 00-2-2z" />
-              <line x1="18" y1="9" x2="13" y2="14" /><line x1="13" y1="9" x2="18" y2="14" />
-            </svg>
-          </button>
-        </div>
-        <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center px-4">
-          Your PIN is stored securely on this device only
-        </p>
+    <Modal title={"Change " + label} onClose={onClose}>
+      <div className="flex flex-col items-center gap-5 py-2">
+        {ok ? (
+          <div className="flex flex-col items-center gap-3 py-4">
+            <div className="w-14 h-14 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+              <Svg d={P.check} size={24} color="#16a34a" sw={2.5} />
+            </div>
+            <p className="text-sm font-bold text-slate-700 dark:text-slate-200">PIN changed!</p>
+          </div>
+        ) : (
+          <>
+            <p className="text-sm text-slate-500 dark:text-slate-400 text-center">{titles[step]}</p>
+            <div className="flex gap-3">
+              {Array.from({ length: digits }).map((_, i) => (
+                <div key={i} className={`w-3.5 h-3.5 rounded-full border-2 transition-all ${active.length > i ? "bg-brand-500 border-brand-500 scale-110" : "border-slate-300 dark:border-slate-600"}`} />
+              ))}
+            </div>
+            {err && <p className="text-xs text-red-500 font-semibold -mt-2 text-center">{err}</p>}
+            {busy && <p className="text-xs text-slate-400">Verifying…</p>}
+            <div className="grid grid-cols-3 gap-3 w-full max-w-[240px]">
+              {[1,2,3,4,5,6,7,8,9].map(n => (
+                <button key={n} onClick={() => handleDigit(String(n))}
+                  className="h-14 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-white text-lg font-bold transition active:scale-95">
+                  {n}
+                </button>
+              ))}
+              <div />
+              <button onClick={() => handleDigit("0")}
+                className="h-14 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-white text-lg font-bold transition active:scale-95">
+                0
+              </button>
+              <button onClick={handleDel}
+                className="h-14 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center transition active:scale-95 text-slate-600 dark:text-slate-300">
+                <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                  <path d="M21 4H8l-7 8 7 8h13a2 2 0 002-2V6a2 2 0 00-2-2z" />
+                  <line x1="18" y1="9" x2="13" y2="14" /><line x1="13" y1="9" x2="18" y2="14" />
+                </svg>
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </Modal>
   );
@@ -588,8 +622,6 @@ function StaffSales({ store, staff, session, livePerms, initialSub, initialData,
     return inPeriod && inSearch;
   });
   const cashOnly = filtered.filter(t => t.payment_type !== "bill_payment");
-  const cashIn   = cashOnly.filter(t => t.type === "in").reduce((s, t) => s + t.amount, 0);
-  const cashOut  = cashOnly.filter(t => t.type === "out").reduce((s, t) => s + t.amount, 0);
 
   const allHistory = (() => {
     if (typeFilter === "in")    return filtered.filter(t => t.type === "in"  && t.payment_type !== "bill_payment");
@@ -597,6 +629,11 @@ function StaffSales({ store, staff, session, livePerms, initialSub, initialData,
     if (typeFilter === "bills") return filtered.filter(t => t.payment_type === "bill_payment");
     return filtered;
   })();
+
+  // Summary bar always reflects the same set shown in the list
+  const displaySet = sub === "cash" ? cashOnly : allHistory;
+  const cashIn  = displaySet.filter(t => t.type === "in"  && t.payment_type !== "bill_payment").reduce((s, t) => s + t.amount, 0);
+  const cashOut = displaySet.filter(t => t.type === "out" && t.payment_type !== "bill_payment").reduce((s, t) => s + t.amount, 0);
 
   return (
     <div className="h-full flex flex-col">
@@ -681,7 +718,7 @@ function StaffSales({ store, staff, session, livePerms, initialSub, initialData,
             </div>
           </div>
           <div className="flex-shrink-0 grid grid-cols-3 gap-px bg-slate-100 dark:bg-slate-700/50 border-y border-slate-100 dark:border-slate-700/50">
-            {[["Cash In", fmt(cashIn), "text-green-600"],["Cash Out", fmt(cashOut), "text-red-500"],["Count", (sub === "cash" ? cashOnly : allHistory).length + " txns", "text-slate-700 dark:text-slate-200"]].map(([l, v, c]) => (
+            {[["Cash In", fmt(cashIn), "text-green-600"],["Cash Out", fmt(cashOut), "text-red-500"],["Count", displaySet.length + " txns", "text-slate-700 dark:text-slate-200"]].map(([l, v, c]) => (
               <div key={l} className="bg-white dark:bg-slate-800 px-3 py-2.5 text-center">
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{l}</p>
                 <p className={`text-sm font-extrabold tabular mt-0.5 ${c}`}>{v}</p>
@@ -736,7 +773,7 @@ function StaffRecords({ store, staff, livePerms, initialSub, plan, invoiceHook, 
       <div className="flex-1 overflow-hidden">
         {sub === "credit" && (
           allowed.includes("credit")
-            ? <div className="h-full overflow-y-auto pb-4"><Credit store={store} plan="starter" /></div>
+            ? <div className="h-full overflow-y-auto pb-4"><Credit store={store} plan={plan} /></div>
             : <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-8">
                 <p className="text-base font-bold text-slate-600 dark:text-slate-400">Credit not enabled</p>
                 <p className="text-sm text-slate-400">Contact your manager to enable the credit module.</p>
@@ -762,7 +799,12 @@ function StaffRecords({ store, staff, livePerms, initialSub, plan, invoiceHook, 
             invoiceHook={invoiceHook}
             plan={plan}
             onUpgrade={null}
-            profile={store.profile}
+            profile={{
+              email:             store.profile?.email,
+              business_name:     store.profile?.business_name,
+              profile_image_url: store.profile?.profile_image_url,
+              store_image_url:   store.profile?.store_image_url,
+            }}
             inventory={inventory}
             addTransaction={store.addTransaction}
             userId={ownerId}
@@ -809,19 +851,20 @@ function StaffStock({ inventory, staff, livePerms, plan }) {
 /* ═══════════════════════════════════════════════════════════════════
    ME TAB
 ═══════════════════════════════════════════════════════════════════ */
-function StaffMe({ staff, session, store, inventory, livePerms, staffId, lock, plan, initialView, onStaffUpdate }) {
-  const [view,          setView]          = useState(initialView || "menu");
-  const [isDark,        setIsDark]        = useState(() => localStorage.getItem("kuditrack_dark") === "1");
-  const [editForm,      setEditForm]      = useState({ full_name: staff?.full_name || "", phone: staff?.phone || "" });
-  const [photoFile,     setPhotoFile]     = useState(null);
-  const [photoPreview,  setPhotoPreview]  = useState(null);
-  const [saving,        setSaving]        = useState(false);
-  const [saveMsg,       setSaveMsg]       = useState("");
-  const [showPinSetup,  setShowPinSetup]  = useState(false);
-  const [showSupport,   setShowSupport]   = useState(false);
-  const [showStatement, setShowStatement] = useState(false);
-  const [showReports,   setShowReports]   = useState(false);
-  const [lockBusy,      setLockBusy]      = useState(false);
+function StaffMe({ staff, session, store, inventory, livePerms, staffId, pinLock, plan, initialView, onStaffUpdate }) {
+  const [view,             setView]             = useState(initialView || "menu");
+  const [isDark,           setIsDark]           = useState(() => localStorage.getItem("kuditrack_dark") === "1");
+  const [editForm,         setEditForm]         = useState({ full_name: staff?.full_name || "", phone: staff?.phone || "" });
+  const [photoFile,        setPhotoFile]        = useState(null);
+  const [photoPreview,     setPhotoPreview]     = useState(null);
+  const [saving,           setSaving]           = useState(false);
+  const [saveMsg,          setSaveMsg]          = useState("");
+  const [changingPin,      setChangingPin]      = useState(null);
+  const [bioLoading,       setBioLoading]       = useState(false);
+  const [showTimeoutPicker,setShowTimeoutPicker] = useState(false);
+  const [showSupport,      setShowSupport]      = useState(false);
+  const [showStatement,    setShowStatement]    = useState(false);
+  const [showReports,      setShowReports]      = useState(false);
   const fileRef = useRef(null);
 
   useEffect(() => { if (initialView) setView(initialView); }, [initialView]);
@@ -856,6 +899,19 @@ function StaffMe({ staff, session, store, inventory, livePerms, staffId, lock, p
         <Svg d={P.back} size={18} color="#64748b" />
       </button>
       <p className="text-base font-extrabold text-slate-800 dark:text-slate-100">{title}</p>
+    </div>
+  );
+
+  /* FAQ sub-view */
+  if (view === "faq") return (
+    <div className="h-full flex flex-col">
+      <div className="flex items-center gap-3 px-4 py-4 border-b border-slate-100 dark:border-slate-700/50 flex-shrink-0 bg-white dark:bg-slate-900">
+        <button onClick={() => setView("menu")} className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center active:scale-90 transition">
+          <Svg d={P.back} size={18} color="#64748b" />
+        </button>
+        <p className="text-base font-extrabold text-slate-800 dark:text-slate-100">Frequently Asked Questions</p>
+      </div>
+      <div className="flex-1 overflow-y-auto px-4 py-4 pb-6"><FAQ /></div>
     </div>
   );
 
@@ -980,34 +1036,44 @@ function StaffMe({ staff, session, store, inventory, livePerms, staffId, lock, p
         <SettingsCard>
           <Row
             icon={<RowIcon d={P.lock} />}
-            label="App Lock"
-            sub={lock.enabled ? (lock.hasBiometric ? "Locked · Fingerprint / Face + PIN" : "Locked · PIN only") : lock.hasPIN ? "PIN set but lock is off" : "Protect app when you leave"}
-            onClick={async () => {
-              if (lock.enabled) { lock.disableLock(); }
-              else if (lock.hasPIN) { setLockBusy(true); await lock.enableLock(); setLockBusy(false); }
-              else { setShowPinSetup(true); }
-            }}
-            right={
-              <button
-                onClick={async (e) => {
-                  e.stopPropagation();
-                  if (lock.enabled) { lock.disableLock(); }
-                  else if (lock.hasPIN) { setLockBusy(true); await lock.enableLock(); setLockBusy(false); }
-                  else { setShowPinSetup(true); }
-                }}
-                className={`w-12 h-6 rounded-full transition-colors duration-200 relative flex-shrink-0 ${lock.enabled ? "bg-brand-600" : "bg-slate-200 dark:bg-slate-600"}`}>
-                {lockBusy
-                  ? <span className="absolute inset-0 flex items-center justify-center"><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /></span>
-                  : <span className="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all duration-200" style={{ left: lock.enabled ? "calc(100% - 22px)" : "2px" }} />
-                }
-              </button>
-            }
+            label="Change App Lock PIN"
+            sub="6-digit PIN · unlocks the app"
+            onClick={() => setChangingPin("app")}
           />
           <Row
             icon={<RowIcon d={P.shield} />}
-            label={lock.hasPIN ? "Change PIN" : "Set PIN"}
-            sub={lock.hasPIN ? (lock.hasBiometric ? "Biometric registered · tap to change PIN" : "Change your 4-digit unlock PIN") : "Set a 4-digit PIN to enable App Lock"}
-            onClick={() => setShowPinSetup(true)}
+            label="Change Transaction PIN"
+            sub="4-digit PIN · confirms payments"
+            onClick={() => setChangingPin("txn")}
+          />
+          {pinLock.biometricAvailable && (
+            <Row
+              icon={<RowIcon d={P.finger} />}
+              label="Face / Fingerprint"
+              sub={pinLock.biometricEnabled ? "Enabled — tap to disable" : "Tap to enable biometric unlock"}
+              onClick={async () => {
+                setBioLoading(true);
+                if (pinLock.biometricEnabled) await pinLock.disableBiometric();
+                else await pinLock.registerBiometric();
+                setBioLoading(false);
+              }}
+              right={
+                bioLoading
+                  ? <div className="w-4 h-4 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+                  : (
+                    <div className={`w-12 h-6 rounded-full transition-colors duration-200 relative flex-shrink-0 ${pinLock.biometricEnabled ? "bg-brand-600" : "bg-slate-200 dark:bg-slate-600"}`}>
+                      <span className="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all duration-200"
+                        style={{ left: pinLock.biometricEnabled ? "calc(100% - 22px)" : "2px" }} />
+                    </div>
+                  )
+              }
+            />
+          )}
+          <Row
+            icon={<RowIcon d={P.shield} />}
+            label="Auto-lock"
+            sub={({ 0: "Never", 60: "1 minute", 300: "5 minutes", 900: "15 minutes", 1800: "30 minutes" })[pinLock.autoLockTimeout] || `${Math.round(pinLock.autoLockTimeout / 60)} min`}
+            onClick={() => setShowTimeoutPicker(true)}
           />
         </SettingsCard>
       </div>
@@ -1044,28 +1110,28 @@ function StaffMe({ staff, session, store, inventory, livePerms, staffId, lock, p
         <p className="text-[10px] text-slate-300 dark:text-slate-600">Powered by AMAYA & Co. Technologies<br />All rights reserved © {YEAR}</p>
       </div>
 
-      {/* FAQ inline view */}
-      {view === "faq" && (
-        <div className="fixed inset-0 z-[60] bg-slate-50 dark:bg-slate-900 flex flex-col">
-          <div className="flex items-center gap-3 px-4 py-4 border-b border-slate-100 dark:border-slate-700/50 bg-white dark:bg-slate-900">
-            <button onClick={() => setView("menu")} className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center active:scale-90 transition">
-              <Svg d={P.back} size={18} color="#64748b" />
-            </button>
-            <p className="text-base font-extrabold text-slate-800 dark:text-slate-100">Frequently Asked Questions</p>
-          </div>
-          <div className="flex-1 overflow-y-auto px-4 py-4 pb-6"><FAQ /></div>
-        </div>
-      )}
-
       {/* Modals */}
-      {showPinSetup && (
-        <PinSetupModal onClose={() => setShowPinSetup(false)} onDone={async (pin) => {
-          setShowPinSetup(false);
-          await lock.setupPIN(pin);
-          setLockBusy(true);
-          await lock.enableLock();
-          setLockBusy(false);
-        }} />
+      {changingPin && (
+        <ChangePinModal
+          mode={changingPin}
+          onClose={() => setChangingPin(null)}
+          onDone={async (current, newP) => {
+            await (changingPin === "app" ? pinLock.changeAppPin : pinLock.changeTxnPin)(current, newP);
+          }}
+        />
+      )}
+      {showTimeoutPicker && (
+        <Modal title="Auto-lock Timeout" onClose={() => setShowTimeoutPicker(false)}>
+          <div className="space-y-2 py-2">
+            {[[0,"Never"],[60,"1 minute"],[300,"5 minutes (recommended)"],[900,"15 minutes"],[1800,"30 minutes"]].map(([v, l]) => (
+              <button key={v} onClick={async () => { await pinLock.updateSettings({ autoLockTimeout: v }); setShowTimeoutPicker(false); }}
+                className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition ${pinLock.autoLockTimeout === v ? "bg-brand-50 dark:bg-brand-900/30 text-brand-700 dark:text-brand-400 font-bold" : "bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200"}`}>
+                <span className="text-sm">{l}</span>
+                {pinLock.autoLockTimeout === v && <Svg d={P.check} size={16} color="#16a34a" sw={2.5} />}
+              </button>
+            ))}
+          </div>
+        </Modal>
       )}
       {showSupport && <SupportModal onClose={() => setShowSupport(false)} staffName={staff?.full_name} staffEmail={staff?.email || session?.user?.email || ""} />}
       {showStatement && <StaffActivityStatement store={store} staffName={staff?.full_name} businessName={staff?.business_name || store.profile?.business_name} onClose={() => setShowStatement(false)} />}
@@ -1076,7 +1142,7 @@ function StaffMe({ staff, session, store, inventory, livePerms, staffId, lock, p
 /* ═══════════════════════════════════════════════════════════════════
    MAIN STAFF DASHBOARD
 ═══════════════════════════════════════════════════════════════════ */
-export default function StaffDashboard({ session, staff: staffProp }) {
+export default function StaffDashboard({ session, staff: staffProp, pinLock }) {
   const t = useT();
 
   const NAV = useMemo(() => makeNav(t), [t]);
@@ -1114,7 +1180,6 @@ export default function StaffDashboard({ session, staff: staffProp }) {
   const store       = useStore(ownerId, staffId, staff?.full_name, addNotification);
   const inventory   = useInventory(ownerId, staffId, addNotification, staff?.branch_id || null);
   const invoiceHook = useInvoices(ownerId);
-  const lock        = useBiometricLock(staffId);
 
   // Fetch the business owner's active subscription plan.
   // Uses a SECURITY DEFINER RPC so the staff member's JWT can read the
@@ -1179,10 +1244,10 @@ export default function StaffDashboard({ session, staff: staffProp }) {
     };
   }, [ownerId, staffId, fetchPerms]);
 
-  // Voice: save parsed transaction
+  // Voice: save parsed transaction via store so it gets offline queueing + sync counting
   const handleVoiceSave = useCallback(async (parsed) => {
     if (!parsed || !ownerId) return;
-    await supabase.from("transactions").insert({
+    await store.addTransaction({
       owner_id:         ownerId,
       staff_id:         staffId,
       staff_name:       staff?.full_name || null,
@@ -1196,7 +1261,7 @@ export default function StaffDashboard({ session, staff: staffProp }) {
       quantity:         parsed.quantity || 1,
       transaction_date: parsed.transaction_date || today(),
     });
-  }, [ownerId, staffId, staff]);
+  }, [ownerId, staffId, staff, store]);
 
   // Nav badges
   const todayStr  = today();
@@ -1220,7 +1285,7 @@ export default function StaffDashboard({ session, staff: staffProp }) {
       case "sales":   return <StaffSales   store={store} staff={staff} session={session} livePerms={livePerms} initialSub={subNav} initialData={subData} onVoiceOpen={() => setVoiceOpen(true)} inventory={inventory} onAddCash={openAddTxn} plan={plan} />;
       case "records": return <StaffRecords store={store} staff={staff} livePerms={livePerms} initialSub={subNav} plan={plan} invoiceHook={invoiceHook} inventory={inventory} ownerId={ownerId} />;
       case "stock":   return <StaffStock   inventory={inventory} staff={staff} livePerms={livePerms} plan={plan} />;
-      case "me":      return <StaffMe      staff={staff} session={session} store={store} inventory={inventory} livePerms={livePerms} staffId={staffId} lock={lock} plan={plan} initialView={subNav} onStaffUpdate={p => setStaffPatch(prev => ({ ...prev, ...p }))} />;
+      case "me":      return <StaffMe      staff={staff} session={session} store={store} inventory={inventory} livePerms={livePerms} staffId={staffId} pinLock={pinLock} plan={plan} initialView={subNav} onStaffUpdate={p => setStaffPatch(prev => ({ ...prev, ...p }))} />;
       default:        setTab("home"); return null;
     }
   }
@@ -1295,9 +1360,6 @@ export default function StaffDashboard({ session, staff: staffProp }) {
             inventory={inventory}
           />
         )}
-
-        {/* Floating KudiAI Chat Widget */}
-        <AIChatWidget store={store} inventory={inventory} branches={[]} />
 
         {/* Voice Modal */}
         {voiceOpen && (

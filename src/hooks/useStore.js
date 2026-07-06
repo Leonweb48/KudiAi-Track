@@ -88,6 +88,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
       txQ  = txQ.eq("staff_id",  staffId);
       crQ  = crQ.eq("staff_id",  staffId);
       asoQ = asoQ.eq("staff_id", staffId);
+      dpQ  = dpQ.eq("staff_id",  staffId);
     }
     if (branchId) {
       txQ  = txQ.eq("branch_id", branchId);
@@ -99,7 +100,11 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
       txQ.order("created_at",  { ascending: false }),
       crQ.order("created_at",  { ascending: false }),
       asoQ.order("created_at", { ascending: false }),
-      supabase.from("profiles").select("*").eq("id", userId).maybeSingle(),
+      supabase.from("profiles")
+        .select(staffId
+          ? "id, business_name, full_name, email, currency, dark_mode, profile_image_url, store_image_url"
+          : "*")
+        .eq("id", userId).maybeSingle(),
       !staffId
         ? supabase.from("staff").select("id, full_name").eq("owner_id", userId)
         : Promise.resolve({ data: null }),

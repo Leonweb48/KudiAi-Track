@@ -64,6 +64,10 @@ body {
 /* ── Tabular numbers ──────────────────────────────────────────────── */
 .tabular { font-variant-numeric: tabular-nums; }
 
+/* ── No-scrollbar utility (safelist: always present, never purged) ── */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
 /* ── Toggle knob ──────────────────────────────────────────────────── */
 .toggle-knob { transition: left 0.2s ease; }
 

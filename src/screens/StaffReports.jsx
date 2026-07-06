@@ -673,6 +673,7 @@ export default function StaffReports({ store, inventory, staffName, businessName
   const [customTo,   setCustomTo]   = useState(todayStr());
   const [preview,    setPreview]    = useState(false);
   const [exporting,  setExporting]  = useState(false);
+  const [pdfErr,     setPdfErr]     = useState(null);
 
   const { from, to } = periodRange(period, customFrom, customTo);
 
@@ -691,16 +692,26 @@ export default function StaffReports({ store, inventory, staffName, businessName
   const exportPDF = async () => {
     if (exporting) return;
     setExporting(true);
+    setPdfErr(null);
     try {
       await buildNativeStaffReportPDF(reportType, reportData, staffName, businessName, from, to);
-    } catch(e) { console.error("PDF export:", e); }
+    } catch(e) {
+      console.error("PDF export:", e);
+      setPdfErr("Couldn't generate PDF — check your connection and try again");
+      setTimeout(() => setPdfErr(null), 4000);
+    }
     setExporting(false);
   };
 
   /* ── Preview screen ── */
   if (preview) {
     return (
-      <div className="fixed inset-0 z-[70] bg-slate-100 dark:bg-slate-900 flex flex-col">
+      <div className="fixed inset-0 z-[70] bg-slate-100 dark:bg-slate-900 flex flex-col relative">
+        {pdfErr && (
+          <div className="absolute bottom-4 left-4 right-4 z-10 bg-red-600 text-white text-sm font-semibold px-4 py-3 rounded-xl shadow-lg text-center pointer-events-none">
+            {pdfErr}
+          </div>
+        )}
         <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 px-4 pt-11 pb-3 flex items-center gap-3 flex-shrink-0">
           <button onClick={() => setPreview(false)}
             className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center active:scale-95 transition-transform">
@@ -723,11 +734,18 @@ export default function StaffReports({ store, inventory, staffName, businessName
         </div>
         <div className="flex-1 overflow-y-auto bg-slate-300 dark:bg-slate-700">
           <div className="py-4 flex justify-center">
-            <div style={{zoom:Math.min(1,(window.innerWidth-16)/794),width:794,flexShrink:0}}>
-              <div style={{width:794,background:"#fff",boxShadow:"0 20px 60px rgba(0,0,0,.25)"}}>
-                <StaffReportTemplate type={reportType} reportData={reportData} staffName={staffName} businessName={businessName} from={from} to={to}/>
-              </div>
-            </div>
+            {(() => {
+              const s = Math.min(1, (window.innerWidth - 16) / 794);
+              return (
+                <div style={{ width: 794 * s, flexShrink: 0 }}>
+                  <div style={{ width: 794, transformOrigin: "top left", transform: `scale(${s})` }}>
+                    <div style={{width:794,background:"#fff",boxShadow:"0 20px 60px rgba(0,0,0,.25)"}}>
+                      <StaffReportTemplate type={reportType} reportData={reportData} staffName={staffName} businessName={businessName} from={from} to={to}/>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
       </div>

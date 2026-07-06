@@ -319,13 +319,13 @@ export default function App() {
   }
   // Lock screen (inactivity or new device)
   if (pinLock.locked) {
-    return <LockScreen pinLock={pinLock} businessName={store.profile?.business_name || store.profile?.owner_name} />;
+    return <LockScreen pinLock={pinLock} businessName={store.profile?.business_name || store.profile?.owner_name || staff?.business_name} />;
   }
   // ── Authenticated portals (PIN already set) ──
   if (status === "organisation")  return <OrgPortal session={session} org={org} />;
   if (status === "org_member")    return <CoopMemberPortal member={orgMember} />;
   if (status === "ajo_client")    return <AjoMemberPortal session={session} ajoClient={ajoClient} />;
-  if (status === "staff")         return <StaffDashboard session={session} staff={staff} />;
+  if (status === "staff")         return <StaffDashboard session={session} staff={staff} pinLock={pinLock} />;
   if (status === "branch_manager") return <ManagerDashboard session={session} staff={staff} />;
   if (status === "marketer")      return <MarketerDashboard marketer={marketer} />;
 
