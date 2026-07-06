@@ -144,19 +144,46 @@ serve(async (req: Request) => {
 
     if (!action) return errorResponse("Missing action");
 
-    // ── Fetch profile ─────────────────────────────────────────────────────────
-    const { data: profile, error: profileError } = await adminClient
-      .from("profiles")
-      .select(
-        "app_pin_hash, app_pin_attempts, app_pin_locked_until, app_pin_lockout_count, " +
-        "txn_pin_hash, txn_pin_attempts, txn_pin_locked_until, txn_pin_lockout_count, " +
-        "txn_pin_reset_at, biometric_enabled, auto_lock_timeout",
-      )
-      .eq("id", user.id)
-      .single();
+    // ── Fetch profile (auto-create on first access for non-owner portal users) ──
+    // Staff, org members, ajo clients etc. authenticate via Supabase Auth but
+    // don't get a profiles row created during onboarding — only business owners do.
+    // We upsert a minimal row so the PIN system works for every user type.
+    const PIN_SELECT =
+      "app_pin_hash, app_pin_attempts, app_pin_locked_until, app_pin_lockout_count, " +
+      "txn_pin_hash, txn_pin_attempts, txn_pin_locked_until, txn_pin_lockout_count, " +
+      "txn_pin_reset_at, biometric_enabled, auto_lock_timeout";
 
-    if (profileError || !profile) {
-      return errorResponse(`Profile not found: ${profileError?.message ?? "no row"}`);
+    let profile: Record<string, unknown> | null = null;
+    {
+      const { data: existing, error: fetchErr } = await adminClient
+        .from("profiles")
+        .select(PIN_SELECT)
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (fetchErr) {
+        return errorResponse(`Profile fetch failed: ${fetchErr.message}`);
+      }
+
+      if (existing) {
+        profile = existing;
+      } else {
+        // No row yet — insert a minimal profile (id only; all PIN columns default to 0/false/null)
+        const { data: created, error: insertErr } = await adminClient
+          .from("profiles")
+          .insert({ id: user.id })
+          .select(PIN_SELECT)
+          .single();
+
+        if (insertErr || !created) {
+          return errorResponse(`Profile setup failed: ${insertErr?.message ?? "insert returned nothing"}`);
+        }
+        profile = created;
+      }
+    }
+
+    if (!profile) {
+      return errorResponse("Profile not found");
     }
 
     // ── Helper: update profile columns ────────────────────────────────────────
