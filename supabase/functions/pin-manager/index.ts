@@ -396,11 +396,13 @@ serve(async (req: Request) => {
         updates.biometric_enabled = params.biometric_enabled;
       }
       if (typeof params.auto_lock_timeout === "number") {
-        // 0 = Never (disabled); 1–60 = minutes
-        if (params.auto_lock_timeout < 0 || params.auto_lock_timeout > 60) {
+        const t = params.auto_lock_timeout;
+        // 0 = Never (disabled); 1–60 = minutes — explicitly allow 0
+        const valid = t === 0 || (Number.isInteger(t) && t >= 1 && t <= 60);
+        if (!valid) {
           return errorResponse("auto_lock_timeout must be 0 (never) or 1–60 minutes");
         }
-        updates.auto_lock_timeout = params.auto_lock_timeout;
+        updates.auto_lock_timeout = t;
       }
 
       if (Object.keys(updates).length === 0) {

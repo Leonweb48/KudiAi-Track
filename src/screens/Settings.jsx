@@ -960,8 +960,11 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
               <button
                 key={value}
                 onClick={async () => {
-                  await lock?.updateSettings?.({ autoLockTimeout: value });
-                  setShowAutoLock(false);
+                  try {
+                    await lock?.updateSettings?.({ autoLockTimeout: value });
+                  } finally {
+                    setShowAutoLock(false);
+                  }
                 }}
                 className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-colors active:scale-[0.98] ${
                   (lock?.autoLockTimeout ?? 5) === value
