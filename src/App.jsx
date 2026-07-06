@@ -224,18 +224,22 @@ export default function App() {
     return () => window.removeEventListener("paymentCallback", handler);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Navigate to /bills when CCT closes (browserFinished) and a payment is pending.
-  // Covers the case where Chrome CCT blocks the intent:// auto-redirect and the user
-  // closes the tab manually, or where OPay/external apps cause the CCT to close early.
-  // Guard: skip if already on /bills — BillPayments' own browserFinished listener handles it.
+  // Navigate to /bills when the payment browser closes and a payment is pending.
+  // Handles: InAppBrowser user-close (inAppBrowserFinished), CCT close (browserFinished).
+  // Guard: skip if already on /bills — BillPayments' own listener handles fulfillment there.
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
-    let listener;
-    Browser.addListener("browserFinished", () => {
+    const onBrowserDone = () => {
       const hasPending = Object.keys(localStorage).some(k => k.startsWith("ck_bill_pending_"));
       if (hasPending && window.location.pathname !== "/bills") navigate("/bills");
-    }).then(l => { listener = l; });
-    return () => { listener?.remove(); };
+    };
+    let listener;
+    Browser.addListener("browserFinished", onBrowserDone).then(l => { listener = l; });
+    window.addEventListener("inAppBrowserFinished", onBrowserDone);
+    return () => {
+      listener?.remove();
+      window.removeEventListener("inAppBrowserFinished", onBrowserDone);
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Edge-to-edge status bar: transparent + icon colour adapts to light/dark mode.
@@ -271,8 +275,9 @@ export default function App() {
   const closeUpgrade  = () => setShowUpgrade(false);
   const finishUpgrade = (planId) => { setReady(planId); setShowUpgrade(false); };
 
-  // Public route: Chrome Custom Tab has no session, must render before auth check
-  if (location.pathname === "/payment-return") return <PaymentReturn />;
+  // Public routes: WebView / App-Links have no session, must render before auth check
+  if (location.pathname === "/payment-return" ||
+      location.pathname === "/app/payment-callback") return <PaymentReturn />;
 
   if (status === "loading")         return <Spinner />;
 
@@ -442,7 +447,8 @@ export default function App() {
               <Route path="/settings"     element={SCREENS.settings}      />
               <Route path="/help"          element={<Help store={store} session={session} plan={plan} />} />
               <Route path="/profile"      element={<Profile store={store} session={session} plan={plan} lock={pinLock} />} />
-              <Route path="/payment-return" element={<PaymentReturn />}     />
+              <Route path="/payment-return"        element={<PaymentReturn />} />
+              <Route path="/app/payment-callback" element={<PaymentReturn />} />
               <Route path="*"             element={SCREENS.home}          />
             </Routes>
           </main>

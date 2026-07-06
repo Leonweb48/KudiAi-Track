@@ -1758,30 +1758,37 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Native-only: when Chrome Custom Tabs closes (browserFinished), verify payment immediately.
-  // Does NOT require savingRef to be true — the native app may have been killed and restarted
-  // while the CCT was open, resetting saving to false while the pending entry stays in localStorage.
+  // Native-only: verify payment when any payment browser closes.
+  // Handles both InAppBrowser (inAppBrowserFinished) and CCT (Browser.browserFinished).
+  // Does NOT require savingRef to be true — the app may have restarted while the browser was open.
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
-    let listener;
-    Browser.addListener("browserFinished", () => {
-      // Give paymentCallback (deep link) 1.5s to fire first and claim the pending entry
+
+    const onBrowserDone = () => {
+      // Give paymentCallback (deep link / URL intercept) 1.5s to fire first
       setTimeout(() => {
         const keys = Object.keys(localStorage).filter(k => k.startsWith(BILL_PENDING_PREFIX));
-        if (keys.length === 0) return; // no payment was pending (or already fulfilled)
-        if (paymentCallbackFiredRef.current) return; // paymentCallback deep-link already handling it
-        paymentCallbackFiredRef.current = true; // block visibilitychange from also verifying
+        if (keys.length === 0) return;
+        if (paymentCallbackFiredRef.current) return;
+        paymentCallbackFiredRef.current = true;
         const key    = keys[0];
         const ref    = key.replace(BILL_PENDING_PREFIX, "");
         const stored = localStorage.getItem(key);
         if (stored && fulfillAfterPaymentRef.current) {
-          setSelectedCat(null); // show processing overlay immediately
+          setSelectedCat(null);
           setSaving(true);
           fulfillAfterPaymentRef.current(ref, JSON.parse(stored));
         }
       }, 1500);
-    }).then((l) => { listener = l; });
-    return () => listener?.remove();
+    };
+
+    let listener;
+    Browser.addListener("browserFinished", onBrowserDone).then((l) => { listener = l; });
+    window.addEventListener("inAppBrowserFinished", onBrowserDone);
+    return () => {
+      listener?.remove();
+      window.removeEventListener("inAppBrowserFinished", onBrowserDone);
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Poll for electricity token when edge function returned PENDING (async processing)

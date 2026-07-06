@@ -1,0 +1,10 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "com.amayatechnologies.kuditrack",
+    "sha256_cert_fingerprints": [
+      "C9:F4:99:86:7F:99:C4:BA:B9:C7:E2:B7:CF:DE:C3:D2:E2:27:C8:F1:3D:AD:6B:B0:C6:59:B3:3E:5E:33:54:2C"
+    ]
+  }
+}]

@@ -13,6 +13,7 @@
     "@capacitor/local-notifications": "^8.2.0",
     "@capacitor/share": "^8.0.1",
     "@capacitor/status-bar": "^8.0.2",
+    "@capgo/capacitor-inappbrowser": "^8.8.1",
     "@capgo/capacitor-updater": "^8.50.1",
     "@fontsource/noto-sans": "^5.2.10",
     "@supabase/supabase-js": "^2.107.0",
