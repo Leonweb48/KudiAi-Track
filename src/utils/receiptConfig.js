@@ -1,6 +1,9 @@
 // Builds standardized receipt data from raw transaction records per screen type.
 // Every function returns a common shape consumed by TransactionDetailModal + ReceiptCard.
 
+// Change this when migrating payment processors (e.g. to Anchor).
+export const PROCESSOR_NAME = 'Paystack';
+
 export function formatReceiptDateTime(dt) {
   if (!dt) return '—';
   try {
@@ -52,6 +55,7 @@ export function buildTransactionReceipt(txn, profile) {
     amount:      txn.amount,
     datetime:    formatReceiptDateTime(txn.created_at || txn.transaction_date),
     fields: [
+      { label: 'Transaction Type', value: isIn ? 'Income' : 'Expense' },
       txn.customer_name && { label: isIn ? 'From'  : 'To',     value: txn.customer_name },
       txn.item_name     && { label: 'Description',              value: txn.item_name },
       txn.category      && { label: 'Category',                 value: humanize(txn.category) },
@@ -60,11 +64,12 @@ export function buildTransactionReceipt(txn, profile) {
       txn.note          && { label: 'Note',                     value: txn.note },
                            { label: 'Reference',                value: ref, copy: true },
     ].filter(Boolean),
-    businessName: profile?.business_name || 'My Business',
-    issuedBy:     profile?.business_name || 'My Business',
-    fees:         0,
-    receiptRef:   ref,
-    filenames:    { image, pdf },
+    businessName:  profile?.business_name || 'My Business',
+    issuedBy:      profile?.business_name || 'My Business',
+    fees:          0,
+    receiptRef:    ref,
+    filenames:     { image, pdf },
+    processorName: null,
   };
 }
 
@@ -82,16 +87,18 @@ export function buildAsoContributionReceipt(contribution, clientName, businessNa
     amount:    contribution.amount,
     datetime:  formatReceiptDateTime(contribution.created_at || contribution.date),
     fields: [
+      { label: 'Transaction Type', value: isReg ? 'Registration Fee' : isWithdrawal ? 'Ajo Withdrawal' : 'Ajo Contribution' },
       clientName                  && { label: 'Member',         value: clientName },
       contribution.payment_method && { label: 'Payment Method', value: humanize(contribution.payment_method) },
       contribution.notes          && { label: 'Note',           value: contribution.notes },
                                      { label: 'Reference',      value: ref, copy: true },
     ].filter(Boolean),
     businessName,
-    issuedBy: businessName,
-    fees:     0,
-    receiptRef: ref,
-    filenames:  { image, pdf },
+    issuedBy:      businessName,
+    fees:          0,
+    receiptRef:    ref,
+    filenames:     { image, pdf },
+    processorName: null,
   };
 }
 
@@ -107,16 +114,18 @@ export function buildAjoWithdrawalReceipt(req, clientName, businessName) {
     amount:    req.net_amount ?? req.amount,
     datetime:  formatReceiptDateTime(req.requested_at),
     fields: [
+      { label: 'Transaction Type', value: 'Ajo Withdrawal' },
       clientName         && { label: 'Member',         value: clientName },
       req.fee_amount > 0 && { label: 'Processing Fee', value: fmtAmt(req.fee_amount) },
       req.fee_type       && { label: 'Fee Type',        value: humanize(req.fee_type) },
                             { label: 'Reference',       value: ref, copy: true },
     ].filter(Boolean),
     businessName,
-    issuedBy: businessName,
-    fees:     req.fee_amount || 0,
-    receiptRef: ref,
-    filenames:  { image, pdf },
+    issuedBy:      businessName,
+    fees:          req.fee_amount || 0,
+    receiptRef:    ref,
+    filenames:     { image, pdf },
+    processorName: null,
   };
 }
 
@@ -133,6 +142,7 @@ export function buildCreditPaymentReceipt(payment, credit, businessName) {
     amount:    payment.amount,
     datetime:  formatReceiptDateTime(payment.created_at || payment.payment_date),
     fields: [
+      { label: 'Transaction Type', value: 'Debt Repayment' },
       credit?.customer_name  && { label: 'Customer',          value: credit.customer_name },
       payment.payment_method && { label: 'Payment Method',    value: humanize(payment.payment_method) },
       remaining != null      && { label: 'Remaining Balance', value: fmtAmt(remaining) },
@@ -140,10 +150,11 @@ export function buildCreditPaymentReceipt(payment, credit, businessName) {
                                 { label: 'Reference',          value: ref, copy: true },
     ].filter(Boolean),
     businessName,
-    issuedBy: businessName,
-    fees:     0,
-    receiptRef: ref,
-    filenames:  { image, pdf },
+    issuedBy:      businessName,
+    fees:          0,
+    receiptRef:    ref,
+    filenames:     { image, pdf },
+    processorName: null,
   };
 }
 
@@ -159,16 +170,18 @@ export function buildCoopSavingsReceipt(record, memberName, orgName) {
     amount:    record.amount,
     datetime:  formatReceiptDateTime(record.created_at),
     fields: [
+      { label: 'Transaction Type', value: isWithdrawal ? 'Savings Withdrawal' : 'Savings Deposit' },
       memberName                    && { label: 'Member',         value: memberName },
       record.payment_method         && { label: 'Payment Method', value: humanize(record.payment_method) },
       record.balance_after != null  && { label: 'Balance After',  value: fmtAmt(record.balance_after) },
                                        { label: 'Reference',      value: ref, copy: true },
     ].filter(Boolean),
-    businessName: orgName,
-    issuedBy: orgName,
-    fees:     0,
-    receiptRef: ref,
-    filenames:  { image, pdf },
+    businessName:  orgName,
+    issuedBy:      orgName,
+    fees:          0,
+    receiptRef:    ref,
+    filenames:     { image, pdf },
+    processorName: null,
   };
 }
 
@@ -184,16 +197,18 @@ export function buildCoopWithdrawalRequestReceipt(request, memberName, orgName) 
     amount:    request.amount,
     datetime:  formatReceiptDateTime(request.created_at),
     fields: [
+      { label: 'Transaction Type', value: 'Savings Withdrawal' },
       memberName       && { label: 'Member',    value: memberName },
       request.reason   && { label: 'Reason',    value: request.reason },
       request.status   && { label: 'Status',    value: humanize(request.status) },
                           { label: 'Reference', value: ref, copy: true },
     ].filter(Boolean),
-    businessName: orgName,
-    issuedBy: orgName,
-    fees:     0,
-    receiptRef: ref,
-    filenames:  { image, pdf },
+    businessName:  orgName,
+    issuedBy:      orgName,
+    fees:          0,
+    receiptRef:    ref,
+    filenames:     { image, pdf },
+    processorName: null,
   };
 }
 
@@ -210,15 +225,17 @@ export function buildAjoContributionReceipt(contribution, clientName, businessNa
     amount:    contribution.amount,
     datetime:  formatReceiptDateTime(contribution.created_at || contribution.date),
     fields: [
+      { label: 'Transaction Type', value: isWithdrawal ? 'Ajo Withdrawal' : 'Ajo Contribution' },
       clientName                  && { label: 'Member',         value: clientName },
       contribution.payment_method && { label: 'Payment Method', value: humanize(contribution.payment_method) },
                                      { label: 'Reference',      value: ref, copy: true },
     ].filter(Boolean),
     businessName,
-    issuedBy: businessName,
-    fees:     0,
-    receiptRef: ref,
-    filenames:  { image, pdf },
+    issuedBy:      businessName,
+    fees:          0,
+    receiptRef:    ref,
+    filenames:     { image, pdf },
+    processorName: null,
   };
 }
 
@@ -237,6 +254,7 @@ export function buildBillReceipt(bill) {
   const title = BILL_CAT_LABELS[bill.category] || humanize(bill.category) || 'Bill Payment';
 
   const fields = [
+    { label: 'Transaction Type', value: title },
     bill.network      && { label: 'Network',      value: bill.network },
     bill.phone        && { label: 'Phone',         value: bill.phone },
     bill.planName     && { label: 'Plan',          value: bill.planName },
@@ -275,8 +293,9 @@ export function buildBillReceipt(bill) {
     fees:         0,
     receiptRef:   ref,
     filenames:    { image, pdf },
-    provider:     bill.network || bill.providerName || null,
-    category:     bill.category || null,
+    provider:      bill.network || bill.providerName || null,
+    category:      bill.category || null,
+    processorName: PROCESSOR_NAME,
   };
 }
 
@@ -292,6 +311,7 @@ export function buildCreditStatementReceipt(credit, businessName) {
     amount:    credit.outstanding || 0,
     datetime:  formatReceiptDateTime(credit.created_at),
     fields: [
+      { label: 'Transaction Type', value: 'Credit Statement' },
       credit.customer_name && { label: 'Customer',     value: credit.customer_name },
       credit.phone         && { label: 'Phone',         value: credit.phone },
       credit.item_name     && { label: 'Item / Purpose', value: credit.item_name },
@@ -306,10 +326,11 @@ export function buildCreditStatementReceipt(credit, businessName) {
       { label: 'Reference', value: ref, copy: true },
     ].filter(Boolean),
     businessName,
-    issuedBy:   businessName,
-    fees:       0,
-    receiptRef: ref,
-    filenames:  { image, pdf },
+    issuedBy:      businessName,
+    fees:          0,
+    receiptRef:    ref,
+    filenames:     { image, pdf },
+    processorName: null,
   };
 }
 
@@ -324,6 +345,7 @@ export function buildAsoClientReceipt(client, businessName) {
     amount:    client.current_balance || 0,
     datetime:  formatReceiptDateTime(new Date().toISOString()),
     fields: [
+      { label: 'Transaction Type', value: 'Ajo Member Statement' },
       client.full_name && { label: 'Member', value: client.full_name },
       client.phone     && { label: 'Phone',  value: client.phone },
       { label: 'Total Saved',      value: fmtAmt(client.total_saved || 0) },
@@ -340,9 +362,10 @@ export function buildAsoClientReceipt(client, businessName) {
       { label: 'Reference', value: ref, copy: true },
     ].filter(Boolean),
     businessName,
-    issuedBy:   businessName,
-    fees:       0,
-    receiptRef: ref,
-    filenames:  { image, pdf },
+    issuedBy:      businessName,
+    fees:          0,
+    receiptRef:    ref,
+    filenames:     { image, pdf },
+    processorName: null,
   };
 }

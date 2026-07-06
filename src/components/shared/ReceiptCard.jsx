@@ -17,10 +17,12 @@ function fmtAmt(n) {
 }
 
 function statusProps(status) {
-  if (status === 'success') return { label: 'Successful', color: '#16a34a', bg: '#dcfce7', icon: '✓' };
-  if (status === 'pending') return { label: 'Processing',  color: '#d97706', bg: '#fef3c7', icon: '⏳' };
-  if (status === 'failed')  return { label: 'Failed',      color: '#dc2626', bg: '#fee2e2', icon: '✕' };
-  return                           { label: status || '?', color: '#64748b', bg: '#f1f5f9', icon: '?' };
+  if (status === 'success')                    return { label: 'Successful', color: '#0f7b3e', bg: '#dcfce7', icon: '✓' };
+  if (status === 'pending' || status === 'processing') return { label: 'Pending',     color: '#92400e', bg: '#fef3c7', icon: '⏳' };
+  if (status === 'failed')                     return { label: 'Failed',      color: '#991b1b', bg: '#fee2e2', icon: '✕' };
+  if (status === 'reversed')                   return { label: 'Reversed',    color: '#374151', bg: '#f3f4f6', icon: '↩' };
+  if (status) console.warn('[ReceiptCard] Unknown status:', status);
+  return { label: 'Pending', color: '#92400e', bg: '#fef3c7', icon: '⏳' };
 }
 
 // ── Diagonal "KudiAI" watermark ───────────────────────────────────────────────
@@ -150,14 +152,13 @@ export function ReceiptCard({ data, innerRef }) {
   const {
     title, direction, status, amount, datetime,
     fields = [], businessName, issuedBy, receiptRef,
-    provider, category,
+    provider, category, processorName,
   } = data;
 
   const st           = statusProps(status);
   const showProvider = !!(provider || category);
-  const amtColor     = status === 'failed'  ? '#dc2626' :
-                       status === 'pending' ? '#d97706' :
-                       direction === 'in'   ? GREEN     : NAVY;
+  const amtColor     = status === 'success' ? '#0f7b3e' :
+                       status === 'failed'  ? '#dc2626' : NAVY;
 
   // retrievable fields (electricity token) are shown in TransactionDetailModal, not the card
   const printFields = fields.filter(f => !f.retrievable);
@@ -262,6 +263,11 @@ export function ReceiptCard({ data, innerRef }) {
           <p style={{ margin: 0, fontSize: 9, color: '#cbd5e1', textAlign: 'center', fontStyle: 'italic', lineHeight: 1.5 }}>
             Talk your money. Track your profit. Grow your business.
           </p>
+          {processorName && (
+            <p style={{ margin: '6px 0 0', fontSize: 8, color: '#94a3b8', textAlign: 'center', lineHeight: 1.5 }}>
+              Payments securely processed via {processorName}
+            </p>
+          )}
         </div>
 
         {/* Navy footer strip */}
