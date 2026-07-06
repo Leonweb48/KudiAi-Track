@@ -397,10 +397,10 @@ serve(async (req: Request) => {
       }
       if (typeof params.auto_lock_timeout === "number") {
         const t = params.auto_lock_timeout;
-        // 0 = Never (disabled); 1–60 = minutes — explicitly allow 0
-        const valid = t === 0 || (Number.isInteger(t) && t >= 1 && t <= 60);
+        // 0 = Never; 30–3600 = seconds (30 s … 60 min)
+        const valid = t === 0 || (Number.isInteger(t) && t >= 30 && t <= 3600);
         if (!valid) {
-          return errorResponse("auto_lock_timeout must be 0 (never) or 1–60 minutes");
+          return errorResponse("auto_lock_timeout must be 0 (never) or 30–3600 seconds");
         }
         updates.auto_lock_timeout = t;
       }

@@ -70,12 +70,14 @@ export function usePinLock(userId, session) {
 
   const inactivityTimer   = useRef(null);
   const capListenerRef    = useRef(null);
+  const lastActivityRef   = useRef(Date.now()); // ms timestamp of last user activity
 
   // Derived state
   const appPinSet  = status?.appPinSet  ?? false;
   const txnPinSet  = status?.txnPinSet  ?? false;
   const biometricEnabled  = status?.biometricEnabled  ?? false;
-  const autoLockTimeout   = status?.autoLockTimeout   ?? 5;
+  // autoLockTimeout is in SECONDS (0 = Never, 30–3600).  Default 300 = 5 min.
+  const autoLockTimeout   = status?.autoLockTimeout   ?? 300;
   const biometricAvailable = !!(navigator?.credentials);
 
   // ── Fetch status from server ───────────────────────────────────────
@@ -112,11 +114,13 @@ export function usePinLock(userId, session) {
 
   const resetTimer = useCallback(() => {
     if (locked) return;
-    if (autoLockTimeout === 0) { clearTimer(); return; } // Never mode — clear any pending timer
+    if (autoLockTimeout === 0) { clearTimer(); return; } // Never — clear any pending timer
+    lastActivityRef.current = Date.now();
     clearTimer();
-    inactivityTimer.current = setTimeout(() => {
-      setLocked(true);
-    }, autoLockTimeout * 60 * 1000);
+    inactivityTimer.current = setTimeout(
+      () => setLocked(true),
+      autoLockTimeout * 1000, // autoLockTimeout is in seconds
+    );
   }, [locked, autoLockTimeout, clearTimer]);
 
   // Immediately clear any running timer the moment "Never" becomes active
@@ -141,22 +145,43 @@ export function usePinLock(userId, session) {
   }, [locked, resetTimer, clearTimer]);
 
   // ── App background / visibility ────────────────────────────────────
+  // On background: pause the inactivity timer.
+  // On foreground return: check elapsed time since last activity.
+  //   - If elapsed >= timeout → lock now.
+  //   - Otherwise → restart timer with the remaining time.
+  // This means "1 minute" locks only after 1 minute of total inactivity,
+  // regardless of whether the app was backgrounded in the middle.
   useEffect(() => {
+    const onBackground = () => {
+      clearTimer(); // pause — don't fire while hidden
+    };
+
+    const onForeground = () => {
+      if (locked || autoLockTimeout === 0) return;
+      const elapsed  = Date.now() - lastActivityRef.current;
+      const timeoutMs = autoLockTimeout * 1000;
+      if (elapsed >= timeoutMs) {
+        setLocked(true);
+      } else {
+        clearTimer();
+        inactivityTimer.current = setTimeout(() => setLocked(true), timeoutMs - elapsed);
+      }
+    };
+
     // Capacitor — store handle in a ref so cleanup is always synchronous
     import("@capacitor/app")
       .then(({ App: CapApp }) => {
-        // Remove any previously registered listener first (handles re-runs)
         capListenerRef.current?.remove?.();
         capListenerRef.current = null;
         CapApp.addListener("appStateChange", ({ isActive }) => {
-          if (!isActive && autoLockTimeout !== 0) setLocked(true);
+          if (isActive) onForeground(); else onBackground();
         }).then(l => { capListenerRef.current = l; });
       })
       .catch(() => {});
 
     // Web
     const onVis = () => {
-      if (document.hidden && autoLockTimeout !== 0) setLocked(true);
+      if (document.hidden) onBackground(); else onForeground();
     };
     document.addEventListener("visibilitychange", onVis);
 
@@ -165,7 +190,7 @@ export function usePinLock(userId, session) {
       capListenerRef.current = null;
       document.removeEventListener("visibilitychange", onVis);
     };
-  }, [autoLockTimeout]); // re-register listeners when timeout setting changes
+  }, [locked, autoLockTimeout, clearTimer]);
 
   // ── Methods ────────────────────────────────────────────────────────
   const verifyAppPin = useCallback(async (pin) => {

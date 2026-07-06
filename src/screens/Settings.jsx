@@ -867,7 +867,13 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
             </svg>
           }
           label="Auto-lock"
-          sub={(lock?.autoLockTimeout ?? 5) === 0 ? "Auto-lock is disabled" : `Locks after ${lock?.autoLockTimeout ?? 5} minute${(lock?.autoLockTimeout ?? 5) === 1 ? "" : "s"} of inactivity`}
+          sub={(() => {
+            const t = lock?.autoLockTimeout ?? 300;
+            if (t === 0)   return "Auto-lock is disabled";
+            if (t < 60)    return `Locks after ${t} seconds of inactivity`;
+            const m = t / 60;
+            return `Locks after ${m} minute${m === 1 ? "" : "s"} of inactivity`;
+          })()}
           onClick={() => setShowAutoLock(true)}
         />
       </SettingsCard>
@@ -951,11 +957,12 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
           </p>
           <div className="space-y-2">
             {[
-              { value: 1,  label: "1 minute" },
-              { value: 5,  label: "5 minutes" },
-              { value: 15, label: "15 minutes" },
-              { value: 30, label: "30 minutes" },
-              { value: 0,  label: "Never" },
+              { value: 30,   label: "30 seconds" },
+              { value: 60,   label: "1 minute" },
+              { value: 300,  label: "5 minutes" },
+              { value: 900,  label: "15 minutes" },
+              { value: 1800, label: "30 minutes" },
+              { value: 0,    label: "Never" },
             ].map(({ value, label }) => (
               <button
                 key={value}
@@ -967,7 +974,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
                   }
                 }}
                 className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-colors active:scale-[0.98] ${
-                  (lock?.autoLockTimeout ?? 5) === value
+                  (lock?.autoLockTimeout ?? 300) === value
                     ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20 text-brand-700 dark:text-brand-400"
                     : value === 0
                       ? "border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/10 hover:bg-amber-100 dark:hover:bg-amber-900/20 text-amber-800 dark:text-amber-300"
@@ -975,7 +982,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
                 }`}
               >
                 <span className="font-semibold text-sm">{label}</span>
-                {(lock?.autoLockTimeout ?? 5) === value && (
+                {(lock?.autoLockTimeout ?? 300) === value && (
                   <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-brand-600 dark:text-brand-400" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
                     <path d="M20 6L9 17l-5-5" />
                   </svg>
@@ -983,7 +990,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
               </button>
             ))}
           </div>
-          {(lock?.autoLockTimeout ?? 5) === 0 && (
+          {(lock?.autoLockTimeout ?? 300) === 0 && (
             <p className="mt-3 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-3 py-2.5 leading-relaxed">
               Your app won&apos;t lock automatically. Anyone with access to your phone may be able to open it.
             </p>
