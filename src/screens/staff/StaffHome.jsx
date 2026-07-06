@@ -4,8 +4,8 @@ import { canDo } from "../../utils/plans";
 import { useT, useLanguage } from "../../contexts/LanguageContext";
 import { supabase } from "../../utils/supabase";
 import {
-  Svg, P, GK,
-  TxRow, SectionLabel,
+  Svg, P,
+  TxRow,
   makeBillServices, fmtDate, greetingText,
 } from "./StaffShared";
 
