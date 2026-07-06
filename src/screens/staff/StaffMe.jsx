@@ -2,18 +2,41 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from "../../utils/supabase";
 import Modal from "../../components/shared/Modal";
 import { StaffActivityStatement } from "../../components/shared/Receipt";
-import StaffReports from "../StaffReports";
 import Insights from "../Insights";
 import {
-  Svg, P, NK, GK, YEAR,
+  Svg, P, GK, YEAR,
   SectionLabel, SettingsCard, Row, RowIcon,
   ChangePinModal, SupportModal, FAQ,
   uploadAvatar,
 } from "./StaffShared";
 
-/* ═══════════════════════════════════════════════════════════════════
-   ME TAB
-═══════════════════════════════════════════════════════════════════ */
+/* ─ Inline profile display components — mirror business Profile.jsx */
+function SectionCard({ title, children }) {
+  return (
+    <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-card border border-slate-100 dark:border-slate-700/50 overflow-hidden mb-4">
+      <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700/40">
+        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">{title}</p>
+      </div>
+      <div className="divide-y divide-slate-100 dark:divide-slate-700/40">{children}</div>
+    </div>
+  );
+}
+
+function ProfileRow({ label, value, cap }) {
+  return (
+    <div className="px-4 py-3 flex items-start gap-3">
+      <p className="text-xs text-slate-400 dark:text-slate-500 w-28 flex-shrink-0 pt-0.5">{label}</p>
+      {value
+        ? <p className={`flex-1 text-sm font-semibold text-slate-800 dark:text-slate-100 break-words ${cap ? "capitalize" : ""}`}>{value}</p>
+        : <p className="flex-1 text-sm text-slate-300 dark:text-slate-600 italic font-normal">Not set</p>
+      }
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   ME TAB — redesigned to match business portal look and feel
+══════════════════════════════════════════════════════════════════ */
 export default function StaffMe({ staff, session, store, inventory, livePerms, staffId, pinLock, plan, initialView, onStaffUpdate }) {
   const [view,              setView]              = useState(initialView || "menu");
   const [isDark,            setIsDark]            = useState(() => localStorage.getItem("kuditrack_dark") === "1");
@@ -27,49 +50,44 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
   const [showTimeoutPicker, setShowTimeoutPicker] = useState(false);
   const [showSupport,       setShowSupport]       = useState(false);
   const [showStatement,     setShowStatement]     = useState(false);
-  const [showReports,       setShowReports]       = useState(false);
   const fileRef = useRef(null);
 
-  // D2: My Activity
-  const [activityLogs,     setActivityLogs]     = useState([]);
-  const [activityLoading,  setActivityLoading]  = useState(false);
+  /* D2: My Activity */
+  const [activityLogs,    setActivityLogs]    = useState([]);
+  const [activityLoading, setActivityLoading] = useState(false);
 
-  // D4: My Commissions
-  const [commissions,      setCommissions]      = useState([]);
-  const [commLoading,      setCommLoading]      = useState(false);
+  /* D4: My Commissions */
+  const [commissions,  setCommissions]  = useState([]);
+  const [commLoading,  setCommLoading]  = useState(false);
 
-  // D6: My Payments
-  const [disbursements,    setDisbursements]    = useState([]);
-  const [disburseLoading,  setDisburseLoading]  = useState(false);
+  /* D6: My Payments */
+  const [disbursements,   setDisbursements]   = useState([]);
+  const [disburseLoading, setDisburseLoading] = useState(false);
 
-  // D7: Close My Day
-  const [actualCash,       setActualCash]       = useState("");
-  const [reconcileNote,    setReconcileNote]    = useState("");
-  const [reconcileSaving,  setReconcileSaving]  = useState(false);
-  const [reconcileMsg,     setReconcileMsg]     = useState("");
+  /* D7: Close My Day */
+  const [actualCash,      setActualCash]      = useState("");
+  const [reconcileNote,   setReconcileNote]   = useState("");
+  const [reconcileSaving, setReconcileSaving] = useState(false);
+  const [reconcileMsg,    setReconcileMsg]    = useState("");
 
   useEffect(() => { if (initialView) setView(initialView); }, [initialView]);
 
-  // Load data when view changes (proper hook placement — before any early returns)
   useEffect(() => {
     if (view === "activity") {
-      setActivityLogs([]);
-      setActivityLoading(true);
+      setActivityLogs([]); setActivityLoading(true);
       supabase.from("audit_logs").select("*").eq("staff_id", staffId)
         .order("created_at", { ascending: false }).limit(100)
         .then(({ data }) => { setActivityLogs(data || []); setActivityLoading(false); });
     }
     if (view === "commissions") {
-      setCommissions([]);
-      setCommLoading(true);
+      setCommissions([]); setCommLoading(true);
       supabase.from("commission_earnings")
         .select("*, transactions(item_name, transaction_date)")
         .eq("staff_id", staffId).order("earned_at", { ascending: false }).limit(100)
         .then(({ data }) => { setCommissions(data || []); setCommLoading(false); });
     }
     if (view === "payments") {
-      setDisbursements([]);
-      setDisburseLoading(true);
+      setDisbursements([]); setDisburseLoading(true);
       supabase.from("staff_disbursements").select("*").eq("staff_id", staffId)
         .order("created_at", { ascending: false }).limit(100)
         .then(({ data }) => { setDisbursements(data || []); setDisburseLoading(false); });
@@ -94,27 +112,48 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
       setPhotoFile(null); setPhotoPreview(null);
       onStaffUpdate?.({ full_name: editForm.full_name, phone: editForm.phone, profile_image_url: photoUrl });
       setSaveMsg("Profile saved!");
-      setTimeout(() => { setSaveMsg(""); setView("menu"); }, 1500);
+      setTimeout(() => { setSaveMsg(""); setView("profile"); }, 1500);
     } catch { setSaveMsg("Save failed. Please try again."); }
     setSaving(false);
   };
 
-  /* Back-button sub-header — rounded-full per design spec */
-  const SubHeader = ({ title }) => (
-    <div className="flex items-center gap-3 px-4 py-4 border-b border-slate-100 dark:border-slate-700/50 flex-shrink-0 bg-white dark:bg-slate-900">
+  /* ── Back-button sub-header — business portal style ── */
+  const SubHeader = ({ title, onEdit }) => (
+    <div className="flex-shrink-0 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700/60 px-4 py-3 flex items-center gap-3">
       <button onClick={() => setView("menu")}
-        className="w-9 h-9 rounded-full flex items-center justify-center active:scale-90 transition bg-emerald-50 dark:bg-emerald-900/20">
-        <div className="text-emerald-600 dark:text-emerald-400">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M19 12H5" /><path d="M12 19l-7-7 7-7" />
-          </svg>
-        </div>
+        className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center active:scale-90 transition flex-shrink-0">
+        <svg className="w-5 h-5 text-slate-600 dark:text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M19 12H5" /><path d="M12 19l-7-7 7-7" />
+        </svg>
       </button>
-      <p className="text-base font-extrabold text-slate-800 dark:text-slate-100">{title}</p>
+      <h1 className="flex-1 text-[17px] font-extrabold text-slate-800 dark:text-slate-100 truncate">{title}</h1>
+      {onEdit && (
+        <button onClick={onEdit}
+          className="flex-shrink-0 text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-3 py-1.5 rounded-xl active:scale-95 transition">
+          Edit
+        </button>
+      )}
     </div>
   );
 
-  /* ── FAQ sub-view ── */
+  /* ── Toggle helper ── */
+  const Toggle = ({ on, onToggle }) => (
+    <button onClick={e => { e.stopPropagation(); onToggle(); }}
+      className={`relative w-12 h-6 rounded-full flex-shrink-0 transition-colors duration-200 ${on ? "bg-emerald-600" : "bg-slate-200 dark:bg-slate-600"}`}>
+      <span className="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all duration-200"
+        style={{ left: on ? "calc(100% - 22px)" : "2px" }} />
+    </button>
+  );
+
+  /* ── Spinner ── */
+  const Spinner = () => (
+    <div className="flex justify-center py-16">
+      <div className="w-7 h-7 border-2 border-t-transparent rounded-full animate-spin"
+        style={{ borderColor: GK, borderTopColor: "transparent" }} />
+    </div>
+  );
+
+  /* ── FAQ ── */
   if (view === "faq") return (
     <div className="h-full flex flex-col">
       <SubHeader title="Frequently Asked Questions" />
@@ -122,39 +161,84 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
     </div>
   );
 
-  /* ── Reports sub-view ── */
+  /* ── Reports ── */
   if (view === "reports") return (
     <div className="h-full flex flex-col">
-      {showReports && (
-        <StaffReports
-          store={store}
-          inventory={inventory}
-          staffName={staff?.full_name}
-          businessName={staff?.business_name || store.profile?.business_name}
-          onClose={() => setShowReports(false)}
-        />
-      )}
       <SubHeader title="Reports & Insights" />
       <div className="flex-1 overflow-y-auto pb-4">
-        <Insights store={store} inventory={inventory} plan={plan || "starter"} onUpgrade={null} onReports={() => setShowReports(true)} />
+        <Insights store={store} inventory={inventory} plan={plan || "starter"} onUpgrade={null}
+          onReports={() => {}} />
       </div>
     </div>
   );
 
-  /* ── Edit profile sub-view ── */
+  /* ── Profile view — mirrors business Profile.jsx ── */
+  if (view === "profile") return (
+    <div className="h-full flex flex-col">
+      <SubHeader title="My Profile" onEdit={() => setView("edit")} />
+      <div className="flex-1 overflow-y-auto pb-8">
+        {/* Avatar hero */}
+        <div className="flex flex-col items-center py-8 bg-gradient-to-b from-emerald-600/5 to-transparent">
+          <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-white dark:border-slate-800 shadow-lg mb-3">
+            {staff?.profile_image_url
+              ? <img src={staff.profile_image_url} alt="" className="w-full h-full object-cover" />
+              : <div className="w-full h-full bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center">
+                  <span className="text-2xl font-black text-white">{initials}</span>
+                </div>
+            }
+          </div>
+          <p className="text-lg font-extrabold text-slate-800 dark:text-white">{staff?.full_name || "Staff"}</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5 capitalize">
+            {(staff?.role || "staff member").replace(/_/g, " ")}
+          </p>
+          <span className="mt-2 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-2.5 py-1 rounded-full">
+            {staff?.business_name || "Staff Portal"}
+          </span>
+        </div>
+
+        <div className="px-4">
+          <SectionCard title="Personal Information">
+            <ProfileRow label="Full Name" value={staff?.full_name} />
+            <ProfileRow label="Email"     value={staff?.email || session?.user?.email} />
+            <ProfileRow label="Phone"     value={staff?.phone} />
+          </SectionCard>
+
+          <SectionCard title="Employment">
+            <ProfileRow label="Role"     value={(staff?.role || "").replace(/_/g, " ")} cap />
+            <ProfileRow label="Business" value={staff?.business_name} />
+            <ProfileRow label="Status"   value={staff?.status} cap />
+          </SectionCard>
+
+          <SectionCard title="Account">
+            <ProfileRow label="Portal"       value="Staff Portal" />
+            <ProfileRow label="Member Since" value={
+              staff?.created_at
+                ? new Date(staff.created_at).toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" })
+                : null
+            } />
+          </SectionCard>
+        </div>
+      </div>
+    </div>
+  );
+
+  /* ── Edit profile ── */
   if (view === "edit") return (
     <div className="h-full flex flex-col">
       <SubHeader title="Edit Profile" />
       <div className="flex-1 overflow-y-auto px-4 py-5 space-y-5 pb-6">
+        {/* Avatar picker */}
         <div className="flex flex-col items-center gap-3">
           <div className="relative">
-            <div className="w-24 h-24 rounded-3xl flex items-center justify-center shadow-lg overflow-hidden"
-              style={{ backgroundColor: "#059669" }}>
+            <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-white dark:border-slate-800 shadow-lg">
               {photoPreview
                 ? <img src={photoPreview} alt="" className="w-full h-full object-cover" />
                 : staff?.profile_image_url
                   ? <img src={staff.profile_image_url} alt="" className="w-full h-full object-cover" />
-                  : <span className="text-2xl font-black text-white">{initials}</span>}
+                  : <div className="w-full h-full bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center">
+                      <span className="text-2xl font-black text-white">{initials}</span>
+                    </div>
+              }
             </div>
             <button onClick={() => fileRef.current?.click()}
               className="absolute -bottom-1 -right-1 w-9 h-9 rounded-full border-2 border-white dark:border-slate-900 flex items-center justify-center shadow-md active:scale-90 transition"
@@ -162,16 +246,18 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
               <Svg d={P.cam} size={15} color="#fff" />
             </button>
           </div>
-          <p className="text-[12px] text-slate-400">Tap camera to change photo</p>
+          <p className="text-[11px] text-slate-400">Tap camera to change photo · JPG or PNG</p>
           <input ref={fileRef} type="file" accept="image/*" className="hidden"
             onChange={e => { const f = e.target.files?.[0]; if (!f) return; setPhotoFile(f); setPhotoPreview(URL.createObjectURL(f)); }} />
         </div>
+
+        {/* Fields */}
         <div className="space-y-3">
           {[["Full Name","full_name","text"],["Phone","phone","tel"]].map(([l, k, tp]) => (
             <div key={k}>
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">{l}</p>
               <input type={tp} value={editForm[k]} onChange={e => setEditForm(p => ({...p, [k]: e.target.value}))}
-                className="w-full h-12 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/30" />
+                className="w-full h-12 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
             </div>
           ))}
           <div>
@@ -180,6 +266,7 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
               className="w-full h-12 rounded-xl border border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-4 text-sm text-slate-400 cursor-not-allowed" />
           </div>
         </div>
+
         {saveMsg && (
           <div className={`flex items-center gap-2 px-4 py-3 rounded-xl ${saveMsg.includes("saved") ? "" : "bg-red-50 dark:bg-red-900/30 text-red-600"}`}
             style={saveMsg.includes("saved") ? { backgroundColor: "#ecfdf5", color: GK } : {}}>
@@ -187,9 +274,11 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
             <p className="text-sm font-semibold">{saveMsg}</p>
           </div>
         )}
+
         <button onClick={saveProfile} disabled={saving}
           className="w-full h-12 rounded-2xl text-white font-bold text-sm flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50"
           style={{ backgroundColor: GK }}>
+          {saving && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
           {saving ? "Saving…" : "Save Changes"}
         </button>
       </div>
@@ -198,13 +287,13 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
 
   /* ── D2: My Activity ── */
   if (view === "activity") {
-    const fmtTs = (iso) => iso ? new Date(iso).toLocaleString("en-NG", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
+    const fmtTs = iso => iso ? new Date(iso).toLocaleString("en-NG", { day:"2-digit", month:"short", hour:"2-digit", minute:"2-digit" }) : "";
     return (
       <div className="h-full flex flex-col">
         <SubHeader title="My Activity" />
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2 pb-6">
           {activityLoading
-            ? <div className="flex justify-center py-16"><div className="w-7 h-7 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: GK, borderTopColor: "transparent" }} /></div>
+            ? <Spinner />
             : activityLogs.length === 0
               ? <p className="text-center text-sm text-slate-400 py-16">No activity recorded yet</p>
               : activityLogs.map(l => (
@@ -229,24 +318,24 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
 
   /* ── D4: My Commissions ── */
   if (view === "commissions") {
-    const thisMonth = new Date().toISOString().slice(0, 7);
-    const pending  = commissions.filter(e => e.status === "pending").reduce((s, e) => s + Number(e.amount), 0);
-    const monthEarned = commissions.filter(e => e.status !== "voided" && (e.earned_at || "").startsWith(thisMonth)).reduce((s, e) => s + Number(e.amount), 0);
-    const fmt = (n) => `₦${Number(n).toLocaleString()}`;
+    const thisMonth  = new Date().toISOString().slice(0, 7);
+    const pending    = commissions.filter(e => e.status === "pending").reduce((s, e) => s + Number(e.amount), 0);
+    const monthTotal = commissions.filter(e => e.status !== "voided" && (e.earned_at || "").startsWith(thisMonth)).reduce((s, e) => s + Number(e.amount), 0);
+    const f = n => `₦${Number(n).toLocaleString()}`;
     return (
       <div className="h-full flex flex-col">
         <SubHeader title="My Commissions" />
         <div className="flex-1 overflow-y-auto px-4 py-4 pb-6">
           <div className="grid grid-cols-2 gap-3 mb-5">
-            {[["This Month", fmt(monthEarned), "#059669"], ["Pending Payout", fmt(pending), "#047857"]].map(([l, v, c]) => (
+            {[["This Month", f(monthTotal), "text-emerald-600 dark:text-emerald-400"], ["Pending Payout", f(pending), "text-slate-700 dark:text-slate-200"]].map(([l, v, c]) => (
               <div key={l} className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-4 border border-slate-100 dark:border-slate-700">
                 <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">{l}</p>
-                <p className="text-xl font-extrabold tabular" style={{ color: c }}>{v}</p>
+                <p className={`text-xl font-extrabold tabular ${c}`}>{v}</p>
               </div>
             ))}
           </div>
           {commLoading
-            ? <div className="flex justify-center py-12"><div className="w-7 h-7 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: GK, borderTopColor: "transparent" }} /></div>
+            ? <Spinner />
             : commissions.length === 0
               ? <p className="text-center text-sm text-slate-400 py-12">No commission records found.<br/>Your manager may need to set up commission rules.</p>
               : <div className="space-y-2">
@@ -257,7 +346,7 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
                         <p className="text-xs text-slate-400">{e.rate_percent}% of ₦{Number(e.basis_amount).toLocaleString()}</p>
                       </div>
                       <div className="text-right shrink-0">
-                        <p className="text-sm font-extrabold tabular" style={{ color: GK }}>₦{Number(e.amount).toLocaleString()}</p>
+                        <p className="text-sm font-extrabold tabular text-emerald-600 dark:text-emerald-400">₦{Number(e.amount).toLocaleString()}</p>
                         <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md capitalize ${e.status === "paid" ? "bg-green-50 text-green-600" : e.status === "voided" ? "bg-red-50 text-red-400" : "bg-amber-50 text-amber-600"}`}>{e.status}</span>
                       </div>
                     </div>
@@ -279,11 +368,11 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
           {disbursements.length > 0 && (
             <div className="bg-white dark:bg-slate-800 rounded-2xl px-5 py-4 border border-slate-100 dark:border-slate-700 mb-4">
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total Received</p>
-              <p className="text-2xl font-extrabold tabular" style={{ color: GK }}>₦{total.toLocaleString()}</p>
+              <p className="text-2xl font-extrabold tabular text-emerald-600 dark:text-emerald-400">₦{total.toLocaleString()}</p>
             </div>
           )}
           {disburseLoading
-            ? <div className="flex justify-center py-12"><div className="w-7 h-7 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: GK, borderTopColor: "transparent" }} /></div>
+            ? <Spinner />
             : disbursements.length === 0
               ? <p className="text-center text-sm text-slate-400 py-16">No payments recorded yet</p>
               : <div className="space-y-2">
@@ -295,8 +384,8 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
                         <p className="text-[11px] text-slate-400">{d.receipt_number}</p>
                       </div>
                       <div className="text-right shrink-0">
-                        <p className="text-base font-extrabold tabular" style={{ color: GK }}>₦{Number(d.amount).toLocaleString()}</p>
-                        <p className="text-[10px] text-slate-400">{new Date(d.created_at).toLocaleDateString("en-NG", { day:"2-digit",month:"short",year:"numeric" })}</p>
+                        <p className="text-base font-extrabold tabular text-emerald-600 dark:text-emerald-400">₦{Number(d.amount).toLocaleString()}</p>
+                        <p className="text-[10px] text-slate-400">{new Date(d.created_at).toLocaleDateString("en-NG", { day:"2-digit", month:"short", year:"numeric" })}</p>
                       </div>
                     </div>
                   ))}
@@ -309,9 +398,9 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
 
   /* ── D7: Close My Day (Reconciliation) ── */
   if (view === "reconcile") {
-    const ownerId = store.profile?.id || staff?.owner_id;
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const todayTx  = (store.transactions || []).filter(tx => tx.transaction_date === todayStr);
+    const ownerId     = store.profile?.id || staff?.owner_id;
+    const todayStr    = new Date().toISOString().slice(0, 10);
+    const todayTx     = (store.transactions || []).filter(tx => tx.transaction_date === todayStr);
     const expectedCash = todayTx.filter(tx => tx.type === "in").reduce((s, tx) => s + tx.amount, 0)
                        - todayTx.filter(tx => tx.type === "out").reduce((s, tx) => s + tx.amount, 0);
     const discrepancy = Number(actualCash || 0) - expectedCash;
@@ -320,13 +409,10 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
       if (!ownerId || !staffId) return;
       setReconcileSaving(true); setReconcileMsg("");
       const { error } = await supabase.from("reconciliations").upsert({
-        owner_id:      ownerId,
-        staff_id:      staffId,
-        date:          todayStr,
-        expected_cash: expectedCash,
-        actual_cash:   Number(actualCash || 0),
-        notes:         reconcileNote || null,
-        status:        Math.abs(discrepancy) > 100 ? "flagged" : "submitted",
+        owner_id: ownerId, staff_id: staffId, date: todayStr,
+        expected_cash: expectedCash, actual_cash: Number(actualCash || 0),
+        notes: reconcileNote || null,
+        status: Math.abs(discrepancy) > 100 ? "flagged" : "submitted",
       }, { onConflict: "staff_id,date" });
       if (error) {
         setReconcileMsg("Failed: " + error.message);
@@ -346,7 +432,7 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
             <div className="px-5 py-4 grid grid-cols-2 gap-4">
               <div>
                 <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Expected Cash</p>
-                <p className="text-xl font-extrabold tabular" style={{ color: NK }}>₦{expectedCash.toLocaleString()}</p>
+                <p className="text-xl font-extrabold tabular text-emerald-600 dark:text-emerald-400">₦{expectedCash.toLocaleString()}</p>
                 <p className="text-[10px] text-slate-400 mt-0.5">{todayTx.length} transactions today</p>
               </div>
               {actualCash !== "" && (
@@ -361,17 +447,13 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
           </div>
           <div>
             <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Cash at Hand (₦)</p>
-            <input type="number" min="0" placeholder="Enter actual cash amount"
-              value={actualCash}
-              onChange={e => setActualCash(e.target.value)}
-              className="w-full h-12 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/30" />
+            <input type="number" min="0" placeholder="Enter actual cash amount" value={actualCash} onChange={e => setActualCash(e.target.value)}
+              className="w-full h-12 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
           </div>
           <div>
             <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Notes (optional)</p>
-            <input type="text" placeholder="Any remarks for today"
-              value={reconcileNote}
-              onChange={e => setReconcileNote(e.target.value)}
-              className="w-full h-12 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/30" />
+            <input type="text" placeholder="Any remarks for today" value={reconcileNote} onChange={e => setReconcileNote(e.target.value)}
+              className="w-full h-12 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
           </div>
           {reconcileMsg && (
             <div className={`flex items-center gap-2 px-4 py-3 rounded-xl ${reconcileMsg.includes("Failed") ? "bg-red-50 text-red-600" : ""}`}
@@ -382,6 +464,7 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
           <button onClick={submitReconciliation} disabled={reconcileSaving || !actualCash}
             className="w-full h-12 rounded-2xl text-white font-bold text-sm flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50"
             style={{ backgroundColor: GK }}>
+            {reconcileSaving && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
             {reconcileSaving ? "Closing…" : "Close My Day"}
           </button>
         </div>
@@ -389,62 +472,48 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
     );
   }
 
-  /* ── Toggle helper ── */
-  function Toggle({ on, onToggle }) {
-    return (
-      <button onClick={e => { e.stopPropagation(); onToggle(); }}
-        className="relative w-12 h-6 rounded-full flex-shrink-0 transition-colors duration-200"
-        style={{ backgroundColor: on ? GK : "#e2e8f0" }}>
-        <span className="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all duration-200"
-          style={{ left: on ? "calc(100% - 22px)" : "2px" }} />
-      </button>
-    );
-  }
-
-  /* ── Main Me menu ── */
+  /* ══════════════════════════════════════════════════════════════════
+     MAIN ME MENU
+  ══════════════════════════════════════════════════════════════════ */
   return (
-    <div className="h-full overflow-y-auto pb-4">
+    <div className="h-full overflow-y-auto pb-6">
 
-      {/* Profile card with navy accent band */}
-      <div className="mx-4 mt-5 mb-5">
-        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-card border border-slate-100 dark:border-slate-700/50 overflow-hidden">
-          <div className="h-12" style={{ background: "linear-gradient(135deg,#059669 0%,#047857 100%)" }} />
-          <div className="px-5 pb-5 -mt-6 flex items-end gap-4">
-            <div className="w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg flex-shrink-0 overflow-hidden border-2 border-white dark:border-slate-800"
-              style={{ backgroundColor: "#059669" }}>
-              {staff?.profile_image_url
-                ? <img src={staff.profile_image_url} alt="" className="w-full h-full object-cover" />
-                : <span className="text-xl font-black text-white">{initials}</span>}
-            </div>
-            <div className="flex-1 min-w-0 pt-7">
-              <p className="text-base font-extrabold text-slate-800 dark:text-slate-100 truncate">{staff?.full_name || "Staff"}</p>
-              <p className="text-[12px] font-bold capitalize mt-0.5" style={{ color: GK }}>{staff?.role || "Staff Member"}</p>
-              <p className="text-[11px] text-slate-400 mt-0.5 truncate">{staff?.business_name || "—"}</p>
-            </div>
-            <button onClick={() => setView("edit")}
-              className="w-9 h-9 rounded-full flex items-center justify-center active:scale-90 transition flex-shrink-0 self-end mb-0.5 bg-emerald-50 dark:bg-emerald-900/20">
-              <div className="text-emerald-600 dark:text-emerald-400">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
-                  <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
-                </svg>
+      {/* Profile card — business portal style (flat rounded-3xl card) */}
+      <div className="mt-4 mx-4 mb-5 bg-white dark:bg-slate-800 rounded-3xl px-4 py-4 shadow-card border border-slate-100 dark:border-slate-700/50 flex items-center gap-4">
+        <div className="w-14 h-14 rounded-2xl overflow-hidden flex-shrink-0 border-2 border-slate-100 dark:border-slate-700">
+          {staff?.profile_image_url
+            ? <img src={staff.profile_image_url} alt="" className="w-full h-full object-cover" />
+            : <div className="w-full h-full bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center">
+                <span className="text-xl font-black text-white">{initials}</span>
               </div>
-            </button>
-          </div>
+          }
         </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-[15px] font-extrabold text-slate-800 dark:text-white truncate">{staff?.full_name || "Staff"}</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5 capitalize">
+            {(staff?.role || "staff member").replace(/_/g, " ")}
+          </p>
+          <span className="inline-block mt-1 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400">
+            {staff?.business_name || "Staff Portal"}
+          </span>
+        </div>
+        <button onClick={() => setView("profile")}
+          className="flex-shrink-0 text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-3 py-1.5 rounded-xl active:scale-95 transition">
+          View
+        </button>
       </div>
 
       {/* Account */}
       <div className="px-4 mb-5">
         <SectionLabel>Account</SectionLabel>
         <SettingsCard>
-          <Row icon={<RowIcon d={P.person} />} label="Edit Profile"          sub="Update your name, phone, and photo"       onClick={() => setView("edit")} />
-          <Row icon={<RowIcon d={P.report} />} label="Reports & Insights"    sub="View your performance analytics"          onClick={() => setView("reports")} />
-          <Row icon={<RowIcon d={P.doc} />}    label="Activity Statement"    sub="Generate & share your statement"          onClick={() => setShowStatement(true)} />
-          <Row icon={<RowIcon d={P.doc} />}    label="My Activity"           sub="Your action log and history"              onClick={() => setView("activity")} />
-          <Row icon={<RowIcon d={P.credit} />} label="My Commissions"        sub="Commission earnings breakdown"            onClick={() => setView("commissions")} />
-          <Row icon={<RowIcon d={P.in} />}     label="My Payments"           sub="Salary and disbursement history"         onClick={() => setView("payments")} />
-          <Row icon={<RowIcon d={P.check} />}  label="Close My Day"          sub="Submit end-of-day cash reconciliation"   onClick={() => setView("reconcile")} />
+          <Row icon={<RowIcon d={P.person} />} label="My Profile"           sub="View and edit your profile"             onClick={() => setView("profile")} />
+          <Row icon={<RowIcon d={P.report} />} label="Reports & Insights"   sub="View your performance analytics"        onClick={() => setView("reports")} />
+          <Row icon={<RowIcon d={P.doc} />}    label="Activity Statement"   sub="Generate & share your statement"        onClick={() => setShowStatement(true)} />
+          <Row icon={<RowIcon d={P.doc} />}    label="My Activity"          sub="Your action log and history"            onClick={() => setView("activity")} />
+          <Row icon={<RowIcon d={P.credit} />} label="My Commissions"       sub="Commission earnings breakdown"          onClick={() => setView("commissions")} />
+          <Row icon={<RowIcon d={P.in} />}     label="My Payments"          sub="Salary and disbursement history"        onClick={() => setView("payments")} />
+          <Row icon={<RowIcon d={P.check} />}  label="Close My Day"         sub="Submit end-of-day cash reconciliation"  onClick={() => setView("reconcile")} />
         </SettingsCard>
       </div>
 
@@ -452,8 +521,8 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
       <div className="px-4 mb-5">
         <SectionLabel>Security</SectionLabel>
         <SettingsCard>
-          <Row icon={<RowIcon d={P.lock} />}   label="Change App Lock PIN"     sub="6-digit PIN · unlocks the app"   onClick={() => setChangingPin("app")} />
-          <Row icon={<RowIcon d={P.shield} />} label="Change Transaction PIN"  sub="4-digit PIN · confirms payments" onClick={() => setChangingPin("txn")} />
+          <Row icon={<RowIcon d={P.lock} />}   label="App Lock PIN"        sub="Change your 6-digit unlock PIN"  onClick={() => setChangingPin("app")} />
+          <Row icon={<RowIcon d={P.shield} />} label="Transaction PIN"     sub="Change your 4-digit payment PIN" onClick={() => setChangingPin("txn")} />
           {pinLock.biometricAvailable && (
             <Row
               icon={<RowIcon d={P.finger} />}
@@ -467,8 +536,8 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
               }}
               right={
                 bioLoading
-                  ? <div className="w-4 h-4 rounded-full animate-spin border-2 border-transparent"
-                      style={{ borderTopColor: GK }} />
+                  ? <div className="w-5 h-5 rounded-full animate-spin border-2"
+                      style={{ borderColor: GK, borderTopColor: "transparent" }} />
                   : <Toggle on={pinLock.biometricEnabled} onToggle={async () => {
                       setBioLoading(true);
                       if (pinLock.biometricEnabled) await pinLock.disableBiometric();
@@ -481,7 +550,7 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
           <Row
             icon={<RowIcon d={P.shield} />}
             label="Auto-lock"
-            sub={({ 0: "Never", 60: "1 minute", 300: "5 minutes", 900: "15 minutes", 1800: "30 minutes" })[pinLock.autoLockTimeout] || `${Math.round(pinLock.autoLockTimeout / 60)} min`}
+            sub={({ 0:"Never", 60:"1 minute", 300:"5 minutes", 900:"15 minutes", 1800:"30 minutes" })[pinLock.autoLockTimeout] || `${Math.round(pinLock.autoLockTimeout / 60)} min`}
             onClick={() => setShowTimeoutPicker(true)}
           />
         </SettingsCard>
@@ -512,14 +581,14 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
       {/* Sign Out */}
       <div className="px-4 mb-4">
         <button onClick={() => supabase.auth.signOut()}
-          className="w-full py-[15px] bg-red-50 dark:bg-red-950/30 rounded-2xl font-bold text-sm border border-red-100 dark:border-red-900/40 active:bg-red-100 transition-colors flex items-center justify-center gap-2.5 text-red-500 dark:text-red-400">
+          className="w-full py-[15px] bg-red-50 dark:bg-red-950/30 rounded-2xl font-bold text-sm border border-red-100 dark:border-red-900/40 hover:bg-red-100 dark:hover:bg-red-950/50 transition-colors flex items-center justify-center gap-2.5 text-red-500 dark:text-red-400 active:scale-[0.99]">
           <Svg d={P.out2} size={18} color="currentColor" />
           Sign Out
         </button>
       </div>
 
       {/* Footer */}
-      <div className="text-center py-4 px-8 space-y-1">
+      <div className="text-center py-2 px-8 space-y-1">
         <p className="text-[11px] text-slate-400 dark:text-slate-500 font-medium">KudiAI Track · Staff Portal</p>
         <p className="text-[10px] text-slate-300 dark:text-slate-600">Powered by AMAYA & Co. Technologies<br />All rights reserved © {YEAR}</p>
       </div>

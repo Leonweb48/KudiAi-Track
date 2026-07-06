@@ -111,7 +111,7 @@ export const P = {
 /* ─ Section label — one standard everywhere ─────────────────────── */
 export function SectionLabel({ children }) {
   return (
-    <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1">
+    <p className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1">
       {children}
     </p>
   );
@@ -126,10 +126,10 @@ export function SettingsCard({ children }) {
   );
 }
 
-/* ─ Row icon — emerald icon (matches business portal) ───────────── */
+/* ─ Row icon — grey icon (matches business portal Settings rows) ── */
 export function RowIcon({ d }) {
   return (
-    <div className="text-emerald-600 dark:text-emerald-400">
+    <div className="text-slate-600 dark:text-slate-300">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
         stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         {d.split("|").map((p, i) => <path key={i} d={p} />)}
@@ -138,12 +138,12 @@ export function RowIcon({ d }) {
   );
 }
 
-/* ─ Settings row — rounded-2xl icon tile (matches business portal) */
+/* ─ Settings row — grey rounded-xl tile (matches business portal) ─ */
 export function Row({ icon, label, sub, onClick, right }) {
   return (
     <button onClick={onClick}
-      className="w-full flex items-center gap-3.5 px-4 py-[14px] text-left active:bg-slate-50 dark:active:bg-slate-700/40 transition-colors">
-      <div className="w-10 h-10 rounded-2xl bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center flex-shrink-0">
+      className="w-full flex items-center gap-3.5 px-4 py-[14px] text-left hover:bg-slate-50 dark:hover:bg-slate-700/40 active:bg-slate-100 dark:active:bg-slate-700/60 transition-colors focus-visible:outline-none">
+      <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center flex-shrink-0">
         {icon}
       </div>
       <div className="flex-1 min-w-0">
@@ -151,7 +151,9 @@ export function Row({ icon, label, sub, onClick, right }) {
         {sub && <p className="text-[12px] text-slate-400 dark:text-slate-500 mt-0.5">{sub}</p>}
       </div>
       {right !== undefined ? right : (
-        <Svg d="M9 18l6-6-6-6" size={16} color="#cbd5e1" />
+        <svg className="w-4 h-4 text-slate-300 dark:text-slate-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M9 18l6-6-6-6" />
+        </svg>
       )}
     </button>
   );
