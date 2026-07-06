@@ -17,7 +17,7 @@ import StaffSales             from "./staff/StaffSales";
 import StaffRecords           from "./staff/StaffRecords";
 import StaffStock             from "./staff/StaffStock";
 import StaffMe                from "./staff/StaffMe";
-import { makeNav, greetingText, NK, GK } from "./staff/StaffShared";
+import { makeNav } from "./staff/StaffShared";
 import AIChatWidget           from "../components/AIChatWidget";
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -185,31 +185,27 @@ If asked about business-wide figures (total business revenue, all staff performa
   }
 
   return (
-    <div className="h-[100dvh] bg-[#F6F8FC] dark:bg-slate-900 flex justify-center transition-colors duration-200">
+    <div className="h-[100dvh] bg-white dark:bg-slate-900 flex justify-center transition-colors duration-200">
       <div className="w-full max-w-md flex flex-col h-full relative">
 
-        {/* Header */}
-        <header className="flex-none z-30 h-14 flex items-center justify-between px-4 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shadow-sm">
-          {tab === "home" ? (
-            <div className="flex-1 min-w-0">
-              <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest leading-none">{greetingText(t)}</p>
-              <p className="text-[17px] font-black leading-tight truncate" style={{ color: NK }}>
-                {(staff?.full_name || "Staff").split(" ")[0]}
-              </p>
+        {/* Header — matches business portal exactly */}
+        <header className="flex-none z-30 h-14 flex items-center justify-between px-4 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700/60 shadow-sm">
+          <div className="flex items-center gap-2">
+            <AppLogo className="h-7 w-7 flex-shrink-0" />
+            <div className="flex items-baseline gap-0.5">
+              <span className="text-[18px] font-black tracking-tight text-slate-800 dark:text-slate-100">Kudi</span>
+              <span className="text-[18px] font-black tracking-tight"
+                style={{ background: "linear-gradient(135deg,#16a34a,#059669)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+                AI
+              </span>
+              <span className="text-[12px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Track</span>
             </div>
-          ) : (
-            <div className="flex items-center gap-2.5 flex-1 min-w-0">
-              <AppLogo className="h-7 w-7 flex-shrink-0" />
-              <p className="text-[17px] font-extrabold truncate" style={{ color: NK }}>
-                {NAV.find(n => n.id === tab)?.label}
-              </p>
-            </div>
-          )}
+          </div>
           <div className="flex items-center gap-2">
             <NotificationBell unreadCount={notif.unreadCount} onClick={() => notif.setOpen(true)} />
             <button onClick={() => goTo("me")}
               className="w-9 h-9 rounded-full flex items-center justify-center border-2 border-slate-100 dark:border-slate-700 shadow-sm active:scale-90 transition-transform overflow-hidden"
-              style={{ background: `linear-gradient(135deg, ${NK} 0%, #1e3370 100%)` }}>
+              style={{ background: "linear-gradient(135deg,#059669,#047857)" }}>
               {staff?.profile_image_url
                 ? <img src={staff.profile_image_url} alt="" className="w-9 h-9 object-cover" />
                 : <span className="text-sm font-black text-white">{avatarInitial}</span>}
@@ -222,29 +218,29 @@ If asked about business-wide figures (total business revenue, all staff performa
           {renderContent()}
         </main>
 
-        {/* Bottom nav — navy active, green indicator */}
-        <nav className="flex-none z-40 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 shadow-float">
-          <div className="flex items-stretch h-[60px]">
+        {/* Bottom nav — business portal pill-background style */}
+        <nav className="flex-none z-40 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800">
+          <div className="flex items-stretch px-1 h-[64px]">
             {NAV.map(n => {
               const active = tab === n.id;
               const cnt    = badge(n.id);
               return (
                 <button key={n.id} onClick={() => { setTab(n.id); setSubNav(null); setSubData(null); }}
-                  className="flex-1 flex flex-col items-center justify-center gap-0.5 relative focus-visible:outline-none">
+                  aria-current={active ? "page" : undefined}
+                  className="flex-1 flex flex-col items-center justify-center gap-0.5 py-1.5 relative focus-visible:outline-none">
                   {active && (
-                    <span className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-[3px] rounded-full"
-                      style={{ backgroundColor: GK }} />
+                    <span className="absolute inset-x-0.5 top-1.5 bottom-1.5 rounded-2xl bg-emerald-50 dark:bg-emerald-900/20 pointer-events-none" />
                   )}
-                  <div className="relative transition-all duration-200">
-                    <Icon name={n.icon} size={21}
-                    className={active ? "text-[#16255A] dark:text-[#3DA829]" : "text-slate-400 dark:text-slate-500"} />
+                  <div className="relative z-10">
+                    <Icon name={n.icon} size={22}
+                      className={`transition-all duration-200 ${active ? "scale-110 text-emerald-600 dark:text-emerald-400" : "text-slate-400 dark:text-slate-500"}`} />
                     {cnt > 0 && (
                       <span className="absolute -top-1.5 -right-2 min-w-[16px] h-4 px-0.5 rounded-full bg-red-500 text-white text-[8px] font-black flex items-center justify-center leading-none">
                         {cnt > 9 ? "9+" : cnt}
                       </span>
                     )}
                   </div>
-                  <span className={`text-[9px] font-bold leading-none ${active ? "text-[#16255A] dark:text-[#3DA829]" : "text-slate-400 dark:text-slate-500"}`}>
+                  <span className={`relative z-10 text-[9px] font-bold uppercase tracking-wide leading-none transition-colors duration-200 ${active ? "text-emerald-600 dark:text-emerald-400" : "text-slate-400 dark:text-slate-500"}`}>
                     {n.label}
                   </span>
                 </button>

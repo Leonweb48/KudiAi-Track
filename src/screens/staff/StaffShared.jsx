@@ -4,10 +4,10 @@ import { fmt, today } from "../../utils/helpers";
 import { useT } from "../../contexts/LanguageContext";
 import Modal from "../../components/shared/Modal";
 
-/* ─ Palette tokens ─────────────────────────────────────────────── */
-export const NK  = "#16255A"; // KudiAI navy
-export const GK  = "#3DA829"; // KudiAI green
-export const GKL = "#E8F7E3"; // light-green tint
+/* ─ Palette tokens — matches business portal (emerald-600) ─────── */
+export const NK  = "#059669"; // emerald-600 (primary, was navy)
+export const GK  = "#059669"; // emerald-600 (accent, was lime)
+export const GKL = "#ecfdf5"; // emerald-50 tint (was lime tint)
 
 export const ADMIN_URL = "https://admin.kudiai.app";
 export const YEAR      = new Date().getFullYear();
@@ -126,10 +126,10 @@ export function SettingsCard({ children }) {
   );
 }
 
-/* ─ Row icon — navy icon on light-green tile ────────────────────── */
+/* ─ Row icon — emerald icon (matches business portal) ───────────── */
 export function RowIcon({ d }) {
   return (
-    <div className="text-[#16255A] dark:text-[#3DA829]">
+    <div className="text-emerald-600 dark:text-emerald-400">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
         stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         {d.split("|").map((p, i) => <path key={i} d={p} />)}
@@ -138,12 +138,12 @@ export function RowIcon({ d }) {
   );
 }
 
-/* ─ Settings row — icon tile rounded-full per design spec ──────── */
+/* ─ Settings row — rounded-2xl icon tile (matches business portal) */
 export function Row({ icon, label, sub, onClick, right }) {
   return (
     <button onClick={onClick}
       className="w-full flex items-center gap-3.5 px-4 py-[14px] text-left active:bg-slate-50 dark:active:bg-slate-700/40 transition-colors">
-      <div className="w-10 h-10 rounded-full bg-[#E8F7E3] dark:bg-[#16255A]/25 flex items-center justify-center flex-shrink-0">
+      <div className="w-10 h-10 rounded-2xl bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center flex-shrink-0">
         {icon}
       </div>
       <div className="flex-1 min-w-0">
@@ -163,7 +163,7 @@ export function StatCard({ label, value, icon, iconBg, iconColor, sub, onClick, 
     <button onClick={onClick}
       className="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-card border border-slate-100 dark:border-slate-700/50 text-left active:scale-95 transition-all duration-150 w-full">
       <div className="flex items-center gap-2.5 mb-3">
-        <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${iconBg}`}>
+        <div className={`w-9 h-9 rounded-2xl flex items-center justify-center flex-shrink-0 ${iconBg}`}>
           <Svg d={icon} size={16} color={iconColor} sw={2.5} />
         </div>
         <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest leading-tight">{label}</span>
@@ -189,11 +189,11 @@ export function TxRow({ t, onClick }) {
       }`}>
       <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
         failed   ? "bg-red-100 dark:bg-red-900/30"
-        : isIn   ? "bg-[#E8F7E3] dark:bg-[#3DA829]/15"
-                 : "bg-[#EEF1FA] dark:bg-[#16255A]/20"
+        : isIn   ? "bg-green-100 dark:bg-green-900/30"
+                 : "bg-red-100 dark:bg-red-900/30"
       }`}>
         <Svg d={isIn ? P.in : P.out} size={16}
-          color={failed ? "#dc2626" : isIn ? GK : NK}
+          color={failed ? "#dc2626" : isIn ? "#059669" : "#ef4444"}
           sw={2.5} />
       </div>
       <div className="flex-1 min-w-0">
@@ -206,8 +206,8 @@ export function TxRow({ t, onClick }) {
       <div className="text-right flex-shrink-0">
         <p className={`text-sm font-extrabold tabular ${
           failed ? "text-red-400 line-through"
-          : isIn  ? "text-[#3DA829]"
-                  : "text-[#16255A] dark:text-slate-300"
+          : isIn  ? "text-emerald-600 dark:text-emerald-400"
+                  : "text-red-500 dark:text-red-400"
         }`}>
           {isIn ? "+" : "−"}{fmt(t.amount)}
         </p>
@@ -275,7 +275,7 @@ export function ChangePinModal({ mode, onDone, onClose }) {
       <div className="flex flex-col items-center gap-5 py-2">
         {ok ? (
           <div className="flex flex-col items-center gap-3 py-4">
-            <div className="w-14 h-14 rounded-full bg-[#E8F7E3] flex items-center justify-center">
+            <div className="w-14 h-14 rounded-full bg-emerald-50 flex items-center justify-center">
               <Svg d={P.check} size={24} color={GK} sw={2.5} />
             </div>
             <p className="text-sm font-bold text-slate-700 dark:text-slate-200">PIN changed!</p>
@@ -349,7 +349,7 @@ export function SupportModal({ onClose, staffName, staffEmail }) {
     <Modal title="Help & Support" onClose={onClose}>
       {done ? (
         <div className="flex flex-col items-center gap-4 py-4 text-center">
-          <div className="w-14 h-14 rounded-full bg-[#E8F7E3] flex items-center justify-center">
+          <div className="w-14 h-14 rounded-full bg-emerald-50 flex items-center justify-center">
             <Svg d={P.check} size={24} color={GK} sw={2.5} />
           </div>
           <div>

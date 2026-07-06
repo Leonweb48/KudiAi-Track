@@ -103,9 +103,8 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
   const SubHeader = ({ title }) => (
     <div className="flex items-center gap-3 px-4 py-4 border-b border-slate-100 dark:border-slate-700/50 flex-shrink-0 bg-white dark:bg-slate-900">
       <button onClick={() => setView("menu")}
-        className="w-9 h-9 rounded-full flex items-center justify-center active:scale-90 transition"
-        style={{ backgroundColor: "#E8F7E3" }}>
-        <div style={{ color: NK }}>
+        className="w-9 h-9 rounded-full flex items-center justify-center active:scale-90 transition bg-emerald-50 dark:bg-emerald-900/20">
+        <div className="text-emerald-600 dark:text-emerald-400">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M19 12H5" /><path d="M12 19l-7-7 7-7" />
           </svg>
@@ -150,7 +149,7 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
         <div className="flex flex-col items-center gap-3">
           <div className="relative">
             <div className="w-24 h-24 rounded-3xl flex items-center justify-center shadow-lg overflow-hidden"
-              style={{ backgroundColor: NK }}>
+              style={{ backgroundColor: "#059669" }}>
               {photoPreview
                 ? <img src={photoPreview} alt="" className="w-full h-full object-cover" />
                 : staff?.profile_image_url
@@ -183,7 +182,7 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
         </div>
         {saveMsg && (
           <div className={`flex items-center gap-2 px-4 py-3 rounded-xl ${saveMsg.includes("saved") ? "" : "bg-red-50 dark:bg-red-900/30 text-red-600"}`}
-            style={saveMsg.includes("saved") ? { backgroundColor: "#E8F7E3", color: GK } : {}}>
+            style={saveMsg.includes("saved") ? { backgroundColor: "#ecfdf5", color: GK } : {}}>
             <Svg d={saveMsg.includes("saved") ? P.check : P.alert} size={16} color="currentColor" />
             <p className="text-sm font-semibold">{saveMsg}</p>
           </div>
@@ -239,7 +238,7 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
         <SubHeader title="My Commissions" />
         <div className="flex-1 overflow-y-auto px-4 py-4 pb-6">
           <div className="grid grid-cols-2 gap-3 mb-5">
-            {[["This Month", fmt(monthEarned), "#3DA829"], ["Pending Payout", fmt(pending), "#16255A"]].map(([l, v, c]) => (
+            {[["This Month", fmt(monthEarned), "#059669"], ["Pending Payout", fmt(pending), "#047857"]].map(([l, v, c]) => (
               <div key={l} className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-4 border border-slate-100 dark:border-slate-700">
                 <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">{l}</p>
                 <p className="text-xl font-extrabold tabular" style={{ color: c }}>{v}</p>
@@ -343,7 +342,7 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
         <SubHeader title="Close My Day" />
         <div className="flex-1 overflow-y-auto px-4 py-5 space-y-5 pb-6">
           <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 overflow-hidden">
-            <div className="h-1.5" style={{ background: `linear-gradient(90deg, ${GK}, #16255A)` }} />
+            <div className="h-1.5" style={{ background: "linear-gradient(90deg,#059669,#047857)" }} />
             <div className="px-5 py-4 grid grid-cols-2 gap-4">
               <div>
                 <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Expected Cash</p>
@@ -376,7 +375,7 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
           </div>
           {reconcileMsg && (
             <div className={`flex items-center gap-2 px-4 py-3 rounded-xl ${reconcileMsg.includes("Failed") ? "bg-red-50 text-red-600" : ""}`}
-              style={!reconcileMsg.includes("Failed") ? { backgroundColor: "#E8F7E3", color: GK } : {}}>
+              style={!reconcileMsg.includes("Failed") ? { backgroundColor: "#ecfdf5", color: GK } : {}}>
               <p className="text-sm font-semibold">{reconcileMsg}</p>
             </div>
           )}
@@ -409,10 +408,10 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
       {/* Profile card with navy accent band */}
       <div className="mx-4 mt-5 mb-5">
         <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-card border border-slate-100 dark:border-slate-700/50 overflow-hidden">
-          <div className="h-12" style={{ background: `linear-gradient(135deg, ${NK} 0%, #1e3370 100%)` }} />
+          <div className="h-12" style={{ background: "linear-gradient(135deg,#059669 0%,#047857 100%)" }} />
           <div className="px-5 pb-5 -mt-6 flex items-end gap-4">
             <div className="w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg flex-shrink-0 overflow-hidden border-2 border-white dark:border-slate-800"
-              style={{ backgroundColor: NK }}>
+              style={{ backgroundColor: "#059669" }}>
               {staff?.profile_image_url
                 ? <img src={staff.profile_image_url} alt="" className="w-full h-full object-cover" />
                 : <span className="text-xl font-black text-white">{initials}</span>}
@@ -423,9 +422,8 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
               <p className="text-[11px] text-slate-400 mt-0.5 truncate">{staff?.business_name || "—"}</p>
             </div>
             <button onClick={() => setView("edit")}
-              className="w-9 h-9 rounded-full flex items-center justify-center active:scale-90 transition flex-shrink-0 self-end mb-0.5"
-              style={{ backgroundColor: "#E8F7E3" }}>
-              <div style={{ color: NK }}>
+              className="w-9 h-9 rounded-full flex items-center justify-center active:scale-90 transition flex-shrink-0 self-end mb-0.5 bg-emerald-50 dark:bg-emerald-900/20">
+              <div className="text-emerald-600 dark:text-emerald-400">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
                   <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
@@ -545,7 +543,7 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
                 className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition text-sm font-semibold ${
                   pinLock.autoLockTimeout === v ? "text-white" : "bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200"
                 }`}
-                style={pinLock.autoLockTimeout === v ? { backgroundColor: NK } : {}}>
+                style={pinLock.autoLockTimeout === v ? { backgroundColor: "#059669" } : {}}>
                 {l}
                 {pinLock.autoLockTimeout === v && <Svg d={P.check} size={16} color="#fff" sw={2.5} />}
               </button>

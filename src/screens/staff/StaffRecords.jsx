@@ -30,7 +30,7 @@ export default function StaffRecords({ store, staff, livePerms, initialSub, plan
             <button key={v} onClick={() => setSub(v)}
               className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
                 sub === v
-                  ? "bg-white dark:bg-slate-700 shadow-sm text-[#16255A] dark:text-white"
+                  ? "bg-white dark:bg-slate-700 shadow-sm text-emerald-600 dark:text-white"
                   : "text-slate-500 dark:text-slate-400"
               }`}>
               {l}
