@@ -18,6 +18,7 @@ import StaffRecords           from "./staff/StaffRecords";
 import StaffStock             from "./staff/StaffStock";
 import StaffMe                from "./staff/StaffMe";
 import { makeNav, greetingText, NK, GK } from "./staff/StaffShared";
+import AIChatWidget           from "../components/AIChatWidget";
 
 /* ═══════════════════════════════════════════════════════════════════
    STAFF DASHBOARD — shell (navigation, header, data hooks)
@@ -133,6 +134,43 @@ export default function StaffDashboard({ session, staff: staffProp, pinLock }) {
     setTab(t); setSubNav(sub); setSubData(data);
   }, []);
 
+  /* D10: Kill session immediately if owner removes or suspends this staff */
+  useEffect(() => {
+    if (!staffId) return;
+    const ch = supabase
+      .channel(`staff_status_${staffId}`)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "staff", filter: `id=eq.${staffId}` },
+        (payload) => {
+          const s = payload.new?.status;
+          if (s === "removed" || s === "suspended") supabase.auth.signOut();
+        })
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [staffId]);
+
+  /* D11: Staff-scoped AI context — only their own data, no business-wide figures */
+  const staffPortalContext = useMemo(() => {
+    if (!staff || !ownerId) return "";
+    const { transactions = [], credits = [], asoClients = [] } = store;
+    const todayStr  = today();
+    const todayTx   = transactions.filter(tx => tx.transaction_date === todayStr);
+    const todaySales = todayTx.filter(tx => tx.type === "in").reduce((s, tx) => s + tx.amount, 0);
+    const pendingCr  = credits.reduce((s, c) => s + (c.outstanding || 0), 0);
+    return `You are assisting ${staff.full_name}, a ${(staff.role || "staff member").replace(/_/g, " ")} at ${staff.business_name || "the business"}.
+IMPORTANT: You can ONLY see this staff member's own data — their own sales, credits, and ajo clients. Do NOT reveal full business data or other staff records.
+Today's transactions: ${todayTx.length}. Today's cash in: ₦${todaySales.toLocaleString()}.
+Pending credit outstanding: ₦${pendingCr.toLocaleString()} across ${credits.length} credit clients. Ajo clients: ${asoClients.length}.
+If asked about business-wide figures (total business revenue, all staff performance, business bank details, business wallet), say only the business owner can access that.`;
+  }, [staff, store, ownerId]);
+
+  const staffQuickChips = useMemo(() => [
+    { label: "Today's Sales",       q: "How much did I sell today?"                       },
+    { label: "My Credits",          q: "Show me my pending credit clients and totals"     },
+    { label: "Commission",          q: "What is my commission this month?"                },
+    { label: "Ajo Summary",         q: "Give me my ajo clients summary"                  },
+    { label: "Recent Transactions", q: "What are my most recent transactions?"            },
+  ], []);
+
   const avatarInitial = (staff?.full_name || "S")[0].toUpperCase();
 
   function renderContent() {
@@ -229,6 +267,14 @@ export default function StaffDashboard({ session, staff: staffProp, pinLock }) {
           <VoiceModal onClose={() => setVoiceOpen(false)} onSave={handleVoiceSave} />
         )}
         <NotificationCenter notif={notif} />
+
+        {/* D11: Staff-aware AI assistant — staff-scoped context, no business-wide data */}
+        <AIChatWidget
+          portalContext={staffPortalContext}
+          quickChips={staffQuickChips}
+          greeting={`Hi ${(staff?.full_name || "").split(" ")[0] || "there"}! I'm **KudiAI**, your personal assistant.\n\nI can see your own sales, credits, and ajo clients. Ask me anything about your performance!`}
+          inputPlaceholder="Ask about your sales, credits, or ajo…"
+        />
 
       </div>
     </div>

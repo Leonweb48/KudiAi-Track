@@ -30,7 +30,51 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
   const [showReports,       setShowReports]       = useState(false);
   const fileRef = useRef(null);
 
+  // D2: My Activity
+  const [activityLogs,     setActivityLogs]     = useState([]);
+  const [activityLoading,  setActivityLoading]  = useState(false);
+
+  // D4: My Commissions
+  const [commissions,      setCommissions]      = useState([]);
+  const [commLoading,      setCommLoading]      = useState(false);
+
+  // D6: My Payments
+  const [disbursements,    setDisbursements]    = useState([]);
+  const [disburseLoading,  setDisburseLoading]  = useState(false);
+
+  // D7: Close My Day
+  const [actualCash,       setActualCash]       = useState("");
+  const [reconcileNote,    setReconcileNote]    = useState("");
+  const [reconcileSaving,  setReconcileSaving]  = useState(false);
+  const [reconcileMsg,     setReconcileMsg]     = useState("");
+
   useEffect(() => { if (initialView) setView(initialView); }, [initialView]);
+
+  // Load data when view changes (proper hook placement — before any early returns)
+  useEffect(() => {
+    if (view === "activity") {
+      setActivityLogs([]);
+      setActivityLoading(true);
+      supabase.from("audit_logs").select("*").eq("staff_id", staffId)
+        .order("created_at", { ascending: false }).limit(100)
+        .then(({ data }) => { setActivityLogs(data || []); setActivityLoading(false); });
+    }
+    if (view === "commissions") {
+      setCommissions([]);
+      setCommLoading(true);
+      supabase.from("commission_earnings")
+        .select("*, transactions(item_name, transaction_date)")
+        .eq("staff_id", staffId).order("earned_at", { ascending: false }).limit(100)
+        .then(({ data }) => { setCommissions(data || []); setCommLoading(false); });
+    }
+    if (view === "payments") {
+      setDisbursements([]);
+      setDisburseLoading(true);
+      supabase.from("staff_disbursements").select("*").eq("staff_id", staffId)
+        .order("created_at", { ascending: false }).limit(100)
+        .then(({ data }) => { setDisbursements(data || []); setDisburseLoading(false); });
+    }
+  }, [view, staffId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const initials = (staff?.full_name || "S").split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
 
@@ -153,6 +197,199 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
     </div>
   );
 
+  /* ── D2: My Activity ── */
+  if (view === "activity") {
+    const fmtTs = (iso) => iso ? new Date(iso).toLocaleString("en-NG", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
+    return (
+      <div className="h-full flex flex-col">
+        <SubHeader title="My Activity" />
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2 pb-6">
+          {activityLoading
+            ? <div className="flex justify-center py-16"><div className="w-7 h-7 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: GK, borderTopColor: "transparent" }} /></div>
+            : activityLogs.length === 0
+              ? <p className="text-center text-sm text-slate-400 py-16">No activity recorded yet</p>
+              : activityLogs.map(l => (
+                  <div key={l.id} className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3 border border-slate-100 dark:border-slate-700">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-slate-800 dark:text-white">{l.action}</p>
+                        {l.details && <p className="text-xs text-slate-400 mt-0.5 italic">{l.details}</p>}
+                      </div>
+                      <div className="text-right shrink-0">
+                        {l.module && <span className="text-[10px] font-bold px-1.5 py-0.5 bg-slate-100 dark:bg-slate-700 text-slate-500 rounded-md capitalize">{l.module}</span>}
+                        <p className="text-[10px] text-slate-400 mt-1">{fmtTs(l.created_at)}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))
+          }
+        </div>
+      </div>
+    );
+  }
+
+  /* ── D4: My Commissions ── */
+  if (view === "commissions") {
+    const thisMonth = new Date().toISOString().slice(0, 7);
+    const pending  = commissions.filter(e => e.status === "pending").reduce((s, e) => s + Number(e.amount), 0);
+    const monthEarned = commissions.filter(e => e.status !== "voided" && (e.earned_at || "").startsWith(thisMonth)).reduce((s, e) => s + Number(e.amount), 0);
+    const fmt = (n) => `₦${Number(n).toLocaleString()}`;
+    return (
+      <div className="h-full flex flex-col">
+        <SubHeader title="My Commissions" />
+        <div className="flex-1 overflow-y-auto px-4 py-4 pb-6">
+          <div className="grid grid-cols-2 gap-3 mb-5">
+            {[["This Month", fmt(monthEarned), "#3DA829"], ["Pending Payout", fmt(pending), "#16255A"]].map(([l, v, c]) => (
+              <div key={l} className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-4 border border-slate-100 dark:border-slate-700">
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">{l}</p>
+                <p className="text-xl font-extrabold tabular" style={{ color: c }}>{v}</p>
+              </div>
+            ))}
+          </div>
+          {commLoading
+            ? <div className="flex justify-center py-12"><div className="w-7 h-7 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: GK, borderTopColor: "transparent" }} /></div>
+            : commissions.length === 0
+              ? <p className="text-center text-sm text-slate-400 py-12">No commission records found.<br/>Your manager may need to set up commission rules.</p>
+              : <div className="space-y-2">
+                  {commissions.map(e => (
+                    <div key={e.id} className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3 border border-slate-100 dark:border-slate-700 flex items-center justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 truncate">{e.transactions?.item_name || "Sale"}</p>
+                        <p className="text-xs text-slate-400">{e.rate_percent}% of ₦{Number(e.basis_amount).toLocaleString()}</p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-sm font-extrabold tabular" style={{ color: GK }}>₦{Number(e.amount).toLocaleString()}</p>
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md capitalize ${e.status === "paid" ? "bg-green-50 text-green-600" : e.status === "voided" ? "bg-red-50 text-red-400" : "bg-amber-50 text-amber-600"}`}>{e.status}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+          }
+        </div>
+      </div>
+    );
+  }
+
+  /* ── D6: My Payments ── */
+  if (view === "payments") {
+    const total = disbursements.reduce((s, d) => s + Number(d.amount), 0);
+    return (
+      <div className="h-full flex flex-col">
+        <SubHeader title="My Payments" />
+        <div className="flex-1 overflow-y-auto px-4 py-4 pb-6">
+          {disbursements.length > 0 && (
+            <div className="bg-white dark:bg-slate-800 rounded-2xl px-5 py-4 border border-slate-100 dark:border-slate-700 mb-4">
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total Received</p>
+              <p className="text-2xl font-extrabold tabular" style={{ color: GK }}>₦{total.toLocaleString()}</p>
+            </div>
+          )}
+          {disburseLoading
+            ? <div className="flex justify-center py-12"><div className="w-7 h-7 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: GK, borderTopColor: "transparent" }} /></div>
+            : disbursements.length === 0
+              ? <p className="text-center text-sm text-slate-400 py-16">No payments recorded yet</p>
+              : <div className="space-y-2">
+                  {disbursements.map(d => (
+                    <div key={d.id} className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3 border border-slate-100 dark:border-slate-700 flex items-center justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 capitalize">{d.type}</p>
+                        {d.notes && <p className="text-xs text-slate-400 truncate">{d.notes}</p>}
+                        <p className="text-[11px] text-slate-400">{d.receipt_number}</p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-base font-extrabold tabular" style={{ color: GK }}>₦{Number(d.amount).toLocaleString()}</p>
+                        <p className="text-[10px] text-slate-400">{new Date(d.created_at).toLocaleDateString("en-NG", { day:"2-digit",month:"short",year:"numeric" })}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+          }
+        </div>
+      </div>
+    );
+  }
+
+  /* ── D7: Close My Day (Reconciliation) ── */
+  if (view === "reconcile") {
+    const ownerId = store.profile?.id || staff?.owner_id;
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayTx  = (store.transactions || []).filter(tx => tx.transaction_date === todayStr);
+    const expectedCash = todayTx.filter(tx => tx.type === "in").reduce((s, tx) => s + tx.amount, 0)
+                       - todayTx.filter(tx => tx.type === "out").reduce((s, tx) => s + tx.amount, 0);
+    const discrepancy = Number(actualCash || 0) - expectedCash;
+
+    const submitReconciliation = async () => {
+      if (!ownerId || !staffId) return;
+      setReconcileSaving(true); setReconcileMsg("");
+      const { error } = await supabase.from("reconciliations").upsert({
+        owner_id:      ownerId,
+        staff_id:      staffId,
+        date:          todayStr,
+        expected_cash: expectedCash,
+        actual_cash:   Number(actualCash || 0),
+        notes:         reconcileNote || null,
+        status:        Math.abs(discrepancy) > 100 ? "flagged" : "submitted",
+      }, { onConflict: "staff_id,date" });
+      if (error) {
+        setReconcileMsg("Failed: " + error.message);
+      } else {
+        setReconcileMsg(Math.abs(discrepancy) > 100 ? "Day closed — discrepancy flagged for review." : "Day closed successfully!");
+        setTimeout(() => { setView("menu"); setReconcileMsg(""); setActualCash(""); setReconcileNote(""); }, 2000);
+      }
+      setReconcileSaving(false);
+    };
+
+    return (
+      <div className="h-full flex flex-col">
+        <SubHeader title="Close My Day" />
+        <div className="flex-1 overflow-y-auto px-4 py-5 space-y-5 pb-6">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 overflow-hidden">
+            <div className="h-1.5" style={{ background: `linear-gradient(90deg, ${GK}, #16255A)` }} />
+            <div className="px-5 py-4 grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Expected Cash</p>
+                <p className="text-xl font-extrabold tabular" style={{ color: NK }}>₦{expectedCash.toLocaleString()}</p>
+                <p className="text-[10px] text-slate-400 mt-0.5">{todayTx.length} transactions today</p>
+              </div>
+              {actualCash !== "" && (
+                <div>
+                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Discrepancy</p>
+                  <p className={`text-xl font-extrabold tabular ${Math.abs(discrepancy) > 100 ? "text-red-500" : "text-green-500"}`}>
+                    {discrepancy >= 0 ? "+" : ""}₦{discrepancy.toLocaleString()}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+          <div>
+            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Cash at Hand (₦)</p>
+            <input type="number" min="0" placeholder="Enter actual cash amount"
+              value={actualCash}
+              onChange={e => setActualCash(e.target.value)}
+              className="w-full h-12 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/30" />
+          </div>
+          <div>
+            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Notes (optional)</p>
+            <input type="text" placeholder="Any remarks for today"
+              value={reconcileNote}
+              onChange={e => setReconcileNote(e.target.value)}
+              className="w-full h-12 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/30" />
+          </div>
+          {reconcileMsg && (
+            <div className={`flex items-center gap-2 px-4 py-3 rounded-xl ${reconcileMsg.includes("Failed") ? "bg-red-50 text-red-600" : ""}`}
+              style={!reconcileMsg.includes("Failed") ? { backgroundColor: "#E8F7E3", color: GK } : {}}>
+              <p className="text-sm font-semibold">{reconcileMsg}</p>
+            </div>
+          )}
+          <button onClick={submitReconciliation} disabled={reconcileSaving || !actualCash}
+            className="w-full h-12 rounded-2xl text-white font-bold text-sm flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50"
+            style={{ backgroundColor: GK }}>
+            {reconcileSaving ? "Closing…" : "Close My Day"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   /* ── Toggle helper ── */
   function Toggle({ on, onToggle }) {
     return (
@@ -203,9 +440,13 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
       <div className="px-4 mb-5">
         <SectionLabel>Account</SectionLabel>
         <SettingsCard>
-          <Row icon={<RowIcon d={P.person} />} label="Edit Profile"       sub="Update your name, phone, and photo" onClick={() => setView("edit")} />
-          <Row icon={<RowIcon d={P.report} />} label="Reports & Insights" sub="View your performance analytics"    onClick={() => setView("reports")} />
-          <Row icon={<RowIcon d={P.doc} />}    label="Activity Statement" sub="Generate & share your statement"    onClick={() => setShowStatement(true)} />
+          <Row icon={<RowIcon d={P.person} />} label="Edit Profile"          sub="Update your name, phone, and photo"       onClick={() => setView("edit")} />
+          <Row icon={<RowIcon d={P.report} />} label="Reports & Insights"    sub="View your performance analytics"          onClick={() => setView("reports")} />
+          <Row icon={<RowIcon d={P.doc} />}    label="Activity Statement"    sub="Generate & share your statement"          onClick={() => setShowStatement(true)} />
+          <Row icon={<RowIcon d={P.doc} />}    label="My Activity"           sub="Your action log and history"              onClick={() => setView("activity")} />
+          <Row icon={<RowIcon d={P.credit} />} label="My Commissions"        sub="Commission earnings breakdown"            onClick={() => setView("commissions")} />
+          <Row icon={<RowIcon d={P.in} />}     label="My Payments"           sub="Salary and disbursement history"         onClick={() => setView("payments")} />
+          <Row icon={<RowIcon d={P.check} />}  label="Close My Day"          sub="Submit end-of-day cash reconciliation"   onClick={() => setView("reconcile")} />
         </SettingsCard>
       </div>
 

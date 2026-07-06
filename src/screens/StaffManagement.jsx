@@ -21,15 +21,17 @@ function makeModules(t) {
     { id: "aso",          label: t("staff.ajoSavings")    },
     { id: "inventory",    label: t("staff.stockInventory")},
     { id: "insights",     label: t("staff.insights")      },
+    { id: "refunds",      label: "Refunds"                 },
+    { id: "discounts",    label: "Discounts"               },
   ];
 }
 
 const ROLE_DEFAULTS = {
   cashier:        ["transactions", "bills"],
-  sales_officer:  ["transactions", "bills", "credit", "inventory"],
+  sales_officer:  ["transactions", "bills", "credit", "inventory", "refunds"],
   credit_officer: ["credit"],
   aso_collector:  ["aso"],
-  manager:        ["transactions", "bills", "credit", "aso", "inventory", "insights"],
+  manager:        ["transactions", "bills", "credit", "aso", "inventory", "insights", "refunds", "discounts"],
 };
 
 const ROLE_COLOR_MAP = {
@@ -104,6 +106,18 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
   const [reportData,        setReportData]        = useState(null);
   const [reportLoading,     setReportLoading]     = useState(false);
 
+  // D5: Approvals
+  const [approvals,         setApprovals]         = useState([]);
+  const [approvalsLoading,  setApprovalsLoading]  = useState(false);
+  const [pendingCount,      setPendingCount]      = useState(0);
+  const [actionNote,        setActionNote]        = useState("");
+
+  // D6: Disbursement
+  const [disburseTarget,    setDisburseTarget]    = useState(null);
+  const [disburseForm,      setDisburseForm]      = useState({ type: "salary", amount: "", notes: "" });
+  const [disburseSaving,    setDisburseSaving]    = useState(false);
+  const [disburseMsg,       setDisburseMsg]       = useState("");
+
   const loadStaff = async () => {
     setLoading(true);
     const { data } = await supabase
@@ -140,8 +154,57 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
     setLogsLoading(false);
   };
 
-  useEffect(() => { loadStaff(); loadBranches(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const loadApprovals = async () => {
+    setApprovalsLoading(true);
+    const { data } = await supabase
+      .from("approval_requests")
+      .select("*, staff(full_name, role)")
+      .eq("owner_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(100);
+    const all = data || [];
+    setApprovals(all);
+    setPendingCount(all.filter(r => r.status === "pending").length);
+    setApprovalsLoading(false);
+  };
+
+  const approveRequest = async (id) => {
+    await supabase.from("approval_requests").update({ status: "approved", actioned_at: new Date().toISOString(), action_note: actionNote }).eq("id", id);
+    setActionNote("");
+    await loadApprovals();
+  };
+
+  const rejectRequest = async (id) => {
+    await supabase.from("approval_requests").update({ status: "rejected", actioned_at: new Date().toISOString(), action_note: actionNote }).eq("id", id);
+    setActionNote("");
+    await loadApprovals();
+  };
+
+  const submitDisbursement = async () => {
+    if (!disburseTarget || !disburseForm.amount) return;
+    setDisburseSaving(true);
+    setDisburseMsg("");
+    const { error } = await supabase.from("staff_disbursements").insert({
+      owner_id:   userId,
+      staff_id:   disburseTarget.id,
+      type:       disburseForm.type,
+      amount:     Number(disburseForm.amount),
+      notes:      disburseForm.notes || null,
+      created_by: userId,
+    });
+    if (error) {
+      setDisburseMsg("Failed: " + error.message);
+    } else {
+      setDisburseMsg("Payment recorded successfully!");
+      setDisburseForm({ type: "salary", amount: "", notes: "" });
+      setTimeout(() => { setDisburseTarget(null); setDisburseMsg(""); }, 1500);
+    }
+    setDisburseSaving(false);
+  };
+
+  useEffect(() => { loadStaff(); loadBranches(); loadApprovals(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (activeTab === "logs") loadLogs(); }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (activeTab === "approvals") loadApprovals(); }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const initPermsForRole = (roleId) => {
     const defaults = ROLE_DEFAULTS[roleId] || [];
@@ -521,10 +584,15 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
 
       {/* Tab Bar */}
       <div className="flex bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 px-4">
-        {["staff", "logs"].map(t => (
-          <button key={t} onClick={() => setActiveTab(t)}
-            className={`py-2.5 px-4 text-sm font-semibold border-b-2 transition-colors capitalize ${activeTab === t ? "border-green-500 text-green-600" : "border-transparent text-slate-400"}`}>
-            {t === "logs" ? "Audit Logs" : "Staff"}
+        {[["staff","Staff"],["logs","Audit Logs"],["approvals","Approvals"]].map(([id, label]) => (
+          <button key={id} onClick={() => setActiveTab(id)}
+            className={`relative py-2.5 px-4 text-sm font-semibold border-b-2 transition-colors ${activeTab === id ? "border-green-500 text-green-600" : "border-transparent text-slate-400"}`}>
+            {label}
+            {id === "approvals" && pendingCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-0.5 rounded-full bg-red-500 text-white text-[8px] font-black flex items-center justify-center">
+                {pendingCount > 9 ? "9+" : pendingCount}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -608,6 +676,68 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* D5: Approvals Tab */}
+      {activeTab === "approvals" && (
+        <div className="flex-1 overflow-y-auto p-4">
+          {approvalsLoading ? (
+            <div className="flex justify-center py-16">
+              <div className="w-8 h-8 border-2 border-green-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : approvals.length === 0 ? (
+            <div className="text-center py-20 text-slate-400 dark:text-slate-500 text-sm">No approval requests yet.</div>
+          ) : (
+            <div className="space-y-3">
+              {approvals.map(req => {
+                const isPending = req.status === "pending";
+                const statusColor = { pending: "bg-amber-50 text-amber-700 border-amber-200", approved: "bg-green-50 text-green-700 border-green-200", rejected: "bg-red-50 text-red-500 border-red-200", expired: "bg-slate-50 text-slate-400 border-slate-200" }[req.status] || "bg-slate-50 text-slate-400 border-slate-200";
+                return (
+                  <div key={req.id} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 overflow-hidden">
+                    <div className="px-4 pt-3 pb-2 flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-slate-800 dark:text-white capitalize">{req.type} Request</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{req.staff?.full_name || "Staff"} · {req.staff?.role?.replace(/_/g, " ") || ""}</p>
+                        {req.amount && <p className="text-sm font-bold text-slate-700 dark:text-slate-200 mt-1">₦{Number(req.amount).toLocaleString()}</p>}
+                        {req.discount_pct && <p className="text-sm font-bold text-slate-700 dark:text-slate-200 mt-1">{req.discount_pct}% discount</p>}
+                        {req.reason && <p className="text-xs text-slate-400 mt-1 italic">{req.reason}</p>}
+                      </div>
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border capitalize ${statusColor}`}>{req.status}</span>
+                        <p className="text-[10px] text-slate-400">{fmtDate(req.created_at)}</p>
+                      </div>
+                    </div>
+                    {isPending && (
+                      <div className="px-4 pb-3 space-y-2">
+                        <input
+                          placeholder="Note (optional)"
+                          value={actionNote}
+                          onChange={e => setActionNote(e.target.value)}
+                          className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-green-500"
+                        />
+                        <div className="flex gap-2">
+                          <button onClick={() => approveRequest(req.id)}
+                            className="flex-1 py-2 rounded-xl bg-green-600 text-white text-xs font-bold hover:bg-green-700 transition-colors">
+                            Approve
+                          </button>
+                          <button onClick={() => rejectRequest(req.id)}
+                            className="flex-1 py-2 rounded-xl border-2 border-red-200 text-red-500 text-xs font-semibold hover:bg-red-50 transition-colors">
+                            Reject
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    {!isPending && req.action_note && (
+                      <div className="px-4 pb-3">
+                        <p className="text-[11px] text-slate-400 italic">{req.action_note}</p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -959,6 +1089,11 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
                   className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white font-bold rounded-xl py-3.5 text-sm transition-colors">
                   {saving ? "Saving…" : "Save Changes"}
                 </button>
+                {/* D6: Disburse payment */}
+                <button onClick={() => { setDisburseTarget(selected); setDisburseForm({ type: "salary", amount: "", notes: "" }); setDisburseMsg(""); }}
+                  className="w-full border-2 border-green-200 dark:border-green-800 text-green-700 dark:text-green-300 font-semibold rounded-xl py-3 text-sm hover:bg-green-50 dark:hover:bg-green-950/20 transition-colors">
+                  Disburse Payment
+                </button>
                 <button onClick={() => deleteStaff(selected.id)}
                   className="w-full border-2 border-red-200 text-red-500 font-semibold rounded-xl py-3 text-sm hover:bg-red-50 transition-colors">
                   Remove Staff Member
@@ -1050,6 +1185,59 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
           </div>
         </div>
       )}
+
+      {/* D6: Disburse Payment Modal */}
+      {disburseTarget && (
+        <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/40">
+          <div className="bg-white dark:bg-slate-900 rounded-t-3xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-base font-bold text-slate-800 dark:text-white">
+                Pay {disburseTarget.full_name}
+              </h3>
+              <button onClick={() => setDisburseTarget(null)} className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+                <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-500" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1.5">Payment Type</label>
+              <div className="grid grid-cols-3 gap-2">
+                {["salary","commission","allowance","bonus","other"].map(type => (
+                  <button key={type} onClick={() => setDisburseForm(f => ({ ...f, type }))}
+                    className={`py-2 px-2 rounded-xl text-xs font-semibold border-2 capitalize transition-colors ${disburseForm.type === type ? "border-green-500 bg-green-50 text-green-700" : "border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400"}`}>
+                    {type}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1.5">Amount (₦)</label>
+              <input type="number" min="0" placeholder="0.00"
+                value={disburseForm.amount}
+                onChange={e => setDisburseForm(f => ({ ...f, amount: e.target.value }))}
+                className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1.5">Note (optional)</label>
+              <input type="text" placeholder="e.g. July salary"
+                value={disburseForm.notes}
+                onChange={e => setDisburseForm(f => ({ ...f, notes: e.target.value }))}
+                className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500" />
+            </div>
+            {disburseMsg && (
+              <p className={`text-xs px-3 py-2 rounded-xl border ${disburseMsg.includes("success") ? "bg-green-50 border-green-200 text-green-700" : "bg-red-50 border-red-200 text-red-600"}`}>
+                {disburseMsg}
+              </p>
+            )}
+            <button onClick={submitDisbursement} disabled={disburseSaving || !disburseForm.amount}
+              className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white font-bold rounded-xl py-3.5 text-sm transition-colors">
+              {disburseSaving ? "Recording…" : "Record Payment"}
+            </button>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

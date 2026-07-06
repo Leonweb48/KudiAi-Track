@@ -1,7 +1,8 @@
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { fmt, today } from "../../utils/helpers";
 import { canDo } from "../../utils/plans";
 import { useT, useLanguage } from "../../contexts/LanguageContext";
+import { supabase } from "../../utils/supabase";
 import {
   Svg, P, NK, GK, GKL,
   StatCard, TxRow, SectionLabel,
@@ -17,6 +18,25 @@ export default function StaffHome({ staff, store, inventory, plan, onGoTo, onVoi
   const BILL_SERVICES = useMemo(() => makeBillServices(t), [t]);
 
   const { transactions = [], credits = [], asoClients = [], loading } = store;
+
+  // D4: This month's commission earnings
+  const [commEarned,     setCommEarned]     = useState(null);
+  // D5: Pending approval requests (awaiting owner action)
+  const [pendingApprovals, setPendingApprovals] = useState(0);
+
+  useEffect(() => {
+    const staffId = staff?.id;
+    if (!staffId) return;
+    const thisMonth = new Date().toISOString().slice(0, 7);
+    supabase.from("commission_earnings").select("amount")
+      .eq("staff_id", staffId).neq("status", "voided").gte("earned_at", thisMonth + "-01")
+      .then(({ data }) => {
+        if (data) setCommEarned(data.reduce((s, e) => s + Number(e.amount), 0));
+      });
+    supabase.from("approval_requests").select("id", { count: "exact", head: true })
+      .eq("staff_id", staffId).eq("status", "pending")
+      .then(({ count }) => setPendingApprovals(count || 0));
+  }, [staff?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const todayStr     = today();
   const todayTx      = transactions.filter(tx => tx.transaction_date === todayStr);
   const cashIn       = todayTx.filter(tx => tx.type === "in").reduce((s, tx) => s + tx.amount, 0);
@@ -45,6 +65,14 @@ export default function StaffHome({ staff, store, inventory, plan, onGoTo, onVoi
 
   return (
     <div className="overflow-y-auto h-full px-4 pt-4 pb-6 screen-enter">
+
+      {/* D5: Pending approval alert */}
+      {pendingApprovals > 0 && (
+        <div className="w-full flex items-center gap-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 rounded-2xl px-4 py-3 mb-3">
+          <Svg d={P.alert} size={18} color="#d97706" />
+          <p className="flex-1 text-sm font-semibold text-amber-700 dark:text-amber-400">{pendingApprovals} approval request{pendingApprovals > 1 ? "s" : ""} awaiting manager review</p>
+        </div>
+      )}
 
       {/* Alerts */}
       {overdueCount > 0 && (
@@ -79,7 +107,7 @@ export default function StaffHome({ staff, store, inventory, plan, onGoTo, onVoi
               </p>
           }
           <div className="h-px bg-white/10 mb-4" />
-          <div className="flex gap-5">
+          <div className="flex gap-4 flex-wrap">
             <div>
               <p className="text-[10px] font-bold text-white/50 uppercase tracking-widest mb-0.5">Cash In</p>
               <p className="text-base font-bold tabular" style={{ color: GKL }}>{loading ? "—" : fmt(cashIn)}</p>
@@ -94,6 +122,15 @@ export default function StaffHome({ staff, store, inventory, plan, onGoTo, onVoi
               <p className="text-[10px] font-bold text-white/50 uppercase tracking-widest mb-0.5">Txns</p>
               <p className="text-base font-bold tabular">{loading ? "—" : todayTx.length}</p>
             </div>
+            {commEarned !== null && commEarned > 0 && (
+              <>
+                <div className="w-px bg-white/15 self-stretch" />
+                <div>
+                  <p className="text-[10px] font-bold text-white/50 uppercase tracking-widest mb-0.5">Commission</p>
+                  <p className="text-base font-bold tabular" style={{ color: GKL }}>{fmt(commEarned)}</p>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>

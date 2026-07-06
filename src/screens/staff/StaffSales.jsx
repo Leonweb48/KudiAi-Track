@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { fmt } from "../../utils/helpers";
-import { Svg, P, GK, TxRow, dateRange } from "./StaffShared";
+import { supabase } from "../../utils/supabase";
+import { Svg, P, GK, NK, TxRow, dateRange } from "./StaffShared";
 import { TransactionReceipt } from "../../components/shared/Receipt";
 import BillPayments from "../BillPayments";
 
@@ -8,13 +9,40 @@ import BillPayments from "../BillPayments";
    SALES TAB
 ═══════════════════════════════════════════════════════════════════ */
 export default function StaffSales({ store, staff, session, livePerms, initialSub, initialData, onVoiceOpen, inventory, onAddCash, plan }) {
-  const [sub,        setSub]        = useState(initialSub || "cash");
-  const [receipt,    setReceipt]    = useState(initialData);
-  const [search,     setSearch]     = useState("");
-  const [period,     setPeriod]     = useState("all");
-  const [typeFilter, setTypeFilter] = useState("all");
+  const [sub,          setSub]          = useState(initialSub || "cash");
+  const [receipt,      setReceipt]      = useState(initialData);
+  const [search,       setSearch]       = useState("");
+  const [period,       setPeriod]       = useState("all");
+  const [typeFilter,   setTypeFilter]   = useState("all");
+  const [showApprReq,  setShowApprReq]  = useState(false);
+  const [apprForm,     setApprForm]     = useState({ type: "refund", amount: "", reason: "" });
+  const [apprSaving,   setApprSaving]   = useState(false);
+  const [apprMsg,      setApprMsg]      = useState("");
   const { transactions = [], loading } = store;
-  const allowed = livePerms.filter(p => p.can_view).map(p => p.module);
+  const allowed      = livePerms.filter(p => p.can_view).map(p => p.module);
+  const canRefund    = livePerms.find(p => p.module === "refunds")?.can_create || false;
+  const canDiscount  = livePerms.find(p => p.module === "discounts")?.can_create || false;
+
+  const submitApproval = async () => {
+    const staffId = staff?.id;
+    const ownerId = staff?.owner_id;
+    if (!staffId || !ownerId || !apprForm.amount) return;
+    setApprSaving(true); setApprMsg("");
+    const { error } = await supabase.from("approval_requests").insert({
+      owner_id: ownerId,
+      staff_id: staffId,
+      type:     apprForm.type,
+      amount:   Number(apprForm.amount),
+      reason:   apprForm.reason || null,
+    });
+    if (error) {
+      setApprMsg("Failed: " + error.message);
+    } else {
+      setApprMsg("Approval request sent to manager!");
+      setTimeout(() => { setShowApprReq(false); setApprMsg(""); setApprForm({ type: "refund", amount: "", reason: "" }); }, 1800);
+    }
+    setApprSaving(false);
+  };
 
   useEffect(() => { if (initialSub)  setSub(initialSub);       }, [initialSub]);
   useEffect(() => { if (initialData) setReceipt(initialData);  }, [initialData]);
@@ -145,6 +173,17 @@ export default function StaffSales({ store, staff, session, livePerms, initialSu
                 Cash Out
               </button>
             </div>
+            {/* D5: Request approval for refund/discount if no permission */}
+            {(!canRefund || !canDiscount) && (
+              <button onClick={() => {
+                  const firstType = !canRefund ? "refund" : !canDiscount ? "discount" : "expense";
+                  setApprForm({ type: firstType, amount: "", reason: "" });
+                  setShowApprReq(true);
+                }}
+                className="w-full flex items-center justify-center gap-1.5 py-2 rounded-2xl border border-dashed border-slate-300 dark:border-slate-600 text-xs font-semibold text-slate-500 dark:text-slate-400 active:scale-[0.98] transition">
+                Request Refund / Discount Approval
+              </button>
+            )}
           </div>
 
           {/* Summary bar */}
@@ -181,6 +220,44 @@ export default function StaffSales({ store, staff, session, livePerms, initialSu
           profile={store.profile || { business_name: staff?.business_name }}
           onClose={() => setReceipt(null)}
         />
+      )}
+
+      {/* D5: Approval request modal */}
+      {showApprReq && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40">
+          <div className="bg-white dark:bg-slate-900 rounded-t-3xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-base font-bold text-slate-800 dark:text-white">Request Manager Approval</p>
+              <button onClick={() => setShowApprReq(false)} className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+                <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-500" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+            <div className="flex gap-2">
+              {(!canRefund   ? ["refund"]   : []).concat(!canDiscount ? ["discount"] : []).concat(["expense"]).map(type => (
+                <button key={type} onClick={() => setApprForm(f => ({ ...f, type }))}
+                  className={`flex-1 py-2 rounded-xl text-xs font-bold capitalize border-2 transition-colors ${apprForm.type === type ? "border-green-500 bg-green-50 text-green-700" : "border-slate-200 dark:border-slate-700 text-slate-500"}`}>
+                  {type}
+                </button>
+              ))}
+            </div>
+            <input type="number" min="0" placeholder="Amount (₦)"
+              value={apprForm.amount}
+              onChange={e => setApprForm(f => ({ ...f, amount: e.target.value }))}
+              className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500" />
+            <input type="text" placeholder="Reason (optional)"
+              value={apprForm.reason}
+              onChange={e => setApprForm(f => ({ ...f, reason: e.target.value }))}
+              className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500" />
+            {apprMsg && <p className={`text-xs px-3 py-2 rounded-xl border ${apprMsg.includes("Failed") ? "bg-red-50 border-red-200 text-red-600" : "bg-green-50 border-green-200 text-green-700"}`}>{apprMsg}</p>}
+            <button onClick={submitApproval} disabled={apprSaving || !apprForm.amount}
+              className="w-full py-3.5 rounded-xl text-white text-sm font-bold disabled:opacity-50 transition-colors"
+              style={{ backgroundColor: NK }}>
+              {apprSaving ? "Sending…" : "Send Request"}
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
