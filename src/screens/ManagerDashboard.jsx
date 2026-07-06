@@ -12,7 +12,9 @@ import Icon                   from "../components/Icon";
 import Modal                  from "../components/shared/Modal";
 import AIChatWidget           from "../components/AIChatWidget";
 import VoiceModal             from "../components/VoiceModal";
-import { TransactionReceipt, StaffActivityStatement } from "../components/shared/Receipt";
+import { StaffActivityStatement } from "../components/shared/Receipt";
+import TransactionDetailModal from "../components/shared/TransactionDetailModal";
+import { buildTransactionReceipt } from "../utils/receiptConfig";
 import BillPayments           from "./BillPayments";
 import Credit                 from "./Credit";
 import Aso                    from "./Aso";
@@ -708,7 +710,10 @@ function ManagerSales({ store, staff, session, livePerms, initialSub, initialDat
       )}
 
       {receipt && (
-        <TransactionReceipt txn={receipt} profile={store.profile || { business_name: staff?.business_name }} onClose={() => setReceipt(null)} />
+        <TransactionDetailModal
+          data={buildTransactionReceipt(receipt, store.profile || { business_name: staff?.business_name })}
+          onClose={() => setReceipt(null)}
+        />
       )}
     </div>
   );

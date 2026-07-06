@@ -2,7 +2,8 @@ import { useState, useEffect } from "react";
 import { fmt } from "../../utils/helpers";
 import { supabase } from "../../utils/supabase";
 import { Svg, P, GK, NK, TxRow, dateRange } from "./StaffShared";
-import { TransactionReceipt } from "../../components/shared/Receipt";
+import TransactionDetailModal from "../../components/shared/TransactionDetailModal";
+import { buildTransactionReceipt } from "../../utils/receiptConfig";
 import BillPayments from "../BillPayments";
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -215,9 +216,8 @@ export default function StaffSales({ store, staff, session, livePerms, initialSu
       )}
 
       {receipt && (
-        <TransactionReceipt
-          txn={receipt}
-          profile={store.profile || { business_name: staff?.business_name }}
+        <TransactionDetailModal
+          data={buildTransactionReceipt(receipt, store.profile || { business_name: staff?.business_name })}
           onClose={() => setReceipt(null)}
         />
       )}

@@ -341,6 +341,7 @@ function PayContributionModal({ client, onClose, onSuccess }) {
   const [paidAmt,    setPaidAmt]   = useState(0);
   const [customAmt,  setCustomAmt] = useState(String(client?.contribution_amount || ""));
   const [txnPin,     setTxnPin]    = useState(null);
+  const [showShare,  setShowShare] = useState(false);
   const popupCleanup = useRef(null);
   useEffect(() => () => popupCleanup.current?.(), []);
 
@@ -385,17 +386,34 @@ function PayContributionModal({ client, onClose, onSuccess }) {
     }
   };
 
-  // Full-screen receipt — user must tap Close to dismiss
+  // Full-screen success screen — tap "Share Receipt" for shareable receipt modal
   if (status === "done") {
-    const paidAt = new Date().toLocaleString("en-NG", { dateStyle: "medium", timeStyle: "short" });
-    const refShort = (pendingRef || "").slice(-10).toUpperCase();
+    const receiptData = buildAjoContributionReceipt(
+      {
+        id: pendingRef, type: "contribution", status: "completed",
+        amount: paidAmt || client?.contribution_amount || 0,
+        created_at: new Date().toISOString(), payment_method: "paystack",
+      },
+      client?.full_name || "—",
+      client?.group_name || "Ajo Group"
+    );
+
+    if (showShare) {
+      return (
+        <TransactionDetailModal
+          data={receiptData}
+          onClose={() => setShowShare(false)}
+        />
+      );
+    }
+
     return (
       <div className="fixed inset-0 z-[100] bg-white dark:bg-slate-900 flex flex-col">
         {/* Top accent */}
         <div className="h-1.5 w-full" style={{ background: "linear-gradient(90deg,#7c3aed,#10b981)" }} />
 
         <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
-          {/* Animated checkmark */}
+          {/* Checkmark */}
           <div className="w-24 h-24 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mb-6 shadow-lg">
             <svg viewBox="0 0 24 24" fill="none" className="w-12 h-12 text-green-500" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
               <path d="M20 6L9 17l-5-5" />
@@ -406,41 +424,31 @@ function PayContributionModal({ client, onClose, onSuccess }) {
           <h2 className="text-3xl font-black text-slate-800 dark:text-white mb-1 tabular">
             ₦{fmt(paidAmt || client?.contribution_amount || 0)}
           </h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mb-8 capitalize">
+          <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 capitalize">
             {client?.contribution_frequency} contribution · Paid via Paystack
           </p>
 
-          {/* Receipt card */}
-          <div className="w-full max-w-sm bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-700 text-left mb-8">
-            <div className="flex justify-between px-4 py-3">
-              <span className="text-xs text-slate-400">Recipient</span>
-              <span className="text-xs font-bold text-slate-700 dark:text-slate-200 text-right max-w-[55%] truncate">{client?.full_name || "—"}</span>
-            </div>
-            <div className="flex justify-between px-4 py-3">
-              <span className="text-xs text-slate-400">Reference</span>
-              <span className="text-xs font-mono font-bold text-slate-700 dark:text-slate-200">{refShort || "—"}</span>
-            </div>
-            <div className="flex justify-between px-4 py-3">
-              <span className="text-xs text-slate-400">Date & Time</span>
-              <span className="text-xs font-bold text-slate-700 dark:text-slate-200">{paidAt}</span>
-            </div>
-            <div className="flex justify-between px-4 py-3">
-              <span className="text-xs text-slate-400">Status</span>
-              <span className="text-xs font-bold text-green-600 dark:text-green-400">Confirmed</span>
-            </div>
-          </div>
-
-          <p className="text-[11px] text-slate-400 dark:text-slate-500 mb-2">
+          <p className="text-[11px] text-slate-400 dark:text-slate-500">
             Your balance has been updated.
           </p>
         </div>
 
-        {/* Close — bottom, full width */}
-        <div className="flex-none px-6 pb-10 pt-4">
+        {/* Bottom actions */}
+        <div className="flex-none px-6 pb-10 pt-4 space-y-3">
+          <button
+            onClick={() => setShowShare(true)}
+            className="w-full flex items-center justify-center gap-2 py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] shadow-md">
+            <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+              <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8" />
+              <polyline points="16 6 12 2 8 6" />
+              <line x1="12" y1="2" x2="12" y2="15" />
+            </svg>
+            Share Receipt
+          </button>
           <button
             onClick={onClose}
-            className="w-full py-4 bg-violet-600 hover:bg-violet-700 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] shadow-md">
-            Close Receipt
+            className="w-full py-3.5 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-2xl font-bold text-sm transition active:scale-[0.99]">
+            Close
           </button>
         </div>
       </div>

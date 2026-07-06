@@ -1,12 +1,14 @@
 /**
  * Platform-wide transaction detail + shareable receipt.
  * Opens as a bottom sheet showing hero card, summary, copyable details,
- * plus "Share Receipt" producing an identical Image or PDF via html2canvas.
+ * plus "Share Receipt" producing an Image or PDF via html2canvas.
  *
  * Props:
- *   data          — receipt data from receiptConfig.js build* functions
- *   onClose       — () => void
- *   onReportIssue — optional () => void; if omitted shows a toast
+ *   data            — receipt data from receiptConfig.js build* functions
+ *   onClose         — () => void
+ *   onReportIssue   — optional () => void; if omitted shows a toast
+ *   onRetrieveToken — optional async () => string; shown for electricity receipts
+ *                     with a missing token. Return the token string on success.
  */
 import { useRef, useState } from "react";
 import html2canvas from "html2canvas";
@@ -20,7 +22,7 @@ import { ReceiptCard } from "./ReceiptCard";
 const NAVY  = '#0f1c45';
 const GREEN = '#3da829';
 
-// ── Capture utilities (mirrors Receipt.jsx internals) ────────────────────────
+// ── Canvas capture ────────────────────────────────────────────────────────────
 async function captureCanvas(el) {
   const clone = el.cloneNode(true);
   const wrap  = document.createElement('div');
@@ -53,6 +55,7 @@ async function fileToBase64(file) {
   });
 }
 
+// Returns 'shared', 'downloaded', or throws
 async function shareFile(file) {
   if (Capacitor.isNativePlatform()) {
     try {
@@ -62,17 +65,30 @@ async function shareFile(file) {
         directory: Directory.Cache, recursive: true,
       });
       await Share.share({ title: file.name, url: saved.uri, dialogTitle: 'Share receipt' });
+      return 'shared';
     } catch (e) {
-      if (!e?.message?.includes('cancel')) throw e;
+      if (e?.message?.includes('cancel') || e?.errorMessage?.includes('cancel')) return 'shared';
+      throw e;
     }
-  } else {
-    const url = URL.createObjectURL(file);
-    const a   = Object.assign(document.createElement('a'), { href: url, download: file.name });
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
+  // Web mobile: try Web Share API with files
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: file.name });
+      return 'shared';
+    } catch (e) {
+      if (e?.name === 'AbortError' || e?.message?.includes('cancel')) return 'shared';
+      // Fall through to download
+    }
+  }
+  // Desktop / unsupported browser: download
+  const url = URL.createObjectURL(file);
+  const a   = Object.assign(document.createElement('a'), { href: url, download: file.name });
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return 'downloaded';
 }
 
 // ── Copy to clipboard ────────────────────────────────────────────────────────
@@ -136,15 +152,11 @@ function SummaryRow({ label, value, valueClass = '', bold, sep }) {
   );
 }
 
-function DetailRow({ field, onCopy, copiedKey }) {
+function DetailRow({ field }) {
   const [copied, setCopied] = useState(false);
   const handleCopy = async () => {
     const ok = await copyText(field.value);
-    if (ok) {
-      setCopied(true);
-      onCopy?.();
-      setTimeout(() => setCopied(false), 2000);
-    }
+    if (ok) { setCopied(true); setTimeout(() => setCopied(false), 2000); }
   };
 
   return (
@@ -152,9 +164,9 @@ function DetailRow({ field, onCopy, copiedKey }) {
       <span className="text-xs text-slate-400 dark:text-slate-500 font-medium flex-shrink-0 min-w-[96px] pt-0.5">{field.label}</span>
       <div className="flex items-center gap-2 flex-1 justify-end">
         <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 text-right break-all leading-relaxed">
-          {field.value}
+          {field.value ?? '—'}
         </span>
-        {field.copy && (
+        {field.copy && field.value && (
           <button onClick={handleCopy} className="flex-shrink-0 transition active:scale-90" title="Copy">
             {copied
               ? <span className="text-[10px] font-bold text-green-600 dark:text-green-400 whitespace-nowrap">✓ Copied</span>
@@ -166,6 +178,54 @@ function DetailRow({ field, onCopy, copiedKey }) {
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+// ── Electricity token retrieval section ───────────────────────────────────────
+function TokenSection({ onRetrieveToken }) {
+  const [state, setState] = useState({ phase: 'idle', token: null, error: null });
+
+  async function fetch() {
+    setState({ phase: 'loading', token: null, error: null });
+    try {
+      const token = await onRetrieveToken();
+      setState({ phase: 'done', token, error: null });
+    } catch (e) {
+      setState({ phase: 'error', token: null, error: e.message || 'Could not retrieve token.' });
+    }
+  }
+
+  return (
+    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 overflow-hidden mb-3">
+      <div className="px-4 pt-3.5 pb-2">
+        <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Electricity Token</p>
+      </div>
+      {state.phase === 'done' ? (
+        <div className="px-4 pb-4">
+          <p className="text-sm font-mono font-extrabold text-emerald-600 dark:text-emerald-400 tracking-widest break-all leading-relaxed">
+            {state.token}
+          </p>
+        </div>
+      ) : state.phase === 'error' ? (
+        <div className="px-4 pb-4 space-y-2">
+          <p className="text-xs text-red-500 dark:text-red-400">{state.error}</p>
+          <button onClick={fetch} className="text-xs font-bold text-emerald-600 dark:text-emerald-400">Try again</button>
+        </div>
+      ) : (
+        <div className="px-4 pb-4">
+          <button
+            onClick={fetch}
+            disabled={state.phase === 'loading'}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-amber-200 dark:border-amber-700 text-sm font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 active:scale-[.98] transition disabled:opacity-60"
+          >
+            {state.phase === 'loading'
+              ? <><span className="w-3.5 h-3.5 border-2 border-amber-300 border-t-amber-600 rounded-full animate-spin inline-block" /> Retrieving…</>
+              : <>⚡ Retrieve Electricity Token</>
+            }
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -198,7 +258,7 @@ function ShareSheet({ onOption, onClose }) {
           </div>
           <div className="text-left">
             <p className="text-sm font-bold text-slate-800 dark:text-slate-100">Share as Image</p>
-            <p className="text-xs text-slate-400 dark:text-slate-500">High-res PNG (3×) — WhatsApp, Instagram…</p>
+            <p className="text-xs text-slate-400 dark:text-slate-500">High-res PNG · WhatsApp, Instagram…</p>
           </div>
         </button>
 
@@ -213,7 +273,7 @@ function ShareSheet({ onOption, onClose }) {
             </svg>
           </div>
           <div className="text-left">
-            <p className="text-sm font-bold text-slate-800 dark:text-slate-100">Share as PDF</p>
+            <p className="text-sm font-bold text-slate-800 dark:text-slate-100">Save as PDF</p>
             <p className="text-xs text-slate-400 dark:text-slate-500">Email, print, or save to files</p>
           </div>
         </button>
@@ -236,31 +296,36 @@ function LoadingOverlay({ label }) {
 }
 
 // ── Main modal ───────────────────────────────────────────────────────────────
-export default function TransactionDetailModal({ data, onClose, onReportIssue }) {
+export default function TransactionDetailModal({ data, onClose, onReportIssue, onRetrieveToken }) {
   const receiptRef  = useRef(null);
   const [shareOpen, setShareOpen]   = useState(false);
-  const [loading,   setLoading]     = useState(null); // null | 'image' | 'pdf'
+  const [loading,   setLoading]     = useState(null);
   const [toast,     setToast]       = useState(null);
 
   const { title, direction, status, amount, fees = 0, datetime, fields = [], receiptRef: ref, filenames } = data;
-  const hc = heroColors(direction, status);
-  const sl = statusLabel(status);
+  const hc  = heroColors(direction, status);
+  const sl  = statusLabel(status);
   const net = amount - fees;
+
+  // Separate retrievable fields (electricity token) from normal display fields
+  const retrievableField = fields.find(f => f.retrievable);
+  const displayFields    = fields.filter(f => !f.retrievable);
 
   function showToast(msg) {
     setToast(msg);
-    setTimeout(() => setToast(null), 2500);
+    setTimeout(() => setToast(null), 3000);
   }
 
   async function handleShare(type) {
     setShareOpen(false);
-    setLoading(type === 'image' ? 'image' : 'pdf');
+    setLoading(type);
     try {
-      const canvas  = await captureCanvas(receiptRef.current);
+      const canvas = await captureCanvas(receiptRef.current);
+      let result;
       if (type === 'image') {
         const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
         const file = new File([blob], filenames?.image || 'receipt.png', { type: 'image/png' });
-        await shareFile(file);
+        result = await shareFile(file);
       } else {
         const imgData = canvas.toDataURL('image/png');
         const mmW = (canvas.width  / 3) * (25.4 / 96);
@@ -268,9 +333,13 @@ export default function TransactionDetailModal({ data, onClose, onReportIssue })
         const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: [mmW, mmH] });
         pdf.addImage(imgData, 'PNG', 0, 0, mmW, mmH);
         await savePdf(pdf, filenames?.pdf || 'receipt.pdf');
+        result = Capacitor.isNativePlatform() ? 'shared' : 'downloaded';
       }
+      if (result === 'downloaded') showToast('Receipt saved to your downloads folder.');
     } catch (e) {
-      if (!e?.message?.includes('cancel')) showToast('Could not share receipt. Please try again.');
+      if (!e?.message?.includes('cancel') && e?.name !== 'AbortError') {
+        showToast('Could not share receipt. Please try again.');
+      }
     } finally {
       setLoading(null);
     }
@@ -337,16 +406,20 @@ export default function TransactionDetailModal({ data, onClose, onReportIssue })
               {fees === 0 && <SummaryRow label="Fees / Charges" value="₦0.00" valueClass="text-slate-300 dark:text-slate-600" />}
             </SectionCard>
 
+            {/* Electricity token retrieval */}
+            {(retrievableField || onRetrieveToken) && onRetrieveToken && (
+              <TokenSection onRetrieveToken={onRetrieveToken} />
+            )}
+
             {/* Details */}
-            {fields.length > 0 && (
+            {displayFields.length > 0 && (
               <SectionCard title="Details">
-                {fields.map((field, i) => (
+                {displayFields.map((field, i) => (
                   <DetailRow key={i} field={field} />
                 ))}
               </SectionCard>
             )}
 
-            {/* Spacer for pinned actions */}
             <div className="h-4" />
           </div>
 
@@ -378,7 +451,7 @@ export default function TransactionDetailModal({ data, onClose, onReportIssue })
         </div>
       </div>
 
-      {/* Off-screen receipt for capture — always rendered, never visible */}
+      {/* Off-screen receipt card — always rendered for instant capture */}
       <div
         aria-hidden
         style={{ position: 'fixed', top: '200vh', left: '50%', transform: 'translateX(-50%)', width: '340px', zIndex: 0, pointerEvents: 'none' }}
@@ -386,10 +459,9 @@ export default function TransactionDetailModal({ data, onClose, onReportIssue })
         <ReceiptCard data={data} innerRef={receiptRef} />
       </div>
 
-      {shareOpen  && <ShareSheet onOption={handleShare} onClose={() => setShareOpen(false)} />}
-      {loading    && <LoadingOverlay label={loading === 'image' ? 'Preparing image…' : 'Preparing PDF…'} />}
+      {shareOpen && <ShareSheet onOption={handleShare} onClose={() => setShareOpen(false)} />}
+      {loading   && <LoadingOverlay label={loading === 'image' ? 'Preparing image…' : 'Preparing PDF…'} />}
 
-      {/* Toast */}
       {toast && (
         <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[90] bg-slate-800 dark:bg-slate-700 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-lg max-w-xs text-center">
           {toast}

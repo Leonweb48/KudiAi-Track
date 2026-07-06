@@ -5,9 +5,8 @@ import TransactionPinModal from "../components/TransactionPinModal";
 import { canDo, upgradeLabel, planAvailableText } from "../utils/plans";
 import Field  from "../components/shared/Field";
 import Badge  from "../components/shared/Badge";
-import { CreditReceipt } from "../components/shared/Receipt";
 import TransactionDetailModal from "../components/shared/TransactionDetailModal";
-import { buildCreditPaymentReceipt } from "../utils/receiptConfig";
+import { buildCreditPaymentReceipt, buildCreditStatementReceipt } from "../utils/receiptConfig";
 import { ClientProfile }  from "../components/shared/ClientProfile";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import { supabase } from "../utils/supabase";
@@ -674,7 +673,10 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
       )}
 
       {receipt && (
-        <CreditReceipt credit={receipt} profile={profile} onClose={() => setReceipt(null)} />
+        <TransactionDetailModal
+          data={buildCreditStatementReceipt(receipt, profile?.business_name || profile?.owner_name || "My Business")}
+          onClose={() => setReceipt(null)}
+        />
       )}
 
       {/* Payment receipt overlay */}

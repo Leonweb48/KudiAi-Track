@@ -221,3 +221,128 @@ export function buildAjoContributionReceipt(contribution, clientName, businessNa
     filenames:  { image, pdf },
   };
 }
+
+// ── Bill payment (airtime, data, electricity, cable, betting — from BillPayments) ──
+// `bill` is the output of billToReceipt() in BillPayments.jsx (already parsed from note).
+const BILL_CAT_LABELS = {
+  airtime: 'Airtime Top-Up', data: 'Data Bundle', electricity: 'Electricity',
+  cable: 'Cable TV', betting: 'Betting Wallet', waec: 'WAEC ePin',
+  jamb: 'JAMB ePin', spectranet: 'Spectranet Internet', smile: 'Smile 4G',
+  'print-airtime': 'Airtime Print', 'print-data': 'Data Print',
+  'airtime-bundle': 'Airtime Bundle',
+};
+export function buildBillReceipt(bill) {
+  const businessName = bill.businessName || 'My Business';
+  const { ref, image, pdf } = receiptFilenames(bill.id, bill.created_at || bill.transaction_date);
+  const title = BILL_CAT_LABELS[bill.category] || humanize(bill.category) || 'Bill Payment';
+
+  const fields = [
+    bill.network      && { label: 'Network',      value: bill.network },
+    bill.phone        && { label: 'Phone',         value: bill.phone },
+    bill.planName     && { label: 'Plan',          value: bill.planName },
+    bill.smartcard    && { label: 'Smartcard No.', value: bill.smartcard },
+    bill.meterNo      && { label: 'Meter No.',     value: bill.meterNo },
+    bill.meterAddress && { label: 'Address',       value: bill.meterAddress },
+    bill.meterTypeName && { label: 'Meter Type',   value: bill.meterTypeName },
+    bill.providerName && { label: 'Provider',      value: bill.providerName },
+    bill.packageName  && { label: 'Package',       value: bill.packageName },
+    bill.customerId   && { label: 'Customer ID',   value: bill.customerId },
+    // electricity token — present value or mark as retrievable
+    bill.category === 'electricity' && {
+      label:       'Token',
+      value:       bill.token || (bill.apiRef ? null : '—'),
+      retrievable: !bill.token && !!bill.apiRef,
+      orderId:     bill.apiRef,
+    },
+    bill.pinsArr?.length > 0 && {
+      label: 'Pins Issued',
+      value: `${bill.pinsArr.length} token${bill.pinsArr.length > 1 ? 's' : ''} (see PDF)`,
+    },
+    bill.apiRef && { label: 'Provider Ref.', value: bill.apiRef, copy: true },
+    bill.staffName && { label: 'Served by',   value: bill.staffName },
+    { label: 'Reference', value: ref, copy: true },
+  ].filter(Boolean);
+
+  return {
+    title,
+    direction:    'out',
+    status:       bill.bill_status === 'failed' ? 'failed' : 'success',
+    amount:       bill.amount,
+    datetime:     formatReceiptDateTime(bill.created_at || bill.transaction_date),
+    fields,
+    businessName,
+    issuedBy:     businessName,
+    fees:         0,
+    receiptRef:   ref,
+    filenames:    { image, pdf },
+    provider:     bill.network || bill.providerName || null,
+    category:     bill.category || null,
+  };
+}
+
+// ── Credit/loan statement (from Credit screen — tap "Statement" on a record) ──
+export function buildCreditStatementReceipt(credit, businessName) {
+  const { ref, image, pdf } = receiptFilenames(credit.id, credit.created_at);
+  const statusMap = { active: 'pending', overdue: 'failed', settled: 'success' };
+
+  return {
+    title:     'Credit Statement',
+    direction: 'out',
+    status:    statusMap[credit.status] || 'pending',
+    amount:    credit.outstanding || 0,
+    datetime:  formatReceiptDateTime(credit.created_at),
+    fields: [
+      credit.customer_name && { label: 'Customer',     value: credit.customer_name },
+      credit.phone         && { label: 'Phone',         value: credit.phone },
+      credit.item_name     && { label: 'Item / Purpose', value: credit.item_name },
+      { label: 'Total Given',   value: fmtAmt(credit.amount_given || credit.amount || 0) },
+      { label: 'Total Repaid',  value: fmtAmt(credit.total_paid || 0) },
+      { label: 'Outstanding',   value: fmtAmt(credit.outstanding || 0) },
+      credit.due_date && {
+        label: 'Due Date',
+        value: new Date(credit.due_date).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' }),
+      },
+      credit.status && { label: 'Status', value: humanize(credit.status) },
+      { label: 'Reference', value: ref, copy: true },
+    ].filter(Boolean),
+    businessName,
+    issuedBy:   businessName,
+    fees:       0,
+    receiptRef: ref,
+    filenames:  { image, pdf },
+  };
+}
+
+// ── Ajo/Aso client savings statement (from Aso screen — tap "Statement" on a client) ──
+export function buildAsoClientReceipt(client, businessName) {
+  const { ref, image, pdf } = receiptFilenames(client.id, client.joined_at || client.created_at);
+
+  return {
+    title:     'Ajo Member Statement',
+    direction: 'in',
+    status:    'success',
+    amount:    client.current_balance || 0,
+    datetime:  formatReceiptDateTime(new Date().toISOString()),
+    fields: [
+      client.full_name && { label: 'Member', value: client.full_name },
+      client.phone     && { label: 'Phone',  value: client.phone },
+      { label: 'Total Saved',      value: fmtAmt(client.total_saved || 0) },
+      { label: 'Total Withdrawn',  value: fmtAmt(client.total_withdrawn || 0) },
+      { label: 'Current Balance',  value: fmtAmt(client.current_balance || 0) },
+      client.contribution_amount && {
+        label: 'Contribution',
+        value: fmtAmt(client.contribution_amount) + (client.contribution_frequency ? ` / ${client.contribution_frequency}` : ''),
+      },
+      client.joined_at && {
+        label: 'Member Since',
+        value: new Date(client.joined_at).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' }),
+      },
+      { label: 'Reference', value: ref, copy: true },
+    ].filter(Boolean),
+    businessName,
+    issuedBy:   businessName,
+    fees:       0,
+    receiptRef: ref,
+    filenames:  { image, pdf },
+  };
+}

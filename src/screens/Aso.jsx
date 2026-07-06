@@ -4,9 +4,8 @@ import Icon   from "../components/Icon";
 import Modal  from "../components/shared/Modal";
 import Field  from "../components/shared/Field";
 import Badge  from "../components/shared/Badge";
-import { AsoReceipt } from "../components/shared/Receipt";
 import TransactionDetailModal from "../components/shared/TransactionDetailModal";
-import { buildAsoContributionReceipt } from "../utils/receiptConfig";
+import { buildAsoContributionReceipt, buildAsoClientReceipt } from "../utils/receiptConfig";
 import { ClientProfile } from "../components/shared/ClientProfile";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import { supabase } from "../utils/supabase";
@@ -1595,7 +1594,10 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       )}
 
       {receipt && (
-        <AsoReceipt client={receipt} profile={profile} onClose={() => setReceipt(null)} />
+        <TransactionDetailModal
+          data={buildAsoClientReceipt(receipt, profile?.business_name || profile?.owner_name || "My Business")}
+          onClose={() => setReceipt(null)}
+        />
       )}
 
       {/* ── Per-client Contribution History Modal ────────────────── */}

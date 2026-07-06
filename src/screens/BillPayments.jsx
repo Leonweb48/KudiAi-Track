@@ -6,7 +6,8 @@ import { calcPointsDiscount, calcCashbackDiscount, calcCouponDiscount, calcBillA
 import { saveBeneficiary, getBeneficiaries, benDisplayName, benSubLabel, BEN_CATS } from "../utils/billBeneficiaries";
 import { clubkonnect } from "../utils/clubkonnect";
 import { canDo, getLowestPlanWithFeature } from "../utils/plans";
-import { BillReceipt } from "../components/shared/Receipt";
+import TransactionDetailModal from "../components/shared/TransactionDetailModal";
+import { buildBillReceipt } from "../utils/receiptConfig";
 import { supabase } from "../utils/supabase";
 import { lookupDataPrice } from "../data/billPrices";
 import LoanApplicationModal from "../components/LoanApplicationModal";
@@ -3018,15 +3019,14 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
       {pins && <PinModal pins={pins.list} title={pins.title} onClose={() => setPins(null)} />}
       {receipt && (
-        <BillReceipt
-          bill={receipt}
+        <TransactionDetailModal
+          data={buildBillReceipt(receipt)}
           onClose={() => setReceipt(null)}
           onRetrieveToken={
             receipt.category === "electricity" && !receipt.token && receipt.apiRef
-              ? async (orderId) => {
-                  const q = await clubkonnect("electricity-query", { orderId });
+              ? async () => {
+                  const q = await clubkonnect("electricity-query", { orderId: receipt.apiRef });
                   if (q.status === "SUCCESS" && q.token) {
-                    // Persist token into the DB note so future receipt opens show it
                     if (receipt.id) {
                       const baseNote = (receipt.note || "")
                         .replace(" | Token loading...", "")

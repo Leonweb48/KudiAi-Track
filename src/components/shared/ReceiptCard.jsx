@@ -1,8 +1,9 @@
 /**
- * Shareable KudiAI receipt — OPay-style with perforated edges, watermark,
- * and dashed ticket dividers. Uses inline styles throughout so html2canvas
- * captures it pixel-for-pixel (Tailwind purge can remove classes at build time).
+ * Shareable KudiAI receipt — OPay-style ticket card.
+ * Uses inline styles throughout so html2canvas captures pixel-for-pixel.
+ * Supports an optional provider logo/badge (for bill receipts).
  */
+import { getProviderLogo, getProviderBadge } from '../../utils/logoMap';
 
 const NAVY       = '#0f1c45';
 const GREEN      = '#3da829';
@@ -74,10 +75,10 @@ function ScallopEdge({ flip }) {
   );
 }
 
-// ── Ticket-style dashed divider with left/right notch circles ────────────────
+// ── Ticket-style dashed divider with notch circles ────────────────────────────
 function DashedDivider() {
   return (
-    <div style={{ position: 'relative', margin: '10px -20px', display: 'flex', alignItems: 'center' }}>
+    <div style={{ position: 'relative', margin: '12px -20px', display: 'flex', alignItems: 'center' }}>
       <div style={{ width: 14, height: 14, borderRadius: '50%', backgroundColor: OUTER_BG, flexShrink: 0 }} />
       <div style={{ flex: 1, borderTop: '1.5px dashed #e2e8f0' }} />
       <div style={{ width: 14, height: 14, borderRadius: '50%', backgroundColor: OUTER_BG, flexShrink: 0 }} />
@@ -85,7 +86,7 @@ function DashedDivider() {
   );
 }
 
-// ── Direction icon ────────────────────────────────────────────────────────────
+// ── Direction arrow icon (shown when no provider badge) ───────────────────────
 function DirectionIcon({ direction, status }) {
   const bgColor =
     status === 'pending' ? '#fef3c7' :
@@ -101,15 +102,45 @@ function DirectionIcon({ direction, status }) {
 
   return (
     <div style={{
-      width: 44, height: 44, borderRadius: '50%',
+      width: 40, height: 40, borderRadius: '50%',
       backgroundColor: bgColor,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      margin: '0 auto 12px',
+      margin: '0 auto 10px',
     }}>
-      <svg width={20} height={20} viewBox="0 0 24 24" fill="none"
+      <svg width={18} height={18} viewBox="0 0 24 24" fill="none"
         stroke={strokeColor} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
         {arrowPaths.map((d, i) => <path key={i} d={d} />)}
       </svg>
+    </div>
+  );
+}
+
+// ── Provider logo image or colored initials badge ─────────────────────────────
+function ProviderBadge({ provider, category }) {
+  const logoPath = getProviderLogo(provider);
+  const badge    = getProviderBadge(provider, category);
+
+  return (
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '10px 0 2px', position: 'relative', zIndex: 2 }}>
+      {logoPath ? (
+        <img
+          src={logoPath}
+          alt={provider || ''}
+          style={{ height: 40, width: 'auto', maxWidth: 88, objectFit: 'contain', borderRadius: 8 }}
+          onError={e => { e.currentTarget.style.display = 'none'; }}
+        />
+      ) : (
+        <div style={{
+          width: 48, height: 48, borderRadius: 14,
+          background: badge.bg,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          boxShadow: '0 1px 4px rgba(0,0,0,0.12)',
+        }}>
+          <span style={{ fontSize: 15, fontWeight: 800, color: badge.fg, letterSpacing: '-0.01em' }}>
+            {badge.initials}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -119,12 +150,17 @@ export function ReceiptCard({ data, innerRef }) {
   const {
     title, direction, status, amount, datetime,
     fields = [], businessName, issuedBy, receiptRef,
+    provider, category,
   } = data;
 
-  const st       = statusProps(status);
-  const amtColor = status === 'failed'  ? '#dc2626' :
-                   status === 'pending' ? '#d97706' :
-                   direction === 'in'   ? GREEN     : NAVY;
+  const st           = statusProps(status);
+  const showProvider = !!(provider || category);
+  const amtColor     = status === 'failed'  ? '#dc2626' :
+                       status === 'pending' ? '#d97706' :
+                       direction === 'in'   ? GREEN     : NAVY;
+
+  // retrievable fields (electricity token) are shown in TransactionDetailModal, not the card
+  const printFields = fields.filter(f => !f.retrievable);
 
   return (
     <div ref={innerRef} style={{ background: OUTER_BG, padding: '0 16px 16px', fontFamily: FONT_STACK }}>
@@ -136,7 +172,7 @@ export function ReceiptCard({ data, innerRef }) {
       <div style={{ background: 'white', position: 'relative', overflow: 'hidden', padding: '16px 20px 0' }}>
         <Watermark />
 
-        {/* Header: logo + wordmark left · "Transaction Receipt" right */}
+        {/* Header: logo + wordmark left · receipt type right */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'relative', zIndex: 2 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
             <img
@@ -150,7 +186,7 @@ export function ReceiptCard({ data, innerRef }) {
           </div>
           <div style={{ textAlign: 'right' }}>
             <p style={{ margin: 0, fontSize: 9, fontWeight: 700, color: '#94a3b8', letterSpacing: '0.07em', textTransform: 'uppercase', lineHeight: 1.4 }}>
-              Transaction
+              {category ? 'Bill' : 'Transaction'}
             </p>
             <p style={{ margin: 0, fontSize: 9, fontWeight: 700, color: '#94a3b8', letterSpacing: '0.07em', textTransform: 'uppercase', lineHeight: 1.4 }}>
               Receipt
@@ -158,32 +194,35 @@ export function ReceiptCard({ data, innerRef }) {
           </div>
         </div>
 
+        {/* Provider logo / badge — bill receipts only */}
+        {showProvider && <ProviderBadge provider={provider} category={category} />}
+
         {/* Title subtitle */}
-        <p style={{ margin: '8px 0 0', fontSize: 10.5, fontWeight: 600, color: '#64748b', textAlign: 'center', position: 'relative', zIndex: 2 }}>
+        <p style={{ margin: showProvider ? '6px 0 0' : '10px 0 0', fontSize: 10.5, fontWeight: 600, color: '#64748b', textAlign: 'center', position: 'relative', zIndex: 2 }}>
           {title}
         </p>
 
-        {/* Thin separator */}
-        <div style={{ height: 1, background: '#f1f5f9', margin: '10px 0 4px', position: 'relative', zIndex: 2 }} />
+        {/* Separator */}
+        <div style={{ height: 1, background: '#f1f5f9', margin: '10px 0 6px', position: 'relative', zIndex: 2 }} />
 
         {/* Amount hero */}
         <div style={{ textAlign: 'center', padding: '4px 0 2px', position: 'relative', zIndex: 2 }}>
-          <DirectionIcon direction={direction} status={status} />
+          {!showProvider && <DirectionIcon direction={direction} status={status} />}
 
-          <p style={{ margin: 0, fontSize: 28, fontWeight: 800, color: amtColor, letterSpacing: '-0.025em', lineHeight: 1.1 }}>
+          <p style={{ margin: 0, fontSize: 30, fontWeight: 800, color: amtColor, letterSpacing: '-0.03em', lineHeight: 1.1 }}>
             {fmtAmt(amount)}
           </p>
 
           <div style={{
             display: 'inline-flex', alignItems: 'center', gap: 4,
-            marginTop: 7, background: st.bg, borderRadius: 99, padding: '3px 11px',
+            marginTop: 8, background: st.bg, borderRadius: 99, padding: '3px 12px',
           }}>
             <span style={{ fontSize: 11, color: st.color, fontWeight: 700 }}>
               {st.icon} {st.label}
             </span>
           </div>
 
-          <p style={{ margin: '7px 0 0', fontSize: 10.5, color: '#94a3b8', fontWeight: 500 }}>
+          <p style={{ margin: '8px 0 0', fontSize: 10.5, color: '#94a3b8', fontWeight: 500 }}>
             {datetime}
           </p>
         </div>
@@ -192,17 +231,17 @@ export function ReceiptCard({ data, innerRef }) {
 
         {/* Detail field rows */}
         <div style={{ position: 'relative', zIndex: 2 }}>
-          {fields.map((field, i) => (
+          {printFields.map((field, i) => (
             <div key={i} style={{
               display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-              padding: '5px 0',
-              borderBottom: i < fields.length - 1 ? '0.5px solid #f1f5f9' : 'none',
+              padding: '7px 0',
+              borderBottom: i < printFields.length - 1 ? '0.5px solid #f1f5f9' : 'none',
             }}>
-              <span style={{ fontSize: 10.5, color: '#94a3b8', fontWeight: 500, flexShrink: 0, minWidth: 96, paddingRight: 8 }}>
+              <span style={{ fontSize: 10.5, color: '#94a3b8', fontWeight: 500, flexShrink: 0, minWidth: 100, paddingRight: 8 }}>
                 {field.label}
               </span>
-              <span style={{ fontSize: 10.5, color: '#1e293b', fontWeight: 600, textAlign: 'right', wordBreak: 'break-all', maxWidth: '58%', lineHeight: 1.4 }}>
-                {field.value}
+              <span style={{ fontSize: 10.5, color: '#1e293b', fontWeight: 600, textAlign: 'right', wordBreak: 'break-word', maxWidth: '55%', lineHeight: 1.5 }}>
+                {field.value ?? '—'}
               </span>
             </div>
           ))}
