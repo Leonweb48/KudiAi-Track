@@ -68,7 +68,8 @@ export function usePinLock(userId, session) {
   const [loading,        setLoading]        = useState(true);
   const [status,         setStatus]         = useState(null);
 
-  const inactivityTimer = useRef(null);
+  const inactivityTimer   = useRef(null);
+  const capListenerRef    = useRef(null);
 
   // Derived state
   const appPinSet  = status?.appPinSet  ?? false;
@@ -111,12 +112,17 @@ export function usePinLock(userId, session) {
 
   const resetTimer = useCallback(() => {
     if (locked) return;
-    if (autoLockTimeout === 0) return; // Never mode — no inactivity timer
+    if (autoLockTimeout === 0) { clearTimer(); return; } // Never mode — clear any pending timer
     clearTimer();
     inactivityTimer.current = setTimeout(() => {
       setLocked(true);
     }, autoLockTimeout * 60 * 1000);
   }, [locked, autoLockTimeout, clearTimer]);
+
+  // Immediately clear any running timer the moment "Never" becomes active
+  useEffect(() => {
+    if (autoLockTimeout === 0) clearTimer();
+  }, [autoLockTimeout, clearTimer]);
 
   // Start/reset timer on user activity
   useEffect(() => {
@@ -136,13 +142,15 @@ export function usePinLock(userId, session) {
 
   // ── App background / visibility ────────────────────────────────────
   useEffect(() => {
-    // Capacitor
-    let removeCapacitor;
+    // Capacitor — store handle in a ref so cleanup is always synchronous
     import("@capacitor/app")
       .then(({ App: CapApp }) => {
+        // Remove any previously registered listener first (handles re-runs)
+        capListenerRef.current?.remove?.();
+        capListenerRef.current = null;
         CapApp.addListener("appStateChange", ({ isActive }) => {
           if (!isActive && autoLockTimeout !== 0) setLocked(true);
-        }).then(l => { removeCapacitor = l; });
+        }).then(l => { capListenerRef.current = l; });
       })
       .catch(() => {});
 
@@ -153,7 +161,8 @@ export function usePinLock(userId, session) {
     document.addEventListener("visibilitychange", onVis);
 
     return () => {
-      removeCapacitor?.remove?.();
+      capListenerRef.current?.remove?.();
+      capListenerRef.current = null;
       document.removeEventListener("visibilitychange", onVis);
     };
   }, [autoLockTimeout]); // re-register listeners when timeout setting changes
