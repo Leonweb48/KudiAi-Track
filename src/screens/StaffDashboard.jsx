@@ -170,7 +170,7 @@ function StatCard({ label, value, icon, iconBg, iconColor, sub, onClick, loading
     <button onClick={onClick}
       className="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-card border border-slate-100 dark:border-slate-700/50 text-left active:scale-95 transition-all duration-150 w-full">
       <div className="flex items-center gap-2.5 mb-3">
-        <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${iconBg}`}>
+        <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${iconBg}`}>
           <Svg d={icon} size={16} color={iconColor} sw={2.5} />
         </div>
         <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 leading-tight">{label}</span>
@@ -191,7 +191,7 @@ function ActionBtn({ label, icon, bg, onClick }) {
   return (
     <button onClick={onClick}
       className="flex flex-col items-center gap-2 active:scale-90 transition-transform duration-150">
-      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-md ${bg}`}>
+      <div className={`w-14 h-14 rounded-full flex items-center justify-center shadow-md ${bg}`}>
         <Svg d={icon} size={22} color="white" sw={2} />
       </div>
       <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 text-center leading-tight max-w-[60px]">{label}</span>
@@ -212,7 +212,7 @@ function TxRow({ t, onClick }) {
           ? "bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800/50"
           : "bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700/50"
       }`}>
-      <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
+      <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
         failed ? "bg-red-100 dark:bg-red-900/30" : isIn ? "bg-green-50 dark:bg-green-900/30" : "bg-red-50 dark:bg-red-900/30"
       }`}>
         <Svg d={isIn ? P.in : P.out} size={16} color={failed ? "#dc2626" : isIn ? "#16a34a" : "#ef4444"} sw={2.5} />
@@ -228,7 +228,7 @@ function TxRow({ t, onClick }) {
         <p className={`text-sm font-extrabold tabular ${failed ? "text-red-400 line-through" : isIn ? "text-green-600" : "text-red-500"}`}>
           {isIn ? "+" : "−"}{fmt(t.amount)}
         </p>
-        {onClick && <p className="text-[10px] text-slate-300 dark:text-slate-600 mt-0.5">receipt →</p>}
+        {onClick && <p className="text-[10px] text-slate-300 dark:text-slate-600 mt-0.5">view</p>}
       </div>
     </button>
   );
@@ -439,17 +439,8 @@ function StaffHome({ staff, store, inventory, plan, onGoTo, onVoiceOpen, onAddCa
   const totalAso     = asoClients.reduce((s, c) => s + (c.current_balance || 0), 0);
   const lowStock     = (inventory?.lowStock || []);
 
-  const name = (staff?.full_name || "Staff").split(" ")[0];
-
   return (
-    <div className="overflow-y-auto h-full px-4 pb-6 screen-enter">
-
-      {/* Greeting */}
-      <div className="pt-5 pb-2">
-        <p className="text-sm text-slate-400 dark:text-slate-500 font-medium">{greetingText(t)} 👋</p>
-        <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white leading-tight mt-0.5 truncate">{name}</h1>
-        <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{fmtDate(lang)}</p>
-      </div>
+    <div className="overflow-y-auto h-full px-4 pt-4 pb-6 screen-enter">
 
       {/* Alerts */}
       {overdueCount > 0 && (
@@ -471,59 +462,59 @@ function StaffHome({ staff, store, inventory, plan, onGoTo, onVoiceOpen, onAddCa
 
       {/* Hero card */}
       <div className="rounded-3xl px-6 py-6 text-white relative overflow-hidden shadow-hero mb-5"
-        style={{ background: "linear-gradient(145deg,#059669 0%,#047857 55%,#065f46 100%)" }}>
+        style={{ background: "linear-gradient(145deg,#022c22 0%,#064e3b 50%,#065f46 100%)" }}>
         <div className="absolute -top-12 -right-12 w-40 h-40 rounded-full bg-white/5 pointer-events-none" />
         <div className="absolute -bottom-14 -left-10 w-48 h-48 rounded-full bg-white/5 pointer-events-none" />
         <div className="relative">
-          <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest">Today's Profit</p>
+          <p className="text-[10px] font-bold text-white/50 uppercase tracking-widest">Today's Profit</p>
+          <p className="text-[11px] text-white/35 mb-1">{fmtDate(lang)}</p>
           {loading
             ? <div className="h-12 w-44 bg-white/20 rounded-xl animate-pulse mt-2 mb-5" />
-            : <p className={`text-4xl font-black tracking-tight mt-1.5 mb-5 tabular ${profit < 0 ? "text-red-300" : "text-white"}`}>{profit < 0 && "−"}{fmt(Math.abs(profit))}</p>
+            : <p className={`text-4xl font-black tracking-tight mt-1 mb-5 tabular ${profit < 0 ? "text-red-300" : "text-white"}`}>{profit < 0 && "−"}{fmt(Math.abs(profit))}</p>
           }
+          <div className="h-px bg-white/10 mb-4" />
           <div className="flex gap-5">
             <div>
-              <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">Cash In</p>
+              <p className="text-[10px] font-semibold text-white/50 uppercase tracking-widest mb-0.5">Cash In</p>
               <p className="text-base font-bold tabular">{loading ? "—" : fmt(cashIn)}</p>
             </div>
-            <div className="w-px bg-white/20 self-stretch" />
+            <div className="w-px bg-white/15 self-stretch" />
             <div>
-              <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">Cash Out</p>
-              <p className="text-base font-bold tabular">{loading ? "—" : fmt(cashOut)}</p>
+              <p className="text-[10px] font-semibold text-white/50 uppercase tracking-widest mb-0.5">Cash Out</p>
+              <p className="text-base font-bold tabular text-red-300">{loading ? "—" : fmt(cashOut)}</p>
             </div>
-            <div className="w-px bg-white/20 self-stretch" />
+            <div className="w-px bg-white/15 self-stretch" />
             <div>
-              <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">Txns</p>
+              <p className="text-[10px] font-semibold text-white/50 uppercase tracking-widest mb-0.5">Txns</p>
               <p className="text-base font-bold tabular">{loading ? "—" : todayTx.length}</p>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Quick Services + Mic (business portal style) */}
-      <div className="bg-white dark:bg-slate-800 rounded-3xl p-4 shadow-card border border-slate-100 dark:border-slate-700/50 mb-5">
-        <div className="flex items-center justify-between mb-4">
-          <p className="text-[12px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Quick Services</p>
-          <button onClick={() => onGoTo("sales", "bills")}
-            className="text-[11px] font-bold text-brand-600 dark:text-brand-400">See all</button>
-        </div>
-        <div className="grid grid-cols-3 gap-y-5">
-          {BILL_SERVICES.map(s => (
-            <button key={s.id}
-              onClick={() => s.isMic ? onVoiceOpen() : onGoTo("sales", "bills", s.id)}
-              className="flex flex-col items-center gap-2 active:scale-90 transition-transform">
-              <div className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm"
-                style={{ background: `linear-gradient(135deg,${s.g1},${s.g2})` }}>
-                {s.isMic
-                  ? <Svg d={P.mic} size={22} color="white" sw={2} />
-                  : <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      {(s.icon || "").split("|").map((d, i) => <path key={i} d={d} />)}
-                    </svg>
-                }
-              </div>
-              <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 text-center leading-tight">{s.label}</span>
-            </button>
-          ))}
-        </div>
+      {/* Quick Services */}
+      <div className="flex items-center justify-between px-1 mb-3">
+        <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Quick Services</p>
+        <button onClick={() => onGoTo("sales", "bills")}
+          className="text-[11px] font-bold text-brand-600 dark:text-brand-400">See all</button>
+      </div>
+      <div className="grid grid-cols-3 gap-3 mb-5">
+        {BILL_SERVICES.map(s => (
+          <button key={s.id}
+            onClick={() => s.isMic ? onVoiceOpen() : onGoTo("sales", "bills", s.id)}
+            className="flex flex-col items-center gap-2.5 bg-white dark:bg-slate-800 rounded-2xl py-4 px-2 shadow-card border border-slate-100 dark:border-slate-700/50 active:scale-95 transition-transform">
+            <div className="w-12 h-12 rounded-full flex items-center justify-center"
+              style={{ background: `linear-gradient(135deg,${s.g1},${s.g2})` }}>
+              {s.isMic
+                ? <Svg d={P.mic} size={20} color="white" sw={2} />
+                : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    {(s.icon || "").split("|").map((d, i) => <path key={i} d={d} />)}
+                  </svg>
+              }
+            </div>
+            <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 text-center leading-tight">{s.label}</span>
+          </button>
+        ))}
       </div>
 
       {/* Stat cards — all clickable to their tabs */}
@@ -540,7 +531,7 @@ function StaffHome({ staff, store, inventory, plan, onGoTo, onVoiceOpen, onAddCa
 
       {/* Quick Actions */}
       <div className="mb-5">
-        <h2 className="text-[13px] font-bold text-slate-700 dark:text-slate-300 mb-3 tracking-wide">Quick Actions</h2>
+        <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1 mb-3">Quick Actions</p>
         <div className="grid grid-cols-3 gap-y-4 gap-x-2">
           <ActionBtn label="Cash In"   icon={P.in}     bg="bg-gradient-to-br from-green-500 to-emerald-600" onClick={() => onAddCash("in")} />
           <ActionBtn label="Cash Out"  icon={P.out}    bg="bg-gradient-to-br from-red-500 to-red-600"       onClick={() => onAddCash("out")} />
@@ -556,7 +547,7 @@ function StaffHome({ staff, store, inventory, plan, onGoTo, onVoiceOpen, onAddCa
       {/* Recent Transactions */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-[13px] font-bold text-slate-700 dark:text-slate-300 tracking-wide">Recent Transactions</h2>
+          <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Recent</p>
           <button onClick={() => onGoTo("sales", "all")} className="text-[11px] font-bold text-brand-600 dark:text-brand-400">View all →</button>
         </div>
         {loading
@@ -1235,18 +1226,22 @@ export default function StaffDashboard({ session, staff: staffProp }) {
   }
 
   return (
-    <div className="h-[100dvh] bg-slate-50 dark:bg-slate-900 flex justify-center transition-colors duration-200">
+    <div className="h-[100dvh] bg-[#f0fdf4] dark:bg-slate-900 flex justify-center transition-colors duration-200">
       <div className="w-full max-w-md flex flex-col h-full relative">
 
         {/* Header */}
         <header className="flex-none z-30 h-14 flex items-center justify-between px-4 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shadow-sm">
-          <AppLogo className="h-8 w-8" />
-          <div className="flex items-baseline gap-0.5 select-none">
-            <span className="text-[17px] font-black tracking-tight text-slate-800 dark:text-white leading-none">Kudi</span>
-            <span className="text-[17px] font-black tracking-tight leading-none"
-              style={{ background: "linear-gradient(135deg,#16a34a,#059669)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>AI</span>
-            <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 tracking-widest uppercase leading-none ml-1">Track</span>
-          </div>
+          {tab === "home" ? (
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest leading-none">{greetingText(t)}</p>
+              <p className="text-[17px] font-black text-slate-800 dark:text-white leading-tight truncate">{(staff?.full_name || "Staff").split(" ")[0]}</p>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2.5 flex-1 min-w-0">
+              <AppLogo className="h-7 w-7 flex-shrink-0" />
+              <p className="text-[17px] font-extrabold text-slate-800 dark:text-white truncate">{NAV.find(n => n.id === tab)?.label}</p>
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <NotificationBell unreadCount={notif.unreadCount} onClick={() => notif.setOpen(true)} />
             <button onClick={() => goTo("me")}
@@ -1272,8 +1267,8 @@ export default function StaffDashboard({ session, staff: staffProp }) {
               return (
                 <button key={n.id} onClick={() => { setTab(n.id); setSubNav(null); setSubData(null); }}
                   className="flex-1 flex flex-col items-center justify-center gap-0.5 relative focus-visible:outline-none">
-                  {active && <span className="absolute top-0 left-1/2 -translate-x-1/2 w-5 h-0.5 rounded-full bg-brand-600 dark:bg-brand-400" />}
-                  <div className={`relative transition-all duration-200 ${active ? "scale-110" : "scale-100"}`}>
+                  {active && <span className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-[3px] rounded-full bg-brand-600 dark:bg-brand-400" />}
+                  <div className="relative transition-all duration-200">
                     <Icon name={n.icon} size={21} className={active ? "text-brand-600 dark:text-brand-400" : "text-slate-400 dark:text-slate-500"} />
                     {cnt > 0 && (
                       <span className="absolute -top-1.5 -right-2 min-w-[16px] h-4 px-0.5 rounded-full bg-red-500 text-white text-[8px] font-black flex items-center justify-center leading-none">
@@ -1281,7 +1276,7 @@ export default function StaffDashboard({ session, staff: staffProp }) {
                       </span>
                     )}
                   </div>
-                  <span className={`text-[8px] font-bold uppercase tracking-wide leading-none ${active ? "text-brand-600 dark:text-brand-400" : "text-slate-400 dark:text-slate-500"}`}>
+                  <span className={`text-[9px] font-bold leading-none ${active ? "text-brand-600 dark:text-brand-400" : "text-slate-400 dark:text-slate-500"}`}>
                     {n.label}
                   </span>
                 </button>
