@@ -71,9 +71,6 @@ jobs:
             echo '</widget>'
           } > android/app/src/main/res/xml/config.xml
 
-      - name: Copy notification icon from public folder
-        run: cp public/icon.png android/app/src/main/res/drawable/ic_notification.png
-
       - name: Copy web assets to Android
         run: |
           mkdir -p android/app/src/main/assets/public
