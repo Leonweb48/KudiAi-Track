@@ -1833,51 +1833,22 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     const onPageShow = (e) => { if (e.persisted) showDisrupted(); };
 
     // When app becomes visible: wait 2s (to allow deep-link paymentCallback to fire first),
-    // then attempt Paystack verification using the stored bill_ref (which IS the Paystack
-    // reference — passed as `reference` in the Paystack initialize call).
-    // Fires when saving is still true (bank 3DS) OR when InAppBrowser closed without a
-    // callback (OPay / external payment app — flagged by ck_browser_closed_pending).
+    // then clear saving so the UI is not stuck. paymentCallback (deep link / URL intercept)
+    // remains the sole verification trigger and will update state when it fires.
     let visibleTimer = null;
     const onVisible = () => {
-      if (document.visibilityState !== "visible") return;
+      if (document.visibilityState !== "visible" || !savingRef.current) return;
       clearTimeout(visibleTimer);
       visibleTimer = setTimeout(() => {
-        if (paymentCallbackFiredRef.current) return; // already being handled
+        if (!savingRef.current) return; // deep link already handled it
+        const params = new URLSearchParams(window.location.search);
+        const urlRef = params.get("bill_ref") || params.get("trxref") || params.get("reference");
+        if (urlRef) return; // URL-based redirect — handled elsewhere
         const keys = Object.keys(localStorage).filter(k => k.startsWith(BILL_PENDING_PREFIX));
-        if (keys.length === 0) {
-          try { sessionStorage.removeItem("ck_browser_closed_pending"); } catch {}
-          return;
-        }
-
-        // Only proceed if payment is actively in progress OR InAppBrowser closed
-        // unexpectedly (external payment app like OPay).
-        const wasActive = (() => { try { return sessionStorage.getItem("ck_browser_closed_pending") === "1"; } catch { return false; } })();
-        if (!savingRef.current && !wasActive) return;
-
-        // Guard against stale keys: only verify if initiated within 30 min.
-        const storedRef = keys[0].slice(BILL_PENDING_PREFIX.length);
-        const tsMatch = storedRef.match(/(\d{13})$/);
-        const ts = tsMatch ? parseInt(tsMatch[1], 10) : 0;
-        if (!ts || Date.now() - ts > 30 * 60 * 1000) {
-          if (savingRef.current) { setSaving(false); setSelectedCat(null); }
-          try { sessionStorage.removeItem("ck_browser_closed_pending"); } catch {}
-          return;
-        }
-
-        try { sessionStorage.removeItem("ck_browser_closed_pending"); } catch {}
-
-        const storedData = localStorage.getItem(BILL_PENDING_PREFIX + storedRef);
-        if (!storedData) { if (savingRef.current) { setSaving(false); setSelectedCat(null); } return; }
-
-        try {
-          const pending = JSON.parse(storedData);
-          paymentCallbackFiredRef.current = true; // lock to prevent double-call
-          setSaving(true);
-          fulfillAfterPaymentRef.current(storedRef, pending);
-        } catch {
-          paymentCallbackFiredRef.current = false;
-          if (savingRef.current) { setSaving(false); setSelectedCat(null); }
-        }
+        if (keys.length === 0) return;
+        if (paymentCallbackFiredRef.current) return; // paymentCallback already handling it
+        setSaving(false);
+        setSelectedCat(null);
       }, 2000);
     };
 
@@ -1904,9 +1875,6 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         const keys = Object.keys(localStorage).filter(k => k.startsWith(BILL_PENDING_PREFIX));
         if (keys.length === 0) return;
         if (paymentCallbackFiredRef.current) return; // paymentCallback already handling it
-        // InAppBrowser closed without a confirmed callback — flag for onVisible so it
-        // can auto-verify when the user returns from an external payment app (OPay, etc.).
-        try { sessionStorage.setItem("ck_browser_closed_pending", "1"); } catch {}
         setSaving(false);
         setSelectedCat(null);
       }, 1500);
@@ -2243,8 +2211,8 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
         if (psStatus !== "success") {
           const isAbandoned = psStatus === "abandoned" || gwResp.includes("abandon") || gwResp.includes("cancel");
-          // Payment still in progress — reset lock so visibilitychange can retry
-          if (psStatus === "pending") { paymentCallbackFiredRef.current = false; return; }
+          // Payment still in progress — keep pending so visibilitychange can retry
+          if (psStatus === "pending") return;
           // Already fulfilled (replay blocked by server idempotency guard)
           if (psStatus === "already_fulfilled") {
             localStorage.removeItem(BILL_PENDING_PREFIX + ref);
