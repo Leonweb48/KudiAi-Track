@@ -20,6 +20,9 @@ import { Browser } from "@capacitor/browser";
 import { Capacitor } from "@capacitor/core";
 import { savePdf }       from "../utils/pdfSave";
 import { createReportPdf } from "../utils/generateReportPdf";
+import html2canvas from "html2canvas";
+import { Filesystem, Directory } from "@capacitor/filesystem";
+import { Share } from "@capacitor/share";
 
 /* ─── Service catalogue ───────────────────────────────────────────────────── */
 
@@ -996,6 +999,71 @@ function ConfirmPaymentSheet({ data, onConfirm, onCancel }) {
   );
 }
 
+/* ─── Receipt capture helpers ─────────────────────────────────────────────── */
+async function captureReceiptCanvas(el) {
+  const clone = el.cloneNode(true);
+  const wrap  = document.createElement('div');
+  Object.assign(wrap.style, {
+    position: 'absolute', top: '0', left: '-9999px',
+    width: `${el.offsetWidth}px`,
+  });
+  wrap.appendChild(clone);
+  document.body.appendChild(wrap);
+  await new Promise(r => setTimeout(r, 180));
+  try {
+    return await html2canvas(clone, {
+      scale: 3, useCORS: true, allowTaint: false,
+      logging: false, imageTimeout: 10000,
+      width: clone.scrollWidth, height: clone.scrollHeight,
+      windowWidth: clone.scrollWidth, windowHeight: clone.scrollHeight,
+      scrollX: 0, scrollY: 0,
+    });
+  } finally {
+    document.body.removeChild(wrap);
+  }
+}
+
+async function receiptFileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result.split(',')[1]);
+    reader.onerror   = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function shareBillReceiptFile(file) {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const base64 = await receiptFileToBase64(file);
+      const saved  = await Filesystem.writeFile({
+        path: file.name, data: base64,
+        directory: Directory.Cache, recursive: true,
+      });
+      await Share.share({ title: file.name, url: saved.uri, dialogTitle: 'Share receipt' });
+      return 'shared';
+    } catch (e) {
+      if (e?.message?.includes('cancel') || e?.errorMessage?.includes('cancel')) return 'shared';
+      throw e;
+    }
+  }
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: file.name });
+      return 'shared';
+    } catch (e) {
+      if (e?.name === 'AbortError' || e?.message?.includes('cancel')) return 'shared';
+    }
+  }
+  const url = URL.createObjectURL(file);
+  const a   = Object.assign(document.createElement('a'), { href: url, download: file.name });
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return 'downloaded';
+}
+
 /* ─── Stages 2–4: processing → delivery → receipt ──────────────────────── */
 function BillResultOverlay({ saving, fulfillResult, profile, businessName, staffName, onDone, onShareReceipt, onReportIssue }) {
   const catLabel = fulfillResult?.cat
@@ -1003,6 +1071,10 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
     : "Bill Payment";
 
   const isSuccess = !!(fulfillResult?.ok && !fulfillResult?.txnHistoryPending);
+
+  const receiptCardRef                    = useRef(null);
+  const [shareSheet,   setShareSheet]     = useState(false);
+  const [shareLoading, setShareLoading]   = useState(null); // null | 'image' | 'pdf'
 
   // Build receipt data for the success state — same shape as onShareReceipt
   const successReceiptData = isSuccess ? (() => {
@@ -1037,6 +1109,32 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
       bill_status:  "success",
     });
   })() : null;
+
+  async function handleShareOption(type) {
+    setShareSheet(false);
+    setShareLoading(type);
+    try {
+      if (!receiptCardRef.current) return;
+      const canvas = await captureReceiptCanvas(receiptCardRef.current);
+      const fnames = successReceiptData?.filenames;
+      if (type === 'image') {
+        const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
+        const file = new File([blob], fnames?.image || 'receipt.png', { type: 'image/png' });
+        await shareBillReceiptFile(file);
+      } else {
+        const imgData = canvas.toDataURL('image/png');
+        const mmW = (canvas.width  / 3) * (25.4 / 96);
+        const mmH = (canvas.height / 3) * (25.4 / 96);
+        const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: [mmW, mmH] });
+        pdf.addImage(imgData, 'PNG', 0, 0, mmW, mmH);
+        await savePdf(pdf, fnames?.pdf || 'receipt.pdf');
+      }
+    } catch (_) {
+      // ignore user cancel / AbortError
+    } finally {
+      setShareLoading(null);
+    }
+  }
 
   /* Shared header — logo left, service right, green stripe below (hidden on success) */
   const Header = () => (
@@ -1270,7 +1368,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
 
             {/* ── Full receipt card — logo, icon, all fields, updated footer ── */}
             <div className="px-4 py-4">
-              <ReceiptCard data={successReceiptData} />
+              <ReceiptCard data={successReceiptData} innerRef={receiptCardRef} />
             </div>
 
             {/* Points earned */}
@@ -1287,7 +1385,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
           {/* ── Pinned action bar ── */}
           <div className="flex-shrink-0 px-4 pt-3 pb-3 bg-white border-t border-slate-100 space-y-2"
             style={{ paddingBottom: 'calc(12px + env(safe-area-inset-bottom, 0px))' }}>
-            <button onClick={onShareReceipt}
+            <button onClick={() => setShareSheet(true)}
               className="w-full py-3.5 rounded-2xl text-white font-black text-base flex items-center justify-center gap-2.5 active:scale-[0.98] transition-transform shadow-lg"
               style={{ background: "linear-gradient(135deg,#16a34a,#059669)" }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -1446,6 +1544,69 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
       )}
 
       {!isSuccess && <Footer />}
+
+      {/* ── Share sheet overlay ── */}
+      {shareSheet && (
+        <div
+          className="fixed inset-0 z-[70] flex items-end justify-center"
+          style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}
+          onClick={() => setShareSheet(false)}
+        >
+          <div
+            className="w-full max-w-md bg-white rounded-t-2xl shadow-xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="w-10 h-1 bg-slate-200 rounded-full mx-auto mt-3 mb-4" />
+            <p className="text-sm font-bold text-slate-700 text-center mb-4">Share Receipt</p>
+
+            <button
+              onClick={() => handleShareOption('image')}
+              className="w-full flex items-center gap-4 px-6 py-4 border-t border-slate-100"
+            >
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: '#dcfce7' }}>
+                <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="#16a34a" strokeWidth={2} strokeLinecap="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <circle cx="8.5" cy="8.5" r="1.5" />
+                  <path d="M21 15l-5-5L5 21" />
+                </svg>
+              </div>
+              <div className="text-left">
+                <p className="text-sm font-bold text-slate-800">Share as Image</p>
+                <p className="text-xs text-slate-400">High-res PNG · WhatsApp, Instagram…</p>
+              </div>
+            </button>
+
+            <button
+              onClick={() => handleShareOption('pdf')}
+              className="w-full flex items-center gap-4 px-6 py-4 border-t border-slate-100"
+              style={{ paddingBottom: 'calc(16px + env(safe-area-inset-bottom, 0px))' }}
+            >
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: '#e0e7ff' }}>
+                <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="#1d4ed8" strokeWidth={2} strokeLinecap="round">
+                  <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                  <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
+                </svg>
+              </div>
+              <div className="text-left">
+                <p className="text-sm font-bold text-slate-800">Save as PDF</p>
+                <p className="text-xs text-slate-400">Email, print, or save to files</p>
+              </div>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Capture loading overlay ── */}
+      {shareLoading && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="bg-white rounded-2xl px-8 py-6 flex flex-col items-center gap-3 shadow-xl">
+            <div className="w-8 h-8 border-2 border-slate-200 border-t-green-500 rounded-full animate-spin" />
+            <p className="text-sm font-semibold text-slate-600">
+              {shareLoading === 'image' ? 'Preparing image…' : 'Preparing PDF…'}
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
