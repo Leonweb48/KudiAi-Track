@@ -1771,6 +1771,9 @@ export default function BillPayments({ store, plan, session = null, staffName = 
           const ts = parseInt((k.match(/(\d{13})$/) || [])[1] || "0", 10);
           if (!ts || Date.now() - ts > STALE_MS) localStorage.removeItem(k);
         });
+      // If no pending keys remain, clear any stale browser-closed flag from a previous session.
+      const remainAfterClean = Object.keys(localStorage).filter(k => k.startsWith(BILL_PENDING_PREFIX));
+      if (remainAfterClean.length === 0) sessionStorage.removeItem("ck_browser_closed_pending");
     } catch {}
 
     // App.jsx stores the callback URL in sessionStorage when paymentCallback fires
@@ -1827,6 +1830,8 @@ export default function BillPayments({ store, plan, session = null, staffName = 
   // Set to true when the paymentCallback deep-link event is received so the
   // browserFinished listener knows NOT to run a second verification.
   const paymentCallbackFiredRef = useRef(false);
+  // Set to true after the first "pending" retry is scheduled so we don't chain retries.
+  const pendingRetriedRef = useRef(false);
 
   useEffect(() => {
     const showDisrupted = () => {
@@ -1845,22 +1850,50 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     const onPageShow = (e) => { if (e.persisted) showDisrupted(); };
 
     // When app becomes visible: wait 2s (to allow deep-link paymentCallback to fire first),
-    // then clear saving so the UI is not stuck. paymentCallback (deep link / URL intercept)
-    // remains the sole verification trigger and will update state when it fires.
+    // then attempt verification if either saving is still true OR InAppBrowser closed
+    // without a callback (ck_browser_closed_pending flag = OPay / external payment flow).
     let visibleTimer = null;
     const onVisible = () => {
-      if (document.visibilityState !== "visible" || !savingRef.current) return;
+      if (document.visibilityState !== "visible") return;
       clearTimeout(visibleTimer);
       visibleTimer = setTimeout(() => {
-        if (!savingRef.current) return; // deep link already handled it
-        const params = new URLSearchParams(window.location.search);
-        const urlRef = params.get("bill_ref") || params.get("trxref") || params.get("reference");
-        if (urlRef) return; // URL-based redirect — handled elsewhere
+        if (paymentCallbackFiredRef.current) return;
         const keys = Object.keys(localStorage).filter(k => k.startsWith(BILL_PENDING_PREFIX));
-        if (keys.length === 0) return;
-        if (paymentCallbackFiredRef.current) return; // paymentCallback already handling it
-        setSaving(false);
-        setSelectedCat(null);
+        if (keys.length === 0) {
+          try { sessionStorage.removeItem("ck_browser_closed_pending"); } catch {}
+          return;
+        }
+        const wasActive = (() => { try { return sessionStorage.getItem("ck_browser_closed_pending") === "1"; } catch { return false; } })();
+        if (!savingRef.current && !wasActive) return;
+        // Consume the flag so a rapid second visibilitychange doesn't double-fire.
+        try { sessionStorage.removeItem("ck_browser_closed_pending"); } catch {}
+        // Use the most-recent pending key (largest timestamp).
+        const sortedKeys = [...keys].sort((a, b) => {
+          const tsA = parseInt((a.match(/(\d{13})$/) || [])[1] || "0", 10);
+          const tsB = parseInt((b.match(/(\d{13})$/) || [])[1] || "0", 10);
+          return tsB - tsA;
+        });
+        const storedRef = sortedKeys[0].slice(BILL_PENDING_PREFIX.length);
+        const ts = parseInt((storedRef.match(/(\d{13})$/) || [])[1] || "0", 10);
+        if (!ts || Date.now() - ts > 30 * 60 * 1000) {
+          // Key is stale — clear saving if stuck and bail.
+          if (savingRef.current) { setSaving(false); setSelectedCat(null); }
+          return;
+        }
+        const storedData = localStorage.getItem(BILL_PENDING_PREFIX + storedRef);
+        if (!storedData) {
+          if (savingRef.current) { setSaving(false); setSelectedCat(null); }
+          return;
+        }
+        try {
+          const pendingData = JSON.parse(storedData);
+          paymentCallbackFiredRef.current = true;
+          setSaving(true);
+          fulfillAfterPaymentRef.current(storedRef, pendingData);
+        } catch {
+          paymentCallbackFiredRef.current = false;
+          if (savingRef.current) { setSaving(false); setSelectedCat(null); }
+        }
       }, 2000);
     };
 
@@ -1887,6 +1920,9 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         const keys = Object.keys(localStorage).filter(k => k.startsWith(BILL_PENDING_PREFIX));
         if (keys.length === 0) return;
         if (paymentCallbackFiredRef.current) return; // paymentCallback already handling it
+        // Flag that the browser closed without a callback (e.g. OPay opened externally).
+        // onVisible will use this to attempt verification when the app returns to foreground.
+        try { sessionStorage.setItem("ck_browser_closed_pending", "1"); } catch {}
         setSaving(false);
         setSelectedCat(null);
       }, 1500);
@@ -2105,6 +2141,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
   const handlePay = async () => {
     paymentCallbackFiredRef.current = false; // reset for fresh payment
+    pendingRetriedRef.current = false; // reset pending-retry guard for fresh payment
     setError(""); setSaving(true);
     try {
       const amount = parseFloat(form.amount) || 0;
@@ -2223,8 +2260,26 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
         if (psStatus !== "success") {
           const isAbandoned = psStatus === "abandoned" || gwResp.includes("abandon") || gwResp.includes("cancel");
-          // Payment still in progress — keep pending so visibilitychange can retry
-          if (psStatus === "pending") return;
+          // Payment still in progress — Paystack hasn't received the OPay webhook yet.
+          // Reset UI, re-arm the visibilitychange fallback, and schedule one 12 s retry.
+          if (psStatus === "pending") {
+            paymentCallbackFiredRef.current = false;
+            setSaving(false);
+            if (!pendingRetriedRef.current) {
+              pendingRetriedRef.current = true;
+              try { sessionStorage.setItem("ck_browser_closed_pending", "1"); } catch {}
+              const _retryRef = ref;
+              const _retryPending = pending;
+              setTimeout(() => {
+                if (paymentCallbackFiredRef.current) return;
+                if (!localStorage.getItem(BILL_PENDING_PREFIX + _retryRef)) return;
+                paymentCallbackFiredRef.current = true;
+                setSaving(true);
+                fulfillAfterPaymentRef.current(_retryRef, _retryPending);
+              }, 12000);
+            }
+            return;
+          }
           // Already fulfilled (replay blocked by server idempotency guard)
           if (psStatus === "already_fulfilled") {
             localStorage.removeItem(BILL_PENDING_PREFIX + ref);

@@ -632,7 +632,7 @@ export function useAuth() {
           }
         } else if (
           url.startsWith("com.amayatechnologies.kuditrack://payment-callback") ||
-          (url.startsWith("https://kudiai.app") && url.includes("/app/payment-callback"))
+          (url.startsWith("https://kudiai.app") && (url.includes("/app/payment-callback") || url.includes("/payment-return")))
         ) {
           try { await Browser.close(); } catch { /* CCT may already be closed */ }
           window.dispatchEvent(new CustomEvent("paymentCallback", { detail: { url } }));
