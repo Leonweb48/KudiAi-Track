@@ -253,11 +253,12 @@ const CORS = {
 };
 
 export default async function handler(req, res) {
-  // Capacitor webview origin is https://localhost — must handle preflight
-  if (req.method === "OPTIONS") {
-    return res.status(204).set(CORS).end();
-  }
+  // Capacitor webview origin is capacitor://localhost — always set CORS headers first
   Object.entries(CORS).forEach(([k, v]) => res.setHeader(k, v));
+  // Vercel's res object lacks Express's .set() — use setHeader for preflight too
+  if (req.method === "OPTIONS") {
+    return res.status(204).end();
+  }
 
   if (req.method !== "POST") return res.status(405).end();
   if (!SUPABASE_URL || !SERVICE_KEY) return res.status(503).json({ error: "Service unavailable — env vars missing" });
