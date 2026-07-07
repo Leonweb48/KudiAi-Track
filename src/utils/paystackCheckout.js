@@ -1,5 +1,4 @@
 import { Browser } from "@capacitor/browser";
-import { App } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
 import { InAppBrowser, ToolBarType } from "@capgo/capacitor-inappbrowser";
 
@@ -75,39 +74,21 @@ export async function openPaystackCheckout(authorizationUrl) {
   }
 
   if (isInAppBrowserAvailable()) {
-    let intercepted      = false;
-    let wentToBackground = false;
-    let urlListener, closeListener, stateListener;
+    let intercepted = false;
+    let urlListener, closeListener;
 
     const cleanup = () => {
       urlListener?.remove();
       closeListener?.remove();
-      stateListener?.remove();
       window.removeEventListener("paymentCallback", onExternalPaymentCallback);
     };
 
-    // If App Links fire and dispatch paymentCallback before our urlChangeEvent sees the URL,
-    // close the WebView immediately so the user is not left looking at a blank WebView.
+    // If App Links (or the bridge page intent://) fire paymentCallback before
+    // urlChangeEvent sees the callback URL, close the WebView immediately.
     const onExternalPaymentCallback = () => {
       intercepted = true;
       InAppBrowser.close().catch(() => {});
       cleanup();
-    };
-
-    // Dispatch paymentCallback using the pending bill_ref stored in localStorage.
-    // Called when OPay (or another external payment app) returns to foreground.
-    const dispatchFromPending = async () => {
-      await InAppBrowser.close().catch(() => {});
-      const pendingKey = Object.keys(localStorage).find(k => k.startsWith("ck_bill_pending_"));
-      if (pendingKey) {
-        const billRef = pendingKey.slice("ck_bill_pending_".length);
-        const qs = new URLSearchParams({ bill_ref: billRef }).toString();
-        window.dispatchEvent(new CustomEvent("paymentCallback", {
-          detail: { url: `${APP_SCHEME}://payment-callback?${qs}` },
-        }));
-      } else {
-        window.dispatchEvent(new CustomEvent("inAppBrowserFinished"));
-      }
     };
 
     try {
@@ -118,7 +99,7 @@ export async function openPaystackCheckout(authorizationUrl) {
       });
 
       // Intercept the Paystack post-payment redirect before the page renders.
-      // Also fires when the bridge page navigates to the callback URL inside the WebView.
+      // Fires for both the /payment-return and /app/payment-callback paths.
       urlListener = await InAppBrowser.addListener("urlChangeEvent", async ({ url }) => {
         if (!isCallbackUrl(url)) return;
         intercepted = true;
@@ -137,30 +118,12 @@ export async function openPaystackCheckout(authorizationUrl) {
         window.dispatchEvent(new CustomEvent("paymentCallback", { detail: { url: cbUrl } }));
       });
 
-      // WebView dismissed — user closed it manually (back button / swipe-down)
+      // WebView dismissed by user (back button / swipe-down) or by OPay taking over.
       closeListener = await InAppBrowser.addListener("closeEvent", () => {
         cleanup();
         if (!intercepted) {
           window.dispatchEvent(new CustomEvent("inAppBrowserFinished"));
         }
-      });
-
-      // OPay / external payment app return path.
-      // When OPay is opened from Paystack's checkout page, the kuditrack app goes to the
-      // background (isActive: false). When OPay completes and the user lands back, the app
-      // becomes active again (isActive: true). At that point we close the InAppBrowser and
-      // fire paymentCallback so BillPayments can verify the result with Paystack.
-      // 1 s delay lets appUrlOpen (App Links) or a bridge-page redirect fire first.
-      stateListener = await App.addListener("appStateChange", ({ isActive }) => {
-        if (!isActive) { wentToBackground = true; return; }
-        if (!wentToBackground || intercepted) return;
-        wentToBackground = false;
-        setTimeout(async () => {
-          if (intercepted) return; // appUrlOpen already handled it
-          intercepted = true;
-          cleanup();
-          await dispatchFromPending();
-        }, 1000);
       });
 
       window.addEventListener("paymentCallback", onExternalPaymentCallback);
