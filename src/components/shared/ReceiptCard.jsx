@@ -17,12 +17,12 @@ function fmtAmt(n) {
 }
 
 function statusProps(status) {
-  if (status === 'success')                    return { label: 'Successful', color: '#0f7b3e', bg: '#dcfce7', icon: '✓' };
-  if (status === 'pending' || status === 'processing') return { label: 'Pending',     color: '#92400e', bg: '#fef3c7', icon: '⏳' };
-  if (status === 'failed')                     return { label: 'Failed',      color: '#991b1b', bg: '#fee2e2', icon: '✕' };
-  if (status === 'reversed')                   return { label: 'Reversed',    color: '#374151', bg: '#f3f4f6', icon: '↩' };
+  if (status === 'success')                    return { label: 'Successful', color: '#0f7b3e', bg: '#dcfce7' };
+  if (status === 'pending' || status === 'processing') return { label: 'Pending',     color: '#92400e', bg: '#fef3c7' };
+  if (status === 'failed')                     return { label: 'Failed',      color: '#991b1b', bg: '#fee2e2' };
+  if (status === 'reversed')                   return { label: 'Reversed',    color: '#374151', bg: '#f3f4f6' };
   if (status) console.warn('[ReceiptCard] Unknown status:', status);
-  return { label: 'Pending', color: '#92400e', bg: '#fef3c7', icon: '⏳' };
+  return { label: 'Pending', color: '#92400e', bg: '#fef3c7' };
 }
 
 // ── Diagonal "KudiAI" watermark ───────────────────────────────────────────────
@@ -232,14 +232,14 @@ export function ReceiptCard({ data, innerRef }) {
         <Watermark />
 
         {/* Header: logo + wordmark left · receipt type right */}
-        <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', position: 'relative', zIndex: 2 }}>
-          <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+        <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', justifyContent: 'space-between', position: 'relative', zIndex: 2 }}>
+          <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', gap: 6, flexShrink: 0 }}>
             <img
               src="/logo.png" alt="" width={20} height={20}
-              style={{ borderRadius: 4, flexShrink: 0, display: 'block' }}
+              style={{ borderRadius: 4, flexShrink: 0, display: 'inline-block', verticalAlign: 'middle' }}
               onError={e => { e.currentTarget.style.display = 'none'; }}
             />
-            <span style={{ fontSize: 11, fontWeight: 700, color: GREEN, letterSpacing: '-0.01em', lineHeight: 1, whiteSpace: 'nowrap' }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: GREEN, letterSpacing: '-0.01em', lineHeight: 1, whiteSpace: 'nowrap', display: 'inline-block', verticalAlign: 'middle' }}>
               KudiAI Track
             </span>
           </div>
@@ -269,18 +269,20 @@ export function ReceiptCard({ data, innerRef }) {
           </p>
 
           {/* Status pill — shows Successful / Pending / Failed / Reversed */}
-          <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            marginTop: 8,
-          }}>
-            <div style={{
-              display: 'inline-flex', alignItems: 'center', gap: 4,
-              background: st.bg, borderRadius: 99, padding: '3px 12px',
+          <div style={{ marginTop: 8, textAlign: 'center' }}>
+            <span style={{
+              display: 'inline-block',
+              background: st.bg,
+              borderRadius: 99,
+              padding: '4px 16px',
+              fontSize: 11,
+              fontWeight: 700,
+              color: st.color,
+              lineHeight: 1.4,
+              whiteSpace: 'nowrap',
             }}>
-              <span style={{ fontSize: 11, color: st.color, fontWeight: 700 }}>
-                {st.icon} {st.label}
-              </span>
-            </div>
+              {st.label}
+            </span>
           </div>
 
           <p style={{ margin: '8px 0 0', fontSize: 10.5, color: '#94a3b8', fontWeight: 500 }}>
@@ -338,13 +340,13 @@ export function ReceiptCard({ data, innerRef }) {
           textAlign: 'center',
         }}>
           {/* Logo + name on same row, centered */}
-          <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, marginBottom: 4 }}>
+          <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', justifyContent: 'center', gap: 5, marginBottom: 4 }}>
             <img
               src="/logo.png" alt="" width={13} height={13}
-              style={{ borderRadius: 2, flexShrink: 0, display: 'block' }}
+              style={{ borderRadius: 2, flexShrink: 0, display: 'inline-block', verticalAlign: 'middle' }}
               onError={e => { e.currentTarget.style.display = 'none'; }}
             />
-            <span style={{ fontSize: 9.5, fontWeight: 700, color: '#14532d', lineHeight: 1, whiteSpace: 'nowrap' }}>
+            <span style={{ fontSize: 9.5, fontWeight: 700, color: '#14532d', lineHeight: 1, whiteSpace: 'nowrap', display: 'inline-block', verticalAlign: 'middle' }}>
               KudiAI Track
             </span>
           </div>
