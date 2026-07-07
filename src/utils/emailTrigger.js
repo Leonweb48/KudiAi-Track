@@ -16,15 +16,35 @@ export async function sendEmailTrigger(event, data) {
     if (!token) return;
 
     // Absolute URL so this works inside Capacitor webview (which loads from https://localhost)
-    fetch("https://kudiai.app/api/email-trigger", {
+    const res = await fetch("https://kudiai.app/api/email-trigger", {
       method:  "POST",
       headers: {
         "Content-Type":  "application/json",
         "Authorization": `Bearer ${token}`,
       },
       body: JSON.stringify({ event, data }),
-    }).catch(e => console.warn("[Email] trigger failed:", e));
+    });
+
+    if (!res.ok) {
+      // Log the failure directly to Supabase so it's visible in the delivery log
+      // even when the email pipeline itself is broken.
+      const detail = await res.text().catch(() => `HTTP ${res.status}`);
+      supabase.from("email_delivery_log").insert({
+        to_email:  String(data?.user_email || data?.owner_email || data?.email || "unknown"),
+        subject:   `[FAILED] ${event}`,
+        status:    "failed",
+        error_msg: `HTTP ${res.status}: ${detail.slice(0, 200)}`,
+        smtp_host: "kudiai-app-client",
+      }).catch(() => {});
+    }
   } catch (e) {
-    console.warn("[Email] trigger failed:", e);
+    // Network-level failure (CORS, offline, DNS) — log to Supabase so it's visible
+    supabase?.from("email_delivery_log").insert({
+      to_email:  String(data?.user_email || data?.owner_email || data?.email || "unknown"),
+      subject:   `[FAILED] ${event}`,
+      status:    "failed",
+      error_msg: String(e?.message || e).slice(0, 200),
+      smtp_host: "kudiai-app-client",
+    }).catch(() => {});
   }
 }
