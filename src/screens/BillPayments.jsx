@@ -20,7 +20,7 @@ import { Browser } from "@capacitor/browser";
 import { Capacitor } from "@capacitor/core";
 import { savePdf }       from "../utils/pdfSave";
 import { createReportPdf } from "../utils/generateReportPdf";
-import html2canvas from "html2canvas";
+import { captureReceiptCanvas } from "../utils/captureReceipt";
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
 
@@ -999,30 +999,7 @@ function ConfirmPaymentSheet({ data, onConfirm, onCancel }) {
   );
 }
 
-/* ─── Receipt capture helpers ─────────────────────────────────────────────── */
-async function captureReceiptCanvas(el) {
-  const clone = el.cloneNode(true);
-  const wrap  = document.createElement('div');
-  Object.assign(wrap.style, {
-    position: 'absolute', top: '0', left: '-9999px',
-    width: `${el.offsetWidth}px`,
-  });
-  wrap.appendChild(clone);
-  document.body.appendChild(wrap);
-  await new Promise(r => setTimeout(r, 180));
-  try {
-    return await html2canvas(clone, {
-      scale: 3, useCORS: true, allowTaint: false,
-      logging: false, imageTimeout: 10000,
-      width: clone.scrollWidth, height: clone.scrollHeight,
-      windowWidth: clone.scrollWidth, windowHeight: clone.scrollHeight,
-      scrollX: 0, scrollY: 0,
-    });
-  } finally {
-    document.body.removeChild(wrap);
-  }
-}
-
+/* ─── Receipt share helpers ──────────────────────────────────────────────── */
 async function receiptFileToBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();

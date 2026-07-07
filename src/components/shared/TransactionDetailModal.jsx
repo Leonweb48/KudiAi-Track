@@ -10,40 +10,18 @@
  *   onRetrieveToken — optional async () => string; shown for electricity receipts
  */
 import { useRef, useState } from "react";
-import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import { Capacitor } from "@capacitor/core";
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
 import { savePdf } from "../../utils/pdfSave";
+import { captureReceiptCanvas } from "../../utils/captureReceipt";
 import { ReceiptCard } from "./ReceiptCard";
 import SupportTicketModal from "./SupportTicketModal";
 
 const GREEN = '#3da829';
 
-// ── Canvas capture ────────────────────────────────────────────────────────────
-async function captureCanvas(el) {
-  const clone = el.cloneNode(true);
-  const wrap  = document.createElement('div');
-  Object.assign(wrap.style, {
-    position: 'absolute', top: '0', left: '-9999px',
-    width: `${el.offsetWidth}px`,
-  });
-  wrap.appendChild(clone);
-  document.body.appendChild(wrap);
-  await new Promise(r => setTimeout(r, 180));
-  try {
-    return await html2canvas(clone, {
-      scale: 3, useCORS: true, allowTaint: false,
-      logging: false, imageTimeout: 10000,
-      width: clone.scrollWidth, height: clone.scrollHeight,
-      windowWidth: clone.scrollWidth, windowHeight: clone.scrollHeight,
-      scrollX: 0, scrollY: 0,
-    });
-  } finally {
-    document.body.removeChild(wrap);
-  }
-}
+// captureCanvas is now captureReceiptCanvas from ../../utils/captureReceipt
 
 async function fileToBase64(file) {
   return new Promise((resolve, reject) => {
@@ -220,7 +198,7 @@ export default function TransactionDetailModal({ data, onClose, onReportIssue, o
     setShareOpen(false);
     setLoading(type);
     try {
-      const canvas = await captureCanvas(receiptRef.current);
+      const canvas = await captureReceiptCanvas(receiptRef.current);
       let result;
       if (type === 'image') {
         const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
