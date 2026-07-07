@@ -264,11 +264,12 @@ export default function App() {
     StatusBar.setStyle({ style: isDark ? Style.Dark : Style.Light }).catch(() => {});
   }, [isDark]);
 
-  // Android hardware back button
+  // Android hardware back button — use Capacitor's canGoBack (WebView history)
+  // rather than window.history.length which is unreliable in the WebView context.
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
-    const sub = CapApp.addListener("backButton", () => {
-      if (window.history.length > 1) {
+    const sub = CapApp.addListener("backButton", ({ canGoBack }) => {
+      if (canGoBack) {
         navigate(-1);
       } else {
         CapApp.exitApp();
