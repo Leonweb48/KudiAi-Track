@@ -213,11 +213,16 @@ export default function App() {
   };
 
   // Navigate to /bills when deep-link payment callback fires.
-  // Needed when BillPayments isn't the active screen at the time the CCT fires the intent.
-  // Guard: skip if already on /bills to avoid pushing a duplicate history entry, which would
-  // cause the failure overlay to persist across back-button presses (same route = no remount).
+  // If BillPayments is not yet mounted (different route), it will remount fresh and
+  // miss the one-time custom event. To bridge this, persist the callback URL in
+  // sessionStorage so the mount effect in BillPayments can pick it up.
   useEffect(() => {
-    const handler = () => {
+    const handler = (e) => {
+      // Bridge the callback URL across the navigation so a freshly-mounted
+      // BillPayments can still process it even after missing the CustomEvent.
+      if (e.detail?.url) {
+        try { sessionStorage.setItem("ck_payment_callback_url", e.detail.url); } catch {}
+      }
       if (window.location.pathname !== "/bills") navigate("/bills");
     };
     window.addEventListener("paymentCallback", handler);

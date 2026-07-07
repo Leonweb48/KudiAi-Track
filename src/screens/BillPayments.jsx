@@ -1657,27 +1657,34 @@ export default function BillPayments({ store, plan, session = null, staffName = 
   // This covers: intent:// redirect blocked by Chrome CCT, app killed while CCT was open,
   // or OPay/external payment apps returning to the native app directly.
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const ref = params.get("bill_ref") || params.get("trxref") || params.get("reference");
+    // App.jsx stores the callback URL in sessionStorage when paymentCallback fires
+    // and BillPayments is not yet mounted (navigated here fresh). Pick it up first.
+    const storedCb = (() => {
+      try {
+        const u = sessionStorage.getItem("ck_payment_callback_url");
+        if (u) { sessionStorage.removeItem("ck_payment_callback_url"); return u; }
+      } catch {}
+      return null;
+    })();
+
+    const searchStr = storedCb ? (storedCb.split("?")[1] || "") : window.location.search;
+    const params    = new URLSearchParams(searchStr);
+    const ref       = params.get("bill_ref") || params.get("trxref") || params.get("reference");
 
     if (ref) {
-      window.history.replaceState({}, "", window.location.pathname);
+      if (!storedCb) window.history.replaceState({}, "", window.location.pathname);
       const stored = localStorage.getItem(BILL_PENDING_PREFIX + ref);
       if (!stored) { setSaving(false); return; }
+      paymentCallbackFiredRef.current = true; // block browserFinished / visibilitychange
       fulfillAfterPayment(ref, JSON.parse(stored));
       return;
     }
 
-    // No URL params — check for orphaned pending entries and try to verify
-    const orphanedKeys = Object.keys(localStorage).filter(k => k.startsWith(BILL_PENDING_PREFIX));
-    if (orphanedKeys.length === 0) return;
-    const orphanKey = orphanedKeys[0];
-    const orphanRef = orphanKey.replace(BILL_PENDING_PREFIX, "");
-    const orphanStored = localStorage.getItem(orphanKey);
-    if (orphanStored) {
-      setSaving(true);
-      fulfillAfterPayment(orphanRef, JSON.parse(orphanStored));
-    }
+    // No reference available — do NOT auto-verify orphans without a Paystack
+    // reference (calling the backend blind causes false failure emails).
+    // paymentCallback is the sole verification trigger. Clear saving so the
+    // UI is not stuck on the loading screen.
+    setSaving(false);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // When the user navigates back/forward (Android back button or browser history),
@@ -1735,17 +1742,14 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         if (urlRef) return; // URL-based redirect — handled elsewhere
         const keys = Object.keys(localStorage).filter(k => k.startsWith(BILL_PENDING_PREFIX));
         if (keys.length === 0) return;
-        if (paymentCallbackFiredRef.current) return; // paymentCallback or browserFinished already verifying
-        const key = keys[0];
-        const ref = key.replace(BILL_PENDING_PREFIX, "");
-        const stored = localStorage.getItem(key);
-        if (stored && fulfillAfterPaymentRef.current) {
-          paymentCallbackFiredRef.current = true; // prevent duplicate from any later trigger
-          setSelectedCat(null); // show processing overlay immediately
-          fulfillAfterPaymentRef.current(ref, JSON.parse(stored));
-        } else {
-          showDisrupted();
-        }
+        if (paymentCallbackFiredRef.current) return; // paymentCallback already handling it
+        // Do NOT call the backend here — we have no Paystack reference and the
+        // payment may still be completing (CCT dismissed during 3DS / bank app).
+        // Calling without a reference produces a false failure email.
+        // Clear saving so the UI is not stuck; paymentCallback is the sole
+        // verification trigger and will update state when the deep link fires.
+        setSaving(false);
+        setSelectedCat(null);
       }, 2000);
     };
 
@@ -1758,27 +1762,24 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Native-only: verify payment when any payment browser closes.
-  // Handles both InAppBrowser (inAppBrowserFinished) and CCT (Browser.browserFinished).
-  // Does NOT require savingRef to be true — the app may have restarted while the browser was open.
+  // Native-only: clear saving state when any payment browser closes WITHOUT a
+  // confirmed paymentCallback. Does NOT call the backend — we have no Paystack
+  // reference here and calling blind causes false failure emails (especially
+  // when CCT dismisses mid-3DS while the bank app is open).
+  // paymentCallback (deep link / URL intercept) remains the sole verification path.
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
 
     const onBrowserDone = () => {
-      // Give paymentCallback (deep link / URL intercept) 1.5s to fire first
+      // Give paymentCallback (deep link / URL intercept) 1.5s to fire first.
       setTimeout(() => {
         const keys = Object.keys(localStorage).filter(k => k.startsWith(BILL_PENDING_PREFIX));
         if (keys.length === 0) return;
-        if (paymentCallbackFiredRef.current) return;
-        paymentCallbackFiredRef.current = true;
-        const key    = keys[0];
-        const ref    = key.replace(BILL_PENDING_PREFIX, "");
-        const stored = localStorage.getItem(key);
-        if (stored && fulfillAfterPaymentRef.current) {
-          setSelectedCat(null);
-          setSaving(true);
-          fulfillAfterPaymentRef.current(ref, JSON.parse(stored));
-        }
+        if (paymentCallbackFiredRef.current) return; // paymentCallback already handling it
+        // Browser closed without a confirmed payment callback. Do not verify.
+        // Just unblock the UI — paymentCallback will handle the result if it fires.
+        setSaving(false);
+        setSelectedCat(null);
       }, 1500);
     };
 
@@ -2431,7 +2432,10 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       if (!ref) return;
       const stored = localStorage.getItem(BILL_PENDING_PREFIX + ref);
       if (!stored) return;
-      paymentCallbackFiredRef.current = true; // prevent browserFinished from double-verifying
+      // Clear the sessionStorage bridge so the next BillPayments mount doesn't
+      // replay a stale callback (the localStorage entry will be gone by then anyway).
+      try { sessionStorage.removeItem("ck_payment_callback_url"); } catch {}
+      paymentCallbackFiredRef.current = true; // prevent browserFinished from interfering
       setSelectedCat(null); // show processing overlay immediately
       setSaving(true);
       fulfillAfterPayment(ref, JSON.parse(stored));
