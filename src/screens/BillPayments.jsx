@@ -1835,7 +1835,8 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     // When app becomes visible: wait 2s (to allow deep-link paymentCallback to fire first),
     // then attempt Paystack verification using the stored bill_ref (which IS the Paystack
     // reference — passed as `reference` in the Paystack initialize call).
-    // This handles OPay back-button returns and other flows where the deep link never fires.
+    // Fires when saving is still true (bank 3DS) OR when InAppBrowser closed without a
+    // callback (OPay / external payment app — flagged by ck_browser_closed_pending).
     let visibleTimer = null;
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
@@ -1843,16 +1844,27 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       visibleTimer = setTimeout(() => {
         if (paymentCallbackFiredRef.current) return; // already being handled
         const keys = Object.keys(localStorage).filter(k => k.startsWith(BILL_PENDING_PREFIX));
-        if (keys.length === 0) return;
+        if (keys.length === 0) {
+          try { sessionStorage.removeItem("ck_browser_closed_pending"); } catch {}
+          return;
+        }
 
-        // Guard against stale keys from old sessions: only verify if initiated within 30 min.
+        // Only proceed if payment is actively in progress OR InAppBrowser closed
+        // unexpectedly (external payment app like OPay).
+        const wasActive = (() => { try { return sessionStorage.getItem("ck_browser_closed_pending") === "1"; } catch { return false; } })();
+        if (!savingRef.current && !wasActive) return;
+
+        // Guard against stale keys: only verify if initiated within 30 min.
         const storedRef = keys[0].slice(BILL_PENDING_PREFIX.length);
         const tsMatch = storedRef.match(/(\d{13})$/);
         const ts = tsMatch ? parseInt(tsMatch[1], 10) : 0;
         if (!ts || Date.now() - ts > 30 * 60 * 1000) {
           if (savingRef.current) { setSaving(false); setSelectedCat(null); }
+          try { sessionStorage.removeItem("ck_browser_closed_pending"); } catch {}
           return;
         }
+
+        try { sessionStorage.removeItem("ck_browser_closed_pending"); } catch {}
 
         const storedData = localStorage.getItem(BILL_PENDING_PREFIX + storedRef);
         if (!storedData) { if (savingRef.current) { setSaving(false); setSelectedCat(null); } return; }
@@ -1892,8 +1904,9 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         const keys = Object.keys(localStorage).filter(k => k.startsWith(BILL_PENDING_PREFIX));
         if (keys.length === 0) return;
         if (paymentCallbackFiredRef.current) return; // paymentCallback already handling it
-        // Browser closed without a confirmed payment callback. Do not verify.
-        // Just unblock the UI — paymentCallback will handle the result if it fires.
+        // InAppBrowser closed without a confirmed callback — flag for onVisible so it
+        // can auto-verify when the user returns from an external payment app (OPay, etc.).
+        try { sessionStorage.setItem("ck_browser_closed_pending", "1"); } catch {}
         setSaving(false);
         setSelectedCat(null);
       }, 1500);
