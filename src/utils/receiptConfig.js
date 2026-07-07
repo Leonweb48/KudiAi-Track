@@ -70,6 +70,7 @@ export function buildTransactionReceipt(txn, profile) {
     receiptRef:    ref,
     filenames:     { image, pdf },
     processorName: null,
+    iconType:      isIn ? 'income' : 'expense',
   };
 }
 
@@ -99,6 +100,7 @@ export function buildAsoContributionReceipt(contribution, clientName, businessNa
     receiptRef:    ref,
     filenames:     { image, pdf },
     processorName: null,
+    iconType:      'ajo',
   };
 }
 
@@ -126,6 +128,7 @@ export function buildAjoWithdrawalReceipt(req, clientName, businessName) {
     receiptRef:    ref,
     filenames:     { image, pdf },
     processorName: null,
+    iconType:      'ajo',
   };
 }
 
@@ -155,6 +158,7 @@ export function buildCreditPaymentReceipt(payment, credit, businessName) {
     receiptRef:    ref,
     filenames:     { image, pdf },
     processorName: null,
+    iconType:      'credit',
   };
 }
 
@@ -182,6 +186,7 @@ export function buildCoopSavingsReceipt(record, memberName, orgName) {
     receiptRef:    ref,
     filenames:     { image, pdf },
     processorName: null,
+    iconType:      'savings',
   };
 }
 
@@ -209,6 +214,7 @@ export function buildCoopWithdrawalRequestReceipt(request, memberName, orgName) 
     receiptRef:    ref,
     filenames:     { image, pdf },
     processorName: null,
+    iconType:      'savings',
   };
 }
 
@@ -236,6 +242,7 @@ export function buildAjoContributionReceipt(contribution, clientName, businessNa
     receiptRef:    ref,
     filenames:     { image, pdf },
     processorName: null,
+    iconType:      'ajo',
   };
 }
 
@@ -278,7 +285,8 @@ export function buildBillReceipt(bill) {
     },
     bill.apiRef && { label: 'Provider Ref.', value: bill.apiRef, copy: true },
     bill.staffName && { label: 'Served by',   value: bill.staffName },
-    { label: 'Reference', value: ref, copy: true },
+    { label: 'Processed via', value: PROCESSOR_NAME },
+    { label: 'Reference',     value: ref, copy: true },
   ].filter(Boolean);
 
   return {
@@ -296,6 +304,7 @@ export function buildBillReceipt(bill) {
     provider:      bill.network || bill.providerName || null,
     category:      bill.category || null,
     processorName: PROCESSOR_NAME,
+    iconType:      null,
   };
 }
 
@@ -331,6 +340,7 @@ export function buildCreditStatementReceipt(credit, businessName) {
     receiptRef:    ref,
     filenames:     { image, pdf },
     processorName: null,
+    iconType:      'statement',
   };
 }
 
@@ -367,5 +377,6 @@ export function buildAsoClientReceipt(client, businessName) {
     receiptRef:    ref,
     filenames:     { image, pdf },
     processorName: null,
+    iconType:      'statement',
   };
 }

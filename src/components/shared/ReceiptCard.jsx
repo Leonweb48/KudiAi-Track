@@ -88,31 +88,89 @@ function DashedDivider() {
   );
 }
 
-// ── Direction arrow icon (shown when no provider badge) ───────────────────────
-function DirectionIcon({ direction, status }) {
-  const bgColor =
-    status === 'pending' ? '#fef3c7' :
-    status === 'failed'  ? '#fee2e2' :
-    direction === 'in'   ? '#dcfce7' : '#e0e7ff';
-  const strokeColor =
-    status === 'pending' ? '#d97706' :
-    status === 'failed'  ? '#dc2626' :
-    direction === 'in'   ? GREEN     : NAVY;
-  const arrowPaths = direction === 'in'
-    ? ['M12 19V5', 'M5 12l7 7 7-7']
-    : ['M12 5v14', 'M19 12l-7-7-7 7'];
+// ── Semantic icon for non-bill receipts (income, ajo, savings, credit, etc.) ──
+function ReceiptTypeIcon({ iconType, direction, status }) {
+  const failed  = status === 'failed';
+  const pending = status === 'pending' || status === 'processing';
+
+  const THEMES = {
+    income:    { bg: failed ? '#fee2e2' : pending ? '#fef3c7' : '#dcfce7', fg: failed ? '#991b1b' : pending ? '#92400e' : '#0f7b3e' },
+    expense:   { bg: failed ? '#fee2e2' : pending ? '#fef3c7' : '#e0e7ff', fg: failed ? '#991b1b' : pending ? '#92400e' : '#3730a3' },
+    ajo:       { bg: failed ? '#fee2e2' : pending ? '#fef3c7' : '#fdf4ff', fg: failed ? '#991b1b' : pending ? '#92400e' : '#7c3aed' },
+    savings:   { bg: failed ? '#fee2e2' : pending ? '#fef3c7' : '#eff6ff', fg: failed ? '#991b1b' : pending ? '#92400e' : '#1d4ed8' },
+    credit:    { bg: failed ? '#fee2e2' : pending ? '#fef3c7' : '#fff7ed', fg: failed ? '#991b1b' : pending ? '#92400e' : '#c2410c' },
+    statement: { bg: '#f1f5f9', fg: '#475569' },
+  };
+  const key   = iconType || (direction === 'in' ? 'income' : 'expense');
+  const theme = THEMES[key] || THEMES.expense;
+  const fg    = theme.fg;
+
+  let icon;
+  if (key === 'income') {
+    icon = (
+      <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={fg} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 16V4"/><path d="M8 12l4 4 4-4"/><path d="M4 20h16"/>
+      </svg>
+    );
+  } else if (key === 'expense') {
+    icon = (
+      <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={fg} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 8v12"/><path d="M8 12l4-4 4 4"/><path d="M4 4h16"/>
+      </svg>
+    );
+  } else if (key === 'ajo') {
+    icon = (
+      <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={fg} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+        <circle cx="9" cy="7" r="4"/>
+        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+      </svg>
+    );
+  } else if (key === 'savings') {
+    icon = (
+      <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={fg} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="11" width="18" height="11" rx="2"/>
+        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+      </svg>
+    );
+  } else if (key === 'credit') {
+    icon = (
+      <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={fg} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+        <rect x="1" y="4" width="22" height="16" rx="2"/>
+        <line x1="1" y1="10" x2="23" y2="10"/>
+      </svg>
+    );
+  } else if (key === 'statement') {
+    icon = (
+      <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={fg} strokeWidth={2.5} strokeLinecap="round">
+        <line x1="18" y1="20" x2="18" y2="10"/>
+        <line x1="12" y1="20" x2="12" y2="4"/>
+        <line x1="6" y1="20" x2="6" y2="14"/>
+      </svg>
+    );
+  } else {
+    // generic direction fallback
+    icon = (
+      <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={fg} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+        {direction === 'in'
+          ? <><path d="M12 16V4"/><path d="M8 12l4 4 4-4"/></>
+          : <><path d="M12 8v12"/><path d="M8 12l4-4 4 4"/></>
+        }
+      </svg>
+    );
+  }
 
   return (
-    <div style={{
-      width: 40, height: 40, borderRadius: '50%',
-      backgroundColor: bgColor,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      margin: '0 auto 10px',
-    }}>
-      <svg width={18} height={18} viewBox="0 0 24 24" fill="none"
-        stroke={strokeColor} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-        {arrowPaths.map((d, i) => <path key={i} d={d} />)}
-      </svg>
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '10px 0 2px', position: 'relative', zIndex: 2 }}>
+      <div style={{
+        width: 48, height: 48, borderRadius: 14,
+        background: theme.bg,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        boxShadow: '0 1px 4px rgba(0,0,0,0.12)',
+      }}>
+        {icon}
+      </div>
     </div>
   );
 }
@@ -152,7 +210,7 @@ export function ReceiptCard({ data, innerRef }) {
   const {
     title, direction, status, amount, datetime,
     fields = [], businessName, issuedBy, receiptRef,
-    provider, category, processorName,
+    provider, category, processorName, iconType,
   } = data;
 
   const st           = statusProps(status);
@@ -195,11 +253,14 @@ export function ReceiptCard({ data, innerRef }) {
           </div>
         </div>
 
-        {/* Provider logo / badge — bill receipts only */}
-        {showProvider && <ProviderBadge provider={provider} category={category} />}
+        {/* Provider logo (bills) or semantic type icon (all other receipts) */}
+        {showProvider
+          ? <ProviderBadge provider={provider} category={category} />
+          : <ReceiptTypeIcon iconType={iconType} direction={direction} status={status} />
+        }
 
         {/* Title subtitle */}
-        <p style={{ margin: showProvider ? '6px 0 0' : '10px 0 0', fontSize: 10.5, fontWeight: 600, color: '#64748b', textAlign: 'center', position: 'relative', zIndex: 2 }}>
+        <p style={{ margin: '6px 0 0', fontSize: 10.5, fontWeight: 600, color: '#64748b', textAlign: 'center', position: 'relative', zIndex: 2 }}>
           {title}
         </p>
 
@@ -208,8 +269,6 @@ export function ReceiptCard({ data, innerRef }) {
 
         {/* Amount hero */}
         <div style={{ textAlign: 'center', padding: '4px 0 2px', position: 'relative', zIndex: 2 }}>
-          {!showProvider && <DirectionIcon direction={direction} status={status} />}
-
           <p style={{ margin: 0, fontSize: 30, fontWeight: 800, color: amtColor, letterSpacing: '-0.03em', lineHeight: 1.1 }}>
             {fmtAmt(amount)}
           </p>
