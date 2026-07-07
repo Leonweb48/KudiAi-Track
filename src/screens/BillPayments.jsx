@@ -714,6 +714,7 @@ function billToReceipt(bill, profile, staffName) {
     service:        CATS.find(c => c.id === bill.category)?.label || bill.category,
     apiRef:         pick(/Ref:\s*([^\s|]+)/i),
     token:          pick(/Token:\s*([^|]+)/i) || undefined,
+    units:          pick(/Units:\s*([^|]+)/i) || undefined,
     network:        pick(/Network:\s*([^|]+)/i),
     phone:          pick(/Phone:\s*([^|]+)/i) || pick(/Beneficiary:\s*([^|]+)/i),
     planName:       pick(/Plan:\s*([^|]+)/i),
@@ -1269,6 +1270,12 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
                     <p className="font-mono text-2xl font-black tracking-widest text-center break-all" style={{ color: "#1e293b" }}>
                       {fulfillResult.elecToken}
                     </p>
+                    {fulfillResult.elecUnits && (
+                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full" style={{ background: "#f0fdf4", border: "1px solid #bbf7d0" }}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" strokeLinecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                        <span className="text-xs font-black" style={{ color: "#15803d" }}>{fulfillResult.elecUnits} loaded</span>
+                      </div>
+                    )}
                     <button
                       onClick={() => { try { navigator.clipboard.writeText(fulfillResult.elecToken); } catch (_) {} }}
                       className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black active:scale-95 transition-transform"
@@ -1956,14 +1963,17 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       try {
         const q = await clubkonnect("electricity-query", { orderId });
         if (cancelled) return;
-        if (q.status === "SUCCESS" && q.token) {
-          const tok = q.token;
+        const qToken = q.token || q.metertoken || q.meter_token || q.electricity_token || "";
+        const qUnits = q.units || q.unit || q.kwh || "";
+        if (q.status === "SUCCESS" && qToken) {
+          const tok = qToken;
           let resolvedNote = "";
           setFulfillResult(prev => {
             if (!prev) return prev;
             const cleaned = prev.detail.replace(" | Token loading...", "").replace("Token loading... | ", "").replace("Token loading...", "");
-            resolvedNote = `Token: ${tok} | ${cleaned}`.replace(" |  | ", " | ");
-            return { ...prev, elecToken: tok, elecOrderId: "", detail: resolvedNote };
+            const unitsSegment = qUnits && !cleaned.includes("Units:") ? ` | Units: ${qUnits}` : "";
+            resolvedNote = `Token: ${tok}${unitsSegment} | ${cleaned}`.replace(" |  | ", " | ");
+            return { ...prev, elecToken: tok, elecUnits: qUnits || prev.elecUnits || "", elecOrderId: "", detail: resolvedNote };
           });
           // Persist token to DB + fire deferred email
           if (resolvedNote && elecPendingCbRef.current) {
@@ -2054,7 +2064,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     try {
       const r = await clubkonnect("electricity-verify", { company: form.company, meterNo: form.meterNo, meterType: form.meterType });
       setVerifyStatus("ok"); setVerifyName(r.customer_name);
-      setMeterAddress(r.customer_address || "");
+      setMeterAddress(r.customer_address || r.meter_address || r.address || r.service_address || "");
     } catch (e) {
       setVerifyStatus("error"); setVerifyName(e.message || "Verification failed");
       setMeterAddress("");
@@ -2316,7 +2326,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       }
 
       const { cat, form: f, verifyName: vName, meterAddress: mAddr = "", paidAmount, baseAmount, pointsDiscount: redeemedPoints = 0 } = pending;
-      let apiRef = "", note = "", itemName = "", customerRef = "", cardDetails = "", pinsArr = null, txnHistoryPending = false, elecToken = "", elecOrderId = "";
+      let apiRef = "", note = "", itemName = "", customerRef = "", cardDetails = "", pinsArr = null, txnHistoryPending = false, elecToken = "", elecOrderId = "", elecUnits = "";
       const amount = parseFloat(f.amount) || 0;
 
       if (cat === "airtime") {
@@ -2342,8 +2352,9 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         const compName = ELECTRICITY_COMPANIES.find(c => c.code === f.company)?.name || f.company;
         const mTypeName = f.meterType === "01" ? "Prepaid" : "Postpaid";
         itemName = `${compName} ${mTypeName}`; customerRef = f.meterNo;
-        elecToken = r.token || "";
-        const elecBase = `Meter: ${f.meterNo} | Type: ${mTypeName} | Provider: ${compName} | Phone: ${f.phone}${mAddr ? ` | Meter Address: ${mAddr}` : ""}`;
+        elecToken = r.token || r.metertoken || r.meter_token || r.electricity_token || "";
+        elecUnits = r.units || r.unit || r.kwh || "";
+        const elecBase = `Meter: ${f.meterNo} | Type: ${mTypeName} | Provider: ${compName} | Phone: ${f.phone}${mAddr ? ` | Meter Address: ${mAddr}` : ""}${elecUnits ? ` | Units: ${elecUnits}` : ""}`;
         if (r.status === "PENDING") {
           // Edge function polled but token not yet ready — frontend will continue polling
           elecOrderId = r.reference || apiRef;
@@ -2491,7 +2502,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
       localStorage.removeItem(BILL_PENDING_PREFIX + ref);
       setSaving(false);
-      const successResult = { ok: true, label: itemName, detail: note, pinsArr: pinsArr || [], psRef: ref, apiRef, cardDetails, cat, amount: totalAmount || amount, earnedPts, txnHistoryPending, elecToken, elecOrderId, formSnap: { ...f } };
+      const successResult = { ok: true, label: itemName, detail: note, pinsArr: pinsArr || [], psRef: ref, apiRef, cardDetails, cat, amount: totalAmount || amount, earnedPts, txnHistoryPending, elecToken, elecOrderId, elecUnits, formSnap: { ...f } };
       setFulfillResult(successResult);
       try { sessionStorage.setItem(BILL_LAST_RESULT, JSON.stringify(successResult)); } catch (_) {}
       saveBeneficiary(cat, f, vName);
