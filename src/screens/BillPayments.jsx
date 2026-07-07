@@ -1761,6 +1761,18 @@ export default function BillPayments({ store, plan, session = null, staffName = 
   // This covers: intent:// redirect blocked by Chrome CCT, app killed while CCT was open,
   // or OPay/external payment apps returning to the native app directly.
   useEffect(() => {
+    // Purge stale pending keys (> 4 h old) so they can never trigger spurious
+    // loading overlays if an older JS bundle runs visibilitychange auto-verify.
+    try {
+      const STALE_MS = 4 * 60 * 60 * 1000;
+      Object.keys(localStorage)
+        .filter(k => k.startsWith(BILL_PENDING_PREFIX))
+        .forEach(k => {
+          const ts = parseInt((k.match(/(\d{13})$/) || [])[1] || "0", 10);
+          if (!ts || Date.now() - ts > STALE_MS) localStorage.removeItem(k);
+        });
+    } catch {}
+
     // App.jsx stores the callback URL in sessionStorage when paymentCallback fires
     // and BillPayments is not yet mounted (navigated here fresh). Pick it up first.
     const storedCb = (() => {
