@@ -231,20 +231,21 @@ export function ReceiptCard({ data, innerRef }) {
       <div style={{ background: 'white', position: 'relative', overflow: 'hidden', padding: '16px 20px 0' }}>
         <Watermark />
 
-        {/* Header: logo + wordmark left · receipt type right
-            Uses display:table so html2canvas reliably puts both cells on one row.
-            flex+gap is NOT supported in html2canvas v1 and causes stacking. */}
+        {/* Header: logo stacked above "KudiAI Track" (left) · receipt type label (right)
+            Block stacking is the most html2canvas-compatible vertical layout. */}
         <div style={{ display: 'table', width: '100%', position: 'relative', zIndex: 2 }}>
-          {/* Left cell: logo + "KudiAI Track" on the same line */}
-          <span style={{ display: 'table-cell', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
-            <img
-              src="/logo.png" alt=""
-              style={{ width: 20, height: 20, borderRadius: 4, display: 'inline-block', verticalAlign: 'middle' }}
-              onError={e => { e.currentTarget.style.display = 'none'; }}
-            />
-            <span style={{ display: 'inline-block', verticalAlign: 'middle', marginLeft: 6, fontSize: 11, fontWeight: 700, color: GREEN, letterSpacing: '-0.01em', lineHeight: 1, whiteSpace: 'nowrap' }}>
-              KudiAI Track
-            </span>
+          {/* Left cell: logo then text stacked below it, center-aligned */}
+          <span style={{ display: 'table-cell', verticalAlign: 'middle' }}>
+            <div style={{ textAlign: 'center', display: 'inline-block' }}>
+              <img
+                src="/logo.png" alt=""
+                style={{ width: 20, height: 20, borderRadius: 4, display: 'block', margin: '0 auto' }}
+                onError={e => { e.currentTarget.style.display = 'none'; }}
+              />
+              <span style={{ display: 'block', fontSize: 9, fontWeight: 700, color: GREEN, letterSpacing: '-0.01em', lineHeight: '13px', whiteSpace: 'nowrap', marginTop: 2 }}>
+                KudiAI Track
+              </span>
+            </div>
           </span>
           {/* Right cell: receipt type label */}
           <span style={{ display: 'table-cell', verticalAlign: 'middle', textAlign: 'right', fontSize: 9, fontWeight: 700, color: '#94a3b8', letterSpacing: '0.07em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
@@ -346,14 +347,14 @@ export function ReceiptCard({ data, innerRef }) {
           padding: '10px 20px 8px',
           textAlign: 'center',
         }}>
-          {/* Logo + name on same row, centered — inline-block avoids flex gap issue */}
-          <div style={{ marginBottom: 4, lineHeight: 1, textAlign: 'center' }}>
+          {/* Logo stacked above "KudiAI Track", centered */}
+          <div style={{ marginBottom: 4, textAlign: 'center' }}>
             <img
               src="/logo.png" alt=""
-              style={{ width: 13, height: 13, borderRadius: 2, display: 'inline-block', verticalAlign: 'middle' }}
+              style={{ width: 16, height: 16, borderRadius: 3, display: 'block', margin: '0 auto' }}
               onError={e => { e.currentTarget.style.display = 'none'; }}
             />
-            <span style={{ display: 'inline-block', verticalAlign: 'middle', marginLeft: 5, fontSize: 9.5, fontWeight: 700, color: '#14532d', lineHeight: 1, whiteSpace: 'nowrap' }}>
+            <span style={{ display: 'block', fontSize: 9.5, fontWeight: 700, color: '#14532d', lineHeight: '14px', whiteSpace: 'nowrap', marginTop: 3 }}>
               KudiAI Track
             </span>
           </div>
