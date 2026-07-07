@@ -33,14 +33,16 @@ export default function SupportTicketModal({
   const [done,    setDone]    = useState(false);
   const [error,   setError]   = useState("");
 
-  // Re-sync form when the modal opens with new pre-fill data
+  // Re-sync form only when the modal opens/closes — intentionally omit init* props
+  // from the dep array so the form is not reset on every parent re-render.
   useEffect(() => {
     if (!isOpen) return;
     setForm({ subject: initSubject, description: initDescription, type: initType, priority: initPriority });
     setDone(false);
     setError("");
     supabase.auth.getUser().then(({ data }) => setAuthUser(data?.user || null));
-  }, [isOpen]); // intentionally only on open; callers pass stable strings
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
 
   async function submit() {
     if (!form.subject.trim() || !form.description.trim()) {
