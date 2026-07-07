@@ -1,21 +1,26 @@
 import { supabase } from "./supabase";
 
-/**
- * Fire email via the /api/email-trigger Vercel serverless function.
- * Same-origin call — no CORS, no proxy header stripping.
- * JWT is validated server-side before the admin email-trigger is called.
- */
+// Module-level token cache updated by useAuth.js on every session change.
+// Avoids getSession() calls that can silently return null during token refresh
+// cycles in the Capacitor WebView, which would prevent emails from being sent.
+let _cachedToken = null;
+export function setEmailToken(token) { _cachedToken = token || null; }
+
 export async function sendEmailTrigger(event, data) {
   try {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.access_token) return;
+    let token = _cachedToken;
+    if (!token) {
+      const { data: { session } } = await supabase.auth.getSession();
+      token = session?.access_token || null;
+    }
+    if (!token) return;
 
     // Absolute URL so this works inside Capacitor webview (which loads from https://localhost)
     fetch("https://kudiai.app/api/email-trigger", {
       method:  "POST",
       headers: {
         "Content-Type":  "application/json",
-        "Authorization": `Bearer ${session.access_token}`,
+        "Authorization": `Bearer ${token}`,
       },
       body: JSON.stringify({ event, data }),
     }).catch(e => console.warn("[Email] trigger failed:", e));

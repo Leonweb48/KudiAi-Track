@@ -4,7 +4,7 @@ import { Capacitor } from "@capacitor/core";
 import { App } from "@capacitor/app";
 import { Browser } from "@capacitor/browser";
 import { fetchAndCachePlans, invalidatePlansCache, normalizeSlug, hasHigherPlanAvailable } from "../utils/plans";
-import { sendEmailTrigger } from "../utils/emailTrigger";
+import { sendEmailTrigger, setEmailToken } from "../utils/emailTrigger";
 
 const CACHE_KEY = "kuditrack_plan";
 const SESSION_LOGGED_KEY = "kuditrack_sess_logged";
@@ -69,6 +69,7 @@ export function useAuth() {
   const resolve = useCallback(async (sess) => {
     try {
     if (!sess) {
+      setEmailToken(null);
       setSession(null);
       setStatus("unauthenticated");
       setStaff(null);
@@ -84,6 +85,7 @@ export function useAuth() {
       return;
     }
 
+    setEmailToken(sess.access_token);
     setSession(sess);
     const uid         = sess.user.id;
     const email       = sess.user.email;
