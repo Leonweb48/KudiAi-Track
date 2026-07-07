@@ -17,6 +17,7 @@ import { Filesystem, Directory } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
 import { savePdf } from "../../utils/pdfSave";
 import { ReceiptCard } from "./ReceiptCard";
+import SupportTicketModal from "./SupportTicketModal";
 
 const GREEN = '#3da829';
 
@@ -202,9 +203,10 @@ function LoadingOverlay({ label }) {
 // ── Main modal ───────────────────────────────────────────────────────────────
 export default function TransactionDetailModal({ data, onClose, onReportIssue, onRetrieveToken }) {
   const receiptRef = useRef(null);
-  const [shareOpen, setShareOpen] = useState(false);
-  const [loading,   setLoading]   = useState(null);
-  const [toast,     setToast]     = useState(null);
+  const [shareOpen,  setShareOpen]  = useState(false);
+  const [loading,    setLoading]    = useState(null);
+  const [toast,      setToast]      = useState(null);
+  const [ticketData, setTicketData] = useState(null);
 
   const { title, fields = [], receiptRef: ref, filenames } = data;
   const retrievableField = fields.find(f => f.retrievable);
@@ -244,11 +246,22 @@ export default function TransactionDetailModal({ data, onClose, onReportIssue, o
   }
 
   function handleReportIssue() {
-    if (onReportIssue) {
-      onReportIssue({ ref, title, amount: data.amount, status: data.status });
-    } else {
-      showToast('Support ticket opened. Our team will review shortly.');
-    }
+    const amtFmt = `₦${Number(data.amount || 0).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const subject = `${data.title || "Transaction"} — ${amtFmt}${data.status ? ` [${data.status}]` : ""}`;
+    const description = [
+      `Transaction: ${data.title || ""}`,
+      `Amount: ${amtFmt}`,
+      `Status: ${data.status || "unknown"}`,
+      ...(data.datetime ? [`Date: ${data.datetime}`] : []),
+      ...(ref ? [`Reference: ${ref}`] : []),
+      "",
+      "Full Details:",
+      ...fields
+        .filter(f => !f.retrievable)
+        .map(f => `  ${f.label}: ${f.value ?? "—"}`),
+    ].join("\n");
+    setTicketData({ subject, description });
+    if (onReportIssue) onReportIssue({ ref, title, amount: data.amount, status: data.status });
   }
 
   return (
@@ -325,6 +338,17 @@ export default function TransactionDetailModal({ data, onClose, onReportIssue, o
 
       {shareOpen && <ShareSheet onOption={handleShare} onClose={() => setShareOpen(false)} />}
       {loading   && <LoadingOverlay label={loading === 'image' ? 'Preparing image…' : 'Preparing PDF…'} />}
+
+      {ticketData && (
+        <SupportTicketModal
+          isOpen
+          onClose={() => setTicketData(null)}
+          subject={ticketData.subject}
+          description={ticketData.description}
+          type="payment"
+          priority="high"
+        />
+      )}
 
       {toast && (
         <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[90] bg-slate-800 dark:bg-slate-700 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-lg max-w-xs text-center">

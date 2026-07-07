@@ -9,6 +9,7 @@ import { canDo, getLowestPlanWithFeature } from "../utils/plans";
 import TransactionDetailModal from "../components/shared/TransactionDetailModal";
 import { buildBillReceipt } from "../utils/receiptConfig";
 import { ReceiptCard } from "../components/shared/ReceiptCard";
+import SupportTicketModal from "../components/shared/SupportTicketModal";
 import { supabase } from "../utils/supabase";
 import { lookupDataPrice } from "../data/billPrices";
 import LoanApplicationModal from "../components/LoanApplicationModal";
@@ -1513,6 +1514,9 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     return !!(ref && localStorage.getItem(BILL_PENDING_PREFIX + ref));
   });
 
+  // Support ticket modal state (Report Issue touch-points)
+  const [reportTicket, setReportTicket] = useState(null);
+
   // Result of bill fulfillment after Paystack return
   const [fulfillResult, setFulfillResult] = useState(() => {
     const p = new URLSearchParams(window.location.search);
@@ -2499,12 +2503,38 @@ export default function BillPayments({ store, plan, session = null, staffName = 
           }}
           onReportIssue={() => {
             const fr = fulfillResult;
-            const ref = fr?.psRef || fr?.apiRef || "";
-            const svc = CATS.find(c => c.id === fr?.cat)?.label || "Bill Payment";
+            const psRef  = fr?.psRef || fr?.apiRef || "";
+            const svc    = CATS.find(c => c.id === fr?.cat)?.label || "Bill Payment";
             const amtStr = fr?.amount ? fmt(fr.amount) : "";
-            const msg = `🚨 Issue Report — KudiAI Track\n\nService: ${svc}\nAmount: ${amtStr}\nReference: ${ref}\n\nPlease assist with this transaction.`;
-            window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank", "noopener");
+            const now    = new Date().toLocaleString("en-NG", {
+              day: "numeric", month: "long", year: "numeric",
+              hour: "2-digit", minute: "2-digit",
+            });
+            const subject = `${svc} Issue — ${amtStr}${psRef ? ` | Ref: ${psRef}` : ""}`;
+            const description = [
+              `Service: ${svc}`,
+              `Amount: ${amtStr}`,
+              `Status: ${fr?.ok ? "Successful" : "Failed / Disrupted"}`,
+              ...(psRef ? [`Reference: ${psRef}`] : []),
+              `Date: ${now}`,
+              ...(fr?.detail ? ["", "Transaction Details:", ...fr.detail.split("|").filter(Boolean).map(d => `  ${d.trim()}`)] : []),
+              ...(fr?.elecToken ? [`  Electricity Token: ${fr.elecToken}`] : []),
+              ...(fr?.pinsArr?.length > 0 ? [`  Voucher PINs: ${fr.pinsArr.length} item(s) purchased`] : []),
+              ...(fr?.cardDetails ? [`  Card Details: ${fr.cardDetails}`] : []),
+            ].join("\n");
+            setReportTicket({ subject, description });
           }}
+        />
+      )}
+
+      {reportTicket && (
+        <SupportTicketModal
+          isOpen
+          onClose={() => setReportTicket(null)}
+          subject={reportTicket.subject}
+          description={reportTicket.description}
+          type="payment"
+          priority="high"
         />
       )}
 
