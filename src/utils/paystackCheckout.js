@@ -30,18 +30,20 @@ export const isNative = () => Capacitor.isNativePlatform();
 /**
  * Build a Paystack callback URL.
  *
- * Native: use the dedicated /app/payment-callback bridge page at kudiai.app
- *         (App Links intent-filter is registered for this path — narrower scope than /payment-return).
- *         InAppBrowser intercepts the redirect before the page renders, so the user never
- *         sees the bridge page.  If InAppBrowser is unavailable, the page shows a branded
- *         "Return to KudiAI Track" button backed by the custom scheme.
+ * Native: use the /payment-return bridge page at kudiai.app.
+ *         When OPay native app intercepts payment inside InAppBrowser and then redirects
+ *         back, the redirect fires as a system intent that Android resolves to the browser.
+ *         The bridge page auto-fires an intent:// URI (package-targeted) so the kuditrack
+ *         app opens directly without needing App Links domain verification.
+ *         InAppBrowser (Path B — no OPay app) intercepts the URL before the page renders,
+ *         so the user never sees the bridge page in that flow.
  *
  * Web: append params to the current page URL so the SPA handles the return in-place.
  */
 export function buildCallbackUrl(webBaseUrl, params = {}) {
   if (isNative()) {
     const qs = new URLSearchParams(params).toString();
-    return `${VERCEL_ORIGIN}/app/payment-callback${qs ? `?${qs}` : ""}`;
+    return `${VERCEL_ORIGIN}/payment-return${qs ? `?${qs}` : ""}`;
   }
   try {
     const url = new URL(webBaseUrl);

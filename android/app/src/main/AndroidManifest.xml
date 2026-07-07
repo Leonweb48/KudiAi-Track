@@ -31,18 +31,18 @@
                 <data android:scheme="com.amayatechnologies.kuditrack" />
             </intent-filter>
 
-            <!-- App Links fallback: handles https://kudiai.app/app/payment-callback?...
-                 Android intercepts this URL and delivers it via appUrlOpen instead of
-                 loading it in a browser.  Requires /.well-known/assetlinks.json on kudiai.app
-                 with the release SHA-256 fingerprint — see public/.well-known/assetlinks.json. -->
+            <!-- App Links: handles https://kudiai.app/payment-return?... and
+                 https://kudiai.app/app/payment-callback?... (legacy).
+                 Primary return path: /payment-return — the bridge page's intent:// redirect
+                 opens the app even when App Links verification has not been completed.
+                 Requires /.well-known/assetlinks.json on kudiai.app with the release
+                 SHA-256 fingerprint — see public/.well-known/assetlinks.json. -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data
-                    android:scheme="https"
-                    android:host="kudiai.app"
-                    android:pathPrefix="/app/payment-callback" />
+                <data android:scheme="https" android:host="kudiai.app" android:pathPrefix="/payment-return" />
+                <data android:scheme="https" android:host="kudiai.app" android:pathPrefix="/app/payment-callback" />
             </intent-filter>
 
         </activity>
