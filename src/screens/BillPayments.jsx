@@ -713,8 +713,8 @@ function billToReceipt(bill, profile, staffName) {
     businessName:   profile?.business_name || profile?.owner_name || "My Business",
     service:        CATS.find(c => c.id === bill.category)?.label || bill.category,
     apiRef:         pick(/Ref:\s*([^\s|]+)/i),
-    token:          pick(/Token:\s*([^|]+)/i) || undefined,
-    units:          pick(/Units:\s*([^|]+)/i) || undefined,
+    token:          (() => { const t = (pick(/Token:\s*([^|]+)/i) || "").trim(); return t && !t.toLowerCase().startsWith("loading") ? t : undefined; })(),
+    units:          (pick(/Units:\s*([^|]+)/i) || "").trim() || undefined,
     network:        pick(/Network:\s*([^|]+)/i),
     phone:          pick(/Phone:\s*([^|]+)/i) || pick(/Beneficiary:\s*([^|]+)/i),
     planName:       pick(/Plan:\s*([^|]+)/i),
@@ -3430,16 +3430,19 @@ export default function BillPayments({ store, plan, session = null, staffName = 
             receipt.category === "electricity" && !receipt.token && receipt.apiRef
               ? async () => {
                   const q = await clubkonnect("electricity-query", { orderId: receipt.apiRef });
-                  if (q.status === "SUCCESS" && q.token) {
+                  const qToken = q.token || q.metertoken || q.meter_token || q.electricity_token || "";
+                  const qUnits = q.units || q.unit || q.kwh || "";
+                  if (q.status === "SUCCESS" && qToken) {
                     if (receipt.id) {
                       const baseNote = (receipt.note || "")
                         .replace(" | Token loading...", "")
                         .replace("Token loading... | ", "")
                         .replace("Token loading...", "");
-                      const updatedNote = `Token: ${q.token} | ${baseNote}`.replace(" |  | ", " | ");
+                      const unitsSegment = qUnits && !baseNote.includes("Units:") ? ` | Units: ${qUnits}` : "";
+                      const updatedNote = `Token: ${qToken}${unitsSegment} | ${baseNote}`.replace(" |  | ", " | ");
                       supabase.from("transactions").update({ note: updatedNote }).eq("id", receipt.id).catch(() => {});
                     }
-                    return q.token;
+                    return qToken;
                   }
                   throw new Error(q.status === "CANCELLED"
                     ? "Order was cancelled by provider. Contact support with your reference."
