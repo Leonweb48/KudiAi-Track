@@ -1833,27 +1833,39 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     const onPageShow = (e) => { if (e.persisted) showDisrupted(); };
 
     // When app becomes visible: wait 2s (to allow deep-link paymentCallback to fire first),
-    // then try to verify with Paystack. Handles OPay and other external payment methods that
-    // redirect users outside Chrome Custom Tabs.
+    // then attempt Paystack verification using the stored bill_ref (which IS the Paystack
+    // reference — passed as `reference` in the Paystack initialize call).
+    // This handles OPay back-button returns and other flows where the deep link never fires.
     let visibleTimer = null;
     const onVisible = () => {
-      if (document.visibilityState !== "visible" || !savingRef.current) return;
+      if (document.visibilityState !== "visible") return;
       clearTimeout(visibleTimer);
       visibleTimer = setTimeout(() => {
-        if (!savingRef.current) return; // deep link already handled it
-        const params = new URLSearchParams(window.location.search);
-        const urlRef = params.get("bill_ref") || params.get("trxref") || params.get("reference");
-        if (urlRef) return; // URL-based redirect — handled elsewhere
+        if (paymentCallbackFiredRef.current) return; // already being handled
         const keys = Object.keys(localStorage).filter(k => k.startsWith(BILL_PENDING_PREFIX));
         if (keys.length === 0) return;
-        if (paymentCallbackFiredRef.current) return; // paymentCallback already handling it
-        // Do NOT call the backend here — we have no Paystack reference and the
-        // payment may still be completing (CCT dismissed during 3DS / bank app).
-        // Calling without a reference produces a false failure email.
-        // Clear saving so the UI is not stuck; paymentCallback is the sole
-        // verification trigger and will update state when the deep link fires.
-        setSaving(false);
-        setSelectedCat(null);
+
+        // Guard against stale keys from old sessions: only verify if initiated within 30 min.
+        const storedRef = keys[0].slice(BILL_PENDING_PREFIX.length);
+        const tsMatch = storedRef.match(/(\d{13})$/);
+        const ts = tsMatch ? parseInt(tsMatch[1], 10) : 0;
+        if (!ts || Date.now() - ts > 30 * 60 * 1000) {
+          if (savingRef.current) { setSaving(false); setSelectedCat(null); }
+          return;
+        }
+
+        const storedData = localStorage.getItem(BILL_PENDING_PREFIX + storedRef);
+        if (!storedData) { if (savingRef.current) { setSaving(false); setSelectedCat(null); } return; }
+
+        try {
+          const pending = JSON.parse(storedData);
+          paymentCallbackFiredRef.current = true; // lock to prevent double-call
+          setSaving(true);
+          fulfillAfterPaymentRef.current(storedRef, pending);
+        } catch {
+          paymentCallbackFiredRef.current = false;
+          if (savingRef.current) { setSaving(false); setSelectedCat(null); }
+        }
       }, 2000);
     };
 
@@ -2218,8 +2230,8 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
         if (psStatus !== "success") {
           const isAbandoned = psStatus === "abandoned" || gwResp.includes("abandon") || gwResp.includes("cancel");
-          // Payment still in progress — keep pending so visibilitychange can retry
-          if (psStatus === "pending") return;
+          // Payment still in progress — reset lock so visibilitychange can retry
+          if (psStatus === "pending") { paymentCallbackFiredRef.current = false; return; }
           // Already fulfilled (replay blocked by server idempotency guard)
           if (psStatus === "already_fulfilled") {
             localStorage.removeItem(BILL_PENDING_PREFIX + ref);
@@ -2534,6 +2546,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       const params = new URLSearchParams(url.split("?")[1] || "");
       const ref = params.get("bill_ref") || params.get("trxref") || params.get("reference");
       if (!ref) return;
+      if (paymentCallbackFiredRef.current) return; // onVisible or previous call already handling
       const stored = localStorage.getItem(BILL_PENDING_PREFIX + ref);
       if (!stored) return;
       // Clear the sessionStorage bridge so the next BillPayments mount doesn't
