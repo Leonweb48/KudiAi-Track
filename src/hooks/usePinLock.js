@@ -81,20 +81,25 @@ export function usePinLock(userId, session) {
   const biometricAvailable = !!(navigator?.credentials);
 
   // ── Fetch status from server ───────────────────────────────────────
-  const refetch = useCallback(async () => {
+  const refetch = useCallback(async (retryCount = 0) => {
     if (!userId || !session) return;
-    setLoading(true);
+    if (retryCount === 0) setLoading(true);
     try {
       const { data } = await invoke("check_status");
       setStatus(data);
       if (!data?.appPinSet) {
         setLocked(false); // No PIN set yet — show setup, not lock screen
       }
-    } catch {
-      // If fetch fails, default to no pin set (don't block user)
-      setLocked(false);
-    } finally {
       setLoading(false);
+    } catch {
+      setLocked(false);
+      if (retryCount < 2) {
+        // Network blip — retry up to twice (after 3s and 6s) before giving up.
+        // Avoids falsely triggering PinSetupFlow when the user already has PINs.
+        setTimeout(() => refetch(retryCount + 1), 3000 * (retryCount + 1));
+      } else {
+        setLoading(false);
+      }
     }
   }, [userId, session]);
 

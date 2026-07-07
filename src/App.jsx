@@ -143,10 +143,19 @@ export default function App() {
       return;
     }
 
-    // Orphaned bill pending (user navigated away mid-payment)
-    if (Object.keys(localStorage).some(k => k.startsWith("ck_bill_pending_"))) {
-      if (location.pathname !== "/bills") navigate("/bills", { replace: true });
-      return;
+    // Orphaned bill pending (user navigated away mid-payment) — only redirect if < 30 min old
+    const orphanKeys = Object.keys(localStorage).filter(k => k.startsWith("ck_bill_pending_"));
+    if (orphanKeys.length > 0) {
+      const hasRecent = orphanKeys.some(k => {
+        const ts = parseInt((k.match(/(\d{13})$/) || [])[1] || "0", 10);
+        return ts && Date.now() - ts < 30 * 60 * 1000;
+      });
+      if (hasRecent) {
+        if (location.pathname !== "/bills") navigate("/bills", { replace: true });
+        return;
+      }
+      // Stale keys (> 30 min) — clean them up so they never redirect again
+      orphanKeys.forEach(k => localStorage.removeItem(k));
     }
 
     // Subscription upgrade return

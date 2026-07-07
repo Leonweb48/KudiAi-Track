@@ -63,6 +63,8 @@ export function useAuth() {
   // Tracks whether we've already confirmed a subscription this session.
   // A ref (not state) so reads inside async callbacks are always current.
   const subVerified = useRef(false);
+  // Retry counter for the profile query — reset on sign-out or successful profile load.
+  const profileRetryRef = useRef(0);
 
   const resolve = useCallback(async (sess) => {
     try {
@@ -76,6 +78,7 @@ export function useAuth() {
       setMarketer(null);
       setOrg(null);
       subVerified.current = false;
+      profileRetryRef.current = 0;
       // Do NOT clear CACHE_KEY here — if the next login's DB query has a transient
       // failure the cached plan prevents a false "subscribing" redirect.
       return;
@@ -351,11 +354,26 @@ export function useAuth() {
     }
 
     // ── Onboarding check (business owners) ───────────────────────────
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("id")
       .eq("id", uid)
       .maybeSingle();
+
+    if (profileError && !profile) {
+      // Network error — retry up to 3 times (3 s, 6 s, 9 s) before giving up.
+      // Prevents a transient failure from falsely sending a user with an existing
+      // profile into the onboarding / "create profile" flow.
+      if (profileRetryRef.current < 3) {
+        profileRetryRef.current++;
+        setTimeout(() => resolve(sess), 3000 * profileRetryRef.current);
+        return;
+      }
+      profileRetryRef.current = 0;
+      // After retries, fall through and treat as no profile (onboarding).
+    } else {
+      profileRetryRef.current = 0; // Reset on successful DB response.
+    }
 
     if (!profile) {
       // Block OAuth logins for staff / ajo_client emails — they must use email+password

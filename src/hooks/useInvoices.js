@@ -50,21 +50,24 @@ export function useInvoices(userId) {
   const load = useCallback(async () => {
     if (!userId || !supabase) { setLoading(false); return; }
     setLoading(true);
-    const [invRes, custRes] = await Promise.all([
-      supabase
-        .from("invoices")
-        .select("*, invoice_items(*), invoice_payments(*)")
-        .eq("user_id", userId)
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("customers")
-        .select("*")
-        .eq("user_id", userId)
-        .order("name"),
-    ]);
-    if (invRes.data)  setInvoices(invRes.data.map(enrichStatus));
-    if (custRes.data) setCustomers(custRes.data);
-    setLoading(false);
+    try {
+      const [invRes, custRes] = await Promise.all([
+        supabase
+          .from("invoices")
+          .select("*, invoice_items(*), invoice_payments(*)")
+          .eq("user_id", userId)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("customers")
+          .select("*")
+          .eq("user_id", userId)
+          .order("name"),
+      ]);
+      if (invRes.data)  setInvoices(invRes.data.map(enrichStatus));
+      if (custRes.data) setCustomers(custRes.data);
+    } finally {
+      setLoading(false);
+    }
   }, [userId]);
 
   useEffect(() => { load(); }, [load]);

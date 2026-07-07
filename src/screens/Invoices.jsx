@@ -739,7 +739,7 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
           profile={profile}
           customers={customers}
           products={inventory?.products || []}
-          onClose={(saved) => { setShowBuilder(false); if (saved) reload(); }}
+          onClose={() => { setShowBuilder(false); }}
           onSaved={handleBuilderSave}
         />
       )}
@@ -751,7 +751,7 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
           customers={customers}
           products={inventory?.products || []}
           initialData={editInv}
-          onClose={(saved) => { setEditInv(null); if (saved) reload(); }}
+          onClose={() => { setEditInv(null); }}
           onSaved={handleBuilderSave}
         />
       )}
