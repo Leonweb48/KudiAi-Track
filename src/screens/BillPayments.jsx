@@ -8,6 +8,7 @@ import { clubkonnect } from "../utils/clubkonnect";
 import { canDo, getLowestPlanWithFeature } from "../utils/plans";
 import TransactionDetailModal from "../components/shared/TransactionDetailModal";
 import { buildBillReceipt } from "../utils/receiptConfig";
+import { ReceiptCard } from "../components/shared/ReceiptCard";
 import { supabase } from "../utils/supabase";
 import { lookupDataPrice } from "../data/billPrices";
 import LoanApplicationModal from "../components/LoanApplicationModal";
@@ -1000,7 +1001,43 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
     ? (CATS.find(c => c.id === fulfillResult.cat)?.label || "Bill Payment")
     : "Bill Payment";
 
-  /* Shared header — logo left, service right, green stripe below */
+  const isSuccess = !!(fulfillResult?.ok && !fulfillResult?.txnHistoryPending);
+
+  // Build receipt data for the success state — same shape as onShareReceipt
+  const successReceiptData = isSuccess ? (() => {
+    const fr = fulfillResult;
+    const fs = fr.formSnap || {};
+    return buildBillReceipt({
+      created_at:   new Date().toISOString(),
+      businessName: businessName || profile?.business_name || profile?.owner_name || "My Business",
+      amount:       fr.amount || 0,
+      category:     fr.cat,
+      service:      CATS.find(c => c.id === fr.cat)?.label || "Bill Payment",
+      item_name:    fr.label || "",
+      network:      fs.network || "",
+      phone:        fs.phone || "",
+      planName:     fs.planName || "",
+      smartcard:    fs.smartcard || "",
+      meterNo:      fs.meterNo || "",
+      meterType:    fs.meterType || "",
+      provider:     fs.provider || "",
+      customerId:   fs.customerId || "",
+      accountNo:    fs.accountNo || "",
+      quantity:     fs.quantity || "",
+      value:        fs.value || "",
+      sets:         fs.sets || "",
+      pinsArr:      fr.pinsArr || [],
+      token:        fr.elecToken || "",
+      elecToken:    fr.elecToken || "",
+      cardDetails:  fr.cardDetails || "",
+      psRef:        fr.psRef || "",
+      apiRef:       fr.apiRef || "",
+      staffName:    staffName || undefined,
+      bill_status:  "success",
+    });
+  })() : null;
+
+  /* Shared header — logo left, service right, green stripe below (hidden on success) */
   const Header = () => (
     <div className="flex-shrink-0">
       <div className="px-5 pt-6 pb-5 flex items-center justify-between"
@@ -1054,7 +1091,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
 
   return (
     <div className="fixed inset-0 z-[60] flex flex-col" style={{ background: "#f1f5f9" }}>
-      <Header />
+      {!isSuccess && <Header />}
 
       {/* ── Processing ── */}
       {saving && !fulfillResult && (
@@ -1127,251 +1164,176 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
         </div>
       )}
 
-      {/* ── Success (Stage 4) ── */}
-      {fulfillResult?.ok && !fulfillResult?.txnHistoryPending && (
-        <div className="flex-1 overflow-y-auto">
-          {/* OPay-style green gradient hero */}
-          <div className="px-5 pt-8 pb-7 flex flex-col items-center text-center"
-            style={{ background: "linear-gradient(180deg,#dcfce7 0%,#f0fdf4 55%,#ffffff 100%)" }}>
-            {/* Concentric rings + checkmark */}
-            <div className="relative mb-5" style={{ width: 100, height: 100 }}>
-              <div className="absolute rounded-full" style={{ inset: -22, background: "rgba(34,197,94,0.08)" }} />
-              <div className="absolute rounded-full" style={{ inset: -12, background: "rgba(34,197,94,0.13)" }} />
-              <div className="absolute rounded-full" style={{ inset: -4, background: "rgba(34,197,94,0.20)" }} />
-              <div className="relative w-full h-full rounded-full shadow-xl flex items-center justify-center"
-                style={{ background: "linear-gradient(135deg,#16a34a,#22c55e)" }}>
-                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="20 6 9 17 4 12"/>
-                </svg>
-              </div>
-            </div>
-
-            {/* Provider badge pill */}
-            {fulfillResult.formSnap?.network && NET_CONFIG[fulfillResult.formSnap.network] && (
-              <div className="mb-3 flex items-center gap-1.5 px-3 py-1 rounded-full shadow-sm"
-                style={{ background: NET_CONFIG[fulfillResult.formSnap.network].bg }}>
-                <img src={NET_CONFIG[fulfillResult.formSnap.network].logo}
-                  alt={fulfillResult.formSnap.network}
-                  className="w-4 h-4 object-contain"
-                  onError={e => { e.target.style.display = "none"; }} />
-                <span className="text-[11px] font-black"
-                  style={{ color: NET_CONFIG[fulfillResult.formSnap.network].fg }}>
-                  {fulfillResult.formSnap.network}
-                </span>
-              </div>
-            )}
-
-            <p className="text-[10px] font-black uppercase tracking-widest mb-1.5" style={{ color: "#16a34a" }}>Transaction Successful</p>
-            <p className="font-black leading-none" style={{ fontSize: 46, letterSpacing: "-0.03em", color: "#0f172a" }}>
-              {fmt(fulfillResult.amount || 0)}
-            </p>
-            <p className="text-sm mt-2 font-semibold" style={{ color: "#64748b" }}>{fulfillResult.label}</p>
-
-            {/* Status chip */}
-            <div className="mt-3 inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-black"
-              style={fulfillResult.elecOrderId
-                ? { background: "#fffbeb", color: "#b45309", border: "1.5px solid #fde68a" }
-                : { background: "#dcfce7", color: "#15803d", border: "1.5px solid #86efac" }}>
-              {fulfillResult.elecOrderId
-                ? <><div className="w-2.5 h-2.5 rounded-full border-2 border-transparent border-t-amber-500 animate-spin" />PAYMENT RECEIVED · FETCHING TOKEN</>
-                : <><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>DELIVERED SUCCESSFULLY</>
-              }
-            </div>
-            {fulfillResult.earnedPts > 0 && (
-              <div className="mt-2 inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-black"
-                style={{ background: "#fffbeb", color: "#b45309", border: "1.5px solid #fde68a" }}>
-                ⭐ +{fulfillResult.earnedPts} pts earned
-              </div>
-            )}
+      {/* ── Success (Stage 4) — Full receipt view ── */}
+      {isSuccess && (
+        <>
+          {/* Slim title bar */}
+          <div className="flex-shrink-0 flex items-center justify-between px-5 py-3 bg-white border-b border-slate-100">
+            <p className="text-sm font-bold text-slate-800 truncate">{catLabel} Receipt</p>
+            <button onClick={onDone} className="text-xs font-semibold px-3 py-1 rounded-lg active:scale-95 transition-transform"
+              style={{ color: "#64748b", background: "#f1f5f9" }}>Done</button>
           </div>
 
-          {/* Detail card */}
-          <div className="mx-4 mt-4 rounded-2xl overflow-hidden shadow-sm" style={{ border: "1px solid #e2e8f0", background: "white" }}>
-            <div className="px-4 py-2.5" style={{ background: "#f8fafc" }}>
-              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Transaction Details</p>
-            </div>
-            {fulfillResult.detail.split(" | ").filter(Boolean).map((d, i, arr) => {
-              const sep = d.indexOf(": ");
-              if (sep === -1) return null;
-              const k = d.slice(0, sep);
-              const v = d.slice(sep + 2);
-              return (
-                <div key={i} className={`px-4 py-3 flex items-start justify-between gap-3 ${i < arr.length - 1 ? "border-b border-slate-50" : ""}`}>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide flex-shrink-0 mt-0.5">{k}</span>
-                  <span className="text-sm font-bold text-slate-800 text-right break-all leading-snug">{v}</span>
-                </div>
-              );
-            })}
-            {/* Date row */}
-            <div className="px-4 py-3 border-t border-slate-50 flex items-start justify-between gap-3">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide flex-shrink-0">Date</span>
-              <span className="text-sm font-bold text-slate-800">
-                {new Date().toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" })}
-              </span>
-            </div>
-            {/* API Ref */}
-            {fulfillResult.apiRef ? (
-              <div className="px-4 py-3 border-t border-slate-50 flex items-start justify-between gap-3">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide flex-shrink-0">Ref No.</span>
-                <span className="text-xs font-mono font-bold break-all text-right" style={{ color: "#16a34a" }}>{fulfillResult.apiRef}</span>
-              </div>
-            ) : null}
-          </div>
+          {/* Scrollable content */}
+          <div className="flex-1 overflow-y-auto">
 
-          {/* ── Electricity Token — prominent box ── */}
-          {(fulfillResult.elecToken || fulfillResult.elecOrderId) && fulfillResult.cat === "electricity" && (
-            <div className="mx-4 mt-4 rounded-2xl overflow-hidden shadow-sm" style={{ border: "2px solid #fbbf24" }}>
-              <div className="px-4 py-3 flex items-center gap-2" style={{ background: "linear-gradient(135deg,#fef3c7,#fde68a)" }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2.5" strokeLinecap="round">
-                  <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
-                </svg>
-                <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: "#92400e" }}>
-                  {fulfillResult.elecToken ? "Electricity Token — Save This!" : "Getting Your Token..."}
-                </p>
-              </div>
-              {fulfillResult.elecToken ? (
-                <div className="bg-white px-4 py-4 flex flex-col items-center gap-3">
-                  <p className="font-mono text-2xl font-black tracking-widest text-center break-all" style={{ color: "#1e293b" }}>
-                    {fulfillResult.elecToken}
-                  </p>
-                  <button
-                    onClick={() => { try { navigator.clipboard.writeText(fulfillResult.elecToken); } catch (_) {} }}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black active:scale-95 transition-transform"
-                    style={{ background: "#fef3c7", color: "#92400e", border: "1.5px solid #fde68a" }}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                      <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
-                    </svg>
-                    Copy Token
-                  </button>
-                  <p className="text-[10px] text-slate-400 text-center">Enter this token on your prepaid meter to load your units</p>
-                </div>
-              ) : (
-                <div className="bg-white px-4 py-6 flex flex-col items-center gap-3">
-                  <div className="relative w-10 h-10">
-                    <div className="absolute inset-0 rounded-full border-4 border-amber-100" />
-                    <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-amber-400 animate-spin" />
-                  </div>
-                  <p className="text-xs font-semibold text-slate-500 text-center">Retrieving your token from provider...</p>
-                  <p className="text-[10px] text-slate-400 text-center">This can take up to 90 seconds. Please do not close this screen.</p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* PINs / Vouchers */}
-          {fulfillResult.pinsArr?.length > 0 && (
-            <div className="mx-4 mt-4 rounded-2xl overflow-hidden shadow-sm" style={{ border: "1px solid #e2e8f0" }}>
-              <div className="px-4 py-2.5 flex items-center gap-2" style={{ background: "#f0fdf4" }}>
-                <div className="w-5 h-5 rounded-full flex items-center justify-center" style={{ background: "#16a34a" }}>
-                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
-                    <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+            {/* ── Electricity Token (above receipt — highest priority info) ── */}
+            {(fulfillResult.elecToken || fulfillResult.elecOrderId) && fulfillResult.cat === "electricity" && (
+              <div className="mx-4 mt-4 rounded-2xl overflow-hidden shadow-sm" style={{ border: "2px solid #fbbf24" }}>
+                <div className="px-4 py-3 flex items-center gap-2" style={{ background: "linear-gradient(135deg,#fef3c7,#fde68a)" }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2.5" strokeLinecap="round">
+                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
                   </svg>
+                  <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: "#92400e" }}>
+                    {fulfillResult.elecToken ? "Electricity Token — Save This!" : "Getting Your Token..."}
+                  </p>
                 </div>
-                <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest">PIN(s) / Voucher(s)</p>
-                <span className="ml-auto text-[9px] font-black text-white px-2 py-0.5 rounded-full" style={{ background: "#16a34a" }}>
-                  {fulfillResult.pinsArr.length}
-                </span>
-              </div>
-              <div className="p-3 space-y-2 bg-white">
-                {fulfillResult.pinsArr.map((pin, i) => {
-                  const serial = pin.EPIN_SERIAL ?? pin.sno ?? pin.serial ?? "";
-                  const code   = pin.EPIN ?? pin.pin ?? pin.code ?? JSON.stringify(pin);
-                  const netCfg = pin.network ? NET_CONFIG[pin.network] : null;
-                  return (
-                    <div key={i} className="rounded-xl px-4 py-3 border" style={{ background: "#f0fdf4", borderColor: "#bbf7d0" }}>
-                      <div className="flex items-center justify-between mb-1">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">PIN {i + 1}</span>
-                          {netCfg && (
-                            <span className="text-[8px] font-black px-1.5 py-0.5 rounded-full leading-none" style={{ background: netCfg.bg, color: netCfg.fg }}>{pin.network}</span>
-                          )}
-                        </div>
-                        {serial ? <span className="text-[9px] text-slate-400 font-mono">S/N: {serial}</span> : null}
-                      </div>
-                      <p className="font-mono font-black tracking-widest text-sm break-all" style={{ color: "#16a34a" }}>{code}</p>
+                {fulfillResult.elecToken ? (
+                  <div className="bg-white px-4 py-4 flex flex-col items-center gap-3">
+                    <p className="font-mono text-2xl font-black tracking-widest text-center break-all" style={{ color: "#1e293b" }}>
+                      {fulfillResult.elecToken}
+                    </p>
+                    <button
+                      onClick={() => { try { navigator.clipboard.writeText(fulfillResult.elecToken); } catch (_) {} }}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black active:scale-95 transition-transform"
+                      style={{ background: "#fef3c7", color: "#92400e", border: "1.5px solid #fde68a" }}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                        <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+                      </svg>
+                      Copy Token
+                    </button>
+                    <p className="text-[10px] text-slate-400 text-center">Enter this token on your prepaid meter to load your units</p>
+                  </div>
+                ) : (
+                  <div className="bg-white px-4 py-6 flex flex-col items-center gap-3">
+                    <div className="relative w-10 h-10">
+                      <div className="absolute inset-0 rounded-full border-4 border-amber-100" />
+                      <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-amber-400 animate-spin" />
                     </div>
-                  );
-                })}
+                    <p className="text-xs font-semibold text-slate-500 text-center">Retrieving your token from provider...</p>
+                    <p className="text-[10px] text-slate-400 text-center">This can take up to 90 seconds. Please do not close this screen.</p>
+                  </div>
+                )}
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Card details (WAEC/JAMB) */}
-          {fulfillResult.cardDetails ? (
-            <div className="mx-4 mt-4 rounded-2xl overflow-hidden shadow-sm" style={{ border: "1px solid #e2e8f0" }}>
-              <div className="px-4 py-2.5" style={{ background: "#eff6ff" }}>
-                <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: "#1d4ed8" }}>Card / Scratch Details</p>
+            {/* ── PINs / Vouchers ── */}
+            {fulfillResult.pinsArr?.length > 0 && (
+              <div className="mx-4 mt-4 rounded-2xl overflow-hidden shadow-sm" style={{ border: "1px solid #e2e8f0" }}>
+                <div className="px-4 py-2.5 flex items-center gap-2" style={{ background: "#f0fdf4" }}>
+                  <div className="w-5 h-5 rounded-full flex items-center justify-center" style={{ background: "#16a34a" }}>
+                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
+                      <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+                    </svg>
+                  </div>
+                  <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest">PIN(s) / Voucher(s)</p>
+                  <span className="ml-auto text-[9px] font-black text-white px-2 py-0.5 rounded-full" style={{ background: "#16a34a" }}>
+                    {fulfillResult.pinsArr.length}
+                  </span>
+                </div>
+                <div className="p-3 space-y-2 bg-white">
+                  {fulfillResult.pinsArr.map((pin, i) => {
+                    const serial = pin.EPIN_SERIAL ?? pin.sno ?? pin.serial ?? "";
+                    const code   = pin.EPIN ?? pin.pin ?? pin.code ?? JSON.stringify(pin);
+                    const netCfg = pin.network ? NET_CONFIG[pin.network] : null;
+                    return (
+                      <div key={i} className="rounded-xl px-4 py-3 border" style={{ background: "#f0fdf4", borderColor: "#bbf7d0" }}>
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">PIN {i + 1}</span>
+                            {netCfg && (
+                              <span className="text-[8px] font-black px-1.5 py-0.5 rounded-full leading-none" style={{ background: netCfg.bg, color: netCfg.fg }}>{pin.network}</span>
+                            )}
+                          </div>
+                          {serial ? <span className="text-[9px] text-slate-400 font-mono">S/N: {serial}</span> : null}
+                        </div>
+                        <p className="font-mono font-black tracking-widest text-sm break-all" style={{ color: "#16a34a" }}>{code}</p>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-              <div className="bg-white px-4 py-3">
-                <p className="font-mono text-sm font-bold text-slate-800 break-all">{fulfillResult.cardDetails}</p>
-              </div>
-            </div>
-          ) : null}
+            )}
 
-          {/* Action buttons */}
-          <div className="mx-4 mt-5 mb-6 space-y-3">
-            {/* Share Receipt — PRIMARY */}
+            {/* ── Card details (WAEC / JAMB) ── */}
+            {fulfillResult.cardDetails && (
+              <div className="mx-4 mt-4 rounded-2xl overflow-hidden shadow-sm" style={{ border: "1px solid #e2e8f0" }}>
+                <div className="px-4 py-2.5" style={{ background: "#eff6ff" }}>
+                  <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: "#1d4ed8" }}>Card / Scratch Details</p>
+                </div>
+                <div className="bg-white px-4 py-3">
+                  <p className="font-mono text-sm font-bold text-slate-800 break-all">{fulfillResult.cardDetails}</p>
+                </div>
+              </div>
+            )}
+
+            {/* ── Full receipt card — logo, icon, all fields, updated footer ── */}
+            <div className="px-4 py-4">
+              <ReceiptCard data={successReceiptData} />
+            </div>
+
+            {/* Points earned */}
+            {fulfillResult.earnedPts > 0 && (
+              <div className="flex justify-center pb-4">
+                <div className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-black"
+                  style={{ background: "#fffbeb", color: "#b45309", border: "1.5px solid #fde68a" }}>
+                  ⭐ +{fulfillResult.earnedPts} pts earned
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ── Pinned action bar ── */}
+          <div className="flex-shrink-0 px-4 pt-3 pb-3 bg-white border-t border-slate-100 space-y-2"
+            style={{ paddingBottom: 'calc(12px + env(safe-area-inset-bottom, 0px))' }}>
             <button onClick={onShareReceipt}
-              className="w-full py-4 rounded-2xl text-white font-black text-base flex items-center justify-center gap-2.5 active:scale-[0.98] transition-transform shadow-lg"
+              className="w-full py-3.5 rounded-2xl text-white font-black text-base flex items-center justify-center gap-2.5 active:scale-[0.98] transition-transform shadow-lg"
               style={{ background: "linear-gradient(135deg,#16a34a,#059669)" }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13"/>
               </svg>
               Share Receipt
             </button>
-
-            {/* WhatsApp quick-share */}
-            <button
-              onClick={() => {
-                const fr = fulfillResult;
-                const dateStr = new Date().toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" });
-                const amtStr  = `₦${Number(fr.amount || 0).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
-                const detailLines = (fr.detail || "")
-                  .split("|").map(s => s.trim()).filter(Boolean)
-                  .filter(s => !/^Refs?:/i.test(s)).map(s => `• ${s}`).join("\n");
-                const tokenLine = fr.elecToken ? `\n⚡ *Token:* \`${fr.elecToken}\`` : "";
-                const cardsLine = fr.cardDetails ? `\n📄 *Card Details:* ${fr.cardDetails}` : "";
-                const pinsBlock = fr.pinsArr?.length > 0
-                  ? "\n\n🔑 *PINs / Vouchers:*\n" + fr.pinsArr.map((p, i) => {
-                      const code = p.EPIN ?? p.pin ?? p.code ?? "";
-                      return `${i + 1}. ${p.network ? `[${p.network}] ` : ""}${code}`;
-                    }).join("\n")
-                  : "";
-                const refLine = fr.apiRef ? `\n📌 Ref: ${fr.apiRef}` : (fr.psRef ? `\n📌 Ref: ${fr.psRef}` : "");
-                const msg = `✅ *Payment Confirmed!*\n\n*${fr.label || catLabel}*\n━━━━━━━━━━━━━━\n${detailLines}\n• Amount: *${amtStr}*\n• Date: ${dateStr}${tokenLine}${cardsLine}${refLine}${pinsBlock}\n━━━━━━━━━━━━━━\n_Paid via KudiAI Track_`;
-                window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank", "noopener");
-              }}
-              className="w-full py-3.5 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
-              style={{ background: "#f0fdf4", color: "#15803d", border: "1.5px solid #86efac" }}>
-              <svg viewBox="0 0 24 24" fill="currentColor" width="17" height="17">
-                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-              </svg>
-              Share via WhatsApp
-            </button>
-
-            {fulfillResult?.pinsArr?.length > 0 && (
+            <div className="flex gap-2">
               <button
-                onClick={() => generateTokenPDF({ fulfillResult, profile, businessName })}
-                className="w-full py-3.5 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
-                style={{ border: "1.5px solid #7c3aed", color: "#7c3aed", background: "transparent" }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z"/>
+                onClick={() => {
+                  const fr = fulfillResult;
+                  const dateStr = new Date().toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" });
+                  const amtStr  = `₦${Number(fr.amount || 0).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
+                  const detailLines = (fr.detail || "").split("|").map(s => s.trim()).filter(Boolean).filter(s => !/^Refs?:/i.test(s)).map(s => `• ${s}`).join("\n");
+                  const tokenLine = fr.elecToken ? `\n⚡ *Token:* \`${fr.elecToken}\`` : "";
+                  const cardsLine = fr.cardDetails ? `\n📄 *Card Details:* ${fr.cardDetails}` : "";
+                  const pinsBlock = fr.pinsArr?.length > 0
+                    ? "\n\n🔑 *PINs / Vouchers:*\n" + fr.pinsArr.map((p, i) => { const code = p.EPIN ?? p.pin ?? p.code ?? ""; return `${i + 1}. ${p.network ? `[${p.network}] ` : ""}${code}`; }).join("\n")
+                    : "";
+                  const refLine = fr.apiRef ? `\n📌 Ref: ${fr.apiRef}` : (fr.psRef ? `\n📌 Ref: ${fr.psRef}` : "");
+                  const msg = `✅ *Payment Confirmed!*\n\n*${fr.label || catLabel}*\n━━━━━━━━━━━━━━\n${detailLines}\n• Amount: *${amtStr}*\n• Date: ${dateStr}${tokenLine}${cardsLine}${refLine}${pinsBlock}\n━━━━━━━━━━━━━━\n_Paid via KudiAI Track_`;
+                  window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank", "noopener");
+                }}
+                className="flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform"
+                style={{ background: "#f0fdf4", color: "#15803d", border: "1.5px solid #86efac" }}>
+                <svg viewBox="0 0 24 24" fill="currentColor" width="15" height="15">
+                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
                 </svg>
-                Download Print Cards PDF
+                WhatsApp
               </button>
-            )}
-
-            <button onClick={onDone}
-              className="w-full py-3.5 font-bold rounded-2xl text-sm active:scale-[0.98] transition-transform"
-              style={{ color: "#94a3b8" }}>
-              Done
-            </button>
-            <button onClick={onReportIssue}
-              className="w-full text-center py-1">
-              <span className="text-xs font-semibold" style={{ color: "#cbd5e1" }}>Report an Issue</span>
-            </button>
+              {fulfillResult.pinsArr?.length > 0 && (
+                <button
+                  onClick={() => generateTokenPDF({ fulfillResult, profile, businessName })}
+                  className="flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform"
+                  style={{ border: "1.5px solid #7c3aed", color: "#7c3aed", background: "transparent" }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z"/>
+                  </svg>
+                  Print PDF
+                </button>
+              )}
+            </div>
+            <div className="flex items-center justify-center gap-6 pt-0.5">
+              <button onClick={onReportIssue} className="text-xs font-semibold py-1" style={{ color: "#94a3b8" }}>Report Issue</button>
+            </div>
           </div>
-        </div>
+        </>
       )}
 
       {/* ── Payment Disrupted ── */}
@@ -1482,7 +1444,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
         </div>
       )}
 
-      <Footer />
+      {!isSuccess && <Footer />}
     </div>
   );
 }

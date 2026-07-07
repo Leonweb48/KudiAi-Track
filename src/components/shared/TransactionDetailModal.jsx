@@ -1,14 +1,13 @@
 /**
  * Platform-wide transaction detail + shareable receipt.
- * Opens as a bottom sheet showing hero card, summary, copyable details,
- * plus "Share Receipt" producing an Image or PDF via html2canvas.
+ * Shows the full ReceiptCard in-modal (what you see = what you get).
+ * "Share Receipt" captures it via html2canvas as Image or PDF.
  *
  * Props:
  *   data            — receipt data from receiptConfig.js build* functions
  *   onClose         — () => void
- *   onReportIssue   — optional () => void; if omitted shows a toast
+ *   onReportIssue   — optional () => void
  *   onRetrieveToken — optional async () => string; shown for electricity receipts
- *                     with a missing token. Return the token string on success.
  */
 import { useRef, useState } from "react";
 import html2canvas from "html2canvas";
@@ -19,7 +18,6 @@ import { Share } from "@capacitor/share";
 import { savePdf } from "../../utils/pdfSave";
 import { ReceiptCard } from "./ReceiptCard";
 
-const NAVY  = '#0f1c45';
 const GREEN = '#3da829';
 
 // ── Canvas capture ────────────────────────────────────────────────────────────
@@ -71,17 +69,14 @@ async function shareFile(file) {
       throw e;
     }
   }
-  // Web mobile: try Web Share API with files
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
     try {
       await navigator.share({ files: [file], title: file.name });
       return 'shared';
     } catch (e) {
       if (e?.name === 'AbortError' || e?.message?.includes('cancel')) return 'shared';
-      // Fall through to download
     }
   }
-  // Desktop / unsupported browser: download
   const url = URL.createObjectURL(file);
   const a   = Object.assign(document.createElement('a'), { href: url, download: file.name });
   document.body.appendChild(a);
@@ -91,98 +86,7 @@ async function shareFile(file) {
   return 'downloaded';
 }
 
-// ── Copy to clipboard ────────────────────────────────────────────────────────
-async function copyText(text) {
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-    } else {
-      const ta = Object.assign(document.createElement('textarea'), {
-        value: text, style: 'position:fixed;top:-9999px;left:-9999px',
-      });
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand('copy');
-      document.body.removeChild(ta);
-    }
-    return true;
-  } catch { return false; }
-}
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-function fmtAmt(n) {
-  return '₦' + Number(n || 0).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function heroColors(direction, status) {
-  if (status === 'failed')  return { from: '#dc2626', to: '#b91c1c' };
-  if (status === 'pending') return { from: '#d97706', to: '#b45309' };
-  if (direction === 'in')   return { from: '#16a34a', to: '#15803d' };
-  return                           { from: NAVY,       to: '#081030' };
-}
-
-function statusLabel(status) {
-  if (status === 'success') return { icon: '✓', text: 'Successful', color: '#86efac' };
-  if (status === 'pending') return { icon: '⏳', text: 'Processing', color: '#fde68a' };
-  if (status === 'failed')  return { icon: '✕', text: 'Failed',     color: '#fca5a5' };
-  return                           { icon: '?', text: status,       color: '#e2e8f0' };
-}
-
-// ── Sub-components ───────────────────────────────────────────────────────────
-function SectionCard({ title, children }) {
-  return (
-    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 overflow-hidden mb-3">
-      {title && (
-        <div className="px-4 pt-3.5 pb-2">
-          <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">{title}</p>
-        </div>
-      )}
-      {children}
-    </div>
-  );
-}
-
-function SummaryRow({ label, value, valueClass = '', bold, sep }) {
-  if (sep) return <div className="border-t border-slate-50 dark:border-slate-700/60 my-0.5" />;
-  return (
-    <div className={`flex justify-between items-center px-4 py-2.5 ${bold ? 'bg-slate-50 dark:bg-slate-700/50' : ''}`}>
-      <span className="text-sm text-slate-500 dark:text-slate-400">{label}</span>
-      <span className={`text-sm font-${bold ? 'extrabold' : 'semibold'} text-slate-800 dark:text-slate-100 ${valueClass}`}>{value}</span>
-    </div>
-  );
-}
-
-function DetailRow({ field }) {
-  const [copied, setCopied] = useState(false);
-  const handleCopy = async () => {
-    const ok = await copyText(field.value);
-    if (ok) { setCopied(true); setTimeout(() => setCopied(false), 2000); }
-  };
-
-  return (
-    <div className="flex items-start justify-between px-4 py-3 border-b border-slate-50 dark:border-slate-700/40 last:border-0">
-      <span className="text-xs text-slate-400 dark:text-slate-500 font-medium flex-shrink-0 min-w-[96px] pt-0.5">{field.label}</span>
-      <div className="flex items-center gap-2 flex-1 justify-end">
-        <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 text-right break-all leading-relaxed">
-          {field.value ?? '—'}
-        </span>
-        {field.copy && field.value && (
-          <button onClick={handleCopy} className="flex-shrink-0 transition active:scale-90" title="Copy">
-            {copied
-              ? <span className="text-[10px] font-bold text-green-600 dark:text-green-400 whitespace-nowrap">✓ Copied</span>
-              : <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-                  <rect x="9" y="9" width="13" height="13" rx="2" />
-                  <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
-                </svg>
-            }
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ── Electricity token retrieval section ───────────────────────────────────────
+// ── Electricity token retrieval ───────────────────────────────────────────────
 function TokenSection({ onRetrieveToken }) {
   const [state, setState] = useState({ phase: 'idle', token: null, error: null });
 
@@ -197,9 +101,9 @@ function TokenSection({ onRetrieveToken }) {
   }
 
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 overflow-hidden mb-3">
-      <div className="px-4 pt-3.5 pb-2">
-        <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Electricity Token</p>
+    <div className="bg-amber-50 dark:bg-amber-900/20 rounded-2xl border border-amber-200 dark:border-amber-700 overflow-hidden mb-3">
+      <div className="px-4 pt-3 pb-2">
+        <p className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-widest">Electricity Token</p>
       </div>
       {state.phase === 'done' ? (
         <div className="px-4 pb-4">
@@ -217,7 +121,7 @@ function TokenSection({ onRetrieveToken }) {
           <button
             onClick={fetch}
             disabled={state.phase === 'loading'}
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-amber-200 dark:border-amber-700 text-sm font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 active:scale-[.98] transition disabled:opacity-60"
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold text-amber-700 dark:text-amber-400 active:scale-[.98] transition disabled:opacity-60"
           >
             {state.phase === 'loading'
               ? <><span className="w-3.5 h-3.5 border-2 border-amber-300 border-t-amber-600 rounded-full animate-spin inline-block" /> Retrieving…</>
@@ -267,7 +171,7 @@ function ShareSheet({ onOption, onClose }) {
           className="w-full flex items-center gap-4 px-6 py-4 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors border-t border-slate-100 dark:border-slate-700 mb-2"
         >
           <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: '#e0e7ff' }}>
-            <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke={NAVY} strokeWidth={2} strokeLinecap="round">
+            <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="#0f1c45" strokeWidth={2} strokeLinecap="round">
               <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
               <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
             </svg>
@@ -297,19 +201,13 @@ function LoadingOverlay({ label }) {
 
 // ── Main modal ───────────────────────────────────────────────────────────────
 export default function TransactionDetailModal({ data, onClose, onReportIssue, onRetrieveToken }) {
-  const receiptRef  = useRef(null);
-  const [shareOpen, setShareOpen]   = useState(false);
-  const [loading,   setLoading]     = useState(null);
-  const [toast,     setToast]       = useState(null);
+  const receiptRef = useRef(null);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [loading,   setLoading]   = useState(null);
+  const [toast,     setToast]     = useState(null);
 
-  const { title, direction, status, amount, fees = 0, datetime, fields = [], receiptRef: ref, filenames } = data;
-  const hc  = heroColors(direction, status);
-  const sl  = statusLabel(status);
-  const net = amount - fees;
-
-  // Separate retrievable fields (electricity token) from normal display fields
+  const { title, fields = [], receiptRef: ref, filenames } = data;
   const retrievableField = fields.find(f => f.retrievable);
-  const displayFields    = fields.filter(f => !f.retrievable);
 
   function showToast(msg) {
     setToast(msg);
@@ -347,7 +245,7 @@ export default function TransactionDetailModal({ data, onClose, onReportIssue, o
 
   function handleReportIssue() {
     if (onReportIssue) {
-      onReportIssue({ ref, title, amount, status });
+      onReportIssue({ ref, title, amount: data.amount, status: data.status });
     } else {
       showToast('Support ticket opened. Our team will review shortly.');
     }
@@ -361,15 +259,15 @@ export default function TransactionDetailModal({ data, onClose, onReportIssue, o
         style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
         onClick={onClose}
       >
-        {/* Sheet */}
+        {/* Bottom sheet */}
         <div
-          className="w-full max-w-md flex flex-col bg-slate-50 dark:bg-slate-900 rounded-t-2xl overflow-hidden"
+          className="w-full max-w-md flex flex-col bg-slate-100 dark:bg-slate-900 rounded-t-2xl overflow-hidden"
           style={{ maxHeight: '92dvh' }}
           onClick={e => e.stopPropagation()}
         >
-          {/* Sticky header */}
-          <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex-shrink-0">
-            <p className="text-base font-bold text-slate-800 dark:text-white truncate pr-2">{title}</p>
+          {/* Header — title + close */}
+          <div className="flex items-center justify-between px-4 pt-4 pb-3 bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 flex-shrink-0">
+            <p className="text-sm font-bold text-slate-700 dark:text-slate-200 truncate pr-2">{title}</p>
             <button
               onClick={onClose}
               className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center flex-shrink-0 active:scale-90 transition-transform"
@@ -380,52 +278,26 @@ export default function TransactionDetailModal({ data, onClose, onReportIssue, o
             </button>
           </div>
 
-          {/* Scrollable body */}
+          {/* Scrollable body — full receipt + optional electricity section */}
           <div className="flex-1 overflow-y-auto">
-
-            {/* Hero card */}
-            <div
-              className="mx-4 mt-4 mb-3 rounded-2xl px-6 py-5 text-center shadow-md"
-              style={{ background: `linear-gradient(135deg, ${hc.from} 0%, ${hc.to} 100%)` }}
-            >
-              <p className="text-3xl font-extrabold text-white tracking-tight mb-1" style={{ letterSpacing: '-0.025em' }}>
-                {direction === 'in' ? '+' : '−'}{fmtAmt(amount)}
-              </p>
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full mb-2" style={{ background: 'rgba(255,255,255,0.15)' }}>
-                <span className="text-xs font-bold" style={{ color: sl.color }}>{sl.icon} {sl.text}</span>
-              </div>
-              <p className="text-xs font-medium" style={{ color: 'rgba(255,255,255,0.65)' }}>{datetime}</p>
-            </div>
-
-            {/* Summary */}
-            <SectionCard title="Summary">
-              <SummaryRow label="Amount" value={fmtAmt(amount)} />
-              {fees > 0 && <SummaryRow label="Fees / Charges" value={`−${fmtAmt(fees)}`} valueClass="text-red-500 dark:text-red-400" />}
-              {fees > 0 && <SummaryRow sep />}
-              {fees > 0 && <SummaryRow label="Net Amount" value={fmtAmt(net)} bold />}
-              {fees === 0 && <SummaryRow label="Fees / Charges" value="₦0.00" valueClass="text-slate-300 dark:text-slate-600" />}
-            </SectionCard>
-
-            {/* Electricity token retrieval */}
+            {/* Electricity token retrieval (async — needs a button) */}
             {(retrievableField || onRetrieveToken) && onRetrieveToken && (
-              <TokenSection onRetrieveToken={onRetrieveToken} />
+              <div className="px-4 pt-4 pb-1">
+                <TokenSection onRetrieveToken={onRetrieveToken} />
+              </div>
             )}
 
-            {/* Details */}
-            {displayFields.length > 0 && (
-              <SectionCard title="Details">
-                {displayFields.map((field, i) => (
-                  <DetailRow key={i} field={field} />
-                ))}
-              </SectionCard>
-            )}
-
-            <div className="h-4" />
+            {/* Full receipt card — exactly what will be shared / exported */}
+            <div className="px-4 py-4">
+              <ReceiptCard data={data} innerRef={receiptRef} />
+            </div>
           </div>
 
           {/* Pinned bottom actions */}
-          <div className="flex gap-3 px-4 py-3 border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex-shrink-0"
-            style={{ paddingBottom: 'calc(12px + env(safe-area-inset-bottom, 0px))' }}>
+          <div
+            className="flex gap-3 px-4 py-3 border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex-shrink-0"
+            style={{ paddingBottom: 'calc(12px + env(safe-area-inset-bottom, 0px))' }}
+          >
             <button
               onClick={handleReportIssue}
               className="flex-1 flex items-center justify-center gap-1.5 py-3 rounded-xl border border-slate-200 dark:border-slate-600 text-sm font-bold text-slate-600 dark:text-slate-300 active:scale-95 transition-transform"
@@ -449,14 +321,6 @@ export default function TransactionDetailModal({ data, onClose, onReportIssue, o
             </button>
           </div>
         </div>
-      </div>
-
-      {/* Off-screen receipt card — always rendered for instant capture */}
-      <div
-        aria-hidden
-        style={{ position: 'fixed', top: '200vh', left: '50%', transform: 'translateX(-50%)', width: '340px', zIndex: 0, pointerEvents: 'none' }}
-      >
-        <ReceiptCard data={data} innerRef={receiptRef} />
       </div>
 
       {shareOpen && <ShareSheet onOption={handleShare} onClose={() => setShareOpen(false)} />}
