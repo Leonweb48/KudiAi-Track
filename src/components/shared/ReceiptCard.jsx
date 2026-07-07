@@ -231,19 +231,23 @@ export function ReceiptCard({ data, innerRef }) {
       <div style={{ background: 'white', position: 'relative', overflow: 'hidden', padding: '16px 20px 0' }}>
         <Watermark />
 
-        {/* Header: logo + wordmark left · receipt type right */}
-        <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', justifyContent: 'space-between', position: 'relative', zIndex: 2 }}>
-          <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+        {/* Header: logo + wordmark left · receipt type right
+            Uses display:table so html2canvas reliably puts both cells on one row.
+            flex+gap is NOT supported in html2canvas v1 and causes stacking. */}
+        <div style={{ display: 'table', width: '100%', position: 'relative', zIndex: 2 }}>
+          {/* Left cell: logo + "KudiAI Track" on the same line */}
+          <span style={{ display: 'table-cell', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
             <img
-              src="/logo.png" alt="" width={20} height={20}
-              style={{ borderRadius: 4, flexShrink: 0, display: 'inline-block', verticalAlign: 'middle' }}
+              src="/logo.png" alt=""
+              style={{ width: 20, height: 20, borderRadius: 4, display: 'inline-block', verticalAlign: 'middle' }}
               onError={e => { e.currentTarget.style.display = 'none'; }}
             />
-            <span style={{ fontSize: 11, fontWeight: 700, color: GREEN, letterSpacing: '-0.01em', lineHeight: 1, whiteSpace: 'nowrap', display: 'inline-block', verticalAlign: 'middle' }}>
+            <span style={{ display: 'inline-block', verticalAlign: 'middle', marginLeft: 6, fontSize: 11, fontWeight: 700, color: GREEN, letterSpacing: '-0.01em', lineHeight: 1, whiteSpace: 'nowrap' }}>
               KudiAI Track
             </span>
-          </div>
-          <span style={{ fontSize: 9, fontWeight: 700, color: '#94a3b8', letterSpacing: '0.07em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+          </span>
+          {/* Right cell: receipt type label */}
+          <span style={{ display: 'table-cell', verticalAlign: 'middle', textAlign: 'right', fontSize: 9, fontWeight: 700, color: '#94a3b8', letterSpacing: '0.07em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
             {category ? 'Bill' : 'Transaction'} Receipt
           </span>
         </div>
@@ -268,18 +272,21 @@ export function ReceiptCard({ data, innerRef }) {
             {fmtAmt(amount)}
           </p>
 
-          {/* Status pill — shows Successful / Pending / Failed / Reversed */}
-          <div style={{ marginTop: 8, textAlign: 'center' }}>
+          {/* Status pill — Successful / Pending / Failed / Reversed
+              borderRadius:20 instead of 99 — large radius values render
+              inconsistently in html2canvas v1. inline-block + textAlign:center
+              is the most compatible centering technique. */}
+          <div style={{ marginTop: 8, textAlign: 'center', lineHeight: 1 }}>
             <span style={{
-              display: 'inline-block',
-              background: st.bg,
-              borderRadius: 99,
-              padding: '4px 16px',
-              fontSize: 11,
-              fontWeight: 700,
-              color: st.color,
-              lineHeight: 1.4,
-              whiteSpace: 'nowrap',
+              display:      'inline-block',
+              background:   st.bg,
+              borderRadius: 20,
+              padding:      '5px 18px',
+              fontSize:     11,
+              fontWeight:   700,
+              color:        st.color,
+              lineHeight:   '18px',
+              whiteSpace:   'nowrap',
             }}>
               {st.label}
             </span>
@@ -339,14 +346,14 @@ export function ReceiptCard({ data, innerRef }) {
           padding: '10px 20px 8px',
           textAlign: 'center',
         }}>
-          {/* Logo + name on same row, centered */}
-          <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', justifyContent: 'center', gap: 5, marginBottom: 4 }}>
+          {/* Logo + name on same row, centered — inline-block avoids flex gap issue */}
+          <div style={{ marginBottom: 4, lineHeight: 1, textAlign: 'center' }}>
             <img
-              src="/logo.png" alt="" width={13} height={13}
-              style={{ borderRadius: 2, flexShrink: 0, display: 'inline-block', verticalAlign: 'middle' }}
+              src="/logo.png" alt=""
+              style={{ width: 13, height: 13, borderRadius: 2, display: 'inline-block', verticalAlign: 'middle' }}
               onError={e => { e.currentTarget.style.display = 'none'; }}
             />
-            <span style={{ fontSize: 9.5, fontWeight: 700, color: '#14532d', lineHeight: 1, whiteSpace: 'nowrap', display: 'inline-block', verticalAlign: 'middle' }}>
+            <span style={{ display: 'inline-block', verticalAlign: 'middle', marginLeft: 5, fontSize: 9.5, fontWeight: 700, color: '#14532d', lineHeight: 1, whiteSpace: 'nowrap' }}>
               KudiAI Track
             </span>
           </div>
