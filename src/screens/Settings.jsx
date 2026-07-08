@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Modal           from "../components/shared/Modal";
+import ProfilePreviewModal from "../components/shared/ProfilePreviewModal";
 import Field           from "../components/shared/Field";
 import StaffManagement from "./StaffManagement";
 import LegalScreen      from "./LegalScreen";
@@ -483,8 +484,9 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
   const [showAutoLock,  setShowAutoLock]  = useState(false);
   const [showSupport,   setShowSupport]   = useState(false);
   const [showLangPick,  setShowLangPick]  = useState(false);
-  const [legalScreen,   setLegalScreen]   = useState(null); // "terms" | "privacy"
-  const [acceptedConsent, setAcceptedConsent] = useState(null);
+  const [legalScreen,        setLegalScreen]        = useState(null); // "terms" | "privacy"
+  const [acceptedConsent,    setAcceptedConsent]    = useState(null);
+  const [showProfilePreview, setShowProfilePreview] = useState(false);
 
 
   useEffect(() => {
@@ -623,7 +625,10 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
       <div className="px-4">
 
       {/* ── PROFILE CARD ───────────────────────────────────────────── */}
-      <div className="mt-4 mb-5 bg-white dark:bg-slate-800 rounded-3xl px-4 py-4 shadow-card border border-slate-100 dark:border-slate-700/50 flex items-center gap-4">
+      <button
+        onClick={() => setShowProfilePreview(true)}
+        className="mt-4 mb-5 w-full bg-white dark:bg-slate-800 rounded-3xl px-4 py-4 shadow-card border border-slate-100 dark:border-slate-700/50 flex items-center gap-4 text-left active:scale-[0.99] transition-transform"
+      >
         <div className="w-14 h-14 rounded-2xl overflow-hidden flex-shrink-0 border-2 border-slate-100 dark:border-slate-700">
           {avatarSrc
             ? <img src={avatarSrc} alt="Profile" className="w-full h-full object-cover" />
@@ -640,11 +645,13 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
             {planName}
           </span>
         </div>
-        <button onClick={() => navigate("/profile")}
-          className="flex-shrink-0 text-xs font-bold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-900/20 px-3 py-1.5 rounded-xl active:scale-95 transition">
+        <button
+          onClick={e => { e.stopPropagation(); navigate("/profile"); }}
+          className="flex-shrink-0 text-xs font-bold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-900/20 px-3 py-1.5 rounded-xl active:scale-95 transition"
+        >
           Edit
         </button>
-      </div>
+      </button>
 
       {/* ── STAFF MANAGEMENT BANNER ────────────────────────────────── */}
       <button
@@ -1111,6 +1118,14 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
         <LegalScreen type={legalScreen} onBack={() => setLegalScreen(null)} />
       )}
       </div>{/* /px-4 */}
+
+      {showProfilePreview && (
+        <ProfilePreviewModal
+          profile={profile}
+          plan={plan}
+          onClose={() => setShowProfilePreview(false)}
+        />
+      )}
     </div>
   );
 }

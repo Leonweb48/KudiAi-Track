@@ -5,6 +5,7 @@ import { NotificationBell } from "../components/NotificationCenter";
 import { useT } from "../contexts/LanguageContext";
 import AppLogo from "../components/AppLogo";
 import { getSalesPrediction } from "../utils/predictions";
+import ProfilePreviewModal from "../components/shared/ProfilePreviewModal";
 
 function greetingKey() {
   const h = new Date().getHours();
@@ -114,11 +115,12 @@ function SalesForecastCard({ prediction, t }) {
 }
 
 /* ── Main ────────────────────────────────────────────────────────── */
-export default function Home({ store, setTab, onQuickAction, onVoiceOpen, notif }) {
+export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, notif }) {
   const { transactions, credits, asoClients, profile, loading } = store;
   const t = useT();
-  const [balanceHidden, setBalanceHidden] = useState(false);
-  const [search, setSearch] = useState("");
+  const [balanceHidden,      setBalanceHidden]      = useState(false);
+  const [search,             setSearch]             = useState("");
+  const [showProfilePreview, setShowProfilePreview] = useState(false);
 
   const todayTx     = transactions.filter(tx => tx.transaction_date === today());
   const cashIn      = todayTx.filter(tx => tx.type === "in" ).reduce((s, tx) => s + tx.amount, 0);
@@ -150,7 +152,7 @@ export default function Home({ store, setTab, onQuickAction, onVoiceOpen, notif 
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
           <NotificationBell unreadCount={notif?.unreadCount || 0} onClick={() => notif?.setOpen(true)} />
-          <button onClick={() => setTab("settings")} aria-label="Profile"
+          <button onClick={() => setShowProfilePreview(true)} aria-label="Profile"
             className="w-9 h-9 rounded-full border-2 border-slate-100 dark:border-slate-700 shadow-sm overflow-hidden active:scale-95 transition-transform">
             {profile.profile_image_url
               ? <img src={profile.profile_image_url} alt="Profile" className="w-full h-full object-cover" />
@@ -426,6 +428,14 @@ export default function Home({ store, setTab, onQuickAction, onVoiceOpen, notif 
           </div>
         )}
       </div>
+
+      {showProfilePreview && (
+        <ProfilePreviewModal
+          profile={profile}
+          plan={plan}
+          onClose={() => setShowProfilePreview(false)}
+        />
+      )}
 
     </div>
   );
