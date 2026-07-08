@@ -74,3 +74,95 @@ body {
 /* ── Dark mode body ───────────────────────────────────────────────── */
 .dark body  { background: #0F172A; }
 .dark       { color-scheme: dark; }
+
+/* ══════════════════════════════════════════════════════════════════════
+   GLOBAL TEXT & AMOUNT CONTAINMENT GUARDRAILS
+   Rule: overflow bugs must be impossible by construction, not patched
+   screen-by-screen.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/*
+ * 1. Flex children: min-width defaults to `auto` which means a flex child
+ *    NEVER shrinks below its content — the #1 cause of flex overflow.
+ *    We reset it to 0 on any element that Tailwind marks as a flex child
+ *    via flex-1 / flex-auto / grow / shrink, plus explicit min-w-0 usage.
+ *    Safe: min-width:0 only removes the implicit floor; explicit widths still win.
+ */
+.flex-1, .flex-auto, .grow, .min-w-0 { min-width: 0; }
+
+/*
+ * 2. Grid cells: same issue — a grid cell won't shrink below its content.
+ *    Reset for cells in ANY grid (grid-cols-* always has implicit min-w:auto).
+ *    Override explicit widths with min-w-* utilities as needed.
+ */
+[class*="grid-cols-"] > * { min-width: 0; overflow: hidden; }
+
+/*
+ * 3. Amount / stat typography: amounts in stat cards or receipt headers use
+ *    large font weights; `word-break` ensures digits wrap rather than overflow
+ *    if a parent container ever forces wrapping (last resort — AmountDisplay
+ *    normally prevents this).
+ */
+.amount-text {
+  font-variant-numeric: tabular-nums;
+  overflow:             hidden;
+  white-space:          nowrap;
+  text-overflow:        ellipsis;
+  min-width:            0;
+}
+
+/*
+ * 4. Truncation utilities — apply to any element that holds a single dynamic
+ *    string and must not overflow.  Unlike Tailwind's built-in `truncate` these
+ *    also enforce min-width:0 so they work inside flex parents.
+ */
+.fit-line {
+  display:        block;
+  min-width:      0;
+  overflow:       hidden;
+  white-space:    nowrap;
+  text-overflow:  ellipsis;
+}
+.fit-clamp-2 {
+  display:            -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow:           hidden;
+  min-width:          0;
+}
+.fit-clamp-3 {
+  display:            -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow:           hidden;
+  min-width:          0;
+}
+
+/*
+ * 5. Tables: amount columns are right-aligned and won't wrap.
+ *    Apply .col-amount on <th>/<td> that hold currency.
+ */
+.col-amount {
+  white-space:          nowrap;
+  text-align:           right;
+  font-variant-numeric: tabular-nums;
+  padding-left:         12px;
+}
+
+/*
+ * 6. Inputs: inputs never push their parent layout wider; they scroll
+ *    horizontally internally.
+ */
+input[type="text"],
+input[type="number"],
+input[type="email"],
+input[type="tel"],
+input[type="search"] {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/*
+ * 7. System font-scale resilience: -webkit-text-size-adjust is already set on
+ *    the html element at the top of this file. No duplicate needed here.
+ */

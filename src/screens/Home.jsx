@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { fmt, today } from "../utils/helpers";
+import { AmountDisplay } from "../components/shared/AmountDisplay";
 import { NotificationBell } from "../components/NotificationCenter";
 import { useT } from "../contexts/LanguageContext";
 import AppLogo from "../components/AppLogo";
@@ -194,17 +195,23 @@ export default function Home({ store, setTab, onQuickAction, onVoiceOpen, notif 
 
           {/* Sub-stats row */}
           <div className="flex gap-5">
-            <div>
+            <div className="min-w-0 flex-1">
               <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">{t("home.cashIn")}</p>
-              <p className="text-base font-bold tabular">{loading ? "—" : balanceHidden ? "••••" : fmt(cashIn)}</p>
+              {loading || balanceHidden
+                ? <p className="text-base font-bold tabular">{loading ? "—" : "••••"}</p>
+                : <AmountDisplay amount={cashIn} size="row" align="left" style={{ color: '#fff', fontWeight: 700 }} />
+              }
             </div>
             <div className="w-px bg-white/20 self-stretch" />
-            <div>
+            <div className="min-w-0 flex-1">
               <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">{t("home.cashOut")}</p>
-              <p className="text-base font-bold tabular">{loading ? "—" : balanceHidden ? "••••" : fmt(cashOut)}</p>
+              {loading || balanceHidden
+                ? <p className="text-base font-bold tabular">{loading ? "—" : "••••"}</p>
+                : <AmountDisplay amount={cashOut} size="row" align="left" style={{ color: '#fff', fontWeight: 700 }} />
+              }
             </div>
             <div className="w-px bg-white/20 self-stretch" />
-            <div>
+            <div className="min-w-0">
               <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">{t("home.txns")}</p>
               <p className="text-base font-bold tabular">{loading ? "—" : todayTx.length}</p>
             </div>

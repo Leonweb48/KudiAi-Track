@@ -268,8 +268,8 @@ export function ReceiptCard({ data, innerRef }) {
         <div style={{ height: 1, background: '#f1f5f9', margin: '10px 0 6px', position: 'relative', zIndex: 2 }} />
 
         {/* Amount hero */}
-        <div style={{ textAlign: 'center', padding: '6px 0 4px', position: 'relative', zIndex: 2 }}>
-          <p style={{ margin: 0, fontSize: 30, fontWeight: 800, color: amtColor, letterSpacing: '-0.03em', lineHeight: 1.1 }}>
+        <div style={{ textAlign: 'center', padding: '6px 0 4px', position: 'relative', zIndex: 2, overflow: 'hidden' }}>
+          <p style={{ margin: 0, fontSize: 30, fontWeight: 800, color: amtColor, letterSpacing: '-0.03em', lineHeight: 1.1, wordBreak: 'break-all', maxWidth: '100%' }}>
             {fmtAmt(amount)}
           </p>
 

@@ -6,6 +6,7 @@ import Invoices             from "./Invoices";
 import LoanApplicationModal from "../components/LoanApplicationModal";
 import { canDo, getLowestPlanWithFeature } from "../utils/plans";
 import { fmt }              from "../utils/helpers";
+import { AmountDisplay }   from "../components/shared/AmountDisplay";
 
 const FINANCE_TILES = [
   {
@@ -54,9 +55,10 @@ function FinanceOverviewCard({ credits, ajoClients, hasCreditAccess, onCreditCli
           <p className="text-[9px] font-bold opacity-60 uppercase tracking-wider mb-1.5">
             {hasCreditAccess ? "Credit Outstanding" : "🔒 Credit"}
           </p>
-          <p className="text-xl font-black leading-tight tabular">
-            {hasCreditAccess ? fmt(totalOut) : "Upgrade"}
-          </p>
+          {hasCreditAccess
+            ? <AmountDisplay amount={totalOut} size="stat" align="left" style={{ color: '#fff' }} />
+            : <span className="text-xl font-black leading-tight">Upgrade</span>
+          }
           {hasCreditAccess && (
             <p className="text-[10px] opacity-60 mt-1.5">
               {overdueCount > 0 ? `⚠ ${overdueCount} overdue` : `${credits.length} record${credits.length !== 1 ? "s" : ""}`}
@@ -66,7 +68,7 @@ function FinanceOverviewCard({ credits, ajoClients, hasCreditAccess, onCreditCli
         <button onClick={onAjoClick}
           className="bg-white/10 rounded-2xl p-3 text-left active:bg-white/20 transition">
           <p className="text-[9px] font-bold opacity-60 uppercase tracking-wider mb-1.5">Ajo Savings</p>
-          <p className="text-xl font-black leading-tight tabular">{fmt(ajoBalance)}</p>
+          <AmountDisplay amount={ajoBalance} size="stat" align="left" style={{ color: '#fff' }} />
           <p className="text-[10px] opacity-60 mt-1.5">
             {ajoActive} active client{ajoActive !== 1 ? "s" : ""}
           </p>

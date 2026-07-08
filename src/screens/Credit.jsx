@@ -11,6 +11,7 @@ import { ClientProfile }  from "../components/shared/ClientProfile";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import { supabase } from "../utils/supabase";
 import { fmt } from "../utils/helpers";
+import { AmountDisplay } from "../components/shared/AmountDisplay";
 import { createReportPdf, fmtCurrency as pdfFmt, fmtDate as pdfFmtDate } from "../utils/generateReportPdf";
 import { getLang, speakConfirmation } from "../utils/i18n";
 import { useT } from "../contexts/LanguageContext";
@@ -195,17 +196,17 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
         <div className="absolute -bottom-12 -left-8 w-44 h-44 rounded-full bg-white/5 pointer-events-none" />
         <div className="relative">
           <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-0.5">Outstanding Balance</p>
-          <p className="text-3xl font-black tabular mb-4">{fmt(totalOut)}</p>
+          <AmountDisplay amount={totalOut} size="hero" align="left" style={{ color: '#fff', marginBottom: 16 }} />
           <div className="grid grid-cols-3 divide-x divide-white/20">
-            <div className="pr-3">
+            <div className="pr-3 min-w-0">
               <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">Total Debt</p>
-              <p className="text-sm font-extrabold tabular">{fmt(totalDebt)}</p>
+              <AmountDisplay amount={totalDebt} size="small" align="left" style={{ color: '#fff' }} />
             </div>
-            <div className="px-3">
+            <div className="px-3 min-w-0">
               <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">Recovered</p>
-              <p className="text-sm font-extrabold tabular text-green-200">{fmt(totalRecov)}</p>
+              <AmountDisplay amount={totalRecov} size="small" align="left" style={{ color: '#bbf7d0' }} />
             </div>
-            <div className="pl-3">
+            <div className="pl-3 min-w-0">
               <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">Debtors</p>
               <p className="text-sm font-extrabold tabular">
                 {credits.length}
