@@ -10,6 +10,11 @@ import { AmountDisplay }   from "../components/shared/AmountDisplay";
 
 const FINANCE_TILES = [
   {
+    id: "credit", label: "Credit",
+    g1: "#e11d48", g2: "#9f1239",
+    icon: "M2 8a2 2 0 012-2h16a2 2 0 012 2v9a2 2 0 01-2 2H4a2 2 0 01-2-2V8z|M2 11h20|M6 15h3",
+  },
+  {
     id: "ajo", label: "Ajo Savings",
     g1: "#7c3aed", g2: "#4c1d95",
     icon: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2|M9 11a4 4 0 100-8 4 4 0 000 8|M23 21v-2a4 4 0 00-3-3.87|M16 3.13a4 4 0 010 7.75",
@@ -85,18 +90,18 @@ function FinanceToolsCard({ tiles, onSelect }) {
       <p className="text-[12px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-5">
         Finance Tools
       </p>
-      <div className="grid grid-cols-4 gap-y-6">
+      <div className="grid grid-cols-5 gap-y-5">
         {tiles.map(s => (
           <button key={s.id} onClick={() => onSelect(s.id)}
-            className="flex flex-col items-center gap-2.5 active:scale-90 transition-transform duration-150">
-            <div className="w-[60px] h-[60px] rounded-[18px] flex items-center justify-center shadow-md"
+            className="flex flex-col items-center gap-2 active:scale-90 transition-transform duration-150">
+            <div className="w-[50px] h-[50px] rounded-[14px] flex items-center justify-center shadow-md"
               style={{ background: `linear-gradient(135deg,${s.g1},${s.g2})` }}>
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="none"
-                stroke="white" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+                stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 {s.icon.split("|").map((d, i) => <path key={i} d={d} />)}
               </svg>
             </div>
-            <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400 text-center leading-tight max-w-[64px]">
+            <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400 text-center leading-tight max-w-[52px]">
               {s.label}
             </span>
           </button>
