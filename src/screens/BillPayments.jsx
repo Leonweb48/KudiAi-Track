@@ -1612,7 +1612,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     "airtime-bundle":t("bill.bundleSet"),
     "business-loan":t("bill.businessLoan"),
   }), [t]);
-  const { transactions, addTransaction, profile } = store;
+  const { transactions, addTransaction, profile, patchTransactionNote } = store;
   // plan is a slug string from useAuth (e.g. "oga"), not a plan object
   const planSlug = typeof plan === "string" ? plan : (plan?.slug ?? "");
   // Unlock for enterprise/oga: match by feature key or slug name
@@ -2533,6 +2533,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
           elecPendingCbRef.current = null;
           if (_txnId) {
             supabase.from("transactions").update({ note: updatedNote }).eq("id", _txnId).catch(() => {});
+            patchTransactionNote(_txnId, updatedNote);
           }
           supabase.functions.invoke("clubkonnect", {
             body: { action: "bill-success-email", user_email: _email, user_name: _name, service: "Electricity", amount: _amount, reference: _ref, detail: updatedNote },
@@ -2607,7 +2608,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         }
       } catch (_) {}
     }
-  }, [addTransaction, staffName, staffEmail, businessName, profile, pointsEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [addTransaction, patchTransactionNote, staffName, staffEmail, businessName, profile, pointsEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keep ref in sync so the visibilitychange handler always calls the latest closure
   useEffect(() => { fulfillAfterPaymentRef.current = fulfillAfterPayment; }, [fulfillAfterPayment]);
@@ -3455,6 +3456,10 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                       const unitsSegment = qUnits && !baseNote.includes("Units:") ? ` | Units: ${qUnits}` : "";
                       const updatedNote = `Token: ${qToken}${unitsSegment} | ${baseNote}`.replace(" |  | ", " | ");
                       supabase.from("transactions").update({ note: updatedNote }).eq("id", receipt.id).catch(() => {});
+                      patchTransactionNote(receipt.id, updatedNote);
+                      // Update the open receipt state so the modal immediately shows the token
+                      // in the main field (collapses the retrieve button on the next render)
+                      setReceipt(prev => prev ? { ...prev, token: qToken, units: qUnits || prev.units || "", note: updatedNote } : prev);
                     }
                     return qToken;
                   }

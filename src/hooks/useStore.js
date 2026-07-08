@@ -349,6 +349,10 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
     }
   };
 
+  const patchTransactionNote = (id, note) => {
+    setTransactions(p => p.map(tx => tx.id === id ? { ...tx, note } : tx));
+  };
+
   const deleteTransaction = async (id) => {
     const txToCancel = transactions.find(tx => tx.id === id);
     setTransactions(p => p.filter(tx => tx.id !== id));
@@ -726,6 +730,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
     setProfile, isOnline, loading, pendingSync, isSyncing, runSync,
     dbError, clearDbError: () => setDbError(null), reloadData: loadData,
     addTransaction,
+    patchTransactionNote,
     // Staff cannot delete transactions — only business owners (no staffId) can
     deleteTransaction: staffId ? null : deleteTransaction,
     addCredit, repayCredit, updateCredit, debtPayments,
