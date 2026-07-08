@@ -11,6 +11,7 @@ import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import { supabase } from "../utils/supabase";
 import { canDo, featureLimit, upgradeLabel, planRequiredLabel, planAvailableText } from "../utils/plans";
 import { fmt, today } from "../utils/helpers";
+import { AmountDisplay } from "../components/shared/AmountDisplay";
 import { createReportPdf, fmtCurrency as pdfFmt, fmtDate as pdfFmtDate } from "../utils/generateReportPdf";
 import { useT } from "../contexts/LanguageContext";
 import { getLang, speakConfirmation } from "../utils/i18n";
@@ -858,11 +859,11 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         <div className="absolute -bottom-12 -left-8 w-44 h-44 rounded-full bg-white/5 pointer-events-none" />
         <div className="relative">
           <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-0.5">Total Balance</p>
-          <p className="text-3xl font-black tabular mb-4">{fmt(totalBal)}</p>
+          <AmountDisplay amount={totalBal} size="hero" align="left" style={{ color: '#fff', marginBottom: 16 }} />
           <div className="grid grid-cols-3 divide-x divide-white/20">
-            <div className="pr-3">
+            <div className="pr-3 min-w-0">
               <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">Total Saved</p>
-              <p className="text-sm font-extrabold tabular text-green-200">{fmt(totalSaved)}</p>
+              <AmountDisplay amount={totalSaved} size="small" align="left" style={{ color: '#bbf7d0' }} />
             </div>
             <div className="px-3">
               <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">Clients</p>
@@ -1459,7 +1460,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
           <div className="bg-violet-50 dark:bg-violet-900/20 rounded-xl px-4 py-3 mb-3 border border-violet-100 dark:border-violet-800/60">
             <p className="text-xs text-slate-500 dark:text-slate-400">Current balance</p>
-            <p className="text-xl font-black text-violet-700 dark:text-violet-400 tabular">{fmt(selected.current_balance)}</p>
+            <AmountDisplay amount={selected.current_balance} size="stat" align="left" style={{ color: '#6d28d9' }} />
           </div>
 
           {/* Contribution stats in modal */}

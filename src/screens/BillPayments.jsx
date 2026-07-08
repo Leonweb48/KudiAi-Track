@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { jsPDF } from "jspdf";
 import { fmt, today } from "../utils/helpers";
+import { AmountDisplay } from "../components/shared/AmountDisplay";
 import { useT } from "../contexts/LanguageContext";
 import { calcPointsDiscount, calcCashbackDiscount, calcCouponDiscount, calcBillAmounts } from "../utils/billCalc";
 import { saveBeneficiary, getBeneficiaries, benDisplayName, benSubLabel, BEN_CATS } from "../utils/billBeneficiaries";
@@ -612,11 +613,11 @@ function Overview({ bills }) {
       <div className="grid grid-cols-2 divide-x divide-slate-100 dark:divide-slate-700/60">
         <div className="px-5 py-4">
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Today</p>
-          <p className="text-xl font-black text-slate-800 dark:text-white leading-tight mt-0.5">{fmt(todayTotal)}</p>
+          <AmountDisplay amount={todayTotal} size="stat" align="left" style={{ marginTop: 2 }} />
         </div>
         <div className="px-5 py-4">
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Last 7 Days</p>
-          <p className="text-xl font-black text-slate-800 dark:text-white leading-tight mt-0.5">{fmt(weekTotal)}</p>
+          <AmountDisplay amount={weekTotal} size="stat" align="left" style={{ marginTop: 2 }} />
         </div>
       </div>
     </div>
@@ -918,9 +919,10 @@ function ConfirmPaymentSheet({ data, onConfirm, onCancel }) {
           </div>
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider mb-0.5" style={{ color: "#94a3b8" }}>{catLabel}</p>
-            <p className="text-3xl font-black leading-none" style={{ color: isFree ? "#16a34a" : "#0f172a", letterSpacing: "-0.02em" }}>
-              {isFree ? "FREE" : fmt(finalAmt)}
-            </p>
+            {isFree
+              ? <p className="text-3xl font-black leading-none" style={{ color: "#16a34a", letterSpacing: "-0.02em" }}>FREE</p>
+              : <AmountDisplay amount={finalAmt} size="hero" align="left" style={{ letterSpacing: '-0.02em' }} />
+            }
             {hasDiscount && !isFree && (
               <p className="text-xs font-semibold mt-1" style={{ color: "#16a34a" }}>
                 Originally {fmt(baseAmt)} · discounts applied
@@ -969,7 +971,10 @@ function ConfirmPaymentSheet({ data, onConfirm, onCancel }) {
           )}
           <div className="px-4 py-3 flex justify-between items-center" style={{ background: "#f0fdf4" }}>
             <span className="text-[11px] font-black uppercase tracking-wider text-slate-700">Total to Pay</span>
-            <span className="text-lg font-black" style={{ color: "#16a34a" }}>{isFree ? "₦0.00" : fmt(finalAmt)}</span>
+            {isFree
+              ? <span className="text-lg font-black" style={{ color: "#16a34a" }}>₦0.00</span>
+              : <AmountDisplay amount={finalAmt} size="stat" align="right" style={{ color: '#16a34a', minWidth: 0, flex: '0 0 auto', maxWidth: '55%' }} />
+            }
           </div>
         </div>
 
@@ -2775,7 +2780,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         <div className="bg-gradient-to-br from-green-600 to-emerald-700 rounded-2xl px-5 py-4 text-white flex items-center justify-between shadow-md">
           <div>
             <p className="text-[10px] font-bold text-green-100 uppercase tracking-widest">Total Spent</p>
-            <p className="text-2xl font-black mt-0.5">{fmt(bills.filter(b => b.bill_status !== "failed").reduce((s, b) => s + b.amount, 0))}</p>
+            <AmountDisplay amount={bills.filter(b => b.bill_status !== "failed").reduce((s, b) => s + b.amount, 0)} size="hero" align="left" style={{ color: '#fff', marginTop: 2 }} />
           </div>
           <div className="text-right">
             <p className="text-[10px] font-bold text-green-100 uppercase tracking-widest">Transactions</p>

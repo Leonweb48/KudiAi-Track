@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { fmt } from "../utils/helpers";
+import { AmountDisplay } from "../components/shared/AmountDisplay";
 import { canDo, featureLimit, upgradeLabel, planAvailableText } from "../utils/plans";
 import { useT } from "../contexts/LanguageContext";
 import { getLang, speakConfirmation } from "../utils/i18n";
@@ -287,7 +288,7 @@ function ProductDetail({ product, movements, onClose, onEdit, onDelete, isOwner 
         {/* Stock value */}
         <div className="bg-slate-800 dark:bg-slate-700 rounded-2xl p-4">
           <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wide">Stock Value</p>
-          <p className="text-xl font-black text-white mt-0.5">{fmt(product.cost_price * product.quantity)}</p>
+          <AmountDisplay amount={product.cost_price * product.quantity} size="stat" align="left" style={{ color: '#fff', marginTop: 2 }} />
           <p className="text-xs text-slate-400 mt-0.5">Retail value: {fmt(product.selling_price * product.quantity)}</p>
         </div>
 
@@ -373,11 +374,11 @@ function AnalyticsView({ analytics, products, onClose }) {
           </div>
           <div className="bg-green-50 dark:bg-green-900/20 rounded-xl border border-green-100 dark:border-green-800 p-3">
             <p className="text-[9px] text-green-700 dark:text-green-400 uppercase font-bold tracking-wide">Retail Value</p>
-            <p className="text-xl font-black text-green-700 dark:text-green-400 mt-0.5">{fmt(analytics.totalRetail)}</p>
+            <AmountDisplay amount={analytics.totalRetail} size="stat" align="left" style={{ color: '#15803d', marginTop: 2 }} />
           </div>
           <div className="bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-3">
             <p className="text-[9px] text-slate-400 uppercase font-bold tracking-wide">Stock Cost</p>
-            <p className="text-xl font-black text-slate-700 dark:text-slate-200 mt-0.5">{fmt(analytics.totalCost)}</p>
+            <AmountDisplay amount={analytics.totalCost} size="stat" align="left" style={{ color: '#334155', marginTop: 2 }} />
           </div>
           <div className="bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-100 dark:border-amber-800 p-3">
             <p className="text-[9px] text-amber-600 dark:text-amber-400 uppercase font-bold tracking-wide">Low Stock</p>
@@ -695,11 +696,11 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
         <div className="grid grid-cols-3 gap-2 mb-4">
           <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 p-3">
             <p className="text-[9px] text-slate-400 uppercase font-bold tracking-wide">Stock Cost</p>
-            <p className="text-sm font-extrabold text-slate-700 dark:text-slate-200 mt-0.5">{fmt(totalCost)}</p>
+            <AmountDisplay amount={totalCost} size="row" align="left" style={{ color: '#334155', marginTop: 2 }} />
           </div>
           <div className="bg-green-50 dark:bg-green-900/20 rounded-xl border border-green-100 dark:border-green-800 p-3">
             <p className="text-[9px] text-green-700 dark:text-green-400 uppercase font-bold tracking-wide">Retail Value</p>
-            <p className="text-sm font-extrabold text-green-700 dark:text-green-400 mt-0.5">{fmt(totalRetail)}</p>
+            <AmountDisplay amount={totalRetail} size="row" align="left" style={{ color: '#15803d', marginTop: 2 }} />
           </div>
           <div className={`rounded-xl border p-3 ${lowStock.length > 0 ? "bg-amber-50 dark:bg-amber-900/20 border-amber-100 dark:border-amber-800" : "bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700"}`}>
             <p className={`text-[9px] uppercase font-bold tracking-wide ${lowStock.length > 0 ? "text-amber-600 dark:text-amber-400" : "text-slate-400"}`}>Low Stock</p>

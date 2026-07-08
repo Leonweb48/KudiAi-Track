@@ -3,6 +3,7 @@ import { openPaystackPopup } from "../utils/paystackCheckout";
 import { supabase } from "../utils/supabase";
 import { peyflex } from "../utils/peyflex";
 import { fmt } from "../utils/helpers";
+import { AmountDisplay } from "../components/shared/AmountDisplay";
 import AppLogo from "../components/AppLogo";
 import TransactionDetailModal from "../components/shared/TransactionDetailModal";
 import { buildAjoContributionReceipt } from "../utils/receiptConfig";
@@ -95,7 +96,7 @@ function PayContributionModal({ client, onClose, onSuccess }) {
         {/* Amount */}
         <div className="bg-violet-50 dark:bg-violet-900/20 rounded-2xl px-4 py-4 mb-5 text-center">
           <p className="text-[10px] font-bold text-violet-500 dark:text-violet-400 uppercase tracking-wider mb-1">Amount Due</p>
-          <p className="text-3xl font-black text-violet-700 dark:text-violet-300 tabular">₦{fmt(client?.contribution_amount || 0)}</p>
+          <AmountDisplay amount={client?.contribution_amount || 0} size="hero" align="center" style={{ color: '#6d28d9' }} />
           <p className="text-[11px] text-slate-400 mt-1 capitalize">{client?.contribution_frequency} contribution</p>
         </div>
 
@@ -838,19 +839,19 @@ function OverviewTab({ client, contributions, onWithdrawClick, onPayClick, owner
         <div className="absolute -bottom-10 -left-6 w-40 h-40 rounded-full bg-white/5 pointer-events-none" />
         <div className="relative">
           <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-0.5">Current Balance</p>
-          <p className="text-4xl font-black tabular mb-4">{fmt(client.current_balance || 0)}</p>
+          <AmountDisplay amount={client.current_balance || 0} size="hero" align="left" style={{ color: '#fff', marginBottom: 16 }} />
           <div className="grid grid-cols-3 divide-x divide-white/20">
-            <div className="pr-3">
+            <div className="pr-3 min-w-0">
               <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">Total Saved</p>
-              <p className="text-sm font-extrabold tabular text-green-200">{fmt(client.total_saved || 0)}</p>
+              <AmountDisplay amount={client.total_saved || 0} size="small" align="left" style={{ color: '#bbf7d0' }} />
             </div>
-            <div className="px-3">
+            <div className="px-3 min-w-0">
               <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">Withdrawn</p>
-              <p className="text-sm font-extrabold tabular text-red-200">{fmt(client.total_withdrawn || 0)}</p>
+              <AmountDisplay amount={client.total_withdrawn || 0} size="small" align="left" style={{ color: '#fecaca' }} />
             </div>
-            <div className="pl-3">
+            <div className="pl-3 min-w-0">
               <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">This Month</p>
-              <p className="text-sm font-extrabold tabular text-blue-200">{fmt(totalThisMonth)}</p>
+              <AmountDisplay amount={totalThisMonth} size="small" align="left" style={{ color: '#bfdbfe' }} />
             </div>
           </div>
         </div>

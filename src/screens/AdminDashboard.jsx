@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../utils/supabase";
+import { AmountDisplay } from "../components/shared/AmountDisplay";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 const fmt = (n) =>
@@ -30,7 +31,7 @@ function StatCard({ label, value, sub, color = "blue" }) {
   return (
     <div className={`bg-gradient-to-br ${colors[color]} rounded-2xl p-4 text-white shadow-lg`}>
       <p className="text-xs font-medium opacity-80 uppercase tracking-wide">{label}</p>
-      <p className="text-3xl font-bold mt-1">{value}</p>
+      <p className="text-3xl font-bold mt-1 truncate" style={{ minWidth: 0 }}>{value}</p>
       {sub && <p className="text-xs opacity-70 mt-1">{sub}</p>}
     </div>
   );

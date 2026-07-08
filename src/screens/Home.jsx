@@ -98,15 +98,15 @@ function SalesForecastCard({ prediction, t }) {
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-card border border-slate-100 dark:border-slate-700/50">
           <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1">{t("pred.thisWeek")}</p>
-          <p className="text-lg font-extrabold text-slate-800 dark:text-slate-100 tabular leading-tight">{fmt(projectedWeek)}</p>
+          <AmountDisplay amount={projectedWeek} size="stat" align="left" style={{ marginBottom: 2 }} />
           <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{t("pred.projected")}</p>
-          <p className="text-[11px] text-brand-600 dark:text-brand-400 font-semibold mt-1">{fmt(thisWeekActual)} {t("pred.actualSoFar")}</p>
+          <p className="text-[11px] text-brand-600 dark:text-brand-400 font-semibold mt-1 truncate" style={{ minWidth: 0 }}>{fmt(thisWeekActual)} {t("pred.actualSoFar")}</p>
         </div>
         <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-card border border-slate-100 dark:border-slate-700/50">
           <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1">{t("pred.thisMonth")}</p>
-          <p className="text-lg font-extrabold text-slate-800 dark:text-slate-100 tabular leading-tight">{fmt(projectedMonth)}</p>
+          <AmountDisplay amount={projectedMonth} size="stat" align="left" style={{ marginBottom: 2 }} />
           <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{t("pred.projected")}</p>
-          <p className="text-[11px] text-brand-600 dark:text-brand-400 font-semibold mt-1">{fmt(thisMonthActual)} {t("pred.actualSoFar")}</p>
+          <p className="text-[11px] text-brand-600 dark:text-brand-400 font-semibold mt-1 truncate" style={{ minWidth: 0 }}>{fmt(thisMonthActual)} {t("pred.actualSoFar")}</p>
         </div>
       </div>
     </div>
@@ -188,9 +188,10 @@ export default function Home({ store, setTab, onQuickAction, onVoiceOpen, notif 
           {loading ? (
             <div className="h-11 w-40 bg-white/20 rounded-xl animate-pulse mt-2 mb-5" />
           ) : (
-            <p className={`text-[38px] font-black tracking-tight mt-1.5 mb-5 tabular leading-none ${profit < 0 ? "text-red-300" : "text-white"}`}>
-              {balanceHidden ? "₦ ••••••" : `${profit < 0 ? "−" : ""}${fmt(Math.abs(profit))}`}
-            </p>
+            {balanceHidden
+              ? <p className="text-[38px] font-black tracking-tight mt-1.5 mb-5 tabular leading-none text-white">₦ ••••••</p>
+              : <AmountDisplay amount={Math.abs(profit)} size="hero" align="left" style={{ color: profit < 0 ? '#fca5a5' : '#fff', marginTop: 6, marginBottom: 20 }} />
+            }
           )}
 
           {/* Sub-stats row */}

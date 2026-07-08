@@ -1,5 +1,6 @@
 import { useVoiceTx } from "../hooks/useVoiceTx";
 import { fmt, today } from "../utils/helpers";
+import { AmountDisplay } from "./shared/AmountDisplay";
 import Modal from "./shared/Modal";
 
 const MAX_SECS = 60;
@@ -38,9 +39,7 @@ function ParsedCard({ parsed }) {
         <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${isIn ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300" : "bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400"}`}>
           {isIn ? "Cash In" : "Cash Out"}
         </span>
-        <p className={`text-xl font-bold font-num ${isIn ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}>
-          {isIn ? "+" : "−"}{fmt(parsed.amount || 0)}
-        </p>
+        <AmountDisplay amount={parsed.amount || 0} size="stat" align="left" colorBy={isIn ? 'in' : 'out'} />
       </div>
       <p className="font-semibold text-slate-800 dark:text-slate-100 text-sm">
         {parsed.item_name || "—"}

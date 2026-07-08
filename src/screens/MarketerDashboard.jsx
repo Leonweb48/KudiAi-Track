@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../utils/supabase";
 import { fmt } from "../utils/helpers";
+import { AmountDisplay } from "../components/shared/AmountDisplay";
 import { useTheme } from "../hooks/useTheme";
 
 /* ── KudiAI Track logo mark (inline SVG) ────────────── */
@@ -48,7 +49,7 @@ function StatCard({ label, value, color = "text-slate-800 dark:text-white", sub 
   return (
     <div className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-4 border border-slate-100 dark:border-slate-700">
       <p className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-1">{label}</p>
-      <p className={`text-2xl font-black tabular-nums ${color}`}>{value}</p>
+      <p className={`text-2xl font-black tabular-nums truncate ${color}`} style={{ minWidth: 0 }}>{value}</p>
       {sub && <p className="text-[10px] text-slate-400 mt-0.5">{sub}</p>}
     </div>
   );

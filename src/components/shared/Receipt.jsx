@@ -161,7 +161,7 @@ function AmountHero({ label, amount, color, badge, badgeColor }) {
       <p style={{ fontSize: 10, fontWeight: 800, color: "#9ca3af", letterSpacing: 2.5, textTransform: "uppercase", margin: "0 0 10px" }}>
         {label}
       </p>
-      <p style={{ fontSize: 40, fontWeight: 900, color, margin: 0, letterSpacing: -1, lineHeight: 1 }}>{amount}</p>
+      <p style={{ fontSize: 40, fontWeight: 900, color, margin: 0, letterSpacing: -1, lineHeight: 1, wordBreak: 'break-all', maxWidth: '100%', overflow: 'hidden' }}>{amount}</p>
       {badge && (
         <div style={{ display: "inline-flex", alignItems: "center", gap: 7, marginTop: 12, background: `${badgeColor}15`, borderRadius: 99, padding: "5px 16px" }}>
           <div style={{ width: 8, height: 8, borderRadius: "50%", background: badgeColor }} />

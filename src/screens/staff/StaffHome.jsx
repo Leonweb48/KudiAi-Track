@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect } from "react";
 import { fmt, today } from "../../utils/helpers";
+import { AmountDisplay } from "../../components/shared/AmountDisplay";
 import { canDo } from "../../utils/plans";
 import { useT, useLanguage } from "../../contexts/LanguageContext";
 import { supabase } from "../../utils/supabase";
@@ -131,32 +132,30 @@ export default function StaffHome({ staff, store, inventory, plan, onGoTo, onVoi
           <p className="text-[11px] text-white/40 mb-1">{fmtDate(lang)}</p>
           {loading
             ? <div className="h-12 w-44 bg-white/20 rounded-xl animate-pulse mt-2 mb-5" />
-            : <p className={`text-[38px] font-black tracking-tight mt-1 mb-5 tabular ${profit < 0 ? "text-red-300" : "text-white"}`}>
-                {profit < 0 && "−"}{fmt(Math.abs(profit))}
-              </p>
+            : <AmountDisplay amount={Math.abs(profit)} size="hero" align="left" style={{ color: profit < 0 ? '#fca5a5' : '#fff', marginTop: 4, marginBottom: 20 }} />
           }
           <div className="h-px bg-white/10 mb-4" />
           <div className="flex gap-4 flex-wrap">
-            <div>
+            <div className="min-w-0">
               <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-0.5">Cash In</p>
-              <p className="text-base font-bold tabular text-white">{loading ? "—" : fmt(cashIn)}</p>
+              {loading ? <p className="text-base font-bold tabular text-white">—</p> : <AmountDisplay amount={cashIn} size="row" align="left" style={{ color: '#fff', fontWeight: 700 }} />}
             </div>
             <div className="w-px bg-white/15 self-stretch" />
-            <div>
+            <div className="min-w-0">
               <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-0.5">Cash Out</p>
-              <p className="text-base font-bold tabular text-red-300">{loading ? "—" : fmt(cashOut)}</p>
+              {loading ? <p className="text-base font-bold tabular text-red-300">—</p> : <AmountDisplay amount={cashOut} size="row" align="left" style={{ color: '#fca5a5', fontWeight: 700 }} />}
             </div>
             <div className="w-px bg-white/15 self-stretch" />
-            <div>
+            <div className="min-w-0">
               <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-0.5">Txns</p>
               <p className="text-base font-bold tabular text-white">{loading ? "—" : todayTx.length}</p>
             </div>
             {commEarned !== null && commEarned > 0 && (
               <>
                 <div className="w-px bg-white/15 self-stretch" />
-                <div>
+                <div className="min-w-0">
                   <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-0.5">Commission</p>
-                  <p className="text-base font-bold tabular text-white">{fmt(commEarned)}</p>
+                  {loading ? <p className="text-base font-bold tabular text-white">—</p> : <AmountDisplay amount={commEarned} size="row" align="left" style={{ color: '#fff', fontWeight: 700 }} />}
                 </div>
               </>
             )}

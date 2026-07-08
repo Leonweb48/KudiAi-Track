@@ -4,6 +4,7 @@ import { supabase } from "../utils/supabase";
 import BillPayments from "./BillPayments";
 import CashbackCard from "../components/CashbackCard";
 import { fmt } from "../utils/helpers";
+import { AmountDisplay } from "../components/shared/AmountDisplay";
 import AppLogo from "../components/AppLogo";
 import Icon from "../components/Icon";
 import Modal from "../components/shared/Modal";
@@ -421,9 +422,7 @@ function PayContributionModal({ client, onClose, onSuccess }) {
           </div>
 
           <p className="text-[11px] font-bold text-green-500 uppercase tracking-widest mb-1">Transaction Successful</p>
-          <h2 className="text-3xl font-black text-slate-800 dark:text-white mb-1 tabular">
-            ₦{fmt(paidAmt || client?.contribution_amount || 0)}
-          </h2>
+          <AmountDisplay amount={paidAmt || client?.contribution_amount || 0} size="hero" align="center" style={{ marginBottom: 4 }} />
           <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 capitalize">
             {client?.contribution_frequency} contribution · Paid via Paystack
           </p>
@@ -960,7 +959,7 @@ function OverviewTab({ client, contributions, onWithdrawClick, onPayClick, owner
         <div className="absolute -bottom-10 -left-6 w-40 h-40 rounded-full bg-white/5 pointer-events-none" />
         <div className="relative">
           <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-0.5">Current Balance</p>
-          <p className="text-4xl font-black tabular mb-3">{fmt(client.current_balance || 0)}</p>
+          <AmountDisplay amount={client.current_balance || 0} size="hero" align="left" style={{ color: '#fff', marginBottom: 12 }} />
           <div className="flex items-center gap-2 mb-4">
             {streak > 0 && (
               <span className="bg-white/15 backdrop-blur-sm rounded-full px-2.5 py-1 text-[11px] font-bold text-white">
@@ -972,17 +971,17 @@ function OverviewTab({ client, contributions, onWithdrawClick, onPayClick, owner
             </span>
           </div>
           <div className="grid grid-cols-3 divide-x divide-white/20">
-            <div className="pr-3">
+            <div className="pr-3 min-w-0">
               <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">Total Saved</p>
-              <p className="text-sm font-extrabold tabular text-green-200">{fmt(client.total_saved || 0)}</p>
+              <AmountDisplay amount={client.total_saved || 0} size="small" align="left" style={{ color: '#bbf7d0' }} />
             </div>
-            <div className="px-3">
+            <div className="px-3 min-w-0">
               <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">Withdrawn</p>
-              <p className="text-sm font-extrabold tabular text-red-200">{fmt(client.total_withdrawn || 0)}</p>
+              <AmountDisplay amount={client.total_withdrawn || 0} size="small" align="left" style={{ color: '#fecaca' }} />
             </div>
-            <div className="pl-3">
+            <div className="pl-3 min-w-0">
               <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">This Month</p>
-              <p className="text-sm font-extrabold tabular text-blue-200">{fmt(totalThisMonth)}</p>
+              <AmountDisplay amount={totalThisMonth} size="small" align="left" style={{ color: '#bfdbfe' }} />
             </div>
           </div>
         </div>

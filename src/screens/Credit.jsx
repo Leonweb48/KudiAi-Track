@@ -570,7 +570,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
           onClose={() => { setRepaying(null); setRepayAmt(""); setRepayMethod("cash"); setRepayNote(""); }}>
           <div className="bg-red-50 dark:bg-red-900/20 rounded-xl px-4 py-3 mb-4 border border-red-100 dark:border-red-800/60">
             <p className="text-xs text-slate-500 dark:text-slate-400">Outstanding balance</p>
-            <p className="text-xl font-black text-red-500 dark:text-red-400 tabular">{fmt(repaying.outstanding)}</p>
+            <AmountDisplay amount={repaying.outstanding} size="stat" align="left" style={{ color: '#ef4444' }} />
           </div>
           <Field label="Payment Amount (₦)" type="number" inputMode="decimal" value={repayAmt}
             onChange={e => setRepayAmt(e.target.value)} placeholder="Enter amount paid" />

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../utils/supabase";
 
+import { AmountDisplay } from "./shared/AmountDisplay";
 function fmt(n) { return "₦" + Number(n || 0).toLocaleString("en-NG"); }
 function fmtDate(d) { return new Date(d).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" }); }
 
@@ -43,7 +44,7 @@ export default function CashbackCard({ userEmail }) {
               <p className="text-[10px] font-bold text-green-100 uppercase tracking-widest leading-none">Cashback Balance</p>
               {loading
                 ? <div className="h-6 w-24 bg-white/20 rounded animate-pulse mt-1" />
-                : <p className="text-xl font-black leading-tight mt-0.5">{fmt(balance)}</p>
+                : <AmountDisplay amount={balance} size="stat" align="left" style={{ color: '#fff', marginTop: 2 }} />
               }
             </div>
           </div>

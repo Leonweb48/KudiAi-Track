@@ -4,6 +4,7 @@ import { useBranches } from "../hooks/useBranches";
 import { canDo, featureLimit, upgradeLabel, planAvailableText } from "../utils/plans";
 import { supabase } from "../utils/supabase";
 import { fmt } from "../utils/helpers";
+import { AmountDisplay } from "../components/shared/AmountDisplay";
 import { useT } from "../contexts/LanguageContext";
 
 const MEDALS = ["🥇", "🥈", "🥉"];
@@ -126,17 +127,15 @@ function OverviewTab({ transactions, credits }) {
         <div className="absolute -top-8 -right-8 w-28 h-28 rounded-full bg-white/5 pointer-events-none" />
         <div className="relative">
           <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-0.5">{t("branch.todayProfit")}</p>
-          <p className={`text-3xl font-black tabular mb-3 ${profit < 0 ? "text-red-300" : "text-white"}`}>
-            {profit < 0 && "−"}{fmt(Math.abs(profit))}
-          </p>
+          <AmountDisplay amount={Math.abs(profit)} size="hero" align="left" style={{ color: profit < 0 ? '#fca5a5' : '#fff', marginBottom: 12 }} />
           <div className="grid grid-cols-2 divide-x divide-white/20">
-            <div className="pr-3">
+            <div className="pr-3 min-w-0">
               <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider">{t("branch.cashIn")}</p>
-              <p className="text-sm font-extrabold text-green-200">{fmt(cashIn)}</p>
+              <AmountDisplay amount={cashIn} size="small" align="left" style={{ color: '#bbf7d0' }} />
             </div>
-            <div className="pl-3">
+            <div className="pl-3 min-w-0">
               <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider">{t("branch.cashOut")}</p>
-              <p className="text-sm font-extrabold text-red-200">{fmt(cashOut)}</p>
+              <AmountDisplay amount={cashOut} size="small" align="left" style={{ color: '#fecaca' }} />
             </div>
           </div>
         </div>
@@ -145,14 +144,17 @@ function OverviewTab({ transactions, credits }) {
       {/* Month stats */}
       <div className="grid grid-cols-2 gap-3">
         {[
-          { label: t("branch.monthSales"),    value: fmt(monthIn),    color: "text-green-600 dark:text-green-400" },
-          { label: t("branch.monthExpenses"), value: fmt(monthOut),   color: "text-red-500 dark:text-red-400"     },
-          { label: t("branch.openCredits"),   value: openCr.length,   color: "text-amber-600 dark:text-amber-400" },
-          { label: t("branch.outstanding"),   value: fmt(outstanding), color: "text-amber-600 dark:text-amber-400" },
-        ].map(({ label, value, color }) => (
+          { label: t("branch.monthSales"),    amount: monthIn,    color: '#16a34a' },
+          { label: t("branch.monthExpenses"), amount: monthOut,   color: '#ef4444' },
+          { label: t("branch.openCredits"),   count:  openCr.length,   color: "text-amber-600 dark:text-amber-400" },
+          { label: t("branch.outstanding"),   amount: outstanding, color: '#d97706' },
+        ].map(({ label, amount, count, color }) => (
           <div key={label} className="bg-white dark:bg-slate-800 rounded-2xl p-3.5 border border-slate-100 dark:border-slate-700 shadow-sm">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">{label}</p>
-            <p className={`text-base font-extrabold tabular ${color}`}>{value}</p>
+            {amount !== undefined
+              ? <AmountDisplay amount={amount} size="row" align="left" style={{ color }} />
+              : <p className={`text-base font-extrabold tabular ${color}`}>{count}</p>
+            }
           </div>
         ))}
       </div>
@@ -331,11 +333,11 @@ function AjoTab({ asoClients }) {
         <div className="absolute -top-8 -right-8 w-28 h-28 rounded-full bg-white/5 pointer-events-none" />
         <div className="relative">
           <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-0.5">Total Balance</p>
-          <p className="text-3xl font-black tabular mb-3">{fmt(total)}</p>
+          <AmountDisplay amount={total} size="hero" align="left" style={{ color: '#fff', marginBottom: 12 }} />
           <div className="grid grid-cols-3 divide-x divide-white/20">
-            <div className="pr-3">
+            <div className="pr-3 min-w-0">
               <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider">Total Saved</p>
-              <p className="text-sm font-extrabold text-green-200">{fmt(totalSaved)}</p>
+              <AmountDisplay amount={totalSaved} size="small" align="left" style={{ color: '#bbf7d0' }} />
             </div>
             <div className="px-3">
               <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider">Clients</p>
@@ -708,19 +710,19 @@ export default function Branches({ store, onClose, userId, inventory = {}, onRep
           <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full bg-white/5 pointer-events-none" />
           <div className="relative">
             <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-0.5">All Branches · This Month</p>
-            <p className="text-3xl font-black tabular mb-3">{fmt(totalSalesMonth)}</p>
+            <AmountDisplay amount={totalSalesMonth} size="hero" align="left" style={{ color: '#fff', marginBottom: 12 }} />
             <div className="grid grid-cols-3 divide-x divide-white/20">
-              <div className="pr-3">
+              <div className="pr-3 min-w-0">
                 <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider">Active</p>
                 <p className="text-sm font-extrabold">{branches.filter(b => b.is_active !== false).length}</p>
               </div>
-              <div className="px-3">
+              <div className="px-3 min-w-0">
                 <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider">Open Credits</p>
                 <p className="text-sm font-extrabold text-amber-200">{credits.filter(c => c.status !== "paid").length}</p>
               </div>
-              <div className="pl-3">
+              <div className="pl-3 min-w-0">
                 <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider">Ajo Balance</p>
-                <p className="text-sm font-extrabold text-green-200">{fmt(asoClients.reduce((s, c) => s + (c.current_balance || 0), 0))}</p>
+                <AmountDisplay amount={asoClients.reduce((s, c) => s + (c.current_balance || 0), 0)} size="small" align="left" style={{ color: '#bbf7d0' }} />
               </div>
             </div>
           </div>

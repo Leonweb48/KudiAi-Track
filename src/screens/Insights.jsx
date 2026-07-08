@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { filterByPeriod, fmt } from "../utils/helpers";
+import { AmountDisplay } from "../components/shared/AmountDisplay";
 import { canDo, upgradeLabel, planRequiredLabel, getLowestPlanWithFeature } from "../utils/plans";
 import { useT, useLanguage } from "../contexts/LanguageContext";
 import { getSalesPrediction, getRestockData, getSlowMovers } from "../utils/predictions";
@@ -42,19 +43,19 @@ function SalesPredictionSection({ pred, t }) {
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-card border border-slate-100 dark:border-slate-700/50">
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">{t("pred.thisWeek")}</p>
-          <p className="text-xl font-extrabold text-slate-800 dark:text-slate-100 tabular leading-tight">{fmt(pred.projectedWeek)}</p>
+          <AmountDisplay amount={pred.projectedWeek} size="stat" align="left" style={{ marginBottom: 2 }} />
           <p className="text-[11px] text-slate-400 mt-0.5">{t("pred.projected")}</p>
           <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-700/50">
-            <p className="text-[11px] font-semibold text-brand-600 dark:text-brand-400">{fmt(pred.thisWeekActual)}</p>
+            <p className="text-[11px] font-semibold text-brand-600 dark:text-brand-400 truncate" style={{ minWidth: 0 }}>{fmt(pred.thisWeekActual)}</p>
             <p className="text-[10px] text-slate-400">{t("pred.actualSoFar")}</p>
           </div>
         </div>
         <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-card border border-slate-100 dark:border-slate-700/50">
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">{t("pred.thisMonth")}</p>
-          <p className="text-xl font-extrabold text-slate-800 dark:text-slate-100 tabular leading-tight">{fmt(pred.projectedMonth)}</p>
+          <AmountDisplay amount={pred.projectedMonth} size="stat" align="left" style={{ marginBottom: 2 }} />
           <p className="text-[11px] text-slate-400 mt-0.5">{t("pred.projected")}</p>
           <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-700/50">
-            <p className="text-[11px] font-semibold text-brand-600 dark:text-brand-400">{fmt(pred.thisMonthActual)}</p>
+            <p className="text-[11px] font-semibold text-brand-600 dark:text-brand-400 truncate" style={{ minWidth: 0 }}>{fmt(pred.thisMonthActual)}</p>
             <p className="text-[10px] text-slate-400">{t("pred.actualSoFar")}</p>
           </div>
         </div>

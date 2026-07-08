@@ -14,6 +14,7 @@ import AIChatWidget from "../components/AIChatWidget";
 import { buildCoopOrgContext } from "../utils/buildContext";
 import TransactionPinModal from "../components/TransactionPinModal";
 import { createReportPdf, fmtCurrency as pdfFmt, fmtDate as pdfFmtDate } from "../utils/generateReportPdf";
+import { AmountDisplay } from "../components/shared/AmountDisplay";
 
 const coopFn = async (action, body = {}) => {
   const r = await supabase.functions.invoke("coop-portal", { body: { action, ...body } });
@@ -135,28 +136,28 @@ function OverviewTab({ org, wallet, programs, announcements, members = [], loans
         <div className="absolute top-6 right-24 w-14 h-14 rounded-full bg-white/5 pointer-events-none" />
         <div className="relative">
           <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest">Organisation Wallet</p>
-          <p className="text-4xl font-black tracking-tight mt-1.5 mb-5 tabular">{fmt(org.wallet_balance)}</p>
+          <AmountDisplay amount={org.wallet_balance} size="hero" align="left" style={{ color: '#fff', marginTop: 6, marginBottom: 20 }} />
           <div className="flex gap-4 flex-wrap">
-            <div>
+            <div className="min-w-0">
               <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">Total Savings</p>
-              <p className="text-base font-bold tabular">{fmt(org.total_savings)}</p>
+              <AmountDisplay amount={org.total_savings} size="row" align="left" style={{ color: '#fff', fontWeight: 700 }} />
             </div>
             <div className="w-px bg-white/20 self-stretch" />
-            <div>
+            <div className="min-w-0">
               <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">Loans Out</p>
-              <p className="text-base font-bold tabular">{fmt(org.total_loans_out)}</p>
+              <AmountDisplay amount={org.total_loans_out} size="row" align="left" style={{ color: '#fff', fontWeight: 700 }} />
             </div>
             <div className="w-px bg-white/20 self-stretch" />
-            <div>
+            <div className="min-w-0">
               <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">Members</p>
               <p className="text-base font-bold tabular">{org.member_count || 0}</p>
             </div>
             {(org.interest_earned > 0) && (
               <>
                 <div className="w-px bg-white/20 self-stretch" />
-                <div>
+                <div className="min-w-0">
                   <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">Interest Earned</p>
-                  <p className="text-base font-bold tabular text-amber-300">{fmt(org.interest_earned)}</p>
+                  <AmountDisplay amount={org.interest_earned} size="row" align="left" style={{ color: '#fcd34d', fontWeight: 700 }} />
                 </div>
               </>
             )}

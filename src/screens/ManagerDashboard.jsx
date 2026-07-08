@@ -6,6 +6,7 @@ import { useBiometricLock }   from "../hooks/useBiometricLock";
 import { useNotifications }   from "../hooks/useNotifications";
 import NotificationCenter, { NotificationBell } from "../components/NotificationCenter";
 import { fmt, today }         from "../utils/helpers";
+import { AmountDisplay }      from "../components/shared/AmountDisplay";
 import { canDo, normalizeSlug, planAvailableText } from "../utils/plans";
 import AppLogo                from "../components/AppLogo";
 import Icon                   from "../components/Icon";
@@ -177,7 +178,7 @@ function StatCard({ label, value, icon, iconBg, iconColor, sub, onClick, loading
       </div>
       {loading
         ? <div className="h-6 w-20 bg-slate-100 dark:bg-slate-700 rounded-lg animate-pulse" />
-        : <p className="text-lg font-extrabold text-slate-800 dark:text-slate-100 tabular leading-tight">{value}</p>
+        : <p className="text-lg font-extrabold text-slate-800 dark:text-slate-100 tabular leading-tight truncate" style={{ minWidth: 0 }}>{value}</p>
       }
       {sub && !loading && <p className="text-[11px] font-medium text-slate-400 dark:text-slate-500 mt-1">{sub}</p>}
     </button>
@@ -478,17 +479,17 @@ function ManagerHome({ staff, store, inventory, plan, onGoTo, onVoiceOpen, onAdd
           <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest">Today's Profit</p>
           {loading
             ? <div className="h-12 w-44 bg-white/20 rounded-xl animate-pulse mt-2 mb-5" />
-            : <p className={`text-4xl font-black tracking-tight mt-1.5 mb-5 tabular ${profit < 0 ? "text-red-300" : "text-white"}`}>{profit < 0 && "−"}{fmt(Math.abs(profit))}</p>
+            : <AmountDisplay amount={Math.abs(profit)} size="hero" align="left" style={{ color: profit < 0 ? '#fca5a5' : '#fff', marginTop: 6, marginBottom: 20 }} />
           }
           <div className="flex gap-5">
-            <div>
+            <div className="min-w-0 flex-1">
               <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">Cash In</p>
-              <p className="text-base font-bold tabular">{loading ? "—" : fmt(cashIn)}</p>
+              {loading ? <p className="text-base font-bold tabular">—</p> : <AmountDisplay amount={cashIn} size="row" align="left" style={{ color: '#fff', fontWeight: 700 }} />}
             </div>
             <div className="w-px bg-white/20 self-stretch" />
-            <div>
+            <div className="min-w-0 flex-1">
               <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">Cash Out</p>
-              <p className="text-base font-bold tabular">{loading ? "—" : fmt(cashOut)}</p>
+              {loading ? <p className="text-base font-bold tabular">—</p> : <AmountDisplay amount={cashOut} size="row" align="left" style={{ color: '#fff', fontWeight: 700 }} />}
             </div>
             <div className="w-px bg-white/20 self-stretch" />
             <div>

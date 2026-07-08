@@ -6,6 +6,7 @@
 import { useState } from "react";
 import { supabase } from "../../utils/supabase";
 import { STATES, getLGAs, getWards } from "../../utils/nigeriaData";
+import { AmountDisplay } from "./AmountDisplay";
 
 const fmt = (n) => `₦${Number(n || 0).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
 
@@ -223,26 +224,26 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], o
           {isCredit ? (
             <div className="grid grid-cols-3 divide-x divide-slate-100 dark:divide-slate-700 border-t border-slate-100 dark:border-slate-700">
               {[
-                { label: "Total",       value: fmt(record.total_amount), color: "text-slate-700 dark:text-slate-200" },
-                { label: "Paid",        value: fmt(record.amount_paid),  color: "text-green-600 dark:text-green-400" },
-                { label: "Outstanding", value: fmt(record.outstanding),  color: "text-red-500 dark:text-red-400" },
-              ].map(({ label, value, color }) => (
-                <div key={label} className="px-4 py-3 text-center">
+                { label: "Total",       amount: record.total_amount, color: '#334155' },
+                { label: "Paid",        amount: record.amount_paid,  color: '#16a34a' },
+                { label: "Outstanding", amount: record.outstanding,  color: '#ef4444' },
+              ].map(({ label, amount, color }) => (
+                <div key={label} className="px-2 py-3 text-center min-w-0">
                   <p className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold uppercase tracking-wide">{label}</p>
-                  <p className={`text-sm font-extrabold tabular mt-0.5 ${color}`}>{value}</p>
+                  <AmountDisplay amount={amount} size="small" align="center" style={{ color, marginTop: 2 }} />
                 </div>
               ))}
             </div>
           ) : (
             <div className="grid grid-cols-3 divide-x divide-slate-100 dark:divide-slate-700 border-t border-slate-100 dark:border-slate-700">
               {[
-                { label: "Balance",   value: fmt(record.current_balance), color: "text-violet-600 dark:text-violet-400" },
-                { label: "Saved",     value: fmt(record.total_saved),     color: "text-green-600 dark:text-green-400" },
-                { label: "Withdrawn", value: fmt(record.total_withdrawn),  color: "text-slate-600 dark:text-slate-300" },
-              ].map(({ label, value, color }) => (
-                <div key={label} className="px-4 py-3 text-center">
+                { label: "Balance",   amount: record.current_balance, color: '#7c3aed' },
+                { label: "Saved",     amount: record.total_saved,     color: '#16a34a' },
+                { label: "Withdrawn", amount: record.total_withdrawn,  color: '#475569' },
+              ].map(({ label, amount, color }) => (
+                <div key={label} className="px-2 py-3 text-center min-w-0">
                   <p className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold uppercase tracking-wide">{label}</p>
-                  <p className={`text-sm font-extrabold tabular mt-0.5 ${color}`}>{value}</p>
+                  <AmountDisplay amount={amount} size="small" align="center" style={{ color, marginTop: 2 }} />
                 </div>
               ))}
             </div>

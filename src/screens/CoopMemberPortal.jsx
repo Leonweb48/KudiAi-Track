@@ -15,6 +15,7 @@ import { sendEmailTrigger } from "../utils/emailTrigger";
 import AppLogo from "../components/AppLogo";
 import TransactionPinModal from "../components/TransactionPinModal";
 import { createReportPdf, fmtCurrency as pdfFmt, fmtDate as pdfFmtDate } from "../utils/generateReportPdf";
+import { AmountDisplay } from "../components/shared/AmountDisplay";
 
 const coopFn = async (action, body = {}) => {
   const r = await supabase.functions.invoke("coop-portal", { body: { action, ...body } });
@@ -238,7 +239,7 @@ function HomeTab({ member, org, announcements, polls = [], events = [], loans = 
             <span className="flex-shrink-0 text-[10px] font-bold text-white/70 bg-white/10 px-2 py-0.5 rounded-full capitalize">{member.role}</span>
           </div>
           <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest">Savings Balance</p>
-          <p className="text-4xl font-black tracking-tight mt-1.5 mb-5 tabular-nums">{fmt(member.savings_balance)}</p>
+          <AmountDisplay amount={member.savings_balance} size="hero" align="left" style={{ color: '#fff', marginTop: 6, marginBottom: 20 }} />
           <div className="flex gap-4 flex-wrap">
             <div>
               <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">Member Since</p>
@@ -717,11 +718,11 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
     <div className="p-4 pb-28 flex flex-col gap-4">
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-white dark:bg-slate-800 rounded-2xl p-3 border border-slate-100 dark:border-slate-700 text-center">
-          <p className="text-lg font-extrabold text-green-600 tabular">{fmt(member.savings_balance)}</p>
+          <AmountDisplay amount={member.savings_balance} size="stat" align="center" style={{ color: '#16a34a' }} />
           <p className="text-[10px] text-slate-400 mt-0.5">Current Balance</p>
         </div>
         <div className="bg-white dark:bg-slate-800 rounded-2xl p-3 border border-slate-100 dark:border-slate-700 text-center">
-          <p className="text-lg font-extrabold text-green-600 tabular">{fmt(totalContributed)}</p>
+          <AmountDisplay amount={totalContributed} size="stat" align="center" style={{ color: '#16a34a' }} />
           <p className="text-[10px] text-slate-400 mt-0.5">Total Contributions</p>
         </div>
       </div>
@@ -2156,7 +2157,7 @@ export default function CoopMemberPortal({ member: initialMember }) {
                   </svg>
                 </div>
                 <p className="text-xl font-extrabold text-slate-800 dark:text-white mb-1">Payment Confirmed!</p>
-                <p className="text-3xl font-black text-green-600 mt-3 mb-1">{fmt(paymentResult.amount)}</p>
+                <AmountDisplay amount={paymentResult.amount} size="hero" align="center" style={{ color: '#16a34a', marginTop: 12, marginBottom: 4 }} />
                 <p className="text-xs text-slate-400 mb-8">added to your savings balance</p>
                 <button onClick={() => setPaymentResult(null)}
                   className="w-full py-4 bg-green-600 text-white font-bold rounded-2xl text-sm">
