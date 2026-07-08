@@ -1629,6 +1629,20 @@ export default function BillPayments({ store, plan, session = null, staffName = 
   const bundleChargePerSet = BUNDLE_FACE_PER_SET - bundleSubscriberSavings;
 
   const [selectedCat,   setSelectedCat]   = useState(null);
+  const savedScrollRef = useRef(0);
+  useEffect(() => {
+    const el = document.querySelector("main");
+    if (!el) return;
+    if (selectedCat) {
+      savedScrollRef.current = el.scrollTop;
+      el.style.overflow = "hidden";
+    } else {
+      el.style.overflow = "";
+      el.scrollTop = savedScrollRef.current;
+    }
+    return () => { el.style.overflow = ""; };
+  }, [selectedCat]);
+
   const [showLoanModal, setShowLoanModal] = useState(false);
   const [showStatement, setShowStatement] = useState(false);
   const [form,          setForm]          = useState({});
@@ -2645,7 +2659,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     : null;
 
   return (
-    <div className="pb-32 screen-enter">
+    <div className="pb-6 screen-enter">
 
       {/* ── Loan Application Modal ────────────────────────────────────────── */}
       {showLoanModal && (
