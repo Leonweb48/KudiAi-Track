@@ -1,7 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../utils/supabase";
-import { AmountDisplay } from "../components/shared/AmountDisplay";
-
 // ── Helpers ────────────────────────────────────────────────────────────────────
 const fmt = (n) =>
   new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN", maximumFractionDigits: 0 }).format(n || 0);

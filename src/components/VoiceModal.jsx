@@ -1,5 +1,5 @@
 import { useVoiceTx } from "../hooks/useVoiceTx";
-import { fmt, today } from "../utils/helpers";
+import { today } from "../utils/helpers";
 import { AmountDisplay } from "./shared/AmountDisplay";
 import Modal from "./shared/Modal";
 

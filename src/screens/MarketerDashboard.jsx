@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../utils/supabase";
 import { fmt } from "../utils/helpers";
-import { AmountDisplay } from "../components/shared/AmountDisplay";
 import { useTheme } from "../hooks/useTheme";
 
 /* ── KudiAI Track logo mark (inline SVG) ────────────── */

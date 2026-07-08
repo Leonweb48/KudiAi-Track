@@ -187,11 +187,10 @@ export default function Home({ store, setTab, onQuickAction, onVoiceOpen, notif 
           <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest">{t("home.todayProfit")}</p>
           {loading ? (
             <div className="h-11 w-40 bg-white/20 rounded-xl animate-pulse mt-2 mb-5" />
+          ) : balanceHidden ? (
+            <p className="text-[38px] font-black tracking-tight mt-1.5 mb-5 tabular leading-none text-white">₦ ••••••</p>
           ) : (
-            {balanceHidden
-              ? <p className="text-[38px] font-black tracking-tight mt-1.5 mb-5 tabular leading-none text-white">₦ ••••••</p>
-              : <AmountDisplay amount={Math.abs(profit)} size="hero" align="left" style={{ color: profit < 0 ? '#fca5a5' : '#fff', marginTop: 6, marginBottom: 20 }} />
-            }
+            <AmountDisplay amount={Math.abs(profit)} size="hero" align="left" style={{ color: profit < 0 ? '#fca5a5' : '#fff', marginTop: 6, marginBottom: 20 }} />
           )}
 
           {/* Sub-stats row */}
