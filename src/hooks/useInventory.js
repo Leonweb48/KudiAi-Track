@@ -160,11 +160,13 @@ export function useInventory(userId, staffId = null, onNotify = null, branchId =
       // Email only when crossing below threshold (not on every subsequent sale)
       if (product.quantity > product.low_stock_threshold) {
         sendEmailTrigger("low_stock_alert", {
-          owner_id:     userId,
-          product_name: product.product_name,
-          current_qty:  newQty,
-          threshold:    product.low_stock_threshold,
-          category:     product.category || null,
+          owner_id:      userId,
+          staff_id:      staffId || null,
+          product_name:  product.product_name,
+          current_stock: newQty,
+          reorder_level: product.low_stock_threshold,
+          category:      product.category || null,
+          sku:           product.sku || "",
         });
       }
     }

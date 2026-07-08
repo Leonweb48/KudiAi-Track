@@ -762,13 +762,20 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       // Emails resolved server-side from IDs to guarantee fresh delivery
       sendEmailTrigger("ajo_withdrawal_approved", {
         client_id:     req.aso_client_id,
+        client_name:   cl.full_name  || "",
+        client_email:  cl.email      || "",
+        client_phone:  cl.phone      || "",
         owner_id:      req.owner_id,
+        owner_email:   profile?.email || "",
         business_name: profile?.business_name || "",
+        business_phone:profile?.phone || "",
+        group_name:    cl.group_name || req.group_name || "",
         amount:        req.amount,
         fee_type:      req.fee_type,
         fee_amount:    req.fee_amount,
         net_amount:    req.net_amount,
         balance_after: newBalance,
+        approved_by:   profile?.display_name || profile?.business_name || "",
         date:          new Date().toLocaleDateString("en-NG"),
       });
 
@@ -789,11 +796,17 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       const cl = req.aso_clients || {};
       sendEmailTrigger("ajo_withdrawal_rejected", {
         client_id:     req.aso_client_id,
-        owner_id:      req.owner_id,
         client_name:   cl.full_name || "",
+        client_email:  cl.email     || "",
+        client_phone:  cl.phone     || "",
+        owner_id:      req.owner_id,
+        owner_email:   profile?.email || "",
         business_name: profile?.business_name || "",
+        business_phone:profile?.phone || "",
+        group_name:    cl.group_name || req.group_name || "",
         amount:        req.amount || 0,
-        group_name:    req.group_name || "",
+        reason:        req.reason || "",
+        rejected_by:   profile?.display_name || profile?.business_name || "",
         date:          new Date().toLocaleDateString("en-NG"),
       });
       reloadWithdrawalRequests();

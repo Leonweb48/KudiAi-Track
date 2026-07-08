@@ -208,6 +208,34 @@ function businessWelcomeEmailHtml(name, bizName, currentPlan = "kobo") {
   return emailHtml("Welcome to KudiAI Track! 🎉", body, "linear-gradient(135deg,#059669 0%,#10b981 100%)");
 }
 
+// ─── Contact block helpers ────────────────────────────────────────────────────
+
+function personBlock(label, name, email, phone, extra = []) {
+  if (!name && !email && !phone) return "";
+  const rows = [
+    name  ? `<tr><td style="font-size:12px;color:#64748b;padding:2px 0;width:90px;">Name</td><td style="font-size:12px;font-weight:700;color:#0f172a;padding:2px 0;">${str(name)}</td></tr>` : "",
+    phone ? `<tr><td style="font-size:12px;color:#64748b;padding:2px 0;">Phone</td><td style="font-size:12px;color:#374151;padding:2px 0;">${str(phone)}</td></tr>` : "",
+    email ? `<tr><td style="font-size:12px;color:#64748b;padding:2px 0;">Email</td><td style="font-size:12px;color:#4f46e5;padding:2px 0;">${str(email)}</td></tr>` : "",
+    ...extra.map(([k, v]) => v ? `<tr><td style="font-size:12px;color:#64748b;padding:2px 0;">${k}</td><td style="font-size:12px;color:#374151;padding:2px 0;">${str(v)}</td></tr>` : ""),
+  ].filter(Boolean).join("");
+  if (!rows) return "";
+  return `
+    <div style="margin:0 0 14px;">
+      <p style="font-size:10px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:1.5px;margin:0 0 6px;">${label}</p>
+      <div style="background:#f8fafc;border:1px solid #e4e8f0;border-left:3px solid #6366f1;border-radius:0 10px 10px 0;padding:10px 14px;">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">${rows}</table>
+      </div>
+    </div>`;
+}
+
+function detailRows(pairs) {
+  const rows = pairs.filter(([, v]) => v).map(([k, v]) =>
+    `<tr><td style="font-size:12px;color:#64748b;padding:3px 0;width:110px;">${k}</td><td style="font-size:12px;color:#374151;font-weight:600;padding:3px 0;">${str(v)}</td></tr>`
+  ).join("");
+  if (!rows) return "";
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 14px;">${rows}</table>`;
+}
+
 // ─── SMTP helpers ─────────────────────────────────────────────────────────────
 
 async function getSmtpConfig(sb) {
@@ -310,31 +338,27 @@ export default async function handler(req, res) {
     const border  = isIn ? "#bbf7d0" : "#fecaca";
     const label   = isIn ? "Cash In" : "Cash Out";
 
+    const pmLabel = (d.payment_method || "cash").replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
     q(d.user_email, `${label}: ${amt} — ${str(d.business_name) || "KudiAI Track"}`,
       emailHtml(`${label} Recorded`, `
-        <p style="font-size:14px;color:#374151;margin:0 0 20px;">
-          Hi there, a ${label.toLowerCase()} transaction has been recorded on your account.
+        <p style="font-size:14px;color:#374151;margin:0 0 16px;">
+          A ${label.toLowerCase()} transaction has been recorded on <strong>${str(d.business_name) || "your account"}</strong>.
         </p>
-        <div style="background:${bgColor};border:1px solid ${border};border-radius:12px;padding:20px;text-align:center;margin:0 0 16px;">
+        <div style="background:${bgColor};border:1px solid ${border};border-radius:12px;padding:20px;text-align:center;margin:0 0 20px;">
           <p style="margin:0 0 4px;font-size:11px;color:${color};font-weight:700;text-transform:uppercase;letter-spacing:1px;">${label}</p>
           <p style="margin:0;font-size:36px;font-weight:900;color:${color};">${amt}</p>
           <p style="margin:8px 0 0;font-size:12px;color:#6b7280;">${str(d.description) || "Transaction"} · ${str(d.date) || now}</p>
         </div>
-        ${str(d.customer_name) ? `<p style="font-size:13px;color:#374151;margin:0 0 6px;">Customer: <strong>${str(d.customer_name)}</strong></p>` : ""}
-        ${str(d.staff_name)    ? `<p style="font-size:12px;color:#64748b;margin:0;">Recorded by: <strong>${str(d.staff_name)}</strong></p>` : ""}
+        ${detailRows([
+          ["Payment Method", pmLabel],
+          ["Category",       d.category],
+          ["Quantity",       d.quantity],
+          ["Note",          d.note],
+          ["Date",          str(d.date) || now],
+        ])}
+        ${str(d.customer_name) ? personBlock("Customer", d.customer_name, "", "") : ""}
+        ${str(d.staff_name) ? personBlock("Recorded By", d.staff_name, d.staff_email, "", [["Business", d.business_name], ["Biz Phone", d.business_phone]]) : ""}
       `, color));
-
-    if (d.staff_email && d.staff_email !== d.user_email) {
-      q(d.staff_email, `Transaction Confirmed: ${label} ${amt}`,
-        emailHtml(`${label} Confirmed`, `
-          <p style="font-size:14px;color:#374151;margin:0 0 20px;">Hi <strong>${str(d.staff_name) || "Staff"}</strong>, the transaction you recorded has been saved.</p>
-          <div style="background:${bgColor};border:1px solid ${border};border-radius:12px;padding:20px;text-align:center;margin:0 0 16px;">
-            <p style="margin:0 0 4px;font-size:11px;color:${color};font-weight:700;text-transform:uppercase;letter-spacing:1px;">${label}</p>
-            <p style="margin:0;font-size:32px;font-weight:900;color:${color};">${amt}</p>
-            <p style="margin:8px 0 0;font-size:12px;color:#6b7280;">${str(d.description) || "Transaction"} · ${str(d.date) || now}</p>
-          </div>
-        `, color));
-    }
   }
 
   // ── Transaction failed / cancelled ──────────────────────────────────────────
@@ -356,24 +380,33 @@ export default async function handler(req, res) {
     const amt = fmt(d.total_amount);
     q(d.owner_email || d.user_email, `New Credit Record — ${str(d.customer_name)} · ${amt}`,
       emailHtml("New Credit Added", `
-        <p style="font-size:14px;color:#374151;margin:0 0 20px;">A credit record has been created${str(d.staff_name) ? ` by <strong>${str(d.staff_name)}</strong>` : ""} on your account.</p>
-        <div style="background:#fff1f2;border:1px solid #fecdd3;border-radius:12px;padding:20px;text-align:center;margin:0 0 16px;">
-          <p style="margin:0 0 4px;font-size:11px;color:#9f1239;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Credit Amount</p>
+        <p style="font-size:14px;color:#374151;margin:0 0 16px;">A new credit record has been created on <strong>${str(d.business_name) || "your account"}</strong>.</p>
+        <div style="background:#fff1f2;border:1px solid #fecdd3;border-radius:12px;padding:20px;text-align:center;margin:0 0 20px;">
+          <p style="margin:0 0 4px;font-size:11px;color:#9f1239;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Amount Owed</p>
           <p style="margin:0;font-size:32px;font-weight:900;color:#9f1239;">${amt}</p>
-          <p style="margin:8px 0 0;font-size:12px;color:#6b7280;">Customer: <strong>${str(d.customer_name)}</strong></p>
+          ${d.due_date ? `<p style="margin:8px 0 0;font-size:12px;color:#6b7280;">Due Date: <strong>${str(d.due_date)}</strong></p>` : ""}
         </div>
-        ${d.due_date ? `<p style="font-size:13px;color:#374151;margin:0;">Repayment Due: <strong>${str(d.due_date)}</strong></p>` : ""}
+        ${personBlock("Customer / Debtor", d.customer_name, d.customer_email, d.customer_phone, [
+          ["Address", d.customer_address],
+          ["NIN",     d.nin],
+          ["Next of Kin", d.next_of_kin],
+          ["NOK Phone",   d.next_of_kin_phone],
+        ])}
+        ${d.notes ? `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;margin:0 0 14px;font-size:12px;color:#78350f;"><strong>Notes:</strong> ${str(d.notes)}</div>` : ""}
+        ${personBlock("Recorded By", d.staff_name, "", "", [["Business", d.business_name], ["Biz Phone", d.business_phone]])}
       `, "linear-gradient(135deg,#dc2626 0%,#f87171 100%)"));
 
     if (d.customer_email) {
       q(d.customer_email, `Credit Notice — ${amt} recorded under your name`,
         emailHtml("Credit Recorded For You", `
-          <p style="font-size:14px;color:#374151;margin:0 0 20px;">Hi <strong>${str(d.customer_name)}</strong>, a credit record of <strong>${amt}</strong> has been created for you by <strong>${str(d.business_name) || "your creditor"}</strong>. Please ensure timely repayment.</p>
+          <p style="font-size:14px;color:#374151;margin:0 0 16px;">Hi <strong>${str(d.customer_name)}</strong>, a credit record of <strong>${amt}</strong> has been created for you by <strong>${str(d.business_name) || "your creditor"}</strong>. Please ensure timely repayment.</p>
           <div style="background:#fff1f2;border:1px solid #fecdd3;border-radius:12px;padding:20px;text-align:center;margin:0 0 16px;">
             <p style="margin:0 0 4px;font-size:11px;color:#9f1239;font-weight:700;text-transform:uppercase;">Amount Owed</p>
             <p style="margin:0;font-size:32px;font-weight:900;color:#9f1239;">${amt}</p>
           </div>
-          ${d.due_date ? `<p style="font-size:13px;color:#374151;margin:0;">Due: <strong>${str(d.due_date)}</strong></p>` : ""}
+          ${detailRows([["Due Date", d.due_date]])}
+          ${personBlock("Creditor Business", d.business_name, "", d.business_phone)}
+          ${d.notes ? `<p style="font-size:12px;color:#374151;margin:0;">Note: ${str(d.notes)}</p>` : ""}
         `, "linear-gradient(135deg,#dc2626 0%,#f87171 100%)"));
     }
   }
@@ -384,29 +417,62 @@ export default async function handler(req, res) {
     const amt    = fmt(d.amount_paid || d.amount);
     const label  = isFull ? "Credit Fully Paid!" : "Credit Repayment Received";
     const color  = isFull ? "#059669" : "#0891b2";
+    const pmLabel = (d.payment_method || "cash").replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
     q(d.owner_email || d.user_email, `${label} — ${str(d.customer_name)}`,
       emailHtml(label, `
-        <p style="font-size:14px;color:#374151;margin:0 0 20px;"><strong>${str(d.customer_name)}</strong> made a repayment of <strong>${amt}</strong>.</p>
-        ${isFull ? `<p style="font-size:14px;color:#059669;font-weight:700;margin:0 0 16px;">✓ The full credit has been settled.</p>` : `<p style="font-size:13px;color:#374151;margin:0;">Balance remaining: <strong>${fmt(d.remaining_balance)}</strong></p>`}
+        <p style="font-size:14px;color:#374151;margin:0 0 16px;"><strong>${str(d.customer_name)}</strong> made a repayment on <strong>${str(d.business_name) || "your account"}</strong>.</p>
+        <div style="background:${isFull ? "#f0fdf4" : "#eff6ff"};border:1px solid ${isFull ? "#bbf7d0" : "#bfdbfe"};border-radius:12px;padding:20px;text-align:center;margin:0 0 20px;">
+          <p style="margin:0 0 4px;font-size:11px;color:${color};font-weight:700;text-transform:uppercase;letter-spacing:1px;">Amount Paid</p>
+          <p style="margin:0;font-size:32px;font-weight:900;color:${color};">${amt}</p>
+        </div>
+        ${detailRows([
+          ["Payment Method", pmLabel],
+          ["Total Debt",     fmt(d.total_amount)],
+          ["Balance Left",   isFull ? "₦0 — Fully Settled ✓" : fmt(d.outstanding)],
+          ["Note",           d.notes],
+          ["Date",           now],
+        ])}
+        ${isFull ? `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 14px;margin:0 0 14px;font-size:13px;color:#15803d;font-weight:700;">✓ Credit fully settled. No balance remaining.</div>` : ""}
+        ${personBlock("Customer", d.customer_name, d.customer_email, d.customer_phone)}
+        ${personBlock("Recorded By", d.staff_name, "", "", [["Business", d.business_name], ["Biz Phone", d.business_phone]])}
       `, color));
   }
 
   // ── Ajo contribution ────────────────────────────────────────────────────────
   else if (event === "ajo_contribution") {
     const amt = fmt(d.amount);
-    q(d.client_email, `Contribution Confirmed — ${amt}`,
-      emailHtml("Contribution Recorded", `
-        <p style="font-size:14px;color:#374151;margin:0 0 20px;">Hi <strong>${str(d.client_name)}</strong>, your contribution has been recorded.</p>
-        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:20px;text-align:center;margin:0 0 16px;">
-          <p style="margin:0 0 4px;font-size:11px;color:#15803d;font-weight:700;text-transform:uppercase;">Amount Contributed</p>
-          <p style="margin:0;font-size:32px;font-weight:900;color:#15803d;">${amt}</p>
-          <p style="margin:8px 0 0;font-size:12px;color:#6b7280;">${str(d.date) || now}</p>
-        </div>
-      `, "#059669"));
-    q(d.owner_email || d.user_email, `Ajo Contribution: ${amt} — ${str(d.client_name)}`,
+    if (d.client_email) {
+      q(d.client_email, `Contribution Confirmed — ${amt}`,
+        emailHtml("Contribution Recorded", `
+          <p style="font-size:14px;color:#374151;margin:0 0 16px;">Hi <strong>${str(d.client_name)}</strong>, your contribution to <strong>${str(d.group_name) || "your savings group"}</strong> has been recorded.</p>
+          <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:20px;text-align:center;margin:0 0 20px;">
+            <p style="margin:0 0 4px;font-size:11px;color:#15803d;font-weight:700;text-transform:uppercase;">Amount Contributed</p>
+            <p style="margin:0;font-size:32px;font-weight:900;color:#15803d;">${amt}</p>
+            ${d.reg_fee > 0 ? `<p style="margin:6px 0 0;font-size:11px;color:#6b7280;">Registration fee: ${fmt(d.reg_fee)}</p>` : ""}
+          </div>
+          ${detailRows([
+            ["Group",         d.group_name],
+            ["Balance",       fmt(d.balance)],
+            ["Date",          str(d.date) || now],
+          ])}
+          ${personBlock("Savings Group Operator", d.business_name, "", d.business_phone)}
+          ${str(d.staff_name) ? `<p style="font-size:12px;color:#64748b;margin:0;">Recorded by: <strong>${str(d.staff_name)}</strong></p>` : ""}
+        `, "#059669"));
+    }
+    q(d.user_email, `Ajo Contribution: ${amt} — ${str(d.client_name)}`,
       emailHtml("Contribution Received", `
-        <p style="font-size:14px;color:#374151;margin:0 0 20px;"><strong>${str(d.client_name)}</strong> made a contribution of <strong>${amt}</strong>.</p>
-        <p style="font-size:13px;color:#374151;margin:0;">Savings Group: <strong>${str(d.group_name)}</strong></p>
+        <p style="font-size:14px;color:#374151;margin:0 0 16px;">A contribution of <strong>${amt}</strong> has been received on <strong>${str(d.business_name) || "your account"}</strong>.</p>
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:20px;text-align:center;margin:0 0 20px;">
+          <p style="margin:0;font-size:32px;font-weight:900;color:#15803d;">${amt}</p>
+          ${d.reg_fee > 0 ? `<p style="margin:6px 0 0;font-size:11px;color:#6b7280;">Reg fee deducted: ${fmt(d.reg_fee)}</p>` : ""}
+        </div>
+        ${detailRows([
+          ["Group",         d.group_name],
+          ["Client Balance",fmt(d.balance)],
+          ["Date",          str(d.date) || now],
+        ])}
+        ${personBlock("Member", d.client_name, d.client_email, d.client_phone)}
+        ${personBlock("Recorded By", d.staff_name, "", "", [["Business", d.business_name]])}
       `, "#059669"));
   }
 
@@ -425,60 +491,139 @@ export default async function handler(req, res) {
 
   // ── Ajo withdrawal ──────────────────────────────────────────────────────────
   else if (event === "ajo_withdrawal" || event === "ajo_withdrawal_approved") {
-    const amt   = fmt(d.amount);
-    const color = "#7c3aed";
-    q(d.client_email, `Withdrawal ${event === "ajo_withdrawal_approved" ? "Approved" : "Processed"} — ${amt}`,
-      emailHtml(`Withdrawal ${event === "ajo_withdrawal_approved" ? "Approved" : "Processed"}`, `
-        <p style="font-size:14px;color:#374151;margin:0 0 20px;">Hi <strong>${str(d.client_name)}</strong>, your withdrawal of <strong>${amt}</strong> has been ${event === "ajo_withdrawal_approved" ? "approved" : "processed"}.</p>
-        <div style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:12px;padding:20px;text-align:center;margin:0 0 16px;">
-          <p style="margin:0 0 4px;font-size:11px;color:#7c3aed;font-weight:700;text-transform:uppercase;">Amount</p>
-          <p style="margin:0;font-size:32px;font-weight:900;color:#7c3aed;">${amt}</p>
-          <p style="margin:8px 0 0;font-size:12px;color:#6b7280;">${now}</p>
+    const isApproved = event === "ajo_withdrawal_approved";
+    const netAmt  = fmt(d.net_amount || d.amount);
+    const grossAmt = d.gross_amount ? fmt(d.gross_amount) : null;
+    const feeAmt   = d.fee_amount   ? fmt(d.fee_amount)   : null;
+    const color    = "#7c3aed";
+    const clientName = str(d.client_name);
+    const actionLabel = isApproved ? "Approved" : "Processed";
+
+    if (d.client_email) {
+      q(d.client_email, `Withdrawal ${actionLabel} — ${netAmt}`,
+        emailHtml(`Withdrawal ${actionLabel}`, `
+          <p style="font-size:14px;color:#374151;margin:0 0 16px;">Hi <strong>${clientName}</strong>, your withdrawal from <strong>${str(d.group_name) || "your savings group"}</strong> has been ${actionLabel.toLowerCase()}.</p>
+          <div style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:12px;padding:20px;text-align:center;margin:0 0 20px;">
+            <p style="margin:0 0 4px;font-size:11px;color:#7c3aed;font-weight:700;text-transform:uppercase;">Net Amount</p>
+            <p style="margin:0;font-size:32px;font-weight:900;color:#7c3aed;">${netAmt}</p>
+          </div>
+          ${detailRows([
+            ["Gross Amount",    grossAmt],
+            ["Fee Deducted",    feeAmt],
+            ["Fee Type",        d.fee_type],
+            ["Balance After",   d.balance_after !== undefined ? fmt(d.balance_after) : ""],
+            ["Group",           d.group_name],
+            ["Date",            str(d.date) || now],
+          ])}
+          ${isApproved && str(d.approved_by) ? personBlock("Approved By", d.approved_by, d.owner_email, d.business_phone, [["Business", d.business_name]]) : personBlock("Business", d.business_name, "", d.business_phone)}
+        `, color));
+    }
+    q(d.owner_email || d.user_email, `Ajo Withdrawal ${actionLabel} — ${clientName} · ${netAmt}`,
+      emailHtml(`Withdrawal ${actionLabel}`, `
+        <p style="font-size:14px;color:#374151;margin:0 0 16px;">A withdrawal has been ${actionLabel.toLowerCase()} on <strong>${str(d.business_name) || "your account"}</strong>.</p>
+        <div style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:12px;padding:20px;text-align:center;margin:0 0 20px;">
+          <p style="margin:0;font-size:32px;font-weight:900;color:#7c3aed;">${netAmt}</p>
+          ${grossAmt ? `<p style="margin:6px 0 0;font-size:11px;color:#6b7280;">Gross: ${grossAmt}${feeAmt ? ` · Fee: ${feeAmt}` : ""}</p>` : ""}
         </div>
-      `, color));
-    q(d.owner_email || d.user_email, `Ajo Withdrawal — ${str(d.client_name)} · ${amt}`,
-      emailHtml("Withdrawal Processed", `
-        <p style="font-size:14px;color:#374151;margin:0 0 20px;">A withdrawal of <strong>${amt}</strong> was processed for <strong>${str(d.client_name)}</strong>.</p>
+        ${detailRows([
+          ["Balance After",   d.balance_after !== undefined ? fmt(d.balance_after) : ""],
+          ["Group",           d.group_name],
+          ["Date",            str(d.date) || now],
+        ])}
+        ${personBlock("Member", d.client_name, d.client_email, d.client_phone)}
+        ${isApproved && str(d.approved_by) ? personBlock("Approved By", d.approved_by, "", "") : personBlock("Processed By", d.staff_name, "", "", [["Business", d.business_name]])}
       `, color));
   }
 
   // ── Ajo withdrawal rejected ─────────────────────────────────────────────────
   else if (event === "ajo_withdrawal_rejected") {
-    q(d.client_email, `Withdrawal Request Declined — ${fmt(d.amount)}`,
-      emailHtml("Withdrawal Declined", `
-        <p style="font-size:14px;color:#374151;margin:0 0 20px;">Hi <strong>${str(d.client_name)}</strong>, your withdrawal request of <strong>${fmt(d.amount)}</strong> could not be approved at this time.</p>
-        ${str(d.reason) ? `<p style="font-size:13px;color:#374151;margin:0;">Reason: ${str(d.reason)}</p>` : ""}
-        <p style="font-size:13px;color:#374151;margin:12px 0 0;">Please contact your savings group administrator for more information.</p>
+    const rejAmt = fmt(d.amount);
+    if (d.client_email) {
+      q(d.client_email, `Withdrawal Request Declined — ${rejAmt}`,
+        emailHtml("Withdrawal Declined", `
+          <p style="font-size:14px;color:#374151;margin:0 0 16px;">Hi <strong>${str(d.client_name)}</strong>, your withdrawal request of <strong>${rejAmt}</strong> from <strong>${str(d.group_name) || "your savings group"}</strong> could not be approved at this time.</p>
+          ${str(d.reason) ? `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 14px;margin:0 0 14px;font-size:12px;color:#7f1d1d;"><strong>Reason:</strong> ${str(d.reason)}</div>` : ""}
+          ${detailRows([["Date", str(d.date) || now]])}
+          ${personBlock("Contact to Resolve", d.business_name, d.owner_email, d.business_phone)}
+        `, "#dc2626"));
+    }
+    q(d.owner_email || d.user_email, `Withdrawal Rejected — ${str(d.client_name)} · ${rejAmt}`,
+      emailHtml("Withdrawal Rejected", `
+        <p style="font-size:14px;color:#374151;margin:0 0 16px;">A withdrawal request has been rejected on <strong>${str(d.business_name) || "your account"}</strong>.</p>
+        ${detailRows([
+          ["Amount",    rejAmt],
+          ["Group",     d.group_name],
+          ["Reason",    d.reason],
+          ["Date",      str(d.date) || now],
+        ])}
+        ${personBlock("Member", d.client_name, d.client_email, d.client_phone)}
+        ${str(d.rejected_by) ? personBlock("Rejected By", d.rejected_by, "", "") : ""}
       `, "#dc2626"));
   }
 
   // ── Stock entry ─────────────────────────────────────────────────────────────
   else if (event === "stock_entry") {
-    q(d.owner_email || d.user_email, `Stock Entry: ${str(d.product_name)} — ${str(d.quantity)} units`,
-      emailHtml("Stock Entry Recorded", `
-        <p style="font-size:14px;color:#374151;margin:0 0 20px;">A stock entry has been recorded.</p>
-        <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:12px;padding:20px;margin:0 0 16px;">
-          <p style="margin:0 0 4px;font-size:11px;color:#0369a1;font-weight:700;text-transform:uppercase;">Product</p>
-          <p style="margin:0 0 12px;font-size:20px;font-weight:800;color:#0c4a6e;">${str(d.product_name)}</p>
-          <p style="margin:0 0 4px;font-size:11px;color:#0369a1;font-weight:700;text-transform:uppercase;">Quantity Added</p>
-          <p style="margin:0;font-size:28px;font-weight:900;color:#0369a1;">${str(d.quantity)} units</p>
-        </div>
-        ${str(d.staff_name) ? `<p style="font-size:12px;color:#64748b;margin:0;">Entered by: <strong>${str(d.staff_name)}</strong></p>` : ""}
-      `, "linear-gradient(135deg,#0891b2 0%,#0e7490 100%)"));
+    // Resolve owner/staff info from DB if not provided in payload
+    let resolvedOwnerEmail = str(d.owner_email || d.user_email);
+    let resolvedBusinessName = str(d.business_name);
+    let resolvedStaffName = str(d.staff_name);
+    if (d.owner_id && (!resolvedOwnerEmail || !resolvedBusinessName)) {
+      const { data: op } = await sb.from("profiles").select("email, business_name, phone").eq("id", d.owner_id).maybeSingle();
+      if (op) { resolvedOwnerEmail = resolvedOwnerEmail || op.email || ""; resolvedBusinessName = resolvedBusinessName || op.business_name || ""; }
+    }
+    if (d.staff_id && !resolvedStaffName) {
+      const { data: sp } = await sb.from("staff").select("name, email").eq("id", d.staff_id).maybeSingle();
+      if (sp) resolvedStaffName = sp.name || "";
+    }
+    const entryTypeLabel = (d.entry_type || "restock") === "new_product" ? "New Product Added" : "Stock Restocked";
+    if (resolvedOwnerEmail) {
+      q(resolvedOwnerEmail, `Stock Entry: ${str(d.product_name)} — ${str(d.quantity)} units`,
+        emailHtml("Stock Entry Recorded", `
+          <p style="font-size:14px;color:#374151;margin:0 0 16px;">A stock entry has been recorded on <strong>${resolvedBusinessName || "your account"}</strong>.</p>
+          <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:12px;padding:20px;text-align:center;margin:0 0 20px;">
+            <p style="margin:0 0 4px;font-size:11px;color:#0369a1;font-weight:700;text-transform:uppercase;">${entryTypeLabel}</p>
+            <p style="margin:0 0 12px;font-size:20px;font-weight:800;color:#0c4a6e;">${str(d.product_name)}</p>
+            <p style="margin:0 0 4px;font-size:11px;color:#0369a1;font-weight:700;text-transform:uppercase;">Quantity</p>
+            <p style="margin:0;font-size:28px;font-weight:900;color:#0369a1;">+${str(d.quantity)} units</p>
+          </div>
+          ${detailRows([
+            ["Category",  d.category],
+            ["SKU",       d.sku],
+            ["Date",      now],
+          ])}
+          ${personBlock("Entered By", resolvedStaffName || resolvedBusinessName, "", "", [["Business", resolvedBusinessName]])}
+        `, "linear-gradient(135deg,#0891b2 0%,#0e7490 100%)"));
+    }
   }
 
   // ── Low stock alert ─────────────────────────────────────────────────────────
   else if (event === "low_stock_alert") {
-    q(d.owner_email || d.user_email, `⚠️ Low Stock Alert — ${str(d.product_name)}`,
-      emailHtml("Low Stock Alert", `
-        <p style="font-size:14px;color:#374151;margin:0 0 20px;"><strong>${str(d.product_name)}</strong> is running low on stock.</p>
-        <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;padding:20px;text-align:center;margin:0 0 16px;">
-          <p style="margin:0 0 4px;font-size:11px;color:#92400e;font-weight:700;text-transform:uppercase;">Current Stock</p>
-          <p style="margin:0;font-size:36px;font-weight:900;color:#92400e;">${str(d.current_stock)}</p>
-          <p style="margin:8px 0 0;font-size:12px;color:#6b7280;">Reorder Level: ${str(d.reorder_level)} units</p>
-        </div>
-        <p style="font-size:13px;color:#374151;margin:0;">Please restock soon to avoid running out of this item.</p>
-      `, "linear-gradient(135deg,#d97706 0%,#f59e0b 100%)"));
+    let resolvedOwnerEmail2 = str(d.owner_email || d.user_email);
+    let resolvedBizName2 = str(d.business_name);
+    if (d.owner_id && (!resolvedOwnerEmail2 || !resolvedBizName2)) {
+      const { data: op2 } = await sb.from("profiles").select("email, business_name").eq("id", d.owner_id).maybeSingle();
+      if (op2) { resolvedOwnerEmail2 = resolvedOwnerEmail2 || op2.email || ""; resolvedBizName2 = resolvedBizName2 || op2.business_name || ""; }
+    }
+    const curStock = d.current_stock !== undefined ? d.current_stock : (d.current_qty !== undefined ? d.current_qty : "?");
+    const reorderLvl = d.reorder_level !== undefined ? d.reorder_level : (d.threshold !== undefined ? d.threshold : "?");
+    if (resolvedOwnerEmail2) {
+      q(resolvedOwnerEmail2, `⚠️ Low Stock Alert — ${str(d.product_name)}`,
+        emailHtml("Low Stock Alert", `
+          <p style="font-size:14px;color:#374151;margin:0 0 16px;"><strong>${str(d.product_name)}</strong> has fallen below the reorder level on <strong>${resolvedBizName2 || "your account"}</strong>.</p>
+          <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;padding:20px;text-align:center;margin:0 0 20px;">
+            <p style="margin:0 0 4px;font-size:11px;color:#92400e;font-weight:700;text-transform:uppercase;">Current Stock</p>
+            <p style="margin:0;font-size:40px;font-weight:900;color:#92400e;">${curStock}</p>
+            <p style="margin:8px 0 0;font-size:13px;color:#78350f;">units remaining · Reorder level: <strong>${reorderLvl}</strong></p>
+          </div>
+          ${detailRows([
+            ["Product",  d.product_name],
+            ["Category", d.category],
+            ["SKU",      d.sku],
+            ["Date",     now],
+          ])}
+          <p style="font-size:13px;color:#92400e;font-weight:700;margin:0;">⚠ Please restock immediately to avoid running out.</p>
+        `, "linear-gradient(135deg,#d97706 0%,#f59e0b 100%)"));
+    }
   }
 
   // ── Org member first login ──────────────────────────────────────────────────
