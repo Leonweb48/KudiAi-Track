@@ -6,6 +6,7 @@ import { Share }                 from "@capacitor/share";
 import { canDo, planAvailableText } from "../utils/plans";
 import { sendEmailTrigger }          from "../utils/emailTrigger";
 import { fmt, today }            from "../utils/helpers";
+import { AmountDisplay }         from "../components/shared/AmountDisplay";
 import { exportInvoicePdf }      from "../utils/generateInvoicePdf";
 import InvoiceBuilder            from "../components/InvoiceBuilder";
 import { useInvoiceSettings }    from "../hooks/useInvoiceSettings";
@@ -133,10 +134,10 @@ function InvoiceCard({ inv, onTap }) {
               <p className="text-[11px] mt-0.5 font-bold text-green-500">Fully paid</p>
             )}
           </div>
-          <div className="text-right shrink-0 ml-2">
-            <p className="font-black text-slate-800 dark:text-white text-base leading-tight">{fmtK(inv.total_kobo)}</p>
+          <div className="min-w-0 ml-2" style={{ maxWidth: '48%' }}>
+            <AmountDisplay amount={inv.total_kobo} fromKobo size="row" align="right" />
             {outstanding > 0 && !["draft", "cancelled"].includes(inv.status) && (
-              <p className="text-[11px] text-slate-400 mt-0.5">{fmtK(outstanding)} left</p>
+              <p className="text-[11px] text-slate-400 mt-0.5 text-right truncate">{fmtK(outstanding)} left</p>
             )}
           </div>
         </div>
@@ -627,12 +628,14 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
     cancelled: invoices.filter(i => i.status === "cancelled").length,
   };
 
-  const SUMMARY_CARDS = [
-    { label: "Outstanding", value: fmtK(outstanding_total),     g1: "#1B2A5E", g2: "#2563eb", textBig: true },
-    { label: "Paid",        value: fmtK(paid_total),            g1: "#14532d", g2: "#16a34a", textBig: true },
-    { label: "Overdue",     value: String(counts.overdue),      g1: "#7f1d1d", g2: "#ef4444", textBig: false },
-    { label: "Sent",        value: String(counts.sent),         g1: "#1e3a8a", g2: "#3b82f6", textBig: false },
-    { label: "Draft",       value: String(counts.draft),        g1: "#334155", g2: "#64748b", textBig: false },
+  const SUMMARY_AMT_CARDS = [
+    { label: "Outstanding", kobo: outstanding_total, g1: "#1B2A5E", g2: "#2563eb" },
+    { label: "Paid",        kobo: paid_total,        g1: "#14532d", g2: "#16a34a" },
+  ];
+  const SUMMARY_CNT_CARDS = [
+    { label: "Overdue", value: String(counts.overdue), g1: "#7f1d1d", g2: "#ef4444" },
+    { label: "Sent",    value: String(counts.sent),    g1: "#1e3a8a", g2: "#3b82f6" },
+    { label: "Draft",   value: String(counts.draft),   g1: "#334155", g2: "#64748b" },
   ];
 
   return (
@@ -640,20 +643,20 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
       {/* 5 Summary cards */}
       {invoices.length > 0 && (
         <div className="mx-4 mt-4 mb-3">
-          {/* Row 1: Outstanding + Paid (wider cards) */}
+          {/* Row 1: Outstanding + Paid (amount cards) */}
           <div className="flex gap-2.5 mb-2.5">
-            {SUMMARY_CARDS.slice(0, 2).map(c => (
-              <div key={c.label} className="flex-1 rounded-2xl px-4 py-3.5 text-white shadow"
+            {SUMMARY_AMT_CARDS.map(c => (
+              <div key={c.label} className="flex-1 min-w-0 rounded-2xl px-4 py-3.5 text-white shadow overflow-hidden"
                 style={{ background: `linear-gradient(135deg,${c.g1},${c.g2})` }}>
                 <p className="text-[10px] font-bold uppercase tracking-widest opacity-70 mb-1">{c.label}</p>
-                <p className="text-lg font-black leading-tight">{c.value}</p>
+                <AmountDisplay amount={c.kobo} fromKobo size="stat" align="left" style={{ color: '#fff' }} />
               </div>
             ))}
           </div>
-          {/* Row 2: Overdue + Sent + Draft */}
+          {/* Row 2: Overdue + Sent + Draft (count cards) */}
           <div className="flex gap-2.5">
-            {SUMMARY_CARDS.slice(2).map(c => (
-              <div key={c.label} className="flex-1 rounded-2xl px-3 py-3 text-white shadow"
+            {SUMMARY_CNT_CARDS.map(c => (
+              <div key={c.label} className="flex-1 min-w-0 rounded-2xl px-3 py-3 text-white shadow overflow-hidden"
                 style={{ background: `linear-gradient(135deg,${c.g1},${c.g2})` }}>
                 <p className="text-[10px] font-bold uppercase tracking-widest opacity-70 mb-1">{c.label}</p>
                 <p className="text-xl font-black leading-tight">{c.value}</p>

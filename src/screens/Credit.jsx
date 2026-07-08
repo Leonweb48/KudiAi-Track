@@ -399,13 +399,13 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                 {/* Stats row */}
                 <div className="flex gap-2 mb-3">
                   {[
-                    { label: "Owed",  value: c.outstanding,  color: "text-red-500 dark:text-red-400"      },
-                    { label: "Paid",  value: c.amount_paid,  color: "text-green-600 dark:text-green-400"  },
-                    { label: "Total", value: c.total_amount, color: "text-slate-700 dark:text-slate-200"  },
-                  ].map(({ label, value, color }) => (
-                    <div key={label} className="flex-1 bg-slate-50 dark:bg-slate-700/60 rounded-xl p-2.5">
+                    { label: "Owed",  amount: c.outstanding,  colorBy: "out" },
+                    { label: "Paid",  amount: c.amount_paid,  colorBy: "in"  },
+                    { label: "Total", amount: c.total_amount, colorBy: null  },
+                  ].map(({ label, amount, colorBy }) => (
+                    <div key={label} className="flex-1 min-w-0 bg-slate-50 dark:bg-slate-700/60 rounded-xl p-2.5 overflow-hidden">
                       <p className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold mb-0.5">{label}</p>
-                      <p className={`text-sm font-extrabold tabular ${color}`}>{fmt(value)}</p>
+                      <AmountDisplay amount={amount} size="small" align="left" colorBy={colorBy} />
                     </div>
                   ))}
                 </div>
@@ -770,18 +770,18 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
               </div>
 
               {/* Credit summary bar */}
-              <div className="px-4 py-3 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-100 dark:border-amber-900/40 flex gap-6">
-                <div>
+              <div className="px-4 py-3 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-100 dark:border-amber-900/40 flex gap-4">
+                <div className="flex-1 min-w-0">
                   <p className="text-[10px] text-slate-400 uppercase tracking-wide font-bold">Total Paid</p>
-                  <p className="text-sm font-black text-green-600">{fmt(historyFor.amount_paid)}</p>
+                  <AmountDisplay amount={historyFor.amount_paid} size="small" align="left" colorBy="in" />
                 </div>
-                <div>
+                <div className="flex-1 min-w-0">
                   <p className="text-[10px] text-slate-400 uppercase tracking-wide font-bold">Outstanding</p>
-                  <p className="text-sm font-black text-red-500">{fmt(historyFor.outstanding)}</p>
+                  <AmountDisplay amount={historyFor.outstanding} size="small" align="left" colorBy="out" />
                 </div>
-                <div>
+                <div className="flex-1 min-w-0">
                   <p className="text-[10px] text-slate-400 uppercase tracking-wide font-bold">Status</p>
-                  <p className="text-sm font-black text-amber-600 capitalize">{(historyFor.status || "active").replace(/_/g, " ")}</p>
+                  <p className="text-sm font-black text-amber-600 capitalize truncate">{(historyFor.status || "active").replace(/_/g, " ")}</p>
                 </div>
               </div>
 
