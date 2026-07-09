@@ -5,9 +5,11 @@ import { Capacitor } from "@capacitor/core";
 const CACHE_KEY = "kt_campaigns_cache";
 const CACHE_TTL = 30 * 1000; // 30 seconds
 
+const API_BASE = Capacitor.isNativePlatform() ? "https://kudiai.app" : "";
+
 function getPlatform() {
   if (!Capacitor.isNativePlatform()) return "web";
-  return Capacitor.getPlatform() === "ios" ? "ios" : "apk";
+  return Capacitor.getPlatform() === "ios" ? "ios" : "android";
 }
 
 async function fetchCampaigns(slots) {
@@ -16,7 +18,7 @@ async function fetchCampaigns(slots) {
 
   const platform = getPlatform();
   const qs       = slots?.length ? `&slots=${slots.join(",")}` : "";
-  const res       = await fetch(`/api/campaigns?platform=${platform}${qs}`, {
+  const res       = await fetch(`${API_BASE}/api/campaigns?platform=${platform}${qs}`, {
     headers: { Authorization: `Bearer ${session.access_token}` },
   });
   if (!res.ok) return null;
@@ -70,7 +72,7 @@ export function useCampaigns(requestedSlots) {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) return;
-      fetch("/api/campaigns", {
+      fetch(`${API_BASE}/api/campaigns`, {
         method:  "POST",
         headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
         body:    JSON.stringify({ campaign_id: campaignId, event_type: eventType, platform: getPlatform() }),
