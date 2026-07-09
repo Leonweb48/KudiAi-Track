@@ -646,7 +646,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
           </span>
         </div>
         <button
-          onClick={e => { e.stopPropagation(); navigate("/profile"); }}
+          onClick={e => { e.stopPropagation(); setShowProfilePreview(true); }}
           className="flex-shrink-0 text-xs font-bold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-900/20 px-3 py-1.5 rounded-xl active:scale-95 transition"
         >
           Edit
