@@ -61,7 +61,6 @@ async function fetchCampaigns(requestedSlots) {
   }
 
   // Filter by schedule and targeting in JS
-  const now = new Date();
   const filtered = (data || []).filter(
     c => isWithinSchedule(c) && matchesTargeting(c.targeting, ctx)
   );
