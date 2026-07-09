@@ -132,7 +132,7 @@ module.exports = async function handler(req, res) {
   let query = sb
     .from("ad_campaigns")
     .select("*")
-    .eq("status", "live")
+    .in("status", ["live", "active"])
     .or(`starts_at.is.null,starts_at.lte.${now}`)
     .or(`ends_at.is.null,ends_at.gte.${now}`)
     .order("priority", { ascending: false });
