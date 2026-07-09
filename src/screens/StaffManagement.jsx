@@ -533,7 +533,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
   if (!canDo(plan, "staffManagement")) {
     return (
       <div className="h-full bg-slate-50 dark:bg-slate-900 flex flex-col">
-        <div className="bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 px-4 pt-12 pb-3 flex items-center gap-3">
+        <div className="bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 px-4 pb-3 flex items-center gap-3" style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
           <button onClick={onBack} className="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-700">
             <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
               <path d="M19 12H5M12 5l-7 7 7 7" />
@@ -563,7 +563,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
     <div className="h-full bg-slate-50 dark:bg-slate-900 flex flex-col">
 
       {/* Header */}
-      <div className="bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 px-4 pt-12 pb-3 flex items-center gap-3">
+      <div className="bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 px-4 pb-3 flex items-center gap-3" style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
         <button onClick={onBack} className="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-700">
           <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
             <path d="M19 12H5M12 5l-7 7 7 7" />
@@ -1107,7 +1107,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
       {/* ── Performance Report Full Page ──────────────────────── */}
       {reportStaff && (
         <div className="fixed inset-0 z-[70] bg-slate-50 dark:bg-slate-900 flex flex-col">
-          <div className="bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 px-4 pt-12 pb-3 flex items-center gap-3">
+          <div className="bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 px-4 pb-3 flex items-center gap-3" style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
             <button onClick={() => { setReportStaff(null); setReportData(null); }}
               className="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-700">
               <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">

@@ -214,7 +214,7 @@ export default function BranchManagerDashboard({ session, staff }) {
           <SyncBar isOnline={store.isOnline} pending={store.pendingSync} isSyncing={store.isSyncing} onSync={store.runSync} />
 
           {/* Header */}
-          <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 py-3 flex items-center gap-2.5">
+          <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 pb-3 flex items-center gap-2.5" style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
             <div className="w-8 h-8 bg-violet-100 dark:bg-violet-900/30 rounded-xl flex items-center justify-center flex-shrink-0">
               <Icon name="home" size={16} className="text-violet-600 dark:text-violet-400" />
             </div>

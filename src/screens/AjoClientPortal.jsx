@@ -1400,7 +1400,7 @@ export default function AjoClientPortal({ session, ajoClient }) {
       <div className="w-full max-w-md relative flex flex-col h-[100dvh] overflow-hidden">
 
         {/* Header */}
-        <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 py-3 flex items-center gap-2">
+        <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 pb-3 flex items-center gap-2" style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
           {/* KudiAI Track logo */}
           <AppLogo className="h-7 w-auto flex-shrink-0" />
           <div className="h-4 w-px bg-slate-200 dark:bg-slate-700 mx-1 flex-shrink-0" />

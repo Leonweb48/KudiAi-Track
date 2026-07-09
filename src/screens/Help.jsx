@@ -390,7 +390,7 @@ function CreateTicket({ userId, profile, session, onBack, onCreated }) {
   return (
     <div className="pb-32 screen-enter">
       {/* Sticky header */}
-      <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700/60 px-4 py-3 flex items-center gap-3">
+      <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700/60 px-4 pb-3 flex items-center gap-3" style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
         <button onClick={onBack} className="text-slate-600 dark:text-slate-300 active:scale-90 transition">
           <ArrowLeft />
         </button>
@@ -605,7 +605,7 @@ export default function Help({ store, session }) {
   return (
     <div className="pb-32 screen-enter">
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700/60 px-4 py-3 flex items-center gap-3">
+      <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700/60 px-4 pb-3 flex items-center gap-3" style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
         <button onClick={() => navigate("/settings")} className="text-slate-600 dark:text-slate-300 active:scale-90 transition">
           <ArrowLeft />
         </button>

@@ -3047,7 +3047,7 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
         <div className="w-full max-w-md flex flex-col h-full relative">
 
           {/* ── Header ── */}
-          <header className="flex-none z-30 h-14 flex items-center justify-between px-4 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shadow-sm">
+          <header className="flex-none z-30 min-h-[56px] flex items-center justify-between px-4 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shadow-sm" style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
             <img src="/logo.png" alt="KudiAi" className="h-8 w-8 object-contain flex-shrink-0" />
             <div className="flex items-baseline gap-0.5 select-none">
               <span className="text-[17px] font-black tracking-tight text-slate-800 dark:text-white leading-none">Kudi</span>
@@ -3253,7 +3253,7 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
 
   // ─── ADMIN / NON-ORG PORTAL LAYOUT (Twitter-style text tabs) ───
   return (
-    <div className="fixed inset-0 z-[65] bg-white dark:bg-[#0f1117] flex justify-center">
+    <div className="fixed inset-0 z-[65] bg-white dark:bg-[#0f1117] flex justify-center" style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}>
       <div className="w-full max-w-md flex flex-col h-full">
 
         {/* ── Twitter-style profile header ── */}

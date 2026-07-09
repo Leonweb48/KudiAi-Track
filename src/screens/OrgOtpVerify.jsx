@@ -115,7 +115,7 @@ export default function OrgOtpVerify({ org }) {
   return (
     <div
       className="fixed inset-0 flex flex-col items-center justify-center p-5"
-      style={{ background: "linear-gradient(135deg, #060a08 0%, #0a110d 50%, #060a08 100%)" }}
+      style={{ background: "linear-gradient(135deg, #060a08 0%, #0a110d 50%, #060a08 100%)", paddingTop: "env(safe-area-inset-top, 0px)" }}
     >
       <div className="w-full" style={{ maxWidth: 360 }}>
 

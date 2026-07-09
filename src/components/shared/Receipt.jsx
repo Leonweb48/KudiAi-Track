@@ -313,7 +313,7 @@ function Overlay({ onClose, pdfName, children }) {
 
   return (
     <div className="fixed inset-0 z-[60] flex flex-col items-center justify-start overflow-y-auto py-6 px-4"
-      style={{ background: "rgba(8,12,30,0.94)", backdropFilter: "blur(12px)", WebkitOverflowScrolling: "touch", overscrollBehavior: "contain", paddingBottom: "calc(1.5rem + env(safe-area-inset-bottom, 0px))" }}>
+      style={{ background: "rgba(8,12,30,0.94)", backdropFilter: "blur(12px)", WebkitOverflowScrolling: "touch", overscrollBehavior: "contain", paddingTop: "max(1.5rem, env(safe-area-inset-top, 1.5rem))", paddingBottom: "calc(1.5rem + env(safe-area-inset-bottom, 0px))" }}>
 
       {/* Top bar */}
       <div className="flex items-center justify-between w-full max-w-[340px] mb-5">
@@ -529,7 +529,7 @@ export function StaffActivityStatement({ store, staffName, businessName, onClose
 
       {/* Selector screen */}
       <div className="fixed inset-0 z-[60] bg-slate-50 dark:bg-slate-900 flex flex-col">
-        <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 px-4 py-3 flex items-center gap-3 flex-shrink-0">
+        <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 px-4 pb-3 flex items-center gap-3 flex-shrink-0" style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
           <button onClick={onClose}
             className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center active:scale-95 transition">
             <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">

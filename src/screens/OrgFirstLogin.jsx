@@ -65,7 +65,7 @@ export default function OrgFirstLogin({ org }) {
     <div className="min-h-screen bg-slate-50 dark:bg-[#060a08] flex flex-col">
 
       {/* Header */}
-      <div className="bg-white dark:bg-[#0b120e] border-b border-slate-100 dark:border-[#162218] px-5 pt-14 pb-6">
+      <div className="bg-white dark:bg-[#0b120e] border-b border-slate-100 dark:border-[#162218] px-5 pb-6" style={{ paddingTop: "max(56px, env(safe-area-inset-top, 56px))" }}>
         <div className="flex justify-center mb-5">
           <div className="bg-white/90 dark:bg-white/10 rounded-2xl p-2 shadow">
             <AppLogo className="h-9 w-auto" />

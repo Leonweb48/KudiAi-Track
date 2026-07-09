@@ -648,7 +648,7 @@ function AjoMemberFirstLogin({ ajoClient }) {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col">
-      <div className="bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 px-5 pt-14 pb-5">
+      <div className="bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 px-5 pb-5" style={{ paddingTop: "max(56px, env(safe-area-inset-top, 56px))" }}>
         <div className="w-12 h-12 bg-violet-600 rounded-2xl flex items-center justify-center mb-4">
           <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6 text-white" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
@@ -1615,7 +1615,7 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
       {/* FAQ inline view */}
       {view === "faq" && (
         <div className="fixed inset-0 z-[60] bg-slate-50 dark:bg-slate-900 flex flex-col">
-          <div className="flex items-center gap-3 px-4 py-4 border-b border-slate-100 dark:border-slate-700/50 bg-white dark:bg-slate-900">
+          <div className="flex items-center gap-3 px-4 pb-4 border-b border-slate-100 dark:border-slate-700/50 bg-white dark:bg-slate-900" style={{ paddingTop: "max(16px, env(safe-area-inset-top, 16px))" }}>
             <button onClick={() => setView("menu")} className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center active:scale-90 transition">
               <Svg d={P.back} size={18} color="#64748b" />
             </button>
@@ -1792,7 +1792,7 @@ export default function AjoMemberPortal({ session, ajoClient }) {
       <div className="w-full max-w-md flex flex-col h-full relative">
 
         {/* Header */}
-        <header className="flex-none z-30 h-14 flex items-center justify-between px-4 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shadow-sm">
+        <header className="flex-none z-30 min-h-[56px] flex items-center justify-between px-4 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shadow-sm" style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
           <AppLogo className="h-8 w-8" />
           <div className="flex items-baseline gap-0.5 select-none">
             <span className="text-[17px] font-black tracking-tight text-slate-800 dark:text-white leading-none">Kudi</span>

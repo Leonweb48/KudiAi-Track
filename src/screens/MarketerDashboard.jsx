@@ -77,7 +77,7 @@ export default function MarketerDashboard({ marketer }) {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
       {/* Brand top bar */}
-      <div className="bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 px-5 pt-12 pb-3 flex items-center justify-between">
+      <div className="bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 px-5 pb-3 flex items-center justify-between" style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
         <div className="flex items-center gap-2.5">
           <KudiLogoIcon size={30} />
           <div>

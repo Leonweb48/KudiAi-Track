@@ -1041,7 +1041,7 @@ function ManagerMe({ staff, session, store, inventory, livePerms, staffId, lock,
       {/* FAQ inline view */}
       {view === "faq" && (
         <div className="fixed inset-0 z-[60] bg-slate-50 dark:bg-slate-900 flex flex-col">
-          <div className="flex items-center gap-3 px-4 py-4 border-b border-slate-100 dark:border-slate-700/50 bg-white dark:bg-slate-900">
+          <div className="flex items-center gap-3 px-4 pb-4 border-b border-slate-100 dark:border-slate-700/50 bg-white dark:bg-slate-900" style={{ paddingTop: "max(16px, env(safe-area-inset-top, 16px))" }}>
             <button onClick={() => setView("menu")} className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center active:scale-90 transition">
               <Svg d={P.back} size={18} color="#64748b" />
             </button>
@@ -1222,7 +1222,7 @@ export default function ManagerDashboard({ session, staff: staffProp }) {
       <div className="w-full max-w-md flex flex-col h-full relative">
 
         {/* Header */}
-        <header className="flex-none z-30 h-14 flex items-center justify-between px-4 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shadow-sm">
+        <header className="flex-none z-30 min-h-[56px] flex items-center justify-between px-4 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shadow-sm" style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
           <AppLogo className="h-8 w-8" />
           <div className="flex items-baseline gap-0.5 select-none">
             <span className="text-[17px] font-black tracking-tight text-slate-800 dark:text-white leading-none">Kudi</span>

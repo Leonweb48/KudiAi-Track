@@ -116,7 +116,7 @@ export default function StaffOtpVerify({ staff }) {
   return (
     <div
       className="fixed inset-0 flex flex-col items-center justify-center p-5"
-      style={{ background: "linear-gradient(135deg, #080a0f 0%, #0d0f1a 50%, #080a0f 100%)" }}
+      style={{ background: "linear-gradient(135deg, #080a0f 0%, #0d0f1a 50%, #080a0f 100%)", paddingTop: "env(safe-area-inset-top, 0px)" }}
     >
       <div className="w-full" style={{ maxWidth: 360 }}>
 

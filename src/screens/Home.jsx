@@ -142,7 +142,7 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
     <div className="px-4 pt-5 pb-32 screen-enter space-y-4">
 
       {/* ── Top bar ──────────────────────────────────────────────── */}
-      <div className="flex items-center -mx-4 px-4 py-3 bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700/60 shadow-sm sticky top-0 z-10 -mt-5 mb-1">
+      <div className="flex items-center -mx-4 px-4 pb-3 bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700/60 shadow-sm sticky top-0 z-10 -mt-5 mb-1" style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
         <AppLogo className="h-8 w-auto flex-shrink-0" />
         <div className="flex-1 flex justify-center items-baseline gap-0.5 select-none">
           <span className="text-[18px] font-black tracking-tight text-slate-800 dark:text-white leading-none">Kudi</span>

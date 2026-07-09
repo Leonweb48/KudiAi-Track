@@ -619,7 +619,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
 
   return (
     <div className="pb-32 screen-enter">
-      <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700/60 px-4 py-3">
+      <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700/60 px-4 pb-3" style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
         <h1 className="text-[22px] font-bold text-slate-900 dark:text-white tracking-tight">{t("settings.title")}</h1>
       </div>
       <div className="px-4">

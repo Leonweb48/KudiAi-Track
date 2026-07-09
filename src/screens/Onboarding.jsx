@@ -364,7 +364,7 @@ export default function Onboarding({ session, onComplete }) {
       <div className="w-full max-w-md flex flex-col min-h-screen">
 
         {/* Header */}
-        <div className="bg-green-600 px-5 pt-10 pb-6 flex flex-col items-center">
+        <div className="bg-green-600 px-5 pb-6 flex flex-col items-center" style={{ paddingTop: "max(40px, env(safe-area-inset-top, 40px))" }}>
           <div className="bg-white rounded-2xl px-4 py-2 shadow-sm mb-2">
             <AppLogo className="h-9 w-auto" />
           </div>

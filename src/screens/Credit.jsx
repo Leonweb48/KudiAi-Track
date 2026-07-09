@@ -746,7 +746,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
             )}
             <div className="bg-white dark:bg-slate-900 flex flex-col h-full max-w-lg w-full mx-auto">
               {/* Header */}
-              <div className="flex items-center justify-between px-4 py-4 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center justify-between px-4 pb-4 border-b border-slate-100 dark:border-slate-800" style={{ paddingTop: "max(16px, env(safe-area-inset-top, 16px))" }}>
                 <div>
                   <h2 className="text-base font-black text-slate-800 dark:text-white">{historyFor.customer_name}</h2>
                   <p className="text-xs text-slate-400 mt-0.5">Payment History · {payments.length} record{payments.length !== 1 ? "s" : ""}</p>

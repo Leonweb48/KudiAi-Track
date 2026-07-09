@@ -99,7 +99,7 @@ export default function MarketerFirstLogin({ marketer }) {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col">
       {/* Header with KudiAI Track branding */}
-      <div className="bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 px-5 pt-14 pb-5">
+      <div className="bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 px-5 pb-5" style={{ paddingTop: "max(56px, env(safe-area-inset-top, 56px))" }}>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <KudiLogoIcon size={40} />
