@@ -73,7 +73,7 @@ export function getRestockData(products, transactions) {
   const fastMoving = [];
 
   products.forEach(p => {
-    const monthlyQty = salesMap[p.name] || 0;
+    const monthlyQty = salesMap[p.product_name || p.name] || 0;
     const threshold  = p.low_stock_threshold || 5;
 
     if (monthlyQty >= 5) {
@@ -124,8 +124,9 @@ export function getSlowMovers(products, transactions) {
   return products
     .filter(p => p.quantity > 0)
     .map(p => {
-      const lastSale     = lastSaleMap[p.name] || null;
-      const soldLast30   = qty30Map[p.name]    || 0;
+      const pName        = p.product_name || p.name;
+      const lastSale     = lastSaleMap[pName] || null;
+      const soldLast30   = qty30Map[pName]    || 0;
       const daysSinceSale = lastSale ? Math.floor((now - lastSale) / MS_DAY) : null;
 
       // Discount: 20% off but not below cost + 10%

@@ -120,7 +120,7 @@ function RestockSection({ data, t }) {
                 <div key={p.id} className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3 border border-orange-100 dark:border-orange-900/40 shadow-card">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate">{p.name}</p>
+                      <p className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate">{p.product_name || p.name}</p>
                       <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
                         {p.quantity} left
                         {p.daysLeft !== null && ` · ~${p.daysLeft} ${t("restock.daysLeft")}`}
@@ -145,7 +145,7 @@ function RestockSection({ data, t }) {
               ) : fastMoving.map(p => (
                 <div key={p.id} className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3 border border-green-100 dark:border-green-900/40 shadow-card flex items-center justify-between">
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate">{p.name}</p>
+                    <p className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate">{p.product_name || p.name}</p>
                     <p className="text-[11px] text-slate-400 mt-0.5">{p.quantity} in stock</p>
                   </div>
                   <div className="flex-shrink-0 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-xl px-2.5 py-1.5 text-right">
@@ -165,7 +165,7 @@ function RestockSection({ data, t }) {
               ) : lowStock.map(p => (
                 <div key={p.id} className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3 border border-red-100 dark:border-red-900/40 shadow-card flex items-center justify-between">
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate">{p.name}</p>
+                    <p className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate">{p.product_name || p.name}</p>
                     <p className="text-[11px] text-slate-400 mt-0.5">Threshold: {p.low_stock_threshold || 5} units</p>
                   </div>
                   <div className="flex-shrink-0 text-right">
@@ -204,7 +204,7 @@ function SlowMoversSection({ items, t }) {
           {items.map(p => (
             <div key={p.id} className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3 border border-slate-100 dark:border-slate-700/50 shadow-card">
               <div className="flex items-start justify-between gap-2 mb-1.5">
-                <p className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate flex-1">{p.name}</p>
+                <p className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate flex-1">{p.product_name || p.name}</p>
                 <span className="flex-shrink-0 text-xs font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 rounded-full">
                   {p.quantity} {t("restock.units")}
                 </span>
@@ -283,7 +283,21 @@ ANALYSIS PERIOD: ${period} | Period Sales: ₦${fmt(totalIn)} | Period Expenses:
 Top items this period: ${topItems.join(", ") || "None recorded"}`;
 
       const text = await askGemini({
-        message: `Carefully analyse ALL my business data for the ${period} period. Reference specific numbers, customer names, product names, and amounts from my actual data. Give me: key insights from the real numbers, any warnings or risks I should act on immediately, growth opportunities specific to my business, and 2–3 clear action items I can do this week. Be direct, practical, and use the actual figures — not generic advice.`,
+        message: `You are KudiAI Business Assistant. Analyse my ${period} business data. You MUST complete ALL four sections below — do not stop or truncate mid-response.
+
+**KEY METRICS**
+2-3 most important numbers from this period with actual figures.
+
+**⚠ ALERTS**
+Any urgent risks or issues (1-2 items, or "None identified" if all is well).
+
+**💡 OPPORTUNITIES**
+1-2 specific growth actions based on my actual data.
+
+**✅ ACTION ITEMS**
+Exactly 2 things I should do this week.
+
+Use real figures from my data. Each point: 1-2 sentences max. Complete every section.`,
         lang,
         context,
         history: [],
@@ -328,7 +342,7 @@ Top items this period: ${topItems.join(", ") || "None recorded"}`;
               <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center">
                 <span className="text-[11px] leading-none">✨</span>
               </div>
-              <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Quick AI Insights</p>
+              <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">KudiAI Business Assistant</p>
             </div>
             <button onClick={() => onAIOpen("")}
               className="text-[11px] font-bold text-brand-600 dark:text-brand-400 flex items-center gap-1">
