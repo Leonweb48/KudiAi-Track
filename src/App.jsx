@@ -488,6 +488,7 @@ export default function App() {
             asoClients={store.asoClients}
             lowStock={inventory.lowStock}
             loading={store.loading}
+            transactions={store.transactions}
           />
 
           {store.dbError && (
