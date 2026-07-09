@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../utils/supabase";
 import { Capacitor } from "@capacitor/core";
+import { isSlotAllowed, isClientPortal, CLIENT_PORTAL_FORBIDDEN_SLOTS } from "../components/slots/SlotRegistry";
 
-const CACHE_KEY = "kt_campaigns_v4"; // v4: always fetches all slots to prevent cache pollution
+const CACHE_KEY = "kt_campaigns_v5"; // v5: portal-aware targeting
 const CACHE_TTL = 60 * 1000;
 
 function getPlatform() {
@@ -17,7 +18,21 @@ function isWithinSchedule(c) {
   return true;
 }
 
-function matchesTargeting(targeting, ctx) {
+function matchesTargeting(c, ctx) {
+  const { targeting, target_portals } = c;
+
+  // Portal targeting: campaign must explicitly include this portal.
+  // Empty target_portals = unconfigured = show to nobody.
+  const portals = target_portals ?? [];
+  if (!portals.includes(ctx.portalType)) return false;
+
+  // Structural slot enforcement: client portals can NEVER receive forbidden slots.
+  if (isClientPortal(ctx.portalType) && CLIENT_PORTAL_FORBIDDEN_SLOTS.has(c.slot)) return false;
+
+  // Slot must be registered for this portal type
+  if (!isSlotAllowed(c.slot, ctx.portalType)) return false;
+
+  // Standard targeting dimensions (plans, roles, platforms)
   if (!targeting || typeof targeting !== "object") return true;
   const { plans, roles, platforms } = targeting;
   if (plans?.length     && !plans.includes(ctx.plan))         return false;
@@ -26,10 +41,7 @@ function matchesTargeting(targeting, ctx) {
   return true;
 }
 
-// Always fetches ALL active campaigns — never filtered by slot at DB level.
-// Filtering by slot at DB level causes the shared cache to only contain a subset
-// of slots, breaking other screens that need different slots from the same cache.
-async function fetchAllCampaigns() {
+async function fetchAllCampaigns(portalType) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
@@ -40,9 +52,10 @@ async function fetchAllCampaigns() {
     .single();
 
   const ctx = {
-    plan:     profile?.plan || profile?.subscription_plan || "starter",
-    role:     profile?.role || "owner",
-    platform: getPlatform(),
+    plan:       profile?.plan || profile?.subscription_plan || "starter",
+    role:       profile?.role || "owner",
+    platform:   getPlatform(),
+    portalType: portalType || "business",
   };
 
   const { data, error } = await supabase
@@ -56,11 +69,9 @@ async function fetchAllCampaigns() {
     return null;
   }
 
-  const filtered = (data || []).filter(
-    c => isWithinSchedule(c) && matchesTargeting(c.targeting, ctx)
-  );
+  const filtered = (data || []).filter(c => isWithinSchedule(c) && matchesTargeting(c, ctx));
 
-  const limits = { home_banner: 5, popup: 1, announcement_bar: 1, feed_card: 1, upsell_inline: 3 };
+  const limits = { home_banner: 5, popup: 1, announcement_bar: 1, feed_card: 1, upsell_inline: 3, offers_section: 5 };
   const slots = {};
   for (const c of filtered) {
     if (!slots[c.slot]) slots[c.slot] = [];
@@ -78,38 +89,35 @@ function pickSlots(allSlots, requestedSlots) {
   return result;
 }
 
-export function useCampaigns(requestedSlots) {
+// portalType: "business" | "staff" | "organisation" | "ajo_client" | "org_member"
+export function useCampaigns(requestedSlots, portalType = "business") {
   const [slotMap,  setSlotMap]  = useState({});
   const [loading,  setLoading]  = useState(true);
-  const cacheRef               = useRef(null); // holds full all-slot data
+  const cacheRef               = useRef(null);
+
+  const cacheKey = `${CACHE_KEY}_${portalType}`;
 
   const load = useCallback(async () => {
-    // In-memory cache hit
     if (cacheRef.current && Date.now() - cacheRef.current.ts < CACHE_TTL) {
       setSlotMap(pickSlots(cacheRef.current.data, requestedSlots));
       setLoading(false);
       return;
     }
-
-    // Show stale localStorage cache immediately while fetching fresh
     try {
-      const raw = localStorage.getItem(CACHE_KEY);
+      const raw = localStorage.getItem(cacheKey);
       if (raw) {
         const stored = JSON.parse(raw);
-        const allSlots = stored.data || {};
-        setSlotMap(pickSlots(allSlots, requestedSlots));
+        setSlotMap(pickSlots(stored.data || {}, requestedSlots));
         setLoading(false);
         cacheRef.current = stored;
       }
     } catch {}
-
-    // Fetch fresh — always ALL slots, store full result in cache
     try {
-      const allSlots = await fetchAllCampaigns();
+      const allSlots = await fetchAllCampaigns(portalType);
       if (allSlots) {
         const entry = { data: allSlots, ts: Date.now() };
         cacheRef.current = entry;
-        try { localStorage.setItem(CACHE_KEY, JSON.stringify(entry)); } catch {}
+        try { localStorage.setItem(cacheKey, JSON.stringify(entry)); } catch {}
         setSlotMap(pickSlots(allSlots, requestedSlots));
       }
     } catch (err) {
@@ -126,10 +134,8 @@ export function useCampaigns(requestedSlots) {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       await supabase.from("ad_campaign_events").insert({
-        campaign_id: campaignId,
-        user_id: user.id,
-        event_type: eventType,
-        platform: getPlatform(),
+        campaign_id: campaignId, user_id: user.id,
+        event_type: eventType, platform: getPlatform(),
       });
     } catch {}
   }, []);

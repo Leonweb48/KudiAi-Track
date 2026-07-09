@@ -14,6 +14,11 @@ import { CoopNotificationBell, useChatUnread, ChatToast } from "../components/sh
 import { sendEmailTrigger } from "../utils/emailTrigger";
 import AppLogo from "../components/AppLogo";
 import TransactionPinModal from "../components/TransactionPinModal";
+import { useCampaigns } from "../hooks/useCampaigns";
+import { usePartnerOffers } from "../hooks/usePartnerOffers";
+import AnnouncementBarSlot from "../components/slots/AnnouncementBarSlot";
+import OffersSection from "../components/slots/OffersSection";
+import PoweredByCardSlot from "../components/slots/PoweredByCardSlot";
 import { createReportPdf, fmtCurrency as pdfFmt, fmtDate as pdfFmtDate } from "../utils/generateReportPdf";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
 
@@ -1753,6 +1758,9 @@ export default function CoopMemberPortal({ member: initialMember }) {
     orgId: org.id,
     isActive: tab === "messages",
   });
+  const { slotMap: camSlots, loading: camLoading, recordEvent: recordCamEvent } = useCampaigns(["announcement_bar"], "org_member");
+  const annBars = camSlots.announcement_bar || [];
+  const { offers: partnerOffers, loading: offersLoading, recordEvent: recordOfferEvent, ctaUrl } = usePartnerOffers("org_member");
 
   // Detect Paystack return for savings payment OR loan repayment
   useEffect(() => {
@@ -1941,8 +1949,22 @@ export default function CoopMemberPortal({ member: initialMember }) {
 
         {/* ── Main Content ── */}
         <main className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+          <AnnouncementBarSlot campaigns={annBars} loading={camLoading} recordEvent={recordCamEvent} />
           {tabContent[tab]}
+          {tab === "home" && (
+            <OffersSection
+              offers={partnerOffers}
+              loading={offersLoading}
+              recordEvent={recordOfferEvent}
+              ctaUrl={ctaUrl}
+              title="Offers for Members"
+              maxShown={1}
+            />
+          )}
         </main>
+
+        {/* Powered by card — always visible above bottom nav */}
+        <PoweredByCardSlot portalType="org_member" businessId={org?.id} />
 
         {/* ── Bottom Navigation — matches org portal ── */}
         <nav className="flex-none z-40 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 shadow-float">

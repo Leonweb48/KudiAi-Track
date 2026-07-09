@@ -4,6 +4,10 @@ import { AmountDisplay } from "../../components/shared/AmountDisplay";
 import { canDo } from "../../utils/plans";
 import { useT, useLanguage } from "../../contexts/LanguageContext";
 import { supabase } from "../../utils/supabase";
+import { useCampaigns } from "../../hooks/useCampaigns";
+import { usePartnerOffers } from "../../hooks/usePartnerOffers";
+import AnnouncementBarSlot from "../../components/slots/AnnouncementBarSlot";
+import OffersSection from "../../components/slots/OffersSection";
 import {
   Svg, P,
   TxRow,
@@ -33,6 +37,9 @@ export default function StaffHome({ staff, store, inventory, plan, onGoTo, onVoi
   const t = useT();
   const { lang } = useLanguage();
   const BILL_SERVICES = useMemo(() => makeBillServices(t), [t]);
+  const { slotMap: camSlots, loading: camLoading, recordEvent: recordCamEvent } = useCampaigns(["announcement_bar","upsell_inline"], "staff");
+  const annBars = camSlots.announcement_bar || [];
+  const { offers: partnerOffers, loading: offersLoading, recordEvent: recordOfferEvent, ctaUrl } = usePartnerOffers("staff");
 
   const { transactions = [], credits = [], asoClients = [], loading } = store;
 
@@ -81,7 +88,9 @@ export default function StaffHome({ staff, store, inventory, plan, onGoTo, onVoi
   ], [BILL_SERVICES, plan, onAddCash, onVoiceOpen, onGoTo]);
 
   return (
-    <div className="overflow-y-auto h-full px-4 pt-5 pb-6 space-y-4 screen-enter">
+    <div className="overflow-y-auto h-full pb-6 space-y-4 screen-enter">
+      <AnnouncementBarSlot campaigns={annBars} loading={camLoading} recordEvent={recordCamEvent} />
+      <div className="px-4 pt-5 space-y-4">
 
       {/* D5: Pending approval alert */}
       {pendingApprovals > 0 && (
@@ -259,6 +268,14 @@ export default function StaffHome({ staff, store, inventory, plan, onGoTo, onVoi
               ))
         }
       </div>
+      </div>
+      <OffersSection
+        offers={partnerOffers}
+        loading={offersLoading}
+        recordEvent={recordOfferEvent}
+        ctaUrl={ctaUrl}
+        title="Offers"
+      />
     </div>
   );
 }

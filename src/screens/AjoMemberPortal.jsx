@@ -10,6 +10,11 @@ import Icon from "../components/Icon";
 import Modal from "../components/shared/Modal";
 import { useBiometricLock } from "../hooks/useBiometricLock";
 import { useNotifications } from "../hooks/useNotifications";
+import { useCampaigns } from "../hooks/useCampaigns";
+import { usePartnerOffers } from "../hooks/usePartnerOffers";
+import AnnouncementBarSlot from "../components/slots/AnnouncementBarSlot";
+import OffersSection from "../components/slots/OffersSection";
+import PoweredByCardSlot from "../components/slots/PoweredByCardSlot";
 import TransactionPinModal from "../components/TransactionPinModal";
 import NotificationCenter, { NotificationBell } from "../components/NotificationCenter";
 import TransactionDetailModal from "../components/shared/TransactionDetailModal";
@@ -1722,6 +1727,9 @@ export default function AjoMemberPortal({ session, ajoClient }) {
 
   const lock  = useBiometricLock(ajoClient?.id);
   const notif = useNotifications(ajoClient?.id);
+  const { slotMap: camSlots, loading: camLoading, recordEvent: recordCamEvent } = useCampaigns(["announcement_bar"], "ajo_client");
+  const annBars = camSlots.announcement_bar || [];
+  const { offers: partnerOffers, loading: offersLoading, recordEvent: recordOfferEvent, ctaUrl } = usePartnerOffers("ajo_client");
 
   const mustChange = session?.user?.user_metadata?.must_change_password === true;
 
@@ -1814,6 +1822,7 @@ export default function AjoMemberPortal({ session, ajoClient }) {
 
         {/* Content */}
         <main className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+          <AnnouncementBarSlot campaigns={annBars} loading={camLoading} recordEvent={recordCamEvent} />
           {tab === "home" && client && (
             <OverviewTab
               client={client}
@@ -1854,7 +1863,21 @@ export default function AjoMemberPortal({ session, ajoClient }) {
             />
           )}
           {!client && tab !== "me" && <SkeletonHome />}
+          {/* Offers section — max 1 per session on client portal */}
+          {tab === "home" && (
+            <OffersSection
+              offers={partnerOffers}
+              loading={offersLoading}
+              recordEvent={recordOfferEvent}
+              ctaUrl={ctaUrl}
+              title="Offers for Members"
+              maxShown={1}
+            />
+          )}
         </main>
+
+        {/* Powered by card — always visible above bottom nav on client portals */}
+        <PoweredByCardSlot portalType="ajo_client" businessId={client?.owner_id} />
 
         {/* Bottom nav */}
         <nav className="flex-none z-40 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 shadow-sm">
