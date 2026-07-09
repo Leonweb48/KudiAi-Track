@@ -71,7 +71,7 @@ function computeCouponDiscount(appliedCoupon, planSlug, billingCycle, chargeAmou
 
 const SUB_PENDING_PREFIX = "sub_pending_";
 
-function PaidButton({ plan, session, disabled, yearly = false, appliedCoupon, onSuccess, onCancel }) {
+function PaidButton({ plan, session, disabled, yearly = false, appliedCoupon, onSuccess, onCancel, buttonLabel }) {
   const chargeAmount = yearly && plan.price_yearly > 0 ? plan.price_yearly : plan.price_monthly;
   const billingCycle = yearly ? "yearly" : "monthly";
   const { applies: couponApplies, discount: discountAmount, final: finalAmount } =
@@ -93,7 +93,6 @@ function PaidButton({ plan, session, disabled, yearly = false, appliedCoupon, on
       ? { couponCode: appliedCoupon.code, originalAmount: chargeAmount, discountAmount, finalAmount }
       : null;
 
-    // 100% coupon — activate directly without Paystack
     if (finalAmount <= 0 && couponApplies && appliedCoupon) {
       setBusy(false);
       onSuccess?.(null, couponMeta);
@@ -107,7 +106,6 @@ function PaidButton({ plan, session, disabled, yearly = false, appliedCoupon, on
 
     try {
       if (isNative) {
-        // Native: Chrome Custom Tabs → HTTPS Vercel callback → deep link back into app
         const baseUrl = supabase.supabaseUrl;
         const anonKey = supabase.supabaseKey;
         const res = await fetch(`${baseUrl}/functions/v1/initialize-payment`, {
@@ -126,9 +124,7 @@ function PaidButton({ plan, session, disabled, yearly = false, appliedCoupon, on
         if (!res.ok || !data.authorization_url) throw new Error(data.error || `Server error ${res.status}`);
         localStorage.setItem("pendingPayment", JSON.stringify({ planId: plan.slug, reference: data.reference || ref, yearly, ...(couponMeta || {}) }));
         await Browser.open({ url: data.authorization_url });
-        // Keep busy=true — spinner stays until the deep-link paymentCallback event fires
       } else {
-        // Web: inline popup — no page redirect, no reload
         const paidRef = await openPaystackInline({
           email:    session.user.email,
           amount:   finalAmount,
@@ -145,9 +141,7 @@ function PaidButton({ plan, session, disabled, yearly = false, appliedCoupon, on
             ],
           },
         });
-        // Popup confirmed — hand off to parent to call saveSub
         onSuccess?.(paidRef, couponMeta);
-        // Keep busy=true — parent's saving overlay takes over from here
       }
     } catch (e) {
       if (e.message === "cancelled") {
@@ -159,6 +153,11 @@ function PaidButton({ plan, session, disabled, yearly = false, appliedCoupon, on
       setBusy(false);
     }
   };
+
+  const defaultLabel = busy ? "Activating…"
+    : finalAmount === 0 && couponApplies
+      ? "Activate Free — Coupon Applied"
+      : `Subscribe — ₦${finalAmount.toLocaleString()}/${billingCycle === "yearly" ? "yr" : "mo"}`;
 
   return (
     <div className="space-y-1.5">
@@ -172,9 +171,7 @@ function PaidButton({ plan, session, disabled, yearly = false, appliedCoupon, on
         </div>
       )}
       <button disabled={disabled || busy} onClick={handleClick} className={cls}>
-        {busy ? "Activating…" : finalAmount === 0 && couponApplies
-          ? "Activate Free — Coupon Applied"
-          : `Subscribe — ₦${finalAmount.toLocaleString()}/${billingCycle === "yearly" ? "yr" : "mo"}`}
+        {buttonLabel && !busy ? buttonLabel : defaultLabel}
       </button>
       {err && <p className="text-[10px] text-red-500 text-center">{err}</p>}
     </div>
@@ -191,16 +188,24 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
     () => JSON.parse(localStorage.getItem("pendingPayment") || "null")
   );
 
+  // Current subscription details
+  const [currentBillingCycle, setCurrentBillingCycle] = useState(null);
+  const [subExpiry,            setSubExpiry]            = useState(null);
+
+  // Highlight a card (scroll-to + pulse ring)
+  const cardRefs        = useRef({});
+  const [highlighted,    setHighlighted]    = useState(null);
+
   // Coupon state
   const [couponCode,    setCouponCode]    = useState("");
   const [appliedCoupon, setAppliedCoupon] = useState(null);
-  const [couponMsg,     setCouponMsg]     = useState(null); // { text, ok }
+  const [couponMsg,     setCouponMsg]     = useState(null);
   const [couponLoading, setCouponLoading] = useState(false);
 
   const saveSubRef      = useRef(null);
   const savingRef       = useRef(false);
   savingRef.current     = saving;
-  const processingRef   = useRef(null); // dedup: tracks ref currently being saved
+  const processingRef   = useRef(null);
 
   useEffect(() => {
     setLoadingPlans(true);
@@ -208,6 +213,29 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
       .then(() => { setPlans(getActivePlans()); })
       .catch(() => {})
       .finally(() => setLoadingPlans(false));
+  }, []);
+
+  // Fetch current subscription billing cycle + expiry
+  useEffect(() => {
+    if (!session?.user?.id || !isUpgrade) return;
+    supabase
+      .from("subscriptions")
+      .select("billing_cycle, expires_at")
+      .eq("user_id", session.user.id)
+      .eq("status", "active")
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) {
+          setCurrentBillingCycle(data.billing_cycle || "monthly");
+          setSubExpiry(data.expires_at || null);
+        }
+      });
+  }, [session?.user?.id, isUpgrade]);
+
+  const scrollToAndHighlight = useCallback((slug) => {
+    setHighlighted(slug);
+    cardRefs.current[slug]?.scrollIntoView({ behavior: "smooth", block: "center" });
+    setTimeout(() => setHighlighted(null), 2200);
   }, []);
 
   const applyCoupon = useCallback(async () => {
@@ -240,7 +268,6 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
   }, [couponCode]);
 
   const saveSub = useCallback(async (planSlug, reference, isYearly = false, couponInfo = null) => {
-    // Dedup guard — prevent double-processing the same payment reference
     const refKey = reference || `free_${planSlug}_${Date.now()}`;
     if (processingRef.current === refKey) return;
     processingRef.current = refKey;
@@ -265,7 +292,6 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
         }
       }
 
-      // Redeem coupon — awaited so we know if it succeeded
       if (!isFree && couponInfo?.couponCode && (couponInfo.discountAmount ?? 0) > 0) {
         try {
           await supabase.rpc("redeem_coupon", {
@@ -315,7 +341,6 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
       const userName = profile?.full_name || session.user.email;
       const bizName  = profile?.business_name || "";
 
-      // Comprehensive welcome email for all new registrations (free and paid)
       sendEmailTrigger("business_welcome", { user_email: session.user.email, user_name: userName, business_name: bizName, current_plan: planSlug });
 
       if (!isFree) {
@@ -348,10 +373,7 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
     const handleDeepLink = () => {
       const pending = JSON.parse(localStorage.getItem("pendingPayment") || "null");
       if (!pending) return;
-      // Do NOT remove pendingPayment here — saveSub removes it only on success.
-      // If saveSub fails (e.g. network drop), pendingPayment stays so the user
-      // can retry via the "Payment completed?" button.
-      setPendingPayment(null); // hide manual button while processing
+      setPendingPayment(null);
       const { planId, reference, yearly: isYearly = false, couponCode: cc, originalAmount, discountAmount, finalAmount } = pending;
       saveSubRef.current(planId, reference, isYearly, cc ? { couponCode: cc, originalAmount, discountAmount, finalAmount } : null);
     };
@@ -373,8 +395,6 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
 
   const handleFree = () => saveSub("kobo", null, false, null);
 
-  // Downgrade to a lower paid plan — no payment needed, just update the subscription row.
-  // The user keeps their current expires_at; they must re-subscribe when it lapses.
   const handleDowngrade = async (targetPlan) => {
     setSaving(true);
     setError("");
@@ -399,7 +419,6 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
     }
   };
 
-  // Detect return from Paystack web redirect
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const subRef = params.get("sub_ref");
@@ -413,7 +432,6 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
     saveSub(planId, subRef, isYearly, cc ? { couponCode: cc, originalAmount, discountAmount, finalAmount } : null);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Detect cancellation via bfcache restore or in-app browser close
   useEffect(() => {
     const showDisrupted = () => {
       const params = new URLSearchParams(window.location.search);
@@ -445,6 +463,11 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
     );
   }
 
+  const savingsPercent = (plan) =>
+    plan.price_yearly > 0
+      ? Math.round((1 - plan.price_yearly / (plan.price_monthly * 12)) * 100)
+      : 0;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 dark:from-slate-900 dark:to-slate-800 px-4 py-10">
       <div className="max-w-4xl mx-auto">
@@ -461,10 +484,10 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
           )}
           <AppLogo className="h-14 w-auto mx-auto mb-4" />
           <h1 className="text-2xl font-bold text-gray-800 dark:text-white">
-            {isUpgrade ? "Upgrade your plan" : "Choose your plan"}
+            {isUpgrade ? "Manage your plan" : "Choose your plan"}
           </h1>
           <p className="text-sm text-gray-500 dark:text-slate-400 mt-1">
-            {isUpgrade ? "Unlock more features for your business." : "Start free. Upgrade anytime. Cancel anytime."}
+            {isUpgrade ? "Change billing cycle, upgrade, or switch plans." : "Start free. Upgrade anytime. Cancel anytime."}
           </p>
 
           {/* Billing toggle */}
@@ -537,8 +560,8 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
           </div>
         )}
 
-        {/* Plan cards */}
-        <div className={`grid grid-cols-1 gap-5 ${plans.length <= 2 ? "md:grid-cols-2 max-w-2xl mx-auto" : plans.length === 3 ? "md:grid-cols-3" : "md:grid-cols-2 xl:grid-cols-4"}`}>
+        {/* Plan cards — extra top padding so the -top-4 badges don't clip */}
+        <div className={`grid grid-cols-1 gap-6 pt-5 ${plans.length <= 2 ? "md:grid-cols-2 max-w-2xl mx-auto" : plans.length === 3 ? "md:grid-cols-3" : "md:grid-cols-2 xl:grid-cols-4"}`}>
           {plans.map((plan) => {
             const isCurrent   = isUpgrade && plan.slug === currentNormalized;
             const isDowngrade = isUpgrade && (plan.sort_order ?? 0) < currentSortOrder;
@@ -552,36 +575,53 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
             const { applies: couponApplies, discount: couponDiscount, final: couponFinal } =
               computeCouponDiscount(appliedCoupon, plan.slug, billingCycle, baseCharge);
 
-            const ringCls = isCurrent ? "ring-2 ring-blue-400 opacity-75"
-              : isPopular ? "ring-2 ring-green-500"
-              : isBestValue ? "ring-2 ring-violet-400"
-              : "";
+            // Next higher plan (for upgrade button on current plan card)
+            const nextPlan = isCurrent
+              ? plans.find(p => (p.sort_order ?? 0) === (plan.sort_order ?? 0) + 1) || null
+              : null;
+
+            const isHighlighted = highlighted === plan.slug;
+
+            const ringCls = isHighlighted
+              ? "ring-4 ring-green-400 scale-[1.01] shadow-xl"
+              : isCurrent
+                ? "ring-2 ring-emerald-500 shadow-md"
+                : isPopular
+                  ? "ring-2 ring-green-500"
+                  : isBestValue
+                    ? "ring-2 ring-violet-400"
+                    : "shadow-sm";
 
             return (
-              <div key={plan.slug}
-                className={`relative bg-white dark:bg-slate-800 rounded-2xl shadow-md p-6 flex flex-col ${ringCls}`}>
+              <div
+                key={plan.slug}
+                ref={el => { cardRefs.current[plan.slug] = el; }}
+                className={`relative bg-white dark:bg-slate-800 rounded-2xl p-5 flex flex-col transition-all duration-300 ${ringCls}`}
+              >
 
+                {/* Top badge */}
                 {isCurrent && (
-                  <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
-                    <span className="bg-blue-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow">Current Plan</span>
+                  <div className="absolute -top-4 left-1/2 -translate-x-1/2">
+                    <span className="bg-emerald-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow whitespace-nowrap">✓ Your Plan</span>
                   </div>
                 )}
                 {!isCurrent && isPopular && (
-                  <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
-                    <span className="bg-green-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow">Most Popular</span>
+                  <div className="absolute -top-4 left-1/2 -translate-x-1/2">
+                    <span className="bg-green-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow whitespace-nowrap">Most Popular</span>
                   </div>
                 )}
                 {!isCurrent && isBestValue && (
-                  <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
-                    <span className="bg-violet-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow">Best Value</span>
+                  <div className="absolute -top-4 left-1/2 -translate-x-1/2">
+                    <span className="bg-violet-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow whitespace-nowrap">Best Value</span>
                   </div>
                 )}
 
-                {/* Price */}
-                <div className="mb-5">
+                {/* Plan name + price */}
+                <div className="mb-4">
                   <h2 className="text-base font-bold text-gray-700 dark:text-slate-200 uppercase tracking-wide">{plan.name}</h2>
                   {plan.description && <p className="text-xs text-gray-400 dark:text-slate-500 mt-0.5">{plan.description}</p>}
-                  <div className="mt-2 flex items-end gap-1 flex-wrap">
+
+                  <div className="mt-2 flex items-baseline gap-1 flex-wrap">
                     {plan.price_monthly === 0 ? (
                       <span className="text-3xl font-extrabold text-gray-800 dark:text-white">Free</span>
                     ) : couponApplies ? (
@@ -592,63 +632,114 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
                         <span className="text-3xl font-extrabold text-green-600 dark:text-green-400">
                           ₦{(yearly ? Math.round(couponFinal / 12) : couponFinal).toLocaleString()}
                         </span>
-                        <span className="text-sm text-gray-400 mb-1">/month</span>
+                        <span className="text-sm text-gray-400">/mo</span>
                       </>
                     ) : yearly && plan.price_yearly > 0 ? (
                       <>
                         <span className="text-3xl font-extrabold text-gray-800 dark:text-white">₦{Math.round(plan.price_yearly / 12).toLocaleString()}</span>
-                        <span className="text-sm text-gray-400 mb-1">/month</span>
+                        <span className="text-sm text-gray-400">/mo</span>
                       </>
                     ) : (
                       <>
                         <span className="text-3xl font-extrabold text-gray-800 dark:text-white">₦{plan.price_monthly.toLocaleString()}</span>
-                        <span className="text-sm text-gray-400 mb-1">/month</span>
+                        <span className="text-sm text-gray-400">/mo</span>
                       </>
                     )}
                   </div>
-                  {plan.price_monthly === 0 && <p className="text-xs text-gray-400 mt-0.5">Free forever</p>}
+
+                  {plan.price_monthly === 0 && (
+                    <p className="text-xs text-gray-400 mt-0.5">Free forever</p>
+                  )}
                   {couponApplies && plan.price_monthly > 0 && (
                     <p className="text-xs text-green-600 dark:text-green-400 mt-0.5 font-medium">
                       Coupon saves ₦{couponDiscount.toLocaleString()}
-                      {yearly && plan.price_yearly > 0
-                        ? ` — billed ₦${couponFinal.toLocaleString()}/year`
-                        : ""}
+                      {yearly && plan.price_yearly > 0 ? ` — billed ₦${couponFinal.toLocaleString()}/yr` : ""}
                     </p>
                   )}
                   {!couponApplies && plan.price_yearly > 0 && yearly && (
                     <p className="text-xs text-green-600 dark:text-green-400 mt-0.5 font-medium">
-                      Billed ₦{plan.price_yearly.toLocaleString()}/year
-                      <span className="ml-1 text-gray-400">(save {Math.round((1 - plan.price_yearly / (plan.price_monthly * 12)) * 100)}%)</span>
+                      Billed ₦{plan.price_yearly.toLocaleString()}/yr
+                      <span className="ml-1 text-gray-400">(save {savingsPercent(plan)}%)</span>
                     </p>
                   )}
                   {!couponApplies && plan.price_yearly > 0 && !yearly && (
                     <p className="text-xs text-green-600 dark:text-green-400 mt-0.5">
-                      Switch to yearly → save {Math.round((1 - plan.price_yearly / (plan.price_monthly * 12)) * 100)}%
+                      Switch to yearly → save {savingsPercent(plan)}%
                     </p>
                   )}
                 </div>
 
                 {/* Features */}
-                <ul className="space-y-2.5 flex-1 mb-6">
+                <ul className="space-y-2 flex-1 mb-5">
                   {displayFeatures.map((f) => (
                     <li key={f} className="flex items-start gap-2 text-sm text-gray-600 dark:text-slate-300">
                       <CheckIcon color={color} />
-                      <span>{f}</span>
+                      <span className="leading-snug">{f}</span>
                     </li>
                   ))}
                   {missingFeatures.map((f) => (
                     <li key={f} className="flex items-start gap-2 text-sm text-gray-400 line-through">
                       <XIcon />
-                      <span>{f}</span>
+                      <span className="leading-snug">{f}</span>
                     </li>
                   ))}
                 </ul>
 
-                {/* CTA */}
+                {/* ── CTA area ───────────────────────────────────────── */}
                 {isCurrent ? (
-                  <button disabled className="w-full py-2.5 rounded-xl font-semibold text-sm border-2 border-blue-300 text-blue-400 cursor-default opacity-60">
-                    ✓ Active Plan
-                  </button>
+                  <div className="space-y-2.5">
+
+                    {/* Active status indicator */}
+                    <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700/50 rounded-xl px-3 py-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="w-2 h-2 bg-emerald-500 rounded-full flex-shrink-0 animate-pulse" />
+                          <span className="text-[13px] font-bold text-emerald-700 dark:text-emerald-300 truncate">
+                            Active subscription
+                          </span>
+                        </div>
+                        {currentBillingCycle && (
+                          <span className={`flex-shrink-0 text-[11px] font-bold px-2.5 py-1 rounded-full ${
+                            currentBillingCycle === "yearly"
+                              ? "bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300"
+                              : "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300"
+                          }`}>
+                            {currentBillingCycle === "yearly" ? "📅 Yearly" : "🗓 Monthly"}
+                          </span>
+                        )}
+                      </div>
+                      {subExpiry && (
+                        <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1.5">
+                          Renews {new Date(subExpiry).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Switch to yearly (only if currently monthly and plan has yearly pricing) */}
+                    {plan.price_monthly > 0 && currentBillingCycle === "monthly" && plan.price_yearly > 0 && (
+                      <PaidButton
+                        plan={plan}
+                        session={session}
+                        disabled={saving}
+                        yearly={true}
+                        appliedCoupon={appliedCoupon}
+                        onSuccess={(ref, ci) => saveSubRef.current?.(plan.slug, ref, true, ci)}
+                        onCancel={() => setSaving(false)}
+                        buttonLabel={`Switch to Yearly — Save ${savingsPercent(plan)}%`}
+                      />
+                    )}
+
+                    {/* Upgrade to next plan */}
+                    {nextPlan && (
+                      <button
+                        onClick={() => scrollToAndHighlight(nextPlan.slug)}
+                        className="w-full py-2.5 rounded-xl font-semibold text-sm bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white shadow-sm active:scale-95 transition-all"
+                      >
+                        Upgrade to {nextPlan.name} →
+                      </button>
+                    )}
+                  </div>
+
                 ) : isDowngrade ? (
                   <button
                     onClick={plan.price_monthly === 0 ? handleFree : () => handleDowngrade(plan)}
@@ -656,11 +747,13 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
                     className="w-full py-2.5 rounded-xl font-semibold text-sm border-2 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 disabled:opacity-40 transition-colors">
                     {saving ? "Changing…" : plan.price_monthly === 0 ? "Downgrade to Free" : `Downgrade to ${plan.name}`}
                   </button>
+
                 ) : plan.price_monthly === 0 ? (
                   <button onClick={handleFree} disabled={saving}
                     className="w-full py-2.5 rounded-xl font-semibold text-sm border-2 border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors">
                     {saving ? "Activating…" : "Start for Free"}
                   </button>
+
                 ) : (
                   <PaidButton
                     plan={plan}
@@ -677,8 +770,8 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
           })}
         </div>
 
-        <p className="text-center text-xs text-gray-400 dark:text-slate-500 mt-6">
-          Secure payment via Paystack · Paid plans renew monthly · Cancel anytime
+        <p className="text-center text-xs text-gray-400 dark:text-slate-500 mt-8">
+          Secure payment via Paystack · Paid plans renew based on your billing cycle · Cancel anytime
         </p>
       </div>
     </div>
