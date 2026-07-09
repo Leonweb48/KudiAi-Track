@@ -64,7 +64,17 @@ async function invoke(action, params = {}) {
 }
 
 export function usePinLock(userId, session) {
-  const [locked,         setLocked]         = useState(true);
+  const [locked, setLocked] = useState(() => {
+    // If the user previously set "Never", start unlocked to avoid lock-screen flash on app open.
+    // The server value is confirmed by refetch() — this is only a hint for the initial render.
+    if (userId) {
+      try {
+        const cached = localStorage.getItem(`kt_lock_timeout_${userId}`);
+        if (cached !== null && parseInt(cached, 10) === 0) return false;
+      } catch {}
+    }
+    return true;
+  });
   const [loading,        setLoading]        = useState(true);
   const [status,         setStatus]         = useState(null);
 
@@ -87,8 +97,14 @@ export function usePinLock(userId, session) {
     try {
       const { data } = await invoke("check_status");
       setStatus(data);
+      // Cache the timeout so the next cold-start can initialize locked state correctly
+      try {
+        if (userId) localStorage.setItem(`kt_lock_timeout_${userId}`, String(data?.autoLockTimeout ?? 300));
+      } catch {}
       if (!data?.appPinSet) {
         setLocked(false); // No PIN set yet — show setup, not lock screen
+      } else if (data?.autoLockTimeout === 0 && !data?.requiresReauth) {
+        setLocked(false); // "Never" — skip lock screen on app open / return from background
       }
       setLoading(false);
     } catch {
@@ -245,9 +261,13 @@ export function usePinLock(userId, session) {
     if (typeof obj.autoLockTimeout === "number") snake.auto_lock_timeout = obj.autoLockTimeout;
     if (typeof obj.biometricEnabled === "boolean") snake.biometric_enabled = obj.biometricEnabled;
     const result = await invoke("update_settings", snake);
+    // Update cache immediately so the next cold-start reflects the new setting
+    if (typeof obj.autoLockTimeout === "number" && userId) {
+      try { localStorage.setItem(`kt_lock_timeout_${userId}`, String(obj.autoLockTimeout)); } catch {}
+    }
     await refetch();
     return result;
-  }, [refetch]);
+  }, [refetch, userId]);
 
   const registerBiometric = useCallback(async () => {
     if (!userId) return false;

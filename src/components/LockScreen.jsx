@@ -10,12 +10,24 @@ const shakeCSS = `
 .pin-shake { animation: shake 0.5s ease; }
 `;
 
-const ShieldIcon = () => (
-  <svg viewBox="0 0 24 24" width="40" height="40" fill="#3DA829">
-    <path d="M12 3L4 7v5c0 5.55 3.84 10.74 8 12 4.16-1.26 8-6.45 8-12V7z"
-      stroke="#0f1c45" strokeWidth="1" />
-  </svg>
-);
+function ProfileAvatar({ avatarUrl, name }) {
+  const initial = (name || "?")[0].toUpperCase();
+  return (
+    <div style={{
+      width: 80, height: 80, borderRadius: "50%",
+      border: "2.5px solid rgba(255,255,255,0.18)",
+      overflow: "hidden", flexShrink: 0,
+      display: "flex", alignItems: "center", justifyContent: "center",
+      background: avatarUrl ? "transparent" : "rgba(61,168,41,0.18)",
+    }}>
+      {avatarUrl ? (
+        <img src={avatarUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+      ) : (
+        <span style={{ color: "#3DA829", fontSize: 30, fontWeight: 800, lineHeight: 1 }}>{initial}</span>
+      )}
+    </div>
+  );
+}
 
 const FingerprintIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" width="22" height="22" stroke="currentColor"
@@ -45,7 +57,7 @@ function computeLockedMsg(data) {
   return `Too many attempts. Try again in ${mins} minute${mins === 1 ? "" : "s"}.`;
 }
 
-export default function LockScreen({ pinLock, businessName }) {
+export default function LockScreen({ pinLock, businessName, avatarUrl }) {
   const maxLen = 6;
 
   const [pin,            setPin]            = useState("");
@@ -185,9 +197,9 @@ export default function LockScreen({ pinLock, businessName }) {
     }}>
       <style>{shakeCSS}</style>
 
-      {/* Top: logo + title */}
+      {/* Top: avatar + title */}
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, paddingTop: 64 }}>
-        <ShieldIcon />
+        <ProfileAvatar avatarUrl={avatarUrl} name={businessName} />
         <div style={{ textAlign: "center", padding: "0 24px" }}>
           <p style={{ color: "white", fontSize: 20, fontWeight: 700, lineHeight: 1.3 }}>
             {`Welcome back${businessName ? ", " + businessName : ""}`}

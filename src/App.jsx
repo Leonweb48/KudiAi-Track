@@ -339,7 +339,11 @@ export default function App() {
   }
   // Lock screen (inactivity or new device)
   if (pinLock.locked) {
-    return <LockScreen pinLock={pinLock} businessName={store.profile?.business_name || store.profile?.owner_name || staff?.business_name} />;
+    return <LockScreen
+      pinLock={pinLock}
+      businessName={store.profile?.business_name || store.profile?.owner_name || staff?.business_name}
+      avatarUrl={store.profile?.profile_image_url}
+    />;
   }
   // ── Authenticated portals (PIN already set) ──
   if (status === "organisation")  return <OrgPortal session={session} org={org} />;
