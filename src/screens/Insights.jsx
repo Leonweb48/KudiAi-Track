@@ -7,8 +7,8 @@ import { getSalesPrediction, getRestockData, getSlowMovers } from "../utils/pred
 import { buildContext } from "../utils/buildContext";
 import { askGemini } from "../utils/gemini";
 import { speakText } from "../utils/tts";
-import { usePromotions } from "../hooks/usePromotions";
-import PromotionBanner from "../components/promotions/PromotionBanner";
+import { useCampaigns } from "../hooks/useCampaigns";
+import AnnouncementBarSlot from "../components/slots/AnnouncementBarSlot";
 
 const AI_QUICK = [
   { label: "Today's Sales",      q: "How were today's sales?"    },
@@ -251,7 +251,8 @@ export default function Insights({ store, inventory, plan = "starter", onUpgrade
   const { transactions } = store;
   const products = useMemo(() => inventory?.products || [], [inventory]);
   const [period,    setPeriod]    = useState("today");
-  const { banners, markSeen } = usePromotions("insights", plan);
+  const { slotMap, loading: camLoading, recordEvent } = useCampaigns(["announcement_bar"]);
+  const annBars = slotMap.announcement_bar || [];
   const [aiLoading, setAiLoading] = useState(false);
   const [aiInsight, setAiInsight] = useState("");
   const [aiError,   setAiError]   = useState("");
@@ -337,8 +338,8 @@ Use real figures from my data. Each point: 1-2 sentences max. Complete every sec
         )}
       </div>
 
-      {/* ── Promotion banners ─────────────────────────────────────── */}
-      {banners.length > 0 && <PromotionBanner banners={banners} markSeen={markSeen} />}
+      {/* ── Announcement bar slot ─────────────────────────────────── */}
+      <AnnouncementBarSlot campaigns={annBars} loading={camLoading} recordEvent={recordEvent} />
 
       {/* ── AI Quick Shortcuts — most actionable, at top for premium users ── */}
       {onAIOpen && !isStaffView && isPremium && (

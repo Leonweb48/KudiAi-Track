@@ -11,8 +11,8 @@ import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import { LANGUAGES, getLangMeta } from "../utils/i18n";
 import { useLanguage, useT } from "../contexts/LanguageContext";
 import { maxDobDate, isAtLeast18, AGE_ERROR } from "../utils/ageValidation";
-import { usePromotions } from "../hooks/usePromotions";
-import PromotionBanner from "../components/promotions/PromotionBanner";
+import { useCampaigns } from "../hooks/useCampaigns";
+import AnnouncementBarSlot from "../components/slots/AnnouncementBarSlot";
 
 /* ── Txn PIN gate (one-step verify before changing app lock PIN) ────────── */
 function TxnPinGate({ onSuccess, onClose }) {
@@ -489,7 +489,8 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
   const [legalScreen,        setLegalScreen]        = useState(null); // "terms" | "privacy"
   const [acceptedConsent,    setAcceptedConsent]    = useState(null);
   const [showProfilePreview, setShowProfilePreview] = useState(false);
-  const { banners: promoBanners, markSeen: markPromoSeen } = usePromotions("settings", plan);
+  const { slotMap: camSlotMap, loading: camLoading, recordEvent } = useCampaigns(["announcement_bar"]);
+  const settingsAnnBars = camSlotMap.announcement_bar || [];
 
   useEffect(() => {
     if (!editProfile) setFp({ ...profile });
@@ -655,8 +656,8 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
         </button>
       </button>
 
-      {/* ── Promotion banners ─────────────────────────────────────── */}
-      {promoBanners.length > 0 && <PromotionBanner banners={promoBanners} markSeen={markPromoSeen} />}
+      {/* ── Announcement bar slot ─────────────────────────────────── */}
+      <AnnouncementBarSlot campaigns={settingsAnnBars} loading={camLoading} recordEvent={recordEvent} />
 
       {/* ── STAFF MANAGEMENT BANNER ────────────────────────────────── */}
       <button

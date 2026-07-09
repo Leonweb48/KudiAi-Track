@@ -74,6 +74,13 @@ export default function App() {
   const navigate   = useNavigate();
   const location   = useLocation();
 
+  // Listen for deep-link navigation from campaign CTAs
+  useEffect(() => {
+    const handler = (e) => { if (e.detail?.path) navigate(e.detail.path); };
+    window.addEventListener("promoNavigate", handler);
+    return () => window.removeEventListener("promoNavigate", handler);
+  }, [navigate]);
+
   // Derive active tab from URL path — maps legacy credit/aso routes to finance
   const rawTab = location.pathname === "/" ? "home" : location.pathname.slice(1).split("/")[0];
   const tab    = (rawTab === "credit" || rawTab === "aso") ? "finance" : rawTab;
