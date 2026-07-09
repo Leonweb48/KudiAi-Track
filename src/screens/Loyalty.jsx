@@ -323,7 +323,7 @@ export default function Loyalty({ loyalty, plan, onUpgrade, onClose }) {
   if (COMING_SOON) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col">
-        <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 py-4 flex items-center gap-3">
+        <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 py-4 flex items-center gap-3" style={{ paddingTop: "max(16px, env(safe-area-inset-top, 16px))" }}>
           {onClose && (
             <button onClick={onClose} className="p-2 -ml-1 rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
               <Icon name="x" size={20} />
@@ -354,7 +354,7 @@ export default function Loyalty({ loyalty, plan, onUpgrade, onClose }) {
   if (!canUseLoyalty) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col">
-        <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 py-4 flex items-center gap-3">
+        <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 py-4 flex items-center gap-3" style={{ paddingTop: "max(16px, env(safe-area-inset-top, 16px))" }}>
           {onClose && (
             <button onClick={onClose} className="p-2 -ml-1 rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
               <Icon name="x" size={20} />
@@ -409,7 +409,7 @@ export default function Loyalty({ loyalty, plan, onUpgrade, onClose }) {
     const tier = TIER(selected.total_points_earned || 0);
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900 pb-24">
-        <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 py-3">
+        <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 py-3" style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
           <div className="flex items-center gap-3">
             <button onClick={goBack} className="p-2 -ml-1 rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
               <Icon name="arrow" size={20} />
@@ -519,7 +519,7 @@ export default function Loyalty({ loyalty, plan, onUpgrade, onClose }) {
   // ── LIST VIEW ──────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 pb-6">
-      <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 py-4">
+      <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 py-4" style={{ paddingTop: "max(16px, env(safe-area-inset-top, 16px))" }}>
         <div className="flex items-center gap-2">
           {onClose && (
             <button onClick={onClose} className="p-2 -ml-1 rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 flex-shrink-0">

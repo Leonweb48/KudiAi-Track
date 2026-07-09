@@ -243,7 +243,7 @@ export default function CoopList({ userId, onOpen, onClose, embedded }) {
       <div className={embedded ? "w-full flex flex-col" : "w-full max-w-md flex flex-col h-full"}>
 
         {/* ── Twitter-style sticky header ── */}
-        <div className="sticky top-0 z-10 bg-white/90 dark:bg-[#0f1117]/90 backdrop-blur-md border-b border-slate-100 dark:border-slate-800 px-4 flex items-center gap-3 h-14 flex-shrink-0">
+        <div className="sticky top-0 z-10 bg-white/90 dark:bg-[#0f1117]/90 backdrop-blur-md border-b border-slate-100 dark:border-slate-800 px-4 pb-3 flex items-center gap-3 min-h-[56px] flex-shrink-0" style={{ paddingTop: "max(14px, env(safe-area-inset-top, 14px))" }}>
           {!embedded && (
             <button onClick={onClose}
               className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition flex-shrink-0">

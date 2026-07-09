@@ -540,7 +540,7 @@ export default function LegalScreen({ type, onBack }) {
     : COMPANY.updated;
 
   return (
-    <div className="fixed inset-0 z-[60] bg-white dark:bg-slate-900 flex flex-col">
+    <div className="fixed inset-0 z-[60] bg-white dark:bg-slate-900 flex flex-col" style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}>
 
       {/* Reading progress bar — 3px, brand green */}
       <div className="flex-shrink-0 w-full" style={{ height: 3, backgroundColor: "rgba(0,0,0,0.08)" }}>

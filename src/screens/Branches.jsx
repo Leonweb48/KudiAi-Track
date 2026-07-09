@@ -497,7 +497,7 @@ function BranchDetail({ branch, transactions, credits, asoClients, allProducts, 
   return (
     <div className="fixed inset-0 z-[70] bg-slate-50 dark:bg-slate-900 flex flex-col">
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 py-3 flex items-center gap-3 flex-shrink-0">
+      <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 py-3 flex items-center gap-3 flex-shrink-0" style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
         <button onClick={onClose} className="p-2 -ml-1 rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
           <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
             <path d="M19 12H5M12 19l-7-7 7-7" />
@@ -615,7 +615,7 @@ export default function Branches({ store, onClose, userId, inventory = {}, onRep
   if (!canDo(plan, "branches")) {
     return (
       <div className="fixed inset-0 z-[60] bg-slate-50 dark:bg-slate-900 flex flex-col">
-        <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 py-4 flex items-center gap-3 flex-shrink-0">
+        <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 py-4 flex items-center gap-3 flex-shrink-0" style={{ paddingTop: "max(16px, env(safe-area-inset-top, 16px))" }}>
           <button onClick={onClose} className="p-2 -ml-1 rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
             <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
               <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -683,7 +683,7 @@ export default function Branches({ store, onClose, userId, inventory = {}, onRep
   return (
     <div className="fixed inset-0 z-[60] bg-slate-50 dark:bg-slate-900 flex flex-col">
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 py-4 flex items-center gap-3 flex-shrink-0">
+      <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 py-4 flex items-center gap-3 flex-shrink-0" style={{ paddingTop: "max(16px, env(safe-area-inset-top, 16px))" }}>
         <button onClick={onClose} className="p-2 -ml-1 rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
           <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
             <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />

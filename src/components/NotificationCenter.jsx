@@ -119,7 +119,7 @@ function SettingsView({ settings, updateSetting, requestPush, speak, onBack, all
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 pt-12 pb-3 flex items-center gap-3 flex-shrink-0">
+      <div className="bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 pb-3 flex items-center gap-3 flex-shrink-0" style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
         <button onClick={onBack}
           className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center active:scale-95 transition-transform">
           <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
@@ -342,7 +342,7 @@ function NotifList({ notifications, unreadCount, markRead, markAllRead, clearAll
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 pt-12 pb-2 flex-shrink-0">
+      <div className="bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 pb-2 flex-shrink-0" style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-xl font-black text-slate-800 dark:text-white tracking-tight">Notifications</h2>
           <div className="flex items-center gap-1.5">
