@@ -6,6 +6,9 @@ import { useT } from "../contexts/LanguageContext";
 import AppLogo from "../components/AppLogo";
 import { getSalesPrediction } from "../utils/predictions";
 import ProfilePreviewModal from "../components/shared/ProfilePreviewModal";
+import { usePromotions } from "../hooks/usePromotions";
+import PromotionPopup from "../components/promotions/PromotionPopup";
+import PromotionCarousel from "../components/promotions/PromotionCarousel";
 
 function greetingKey() {
   const h = new Date().getHours();
@@ -121,6 +124,7 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
   const [balanceHidden,      setBalanceHidden]      = useState(false);
   const [search,             setSearch]             = useState("");
   const [showProfilePreview, setShowProfilePreview] = useState(false);
+  const { popups, carouselItems, markSeen } = usePromotions("home", plan);
 
   const todayTx     = transactions.filter(tx => tx.transaction_date === today());
   const cashIn      = todayTx.filter(tx => tx.type === "in" ).reduce((s, tx) => s + tx.amount, 0);
@@ -350,6 +354,11 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
       {/* ── Sales Forecast ───────────────────────────────────────── */}
       {!loading && forecast && <SalesForecastCard prediction={forecast} t={t} />}
 
+      {/* ── Promotions carousel ──────────────────────────────────── */}
+      {!loading && carouselItems.length > 0 && (
+        <PromotionCarousel carouselItems={carouselItems} markSeen={markSeen} />
+      )}
+
       {/* ── Recent Transactions ──────────────────────────────────── */}
       <div>
         {/* Search bar */}
@@ -436,6 +445,9 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
           onClose={() => setShowProfilePreview(false)}
         />
       )}
+
+      {/* ── Promotion Popup ─────────────────────────────────────── */}
+      <PromotionPopup popups={popups} markSeen={markSeen} />
 
     </div>
   );

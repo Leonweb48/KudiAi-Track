@@ -11,6 +11,8 @@ import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import { LANGUAGES, getLangMeta } from "../utils/i18n";
 import { useLanguage, useT } from "../contexts/LanguageContext";
 import { maxDobDate, isAtLeast18, AGE_ERROR } from "../utils/ageValidation";
+import { usePromotions } from "../hooks/usePromotions";
+import PromotionBanner from "../components/promotions/PromotionBanner";
 
 /* ── Txn PIN gate (one-step verify before changing app lock PIN) ────────── */
 function TxnPinGate({ onSuccess, onClose }) {
@@ -487,7 +489,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
   const [legalScreen,        setLegalScreen]        = useState(null); // "terms" | "privacy"
   const [acceptedConsent,    setAcceptedConsent]    = useState(null);
   const [showProfilePreview, setShowProfilePreview] = useState(false);
-
+  const { banners: promoBanners, markSeen: markPromoSeen } = usePromotions("settings", plan);
 
   useEffect(() => {
     if (!editProfile) setFp({ ...profile });
@@ -652,6 +654,9 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
           Edit
         </button>
       </button>
+
+      {/* ── Promotion banners ─────────────────────────────────────── */}
+      {promoBanners.length > 0 && <PromotionBanner banners={promoBanners} markSeen={markPromoSeen} />}
 
       {/* ── STAFF MANAGEMENT BANNER ────────────────────────────────── */}
       <button
