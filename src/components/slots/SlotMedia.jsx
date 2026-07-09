@@ -1,24 +1,20 @@
-export default function SlotMedia({ creative_url, headline, className = "", style = {} }) {
+export default function SlotMedia({ creative_url, headline, className = "" }) {
   if (!creative_url) return null;
   const isVideo = /\.(mp4|webm)(\?|$)/i.test(creative_url);
+  const shared = {
+    className,
+    style: { objectFit: "cover", display: "block", width: "100%", height: "100%" },
+  };
   if (isVideo) {
-    return (
-      <video
-        src={creative_url}
-        autoPlay muted loop playsInline
-        className={className}
-        style={{ objectFit: "cover", display: "block", ...style }}
-      />
-    );
+    return <video src={creative_url} autoPlay muted loop playsInline draggable={false} {...shared} />;
   }
   return (
     <img
       src={creative_url}
       alt={headline || ""}
-      className={className}
-      style={{ objectFit: "cover", display: "block", ...style }}
       draggable={false}
-      loading="lazy"
+      loading="eager"
+      {...shared}
     />
   );
 }
