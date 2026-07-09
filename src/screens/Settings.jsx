@@ -13,6 +13,7 @@ import { useLanguage, useT } from "../contexts/LanguageContext";
 import { maxDobDate, isAtLeast18, AGE_ERROR } from "../utils/ageValidation";
 import { useCampaigns } from "../hooks/useCampaigns";
 import AnnouncementBarSlot from "../components/slots/AnnouncementBarSlot";
+import UpsellInlineSlot from "../components/slots/UpsellInlineSlot";
 
 /* ── Txn PIN gate (one-step verify before changing app lock PIN) ────────── */
 function TxnPinGate({ onSuccess, onClose }) {
@@ -489,8 +490,9 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
   const [legalScreen,        setLegalScreen]        = useState(null); // "terms" | "privacy"
   const [acceptedConsent,    setAcceptedConsent]    = useState(null);
   const [showProfilePreview, setShowProfilePreview] = useState(false);
-  const { slotMap: camSlotMap, loading: camLoading, recordEvent } = useCampaigns(["announcement_bar"]);
+  const { slotMap: camSlotMap, loading: camLoading, recordEvent } = useCampaigns(["announcement_bar","upsell_inline"]);
   const settingsAnnBars = camSlotMap.announcement_bar || [];
+  const settingsUpsells = camSlotMap.upsell_inline   || [];
 
   useEffect(() => {
     if (!editProfile) setFp({ ...profile });
@@ -658,6 +660,11 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
 
       {/* ── Announcement bar slot ─────────────────────────────────── */}
       <AnnouncementBarSlot campaigns={settingsAnnBars} loading={camLoading} recordEvent={recordEvent} />
+
+      {/* ── Upsell inline slot ───────────────────────────────────── */}
+      {settingsUpsells.length > 0 && (
+        <UpsellInlineSlot campaign={settingsUpsells[0]} loading={camLoading} recordEvent={recordEvent} />
+      )}
 
       {/* ── STAFF MANAGEMENT BANNER ────────────────────────────────── */}
       <button

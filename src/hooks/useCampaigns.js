@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../utils/supabase";
 import { Capacitor } from "@capacitor/core";
 
-const CACHE_KEY = "kt_campaigns_v3";
-const CACHE_TTL = 60 * 1000; // 60 seconds
+const CACHE_KEY = "kt_campaigns_v4"; // v4: always fetches all slots to prevent cache pollution
+const CACHE_TTL = 60 * 1000;
 
 function getPlatform() {
   if (!Capacitor.isNativePlatform()) return "web";
@@ -26,8 +26,10 @@ function matchesTargeting(targeting, ctx) {
   return true;
 }
 
-async function fetchCampaigns(requestedSlots) {
-  // Get user profile for targeting context
+// Always fetches ALL active campaigns — never filtered by slot at DB level.
+// Filtering by slot at DB level causes the shared cache to only contain a subset
+// of slots, breaking other screens that need different slots from the same cache.
+async function fetchAllCampaigns() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
@@ -43,71 +45,72 @@ async function fetchCampaigns(requestedSlots) {
     platform: getPlatform(),
   };
 
-  // Fetch directly from Supabase — no cross-origin Vercel call needed
-  let query = supabase
+  const { data, error } = await supabase
     .from("ad_campaigns")
     .select("*")
     .in("status", ["active", "live"])
     .order("priority", { ascending: false });
 
-  if (requestedSlots?.length) {
-    query = query.in("slot", requestedSlots);
-  }
-
-  const { data, error } = await query;
   if (error) {
     console.error("[useCampaigns] fetch error:", error.message);
     return null;
   }
 
-  // Filter by schedule and targeting in JS
   const filtered = (data || []).filter(
     c => isWithinSchedule(c) && matchesTargeting(c.targeting, ctx)
   );
 
-  // Group by slot with density limits
   const limits = { home_banner: 5, popup: 1, announcement_bar: 1, feed_card: 1, upsell_inline: 3 };
   const slots = {};
   for (const c of filtered) {
     if (!slots[c.slot]) slots[c.slot] = [];
     if (slots[c.slot].length < (limits[c.slot] ?? 5)) slots[c.slot].push(c);
   }
-
   return slots;
+}
+
+function pickSlots(allSlots, requestedSlots) {
+  if (!requestedSlots?.length) return allSlots;
+  const result = {};
+  for (const slot of requestedSlots) {
+    if (allSlots[slot]) result[slot] = allSlots[slot];
+  }
+  return result;
 }
 
 export function useCampaigns(requestedSlots) {
   const [slotMap,  setSlotMap]  = useState({});
   const [loading,  setLoading]  = useState(true);
-  const cacheRef               = useRef(null);
+  const cacheRef               = useRef(null); // holds full all-slot data
 
   const load = useCallback(async () => {
-    // Serve from memory cache if fresh
+    // In-memory cache hit
     if (cacheRef.current && Date.now() - cacheRef.current.ts < CACHE_TTL) {
-      setSlotMap(cacheRef.current.data);
+      setSlotMap(pickSlots(cacheRef.current.data, requestedSlots));
       setLoading(false);
       return;
     }
 
-    // Show stale localStorage cache immediately while refreshing
+    // Show stale localStorage cache immediately while fetching fresh
     try {
       const raw = localStorage.getItem(CACHE_KEY);
       if (raw) {
         const stored = JSON.parse(raw);
-        setSlotMap(stored.data || {});
+        const allSlots = stored.data || {};
+        setSlotMap(pickSlots(allSlots, requestedSlots));
         setLoading(false);
         cacheRef.current = stored;
       }
     } catch {}
 
-    // Fetch fresh data
+    // Fetch fresh — always ALL slots, store full result in cache
     try {
-      const slots = await fetchCampaigns(requestedSlots);
-      if (slots) {
-        const entry = { data: slots, ts: Date.now() };
+      const allSlots = await fetchAllCampaigns();
+      if (allSlots) {
+        const entry = { data: allSlots, ts: Date.now() };
         cacheRef.current = entry;
         try { localStorage.setItem(CACHE_KEY, JSON.stringify(entry)); } catch {}
-        setSlotMap(slots);
+        setSlotMap(pickSlots(allSlots, requestedSlots));
       }
     } catch (err) {
       console.error("[useCampaigns] error:", err);

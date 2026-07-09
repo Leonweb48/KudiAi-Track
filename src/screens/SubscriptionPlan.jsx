@@ -197,7 +197,9 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
   const [highlighted,    setHighlighted]    = useState(null);
 
   // Coupon state
-  const [couponCode,    setCouponCode]    = useState("");
+  const [couponCode,    setCouponCode]    = useState(() => {
+    try { return sessionStorage.getItem("kt_auto_promo") || ""; } catch { return ""; }
+  });
   const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [couponMsg,     setCouponMsg]     = useState(null);
   const [couponLoading, setCouponLoading] = useState(false);
@@ -266,6 +268,14 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
       setCouponLoading(false);
     }
   }, [couponCode]);
+
+  // Auto-apply promo code passed in via slot CTA (stored in sessionStorage)
+  useEffect(() => {
+    const stored = couponCode.trim();
+    if (!stored) return;
+    try { sessionStorage.removeItem("kt_auto_promo"); } catch {}
+    applyCoupon();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const saveSub = useCallback(async (planSlug, reference, isYearly = false, couponInfo = null) => {
     const refKey = reference || `free_${planSlug}_${Date.now()}`;

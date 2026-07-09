@@ -9,6 +9,8 @@ import ProfilePreviewModal from "../components/shared/ProfilePreviewModal";
 import { useCampaigns } from "../hooks/useCampaigns";
 import HomeBannerSlot from "../components/slots/HomeBannerSlot";
 import PopupSlot from "../components/slots/PopupSlot";
+import FeedCardSlot from "../components/slots/FeedCardSlot";
+import UpsellInlineSlot from "../components/slots/UpsellInlineSlot";
 
 function greetingKey() {
   const h = new Date().getHours();
@@ -124,9 +126,11 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
   const [balanceHidden,      setBalanceHidden]      = useState(false);
   const [search,             setSearch]             = useState("");
   const [showProfilePreview, setShowProfilePreview] = useState(false);
-  const { slotMap, loading: camLoading, recordEvent } = useCampaigns(["home_banner","popup"]);
-  const homeBanners = slotMap.home_banner || [];
-  const popups      = slotMap.popup       || [];
+  const { slotMap, loading: camLoading, recordEvent } = useCampaigns(["home_banner","popup","feed_card","upsell_inline"]);
+  const homeBanners  = slotMap.home_banner   || [];
+  const popups       = slotMap.popup         || [];
+  const feedCampaign = (slotMap.feed_card    || [])[0] ?? null;
+  const upsells      = slotMap.upsell_inline || [];
 
   const todayTx     = transactions.filter(tx => tx.transaction_date === today());
   const cashIn      = todayTx.filter(tx => tx.type === "in" ).reduce((s, tx) => s + tx.amount, 0);
@@ -356,6 +360,11 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
       {/* ── Sales Forecast ───────────────────────────────────────── */}
       {!loading && forecast && <SalesForecastCard prediction={forecast} t={t} />}
 
+      {/* ── Upsell inline slot ───────────────────────────────────── */}
+      {upsells.length > 0 && (
+        <UpsellInlineSlot campaign={upsells[0]} loading={camLoading} recordEvent={recordEvent} />
+      )}
+
       {/* ── Home Banner slot ─────────────────────────────────────── */}
       <HomeBannerSlot campaigns={homeBanners} loading={camLoading} recordEvent={recordEvent} />
 
@@ -431,11 +440,17 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
               Record First Sale
             </button>
           </div>
-        ) : (
-          <div className="space-y-2">
-            {transactions.slice(0, 5).map(tx => <TxRow key={tx.id} tx={tx} />)}
-          </div>
-        )}
+        ) : (() => {
+          const recent = transactions.slice(0, 5);
+          const rows = [];
+          recent.forEach((tx, i) => {
+            rows.push(<TxRow key={tx.id} tx={tx} />);
+            if (i === 2 && feedCampaign) {
+              rows.push(<FeedCardSlot key={`fc-${feedCampaign.id}`} campaign={feedCampaign} recordEvent={recordEvent} />);
+            }
+          });
+          return <div className="space-y-2">{rows}</div>;
+        })()}
       </div>
 
       {showProfilePreview && (

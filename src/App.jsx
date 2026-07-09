@@ -297,6 +297,13 @@ export default function App() {
   const closeUpgrade  = () => setShowUpgrade(false);
   const finishUpgrade = (planId) => { setReady(planId); setShowUpgrade(false); };
 
+  // Allow slot CTAs (promo_code action) to open the upgrade screen from anywhere
+  useEffect(() => {
+    const handler = () => setShowUpgrade(true);
+    window.addEventListener("kt:openUpgrade", handler);
+    return () => window.removeEventListener("kt:openUpgrade", handler);
+  }, []);
+
   // Public routes: WebView / App-Links have no session, must render before auth check
   if (location.pathname === "/payment-return" ||
       location.pathname === "/app/payment-callback") return <PaymentReturn />;
