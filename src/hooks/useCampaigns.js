@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../utils/supabase";
 import { Capacitor } from "@capacitor/core";
 
-const CACHE_KEY = "kt_campaigns_cache";
-const CACHE_TTL = 30 * 1000; // 30 seconds
+const CACHE_KEY = "kt_campaigns_cache_v2";
+const CACHE_TTL = 60 * 1000; // 60 seconds
 
 const API_BASE = Capacitor.isNativePlatform() ? "https://kudiai.app" : "";
 
