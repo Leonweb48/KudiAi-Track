@@ -22,7 +22,6 @@ function fmtSpoken(n) {
 /* ── Parse AI summary into structured sections ────────────────────── */
 function parseSections(text) {
   const sections = [];
-  const headerRe = /\*\*([^*]+)\*\*/g;
   const parts = text.split(/(?=\*\*[^*]+\*\*)/);
   for (const part of parts) {
     const m = part.match(/^\*\*([^*]+)\*\*\s*([\s\S]*)/);
