@@ -15,18 +15,17 @@ export function usePromotions(placement, plan = "") {
         const { data } = await supabase
           .from("promotions")
           .select("*")
-          .eq("is_active", true)
-          .or(`start_at.is.null,start_at.lte.${now}`)
-          .or(`end_at.is.null,end_at.gte.${now}`)
-          .order("sort_order", { ascending: true });
+          .eq("active", true)
+          .or(`starts_at.is.null,starts_at.lte.${now}`)
+          .or(`ends_at.is.null,ends_at.gte.${now}`)
+          .order("created_at", { ascending: false });
 
         if (cancelled || !data) return;
 
         const today = new Date().toDateString();
 
         const filtered = data.filter(p => {
-          const placements = Array.isArray(p.placement) ? p.placement : [];
-          if (!placements.includes("all") && !placements.includes(placement)) return false;
+          if (p.placement !== placement) return false;
 
           const targets = Array.isArray(p.target_plans) ? p.target_plans : [];
           if (targets.length > 0 && plan && !targets.includes(plan)) return false;
