@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { createClient } from "@supabase/supabase-js";
 import Icon   from "../components/Icon";
 import Modal  from "../components/shared/Modal";
 import Field  from "../components/shared/Field";
@@ -270,16 +269,9 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [createdClient, setCreatedClient] = useState(null);
   const [copiedField,   setCopiedField]   = useState(null);
 
-  // Registration — password + OTP state
-  const [clientPassword, setClientPassword] = useState("");
-  const [confirmPwd,     setConfirmPwd]     = useState("");
-  const [showClientPwd,  setShowClientPwd]  = useState(false);
-  const [addError,       setAddError]       = useState("");
-  const [clientOtpData,  setClientOtpData]  = useState(null);
-  const [clientOtpCode,  setClientOtpCode]  = useState("");
-  const [otpVerifying,   setOtpVerifying]   = useState(false);
-  const [otpError,       setOtpError]       = useState("");
-  const [otpVerified,    setOtpVerified]    = useState(false);
+  // Registration — form state
+  const [addError,        setAddError]        = useState("");
+  const [addedClientEmail, setAddedClientEmail] = useState("");
 
   // Filters
   const [search,         setSearch]         = useState("");
@@ -536,47 +528,11 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     setPhotoPreview(URL.createObjectURL(file));
   };
 
-  const generateClientPassword = () => {
+  const genClientPwd = () => {
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$";
     const vals  = new Uint32Array(12);
     crypto.getRandomValues(vals);
-    const pwd = Array.from(vals, n => chars[n % chars.length]).join("");
-    setClientPassword(pwd);
-    setConfirmPwd(pwd);
-    setShowClientPwd(true);
-  };
-
-  const sendClientOtp = async (email) => {
-    const c = createClient(
-      process.env.REACT_APP_SUPABASE_URL,
-      process.env.REACT_APP_SUPABASE_ANON_KEY,
-      { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } },
-    );
-    const { error } = await c.auth.signInWithOtp({
-      email,
-      options: { shouldCreateUser: false },
-    });
-    if (error) throw error;
-    return c;
-  };
-
-  const verifyClientEmail = async () => {
-    if (!clientOtpData || clientOtpCode.length < 6) return;
-    setOtpVerifying(true);
-    setOtpError("");
-    try {
-      const { error } = await clientOtpData.client.auth.verifyOtp({
-        email: clientOtpData.email,
-        token: clientOtpCode,
-        type:  "email",
-      });
-      if (error) throw error;
-      setOtpVerified(true);
-    } catch (e) {
-      setOtpError(e.message || "Invalid or expired code");
-    } finally {
-      setOtpVerifying(false);
-    }
+    return Array.from(vals, n => chars[n % chars.length]).join("");
   };
 
   const provisionClientLogin = async (clientRecord, password) => {
@@ -625,17 +581,12 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
   const closeClientCredentials = () => {
     setCreatedClient(null);
-    setClientOtpData(null);
-    setClientOtpCode("");
-    setOtpError("");
-    setOtpVerified(false);
     setCopiedField(null);
   };
 
   const resetAdd = () => {
     setShowAdd(false); setF(BLANK);
     setPhotoFile(null); setPhotoPreview(null);
-    setClientPassword(""); setConfirmPwd(""); setShowClientPwd(false);
     setAddError("");
     setClientResolvedName(""); setClientBankErr("");
   };
@@ -643,8 +594,6 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const handleAdd = async () => {
     if (!f.full_name) { setAddError("Full name is required"); return; }
     if (!f.email)     { setAddError("Email is required for portal access"); return; }
-    if (clientPassword.length < 8) { setAddError("Temporary password must be at least 8 characters"); return; }
-    if (clientPassword !== confirmPwd) { setAddError("Passwords do not match"); return; }
     setAddError("");
     setAdding(true);
     const { data, error } = await addAsoClient({
@@ -681,20 +630,11 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           console.error("Subaccount creation failed (client saved):", subErr);
         }
       }
-      const tempPwd = clientPassword;
       try {
-        await provisionClientLogin(data, tempPwd);
-        // Provision succeeded — show credentials modal
+        await provisionClientLogin(data, genClientPwd());
         resetAdd();
-        let otpClient = null;
-        if (!staffId) {
-          // Only send OTP for owner-side registration (staff registers in-person)
-          try { otpClient = await sendClientOtp(data.email); } catch (_) {}
-        }
-        setCreatedClient({ ...data, _password: tempPwd });
-        if (otpClient) setClientOtpData({ email: data.email, client: otpClient });
+        setAddedClientEmail(data.email);
       } catch (provErr) {
-        // Provision failed — remove the orphaned client record and surface the error
         await supabase.from("aso_clients").delete().eq("id", data.id);
         setAddError(provErr.message || "Failed to create client login account. Please try again.");
       }
@@ -858,7 +798,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
               <rect x="2" y="5" width="20" height="14" rx="2" /><line x1="2" y1="10" x2="22" y2="10" />
             </svg>
           </button>
-          <button onClick={() => { setShowAdd(true); generateClientPassword(); }}
+          <button onClick={() => setShowAdd(true)}
             className="w-9 h-9 bg-violet-600 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform">
             <Icon name="plus" size={18} className="text-white" />
           </button>
@@ -1285,11 +1225,21 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         </div>
       )}
 
-      {/* ── Add Aso Client Modal ─────────────────────────────────────── */}
+      {/* ── Add Aso Client Sheet ─────────────────────────────────────── */}
       {showAdd && (
-        <Modal title="New Aso Client" onClose={resetAdd}>
+        <div className="fixed inset-0 z-[60] flex flex-col justify-end bg-black/40">
+          <div className="bg-white dark:bg-slate-900 rounded-t-3xl max-h-[92vh] flex flex-col">
+            <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-800">
+              <h2 className="text-base font-bold text-slate-800 dark:text-white">New Ajo Client</h2>
+              <button onClick={resetAdd} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
+                <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-500" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+            <div className="overflow-y-auto flex-1 px-5 py-4 space-y-3">
 
-          <div className="flex flex-col items-center mb-4 pt-1">
+          <div className="flex flex-col items-center mb-2 pt-1">
             <div className="relative">
               <div className="w-24 h-24 rounded-2xl overflow-hidden border-2 border-dashed border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 flex items-center justify-center shadow-sm">
                 {photoPreview
@@ -1366,41 +1316,6 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             <p className="text-xs text-red-500 -mt-1">{clientBankErr}</p>
           )}
 
-          {/* Portal login password — like staff registration */}
-          <div className="bg-violet-50 dark:bg-violet-950/20 border border-violet-200 dark:border-violet-900/40 rounded-2xl p-4 space-y-3 mt-1">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-bold text-violet-800 dark:text-violet-300">Portal Login Password</p>
-                <p className="text-[11px] text-violet-700/70 dark:text-violet-400/70 mt-0.5">
-                  Client uses this to log in the first time, then sets their own password.
-                </p>
-              </div>
-              <button type="button" onClick={generateClientPassword}
-                className="shrink-0 text-[11px] font-bold text-violet-700 dark:text-violet-300 bg-white dark:bg-slate-800 border border-violet-200 dark:border-violet-800 px-2.5 py-1.5 rounded-lg">
-                Generate
-              </button>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Temporary Password *</label>
-              <div className="relative">
-                <input type={showClientPwd ? "text" : "password"} value={clientPassword}
-                  onChange={e => setClientPassword(e.target.value)}
-                  placeholder="Minimum 8 characters"
-                  className="w-full border border-slate-200 dark:border-slate-700 rounded-xl pl-3 pr-14 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500" />
-                <button type="button" onClick={() => setShowClientPwd(v => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-violet-600">
-                  {showClientPwd ? "Hide" : "Show"}
-                </button>
-              </div>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Confirm Password *</label>
-              <input type={showClientPwd ? "text" : "password"} value={confirmPwd}
-                onChange={e => setConfirmPwd(e.target.value)}
-                placeholder="Repeat temporary password"
-                className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500" />
-            </div>
-          </div>
           <Field label="NIN" inputMode="numeric" value={f.nin}
             onChange={e => set("nin", e.target.value.replace(/\D/g, "").slice(0, 11))}
             placeholder="11-digit National ID Number" />
@@ -1457,12 +1372,17 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             <p className="text-xs text-red-500 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/40 rounded-xl px-3 py-2">{addError}</p>
           )}
 
-          <button onClick={handleAdd}
-            disabled={!f.full_name || adding}
-            className="w-full py-3.5 mt-1 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] shadow-sm disabled:opacity-50">
-            {adding ? "Creating account…" : "Add Ajo Client"}
-          </button>
-        </Modal>
+              <div className="pb-6">
+                <button onClick={handleAdd}
+                  disabled={!f.full_name || adding}
+                  className="w-full py-3.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-60 text-white rounded-2xl font-bold text-sm transition active:scale-[0.99]">
+                  {adding ? "Creating account…" : "Add Ajo Client"}
+                </button>
+              </div>
+
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Contribute / Withdraw modal */}
@@ -1640,7 +1560,37 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         />
       )}
 
-      {/* ── Client Account Created Modal ─────────────────────────── */}
+      {/* ── Ajo Client Registration Success Banner ───────────────── */}
+      {addedClientEmail && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-5">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-sm shadow-2xl p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-11 h-11 bg-violet-100 dark:bg-violet-900/30 rounded-full flex items-center justify-center flex-shrink-0">
+                <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-violet-600" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+                  <path d="M20 6L9 17l-5-5" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm font-extrabold text-slate-800 dark:text-white">Client Account Created</p>
+                <p className="text-xs text-slate-400 dark:text-slate-500">Login credentials sent automatically</p>
+              </div>
+            </div>
+            <div className="bg-violet-50 dark:bg-violet-950/20 border border-violet-200 dark:border-violet-900/40 rounded-2xl px-4 py-3 mb-5">
+              <p className="text-[11px] text-violet-800 dark:text-violet-300 font-medium leading-relaxed">
+                An email with login credentials has been sent to{" "}
+                <span className="font-bold">{addedClientEmail}</span>. The client can log in at kudiai.app and will set a permanent password on first login.
+              </p>
+            </div>
+            <button
+              onClick={() => setAddedClientEmail("")}
+              className="w-full bg-violet-600 hover:bg-violet-700 text-white font-bold rounded-2xl py-3.5 text-sm transition-colors">
+              Done
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Client Password Reset Modal ───────────────────────────── */}
       {createdClient && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-5">
           <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-sm shadow-2xl max-h-[90vh] flex flex-col">
@@ -1654,12 +1604,8 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                   </svg>
                 </div>
                 <div>
-                  <p className="text-sm font-extrabold text-slate-800 dark:text-white">
-                  {createdClient._isReset ? "Password Reset" : "Client Account Created"}
-                </p>
-                  <p className="text-xs text-slate-400 dark:text-slate-500">
-                    {createdClient._isReset ? `New credentials for ${createdClient.full_name.split(" ")[0]}` : `Share these login details with ${createdClient.full_name.split(" ")[0]}`}
-                  </p>
+                  <p className="text-sm font-extrabold text-slate-800 dark:text-white">Password Reset</p>
+                  <p className="text-xs text-slate-400 dark:text-slate-500">New credentials for {createdClient.full_name.split(" ")[0]}</p>
                 </div>
               </div>
 
@@ -1687,55 +1633,15 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                 </div>
               </div>
 
-              {/* OTP verification */}
-              {clientOtpData && (
-                <div className="border border-slate-200 dark:border-slate-700 rounded-2xl p-4 mb-4 space-y-3">
-                  {otpVerified ? (
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center flex-shrink-0">
-                        <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-green-600" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
-                          <path d="M20 6L9 17l-5-5" />
-                        </svg>
-                      </div>
-                      <p className="text-xs font-semibold text-green-700 dark:text-green-400">Email verified — client can log in directly</p>
-                    </div>
-                  ) : (
-                    <>
-                      <div>
-                        <p className="text-sm font-bold text-slate-800 dark:text-white">Verify Client Email</p>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                          Ask {createdClient.full_name.split(" ")[0]} for the 6-digit code just sent to their email.
-                        </p>
-                      </div>
-                      <input
-                        type="text" inputMode="numeric" maxLength={6}
-                        value={clientOtpCode}
-                        onChange={e => setClientOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                        placeholder="6-digit code"
-                        className="w-full text-center text-xl font-bold tracking-[0.4em] border-2 rounded-xl py-3 bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:border-violet-500 border-slate-200 dark:border-slate-700"
-                      />
-                      {otpError && <p className="text-[11px] text-red-500">{otpError}</p>}
-                      <button onClick={verifyClientEmail}
-                        disabled={otpVerifying || clientOtpCode.length < 6}
-                        className="w-full bg-slate-800 dark:bg-slate-100 hover:bg-slate-900 dark:hover:bg-white disabled:opacity-50 text-white dark:text-slate-900 font-bold rounded-xl py-2.5 text-sm transition">
-                        {otpVerifying ? "Verifying…" : "Verify Email →"}
-                      </button>
-                    </>
-                  )}
-                </div>
-              )}
-
-              {!clientOtpData && (
-                <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-xl px-4 py-3 mb-4">
-                  <p className="text-[11px] text-amber-700 dark:text-amber-300 font-medium leading-relaxed">
-                    Client logs in at kudiai.app with their email and this password. They'll set a permanent password on first login.
-                  </p>
-                </div>
-              )}
+              <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-xl px-4 py-3 mb-4">
+                <p className="text-[11px] text-amber-700 dark:text-amber-300 font-medium leading-relaxed">
+                  Share these new credentials with the client. They can log in at kudiai.app and will set a permanent password on first login.
+                </p>
+              </div>
 
               <button onClick={closeClientCredentials}
                 className="w-full bg-violet-600 hover:bg-violet-700 text-white font-bold rounded-2xl py-3.5 text-sm transition">
-                {otpVerified ? "Done ✓" : "Done"}
+                Done
               </button>
             </div>
           </div>
