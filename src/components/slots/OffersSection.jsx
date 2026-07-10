@@ -13,10 +13,65 @@ async function openUrl(url) {
   }
 }
 
+function CreativeMedia({ offer }) {
+  const isFeedCard = offer.slot === "feed_card";
+  const ratio = isFeedCard ? "4/1" : "3/1";
+  const maxH  = isFeedCard ? 120 : 160;
+  const type  = offer.creative_type || (offer.creative_url ? "image" : "none");
+
+  // Carousel: creative_urls is an array of image URLs
+  const [carIdx, setCarIdx] = useState(0);
+  const carUrls = offer.creative_urls?.length ? offer.creative_urls : null;
+
+  if (type === "video" && offer.creative_url) {
+    return (
+      <div className="w-full overflow-hidden" style={{ aspectRatio: ratio, maxHeight: maxH }}>
+        <video
+          src={offer.creative_url}
+          className="w-full h-full object-cover"
+          autoPlay muted loop playsInline
+        />
+      </div>
+    );
+  }
+
+  if (type === "carousel" && carUrls) {
+    return (
+      <div className="relative w-full overflow-hidden" style={{ aspectRatio: ratio, maxHeight: maxH }}>
+        <img src={carUrls[carIdx]} alt={offer.title} className="w-full h-full object-cover" />
+        {carUrls.length > 1 && (
+          <>
+            <button
+              onClick={e => { e.stopPropagation(); setCarIdx(i => (i - 1 + carUrls.length) % carUrls.length); }}
+              className="absolute left-1 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-black/40 flex items-center justify-center text-white text-[10px]">‹</button>
+            <button
+              onClick={e => { e.stopPropagation(); setCarIdx(i => (i + 1) % carUrls.length); }}
+              className="absolute right-1 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-black/40 flex items-center justify-center text-white text-[10px]">›</button>
+            <div className="absolute bottom-1 left-0 right-0 flex justify-center gap-1">
+              {carUrls.map((_, i) => (
+                <span key={i} className={`block rounded-full transition-all ${i === carIdx ? "w-3 h-1.5 bg-white" : "w-1.5 h-1.5 bg-white/50"}`} />
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  if (offer.creative_url) {
+    return (
+      <div className="w-full overflow-hidden" style={{ aspectRatio: ratio, maxHeight: maxH }}>
+        <img src={offer.creative_url} alt={offer.title} className="w-full h-full object-cover" loading="eager" />
+      </div>
+    );
+  }
+
+  return null;
+}
+
 function PartnerOfferCard({ offer, onEvent, ctaUrl }) {
   const [reported, setReported] = useState(false);
   const [dismissed, setDismissed] = useState(false);
-  const isFeedCard = offer.slot === "feed_card";
 
   useEffect(() => {
     onEvent(offer.id, "impression");
@@ -47,16 +102,10 @@ function PartnerOfferCard({ offer, onEvent, ctaUrl }) {
       {/* Partner label bar */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-slate-100 dark:border-slate-700/50">
         <div className="flex items-center gap-2">
-          {partner.logo_url ? (
+          {partner.logo_url && (
             <img src={partner.logo_url} alt={partner.name} className="w-5 h-5 rounded object-contain" />
-          ) : (
-            <div className="w-5 h-5 rounded bg-slate-200 dark:bg-slate-700 flex items-center justify-center">
-              <svg className="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-2 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-              </svg>
-            </div>
           )}
-          <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">{partner.name || "Partner"} · Partner offer</span>
+          <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">Partner offer</span>
         </div>
         <button
           onClick={handleDismiss}
@@ -68,16 +117,10 @@ function PartnerOfferCard({ offer, onEvent, ctaUrl }) {
         </button>
       </div>
 
-      {/* Creative image if present */}
-      {offer.creative_url && (
-        <div className="w-full overflow-hidden" style={{ aspectRatio: isFeedCard ? "4/1" : "3/1", maxHeight: isFeedCard ? 120 : 140 }}>
-          <img src={offer.creative_url} alt={offer.title} className="w-full h-full object-cover" loading="eager" />
-        </div>
-      )}
+      <CreativeMedia offer={offer} />
 
       {/* Content */}
       <div className="px-4 pt-3 pb-4">
-        {/* User benefit badge */}
         {offer.user_benefit && (
           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold mb-2"
                 style={{ background: "#3DA82915", color: "#3DA829" }}>
@@ -89,7 +132,6 @@ function PartnerOfferCard({ offer, onEvent, ctaUrl }) {
           <p className="text-[12px] text-slate-500 dark:text-slate-400 leading-relaxed mb-3">{offer.body}</p>
         )}
 
-        {/* CTA row */}
         <div className="flex items-center gap-2">
           <button
             onClick={handleCTA}
@@ -105,11 +147,6 @@ function PartnerOfferCard({ offer, onEvent, ctaUrl }) {
             {reported ? "Reported" : "Report"}
           </button>
         </div>
-
-        {/* Mandatory disclosure */}
-        <p className="text-[9px] text-slate-300 dark:text-slate-600 mt-2 leading-relaxed">
-          {offer.disclosure_text || "Partner offer · KudiAI Track may earn a commission"}
-        </p>
       </div>
     </div>
   );
