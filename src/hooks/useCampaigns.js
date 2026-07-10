@@ -81,7 +81,7 @@ async function fetchAllCampaigns(portalType) {
 }
 
 const SLOT_LIMITS = {
-  home_banner: 5, popup: 1, announcement_bar: 1, feed_card: 1,
+  home_banner: 5, popup: 5, announcement_bar: 5, feed_card: 1,
   upsell_inline: 3, offers_section: 5, tab_card_quad: 1, tab_card_duo: 1,
 };
 
