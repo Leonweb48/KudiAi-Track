@@ -11,6 +11,8 @@ import HomeBannerSlot from "../components/slots/HomeBannerSlot";
 import PopupSlot from "../components/slots/PopupSlot";
 import FeedCardSlot from "../components/slots/FeedCardSlot";
 import UpsellInlineSlot from "../components/slots/UpsellInlineSlot";
+import TabCardQuadSlot from "../components/slots/TabCardQuadSlot";
+import TabCardDuoSlot from "../components/slots/TabCardDuoSlot";
 
 function greetingKey() {
   const h = new Date().getHours();
@@ -126,11 +128,17 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
   const [balanceHidden,      setBalanceHidden]      = useState(false);
   const [search,             setSearch]             = useState("");
   const [showProfilePreview, setShowProfilePreview] = useState(false);
-  const { slotMap, loading: camLoading, recordEvent } = useCampaigns(["home_banner","popup","feed_card","upsell_inline"]);
+  const { slotMap, loading: camLoading, recordEvent } = useCampaigns(
+    ["home_banner","popup","feed_card","upsell_inline","tab_card_quad","tab_card_duo"],
+    "business",
+    "business.home",
+  );
   const homeBanners  = slotMap.home_banner   || [];
   const popups       = slotMap.popup         || [];
   const feedCampaign = (slotMap.feed_card    || [])[0] ?? null;
   const upsells      = slotMap.upsell_inline || [];
+  // Density rule: max one tab-card row per page; quad takes priority over duo
+  const tabCard = (slotMap.tab_card_quad || [])[0] ?? (slotMap.tab_card_duo || [])[0] ?? null;
 
   const todayTx     = transactions.filter(tx => tx.transaction_date === today());
   const cashIn      = todayTx.filter(tx => tx.type === "in" ).reduce((s, tx) => s + tx.amount, 0);
@@ -356,6 +364,14 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
 
         </div>
       </div>
+
+      {/* ── Tab card slot — between stat chips and forecast (density: never adjacent to promo) */}
+      {tabCard && tabCard.slot === "tab_card_quad" && (
+        <TabCardQuadSlot campaign={tabCard} pageKey="business.home" recordEvent={recordEvent} />
+      )}
+      {tabCard && tabCard.slot === "tab_card_duo" && (
+        <TabCardDuoSlot campaign={tabCard} pageKey="business.home" recordEvent={recordEvent} />
+      )}
 
       {/* ── Sales Forecast ───────────────────────────────────────── */}
       {!loading && forecast && <SalesForecastCard prediction={forecast} t={t} />}

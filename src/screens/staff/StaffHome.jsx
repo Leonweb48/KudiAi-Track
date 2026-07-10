@@ -8,6 +8,8 @@ import { useCampaigns } from "../../hooks/useCampaigns";
 import { usePartnerOffers } from "../../hooks/usePartnerOffers";
 import AnnouncementBarSlot from "../../components/slots/AnnouncementBarSlot";
 import OffersSection from "../../components/slots/OffersSection";
+import TabCardQuadSlot from "../../components/slots/TabCardQuadSlot";
+import TabCardDuoSlot from "../../components/slots/TabCardDuoSlot";
 import {
   Svg, P,
   TxRow,
@@ -37,7 +39,8 @@ export default function StaffHome({ staff, store, inventory, plan, onGoTo, onVoi
   const t = useT();
   const { lang } = useLanguage();
   const BILL_SERVICES = useMemo(() => makeBillServices(t), [t]);
-  const { slotMap: camSlots, loading: camLoading, recordEvent: recordCamEvent } = useCampaigns(["announcement_bar","upsell_inline"], "staff");
+  const { slotMap: camSlots, loading: camLoading, recordEvent: recordCamEvent } = useCampaigns(["announcement_bar","upsell_inline","tab_card_quad","tab_card_duo"], "staff", "staff.home");
+  const staffTabCard = (camSlots.tab_card_quad || [])[0] ?? (camSlots.tab_card_duo || [])[0] ?? null;
   const annBars = camSlots.announcement_bar || [];
   const { offers: partnerOffers, loading: offersLoading, recordEvent: recordOfferEvent, ctaUrl } = usePartnerOffers("staff");
 
@@ -269,6 +272,12 @@ export default function StaffHome({ staff, store, inventory, plan, onGoTo, onVoi
         }
       </div>
       </div>
+      {staffTabCard && staffTabCard.slot === "tab_card_quad" && (
+        <TabCardQuadSlot campaign={staffTabCard} pageKey="staff.home" recordEvent={recordCamEvent} />
+      )}
+      {staffTabCard && staffTabCard.slot === "tab_card_duo" && (
+        <TabCardDuoSlot campaign={staffTabCard} pageKey="staff.home" recordEvent={recordCamEvent} />
+      )}
       <OffersSection
         offers={partnerOffers}
         loading={offersLoading}

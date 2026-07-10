@@ -19,6 +19,8 @@ import { usePartnerOffers } from "../hooks/usePartnerOffers";
 import AnnouncementBarSlot from "../components/slots/AnnouncementBarSlot";
 import OffersSection from "../components/slots/OffersSection";
 import PoweredByCardSlot from "../components/slots/PoweredByCardSlot";
+import TabCardQuadSlot from "../components/slots/TabCardQuadSlot";
+import TabCardDuoSlot from "../components/slots/TabCardDuoSlot";
 import { createReportPdf, fmtCurrency as pdfFmt, fmtDate as pdfFmtDate } from "../utils/generateReportPdf";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
 
@@ -1758,7 +1760,8 @@ export default function CoopMemberPortal({ member: initialMember }) {
     orgId: org.id,
     isActive: tab === "messages",
   });
-  const { slotMap: camSlots, loading: camLoading, recordEvent: recordCamEvent } = useCampaigns(["announcement_bar"], "org_member");
+  const { slotMap: camSlots, loading: camLoading, recordEvent: recordCamEvent } = useCampaigns(["announcement_bar","tab_card_quad","tab_card_duo"], "org_member", "org_member.home");
+  const coopTabCard = (camSlots.tab_card_quad || [])[0] ?? (camSlots.tab_card_duo || [])[0] ?? null;
   const annBars = camSlots.announcement_bar || [];
   const { offers: partnerOffers, loading: offersLoading, recordEvent: recordOfferEvent, ctaUrl } = usePartnerOffers("org_member");
 
@@ -1952,14 +1955,22 @@ export default function CoopMemberPortal({ member: initialMember }) {
           <AnnouncementBarSlot campaigns={annBars} loading={camLoading} recordEvent={recordCamEvent} />
           {tabContent[tab]}
           {tab === "home" && (
-            <OffersSection
-              offers={partnerOffers}
-              loading={offersLoading}
-              recordEvent={recordOfferEvent}
-              ctaUrl={ctaUrl}
-              title="Offers for Members"
-              maxShown={1}
-            />
+            <>
+              {coopTabCard && coopTabCard.slot === "tab_card_quad" && (
+                <TabCardQuadSlot campaign={coopTabCard} pageKey="org_member.home" recordEvent={recordCamEvent} />
+              )}
+              {coopTabCard && coopTabCard.slot === "tab_card_duo" && (
+                <TabCardDuoSlot campaign={coopTabCard} pageKey="org_member.home" recordEvent={recordCamEvent} />
+              )}
+              <OffersSection
+                offers={partnerOffers}
+                loading={offersLoading}
+                recordEvent={recordOfferEvent}
+                ctaUrl={ctaUrl}
+                title="Offers for Members"
+                maxShown={1}
+              />
+            </>
           )}
         </main>
 

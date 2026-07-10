@@ -15,6 +15,8 @@ import { usePartnerOffers } from "../hooks/usePartnerOffers";
 import AnnouncementBarSlot from "../components/slots/AnnouncementBarSlot";
 import OffersSection from "../components/slots/OffersSection";
 import PoweredByCardSlot from "../components/slots/PoweredByCardSlot";
+import TabCardQuadSlot from "../components/slots/TabCardQuadSlot";
+import TabCardDuoSlot from "../components/slots/TabCardDuoSlot";
 import TransactionPinModal from "../components/TransactionPinModal";
 import NotificationCenter, { NotificationBell } from "../components/NotificationCenter";
 import TransactionDetailModal from "../components/shared/TransactionDetailModal";
@@ -1727,7 +1729,8 @@ export default function AjoMemberPortal({ session, ajoClient }) {
 
   const lock  = useBiometricLock(ajoClient?.id);
   const notif = useNotifications(ajoClient?.id);
-  const { slotMap: camSlots, loading: camLoading, recordEvent: recordCamEvent } = useCampaigns(["announcement_bar"], "ajo_client");
+  const { slotMap: camSlots, loading: camLoading, recordEvent: recordCamEvent } = useCampaigns(["announcement_bar","tab_card_quad","tab_card_duo"], "ajo_client", "ajo_client.home");
+  const ajoTabCard = (camSlots.tab_card_quad || [])[0] ?? (camSlots.tab_card_duo || [])[0] ?? null;
   const annBars = camSlots.announcement_bar || [];
   const { offers: partnerOffers, loading: offersLoading, recordEvent: recordOfferEvent, ctaUrl } = usePartnerOffers("ajo_client");
 
@@ -1865,14 +1868,22 @@ export default function AjoMemberPortal({ session, ajoClient }) {
           {!client && tab !== "me" && <SkeletonHome />}
           {/* Offers section — max 1 per session on client portal */}
           {tab === "home" && (
-            <OffersSection
-              offers={partnerOffers}
-              loading={offersLoading}
-              recordEvent={recordOfferEvent}
-              ctaUrl={ctaUrl}
-              title="Offers for Members"
-              maxShown={1}
-            />
+            <>
+              {ajoTabCard && ajoTabCard.slot === "tab_card_quad" && (
+                <TabCardQuadSlot campaign={ajoTabCard} pageKey="ajo_client.home" recordEvent={recordCamEvent} />
+              )}
+              {ajoTabCard && ajoTabCard.slot === "tab_card_duo" && (
+                <TabCardDuoSlot campaign={ajoTabCard} pageKey="ajo_client.home" recordEvent={recordCamEvent} />
+              )}
+              <OffersSection
+                offers={partnerOffers}
+                loading={offersLoading}
+                recordEvent={recordOfferEvent}
+                ctaUrl={ctaUrl}
+                title="Offers for Members"
+                maxShown={1}
+              />
+            </>
           )}
         </main>
 
