@@ -110,13 +110,21 @@ serve(async (req) => {
     }
 
     // ── create (default): business owner sets up an ajo client login ──────
-    const { clientId, password } = body as { clientId: string; password: string };
+    const { clientId, password: providedPassword } = body as { clientId: string; password?: string };
     if (!clientId || typeof clientId !== "string") {
       return json({ error: "Client ID is required" }, 400);
     }
-    if (typeof password !== "string" || password.length < 8) {
-      return json({ error: "Password must be at least 8 characters" }, 400);
+
+    // Generate password internally — the business portal never sees or sets it
+    function genTempPwd(): string {
+      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$";
+      const vals = new Uint32Array(12);
+      crypto.getRandomValues(vals);
+      return Array.from(vals, (n: number) => chars[n % chars.length]).join("");
     }
+    const password = (typeof providedPassword === "string" && providedPassword.length >= 8)
+      ? providedPassword
+      : genTempPwd();
 
     const { data: client, error: clientError } = await adminClient
       .from("aso_clients")

@@ -535,10 +535,15 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     return Array.from(vals, n => chars[n % chars.length]).join("");
   };
 
-  const provisionClientLogin = async (clientRecord, password) => {
+  const provisionClientLogin = async (clientRecord, password = null) => {
+    // Only include password when explicitly provided (password resets)
+    // For new accounts, edge function generates the password internally
+    const fnBody = { clientId: clientRecord.id };
+    if (password) fnBody.password = password;
+
     const { data, error: fnError } = await supabase.functions.invoke(
       "manage-ajo-client-account",
-      { body: { clientId: clientRecord.id, password } },
+      { body: fnBody },
     );
     if (!fnError) {
       if (data?.error) throw new Error(data.error);
@@ -559,9 +564,10 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       throw new Error(msg);
     }
     // Fallback: signUp if edge function not yet deployed
+    const fallbackPwd = password || genClientPwd();
     const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
       email: clientRecord.email,
-      password,
+      password: fallbackPwd,
       options: {
         data: {
           full_name:            clientRecord.full_name,
@@ -632,7 +638,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         }
       }
       try {
-        await provisionClientLogin(data, genClientPwd());
+        await provisionClientLogin(data);
         resetAdd();
         setAddedClientEmail(data.email);
       } catch (provErr) {
