@@ -386,9 +386,7 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
       {!loading && forecast && <SalesForecastCard prediction={forecast} t={t} />}
 
       {/* ── Upsell inline slot ───────────────────────────────────── */}
-      {upsells.length > 0 && (
-        <UpsellInlineSlot campaign={upsells[0]} loading={camLoading} recordEvent={recordEvent} />
-      )}
+      <UpsellInlineSlot campaigns={upsells} loading={camLoading} recordEvent={recordEvent} />
 
       {/* ── Home Banner slot ─────────────────────────────────────── */}
       <HomeBannerSlot campaigns={homeBanners} loading={camLoading} recordEvent={recordEvent} />

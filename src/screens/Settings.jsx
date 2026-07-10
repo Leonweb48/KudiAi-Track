@@ -662,9 +662,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
       <AnnouncementBarSlot campaigns={settingsAnnBars} loading={camLoading} recordEvent={recordEvent} />
 
       {/* ── Upsell inline slot ───────────────────────────────────── */}
-      {settingsUpsells.length > 0 && (
-        <UpsellInlineSlot campaign={settingsUpsells[0]} loading={camLoading} recordEvent={recordEvent} />
-      )}
+      <UpsellInlineSlot campaigns={settingsUpsells} loading={camLoading} recordEvent={recordEvent} />
 
       {/* ── STAFF MANAGEMENT BANNER ────────────────────────────────── */}
       <button
