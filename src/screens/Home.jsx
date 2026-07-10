@@ -16,6 +16,7 @@ import TabCardQuadSlot from "../components/slots/TabCardQuadSlot";
 import TabCardDuoSlot from "../components/slots/TabCardDuoSlot";
 import OffersSection from "../components/slots/OffersSection";
 import AnnouncementBarSlot from "../components/slots/AnnouncementBarSlot";
+import ReferralCard from "../components/ReferralCard";
 
 function greetingKey() {
   const h = new Date().getHours();
@@ -476,6 +477,9 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
           return <div className="space-y-2">{rows}</div>;
         })()}
       </div>
+
+      {/* ── Refer & Earn ────────────────────────────────────────── */}
+      <ReferralCard />
 
       {/* ── Partner Offers ───────────────────────────────────────── */}
       <OffersSection
