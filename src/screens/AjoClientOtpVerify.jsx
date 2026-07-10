@@ -40,7 +40,7 @@ export default function AjoClientOtpVerify({ ajoClient }) {
     if (sentRef.current) return;
     sentRef.current = true;
     ajoClientFn("resend-otp")
-      .catch(() => null)
+      .catch((e) => setError(e?.message || "Could not send code — tap Resend to try again."))
       .finally(() => setOtpSending(false));
   }, []);
 

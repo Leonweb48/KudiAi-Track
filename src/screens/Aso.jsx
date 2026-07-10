@@ -569,6 +569,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           aso_client_id:        clientRecord.id,
           owner_id:             clientRecord.user_id,
           must_change_password: true,
+          email_verified:       false,
         },
       },
     });

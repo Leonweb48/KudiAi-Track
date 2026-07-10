@@ -152,8 +152,9 @@ export function useAuth() {
         setAjoClient({ ...ajoClientRow, owner_id: ajoClientRow.user_id });
         subVerified.current = true;
         logPlatformSession(supabase, uid, "ajo_client", ajoClientRow.full_name, email);
-        const emailVerified = sess.user.user_metadata?.email_verified !== false;
-        if (!emailVerified) {
+        const emailVerified = sess.user.user_metadata?.email_verified;
+        const needsOtp = emailVerified === false || (emailVerified == null && mustChange);
+        if (needsOtp) {
           setStatus("ajo_client_otp");
         } else if (mustChange) {
           fireWelcomeEmail("ajo_client_first_login", { name: ajoClientRow.full_name || "", email: email || "" });
@@ -448,8 +449,9 @@ export function useAuth() {
       if (ajoClientRow) {
         setAjoClient({ ...ajoClientRow, owner_id: ajoClientRow.user_id });
         subVerified.current = true;
-        const emailVerified2 = sess.user.user_metadata?.email_verified !== false;
-        if (!emailVerified2) {
+        const emailVerified2 = sess.user.user_metadata?.email_verified;
+        const needsOtp2 = emailVerified2 === false || (emailVerified2 == null && mustChange);
+        if (needsOtp2) {
           setStatus("ajo_client_otp");
         } else if (mustChange) {
           fireWelcomeEmail("ajo_client_first_login", { name: ajoClientRow.full_name || "", email: email || "" });
