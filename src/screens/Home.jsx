@@ -7,12 +7,15 @@ import AppLogo from "../components/AppLogo";
 import { getSalesPrediction } from "../utils/predictions";
 import ProfilePreviewModal from "../components/shared/ProfilePreviewModal";
 import { useCampaigns } from "../hooks/useCampaigns";
+import { usePartnerOffers } from "../hooks/usePartnerOffers";
 import HomeBannerSlot from "../components/slots/HomeBannerSlot";
 import PopupSlot from "../components/slots/PopupSlot";
 import FeedCardSlot from "../components/slots/FeedCardSlot";
 import UpsellInlineSlot from "../components/slots/UpsellInlineSlot";
 import TabCardQuadSlot from "../components/slots/TabCardQuadSlot";
 import TabCardDuoSlot from "../components/slots/TabCardDuoSlot";
+import OffersSection from "../components/slots/OffersSection";
+import AnnouncementBarSlot from "../components/slots/AnnouncementBarSlot";
 
 function greetingKey() {
   const h = new Date().getHours();
@@ -129,14 +132,16 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
   const [search,             setSearch]             = useState("");
   const [showProfilePreview, setShowProfilePreview] = useState(false);
   const { slotMap, loading: camLoading, recordEvent } = useCampaigns(
-    ["home_banner","popup","feed_card","upsell_inline","tab_card_quad","tab_card_duo"],
+    ["home_banner","popup","feed_card","upsell_inline","announcement_bar","tab_card_quad","tab_card_duo"],
     "business",
     "business.home",
   );
-  const homeBanners  = slotMap.home_banner   || [];
-  const popups       = slotMap.popup         || [];
-  const feedCampaign = (slotMap.feed_card    || [])[0] ?? null;
-  const upsells      = slotMap.upsell_inline || [];
+  const { offers: partnerOffers, loading: offersLoading, recordEvent: recordOfferEvent, ctaUrl } = usePartnerOffers("business");
+  const homeBanners  = slotMap.home_banner      || [];
+  const popups       = slotMap.popup            || [];
+  const feedCampaign = (slotMap.feed_card       || [])[0] ?? null;
+  const upsells      = slotMap.upsell_inline    || [];
+  const annBars      = slotMap.announcement_bar || [];
   // Density rule: max one tab-card row per page; quad takes priority over duo
   const tabCard = (slotMap.tab_card_quad || [])[0] ?? (slotMap.tab_card_duo || [])[0] ?? null;
 
@@ -181,6 +186,9 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
           </button>
         </div>
       </div>
+
+      {/* ── Announcement bar slot ────────────────────────────────── */}
+      <AnnouncementBarSlot campaigns={annBars} loading={camLoading} recordEvent={recordEvent} />
 
       {/* ── Hero card — greeting + profit + eye toggle ────────────── */}
       <div className="rounded-3xl px-5 pt-5 pb-6 text-white relative overflow-hidden shadow-hero"
@@ -468,6 +476,15 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
           return <div className="space-y-2">{rows}</div>;
         })()}
       </div>
+
+      {/* ── Partner Offers ───────────────────────────────────────── */}
+      <OffersSection
+        offers={partnerOffers}
+        loading={offersLoading}
+        recordEvent={recordOfferEvent}
+        ctaUrl={ctaUrl}
+        title="Offers for You"
+      />
 
       {showProfilePreview && (
         <ProfilePreviewModal
