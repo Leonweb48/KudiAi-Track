@@ -92,15 +92,6 @@ export default function App() {
     return () => window.removeEventListener("kt-notif-navigate", handler);
   }, [navigate]);
 
-  // Notification action deep-link — cold start / post-PIN-unlock: consume localStorage
-  useEffect(() => {
-    if (pinLock.loading || pinLock.locked) return;
-    const route = localStorage.getItem("kt_pending_notif_route");
-    if (!route) return;
-    localStorage.removeItem("kt_pending_notif_route");
-    navigate(route, { replace: true });
-  }, [pinLock.loading, pinLock.locked]); // eslint-disable-line react-hooks/exhaustive-deps
-
   // Derive active tab from URL path — maps legacy credit/aso routes to finance
   const rawTab = location.pathname === "/" ? "home" : location.pathname.slice(1).split("/")[0];
   const tab    = (rawTab === "credit" || rawTab === "aso") ? "finance" : rawTab;
@@ -143,6 +134,15 @@ export default function App() {
 
   // Two-tier PIN lock (server-side via pin-manager edge function)
   const pinLock = usePinLock(userId, session);
+
+  // Notification action deep-link — cold start / post-PIN-unlock: consume localStorage
+  useEffect(() => {
+    if (pinLock.loading || pinLock.locked) return;
+    const route = localStorage.getItem("kt_pending_notif_route");
+    if (!route) return;
+    localStorage.removeItem("kt_pending_notif_route");
+    navigate(route, { replace: true });
+  }, [pinLock.loading, pinLock.locked]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Loyalty program
   const loyalty = useLoyalty(userId);
