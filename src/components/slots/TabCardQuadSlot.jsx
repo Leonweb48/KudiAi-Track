@@ -8,11 +8,13 @@ import { isWhitelistedDeeplink } from "./SlotRegistry";
 
 export default function TabCardQuadSlot({ campaign, pageKey, recordEvent, navigate }) {
   const tiles = campaign?.tiles;
-  if (!tiles || tiles.length < 4) return null;
+  const valid = !!(tiles && tiles.length >= 4);
 
   useEffect(() => {
-    recordEvent?.(campaign.id, "impression", { pageKey });
-  }, [campaign.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (valid) recordEvent?.(campaign?.id, "impression", { pageKey });
+  }, [campaign?.id, valid]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!valid) return null;
 
   const handleClick = (tile, index) => {
     recordEvent?.(campaign.id, "click", { pageKey, tileIndex: index });
