@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="colorPrimary">#1B2A5E</color>
+    <color name="colorPrimaryDark">#0F1B3E</color>
+    <color name="colorAccent">#3DA829</color>
+    <!-- Brand green used as the notification icon tint in the status bar / drawer -->
+    <color name="notification_color">#3DA829</color>
 </resources>

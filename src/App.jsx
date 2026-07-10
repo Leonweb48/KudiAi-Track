@@ -81,6 +81,26 @@ export default function App() {
     return () => window.removeEventListener("promoNavigate", handler);
   }, [navigate]);
 
+  // Notification action deep-link — foreground: window event fires immediately
+  useEffect(() => {
+    const handler = (e) => {
+      if (!e.detail?.route) return;
+      localStorage.removeItem("kt_pending_notif_route"); // prevent double-navigation
+      navigate(e.detail.route);
+    };
+    window.addEventListener("kt-notif-navigate", handler);
+    return () => window.removeEventListener("kt-notif-navigate", handler);
+  }, [navigate]);
+
+  // Notification action deep-link — cold start / post-PIN-unlock: consume localStorage
+  useEffect(() => {
+    if (pinLock.loading || pinLock.locked) return;
+    const route = localStorage.getItem("kt_pending_notif_route");
+    if (!route) return;
+    localStorage.removeItem("kt_pending_notif_route");
+    navigate(route, { replace: true });
+  }, [pinLock.loading, pinLock.locked]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Derive active tab from URL path — maps legacy credit/aso routes to finance
   const rawTab = location.pathname === "/" ? "home" : location.pathname.slice(1).split("/")[0];
   const tab    = (rawTab === "credit" || rawTab === "aso") ? "finance" : rawTab;

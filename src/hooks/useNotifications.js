@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Capacitor } from "@capacitor/core";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { speakText } from "../utils/tts";
+import { ensureTxnChannel, TXN_CHANNEL } from "../utils/tts";
 
 const MAX = 100;
 let _nativeNotifId = 1;
@@ -22,6 +23,73 @@ function loadLS(key, fallback) {
   } catch { return fallback; }
 }
 
+// ── Notification action types registered with the OS ─────────────────────────
+const NOTIF_ACTION_TYPES = [
+  {
+    id: "PAYMENT_ACTION",
+    actions: [{ id: "view_receipt", title: "View Receipt" }],
+  },
+  {
+    id: "CREDIT_ACTION",
+    actions: [{ id: "view_credit", title: "View Credit" }],
+  },
+  {
+    id: "STOCK_ACTION",
+    actions: [{ id: "view_stock", title: "View Stock" }],
+  },
+  {
+    id: "BILLS_ACTION",
+    actions: [{ id: "view_bills", title: "View Bill" }],
+  },
+  {
+    id: "ASO_ACTION",
+    actions: [{ id: "view_aso", title: "View Details" }],
+  },
+  {
+    id: "SUPPORT_ACTION",
+    actions: [{ id: "open_ticket", title: "Open Ticket" }],
+  },
+];
+
+// Action button id → in-app route
+const ACTION_ROUTES = {
+  view_receipt: "/transactions",
+  view_credit:  "/finance",
+  view_stock:   "/inventory",
+  view_bills:   "/bills",
+  view_aso:     "/aso",
+  open_ticket:  "/help",
+};
+
+// Notification type → action type id
+const TYPE_TO_ACTION = {
+  payments: "PAYMENT_ACTION",
+  sales:    "PAYMENT_ACTION",
+  credits:  "CREDIT_ACTION",
+  stock:    "STOCK_ACTION",
+  bills:    "BILLS_ACTION",
+  aso:      "ASO_ACTION",
+  system:   null,
+};
+
+// Notification type → target route for body-tap
+const TYPE_TO_ROUTE = {
+  payments: "/transactions",
+  sales:    "/transactions",
+  credits:  "/finance",
+  stock:    "/inventory",
+  bills:    "/bills",
+  aso:      "/aso",
+  system:   "/",
+};
+
+// Store the pending deep-link and dispatch a foreground event.
+// App.jsx picks this up via "kt-notif-navigate" (foreground) and localStorage (cold start / PIN lock).
+function storePendingRoute(route) {
+  localStorage.setItem("kt_pending_notif_route", route);
+  window.dispatchEvent(new CustomEvent("kt-notif-navigate", { detail: { route } }));
+}
+
 export function useNotifications(userId) {
   const [notifications, setN] = useState([]);
   const [settings,      setS] = useState(DEFAULT_SETTINGS);
@@ -29,6 +97,7 @@ export function useNotifications(userId) {
   const [showSt,   setShowSt] = useState(false);
   const ready  = useRef(false);
   const setRef = useRef(DEFAULT_SETTINGS);
+  const listenerHandle = useRef(null);
 
   // Load from localStorage once userId is ready
   useEffect(() => {
@@ -40,7 +109,7 @@ export function useNotifications(userId) {
     setRef.current = s;
   }, [userId]);
 
-  // Keep ref in sync with state (avoids stale closure in addNotification)
+  // Keep ref in sync with state
   useEffect(() => { setRef.current = settings; }, [settings]);
 
   // Persist notifications
@@ -55,37 +124,66 @@ export function useNotifications(userId) {
     localStorage.setItem(`kt_notif_settings_${userId}`, JSON.stringify(settings));
   }, [settings, userId]);
 
-  const pushNative = useCallback(async (title, body) => {
+  // Register OS notification action types + set up action listener (once, on native only)
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    LocalNotifications.registerActionTypes({ types: NOTIF_ACTION_TYPES }).catch(() => {});
+
+    LocalNotifications.addListener("localNotificationActionPerformed", (event) => {
+      const actionId = event.actionId;
+      const notif    = event.notification;
+      let route;
+
+      if (actionId === "tap") {
+        // Body tap — use the route embedded in extra
+        route = notif?.extra?.route || "/";
+      } else {
+        route = ACTION_ROUTES[actionId] || "/";
+      }
+
+      storePendingRoute(route);
+    }).then(h => { listenerHandle.current = h; }).catch(() => {});
+
+    return () => { listenerHandle.current?.remove(); };
+  }, []);
+
+  // ── Native push notification ────────────────────────────────────────────────
+  const pushNative = useCallback(async (title, body, opts = {}) => {
     try {
+      await ensureTxnChannel();
       await LocalNotifications.schedule({
         notifications: [{
-          id:    _nativeNotifId++,
+          id:           _nativeNotifId++,
           title,
           body,
-          sound: "default",
-          smallIcon: "ic_stat_icon_config_sample",
-          iconColor: "#4f46e5",
+          largeBody:    body,                   // BigTextStyle — drawer chevron expands to full text
+          largeIcon:    "ic_notification_large",// full-color app icon (copied to drawable/)
+          smallIcon:    "ic_notification",      // white-on-transparent K mark
+          iconColor:    "#3DA829",
+          channelId:    TXN_CHANNEL,
+          sound:        "default",
+          actionTypeId: opts.actionTypeId || null,
+          extra:        opts.extra || {},
         }],
       });
     } catch { /* non-critical */ }
   }, []);
 
+  // ── Web push notification ──────────────────────────────────────────────────
   const pushBrowser = useCallback((title, body) => {
-    if (Capacitor.isNativePlatform()) {
-      pushNative(title, body);
-      return;
-    }
     if (!("Notification" in window) || Notification.permission !== "granted") return;
     try { new Notification(title, { body, icon: "/logo.png", badge: "/logo.png" }); } catch {}
-  }, [pushNative]);
+  }, []);
 
   const speak = useCallback((text) => {
     speakText(text, "en").catch(() => {});
   }, []);
 
+  // ── Public: add an in-app + native notification ────────────────────────────
   const addNotification = useCallback((type, title, message) => {
     const s = setRef.current;
-    if (s[type] === false) return; // type disabled in settings
+    if (s[type] === false) return;
 
     const n = {
       id: `${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -94,9 +192,19 @@ export function useNotifications(userId) {
       read: false,
     };
     setN(p => [n, ...p].slice(0, MAX));
-    if (s.push)  pushBrowser(title, message);
+
+    if (s.push) {
+      if (Capacitor.isNativePlatform()) {
+        pushNative(title, message, {
+          actionTypeId: TYPE_TO_ACTION[type] || null,
+          extra: { route: TYPE_TO_ROUTE[type] || "/" },
+        });
+      } else {
+        pushBrowser(title, message);
+      }
+    }
     if (s.voice) speak(`${title}. ${message}`);
-  }, [pushBrowser, speak]);
+  }, [pushNative, pushBrowser, speak]);
 
   const markRead    = useCallback((id) => setN(p => p.map(n => n.id === id ? { ...n, read: true } : n)), []);
   const markAllRead = useCallback(() => setN(p => p.map(n => ({ ...n, read: true }))), []);
