@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import Credit               from "./Credit";
 import Aso                  from "./Aso";
+import { useCampaigns }     from "../hooks/useCampaigns";
+import AnnouncementBarSlot  from "../components/slots/AnnouncementBarSlot";
 import CoopList             from "./CoopList";
 import Invoices             from "./Invoices";
 import LoanApplicationModal from "../components/LoanApplicationModal";
@@ -550,6 +552,8 @@ export default function Finance({
 }) {
   const [section,  setSection]  = useState(autoOpenTab || null);
   const [showLoan, setShowLoan] = useState(false);
+  const { slotMap: camSlots, loading: camLoading, recordEvent: recordCamEvent } = useCampaigns(["announcement_bar", "upsell_inline"], "business", "business.finance");
+  const financeAnnBars = camSlots.announcement_bar || [];
 
   useEffect(() => {
     if (autoOpenTab) {
@@ -627,6 +631,7 @@ export default function Finance({
   // ── Finance dashboard ───────────────────────────────────────────────────────
   return (
     <div className="px-4 pt-4 pb-28 space-y-4">
+      <AnnouncementBarSlot campaigns={financeAnnBars} loading={camLoading} recordEvent={recordCamEvent} />
       <FinanceOverviewCard
         credits={credits}
         ajoClients={asoClients}

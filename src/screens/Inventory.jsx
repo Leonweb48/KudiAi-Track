@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { fmt } from "../utils/helpers";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
+import { useCampaigns }    from "../hooks/useCampaigns";
+import AnnouncementBarSlot from "../components/slots/AnnouncementBarSlot";
 import { canDo, featureLimit, upgradeLabel, planAvailableText } from "../utils/plans";
 import { useT } from "../contexts/LanguageContext";
 import { getLang, speakConfirmation } from "../utils/i18n";
@@ -546,6 +548,8 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
   // canAdd allows staff to add new products without full owner privileges
   const canAddStock = canAdd !== undefined ? canAdd : isOwner;
   const t = useT();
+  const { slotMap: camSlots, loading: camLoading, recordEvent: recordCamEvent } = useCampaigns(["announcement_bar"], "business", "business.inventory");
+  const invAnnBars = camSlots.announcement_bar || [];
   const [search,      setSearch]      = useState("");
   const [catFilter,   setCatFilter]   = useState("all");
   const [showForm,    setShowForm]    = useState(false);
@@ -637,6 +641,7 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
 
   return (
     <div className="pb-28 screen-enter">
+      <AnnouncementBarSlot campaigns={invAnnBars} loading={camLoading} recordEvent={recordCamEvent} />
       {/* Header */}
       <div className="sticky top-0 z-20 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 pt-4 pb-3">
         <div className="flex items-center justify-between gap-3 mb-3">

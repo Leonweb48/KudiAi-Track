@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import Icon   from "../components/Icon";
 import Modal  from "../components/shared/Modal";
+import { useCampaigns }        from "../hooks/useCampaigns";
+import AnnouncementBarSlot     from "../components/slots/AnnouncementBarSlot";
 import TransactionPinModal from "../components/TransactionPinModal";
 import Field  from "../components/shared/Field";
 import TransactionDetailModal from "../components/shared/TransactionDetailModal";
@@ -230,6 +232,8 @@ export function AddTxnModal({ onAdd, onClose, defaultType = "in", inventory = nu
 
 export default function Transactions({ store, plan = "starter", onVoiceOpen, autoOpen, autoType, onAutoOpened, onUpgrade, readOnly, inventory = null }) {
   const t = useT();
+  const { slotMap: camSlots, loading: camLoading, recordEvent: recordCamEvent } = useCampaigns(["announcement_bar", "upsell_inline"], "business", "business.sales");
+  const salesAnnBars = camSlots.announcement_bar || [];
   const [showAdd,    setShowAdd]    = useState(false);
   const [initType,   setInitType]   = useState("in");
   const [filter,     setFilter]     = useState("all");
@@ -321,6 +325,8 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
 
   return (
     <div className="px-4 pt-5 pb-28 screen-enter">
+
+      <AnnouncementBarSlot campaigns={salesAnnBars} loading={camLoading} recordEvent={recordCamEvent} />
 
       {/* Limit banner */}
       {txLimitReached && (

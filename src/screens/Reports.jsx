@@ -2,6 +2,8 @@ import { useState, useMemo } from "react";
 import { fmt }        from "../utils/helpers";
 import { useT }       from "../contexts/LanguageContext";
 import { createReportPdf } from "../utils/generateReportPdf";
+import { useCampaigns }    from "../hooks/useCampaigns";
+import AnnouncementBarSlot from "../components/slots/AnnouncementBarSlot";
 
 /* ── date helpers ──────────────────────────────────────────────────── */
 const todayStr = () => new Date().toISOString().split("T")[0];
@@ -825,6 +827,8 @@ async function buildNativeReportPDF(type, data, profile, from, to) {
 export default function Reports({ store, onClose }) {
   const t = useT();
   const { transactions, credits, asoClients, profile, staffMap = {} } = store;
+  const { slotMap: camSlots, loading: camLoading, recordEvent: recordCamEvent } = useCampaigns(["announcement_bar"], "business", "business.reports");
+  const reportsAnnBars = camSlots.announcement_bar || [];
 
   const [reportType, setReportType] = useState("sales");
   const [period,     setPeriod]     = useState("month");
@@ -937,6 +941,8 @@ export default function Reports({ store, onClose }) {
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-5">
+
+        <AnnouncementBarSlot campaigns={reportsAnnBars} loading={camLoading} recordEvent={recordCamEvent} />
 
         {/* Report type grid */}
         <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3">{t("report.selectType")}</p>

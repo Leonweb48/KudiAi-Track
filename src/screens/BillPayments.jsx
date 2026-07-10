@@ -1,6 +1,8 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { jsPDF } from "jspdf";
 import { fmt, today } from "../utils/helpers";
+import { useCampaigns }    from "../hooks/useCampaigns";
+import AnnouncementBarSlot from "../components/slots/AnnouncementBarSlot";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
 import { useT } from "../contexts/LanguageContext";
 import { calcPointsDiscount, calcCashbackDiscount, calcCouponDiscount, calcBillAmounts } from "../utils/billCalc";
@@ -1618,6 +1620,8 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     "business-loan":t("bill.businessLoan"),
   }), [t]);
   const { transactions, addTransaction, profile, patchTransactionNote } = store;
+  const { slotMap: camSlots, loading: camLoading, recordEvent: recordCamEvent } = useCampaigns(["announcement_bar"], "business", "business.bills");
+  const billsAnnBars = camSlots.announcement_bar || [];
   // plan is a slug string from useAuth (e.g. "oga"), not a plan object
   const planSlug = typeof plan === "string" ? plan : (plan?.slug ?? "");
   // Unlock for enterprise/oga: match by feature key or slug name
@@ -2666,6 +2670,8 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
   return (
     <div className="pb-6 screen-enter">
+
+      <AnnouncementBarSlot campaigns={billsAnnBars} loading={camLoading} recordEvent={recordCamEvent} />
 
       {/* ── Loan Application Modal ────────────────────────────────────────── */}
       {showLoanModal && (

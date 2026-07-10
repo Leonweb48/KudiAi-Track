@@ -251,7 +251,7 @@ export default function Insights({ store, inventory, plan = "starter", onUpgrade
   const { transactions } = store;
   const products = useMemo(() => inventory?.products || [], [inventory]);
   const [period,    setPeriod]    = useState("today");
-  const { slotMap, loading: camLoading, recordEvent } = useCampaigns(["announcement_bar"]);
+  const { slotMap, loading: camLoading, recordEvent } = useCampaigns(["announcement_bar", "upsell_inline"], "business", "business.insights");
   const annBars = slotMap.announcement_bar || [];
   const [aiLoading, setAiLoading] = useState(false);
   const [aiInsight, setAiInsight] = useState("");
