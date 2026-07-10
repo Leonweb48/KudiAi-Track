@@ -16,9 +16,11 @@ import TransactionPinModal from "../components/TransactionPinModal";
 import { createReportPdf, fmtCurrency as pdfFmt, fmtDate as pdfFmtDate } from "../utils/generateReportPdf";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
 import { useCampaigns } from "../hooks/useCampaigns";
+import { usePartnerOffers } from "../hooks/usePartnerOffers";
 import AnnouncementBarSlot from "../components/slots/AnnouncementBarSlot";
 import TabCardQuadSlot from "../components/slots/TabCardQuadSlot";
 import TabCardDuoSlot from "../components/slots/TabCardDuoSlot";
+import OffersSection from "../components/slots/OffersSection";
 
 const coopFn = async (action, body = {}) => {
   const r = await supabase.functions.invoke("coop-portal", { body: { action, ...body } });
@@ -97,8 +99,9 @@ function OverviewTab({ org, wallet, programs, announcements, members = [], loans
     "organisation",
     "org.dashboard",
   );
-  const annBars   = camSlots.announcement_bar || [];
+  const annBars    = camSlots.announcement_bar || [];
   const orgTabCard = (camSlots.tab_card_quad || [])[0] ?? (camSlots.tab_card_duo || [])[0] ?? null;
+  const { offers: partnerOffers, loading: offersLoading, recordEvent: recordOfferEvent, ctaUrl } = usePartnerOffers("organisation");
 
   const activeMembers  = members.filter(m => m.status === "active");
   const activePrograms = programs.filter(p => p.status === "active");
@@ -238,6 +241,15 @@ function OverviewTab({ org, wallet, programs, announcements, members = [], loans
           <TabCardDuoSlot campaign={orgTabCard} pageKey="org.dashboard" recordEvent={recordCamEvent} />
         </div>
       )}
+
+      {/* ── Partner Offers ── */}
+      <OffersSection
+        offers={partnerOffers}
+        loading={offersLoading}
+        recordEvent={recordOfferEvent}
+        ctaUrl={ctaUrl}
+        title="Offers for You"
+      />
 
       {/* ── Recent Activity ── */}
       {recentTxns.length > 0 && (
