@@ -15,6 +15,10 @@ import { buildCoopOrgContext } from "../utils/buildContext";
 import TransactionPinModal from "../components/TransactionPinModal";
 import { createReportPdf, fmtCurrency as pdfFmt, fmtDate as pdfFmtDate } from "../utils/generateReportPdf";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
+import { useCampaigns } from "../hooks/useCampaigns";
+import AnnouncementBarSlot from "../components/slots/AnnouncementBarSlot";
+import TabCardQuadSlot from "../components/slots/TabCardQuadSlot";
+import TabCardDuoSlot from "../components/slots/TabCardDuoSlot";
 
 const coopFn = async (action, body = {}) => {
   const r = await supabase.functions.invoke("coop-portal", { body: { action, ...body } });
@@ -88,6 +92,14 @@ const OV_QUICK = [
 ];
 
 function OverviewTab({ org, wallet, programs, announcements, members = [], loans = [], wdRequests = [], onQuickService = null, onNavigate = null, adminEmail = null }) {
+  const { slotMap: camSlots, loading: camLoading, recordEvent: recordCamEvent } = useCampaigns(
+    ["announcement_bar", "tab_card_quad", "tab_card_duo"],
+    "organisation",
+    "org.dashboard",
+  );
+  const annBars   = camSlots.announcement_bar || [];
+  const orgTabCard = (camSlots.tab_card_quad || [])[0] ?? (camSlots.tab_card_duo || [])[0] ?? null;
+
   const activeMembers  = members.filter(m => m.status === "active");
   const activePrograms = programs.filter(p => p.status === "active");
   const pendingReqs    = wdRequests.filter(r => r.status === "pending");
@@ -127,6 +139,8 @@ function OverviewTab({ org, wallet, programs, announcements, members = [], loans
 
   return (
     <div className="pb-8 space-y-6">
+
+      <AnnouncementBarSlot campaigns={annBars} loading={camLoading} recordEvent={recordCamEvent} />
 
       {/* ── Hero Balance Card ── */}
       <div className="mx-4 mt-5 rounded-3xl px-6 py-6 text-white relative overflow-hidden shadow-hero"
@@ -213,6 +227,17 @@ function OverviewTab({ org, wallet, programs, announcements, members = [], loans
           ))}
         </div>
       </div>
+
+      {orgTabCard && orgTabCard.slot === "tab_card_quad" && (
+        <div className="px-4">
+          <TabCardQuadSlot campaign={orgTabCard} pageKey="org.dashboard" recordEvent={recordCamEvent} />
+        </div>
+      )}
+      {orgTabCard && orgTabCard.slot === "tab_card_duo" && (
+        <div className="px-4">
+          <TabCardDuoSlot campaign={orgTabCard} pageKey="org.dashboard" recordEvent={recordCamEvent} />
+        </div>
+      )}
 
       {/* ── Recent Activity ── */}
       {recentTxns.length > 0 && (
