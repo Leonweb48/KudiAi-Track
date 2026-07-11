@@ -1490,17 +1490,26 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
   const bizName = ownerInfo?.business_name || ownerInfo?.full_name || "My Business";
 
   const handleExportPdf = async () => {
-    const sorted = [...allItems].sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+    const sorted = [...allItems].sort((a, b) => new Date(a.date || a.created_at || 0) - new Date(b.date || b.created_at || 0));
+    let runBal = 0;
     const rows = sorted.map(item => {
-      const isWd  = item._type === "withdrawal_request" || item.type === "withdrawal";
-      const amt   = parseFloat(item.amount) || 0;
+      const amt      = parseFloat(item.amount) || 0;
+      const isWdReq  = item._type === "withdrawal_request";
+      const isFee    = item.type === "withdrawal_fee" || item.type === "registration_fee";
+      const isWd     = !isWdReq && (item.type === "withdrawal" || isFee || (item.type || "").startsWith("reversal_"));
+      const desc     = isWdReq ? "Withdrawal Request (Pending)"
+        : isFee        ? (item.type === "withdrawal_fee" ? "Withdrawal Fee" : "Registration Fee")
+        : item.type === "withdrawal" ? "Withdrawal"
+        : (item.type || "").startsWith("reversal_") ? "Reversal"
+        : "Contribution";
+      if (!isWdReq) { if (isWd) runBal -= amt; else runBal += amt; }
       return {
         date:        pdfFmtDate(item.created_at || item.date),
-        description: isWd ? "Withdrawal Request" : "Contribution",
+        description: desc,
         reference:   item.payment_method || item.status || "—",
-        debit:       isWd ? pdfFmt(amt) : "",
-        credit:      isWd ? "" : pdfFmt(amt),
-        balance:     "",
+        debit:       isWd || isWdReq ? pdfFmt(amt) : "",
+        credit:      isWd || isWdReq ? "" : pdfFmt(amt),
+        balance:     pdfFmt(runBal),
       };
     });
     const totC = contributions.filter(c => c.type === "contribution").reduce((s, c) => s + (parseFloat(c.amount) || 0), 0);
@@ -1526,7 +1535,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
       { label: "Current Balance",   value: pdfFmt(client?.current_balance || 0) },
       { label: "Records",           value: String(allItems.length) },
     ]);
-    pdf.addStatement(rows, { totalDebits: totD, totalCredits: totC });
+    pdf.addStatement(rows, { openingBalance: 0, totalDebits: totD, totalCredits: totC });
     await pdf.save(`Ajo_Savings_${(client?.full_name || "Statement").replace(/\s+/g, "_")}.pdf`);
   };
 

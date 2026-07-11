@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { supabase } from "../utils/supabase";
 import Icon   from "../components/Icon";
 import Modal  from "../components/shared/Modal";
 import { useCampaigns }        from "../hooks/useCampaigns";
@@ -234,12 +235,32 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
   const t = useT();
   const { slotMap: camSlots, loading: camLoading, recordEvent: recordCamEvent } = useCampaigns(["announcement_bar", "upsell_inline"], "business", "business.sales");
   const salesAnnBars = camSlots.announcement_bar || [];
-  const [showAdd,    setShowAdd]    = useState(false);
-  const [initType,   setInitType]   = useState("in");
-  const [filter,     setFilter]     = useState("all");
-  const [search,     setSearch]     = useState("");
-  const [receipt,    setReceipt]    = useState(null); // txn to show receipt for
-  const { transactions, addTransaction, deleteTransaction, profile, staffMap = {} } = store;
+  const [showAdd,      setShowAdd]      = useState(false);
+  const [initType,     setInitType]     = useState("in");
+  const [filter,       setFilter]       = useState("all");
+  const [search,       setSearch]       = useState("");
+  const [receipt,      setReceipt]      = useState(null);
+  const [ajoContribs,  setAjoContribs]  = useState(null);
+  const { transactions, addTransaction, deleteTransaction, profile, staffMap = {}, asoClients = [] } = store;
+
+  const asoClientMap = useMemo(() => {
+    const m = {};
+    asoClients.forEach(c => { m[c.id] = c; });
+    return m;
+  }, [asoClients]);
+
+  useEffect(() => {
+    if (filter !== "ajo") { setAjoContribs(null); return; }
+    if (asoClients.length === 0) { setAjoContribs([]); return; }
+    supabase
+      .from("ajo_contributions")
+      .select("id, aso_client_id, type, amount, payment_method, created_at, status")
+      .in("aso_client_id", asoClients.map(c => c.id))
+      .order("created_at", { ascending: false })
+      .limit(200)
+      .then(({ data }) => setAjoContribs(data || []));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter, asoClients.length]);
 
   const limits         = planLimits(plan);
   const now            = new Date();
@@ -260,8 +281,9 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
     }
   }, [autoOpen, autoType, onAutoOpened, txLimitReached]);
 
-  const filtered = transactions.filter(t => {
-    if (filter === "in")     { if (t.type !== "in"  || t.payment_type === "bill_payment") return false; }
+  const isAjoMode = filter === "ajo";
+  const filtered = isAjoMode ? [] : transactions.filter(t => {
+    if (filter === "in")          { if (t.type !== "in"  || t.payment_type === "bill_payment") return false; }
     else if (filter === "out")    { if (t.type !== "out" || t.payment_type === "bill_payment") return false; }
     else if (filter === "bills")  { if (t.payment_type !== "bill_payment") return false; }
     else if (filter === "credit") { if (t.category !== "credit sale" && t.category !== "debt repayment") return false; }
@@ -269,6 +291,12 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
         !t.customer_name?.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
+
+  const filteredAjo = isAjoMode
+    ? (ajoContribs || []).filter(c =>
+        !search || (asoClientMap[c.aso_client_id]?.full_name || "").toLowerCase().includes(search.toLowerCase())
+      )
+    : [];
 
   const totIn  = transactions.reduce((s, t) => t.type === "in"  ? s + t.amount : s, 0);
   const totOut = transactions.reduce((s, t) => t.type === "out" ? s + t.amount : s, 0);
@@ -416,11 +444,14 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
           { id: "out",    label: t("txn.cashOut") },
           { id: "bills",  label: "Bills" },
           { id: "credit", label: "Credit" },
+          { id: "ajo",    label: "Ajo" },
         ].map(opt => (
           <button key={opt.id} onClick={() => setFilter(opt.id)}
             className={`flex-shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold transition-colors ${
               filter === opt.id
-                ? "bg-slate-800 dark:bg-white text-white dark:text-slate-900"
+                ? opt.id === "ajo"
+                  ? "bg-violet-600 text-white"
+                  : "bg-slate-800 dark:bg-white text-white dark:text-slate-900"
                 : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
             }`}>
             {opt.label}
@@ -440,13 +471,64 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
         />
       </div>
 
+      {/* Ajo events list (read-only) */}
+      {isAjoMode && (
+        ajoContribs === null ? (
+          <div className="text-center py-14">
+            <p className="text-slate-400 dark:text-slate-500 text-sm font-semibold">Loading Ajo events…</p>
+          </div>
+        ) : filteredAjo.length === 0 ? (
+          <div className="text-center py-14">
+            <p className="text-slate-400 dark:text-slate-500 text-sm font-semibold">No Ajo activity found</p>
+            <p className="text-slate-300 dark:text-slate-600 text-xs mt-1">Ajo contributions and withdrawals appear here</p>
+          </div>
+        ) : (
+          <div className="space-y-2.5">
+            {filteredAjo.map(c => {
+              const client   = asoClientMap[c.aso_client_id];
+              const isFee    = c.type === "withdrawal_fee" || c.type === "registration_fee";
+              const isWd     = c.type === "withdrawal" || isFee;
+              const amt      = parseFloat(c.amount) || 0;
+              const typeLabel = isFee
+                ? (c.type === "withdrawal_fee" ? "Withdrawal Fee" : "Reg. Fee")
+                : c.type === "withdrawal" ? "Withdrawal"
+                : c.payment_method === "manual_transfer" ? "Manual Deposit"
+                : "Contribution";
+              const dateStr  = c.created_at
+                ? new Date(c.created_at).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })
+                : "—";
+              return (
+                <div key={c.id} className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 shadow-card border border-slate-100 dark:border-slate-700/60">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${isWd ? "bg-red-100 dark:bg-red-900/30" : "bg-violet-100 dark:bg-violet-900/30"}`}>
+                      <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke={isWd ? "#ef4444" : "#7c3aed"} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                        {isWd
+                          ? <><path d="M12 5v14"/><path d="M19 12l-7 7-7-7"/></>
+                          : <><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></>}
+                      </svg>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[13px] font-bold text-slate-800 dark:text-white truncate">{client?.full_name || "Unknown Client"}</p>
+                      <p className="text-[11px] text-slate-400 dark:text-slate-500">{typeLabel} · {dateStr}</p>
+                    </div>
+                    <p className={`text-[14px] font-extrabold tabular flex-shrink-0 ${isWd ? "text-red-500" : "text-violet-600 dark:text-violet-400"}`}>
+                      {isWd ? "−" : "+"}{fmt(amt)}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )
+      )}
+
       {/* List */}
-      {filtered.length === 0 ? (
+      {!isAjoMode && filtered.length === 0 ? (
         <div className="text-center py-14">
           <p className="text-slate-400 dark:text-slate-500 text-sm font-semibold">No transactions found</p>
           <p className="text-slate-300 dark:text-slate-600 text-xs mt-1">Tap + or use Voice to record one</p>
         </div>
-      ) : (
+      ) : !isAjoMode && (
         <div className="space-y-2.5">
           {filtered.map(t => {
             const isIn = t.type === "in";

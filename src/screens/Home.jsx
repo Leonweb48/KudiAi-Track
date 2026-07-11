@@ -1,5 +1,6 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { fmt, today } from "../utils/helpers";
+import { supabase } from "../utils/supabase";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
 import { NotificationBell } from "../components/NotificationCenter";
 import { useT } from "../contexts/LanguageContext";
@@ -135,6 +136,20 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
   const [search,             setSearch]             = useState("");
   const [receipt,            setReceipt]            = useState(null);
   const [showProfilePreview, setShowProfilePreview] = useState(false);
+  const [todayAjo,           setTodayAjo]           = useState(0);
+
+  useEffect(() => {
+    if (!asoClients.length) return;
+    const todayStart = new Date().toISOString().slice(0, 10) + "T00:00:00";
+    supabase
+      .from("ajo_contributions")
+      .select("amount")
+      .in("aso_client_id", asoClients.map(c => c.id))
+      .eq("type", "contribution")
+      .gte("created_at", todayStart)
+      .then(({ data }) => setTodayAjo((data || []).reduce((s, c) => s + (parseFloat(c.amount) || 0), 0)));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [asoClients.length]);
   const { slotMap, loading: camLoading, recordEvent } = useCampaigns(
     ["home_banner","popup","feed_card","upsell_inline","announcement_bar","tab_card_quad","tab_card_duo"],
     "business",
@@ -252,21 +267,31 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
       </div>
 
       {/* ── Daily summary chip ──────────────────────────────────── */}
-      {!loading && todayTx.length > 0 && (
-        <div className="flex justify-center">
-          <div className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-[11px] font-bold border ${
-            profit >= 0
-              ? "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-green-100 dark:border-green-800/40"
-              : "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border-red-100 dark:border-red-800/40"
-          }`}>
-            <span>Today</span>
-            <span className="opacity-40">·</span>
-            <span>{todayTx.length} transaction{todayTx.length !== 1 ? "s" : ""}</span>
-            <span className="opacity-40">·</span>
-            <span>{profit >= 0 ? "+" : "−"}{fmt(Math.abs(profit))} net</span>
-          </div>
+      {(!loading && todayTx.length > 0) || todayAjo > 0 ? (
+        <div className="flex flex-col items-center gap-1.5">
+          {!loading && todayTx.length > 0 && (
+            <div className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-[11px] font-bold border ${
+              profit >= 0
+                ? "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-green-100 dark:border-green-800/40"
+                : "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border-red-100 dark:border-red-800/40"
+            }`}>
+              <span>Today</span>
+              <span className="opacity-40">·</span>
+              <span>{todayTx.length} transaction{todayTx.length !== 1 ? "s" : ""}</span>
+              <span className="opacity-40">·</span>
+              <span>{profit >= 0 ? "+" : "−"}{fmt(Math.abs(profit))} net</span>
+            </div>
+          )}
+          {/* Ajo collections are client savings — not included in profit above */}
+          {todayAjo > 0 && (
+            <div className="inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-[11px] font-bold border bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-400 border-violet-100 dark:border-violet-800/40">
+              <span>Ajo</span>
+              <span className="opacity-40">·</span>
+              <span>{fmt(todayAjo)} collected today</span>
+            </div>
+          )}
         </div>
-      )}
+      ) : null}
 
       {/* ── Quick Actions + Services (single card) ────────────────── */}
       <div className="bg-white dark:bg-slate-800 rounded-3xl p-4 shadow-card border border-slate-100 dark:border-slate-700/50">

@@ -1,9 +1,10 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { fmt }        from "../utils/helpers";
 import { useT }       from "../contexts/LanguageContext";
 import { createReportPdf } from "../utils/generateReportPdf";
 import { useCampaigns }    from "../hooks/useCampaigns";
 import AnnouncementBarSlot from "../components/slots/AnnouncementBarSlot";
+import { supabase }        from "../utils/supabase";
 
 /* ── date helpers ──────────────────────────────────────────────────── */
 const todayStr = () => new Date().toISOString().split("T")[0];
@@ -232,26 +233,67 @@ function buildCreditData(credits) {
   return { credits, totalDebt, totalPaid, totalOut, overdueCount: overdue.length, overdueDue: overdue.reduce((s,c)=>s+c.outstanding,0) };
 }
 
-function buildAsoData(asoClients) {
+function buildAsoLedger(asoClients, contributions, from, to) {
   const totalBal    = asoClients.reduce((s,c)=>s+(c.current_balance||0),0);
   const totalSaved  = asoClients.reduce((s,c)=>s+(c.total_saved||0),0);
   const totalWithdr = asoClients.reduce((s,c)=>s+(c.total_withdrawn||0),0);
+
+  const inPeriod = contributions.filter(c => {
+    const d = (c.created_at||"").slice(0,10);
+    return d >= from && d <= to;
+  });
+
+  const byClient = {};
+  inPeriod.forEach(c => {
+    const cid = c.aso_client_id;
+    if (!byClient[cid]) byClient[cid] = { contribs:0, manual:0, withdrawals:0, regFees:0, wdFees:0 };
+    const amt = parseFloat(c.amount) || 0;
+    if (c.type === "contribution") {
+      if (c.payment_method === "manual_transfer") byClient[cid].manual += amt;
+      else byClient[cid].contribs += amt;
+    } else if (c.type === "withdrawal")       { byClient[cid].withdrawals += amt; }
+    else if (c.type === "registration_fee")   { byClient[cid].regFees += amt; }
+    else if (c.type === "withdrawal_fee")     { byClient[cid].wdFees += amt; }
+  });
+
   const FREQ = {daily:1,weekly:7,monthly:30};
   const enriched = asoClients.map(c => {
-    const days = FREQ[c.contribution_frequency]||30;
-    const since = c.registration_date
-      ? Math.floor((new Date()-new Date(c.registration_date))/86400000)
-      : 0;
+    const days     = FREQ[c.contribution_frequency]||30;
+    const since    = c.registration_date ? Math.floor((new Date()-new Date(c.registration_date))/86400000) : 0;
     const expected = Math.floor(since/days);
     const made     = c.contribution_amount>0 ? Math.floor((c.total_saved||0)/c.contribution_amount) : 0;
     const missed   = Math.max(0, expected-made);
-    return { ...c, made, expected, missed };
+    const d        = byClient[c.id] || {};
+    return {
+      ...c, made, expected, missed,
+      p_contribs:    d.contribs    || 0,
+      p_manual:      d.manual      || 0,
+      p_withdrawals: d.withdrawals || 0,
+      p_reg_fees:    d.regFees     || 0,
+      p_wd_fees:     d.wdFees      || 0,
+      p_fees:        (d.regFees||0)+(d.wdFees||0),
+      p_net:         (d.contribs||0)+(d.manual||0)-(d.withdrawals||0),
+    };
   });
-  const bars = asoClients.slice(0,20).map(c=>({
+
+  const active = enriched.filter(c => byClient[c.id]);
+  const bars   = active.slice(0,20).map(c=>({
     label: (c.full_name||"?").split(" ")[0],
-    v: c.current_balance||0, color:"#7c3aed"
-  }));
-  return { enriched, totalBal, totalSaved, totalWithdr, bars };
+    v: c.p_contribs+c.p_manual, color:"#7c3aed",
+  })).filter(b=>b.v>0);
+
+  const totContribs    = active.reduce((s,c)=>s+c.p_contribs,0);
+  const totManual      = active.reduce((s,c)=>s+c.p_manual,0);
+  const totWithdrawals = active.reduce((s,c)=>s+c.p_withdrawals,0);
+  const totRegFees     = active.reduce((s,c)=>s+c.p_reg_fees,0);
+  const totWdFees      = active.reduce((s,c)=>s+c.p_wd_fees,0);
+  const totFeeRevenue  = totRegFees+totWdFees;
+
+  return {
+    enriched, active, totalBal, totalSaved, totalWithdr,
+    totContribs, totManual, totWithdrawals, totRegFees, totWdFees, totFeeRevenue,
+    bars,
+  };
 }
 
 function buildBillsData(transactions, from, to) {
@@ -420,45 +462,67 @@ function CreditSection({ data }) {
 }
 
 function AsoSection({ data }) {
-  const rows = data.enriched.map(c=>({
-    name:    c.full_name,
-    freq:    c.contribution_frequency,
-    contrib: fmt(c.contribution_amount||0),
-    saved:   fmt(c.total_saved||0),
-    withdr:  fmt(c.total_withdrawn||0),
-    balance: fmt(c.current_balance||0),
-    made:    c.made,
-    missed:  c.missed,
-    next:    fmtD(c.next_contribution_date),
-    status:  c.status,
-    _m:      c.missed,
+  const {
+    active=[], totalBal,
+    totContribs=0, totManual=0, totWithdrawals=0,
+    totRegFees=0, totWdFees=0, totFeeRevenue=0, bars=[],
+  } = data;
+  const rows = active.map(c=>({
+    name:    c.full_name||"—",
+    contribs: fmt(c.p_contribs),
+    manual:   fmt(c.p_manual),
+    withdr:   fmt(c.p_withdrawals),
+    fees:     fmt(c.p_fees),
+    net:      fmt(c.p_net),
+    balance:  fmt(c.current_balance||0),
+    _net:     c.p_net,
+    _fees:    c.p_fees,
   }));
   return (
     <div>
       <StatGrid stats={[
-        { label:"Total Balance",   value:fmt(data.totalBal),    color:"#7c3aed", bg:"#faf5ff", border:"#e9d5ff" },
-        { label:"Total Saved",     value:fmt(data.totalSaved),  color:"#16a34a", bg:"#f0fdf4", border:"#bbf7d0" },
-        { label:"Total Withdrawn", value:fmt(data.totalWithdr), color:"#ef4444", bg:"#fef2f2", border:"#fecaca" },
-        { label:"Clients",         value:data.enriched.length,  color:"#0284c7", bg:"#eff6ff", border:"#bfdbfe" },
+        { label:"Savings Held",       value:fmt(totalBal),               color:"#7c3aed", bg:"#faf5ff", border:"#e9d5ff" },
+        { label:"Period Collections", value:fmt(totContribs+totManual),  color:"#16a34a", bg:"#f0fdf4", border:"#bbf7d0" },
+        { label:"Period Withdrawals", value:fmt(totWithdrawals),         color:"#ef4444", bg:"#fef2f2", border:"#fecaca" },
+        { label:"Fee Revenue",        value:fmt(totFeeRevenue),          color:"#d97706", bg:"#fffbeb", border:"#fde68a" },
       ]}/>
-      {data.bars.length > 0 && (<>
-        <SectionTitle>Balance by Client</SectionTitle>
-        <BarChart bars={data.bars} maxH={110}/>
+      {bars.length > 0 && (<>
+        <SectionTitle>Collections by Client</SectionTitle>
+        <BarChart bars={bars} maxH={110}/>
       </>)}
-      <SectionTitle>Client Details</SectionTitle>
+      <SectionTitle>Period Activity by Client</SectionTitle>
+      <p style={S({fontSize:9,color:"#94a3b8",marginBottom:8,fontStyle:"italic"})}>
+        Savings Held = client funds held in trust — separate from business profit.
+      </p>
       <Table
         cols={[
-          {key:"name",   label:"Name",        bold:true, w:"20%"},
-          {key:"freq",   label:"Frequency",              w:"11%"},
-          {key:"contrib",label:"Contrib",     right:true, w:"13%"},
-          {key:"saved",  label:"Saved",       right:true, color:()=>"#16a34a", w:"13%"},
-          {key:"balance",label:"Balance",     right:true, bold:true, color:()=>"#7c3aed", w:"13%"},
-          {key:"made",   label:"Paid",        right:true, w:"8%"},
-          {key:"missed", label:"Missed",      right:true, color:r=>r._m>0?"#dc2626":"#94a3b8", bold:true, w:"8%"},
-          {key:"next",   label:"Next Due",               w:"14%"},
+          {key:"name",    label:"Client",       bold:true, w:"20%"},
+          {key:"contribs",label:"Contributions",right:true, color:()=>"#16a34a", w:"14%"},
+          {key:"manual",  label:"Manual Dep.",  right:true, w:"11%"},
+          {key:"withdr",  label:"Withdrawals",  right:true, color:()=>"#ef4444", w:"13%"},
+          {key:"fees",    label:"Fees",         right:true, color:r=>r._fees>0?"#d97706":"#94a3b8", w:"11%"},
+          {key:"net",     label:"Net",          right:true, bold:true, color:r=>r._net>=0?"#7c3aed":"#ef4444", w:"13%"},
+          {key:"balance", label:"Balance",      right:true, w:"18%"},
         ]}
         rows={rows}
-        highlight={r=>r._m>0?"#fff5f5":undefined}/>
+        highlight={r=>r._net<0?"#fff5f5":undefined}/>
+      {totFeeRevenue > 0 && (<>
+        <SectionTitle>Fee Revenue Summary</SectionTitle>
+        <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:14}}>
+          <div style={S({background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,padding:"8px 14px",flex:1,minWidth:100})}>
+            <p style={S({fontSize:9,color:"#92400e",fontWeight:700,marginBottom:3,textTransform:"uppercase",letterSpacing:0.5})}>Registration Fees</p>
+            <p style={S({fontSize:15,fontWeight:900,color:"#d97706",margin:0})}>{fmt(totRegFees)}</p>
+          </div>
+          <div style={S({background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,padding:"8px 14px",flex:1,minWidth:100})}>
+            <p style={S({fontSize:9,color:"#92400e",fontWeight:700,marginBottom:3,textTransform:"uppercase",letterSpacing:0.5})}>Withdrawal Fees</p>
+            <p style={S({fontSize:15,fontWeight:900,color:"#d97706",margin:0})}>{fmt(totWdFees)}</p>
+          </div>
+          <div style={S({background:"#7c3aed",borderRadius:10,padding:"8px 14px",flex:1,minWidth:100})}>
+            <p style={S({fontSize:9,color:"#e9d5ff",fontWeight:700,marginBottom:3,textTransform:"uppercase",letterSpacing:0.5})}>Total Fee Revenue</p>
+            <p style={S({fontSize:15,fontWeight:900,color:"#fff",margin:0})}>{fmt(totFeeRevenue)}</p>
+          </div>
+        </div>
+      </>)}
     </div>
   );
 }
@@ -730,29 +794,46 @@ async function buildNativeReportPDF(type, data, profile, from, to) {
       }))
     );
   } else if (type === "aso") {
-    const { enriched, totalBal, totalSaved, totalWithdr, bars } = data;
+    const { active=[], totalBal, totContribs=0, totManual=0, totWithdrawals=0, totFeeRevenue=0, totRegFees=0, totWdFees=0, bars=[] } = data;
     addStats([
-      { label:"Total Balance",   value:fmtN(totalBal),   color:"#7c3aed", bg:"#f5f3ff" },
-      { label:"Total Saved",     value:fmtN(totalSaved), color:"#16a34a", bg:"#f0fdf4" },
-      { label:"Total Withdrawn", value:fmtN(totalWithdr),color:"#334155", bg:"#f8fafc" },
-      { label:"Total Clients",   value:enriched.length,  color:"#0284c7", bg:"#eff6ff" },
+      { label:"Savings Held",       value:fmtN(totalBal),              color:"#7c3aed", bg:"#f5f3ff" },
+      { label:"Period Collections", value:fmtN(totContribs+totManual), color:"#16a34a", bg:"#f0fdf4" },
+      { label:"Period Withdrawals", value:fmtN(totWithdrawals),        color:"#ef4444", bg:"#fef2f2" },
+      { label:"Fee Revenue",        value:fmtN(totFeeRevenue),         color:"#d97706", bg:"#fffbeb" },
     ]);
-    addSectionTitle("Balance by Client");
-    addBarChart(bars);
-    addSectionTitle("Client Details");
+    if (bars.length > 0) {
+      addSectionTitle("Collections by Client");
+      addBarChart(bars);
+    }
+    addSectionTitle("Period Activity by Client");
     addTable(
-      [{ key:"name",  label:"Client",       bold:true, w:0.24 },
-       { key:"freq",  label:"Frequency",    w:0.15 },
-       { key:"amt",   label:"Contribution", right:true, w:0.18 },
-       { key:"bal",   label:"Balance",      right:true, bold:true, color:()=>[124,58,237], w:0.18 },
-       { key:"saved", label:"Total Saved",  right:true, w:0.14 },
-       { key:"miss",  label:"Missed",       right:true, color:r=>Number(r.miss)>0?[220,38,38]:null, w:0.11 }],
-      enriched.map(c=>({
-        name:c.full_name||"—", freq:c.contribution_frequency||"—",
-        amt:fmtN(c.contribution_amount||0), bal:fmtN(c.current_balance||0),
-        saved:fmtN(c.total_saved||0), miss:c.missed
+      [{ key:"name",    label:"Client",       bold:true, w:0.22 },
+       { key:"contribs",label:"Contributions",right:true, color:()=>[22,163,74], w:0.14 },
+       { key:"manual",  label:"Manual Dep.",  right:true, w:0.12 },
+       { key:"withdr",  label:"Withdrawals",  right:true, color:()=>[220,38,38], w:0.13 },
+       { key:"fees",    label:"Fees",         right:true, color:r=>Number(r._fees)>0?[217,119,6]:null, w:0.11 },
+       { key:"net",     label:"Net",          right:true, bold:true, color:r=>Number(r._net)>=0?[124,58,237]:[220,38,38], w:0.13 },
+       { key:"balance", label:"Balance",      right:true, w:0.15 }],
+      active.map(c=>({
+        name:c.full_name||"—",
+        contribs:fmtN(c.p_contribs), manual:fmtN(c.p_manual),
+        withdr:fmtN(c.p_withdrawals), fees:fmtN(c.p_fees),
+        net:fmtN(c.p_net), balance:fmtN(c.current_balance||0),
+        _fees:c.p_fees, _net:c.p_net,
       }))
     );
+    if (totFeeRevenue > 0) {
+      addSectionTitle("Fee Revenue Summary");
+      addTable(
+        [{ key:"label",  label:"Fee Type", bold:true, w:0.55 },
+         { key:"amount", label:"Amount", right:true, bold:true, color:()=>[217,119,6], w:0.45 }],
+        [
+          { label:"Registration Fees", amount:fmtN(totRegFees) },
+          { label:"Withdrawal Fees",   amount:fmtN(totWdFees) },
+          { label:"Total Fee Revenue", amount:fmtN(totFeeRevenue) },
+        ]
+      );
+    }
   } else if (type === "bills") {
     const { bills, total: billTotal, byCat } = data;
     addStats([
@@ -836,6 +917,20 @@ export default function Reports({ store, onClose }) {
   const [customTo,   setCustomTo]   = useState(todayStr());
   const [preview,    setPreview]    = useState(false);
   const [exporting,  setExporting]  = useState(false);
+  const [ajoContributions, setAjoContributions] = useState([]);
+
+  useEffect(() => {
+    if (reportType !== "aso") return;
+    const clientIds = asoClients.map(c => c.id);
+    if (clientIds.length === 0) { setAjoContributions([]); return; }
+    supabase
+      .from("ajo_contributions")
+      .select("id, aso_client_id, type, amount, payment_method, created_at")
+      .in("aso_client_id", clientIds)
+      .then(({ data }) => setAjoContributions(data || []));
+  // asoClients.length used intentionally to avoid refetch on array identity change
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reportType, asoClients.length]);
 
   const REPORT_TYPES = useMemo(() => makeReportTypes(t), [t]);
   const PERIODS      = useMemo(() => makePeriods(t),      [t]);
@@ -846,7 +941,7 @@ export default function Reports({ store, onClose }) {
     switch(reportType) {
       case "sales":  return buildSalesData(transactions, from, to);
       case "credit": return buildCreditData(credits);
-      case "aso":    return buildAsoData(asoClients);
+      case "aso":    return buildAsoLedger(asoClients, ajoContributions, from, to);
       case "bills":  return buildBillsData(transactions, from, to);
       case "staff":  return buildStaffData(transactions, credits, asoClients, staffMap);
       case "stock":  return buildStockData(transactions, from, to);

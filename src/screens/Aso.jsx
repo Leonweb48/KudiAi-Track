@@ -109,20 +109,28 @@ function AsoClientHistoryModal({ client, contributions, businessName, staffMap =
 
   const handleExportPdf = async () => {
     const sorted = [...contributions].sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
+    let runBal = 0;
     const rows = sorted.map(c => {
-      const isWd  = c.type === "withdrawal";
       const amt   = parseFloat(c.amount) || 0;
+      const isFee = c.type === "withdrawal_fee" || c.type === "registration_fee";
+      const isWd  = c.type === "withdrawal" || isFee || (c.type || "").startsWith("reversal_");
+      const desc  = isFee
+        ? (c.type === "withdrawal_fee" ? "Withdrawal Fee" : "Registration Fee")
+        : c.type === "withdrawal" ? "Withdrawal"
+        : (c.type || "").startsWith("reversal_") ? "Reversal"
+        : "Contribution";
+      if (isWd) runBal -= amt; else runBal += amt;
       return {
         date:        pdfFmtDate(c.created_at),
-        description: isWd ? "Withdrawal" : "Contribution",
+        description: desc,
         reference:   c.payment_method || "—",
         debit:       isWd ? pdfFmt(amt) : "",
         credit:      isWd ? "" : pdfFmt(amt),
-        balance:     "",
+        balance:     pdfFmt(runBal),
       };
     });
-    const totContrib = contributions.filter(c => c.type !== "withdrawal").reduce((s, c) => s + (parseFloat(c.amount) || 0), 0);
-    const totWd      = contributions.filter(c => c.type === "withdrawal").reduce((s, c) => s + (parseFloat(c.amount) || 0), 0);
+    const totContrib = contributions.filter(c => c.type === "contribution").reduce((s, c) => s + (parseFloat(c.amount) || 0), 0);
+    const totWd      = contributions.filter(c => c.type === "withdrawal" || c.type === "withdrawal_fee" || c.type === "registration_fee").reduce((s, c) => s + (parseFloat(c.amount) || 0), 0);
     const pdf = await createReportPdf({
       title: "Ajo Statement", businessName: businessName || "My Business",
       period: client.full_name,
@@ -143,7 +151,7 @@ function AsoClientHistoryModal({ client, contributions, businessName, staffMap =
       { label: "Current Balance",   value: pdfFmt(client.current_balance || 0) },
       { label: "Records",           value: String(contributions.length) },
     ]);
-    pdf.addStatement(rows, { totalDebits: totWd, totalCredits: totContrib });
+    pdf.addStatement(rows, { openingBalance: 0, totalDebits: totWd, totalCredits: totContrib });
     await pdf.save(`Ajo_Statement_${client.full_name.replace(/\s+/g, "_")}.pdf`);
   };
 
