@@ -784,7 +784,6 @@ function ManualDepositModal({ client, ownerInfo, onClose, onSuccess }) {
   // Prefer the client's own dedicated account; fall back to the owner's business account
   const clientBank = ownerInfo?.client_bank;
   const ownerBank  = ownerInfo?.owner;
-  const bank    = clientBank?.account_number ? clientBank  : ownerBank;
   const hasBank = clientBank?.account_number
     ? true
     : !!(ownerBank?.bank_account_number && ownerBank?.bank_name);
