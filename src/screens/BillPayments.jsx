@@ -2332,6 +2332,16 @@ export default function BillPayments({ store, plan, session = null, staffName = 
             localStorage.removeItem(BILL_PENDING_PREFIX + ref);
             setSaving(false);
             setFulfillResult({ ok: false, disrupted: true, detail: `Payment was declined (${vd?.data?.gateway_response || "Transaction not approved"}). You were not charged. Please try a different payment method.`, psRef: ref });
+            const { cat: dCat } = pending;
+            const dService = CATS.find(c => c.id === dCat)?.label || dCat || "Bill";
+            try {
+              supabase.functions.invoke("clubkonnect", { body: { action: "bill-cancelled-email", user_email: profile?.email || null, user_name: profile?.owner_name || profile?.business_name || null, service: dService, reference: ref, reason: `Your payment was declined by the provider (${vd?.data?.gateway_response || "Transaction not approved"}). No charge was made to your account.` } });
+            } catch (_) {}
+            if (staffEmail && staffEmail !== profile?.email) {
+              try {
+                supabase.functions.invoke("clubkonnect", { body: { action: "bill-staff-email", staff_email: staffEmail, staff_name: staffName, business_name: businessName || profile?.business_name, service: dService, reference: ref, outcome: "cancelled" } });
+              } catch (_) {}
+            }
             return;
           }
           if (isAbandoned) {
@@ -2629,16 +2639,27 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         });
       } catch (_) { /* best-effort */ }
 
-      // Alert admin/finance of the failed delivery
+      // Notify user and admin differently depending on whether payment was confirmed
       try {
         const { cat: fCat2, form: f2 } = pending;
         const fSvc = CATS.find(c => c.id === fCat2)?.label || fCat2;
         const fAmt = parseFloat(f2.amount) || 0;
-        await supabase.functions.invoke("clubkonnect", {
-          body: { action: "bill-failure-alert", user_id: profile?.id || null, user_email: profile?.email || null, user_name: profile?.owner_name || profile?.business_name || null, service: fSvc, amount: fAmt, ps_ref: ref, ck_error: ckError },
-        });
-        if (staffEmail && staffEmail !== profile?.email) {
-          supabase.functions.invoke("clubkonnect", { body: { action: "bill-staff-email", staff_email: staffEmail, staff_name: staffName, business_name: businessName || profile?.business_name, service: fSvc, amount: fAmt, reference: ref, outcome: "failed" } });
+        if (paymentVerified) {
+          // Payment was confirmed by Paystack but service delivery failed —
+          // alert admin/finance so they can manually fulfill or refund.
+          await supabase.functions.invoke("clubkonnect", {
+            body: { action: "bill-failure-alert", user_id: profile?.id || null, user_email: profile?.email || null, user_name: profile?.owner_name || profile?.business_name || null, service: fSvc, amount: fAmt, ps_ref: ref, ck_error: ckError },
+          });
+          if (staffEmail && staffEmail !== profile?.email) {
+            supabase.functions.invoke("clubkonnect", { body: { action: "bill-staff-email", staff_email: staffEmail, staff_name: staffName, business_name: businessName || profile?.business_name, service: fSvc, amount: fAmt, reference: ref, outcome: "failed" } });
+          }
+        } else {
+          // Payment was never confirmed (verification threw or timed out) —
+          // send a "not completed / not charged" notice, NOT a delivery-failure alert.
+          supabase.functions.invoke("clubkonnect", { body: { action: "bill-cancelled-email", user_email: profile?.email || null, user_name: profile?.owner_name || profile?.business_name || null, service: fSvc, reference: ref, reason: `We could not verify your payment status. ${ckError ? `(${ckError}) ` : ""}If your bank shows a debit, please contact support with the reference above — otherwise no charge was made.` } });
+          if (staffEmail && staffEmail !== profile?.email) {
+            supabase.functions.invoke("clubkonnect", { body: { action: "bill-staff-email", staff_email: staffEmail, staff_name: staffName, business_name: businessName || profile?.business_name, service: fSvc, reference: ref, outcome: "cancelled" } });
+          }
         }
       } catch (_) {}
     }
