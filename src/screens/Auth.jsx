@@ -492,6 +492,14 @@ export default function Auth() {
         });
         if (error) throw error;
 
+        // Same proxy bypass as the web path — the Vercel /sb proxy mangles the 302
+        // redirect chain from the authorize endpoint to Google. Without this, the
+        // Chrome Custom Tab ends up loading kudiai.app instead of triggering the
+        // custom-scheme deep link back into the app.
+        const authUrl = SUPABASE_DIRECT_URL && SUPABASE_PROXY_URL && data.url?.startsWith(SUPABASE_PROXY_URL)
+          ? data.url.replace(SUPABASE_PROXY_URL, SUPABASE_DIRECT_URL)
+          : data.url;
+
         // Safety valve: Chrome Custom Tab sometimes blocks custom-scheme redirects,
         // causing appUrlOpen to never fire and the loading spinner to freeze.
         // When the browser closes, wait 1 s for appUrlOpen to arrive first;
@@ -508,7 +516,7 @@ export default function Auth() {
           }
         });
 
-        await Browser.open({ url: data.url, windowName: "_self" });
+        await Browser.open({ url: authUrl });
         // Stay loading — browser is open. Either appUrlOpen fires (success) or
         // browserFinished fires (cancel/failure) — both paths eventually reset loading.
         return;
