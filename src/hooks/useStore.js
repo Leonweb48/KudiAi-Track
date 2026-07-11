@@ -557,6 +557,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
       bank_code:              cl.bank_code       || null,
       account_number:         cl.account_number  || null,
       account_name:           cl.account_name    || null,
+      paystack_link:          cl.paystack_link   || null,
     };
 
     setAsoClients(p => [{ ...payload, id: tempId }, ...p]);

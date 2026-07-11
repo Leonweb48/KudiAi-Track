@@ -45,6 +45,25 @@ function SectionHead({ title, icon }) {
   );
 }
 
+/* ── Copy link button ────────────────────────────────────────────── */
+function CopyLinkButton({ link }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = () => {
+    navigator.clipboard.writeText(link).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  return (
+    <button onClick={handleCopy}
+      className="w-10 flex-shrink-0 flex items-center justify-center bg-slate-100 dark:bg-slate-700 rounded-xl border border-slate-200 dark:border-slate-600 active:scale-95 transition">
+      {copied
+        ? <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-green-500" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+        : <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-500 dark:text-slate-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+      }
+    </button>
+  );
+}
+
 /* ── Info row (view mode) ─────────────────────────────────────────── */
 function InfoRow({ label, value }) {
   if (!value) return null;
@@ -329,6 +348,15 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], o
                         </select>
                       </FormField>
                     )}
+                    <FormField label="Paystack Payment Link">
+                      <input type="url" value={form.paystack_link || ""}
+                        onChange={e => set("paystack_link", e.target.value.trim())}
+                        placeholder="https://paystack.com/pay/…"
+                        className={inputCls} />
+                      <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
+                        Paste the Paystack Pay link you created for this client. Clients can use it to make payments directly.
+                      </p>
+                    </FormField>
                     <FormField label="Notes">
                       <textarea value={form.notes || ""} onChange={e => set("notes", e.target.value)} rows={2}
                         placeholder="Optional notes…" className={inputCls + " resize-none"} />
@@ -464,6 +492,21 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], o
                     <InfoRow label="Registered"   value={record.registration_date} />
                     <InfoRow label="Notes"        value={record.notes} />
                   </div>
+                  {record.paystack_link && (
+                    <div className="px-4 pb-4 pt-1 border-t border-slate-100 dark:border-slate-700/60">
+                      <p className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-2">Paystack Payment Link</p>
+                      <div className="flex gap-2">
+                        <a href={record.paystack_link} target="_blank" rel="noopener noreferrer"
+                          className="flex-1 flex items-center gap-2 px-3 py-2.5 bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 rounded-xl text-violet-700 dark:text-violet-300 text-xs font-semibold truncate hover:bg-violet-100 dark:hover:bg-violet-900/40 transition active:scale-[0.99]">
+                          <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 flex-shrink-0" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                            <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
+                          </svg>
+                          <span className="truncate">{record.paystack_link.replace(/^https?:\/\//, "")}</span>
+                        </a>
+                        <CopyLinkButton link={record.paystack_link} />
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

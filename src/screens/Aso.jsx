@@ -25,6 +25,7 @@ const BLANK = {
   next_of_kin: "", next_of_kin_phone: "", next_of_kin_email: "", next_of_kin_address: "",
   staff_id: "",
   bank_code: "", account_number: "", account_name: "",
+  paystack_link: "",
 };
 
 const BLANK_GROUP = {
@@ -1491,6 +1492,10 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           {clientBankErr && (
             <p className="text-xs text-red-500 -mt-1">{clientBankErr}</p>
           )}
+
+          <Field label="Paystack Payment Link (optional)" value={f.paystack_link}
+            onChange={e => set("paystack_link", e.target.value.trim())}
+            placeholder="https://paystack.com/pay/…" />
 
           <Field label="NIN" inputMode="numeric" value={f.nin}
             onChange={e => set("nin", e.target.value.replace(/\D/g, "").slice(0, 11))}
