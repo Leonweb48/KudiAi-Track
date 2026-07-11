@@ -1860,8 +1860,8 @@ export default function BillPayments({ store, plan, session = null, staffName = 
   // Set to true when the paymentCallback deep-link event is received so the
   // browserFinished listener knows NOT to run a second verification.
   const paymentCallbackFiredRef = useRef(false);
-  // Set to true after the first "pending" retry is scheduled so we don't chain retries.
-  const pendingRetriedRef = useRef(false);
+  // Retry count is now tracked inside the pending localStorage object (_retryCount),
+  // so we no longer need a component-level ref for this.
 
   useEffect(() => {
     const showDisrupted = () => {
@@ -2174,7 +2174,6 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
   const handlePay = async () => {
     paymentCallbackFiredRef.current = false; // reset for fresh payment
-    pendingRetriedRef.current = false; // reset pending-retry guard for fresh payment
     setError(""); setSaving(true);
     try {
       const amount = parseFloat(form.amount) || 0;
@@ -2293,23 +2292,27 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
         if (psStatus !== "success") {
           const isAbandoned = psStatus === "abandoned" || gwResp.includes("abandon") || gwResp.includes("cancel");
-          // Payment still in progress — Paystack hasn't received the OPay webhook yet.
-          // Reset UI, re-arm the visibilitychange fallback, and schedule one 12 s retry.
+          // Payment still processing — Paystack hasn't received the OPay webhook yet.
+          // Retry up to 3 times (every 12 s, 36 s total) before giving up.
           if (psStatus === "pending") {
             paymentCallbackFiredRef.current = false;
             setSaving(false);
-            if (!pendingRetriedRef.current) {
-              pendingRetriedRef.current = true;
+            const retryCount = pending._retryCount ?? 0;
+            if (retryCount < 3) {
+              const nextPending = { ...pending, _retryCount: retryCount + 1 };
+              try { localStorage.setItem(BILL_PENDING_PREFIX + ref, JSON.stringify(nextPending)); } catch {}
               try { sessionStorage.setItem("ck_browser_closed_pending", "1"); } catch {}
-              const _retryRef = ref;
-              const _retryPending = pending;
               setTimeout(() => {
                 if (paymentCallbackFiredRef.current) return;
-                if (!localStorage.getItem(BILL_PENDING_PREFIX + _retryRef)) return;
+                if (!localStorage.getItem(BILL_PENDING_PREFIX + ref)) return;
                 paymentCallbackFiredRef.current = true;
                 setSaving(true);
-                fulfillAfterPaymentRef.current(_retryRef, _retryPending);
+                fulfillAfterPaymentRef.current(ref, nextPending);
               }, 12000);
+            } else {
+              // Max retries reached — show pending disrupted state so user knows to contact support
+              localStorage.removeItem(BILL_PENDING_PREFIX + ref);
+              setFulfillResult({ ok: false, disrupted: true, detail: `Payment is still pending confirmation. If you were charged, contact support and quote reference: ${ref}. Your service will be delivered once payment confirms.`, psRef: ref });
             }
             return;
           }
@@ -2318,6 +2321,13 @@ export default function BillPayments({ store, plan, session = null, staffName = 
             localStorage.removeItem(BILL_PENDING_PREFIX + ref);
             setSaving(false);
             setFulfillResult({ ok: false, disrupted: true, detail: "This payment reference has already been used. Contact support if you need help.", psRef: ref });
+            return;
+          }
+          // Explicit payment failure (declined, insufficient funds, etc.)
+          if (psStatus === "failed") {
+            localStorage.removeItem(BILL_PENDING_PREFIX + ref);
+            setSaving(false);
+            setFulfillResult({ ok: false, disrupted: true, detail: `Payment was declined (${vd?.data?.gateway_response || "Transaction not approved"}). You were not charged. Please try a different payment method.`, psRef: ref });
             return;
           }
           if (isAbandoned) {

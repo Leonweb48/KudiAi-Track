@@ -286,6 +286,10 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
     try {
       const isFree = planSlug === "kobo" || planSlug === "starter";
 
+      if (!isFree && !reference) {
+        throw new Error("Payment reference missing. Cannot verify subscription. Please try again.");
+      }
+
       if (!isFree && reference) {
         const { data: vd } = await supabase.functions.invoke("paystack", {
           body: { action: "verify", reference },
@@ -294,10 +298,16 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
         if (psStatus !== "success") {
           const gwResp = (vd?.data?.gateway_response || "").toLowerCase();
           const isCancelled = psStatus === "abandoned" || gwResp.includes("abandon") || gwResp.includes("cancel");
+          const isPending   = psStatus === "pending";
+          const isFailed    = psStatus === "failed";
           throw new Error(
-            isCancelled
-              ? "Payment was cancelled. Your plan was not changed. Please try again."
-              : `Payment not confirmed (${vd?.data?.gateway_response || psStatus || "not verified"}). Please contact support if you were charged.`
+            isPending
+              ? "Your payment is still being processed. Please wait a moment then tap 'Activate My Plan' to check again."
+              : isFailed
+                ? `Payment was declined (${vd?.data?.gateway_response || "Transaction not approved"}). Please try a different payment method.`
+                : isCancelled
+                  ? "Payment was cancelled. Your plan was not changed. Please try again."
+                  : `Payment not confirmed (${vd?.data?.gateway_response || psStatus || "not verified"}). Please contact support if you were charged.`
           );
         }
       }
