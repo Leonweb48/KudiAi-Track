@@ -519,46 +519,30 @@ serve(async (req) => {
         return json({ error: "Payment not confirmed by Paystack" }, 422);
       }
       const paidAmount = Number(verData.data.amount) / 100; // kobo → naira
+      const paidAt    = (verData.data.paid_at as string | undefined) || new Date().toISOString();
+      const channel   = (verData.data.channel as string | undefined) || "card";
 
-      // Find the pending contribution (created by initialize-payment)
-      const { data: contrib } = await sb
-        .from("ajo_contributions")
-        .select("id, paystack_status")
-        .eq("paystack_ref", reference)
-        .eq("aso_client_id", client_id)
-        .maybeSingle();
+      // Route through the same atomic RPC used by the webhook.
+      // ajo_confirm_payment uses SELECT FOR UPDATE WHERE status='pending',
+      // eliminating the TOCTOU race between this path and the webhook path.
+      // If the webhook already ran → returns {ok:false}, no double-credit.
+      const { data: rpcResult } = await sb.rpc("ajo_confirm_payment", {
+        p_paystack_ref: reference,
+        p_paid_at:      paidAt,
+        p_channel:      channel,
+      });
 
-      // Idempotency: only update balance if not already processed by webhook
-      if (contrib && contrib.paystack_status !== "success") {
-        await sb.from("ajo_contributions").update({
-          status:          "completed",
-          paystack_status: "success",
-        }).eq("id", contrib.id);
-
+      // Fire email only if this call actually credited the balance (webhook may have beaten us)
+      if (rpcResult?.ok) {
         const { data: cl } = await sb.from("aso_clients")
-          .select("current_balance, total_saved, contribution_frequency, next_contribution_date, user_id, staff_id")
+          .select("full_name, email, current_balance, user_id, staff_id")
           .eq("id", client_id).maybeSingle();
-
         if (cl) {
-          const freqDays: Record<string, number> = { daily: 1, weekly: 7, monthly: 30 };
-          const days = freqDays[cl.contribution_frequency] || 30;
-          const base = cl.next_contribution_date || new Date().toISOString().slice(0, 10);
-          const nd = new Date(base);
-          nd.setDate(nd.getDate() + days);
-          await sb.from("aso_clients").update({
-            current_balance:        (cl.current_balance || 0) + paidAmount,
-            total_saved:            (cl.total_saved     || 0) + paidAmount,
-            next_contribution_date: nd.toISOString().slice(0, 10),
-          }).eq("id", client_id);
-
-          // Resolve business name for the notification email
           let businessName = "";
           if (cl.user_id) {
             const { data: prof } = await sb.from("profiles").select("business_name").eq("id", cl.user_id).maybeSingle();
             businessName = prof?.business_name || "";
           }
-
-          // Fire email notifications — non-blocking, never delays the response
           await fetch("https://admin.kudiai.app/api/public/email-trigger", {
             method:  "POST",
             headers: {
@@ -572,7 +556,7 @@ serve(async (req) => {
                 owner_id:      cl.user_id  || undefined,
                 staff_id:      cl.staff_id || undefined,
                 amount:        paidAmount,
-                balance:       (cl.current_balance || 0) + paidAmount,
+                balance:       cl.current_balance || 0,
                 date:          new Date().toLocaleDateString("en-NG"),
                 business_name: businessName,
                 paystack_ref:  reference,
