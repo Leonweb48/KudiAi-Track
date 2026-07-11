@@ -781,8 +781,13 @@ function ManualDepositModal({ client, ownerInfo, onClose, onSuccess }) {
   const [done,       setDone]       = useState(false);
   const fileRef = useRef(null);
 
-  const bank    = ownerInfo?.owner;
-  const hasBank = bank?.bank_account_number && bank?.bank_name;
+  // Prefer the client's own dedicated account; fall back to the owner's business account
+  const clientBank = ownerInfo?.client_bank;
+  const ownerBank  = ownerInfo?.owner;
+  const bank    = clientBank?.account_number ? clientBank  : ownerBank;
+  const hasBank = clientBank?.account_number
+    ? true
+    : !!(ownerBank?.bank_account_number && ownerBank?.bank_name);
   const amtNum  = parseFloat(amount) || 0;
 
   const copyText = async (text) => {
@@ -851,31 +856,43 @@ function ManualDepositModal({ client, ownerInfo, onClose, onSuccess }) {
             <p className="text-xs text-slate-400 dark:text-slate-500 mb-4">Transfer to the account below, then submit your claim here.</p>
 
             {/* Bank details */}
-            {hasBank ? (
-              <div className="bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 rounded-2xl px-4 py-4 mb-4">
-                <p className="text-[10px] font-bold text-violet-500 dark:text-violet-400 uppercase tracking-wider mb-3">Business Bank Account</p>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-slate-500 dark:text-slate-400">Account Number</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-black text-slate-800 dark:text-white tracking-wider">{bank.bank_account_number}</span>
-                      <button onClick={() => copyText(bank.bank_account_number)}
-                        className="text-[10px] font-bold text-violet-600 dark:text-violet-400 bg-violet-100 dark:bg-violet-900/40 px-2 py-0.5 rounded-md active:scale-95 transition">
-                        Copy
-                      </button>
+            {hasBank ? (() => {
+              const isClientAcct = !!clientBank?.account_number;
+              const acctNum  = isClientAcct ? clientBank.account_number  : ownerBank.bank_account_number;
+              const acctName = isClientAcct ? clientBank.account_name    : ownerBank.bank_account_name;
+              const bankName = isClientAcct ? clientBank.bank_name       : ownerBank.bank_name;
+              return (
+                <div className="bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 rounded-2xl px-4 py-4 mb-4">
+                  <p className="text-[10px] font-bold text-violet-500 dark:text-violet-400 uppercase tracking-wider mb-3">
+                    {isClientAcct ? "Your Dedicated Savings Account" : "Business Bank Account"}
+                  </p>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-slate-500 dark:text-slate-400">Account Number</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-black text-slate-800 dark:text-white tracking-wider">{acctNum}</span>
+                        <button onClick={() => copyText(acctNum)}
+                          className="text-[10px] font-bold text-violet-600 dark:text-violet-400 bg-violet-100 dark:bg-violet-900/40 px-2 py-0.5 rounded-md active:scale-95 transition">
+                          Copy
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-slate-500 dark:text-slate-400">Account Name</span>
-                    <span className="text-xs font-bold text-slate-700 dark:text-slate-200 text-right max-w-[60%] truncate">{bank.bank_account_name || "—"}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-slate-500 dark:text-slate-400">Bank</span>
-                    <span className="text-xs font-bold text-slate-700 dark:text-slate-200">{bank.bank_name}</span>
+                    {acctName && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-slate-500 dark:text-slate-400">Account Name</span>
+                        <span className="text-xs font-bold text-slate-700 dark:text-slate-200 text-right max-w-[60%] truncate">{acctName}</span>
+                      </div>
+                    )}
+                    {bankName && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-slate-500 dark:text-slate-400">Bank</span>
+                        <span className="text-xs font-bold text-slate-700 dark:text-slate-200">{bankName}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
-              </div>
-            ) : (
+              );
+            })() : (
               <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-3 py-2.5 mb-4">
                 <p className="text-xs text-amber-700 dark:text-amber-300 font-semibold">Bank details not set up yet. Contact your savings agent for transfer instructions.</p>
               </div>

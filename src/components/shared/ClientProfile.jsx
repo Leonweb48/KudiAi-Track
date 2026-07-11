@@ -3,7 +3,7 @@
  * Handles photo upload, personal info, address (state/LGA/ward dropdowns),
  * NIN, and next-of-kin details.
  */
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "../../utils/supabase";
 import { STATES, getLGAs, getWards } from "../../utils/nigeriaData";
 import { AmountDisplay } from "./AmountDisplay";
@@ -73,7 +73,7 @@ function StatusBadge({ status }) {
 }
 
 /* ── Main component ───────────────────────────────────────────────── */
-export function ClientProfile({ record, type, onSave, onClose, staffList = [], onResetPwd, onDelete }) {
+export function ClientProfile({ record, type, onSave, onClose, staffList = [], onResetPwd, onDelete, canEditBank = false, businessName = "" }) {
   const [editing,      setEditing]      = useState(false);
   const [form,         setForm]         = useState({ ...record });
   const [photoFile,    setPhotoFile]    = useState(null);
@@ -88,9 +88,43 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], o
   const [archivePin,   setArchivePin]   = useState("");
   const [pinErr,       setPinErr]       = useState("");
 
+  // Bank account editing state (owner-only, Aso only)
+  const [banks,             setBanks]             = useState([]);
+  const [bankResolving,     setBankResolving]     = useState(false);
+  const [bankResolvedName,  setBankResolvedName]  = useState("");
+  const [bankErr,           setBankErr]           = useState("");
+
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
   const isCredit = type === "credit";
+
+  // Load bank list when entering edit mode (owner + Aso only)
+  useEffect(() => {
+    if (!editing || !canEditBank || isCredit || banks.length > 0) return;
+    supabase.functions.invoke("paystack", { body: { action: "list-banks" } })
+      .then(({ data }) => { if (data?.data) setBanks(data.data); })
+      .catch(() => {});
+  }, [editing, canEditBank, isCredit, banks.length]);
+
+  const resolveBank = async () => {
+    if (!form.bank_code || !form.account_number || String(form.account_number).length < 10) return;
+    setBankResolving(true); setBankErr(""); setBankResolvedName("");
+    try {
+      const { data, error } = await supabase.functions.invoke("paystack", {
+        body: { action: "resolve-account", account_number: form.account_number, bank_code: form.bank_code },
+      });
+      if (error || !data?.status) throw new Error(data?.message || "Could not verify account");
+      const name = data.data?.account_name || "";
+      setBankResolvedName(name);
+      set("account_name", name);
+      const b = banks.find(bk => bk.code === form.bank_code);
+      if (b) set("bank_name", b.name);
+    } catch (e) {
+      setBankErr(e.message || "Could not verify account number");
+    } finally {
+      setBankResolving(false);
+    }
+  };
   const name     = isCredit ? (record.customer_name || "Client") : (record.full_name || "Client");
   const initials = name[0]?.toUpperCase() || "C";
   const avatarSrc = photoPreview || form.profile_image_url;
@@ -157,14 +191,50 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], o
 
     const updates = { ...form, profile_image_url: imageUrl };
     const { error } = await onSave(record.id, updates);
-    setSaving(false);
     if (error) {
+      setSaving(false);
       setSaveErr(error.message || "Failed to save profile.");
       return;
     }
+
+    // Sync Paystack subaccount when bank details changed (owner only)
+    if (!isCredit && canEditBank) {
+      const bankChanged = form.bank_code !== record.bank_code || form.account_number !== record.account_number;
+      if (bankChanged && form.bank_code && form.account_number && form.account_name) {
+        try {
+          if (record.paystack_subaccount_code) {
+            await supabase.functions.invoke("paystack", {
+              body: {
+                action:          "update-subaccount",
+                client_id:       record.id,
+                settlement_bank: form.bank_code,
+                account_number:  form.account_number,
+                bank_name:       form.bank_name || "",
+              },
+            });
+          } else {
+            await supabase.functions.invoke("paystack", {
+              body: {
+                action:           "create-subaccount",
+                client_id:        record.id,
+                business_name:    form.full_name || businessName,
+                bank_code:        form.bank_code,
+                account_number:   form.account_number,
+                percentage_charge: 100,
+                bank_name:        form.bank_name || "",
+              },
+            });
+          }
+        } catch { /* subaccount sync is best-effort; profile already saved */ }
+      }
+    }
+
+    setSaving(false);
     setEditing(false);
     setPhotoFile(null);
     setPhotoPreview(null);
+    setBankResolvedName("");
+    setBankErr("");
   };
 
   const cancelEdit = () => {
@@ -173,6 +243,8 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], o
     setPhotoFile(null);
     setPhotoPreview(null);
     setSaveErr("");
+    setBankResolvedName("");
+    setBankErr("");
   };
 
   /* ── shared overlay wrapper ─────────────────────────────────────── */
@@ -337,6 +409,68 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], o
                 </div>
               )}
 
+              {/* Payment Account — Aso owner only */}
+              {!isCredit && canEditBank && (
+                <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-100 dark:border-slate-700 shadow-card">
+                  <div className="px-4 pt-4 pb-2"><SectionHead title="Payment Account (Paystack)" icon="🏦" /></div>
+                  <div className="px-4 pb-4 space-y-3.5">
+                    <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed -mt-1">
+                      Link a bank account so this client has a dedicated account for savings. Clients will see these details when making a manual deposit.
+                    </p>
+                    <FormField label="Bank">
+                      <select
+                        value={form.bank_code || ""}
+                        onChange={e => {
+                          const b = banks.find(bk => bk.code === e.target.value);
+                          set("bank_code", e.target.value);
+                          set("bank_name", b?.name || "");
+                          set("account_name", "");
+                          setBankResolvedName(""); setBankErr("");
+                        }}
+                        className={inputCls}
+                        disabled={banks.length === 0}>
+                        <option value="">{banks.length === 0 ? "Loading banks…" : "Select bank…"}</option>
+                        {banks.map(b => <option key={b.code} value={b.code}>{b.name}</option>)}
+                      </select>
+                    </FormField>
+                    <div className="flex gap-2 items-end">
+                      <div className="flex-1">
+                        <FormField label="Account Number">
+                          <input
+                            type="text" inputMode="numeric"
+                            value={form.account_number || ""}
+                            onChange={e => {
+                              set("account_number", e.target.value.replace(/\D/g, "").slice(0, 10));
+                              set("account_name", "");
+                              setBankResolvedName(""); setBankErr("");
+                            }}
+                            placeholder="10-digit NUBAN"
+                            className={inputCls}
+                          />
+                        </FormField>
+                      </div>
+                      <button type="button" onClick={resolveBank}
+                        disabled={bankResolving || !form.bank_code || String(form.account_number || "").length < 10}
+                        className="mb-0.5 px-3 py-[11px] rounded-xl bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 text-xs font-bold disabled:opacity-40 transition whitespace-nowrap active:scale-95">
+                        {bankResolving ? "Checking…" : "Verify"}
+                      </button>
+                    </div>
+                    {(bankResolvedName || form.account_name) && (
+                      <p className="text-xs text-green-600 dark:text-green-400 font-semibold -mt-1 flex items-center gap-1">
+                        <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                        {bankResolvedName || form.account_name}
+                      </p>
+                    )}
+                    {bankErr && <p className="text-xs text-red-500 -mt-1">{bankErr}</p>}
+                    {record.paystack_subaccount_code && (
+                      <p className="text-[10px] text-green-600 dark:text-green-400 font-semibold">
+                        Subaccount active · {record.paystack_subaccount_code}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Address */}
               <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-100 dark:border-slate-700 shadow-card">
                 <div className="px-4 pt-4 pb-2"><SectionHead title="Address" icon="📍" /></div>
@@ -463,6 +597,16 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], o
                     <InfoRow label="Next Due"     value={record.next_contribution_date} />
                     <InfoRow label="Registered"   value={record.registration_date} />
                     <InfoRow label="Notes"        value={record.notes} />
+                    {record.account_number && (
+                      <>
+                        <InfoRow label="Bank"          value={record.bank_name} />
+                        <InfoRow label="Account No."   value={record.account_number} />
+                        <InfoRow label="Account Name"  value={record.account_name} />
+                        {record.paystack_subaccount_code && (
+                          <InfoRow label="Subaccount" value={record.paystack_subaccount_code} />
+                        )}
+                      </>
+                    )}
                   </div>
                 </div>
               )}

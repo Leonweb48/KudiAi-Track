@@ -118,7 +118,7 @@ serve(async (req) => {
 
       const [ownerRes, clientRes] = await Promise.all([
         sb.from("profiles").select("business_name, full_name, phone, email, profile_image_url, bank_name, bank_account_number, bank_account_name").eq("id", owner_id).maybeSingle(),
-        sb.from("aso_clients").select("staff_id").eq("id", client_id).maybeSingle(),
+        sb.from("aso_clients").select("staff_id, account_number, account_name, bank_name").eq("id", client_id).maybeSingle(),
       ]);
 
       let staffInfo = null;
@@ -131,7 +131,12 @@ serve(async (req) => {
         staffInfo = staff;
       }
 
-      return json({ owner: ownerRes.data, staff: staffInfo });
+      const cd = clientRes.data;
+      const clientBank = cd?.account_number
+        ? { account_number: cd.account_number, account_name: cd.account_name, bank_name: cd.bank_name }
+        : null;
+
+      return json({ owner: ownerRes.data, staff: staffInfo, client_bank: clientBank });
     }
 
     // ── Record a Paystack-confirmed contribution ───────────────────

@@ -24,7 +24,7 @@ const BLANK = {
   address: "", state: "", lga: "", ward: "",
   next_of_kin: "", next_of_kin_phone: "", next_of_kin_email: "", next_of_kin_address: "",
   staff_id: "",
-  bank_code: "", account_number: "", account_name: "",
+  bank_code: "", account_number: "", account_name: "", bank_name: "",
 };
 
 const BLANK_GROUP = {
@@ -685,6 +685,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
               bank_code: f.bank_code,
               account_number: f.account_number,
               percentage_charge: 100,
+              bank_name: f.bank_name || "",
             },
           });
         } catch (subErr) {
@@ -1466,7 +1467,13 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             Link a bank account so this client can pay contributions directly via Paystack.
           </p>
           <Field label="Bank" as="select" value={f.bank_code}
-            onChange={e => { set("bank_code", e.target.value); set("account_name", ""); setClientResolvedName(""); setClientBankErr(""); }}>
+            onChange={e => {
+              const b = banks.find(bk => bk.code === e.target.value);
+              set("bank_code", e.target.value);
+              set("bank_name", b?.name || "");
+              set("account_name", "");
+              setClientResolvedName(""); setClientBankErr("");
+            }}>
             <option value="">Select bank…</option>
             {banks.map(b => <option key={b.code} value={b.code}>{b.name}</option>)}
           </Field>
@@ -1810,6 +1817,8 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           staffList={staffOptions}
           onResetPwd={handleResetPwd}
           onDelete={deleteAsoClient}
+          canEditBank={!staffId}
+          businessName={profile?.business_name || profile?.owner_name || ""}
         />
       )}
 

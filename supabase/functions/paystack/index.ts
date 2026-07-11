@@ -122,9 +122,10 @@ serve(async (req) => {
 
     // ── Create a Paystack subaccount for an individual Ajo client ────────
     if (action === "create-subaccount") {
-      const { client_id, business_name, bank_code, account_number, percentage_charge = 100 } = body as {
+      const { client_id, business_name, bank_code, account_number, percentage_charge = 100, bank_name } = body as {
         client_id: string; business_name: string;
         bank_code: string; account_number: string; percentage_charge?: number;
+        bank_name?: string;
       };
       if (!client_id || !business_name || !bank_code || !account_number) {
         return json({ error: "client_id, business_name, bank_code and account_number are required" }, 400);
@@ -155,11 +156,12 @@ serve(async (req) => {
         return json({ error: psData.message || "Failed to create subaccount" }, 422);
       }
 
-      // Persist subaccount code back to the client record
+      // Persist subaccount code + bank name back to the client record
       await sb.from("aso_clients").update({
         paystack_subaccount_code: psData.data.subaccount_code,
         paystack_subaccount_id:   String(psData.data.id),
         account_name:             psData.data.account_name ?? null,
+        bank_name:                bank_name || null,
       }).eq("id", client_id);
 
       return json({ subaccount_code: psData.data.subaccount_code, data: psData.data });
@@ -167,16 +169,45 @@ serve(async (req) => {
 
     // ── Update an existing Paystack subaccount ─────────────────────────────
     if (action === "update-subaccount") {
-      const { subaccount_code, business_name, settlement_bank, account_number, percentage_charge } = body as {
-        subaccount_code: string; business_name?: string; settlement_bank?: string;
-        account_number?: string; percentage_charge?: number;
+      const { client_id, settlement_bank, account_number, business_name, percentage_charge, bank_name } = body as {
+        client_id?: string; settlement_bank?: string; account_number?: string;
+        business_name?: string; percentage_charge?: number; bank_name?: string;
       };
-      const psRes = await fetch(`https://api.paystack.co/subaccount/${subaccount_code}`, {
+
+      // Resolve subaccount code — auth-gated when client_id provided
+      let subaccountCode = (body as { subaccount_code?: string }).subaccount_code;
+      if (client_id) {
+        const token = authHeader.replace("Bearer ", "");
+        const { data: { user } } = await sb.auth.getUser(token);
+        if (!user) return json({ error: "Unauthorized" }, 401);
+        const { data: cl } = await sb.from("aso_clients")
+          .select("user_id, paystack_subaccount_code")
+          .eq("id", client_id).maybeSingle();
+        if (!cl) return json({ error: "Client not found" }, 404);
+        if (user.id !== cl.user_id) return json({ error: "Forbidden" }, 403);
+        subaccountCode = cl.paystack_subaccount_code;
+        if (!subaccountCode) return json({ error: "No subaccount linked to this client yet" }, 400);
+      }
+      if (!subaccountCode) return json({ error: "client_id or subaccount_code required" }, 400);
+
+      const psRes = await fetch(`https://api.paystack.co/subaccount/${subaccountCode}`, {
         method: "PUT",
         headers: psHeaders,
         body: JSON.stringify({ business_name, settlement_bank, account_number, percentage_charge }),
       });
-      return json(await psRes.json());
+      const psData = await psRes.json();
+
+      // If called via client_id, persist updated bank details to aso_clients
+      if (client_id && psData.status) {
+        const patch: Record<string, unknown> = {};
+        if (settlement_bank) patch.bank_code     = settlement_bank;
+        if (account_number)  patch.account_number = account_number;
+        if (bank_name)       patch.bank_name      = bank_name;
+        if (psData.data?.account_name) patch.account_name = psData.data.account_name;
+        if (Object.keys(patch).length) await sb.from("aso_clients").update(patch).eq("id", client_id);
+      }
+
+      return json(psData);
     }
 
     // ── Initialize an Ajo contribution payment (with subaccount routing) ───
