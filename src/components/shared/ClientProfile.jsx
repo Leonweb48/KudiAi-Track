@@ -85,6 +85,8 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], o
   const [confirmDel,   setConfirmDel]   = useState(false);
   const [deleting,     setDeleting]     = useState(false);
   const [delErr,       setDelErr]       = useState("");
+  const [archivePin,   setArchivePin]   = useState("");
+  const [pinErr,       setPinErr]       = useState("");
 
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
@@ -115,11 +117,26 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], o
   };
 
   const doDelete = async () => {
+    if (!archivePin || archivePin.length < 4) {
+      setPinErr("Enter your 4-digit transaction PIN to confirm.");
+      return;
+    }
+    setPinErr("");
     setDeleting(true);
     setDelErr("");
-    const res = await onDelete(record.id);
+    // Verify PIN server-side first (pin-manager), then pass to onDelete for edge-fn re-verify
+    const { data: pinData } = await supabase.functions.invoke("pin-manager", {
+      body: { action: "verify_txn_pin", pin: archivePin },
+    });
+    if (!pinData?.success) {
+      setDeleting(false);
+      setPinErr(pinData?.locked ? "PIN locked — try again later." : "Incorrect PIN. Try again.");
+      setArchivePin("");
+      return;
+    }
+    const res = await onDelete(record.id, archivePin);
     setDeleting(false);
-    if (res?.error) { setDelErr(res.error); setConfirmDel(false); return; }
+    if (res?.error) { setDelErr(res.error); return; }
     onClose();
   };
 
@@ -465,7 +482,7 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], o
                 </div>
               )}
 
-              {/* Delete client — Aso only */}
+              {/* Archive client — Aso only (replaces delete; preserves all history) */}
               {!isCredit && onDelete && (
                 <div className="space-y-2">
                   {delErr && (
@@ -474,27 +491,47 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], o
                     </div>
                   )}
                   {!confirmDel ? (
-                    <button onClick={() => setConfirmDel(true)}
-                      className="w-full py-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-2xl font-bold text-sm border border-red-200 dark:border-red-800 active:scale-[0.99] transition flex items-center justify-center gap-2">
+                    <button
+                      onClick={() => {
+                        if ((record.current_balance || 0) !== 0) {
+                          setDelErr(`Balance must be ₦0.00 before archiving. Current balance: ${fmt(record.current_balance)}. Record a settling withdrawal first.`);
+                          return;
+                        }
+                        setDelErr("");
+                        setArchivePin("");
+                        setPinErr("");
+                        setConfirmDel(true);
+                      }}
+                      className="w-full py-3 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 rounded-2xl font-bold text-sm border border-amber-200 dark:border-amber-800 active:scale-[0.99] transition flex items-center justify-center gap-2">
                       <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-                        <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14H6L5 6M10 11v6M14 11v6M9 6V4h6v2" />
+                        <path d="M21 8v13H3V8M1 3h22v5H1zM10 12h4" />
                       </svg>
-                      Delete Client
+                      Archive Client
                     </button>
                   ) : (
-                    <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-2xl p-4 space-y-3">
-                      <p className="text-sm font-extrabold text-red-700 dark:text-red-400">Delete {name}?</p>
-                      <p className="text-xs text-red-600 dark:text-red-400 leading-relaxed">
-                        This will permanently delete the client, all their contribution history, and their portal login. This cannot be undone.
+                    <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-4 space-y-3">
+                      <p className="text-sm font-extrabold text-amber-700 dark:text-amber-400">Archive {name}?</p>
+                      <p className="text-xs text-amber-600 dark:text-amber-400 leading-relaxed">
+                        The client and all their contribution history will be preserved but moved to the archived list. Their portal login will be deactivated. Enter your transaction PIN to confirm.
                       </p>
+                      <input
+                        type="password"
+                        inputMode="numeric"
+                        maxLength={4}
+                        placeholder="4-digit transaction PIN"
+                        value={archivePin}
+                        onChange={e => { setArchivePin(e.target.value.replace(/\D/g, "").slice(0, 4)); setPinErr(""); }}
+                        className="w-full px-3 py-2.5 rounded-xl border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-sm font-mono text-center tracking-[0.4em] placeholder:tracking-normal placeholder:font-sans placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                      />
+                      {pinErr && <p className="text-xs text-red-500">{pinErr}</p>}
                       <div className="grid grid-cols-2 gap-2">
-                        <button onClick={() => setConfirmDel(false)} disabled={deleting}
+                        <button onClick={() => { setConfirmDel(false); setArchivePin(""); setPinErr(""); }} disabled={deleting}
                           className="py-2.5 rounded-xl font-bold text-sm bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 transition">
                           Cancel
                         </button>
-                        <button onClick={doDelete} disabled={deleting}
-                          className="py-2.5 rounded-xl font-bold text-sm bg-red-600 hover:bg-red-700 text-white transition disabled:opacity-60">
-                          {deleting ? "Deleting…" : "Yes, Delete"}
+                        <button onClick={doDelete} disabled={deleting || archivePin.length < 4}
+                          className="py-2.5 rounded-xl font-bold text-sm bg-amber-600 hover:bg-amber-700 text-white transition disabled:opacity-60">
+                          {deleting ? "Archiving…" : "Archive"}
                         </button>
                       </div>
                     </div>

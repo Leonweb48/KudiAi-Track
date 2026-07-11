@@ -134,19 +134,20 @@ serve(async (req) => {
     return ok("already confirmed");
   }
 
-  // ── 5. Mark contribution as confirmed ────────────────────────────────
-  await sb.from("ajo_contributions").update({
-    paystack_status: "success",
-    paid_at:         paidAt,
-    payment_channel: channel,
-    status:          "completed",
-  }).eq("id", contrib.id);
-
-  // ── 6. Update client balance + next contribution date ─────────────────
-  const resolvedClientId = contrib.aso_client_id ?? clientId;
-  if (resolvedClientId) {
-    await updateClientBalance(sb, resolvedClientId, amountNgn);
+  // ── 5 & 6. Atomic confirmation via RPC (flips status + updates balance) ──
+  // ajo_confirm_payment is SECURITY DEFINER — service role can call it.
+  // It locks on the pending row then updates aso_clients in one transaction.
+  const { error: rpcErr } = await sb.rpc("ajo_confirm_payment", {
+    p_paystack_ref: reference,
+    p_paid_at:      paidAt,
+    p_channel:      channel,
+  });
+  if (rpcErr) {
+    console.error(`[paystack-webhook] ajo_confirm_payment failed: ${rpcErr.message}`);
+    return ok("rpc error logged");
   }
+
+  const resolvedClientId = contrib.aso_client_id ?? clientId;
 
   // ── 7. Fire email notification ────────────────────────────────────────
   const resolvedOwnerId = contrib.owner_id ?? ownerId;

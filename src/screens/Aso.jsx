@@ -680,30 +680,28 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     }
   };
 
-  const handleApproveRequest = async (req) => {
+  const handleApproveRequest = async (req, pin) => {
     setProcessingId(req.id);
     try {
-      const cl         = req.aso_clients || {};
-      const newBalance  = (cl.current_balance || 0) - req.amount;
-      const newWithdrawn = (cl.total_withdrawn || 0) + req.amount;
+      const cl = req.aso_clients || {};
 
-      await supabase.from("ajo_withdrawal_requests")
-        .update({ status: "approved", approved_at: new Date().toISOString() })
-        .eq("id", req.id);
-
-      await supabase.from("ajo_contributions").insert({
-        aso_client_id:  req.aso_client_id,
-        owner_id:       req.owner_id,
-        amount:         req.net_amount,
-        type:           "withdrawal",
-        payment_method: "cash",
-        status:         "completed",
-        notes:          `Approved withdrawal. Gross: ₦${req.amount}, Fee (${req.fee_type}): ₦${req.fee_amount}`,
+      // Atomic withdrawal via ajo-write edge fn (PIN-verified, two-row fee ledger)
+      const { data: writeData, error: writeErr } = await supabase.functions.invoke("ajo-write", {
+        body: {
+          action:       "record_withdrawal",
+          client_id:    req.aso_client_id,
+          gross_amount: req.amount,
+          pin,
+          request_id:   req.id,
+        },
       });
+      if (writeErr || !writeData?.ok) {
+        console.error("Approve failed:", writeErr?.message || writeData?.error);
+        setProcessingId(null);
+        return { error: writeData?.error || writeErr?.message || "Approval failed" };
+      }
 
-      await supabase.from("aso_clients")
-        .update({ current_balance: newBalance, total_withdrawn: newWithdrawn })
-        .eq("id", req.aso_client_id);
+      const newBalance = writeData.new_balance ?? (cl.current_balance || 0) - req.amount;
 
       // Rule: always notify business owner + ajo client when withdrawal is approved
       // Emails resolved server-side from IDs to guarantee fresh delivery
@@ -885,7 +883,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                         amount: Math.round((req.net_amount || 0) * 100),
                         recipient: req.aso_clients?.full_name,
                         description: "Savings withdrawal approval",
-                        onApprove: () => { setTxnPin(null); handleApproveRequest(req); },
+                        onApprove: (pin) => { setTxnPin(null); handleApproveRequest(req, pin); },
                       })}
                       disabled={isProc}
                       className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold text-xs transition active:scale-[0.99] disabled:opacity-50">
@@ -1197,7 +1195,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                     const { data } = await supabase
                       .from("ajo_contributions")
                       .select("*")
-                      .eq("client_id", c.id)
+                      .eq("aso_client_id", c.id)
                       .order("created_at", { ascending: false });
                     setHistoryFor({ client: c, contributions: data || [] });
                     setHistLoading(false);
@@ -1456,11 +1454,22 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
               if (action === "contribute") {
                 asoContribute(selected.id, a);
                 speakConfirmation("ajoDeposit", getLang());
+                setSelected(null); setAction(null); setAmt("");
               } else {
-                asoWithdraw(selected.id, a);
-                speakConfirmation("ajoWithdraw", getLang());
+                // Gate withdrawal with PIN modal; PIN passed through to edge function
+                setTxnPin({
+                  title: "Confirm Withdrawal",
+                  amount: Math.round(a * 100),
+                  recipient: selected.full_name,
+                  description: `Gross withdrawal · balance after: ${selected.current_balance - a >= 0 ? `₦${(selected.current_balance - a).toLocaleString()}` : "pending"}`,
+                  onApprove: (pin) => {
+                    setTxnPin(null);
+                    asoWithdraw(selected.id, a, pin);
+                    speakConfirmation("ajoWithdraw", getLang());
+                    setSelected(null); setAction(null); setAmt("");
+                  },
+                });
               }
-              setSelected(null); setAction(null); setAmt("");
             }}
             className={`w-full py-3.5 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] shadow-sm ${
               action === "contribute" ? "bg-green-600 hover:bg-green-700" : "bg-red-500 hover:bg-red-600"

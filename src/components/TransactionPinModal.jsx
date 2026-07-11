@@ -55,7 +55,7 @@ export default function TransactionPinModal({
       if (fnError) throw fnError;
 
       if (data?.success) {
-        onApprove?.();
+        onApprove?.(enteredPin);
         return;
       }
 

@@ -582,111 +582,63 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
   };
 
   const asoContribute = async (id, amount) => {
-    let updated;
-    let regFee = 0;
-    setAsoClients(p => p.map(c => {
-      if (c.id !== id) return c;
-      const freqDays = { daily: 1, weekly: 7, monthly: 30 };
-      const days  = freqDays[c.contribution_frequency] || 30;
-      const base  = c.next_contribution_date || today();
-      const d     = new Date(base);
-      d.setDate(d.getDate() + days);
-      const nextDate = d.toISOString().split("T")[0];
-      const isFirst = (c.total_saved || 0) === 0;
-      regFee = isFirst ? (c.registration_charge || 0) : 0;
-      updated = {
-        ...c,
-        total_saved:            c.total_saved + amount,
-        current_balance:        c.current_balance + amount - regFee,
-        next_contribution_date: nextDate,
-      };
-      return updated;
-    }));
-    if (updated) {
-      const { error } = await supabase.from("aso_clients")
-        .update({ total_saved: updated.total_saved, current_balance: updated.current_balance, next_contribution_date: updated.next_contribution_date })
-        .eq("id", id);
-      if (error) { console.error("asoContribute:", error); loadData(); }
-      else {
-        supabase.from("ajo_contributions").insert({
-          aso_client_id: id, owner_id: userId, amount,
-          type: "contribution", payment_method: "cash", status: "completed",
-          recorded_by: staffId || null,
-        }).catch(console.error);
-        if (regFee > 0) {
-          supabase.from("ajo_contributions").insert({
-            aso_client_id: id, owner_id: userId, amount: regFee,
-            type: "registration_fee", payment_method: "cash", status: "completed",
-            notes: "Registration fee deducted from first deposit",
-            recorded_by: staffId || null,
-          }).catch(console.error);
-        }
-        fireEmailTrigger("ajo_contribution", {
-          owner_id:      userId,
-          user_email:    authEmailRef.current || profile.email || "",
-          client_id:     id,
-          client_name:   updated.full_name  || "",
-          client_email:  updated.email      || "",
-          client_phone:  updated.phone      || "",
-          staff_id:      staffId            || null,
-          staff_name:    staffName          || "",
-          business_name: profile.business_name || "",
-          business_phone:profile.phone || "",
-          group_name:    updated.group_name || "",
-          amount,
-          balance:       updated.current_balance,
-          reg_fee:       regFee || 0,
-          date:          today(),
-        });
-        onNotify?.("aso", "Contribution Received", `${fmt(amount)} from ${updated.full_name}`);
-      }
+    const { data, error } = await supabase.functions.invoke("ajo-write", {
+      body: { action: "record_contribution", client_id: id, amount, owner_id: userId, recorded_by: staffId || null },
+    });
+    if (error || !data?.ok) {
+      console.error("asoContribute:", error?.message || data?.error);
+      loadData();
+      return { error: error?.message || data?.error || "Contribution failed" };
     }
+    // Refresh local state from DB — RPC updated the row atomically
+    loadData();
+    const updated = data;
+    fireEmailTrigger("ajo_contribution", {
+      owner_id:      userId,
+      user_email:    authEmailRef.current || profile.email || "",
+      client_id:     id,
+      staff_id:      staffId || null,
+      staff_name:    staffName || "",
+      business_name: profile.business_name || "",
+      business_phone:profile.phone || "",
+      amount,
+      balance:       updated.new_balance ?? 0,
+      reg_fee:       updated.reg_fee ?? 0,
+      date:          today(),
+    });
+    return { error: null, data };
   };
 
-  const asoWithdraw = async (id, amount) => {
-    let updated;
-    let netAmount = amount;
-    let feeAmount = 0;
-    setAsoClients(p => p.map(c => {
-      if (c.id !== id) return c;
-      feeAmount = amount * ((c.withdrawal_fee_percent || 0) / 100);
-      netAmount = amount - feeAmount;
-      // Full withdrawal amount (gross) leaves the balance; client receives net; fee is owner's cut
-      updated = { ...c, total_withdrawn: c.total_withdrawn + netAmount, current_balance: c.current_balance - amount };
-      return updated;
-    }));
-    if (updated) {
-      const { error } = await supabase.from("aso_clients")
-        .update({ total_withdrawn: updated.total_withdrawn, current_balance: updated.current_balance })
-        .eq("id", id);
-      if (error) { console.error("asoWithdraw:", error); loadData(); }
-      else {
-        supabase.from("ajo_contributions").insert({
-          aso_client_id: id, owner_id: userId, amount: netAmount,
-          type: "withdrawal", payment_method: "cash", status: "completed",
-          notes: feeAmount > 0 ? `Withdrawal fee deducted: ${fmt(feeAmount)}` : null,
-          recorded_by: staffId || null,
-        }).catch(console.error);
-        fireEmailTrigger("ajo_withdrawal", {
-          owner_id:      userId,
-          user_email:    authEmailRef.current || profile.email || "",
-          client_id:     id,
-          client_name:   updated.full_name  || "",
-          client_email:  updated.email      || "",
-          client_phone:  updated.phone      || "",
-          staff_id:      staffId            || null,
-          staff_name:    staffName          || "",
-          business_name: profile.business_name || "",
-          business_phone:profile.phone || "",
-          group_name:    updated.group_name || "",
-          gross_amount:  amount,
-          fee_amount:    feeAmount,
-          amount:        netAmount,
-          balance_after: updated.current_balance,
-          date:          today(),
-        });
-      }
+  const asoWithdraw = async (id, amount, pin) => {
+    const { data, error } = await supabase.functions.invoke("ajo-write", {
+      body: {
+        action: "record_withdrawal", client_id: id, gross_amount: amount,
+        pin, owner_id: userId, recorded_by: staffId || null,
+      },
+    });
+    if (error || !data?.ok) {
+      const msg = error?.message || data?.error || "Withdrawal failed";
+      console.error("asoWithdraw:", msg);
+      if (!data?.error?.includes("PIN") && !data?.error?.includes("balance")) loadData();
+      return { error: msg };
     }
+    loadData();
+    const updated = data;
+    fireEmailTrigger("ajo_withdrawal", {
+      owner_id:      userId,
+      user_email:    authEmailRef.current || profile.email || "",
+      client_id:     id,
+      staff_id:      staffId || null,
+      staff_name:    staffName || "",
+      business_name: profile.business_name || "",
+      business_phone:profile.phone || "",
+      gross_amount:  amount,
+      fee_amount:    updated.fee_amount ?? 0,
+      amount:        updated.net_amount ?? amount,
+      balance_after: updated.new_balance ?? 0,
+      date:          today(),
+    });
+    return { error: null, data };
   };
 
   // ── Update Credit record ───────────────────────────────────────
@@ -705,16 +657,18 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
     return { error: null };
   };
 
-  // ── Delete Aso Client (contributions + auth user via edge fn) ──
-  const deleteAsoClient = async (id) => {
-    setAsoClients(p => p.filter(c => c.id !== id));
-    const { data, error } = await supabase.functions.invoke("delete-ajo-client", {
-      body: { clientId: id },
+  // ── Archive Aso Client (replaces hard-delete; zero-balance + PIN required) ──
+  const deleteAsoClient = async (id, pin) => {
+    const { data, error } = await supabase.functions.invoke("ajo-write", {
+      body: { action: "archive_client", client_id: id, pin, owner_id: userId },
     });
-    if (error || data?.error) {
+    if (error || !data?.ok) {
+      const msg = error?.message || data?.error || "Archive failed";
       loadData();
-      return { error: error?.message || data?.error || "Delete failed" };
+      return { error: msg };
     }
+    // Remove from active list; archived clients are excluded by the archived_at filter
+    setAsoClients(p => p.filter(c => c.id !== id));
     return { error: null };
   };
 
