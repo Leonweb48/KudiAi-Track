@@ -2281,6 +2281,10 @@ export default function BillPayments({ store, plan, session = null, staffName = 
   // ── Step 2: Verify payment then fulfill service ───────────────────────────────
   const fulfillAfterPayment = useCallback(async (ref, pending) => {
     setError("");
+    // Tracks whether Paystack confirmed the charge before ClubKonnect was called.
+    // Used in the catch block to decide between "We're Sorting This Out" (payment was
+    // real, service failed) vs "Payment Disrupted" (payment never confirmed, NOT CHARGED).
+    let paymentVerified = pending.isFree; // free items need no payment verification
     try {
       if (!pending.isFree) {
         // Verify payment with Paystack (server-side; edge function requires auth)
@@ -2348,6 +2352,9 @@ export default function BillPayments({ store, plan, session = null, staffName = 
           }
           throw new Error(vd?.data?.gateway_response || "Payment not confirmed. Please contact support.");
         }
+
+        // Paystack confirmed "success" — we know the user was charged from here on
+        paymentVerified = true;
 
         // Amount integrity check — Paystack amount (kobo) must match what we charged
         const verifiedKobo = vd?.data?.amount ?? 0;
@@ -2586,11 +2593,19 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     } catch (err) {
       setSaving(false);
       const ckError = err.message || "Unknown error";
-      setFulfillResult({ ok: false, label: "", detail: ckError, psRef: ref, apiRef: "" });
       // Always remove the pending entry on failure — the orphan-check and browserFinished
       // listener would otherwise re-trigger fulfillAfterPayment every time the user opens
       // the Bills page or the app returns from background.
       localStorage.removeItem(BILL_PENDING_PREFIX + ref);
+      if (paymentVerified) {
+        // Payment was confirmed by Paystack but service delivery failed.
+        // Show "We're Sorting This Out" — the user WAS charged and we'll make it right.
+        setFulfillResult({ ok: false, label: "", detail: ckError, psRef: ref, apiRef: "" });
+      } else {
+        // Verification itself threw or failed before Paystack returned "success".
+        // We cannot confirm whether the user was charged — show the NOT CHARGED disrupted state.
+        setFulfillResult({ ok: false, disrupted: true, detail: `Payment could not be verified. ${ckError ? `(${ckError}) ` : ""}Please try again. Contact support and quote reference ${ref} if you believe you were charged.`, psRef: ref, apiRef: "" });
+      }
 
       // Record the failed bill in history
       try {
