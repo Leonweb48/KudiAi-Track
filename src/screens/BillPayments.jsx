@@ -2230,8 +2230,10 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       };
       localStorage.setItem(BILL_PENDING_PREFIX + ref, JSON.stringify(pending));
 
-      // 100% coupon — skip Paystack entirely, go straight to fulfillment
+      // 100% coupon — skip Paystack entirely, go straight to fulfillment.
+      // Clear selectedCat first so the processing overlay shows while ClubKonnect runs.
       if (finalAmount === 0) {
+        setSelectedCat(null);
         await fulfillAfterPaymentRef.current(ref, pending);
         return;
       }

@@ -285,12 +285,14 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
     setSaving(true); setError("");
     try {
       const isFree = planSlug === "kobo" || planSlug === "starter";
+      // A paid plan redeemed via 100% coupon has no Paystack reference — treat it as free
+      const isFreeOrder = isFree || (couponInfo != null && (couponInfo.finalAmount === 0 || (couponInfo.discountAmount != null && couponInfo.originalAmount != null && couponInfo.discountAmount >= couponInfo.originalAmount)));
 
-      if (!isFree && !reference) {
+      if (!isFreeOrder && !reference) {
         throw new Error("Payment reference missing. Cannot verify subscription. Please try again.");
       }
 
-      if (!isFree && reference) {
+      if (!isFreeOrder && reference) {
         const { data: vd } = await supabase.functions.invoke("paystack", {
           body: { action: "verify", reference },
         });
