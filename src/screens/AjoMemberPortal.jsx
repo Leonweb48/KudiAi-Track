@@ -795,6 +795,7 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
   };
 
   return (
+    <>
     <div className="fixed inset-0 z-[60] bg-black/60 flex items-end justify-center" onClick={onClose}>
       <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-t-3xl px-5 py-6 shadow-2xl" onClick={e => e.stopPropagation()}>
         <div className="w-10 h-1 bg-slate-300 dark:bg-slate-600 rounded-full mx-auto mb-5" />
@@ -883,8 +884,9 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
           </>
         )}
       </div>
-      {txnPin && <TransactionPinModal {...txnPin} onCancel={() => setTxnPin(null)} />}
     </div>
+    {txnPin && <TransactionPinModal {...txnPin} onCancel={() => setTxnPin(null)} />}
+    </>
   );
 }
 

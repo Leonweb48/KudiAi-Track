@@ -1462,17 +1462,19 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                   setContribSuccess({ client: savedClient, amount: a, showShare: false });
                 }
               } else {
-                // Gate withdrawal with PIN modal; PIN passed through to edge function
+                // Clear modal first so it unmounts before PIN sheet opens
+                const savedClient = selected;
+                const savedAmt = a;
+                setSelected(null); setAction(null); setAmt("");
                 setTxnPin({
                   title: "Confirm Withdrawal",
-                  amount: Math.round(a * 100),
-                  recipient: selected.full_name,
-                  description: `Gross withdrawal · balance after: ${selected.current_balance - a >= 0 ? `₦${(selected.current_balance - a).toLocaleString()}` : "pending"}`,
+                  amount: Math.round(savedAmt * 100),
+                  recipient: savedClient.full_name,
+                  description: `Gross withdrawal · balance after: ${savedClient.current_balance - savedAmt >= 0 ? `₦${(savedClient.current_balance - savedAmt).toLocaleString()}` : "pending"}`,
                   onApprove: (pin) => {
                     setTxnPin(null);
-                    asoWithdraw(selected.id, a, pin);
+                    asoWithdraw(savedClient.id, savedAmt, pin);
                     speakConfirmation("ajoWithdraw", getLang());
-                    setSelected(null); setAction(null); setAmt("");
                   },
                 });
               }
