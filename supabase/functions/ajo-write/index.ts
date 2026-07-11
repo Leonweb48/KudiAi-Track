@@ -357,6 +357,86 @@ serve(async (req: Request) => {
     return json(data);
   }
 
+  if (action === "confirm_manual_deposit") {
+    const { claim_id } = params as { claim_id: string };
+
+    // Resolve owner from the claim itself (don't trust client-supplied owner_id)
+    const { data: claim } = await sb
+      .from("ajo_contributions")
+      .select("owner_id, aso_client_id")
+      .eq("id", claim_id)
+      .maybeSingle();
+
+    if (!claim) return json({ ok: false, error: "Claim not found" }, 404);
+    const ownerId = claim.owner_id;
+    if (!await isAuthorized(sb, user.id, ownerId)) {
+      return json({ ok: false, error: "Unauthorized" }, 403);
+    }
+
+    const { data, error } = await sb.rpc("ajo_confirm_manual_deposit", {
+      p_claim_id:     claim_id,
+      p_owner_id:     ownerId,
+      p_confirmed_by: user.id,
+    });
+    if (error) return json({ ok: false, error: error.message });
+    if (!data?.ok) return json({ ok: false, error: data?.error || "Failed to confirm" });
+
+    // Fire confirmation email to client — non-blocking
+    const ctx = await fetchEmailContext(sb, claim.aso_client_id, ownerId, user.id);
+    await fireAjoEmail("ajo_manual_deposit_confirmed", {
+      client_email:  ctx.clientEmail,
+      client_name:   ctx.clientName,
+      user_email:    ctx.ownerEmail,
+      business_name: ctx.businessName,
+      staff_email:   ctx.staffEmail,
+      staff_name:    ctx.staffName,
+      amount:        data?.amount,
+      reg_fee:       data?.reg_fee || 0,
+      new_balance:   data?.new_balance,
+      date:          new Date().toLocaleDateString("en-NG"),
+    });
+
+    return json(data);
+  }
+
+  if (action === "reject_manual_claim") {
+    const { claim_id, reason } = params as { claim_id: string; reason: string };
+
+    const { data: claim } = await sb
+      .from("ajo_contributions")
+      .select("owner_id, aso_client_id, amount")
+      .eq("id", claim_id)
+      .maybeSingle();
+
+    if (!claim) return json({ ok: false, error: "Claim not found" }, 404);
+    const ownerId = claim.owner_id;
+    if (!await isAuthorized(sb, user.id, ownerId)) {
+      return json({ ok: false, error: "Unauthorized" }, 403);
+    }
+
+    const { data, error } = await sb.rpc("ajo_reject_manual_claim", {
+      p_claim_id: claim_id,
+      p_owner_id: ownerId,
+      p_reason:   reason,
+    });
+    if (error) return json({ ok: false, error: error.message });
+    if (!data?.ok) return json({ ok: false, error: data?.error || "Failed to reject" });
+
+    // Fire rejection email to client — non-blocking
+    const ctx = await fetchEmailContext(sb, claim.aso_client_id, ownerId, user.id);
+    await fireAjoEmail("ajo_manual_deposit_rejected", {
+      client_email:  ctx.clientEmail,
+      client_name:   ctx.clientName,
+      user_email:    ctx.ownerEmail,
+      business_name: ctx.businessName,
+      amount:        claim.amount,
+      reason:        reason,
+      date:          new Date().toLocaleDateString("en-NG"),
+    });
+
+    return json(data);
+  }
+
   if (action === "archive_client") {
     const { client_id } = params as { client_id: string };
 

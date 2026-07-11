@@ -282,10 +282,15 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const { asoClients, addAsoClient, asoContribute, asoWithdraw, updateAsoClient, deleteAsoClient, profile, staffMap = {} } = store;
   const staffOptions = Object.entries(staffMap).map(([id, name]) => ({ id, name }));
 
-  const [withdrawalRequests, setWithdrawalRequests] = useState([]);
-  const [processingId,       setProcessingId]       = useState(null);
-  const [txnPin,             setTxnPin]             = useState(null);
-  const [contribSuccess,     setContribSuccess]     = useState(null); // { client, amount, showShare }
+  const [withdrawalRequests,  setWithdrawalRequests]  = useState([]);
+  const [processingId,        setProcessingId]        = useState(null);
+  const [txnPin,              setTxnPin]              = useState(null);
+  const [contribSuccess,      setContribSuccess]      = useState(null); // { client, amount, showShare }
+
+  const [pendingDeposits,     setPendingDeposits]     = useState([]);
+  const [processingDepositId, setProcessingDepositId] = useState(null);
+  const [rejectingDeposit,    setRejectingDeposit]    = useState(null);
+  const [rejectReason,        setRejectReason]        = useState("");
 
 
   // Ajo Groups management
@@ -354,6 +359,16 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       .eq("status", "pending")
       .order("requested_at", { ascending: false });
     setWithdrawalRequests(data || []);
+  };
+
+  const reloadPendingDeposits = async () => {
+    const { data } = await supabase
+      .from("ajo_contributions")
+      .select("*, aso_clients(full_name, email, membership_number)")
+      .eq("status", "pending")
+      .eq("payment_method", "manual_transfer")
+      .order("created_at", { ascending: false });
+    setPendingDeposits(data || []);
   };
 
   const loadGroups = async () => {
@@ -479,6 +494,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   useEffect(() => {
     if (!canDo(plan, "aso")) return;
     reloadWithdrawalRequests();
+    reloadPendingDeposits();
     loadGroups();
   }, [plan]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -488,6 +504,18 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     const channel = supabase.channel("ajo_withdrawal_requests_rt")
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "ajo_withdrawal_requests" },
         () => reloadWithdrawalRequests())
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [plan]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Realtime: new manual deposit claims from clients ────────────────────
+  useEffect(() => {
+    if (!canDo(plan, "aso")) return;
+    const channel = supabase.channel("ajo_manual_claims_rt")
+      .on("postgres_changes", {
+        event: "INSERT", schema: "public", table: "ajo_contributions",
+        filter: "payment_method=eq.manual_transfer",
+      }, () => reloadPendingDeposits())
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [plan]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -764,6 +792,38 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     }
   };
 
+  const handleConfirmDeposit = async (claim) => {
+    setProcessingDepositId(claim.id);
+    try {
+      const { data, error } = await supabase.functions.invoke("ajo-write", {
+        body: { action: "confirm_manual_deposit", claim_id: claim.id },
+      });
+      if (error || !data?.ok) throw new Error(data?.error || error?.message || "Confirm failed");
+      reloadPendingDeposits();
+    } catch (e) {
+      console.error("Confirm deposit failed:", e);
+    } finally {
+      setProcessingDepositId(null);
+    }
+  };
+
+  const handleRejectDeposit = async (claim, reason) => {
+    setProcessingDepositId(claim.id);
+    try {
+      const { data, error } = await supabase.functions.invoke("ajo-write", {
+        body: { action: "reject_manual_claim", claim_id: claim.id, reason },
+      });
+      if (error || !data?.ok) throw new Error(data?.error || error?.message || "Reject failed");
+      setRejectingDeposit(null);
+      setRejectReason("");
+      reloadPendingDeposits();
+    } catch (e) {
+      console.error("Reject deposit failed:", e);
+    } finally {
+      setProcessingDepositId(null);
+    }
+  };
+
   const reminderMsg = reminderFor ? buildReminderMsg(reminderFor, profile?.business_name) : "";
   const waLink = reminderFor?.phone
     ? `https://wa.me/${reminderFor.phone.replace(/\D/g, "")}?text=${encodeURIComponent(reminderMsg)}`
@@ -795,7 +855,14 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
       {/* Header */}
       <div className={`${embedded ? "" : "sticky top-0 z-10"} bg-white dark:bg-slate-900 -mx-4 px-4 py-3 mb-4 border-b border-slate-100 dark:border-slate-700/60 flex items-center justify-between`}>
-        <h1 className="text-xl font-extrabold text-slate-800 dark:text-white tracking-tight">{t("aso.title")}</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-xl font-extrabold text-slate-800 dark:text-white tracking-tight">{t("aso.title")}</h1>
+          {pendingDeposits.length > 0 && (
+            <span className="bg-violet-600 text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded-full leading-none">
+              {pendingDeposits.length}
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => { loadGroups(); setShowGroups(true); }}
@@ -896,6 +963,74 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                       disabled={isProc}
                       className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-700 hover:bg-red-50 dark:hover:bg-red-900/20 text-slate-600 dark:text-slate-300 hover:text-red-600 dark:hover:text-red-400 rounded-xl font-bold text-xs transition active:scale-[0.99] disabled:opacity-50 border border-slate-200 dark:border-slate-600">
                       {isProc ? "…" : "Reject"}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Pending deposits panel */}
+      {pendingDeposits.length > 0 && (
+        <div className="mb-4">
+          <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2">
+            Pending Deposits
+            <span className="ml-2 bg-violet-600 text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded-full">{pendingDeposits.length}</span>
+          </p>
+          <div className="space-y-2">
+            {pendingDeposits.map(dep => {
+              const cl      = dep.aso_clients || {};
+              const isProc  = processingDepositId === dep.id;
+              const daysOld = Math.floor((Date.now() - new Date(dep.created_at).getTime()) / 86400000);
+              const isStale = daysOld >= 7;
+              const dateStr = dep.created_at
+                ? new Date(dep.created_at).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })
+                : "";
+              return (
+                <div key={dep.id} className={`bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 border shadow-sm ${isStale ? "border-red-200 dark:border-red-800/60" : "border-violet-200 dark:border-violet-800/60"}`}>
+                  {isStale && (
+                    <p className="text-[10px] font-bold text-red-500 dark:text-red-400 mb-2">⏰ Awaiting confirmation for {daysOld}+ days</p>
+                  )}
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center flex-shrink-0">
+                      <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-violet-600 dark:text-violet-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                        <path d="M12 5v14M5 12l7-7 7 7" />
+                      </svg>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-extrabold text-slate-800 dark:text-white truncate">{cl.full_name || "—"}</p>
+                      <p className="text-[10px] text-slate-400 font-mono">{cl.membership_number || ""}</p>
+                      <p className="text-xs font-bold text-violet-700 dark:text-violet-300 mt-1">
+                        Claims ₦{Number(dep.amount).toLocaleString("en-NG")}
+                      </p>
+                      {dep.payer_name  && <p className="text-[10px] text-slate-400 mt-0.5">Paid by: {dep.payer_name}</p>}
+                      {dep.claim_notes && <p className="text-[10px] text-slate-400 italic mt-0.5">"{dep.claim_notes}"</p>}
+                      <p className="text-[10px] text-slate-400 mt-0.5">{dateStr}</p>
+                      {dep.proof_url && (
+                        <a href={dep.proof_url} target="_blank" rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-[10px] font-bold text-violet-600 dark:text-violet-400 mt-1 hover:underline">
+                          <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                            <path d="M14.5 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7.5L14.5 2z" /><polyline points="14 2 14 8 20 8" />
+                          </svg>
+                          View Proof
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex gap-2 mt-3">
+                    <button
+                      onClick={() => handleConfirmDeposit(dep)}
+                      disabled={isProc}
+                      className="flex-1 py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-bold text-xs transition active:scale-[0.99] disabled:opacity-50">
+                      {isProc && processingDepositId === dep.id && !rejectingDeposit ? "…" : "Confirm"}
+                    </button>
+                    <button
+                      onClick={() => { setRejectingDeposit(dep); setRejectReason(""); }}
+                      disabled={isProc}
+                      className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-700 hover:bg-red-50 dark:hover:bg-red-900/20 text-slate-600 dark:text-slate-300 hover:text-red-600 dark:hover:text-red-400 rounded-xl font-bold text-xs transition active:scale-[0.99] disabled:opacity-50 border border-slate-200 dark:border-slate-600">
+                      Reject
                     </button>
                   </div>
                 </div>
@@ -1729,6 +1864,26 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Manual Deposit Reject Reason Modal ──────────────────────────── */}
+      {rejectingDeposit && (
+        <Modal title="Reject Deposit Claim" onClose={() => { setRejectingDeposit(null); setRejectReason(""); }}>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
+            Rejecting <strong className="text-slate-700 dark:text-slate-200">{rejectingDeposit.aso_clients?.full_name || "client"}</strong>'s claim of{" "}
+            <strong className="text-violet-700 dark:text-violet-300">₦{Number(rejectingDeposit.amount).toLocaleString("en-NG")}</strong>.
+            The client will be notified with your reason.
+          </p>
+          <Field as="textarea" label="Reason (required)" value={rejectReason}
+            onChange={e => setRejectReason(e.target.value)}
+            placeholder="e.g. We did not receive this transfer in our account…" />
+          <button
+            onClick={() => handleRejectDeposit(rejectingDeposit, rejectReason)}
+            disabled={!rejectReason.trim() || processingDepositId === rejectingDeposit.id}
+            className="w-full py-3.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] mt-1">
+            {processingDepositId === rejectingDeposit.id ? "Rejecting…" : "Reject & Notify Client"}
+          </button>
+        </Modal>
       )}
 
       {/* ── Ajo Groups Management Modal ─────────────────────────────────── */}

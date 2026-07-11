@@ -117,7 +117,7 @@ serve(async (req) => {
       const { owner_id, client_id } = body as { owner_id: string; client_id: string };
 
       const [ownerRes, clientRes] = await Promise.all([
-        sb.from("profiles").select("business_name, full_name, phone, email, profile_image_url").eq("id", owner_id).maybeSingle(),
+        sb.from("profiles").select("business_name, full_name, phone, email, profile_image_url, bank_name, bank_account_number, bank_account_name").eq("id", owner_id).maybeSingle(),
         sb.from("aso_clients").select("staff_id").eq("id", client_id).maybeSingle(),
       ]);
 
@@ -425,6 +425,54 @@ serve(async (req) => {
       }).catch(() => null);
 
       return json({ success: true });
+    }
+
+    // ── Client submits a manual bank-transfer claim ───────────────
+    if (action === "submit-manual-claim") {
+      const { client_id, owner_id, amount, payer_name, notes, proof_url } = body as {
+        client_id: string; owner_id: string; amount: number;
+        payer_name?: string; notes?: string; proof_url?: string;
+      };
+
+      if (!client_id || !owner_id) return json({ error: "client_id and owner_id required" }, 400);
+      const numAmt = Number(amount);
+      if (!numAmt || numAmt <= 0) return json({ error: "Amount must be greater than zero" }, 400);
+
+      const { data: rpcResult } = await sb.rpc("ajo_submit_manual_claim", {
+        p_client_id:  client_id,
+        p_owner_id:   owner_id,
+        p_amount:     numAmt,
+        p_payer_name: payer_name || null,
+        p_notes:      notes      || null,
+        p_proof_url:  proof_url  || null,
+      });
+
+      if (!rpcResult?.ok) return json({ error: rpcResult?.error || "Failed to submit claim" }, 400);
+
+      // Notify owner — non-blocking
+      const [cl, ownerProf] = await Promise.all([
+        sb.from("aso_clients").select("full_name, email").eq("id", client_id).maybeSingle().then(r => r.data),
+        sb.from("profiles").select("email, business_name").eq("id", owner_id).maybeSingle().then(r => r.data),
+      ]);
+      fetch("https://admin.kudiai.app/api/public/email-trigger", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
+        body: JSON.stringify({
+          event: "ajo_manual_deposit_claimed",
+          data: {
+            client_name:   cl?.full_name     || "",
+            client_email:  cl?.email         || "",
+            owner_email:   ownerProf?.email  || "",
+            business_name: ownerProf?.business_name || "",
+            amount:        numAmt,
+            payer_name:    payer_name || "",
+            notes:         notes     || "",
+            date:          new Date().toLocaleDateString("en-NG"),
+          },
+        }),
+      }).catch(() => null);
+
+      return json({ ok: true, claim_id: rpcResult.claim_id, amount: numAmt });
     }
 
     // ── Change PIN ────────────────────────────────────────────────

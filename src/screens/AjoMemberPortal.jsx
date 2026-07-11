@@ -81,6 +81,15 @@ async function uploadAjoAvatar(file, clientId) {
   return `${base}?v=${Date.now()}`;
 }
 
+async function uploadAjoProof(file, clientId) {
+  if (file.size > 2 * 1024 * 1024) throw new Error("Image must be under 2 MB");
+  const ext  = (file.name.split(".").pop() || "jpg").toLowerCase();
+  const path = `${clientId}/${Date.now()}.${ext}`;
+  const { error } = await supabase.storage.from("ajo-proofs").upload(path, file, { contentType: file.type });
+  if (error) throw new Error(error.message);
+  return supabase.storage.from("ajo-proofs").getPublicUrl(path).data.publicUrl;
+}
+
 // ── Micro-components ──────────────────────────────────────────────────────
 function Svg({ d, size = 18, color = "currentColor", sw = 2 }) {
   return (
@@ -759,6 +768,182 @@ function ChangePasswordModal({ onClose }) {
   );
 }
 
+// ── Manual deposit modal ──────────────────────────────────────────────────
+function ManualDepositModal({ client, ownerInfo, onClose, onSuccess }) {
+  const [amount,     setAmount]     = useState("");
+  const [payerName,  setPayerName]  = useState("");
+  const [notes,      setNotes]      = useState("");
+  const [proofFile,  setProofFile]  = useState(null);
+  const [proofPrev,  setProofPrev]  = useState(null);
+  const [uploading,  setUploading]  = useState(false);
+  const [saving,     setSaving]     = useState(false);
+  const [error,      setError]      = useState("");
+  const [done,       setDone]       = useState(false);
+  const fileRef = useRef(null);
+
+  const bank    = ownerInfo?.owner;
+  const hasBank = bank?.bank_account_number && bank?.bank_name;
+  const amtNum  = parseFloat(amount) || 0;
+
+  const copyText = async (text) => {
+    try { await navigator.clipboard.writeText(text); } catch { /* fallback silent */ }
+  };
+
+  const pickFile = (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (f.size > 2 * 1024 * 1024) { setError("Image must be under 2 MB"); return; }
+    setProofFile(f);
+    setProofPrev(URL.createObjectURL(f));
+    setError("");
+  };
+
+  const handleSubmit = async () => {
+    if (!amtNum || amtNum <= 0) { setError("Enter a valid amount"); return; }
+    setSaving(true); setError("");
+    try {
+      let proofUrl = null;
+      if (proofFile) {
+        setUploading(true);
+        proofUrl = await uploadAjoProof(proofFile, client.id);
+        setUploading(false);
+      }
+      await ajoFn("submit-manual-claim", {
+        client_id:  client.id,
+        owner_id:   client.user_id,
+        amount:     amtNum,
+        payer_name: payerName.trim() || null,
+        notes:      notes.trim()     || null,
+        proof_url:  proofUrl,
+      });
+      setDone(true);
+      onSuccess?.();
+    } catch (e) {
+      setUploading(false);
+      setError(e.message || "Failed to submit claim");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <>
+    <div className="fixed inset-0 z-[60] bg-black/60 flex items-end justify-center" onClick={onClose}>
+      <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-t-3xl px-5 py-6 shadow-2xl max-h-[92dvh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="w-10 h-1 bg-slate-300 dark:bg-slate-600 rounded-full mx-auto mb-5" />
+
+        {done ? (
+          <div className="text-center py-4">
+            <div className="w-14 h-14 bg-violet-100 dark:bg-violet-900/30 rounded-full flex items-center justify-center mx-auto mb-3">
+              <svg viewBox="0 0 24 24" fill="none" className="w-7 h-7 text-violet-600 dark:text-violet-400" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+                <path d="M20 6L9 17l-5-5" />
+              </svg>
+            </div>
+            <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">Claim Submitted!</h3>
+            <p className="text-xs text-slate-400 dark:text-slate-500">Your savings agent will verify the transfer and confirm your deposit. You'll be notified by email.</p>
+            <button onClick={onClose} className="mt-5 w-full py-3.5 bg-violet-600 text-white rounded-xl font-bold text-sm">
+              Close
+            </button>
+          </div>
+        ) : (
+          <>
+            <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-0.5">Make a Deposit</h3>
+            <p className="text-xs text-slate-400 dark:text-slate-500 mb-4">Transfer to the account below, then submit your claim here.</p>
+
+            {/* Bank details */}
+            {hasBank ? (
+              <div className="bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 rounded-2xl px-4 py-4 mb-4">
+                <p className="text-[10px] font-bold text-violet-500 dark:text-violet-400 uppercase tracking-wider mb-3">Business Bank Account</p>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-slate-500 dark:text-slate-400">Account Number</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-black text-slate-800 dark:text-white tracking-wider">{bank.bank_account_number}</span>
+                      <button onClick={() => copyText(bank.bank_account_number)}
+                        className="text-[10px] font-bold text-violet-600 dark:text-violet-400 bg-violet-100 dark:bg-violet-900/40 px-2 py-0.5 rounded-md active:scale-95 transition">
+                        Copy
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-slate-500 dark:text-slate-400">Account Name</span>
+                    <span className="text-xs font-bold text-slate-700 dark:text-slate-200 text-right max-w-[60%] truncate">{bank.bank_account_name || "—"}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-slate-500 dark:text-slate-400">Bank</span>
+                    <span className="text-xs font-bold text-slate-700 dark:text-slate-200">{bank.bank_name}</span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-3 py-2.5 mb-4">
+                <p className="text-xs text-amber-700 dark:text-amber-300 font-semibold">Bank details not set up yet. Contact your savings agent for transfer instructions.</p>
+              </div>
+            )}
+
+            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Amount Transferred (₦) <span className="text-red-500">*</span></label>
+            <input
+              type="number" inputMode="decimal"
+              value={amount} onChange={e => setAmount(e.target.value)}
+              placeholder="Enter the exact amount you transferred"
+              className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 mb-3"
+            />
+
+            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Sender Name (optional)</label>
+            <input
+              type="text"
+              value={payerName} onChange={e => setPayerName(e.target.value)}
+              placeholder="Name on the transfer receipt"
+              className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 mb-3"
+            />
+
+            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Reference / Note (optional)</label>
+            <input
+              type="text"
+              value={notes} onChange={e => setNotes(e.target.value)}
+              placeholder="e.g. January contribution"
+              className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 mb-3"
+            />
+
+            {/* Proof upload */}
+            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Proof of Transfer (optional)</label>
+            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={pickFile} />
+            {proofPrev ? (
+              <div className="relative mb-3">
+                <img src={proofPrev} alt="Proof" className="w-full rounded-xl object-cover max-h-40 border border-slate-200 dark:border-slate-600" />
+                <button onClick={() => { setProofFile(null); setProofPrev(null); }}
+                  className="absolute top-2 right-2 w-7 h-7 bg-black/50 rounded-full flex items-center justify-center text-white text-xs font-bold">✕</button>
+              </div>
+            ) : (
+              <button onClick={() => fileRef.current?.click()}
+                className="w-full py-3 mb-3 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl text-xs font-bold text-slate-400 dark:text-slate-500 flex items-center justify-center gap-2 active:scale-[0.99] transition">
+                <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>
+                </svg>
+                Upload screenshot (≤ 2 MB)
+              </button>
+            )}
+
+            {error && <p className="text-xs text-red-500 mb-3">{error}</p>}
+
+            <button
+              onClick={handleSubmit}
+              disabled={saving || !amtNum || amtNum <= 0}
+              className="w-full py-3.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] disabled:opacity-50 shadow-sm flex items-center justify-center gap-2">
+              {uploading ? "Uploading proof…" : saving ? "Submitting…" : "Submit Deposit Claim"}
+            </button>
+
+            <p className="text-[10px] text-slate-400 text-center mt-3">
+              Your claim will be reviewed by your savings agent before your balance is updated.
+            </p>
+          </>
+        )}
+      </div>
+    </div>
+    </>
+  );
+}
+
 // ── Withdrawal request modal ──────────────────────────────────────────────
 function WithdrawRequestModal({ client, onClose, onSuccess }) {
   const [amount,  setAmount]  = useState("");
@@ -891,7 +1076,7 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
 }
 
 // ── Overview tab ──────────────────────────────────────────────────────────
-function OverviewTab({ client, contributions, onWithdrawClick, onPayClick, ownerInfo, withdrawRequests = [], onBillsClick, userEmail }) {
+function OverviewTab({ client, contributions, onWithdrawClick, onPayClick, onDepositClick, ownerInfo, withdrawRequests = [], onBillsClick, userEmail }) {
   const t = useT();
   const { lang } = useLanguage();
 
@@ -1021,6 +1206,26 @@ function OverviewTab({ client, contributions, onWithdrawClick, onPayClick, owner
             onClick={onBillsClick}
           />
         </div>
+        {/* Manual deposit row — full-width secondary button */}
+        <button
+          onClick={onDepositClick}
+          className="mt-3 w-full flex items-center justify-between gap-3 py-3 px-4 rounded-xl bg-slate-50 dark:bg-slate-700/60 border border-slate-200 dark:border-slate-600 active:scale-[0.99] transition text-left">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center flex-shrink-0">
+              <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-violet-600 dark:text-violet-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                <rect x="2" y="5" width="20" height="14" rx="2"/>
+                <path d="M12 10v4|M10 12h4"/>
+              </svg>
+            </div>
+            <div>
+              <p className="text-xs font-extrabold text-slate-700 dark:text-slate-200">Make a Deposit</p>
+              <p className="text-[10px] text-slate-400 dark:text-slate-500">Bank transfer · get balance credited</p>
+            </div>
+          </div>
+          <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-400 flex-shrink-0" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+            <path d="M9 18l6-6-6-6"/>
+          </svg>
+        </button>
       </div>
 
       {/* Cashback Balance */}
@@ -1372,35 +1577,68 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
               </div>
             </div>
           </button>
-        ) : (
-          <button key={`c-${item.id}`} onClick={() => setReceipt(item)}
-            className="w-full text-left bg-white dark:bg-slate-800 rounded-2xl px-4 py-3 border border-slate-100 dark:border-slate-700 active:scale-[0.98] transition-transform">
-            <div className="flex items-start gap-3">
-              <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${item.type === "contribution" ? "bg-green-50 dark:bg-green-900/20" : "bg-red-50 dark:bg-red-900/20"}`}>
-                <svg viewBox="0 0 24 24" fill="none" className={`w-4 h-4 ${item.type === "contribution" ? "text-green-600 dark:text-green-400" : "text-red-500"}`}
-                  stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-                  {item.type === "contribution" ? <><path d="M12 5v14M5 12l7-7 7 7" /></> : <><path d="M12 19V5M5 12l7 7 7-7" /></>}
-                </svg>
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between gap-2">
-                  <span className={`text-sm font-extrabold tabular ${item.type === "contribution" ? "text-green-600 dark:text-green-400" : "text-red-500"}`}>
-                    {item.type === "contribution" ? "+" : "−"}{fmt(item.amount)}
-                  </span>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize flex-shrink-0 ${statusCls(item.status)}`}>{item.status}</span>
+        ) : (() => {
+          const isPendingManual   = item.payment_method === "manual_transfer" && item.status === "pending";
+          const isRejectedManual  = item.payment_method === "manual_transfer" && item.status === "rejected";
+          const isManual          = item.payment_method === "manual_transfer";
+          const isContrib         = item.type === "contribution";
+          const cardCls = isPendingManual
+            ? "bg-violet-50 dark:bg-violet-900/10 border-violet-200 dark:border-violet-800/60"
+            : isRejectedManual
+              ? "bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800/60"
+              : "bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700";
+
+          const Row = isPendingManual ? "div" : "button";
+          const rowProps = isPendingManual
+            ? { key: `c-${item.id}`, className: `w-full text-left rounded-2xl px-4 py-3 border ${cardCls}` }
+            : { key: `c-${item.id}`, onClick: () => setReceipt(item), className: `w-full text-left rounded-2xl px-4 py-3 border active:scale-[0.98] transition-transform ${cardCls}` };
+
+          return (
+            <Row {...rowProps}>
+              <div className="flex items-start gap-3">
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                  isPendingManual  ? "bg-violet-100 dark:bg-violet-900/40" :
+                  isRejectedManual ? "bg-red-100 dark:bg-red-900/30" :
+                  isContrib        ? "bg-green-50 dark:bg-green-900/20" : "bg-red-50 dark:bg-red-900/20"
+                }`}>
+                  <svg viewBox="0 0 24 24" fill="none" className={`w-4 h-4 ${
+                    isPendingManual  ? "text-violet-500 dark:text-violet-400" :
+                    isRejectedManual ? "text-red-500" :
+                    isContrib        ? "text-green-600 dark:text-green-400" : "text-red-500"
+                  }`} stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                    {isContrib ? <path d="M12 5v14M5 12l7-7 7 7" /> : <path d="M12 19V5M5 12l7 7 7-7" />}
+                  </svg>
                 </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 capitalize">
-                  {item.type} · {item.payment_method || "cash"}
-                  {item.paystack_ref && ` · Ref: ${item.paystack_ref.slice(-8)}`}
-                </p>
-                <p className="text-[10px] text-slate-400 mt-0.5">
-                  {new Date(item.created_at).toLocaleString("en-NG", { dateStyle: "medium", timeStyle: "short" })}
-                </p>
-                {item.notes && <p className="text-[10px] text-slate-400 italic mt-0.5">"{item.notes}"</p>}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`text-sm font-extrabold tabular ${
+                      isPendingManual  ? "text-violet-600 dark:text-violet-400" :
+                      isRejectedManual ? "text-red-500 dark:text-red-400" :
+                      isContrib        ? "text-green-600 dark:text-green-400" : "text-red-500"
+                    }`}>
+                      {isContrib ? "+" : "−"}{fmt(item.amount)}
+                    </span>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize flex-shrink-0 ${statusCls(item.status)}`}>
+                      {isPendingManual ? "Awaiting confirmation" : item.status}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 capitalize">
+                    {item.type}{isManual ? " · Bank transfer" : ` · ${item.payment_method || "cash"}`}
+                    {item.paystack_ref && ` · Ref: ${item.paystack_ref.slice(-8)}`}
+                  </p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">
+                    {new Date(item.created_at).toLocaleString("en-NG", { dateStyle: "medium", timeStyle: "short" })}
+                  </p>
+                  {item.claim_notes && <p className="text-[10px] text-slate-400 italic mt-0.5">"{item.claim_notes}"</p>}
+                  {!item.claim_notes && item.notes && <p className="text-[10px] text-slate-400 italic mt-0.5">"{item.notes}"</p>}
+                  {isRejectedManual && item.rejected_reason && (
+                    <p className="text-[10px] text-red-500 dark:text-red-400 mt-1 font-semibold">Reason: {item.rejected_reason}</p>
+                  )}
+                </div>
               </div>
-            </div>
-          </button>
-        ))}
+            </Row>
+          );
+        })())}
       </div>
     </div>
   );
@@ -1726,6 +1964,7 @@ export default function AjoMemberPortal({ session, ajoClient }) {
   });
   const [showWithdraw,     setShowWithdraw]     = useState(false);
   const [showPay,          setShowPay]          = useState(false);
+  const [showDeposit,      setShowDeposit]      = useState(false);
   const [withdrawRequests, setWithdrawRequests] = useState([]);
   const [showPwdModal,     setShowPwdModal]     = useState(false);
 
@@ -1795,8 +2034,21 @@ export default function AjoMemberPortal({ session, ajoClient }) {
             notif.addNotification("aso", "Payment Processed", `${amt} paid out to you`);
           } else if (payload.new.type === "reversal") {
             notif.addNotification("aso", "Transaction Reversed", `${amt} reversal applied to your account`);
-          } else {
+          } else if (payload.new.status !== "pending") {
             notif.addNotification("aso", "Contribution Recorded", `${amt} saved successfully`);
+          }
+        })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "ajo_contributions", filter: `aso_client_id=eq.${ajoClient.id}` },
+        (payload) => {
+          if (!payload.new) return;
+          setContributions(prev => prev.map(c => c.id === payload.new.id ? { ...c, ...payload.new } : c));
+          const amt = `₦${Number(payload.new.amount || 0).toLocaleString("en-NG")}`;
+          if (payload.new.payment_method === "manual_transfer") {
+            if (payload.new.status === "completed") {
+              notif.addNotification("aso", "Deposit Confirmed", `${amt} bank transfer confirmed and added to your balance`);
+            } else if (payload.new.status === "rejected") {
+              notif.addNotification("aso", "Deposit Declined", `Your ${amt} bank transfer claim was not confirmed`);
+            }
           }
         })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "ajo_withdrawal_requests", filter: `aso_client_id=eq.${ajoClient.id}` },
@@ -1852,6 +2104,7 @@ export default function AjoMemberPortal({ session, ajoClient }) {
               contributions={contributions}
               onWithdrawClick={() => setShowWithdraw(true)}
               onPayClick={() => setShowPay(true)}
+              onDepositClick={() => setShowDeposit(true)}
               ownerInfo={ownerInfo}
               withdrawRequests={withdrawRequests}
               onBillsClick={() => setTab("bills")}
@@ -1950,6 +2203,14 @@ export default function AjoMemberPortal({ session, ajoClient }) {
           client={client}
           onClose={() => setShowWithdraw(false)}
           onSuccess={() => { setShowWithdraw(false); refreshWithdrawRequests(); }}
+        />
+      )}
+      {showDeposit && client && (
+        <ManualDepositModal
+          client={client}
+          ownerInfo={ownerInfo}
+          onClose={() => setShowDeposit(false)}
+          onSuccess={() => setShowDeposit(false)}
         />
       )}
       {showPwdModal && (
