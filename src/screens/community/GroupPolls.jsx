@@ -131,7 +131,7 @@ function CreatePollSheet({ orgId, myId, myName, myRole, onCreated, onClose }) {
   return (
     <div className="fixed inset-0 z-[140] flex items-end justify-center" onClick={onClose}>
       <div className="absolute inset-0 bg-black/50 backdrop-blur-[2px]"/>
-      <div className="relative w-full max-w-md bg-white rounded-t-3xl overflow-hidden flex flex-col max-h-[90vh]"
+      <div className="relative w-full max-w-md bg-white rounded-t-3xl overflow-hidden flex flex-col max-h-[90dvh]"
         onClick={e=>e.stopPropagation()}>
         <div className="w-10 h-1 bg-slate-200 rounded-full mx-auto mt-3 mb-1 flex-shrink-0"/>
         <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between flex-shrink-0">

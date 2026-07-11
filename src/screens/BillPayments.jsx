@@ -888,7 +888,7 @@ function ConfirmPaymentSheet({ data, onConfirm, onCancel }) {
 
   return (
     <div className="fixed inset-0 z-[70] flex flex-col justify-end" style={{ background: "rgba(0,0,0,0.55)" }}>
-      <div className="bg-white rounded-t-3xl shadow-2xl" style={{ maxHeight: "88vh", overflowY: "auto" }}>
+      <div className="bg-white rounded-t-3xl shadow-2xl" style={{ maxHeight: "88dvh", overflowY: "auto" }}>
         {/* Drag handle */}
         <div className="flex justify-center pt-3 pb-1">
           <div className="w-10 h-1 rounded-full" style={{ background: "#e2e8f0" }} />
@@ -2939,7 +2939,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       {/* Bottom sheet */}
       {selectedCat && cat && (
         <div className="fixed inset-0 z-[60] flex flex-col justify-end bg-black/40">
-          <div className="bg-white dark:bg-slate-900 rounded-t-3xl max-h-[94vh] flex flex-col transition-all duration-300"
+          <div className="bg-white dark:bg-slate-900 rounded-t-3xl max-h-[94dvh] flex flex-col transition-all duration-300"
           style={netTheme ? { borderTop: `3px solid ${netTheme.bg}` } : {}}>
 
             <div className={`flex items-center gap-3 px-5 pt-4 pb-3 transition-all duration-300 ${!netTheme ? "border-b border-slate-100 dark:border-slate-800" : ""}`}

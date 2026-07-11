@@ -247,7 +247,7 @@ function TicketDetail({ ticket, userId, profile, onBack, onUpdate }) {
   };
 
   return (
-    <div className="flex flex-col" style={{ height: "calc(100vh - 64px)" }}>
+    <div className="flex flex-col" style={{ height: "calc(100dvh - 64px)" }}>
       {/* Header */}
       <div className="flex-shrink-0 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700/60 px-4 py-3 flex items-center gap-3">
         <button onClick={onBack} className="text-slate-600 dark:text-slate-300 active:scale-90 transition">

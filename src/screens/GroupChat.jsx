@@ -512,7 +512,7 @@ function EditSettings({ orgId, settings, myId, onSave, onClose }) {
   return (
     <div className="fixed inset-0 z-[130] flex justify-center items-end" onClick={onClose}>
       <div className="absolute inset-0 bg-black/50 backdrop-blur-[2px]" />
-      <div className="relative w-full max-w-md bg-white rounded-t-3xl overflow-hidden flex flex-col max-h-[90vh]"
+      <div className="relative w-full max-w-md bg-white rounded-t-3xl overflow-hidden flex flex-col max-h-[90dvh]"
         onClick={e => e.stopPropagation()}>
         <div className="w-10 h-1 bg-slate-200 rounded-full mx-auto mt-3 mb-1 flex-shrink-0" />
         <div className="px-5 pt-2 pb-3 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
@@ -964,7 +964,7 @@ function InlinePollSheet({ orgId, myId, sendMsg, onClose }) {
 
   return (
     <div className="fixed inset-0 z-40 flex items-end" onClick={onClose}>
-      <div className="w-full bg-white rounded-t-3xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col"
+      <div className="w-full bg-white rounded-t-3xl shadow-2xl overflow-hidden max-h-[85dvh] flex flex-col"
         onClick={e => e.stopPropagation()}>
         <div className="w-10 h-1 bg-slate-200 rounded-full mx-auto mt-3 flex-shrink-0" />
         <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 flex-shrink-0">
@@ -1044,7 +1044,7 @@ function InlineEventSheet({ orgId, myId, sendMsg, onClose }) {
 
   return (
     <div className="fixed inset-0 z-40 flex items-end" onClick={onClose}>
-      <div className="w-full bg-white rounded-t-3xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col"
+      <div className="w-full bg-white rounded-t-3xl shadow-2xl overflow-hidden max-h-[85dvh] flex flex-col"
         onClick={e => e.stopPropagation()}>
         <div className="w-10 h-1 bg-slate-200 rounded-full mx-auto mt-3 flex-shrink-0" />
         <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 flex-shrink-0">

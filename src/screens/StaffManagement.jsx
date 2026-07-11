@@ -746,7 +746,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
       {/* ── Add Staff Sheet ─────────────────────────────────────── */}
       {showAdd && (
         <div className="fixed inset-0 z-[60] flex flex-col justify-end bg-black/40">
-          <div className="bg-white dark:bg-slate-900 rounded-t-3xl max-h-[92vh] flex flex-col">
+          <div className="bg-white dark:bg-slate-900 rounded-t-3xl max-h-[92dvh] flex flex-col">
             <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-800">
               <h2 className="text-base font-bold text-slate-800 dark:text-white">Add Staff Member</h2>
               <button onClick={() => setShowAdd(false)} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
@@ -912,7 +912,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
       {/* ── Staff Detail Sheet ──────────────────────────────────── */}
       {selected && (
         <div className="fixed inset-0 z-[60] flex flex-col justify-end bg-black/40">
-          <div className="bg-white dark:bg-slate-900 rounded-t-3xl max-h-[92vh] flex flex-col">
+          <div className="bg-white dark:bg-slate-900 rounded-t-3xl max-h-[92dvh] flex flex-col">
             <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-800">
               <h2 className="text-base font-bold text-slate-800 dark:text-white">Staff Details</h2>
               <button onClick={() => { setSelected(null); setPhotoFile(null); setPhotoPreview(null); }}

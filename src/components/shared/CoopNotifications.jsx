@@ -377,7 +377,7 @@ export function CoopNotificationBell({ orgId, recipientId, recipientType, onNavi
           <div className="absolute inset-0 bg-black/55 backdrop-blur-[2px]" />
           <div
             className="relative w-full max-w-md bg-white dark:bg-slate-800 rounded-t-3xl flex flex-col"
-            style={{ maxHeight: "88vh", animation: "coopSlideDown 0.22s ease-out both" }}
+            style={{ maxHeight: "88dvh", animation: "coopSlideDown 0.22s ease-out both" }}
             onClick={e => e.stopPropagation()}
           >
             {/* Drag handle */}

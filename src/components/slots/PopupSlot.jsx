@@ -77,7 +77,7 @@ export default function PopupSlot({ campaigns = [], loading, recordEvent }) {
           </button>
           {/* 4:5 creative */}
           {promo.creative_url && (
-            <div className="relative w-full" style={{ aspectRatio: "4/5", maxHeight: "55vh", overflow: "hidden" }}>
+            <div className="relative w-full" style={{ aspectRatio: "4/5", maxHeight: "55dvh", overflow: "hidden" }}>
               <SlotMedia creative_url={promo.creative_url} headline={promo.headline} className="absolute inset-0 w-full h-full" />
               <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
             </div>

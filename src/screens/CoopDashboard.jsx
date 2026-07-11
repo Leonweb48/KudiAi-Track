@@ -76,7 +76,7 @@ const FREQ_LABELS = {
 const input = "w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-green-400";
 const ModalWrap = ({ children, onClose }) => (
   <div className="fixed inset-0 z-[75] bg-black/60 flex items-end justify-center" onClick={onClose}>
-    <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-t-3xl px-5 py-6 max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+    <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-t-3xl px-5 py-6 max-h-[92dvh] overflow-y-auto" onClick={e => e.stopPropagation()}>
       <div className="w-10 h-1 bg-slate-200 dark:bg-slate-600 rounded-full mx-auto mb-5" />
       {children}
     </div>
@@ -1821,7 +1821,7 @@ function BroadcastTab({ org, members }) {
             {createType === "meeting" ? "Schedule Meeting" : createType === "announcement" ? "Send Announcement" : createType === "event" ? "Create Event" : "Create Poll"}
           </h3>
           {error && <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-3 text-xs text-red-600">{error}</div>}
-          <div className="flex flex-col gap-3 max-h-[55vh] overflow-y-auto">
+          <div className="flex flex-col gap-3 max-h-[55dvh] overflow-y-auto">
 
             {createType === "meeting" && (<>
               <div>
@@ -1957,7 +1957,7 @@ function BroadcastTab({ org, members }) {
       {/* Attendance sheet */}
       {attendanceTarget && (
         <div className="fixed inset-0 z-[75] bg-slate-900/80 flex items-end justify-center">
-          <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-t-3xl px-5 py-6 max-h-[90vh] flex flex-col">
+          <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-t-3xl px-5 py-6 max-h-[90dvh] flex flex-col">
             <div className="w-10 h-1 bg-slate-200 rounded-full mx-auto mb-4" />
             <p className="text-base font-extrabold text-slate-800 dark:text-white mb-0.5">{attendanceTarget.title}</p>
             <p className="text-xs text-slate-400 mb-3">{fmtDT(attendanceTarget.scheduled_at)}</p>

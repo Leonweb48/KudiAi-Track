@@ -160,7 +160,7 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], o
 
   /* ── shared overlay wrapper ─────────────────────────────────────── */
   return (
-    <div className="fixed inset-0 z-[60] flex flex-col bg-slate-50 dark:bg-slate-900 overflow-hidden fade-in">
+    <div className="fixed inset-0 z-[60] flex flex-col bg-slate-50 dark:bg-slate-900 fade-in">
 
       {/* Top bar */}
       <div className="flex items-center gap-3 px-4 pb-4 bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 flex-shrink-0" style={{ paddingTop: "max(16px, env(safe-area-inset-top, 16px))" }}>

@@ -50,7 +50,7 @@ function PhotoLightbox({ src, onClose }) {
       <img
         src={src}
         alt="Full size"
-        className="max-w-full max-h-[85vh] object-contain rounded-2xl shadow-2xl"
+        className="max-w-full max-h-[85dvh] object-contain rounded-2xl shadow-2xl"
         onClick={e => e.stopPropagation()}
       />
     </div>

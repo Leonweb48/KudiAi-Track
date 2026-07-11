@@ -11,7 +11,7 @@ function LegalViewerModal({ doc, onClose }) {
 
   return (
     <div className="fixed inset-0 z-[100] bg-slate-900/80 flex items-end justify-center">
-      <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-t-3xl flex flex-col max-h-[85vh]">
+      <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-t-3xl flex flex-col max-h-[85dvh]">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex-shrink-0">
           <p className="text-sm font-bold text-slate-900 dark:text-white flex-1 pr-4 leading-snug">{title}</p>

@@ -1029,7 +1029,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
       {/* ── Edit profile modal ─────────────────────────────────────── */}
       {editProfile && (
         <Modal title="Edit Profile" onClose={() => setEditProfile(false)}>
-          <div className="space-y-4 max-h-[72vh] overflow-y-auto pr-1">
+          <div className="space-y-4 max-h-[72dvh] overflow-y-auto pr-1">
 
             {/* Photo */}
             <div className="flex flex-col items-center pt-1 pb-2">

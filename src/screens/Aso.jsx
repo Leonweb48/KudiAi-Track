@@ -1235,7 +1235,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       {/* ── Add Aso Client Sheet ─────────────────────────────────────── */}
       {showAdd && (
         <div className="fixed inset-0 z-[60] flex flex-col justify-end bg-black/40">
-          <div className="bg-white dark:bg-slate-900 rounded-t-3xl max-h-[92vh] flex flex-col">
+          <div className="bg-white dark:bg-slate-900 rounded-t-3xl max-h-[92dvh] flex flex-col">
             <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-800">
               <h2 className="text-base font-bold text-slate-800 dark:text-white">New Ajo Client</h2>
               <button onClick={resetAdd} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
@@ -1600,7 +1600,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       {/* ── Client Password Reset Modal ───────────────────────────── */}
       {createdClient && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-5">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-sm shadow-2xl max-h-[90vh] flex flex-col">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-sm shadow-2xl max-h-[90dvh] flex flex-col">
             <div className="overflow-y-auto flex-1 p-6">
 
               {/* Header */}
@@ -1658,7 +1658,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       {/* ── Ajo Groups Management Modal ─────────────────────────────────── */}
       {showGroups && (
         <div className="fixed inset-0 z-[70] bg-black/50 flex items-end justify-center" onClick={e => { if (e.target === e.currentTarget) setShowGroups(false); }}>
-          <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-t-3xl shadow-2xl flex flex-col" style={{ maxHeight: "90vh" }}>
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-t-3xl shadow-2xl flex flex-col" style={{ maxHeight: "90dvh" }}>
             {/* Header */}
             <div className="flex items-center gap-3 px-5 pt-5 pb-3 border-b border-slate-100 dark:border-slate-700 flex-shrink-0">
               <div className="w-9 h-9 bg-violet-100 dark:bg-violet-900/40 rounded-xl flex items-center justify-center flex-shrink-0">

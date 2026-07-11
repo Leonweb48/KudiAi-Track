@@ -59,7 +59,7 @@ function BgLayout({ children, center = false }) {
       {center ? (
         /* OTP screen — card at bottom */
         <div className="relative z-10 flex-1 min-h-0 flex items-end justify-center px-4 pb-6">
-          <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl p-6 overflow-y-auto" style={{ maxHeight: "80vh" }}>
+          <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl p-6 overflow-y-auto" style={{ maxHeight: "80dvh" }}>
             {children}
           </div>
         </div>
@@ -78,7 +78,7 @@ function BgLayout({ children, center = false }) {
 
           {/* Bottom sheet — fixed height cap, scrolls internally if form is long */}
           <div className="relative z-10 flex-shrink-0 bg-white rounded-t-3xl shadow-2xl w-full max-w-md mx-auto overflow-y-auto"
-            style={{ maxHeight: "62vh" }}>
+            style={{ maxHeight: "62dvh" }}>
             <div className="px-6 pt-5 pb-8">
               {children}
             </div>

@@ -462,7 +462,7 @@ function PayOrgModal({ member, org, preProgram, history, onClose }) {
   return (
     <div className="fixed inset-0 z-[80] bg-black/60 flex items-end justify-center"
       onClick={e => { if (e.target === e.currentTarget && !loading) onClose(); }}>
-      <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-t-3xl px-5 py-6 max-h-[90vh] overflow-y-auto">
+      <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-t-3xl px-5 py-6 max-h-[90dvh] overflow-y-auto">
         <div className="w-10 h-1 bg-slate-200 dark:bg-slate-600 rounded-full mx-auto mb-5" />
         <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-0.5">Monthly Contribution</h3>
         <p className="text-xs text-slate-400 mb-4">{monthLabel} · {org.name}</p>
@@ -1034,7 +1034,7 @@ function LoansTab({ member, org }) {
       {/* Loan application modal */}
       {showApply && (
         <div className="fixed inset-0 bg-black/50 z-[60] flex items-end justify-center p-4">
-          <div className="bg-white dark:bg-slate-800 rounded-3xl w-full max-w-sm p-5 max-h-[85vh] overflow-y-auto">
+          <div className="bg-white dark:bg-slate-800 rounded-3xl w-full max-w-sm p-5 max-h-[85dvh] overflow-y-auto">
             <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-4">Apply for a Loan</h3>
             {error && <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-3 text-xs text-red-600">{error}</div>}
             <div className="flex flex-col gap-3">
@@ -1082,7 +1082,7 @@ function LoansTab({ member, org }) {
       {/* Loan detail sheet */}
       {selected && (
         <div className="fixed inset-0 bg-black/50 z-[60] flex items-end justify-center p-4">
-          <div className="bg-white dark:bg-slate-800 rounded-3xl w-full max-w-sm p-5 max-h-[85vh] overflow-y-auto">
+          <div className="bg-white dark:bg-slate-800 rounded-3xl w-full max-w-sm p-5 max-h-[85dvh] overflow-y-auto">
             <div className="flex justify-between items-start mb-3">
               <div>
                 <p className="text-base font-extrabold text-slate-800 dark:text-white">{selected.loan_purpose || "General Loan"}</p>

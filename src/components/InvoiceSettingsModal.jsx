@@ -50,7 +50,7 @@ export default function InvoiceSettingsModal({ settings, onSave, onClose, userId
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-white dark:bg-slate-900 overflow-hidden">
+    <div className="fixed inset-0 z-50 flex flex-col bg-white dark:bg-slate-900">
       {/* Header — padded past status bar */}
       <div className="flex items-center gap-3 px-4 pb-3 border-b border-slate-100 dark:border-slate-800 shrink-0"
         style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 16px)" }}>
