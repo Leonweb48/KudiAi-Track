@@ -496,5 +496,26 @@ serve(async (req: Request) => {
     return json(data);
   }
 
+  if (action === "resolve_dispute") {
+    const { contribution_id } = params as { contribution_id: string };
+    if (!contribution_id) return json({ ok: false, error: "contribution_id required" }, 400);
+
+    const { data: contrib } = await sb
+      .from("ajo_contributions")
+      .select("owner_id")
+      .eq("id", contribution_id)
+      .maybeSingle();
+    if (!contrib) return json({ ok: false, error: "Contribution not found" }, 404);
+
+    const ajoPerms = await resolveAjoPerms(sb, user.id, contrib.owner_id);
+    if (ajoPerms === false) return json({ ok: false, error: "Unauthorized" }, 403);
+
+    await sb.from("ajo_contributions")
+      .update({ dispute_ticket_no: null })
+      .eq("id", contribution_id);
+
+    return json({ ok: true });
+  }
+
   return json({ ok: false, error: `Unknown action: ${action}` }, 400);
 });

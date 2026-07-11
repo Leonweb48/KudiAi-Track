@@ -1096,9 +1096,17 @@ function OverviewTab({ client, contributions, onWithdrawClick, onPayClick, onDep
   const t = useT();
   const { lang } = useLanguage();
 
-  const [goal,      setGoal]      = useState(() => parseFloat(localStorage.getItem(`ajo_goal_${client?.id}`) || "0"));
+  const [goal,      setGoal]      = useState(0);
   const [editGoal,  setEditGoal]  = useState(false);
   const [goalInput, setGoalInput] = useState("");
+
+  useEffect(() => {
+    if (!client?.id) return;
+    ajoFn("get-goal", { client_id: client.id }).then(({ data }) => {
+      if (data?.goal) setGoal(data.goal);
+    }).catch(() => null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client?.id]);
 
   const nowKey      = new Date().toISOString().slice(0, 7);
   const prevKey     = (() => { const d = new Date(); d.setMonth(d.getMonth() - 1); return d.toISOString().slice(0, 7); })();
@@ -1356,8 +1364,13 @@ function OverviewTab({ client, contributions, onWithdrawClick, onPayClick, onDep
               <input type="number" value={goalInput} onChange={e => setGoalInput(e.target.value)}
                 placeholder="Target amount (₦)"
                 className="flex-1 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-400" />
-              <button onClick={() => { const g = parseFloat(goalInput) || 0; setGoal(g); localStorage.setItem(`ajo_goal_${client?.id}`, g); setEditGoal(false); }}
-                className="px-3 py-2 bg-violet-600 text-white rounded-xl text-sm font-bold">Save</button>
+              <button onClick={() => {
+                const g = parseFloat(goalInput) || 0;
+                setGoal(g);
+                setEditGoal(false);
+                if (g > 0) ajoFn("set-goal", { client_id: client.id, target_amount: g }).catch(() => null);
+                else ajoFn("delete-goal", { client_id: client.id }).catch(() => null);
+              }} className="px-3 py-2 bg-violet-600 text-white rounded-xl text-sm font-bold">Save</button>
             </div>
           ) : (
             <>
@@ -1439,8 +1452,12 @@ function OverviewTab({ client, contributions, onWithdrawClick, onPayClick, onDep
 
 // ── History tab ───────────────────────────────────────────────────────────
 function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo }) {
-  const [typeFilter, setTypeFilter] = useState("all");
-  const [receipt, setReceipt] = useState(null);
+  const [typeFilter,     setTypeFilter]     = useState("all");
+  const [receipt,        setReceipt]        = useState(null);
+  const [disputeFor,     setDisputeFor]     = useState(null);
+  const [disputeDesc,    setDisputeDesc]    = useState("");
+  const [disputeLoading, setDisputeLoading] = useState(false);
+  const [disputedIds,    setDisputedIds]    = useState(() => new Set());
 
   const withdrawItems = withdrawRequests.map(r => ({
     _type: "withdrawal_request",
@@ -1659,12 +1676,62 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
                   {isRejectedManual && item.rejected_reason && (
                     <p className="text-[10px] text-red-500 dark:text-red-400 mt-1 font-semibold">Reason: {item.rejected_reason}</p>
                   )}
+                  {(item.dispute_ticket_no || disputedIds.has(item.id)) ? (
+                    <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1 font-semibold">
+                      ⚠ Dispute filed{item.dispute_ticket_no ? ` · ${item.dispute_ticket_no}` : ""}
+                    </p>
+                  ) : !isPendingManual && isContrib && (
+                    <button onClick={e => { e.stopPropagation(); setDisputeFor(item); setDisputeDesc(""); }}
+                      className="text-[10px] text-slate-400 hover:text-red-500 dark:hover:text-red-400 mt-1 underline text-left">
+                      Report an issue
+                    </button>
+                  )}
                 </div>
               </div>
             </Row>
           );
         })())}
       </div>
+      {disputeFor && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 px-4 pb-6">
+          <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-2xl p-5 shadow-xl">
+            <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-1">Report an Issue</h3>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-3">
+              {new Date(disputeFor.created_at).toLocaleDateString("en-NG", { dateStyle: "medium" })} · {disputeFor.type === "contribution" ? "+" : "−"}{fmt(disputeFor.amount)}
+            </p>
+            <textarea
+              value={disputeDesc}
+              onChange={e => setDisputeDesc(e.target.value)}
+              placeholder="Describe the issue (optional)…"
+              rows={3}
+              className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-400 resize-none mb-3"
+            />
+            <div className="flex gap-2">
+              <button onClick={() => setDisputeFor(null)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 text-sm font-semibold text-slate-500 dark:text-slate-400">
+                Cancel
+              </button>
+              <button onClick={async () => {
+                setDisputeLoading(true);
+                try {
+                  await ajoFn("submit-dispute", {
+                    client_id:       client.id,
+                    owner_id:        client.user_id,
+                    contribution_id: disputeFor.id,
+                    description:     disputeDesc,
+                  });
+                  setDisputedIds(prev => new Set([...prev, disputeFor.id]));
+                } catch {}
+                setDisputeLoading(false);
+                setDisputeFor(null);
+              }} disabled={disputeLoading}
+                className="flex-1 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-bold disabled:opacity-50">
+                {disputeLoading ? "Submitting…" : "Submit Report"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

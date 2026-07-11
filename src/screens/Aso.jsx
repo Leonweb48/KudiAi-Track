@@ -99,8 +99,9 @@ function isGroupAccount(c) {
 
 /* ── Per-client Ajo Contribution History Modal ─────────────────────────── */
 function AsoClientHistoryModal({ client, contributions, businessName, staffMap = {}, onClose }) {
-  const [typeFilter, setTypeFilter] = useState("all");
-  const [receipt, setReceipt] = useState(null);
+  const [typeFilter,  setTypeFilter]  = useState("all");
+  const [receipt,     setReceipt]     = useState(null);
+  const [clearedIds,  setClearedIds]  = useState(() => new Set());
   const fmtCurrency = (n) => `₦${Number(n || 0).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
 
   const filtered = typeFilter === "all"
@@ -250,6 +251,20 @@ function AsoClientHistoryModal({ client, contributions, businessName, staffMap =
                       <p className="text-[10px] text-violet-500 dark:text-violet-400 mt-0.5">by: {staffMap[tx.recorded_by]}</p>
                     )}
                     {tx.notes && <p className="text-[10px] text-slate-400 italic mt-0.5">"{tx.notes}"</p>}
+                    {tx.dispute_ticket_no && !clearedIds.has(tx.id) && (
+                      <div className="flex items-center justify-between mt-1">
+                        <p className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">⚠ {tx.dispute_ticket_no}</p>
+                        <button onClick={async e => {
+                          e.stopPropagation();
+                          const { error } = await supabase.functions.invoke("ajo-write", {
+                            body: { action: "resolve_dispute", contribution_id: tx.id },
+                          });
+                          if (!error) setClearedIds(prev => new Set([...prev, tx.id]));
+                        }} className="text-[10px] text-slate-400 hover:text-violet-600 dark:hover:text-violet-400 underline ml-2 flex-shrink-0">
+                          Clear flag
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </button>

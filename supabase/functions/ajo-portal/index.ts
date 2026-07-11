@@ -216,9 +216,10 @@ serve(async (req) => {
         }
         if (resolvedOwnerId2) {
           const { data: ownerRow } = await sb
-            .from("profiles").select("email, business_name").eq("id", resolvedOwnerId2).maybeSingle();
-          if (ownerRow?.email) emailData.owner_email = ownerRow.email;
+            .from("profiles").select("email, business_name, phone").eq("id", resolvedOwnerId2).maybeSingle();
+          if (ownerRow?.email) { emailData.owner_email = ownerRow.email; emailData.user_email = ownerRow.email; }
           if (ownerRow?.business_name) emailData.business_name = ownerRow.business_name;
+          if (ownerRow?.phone) emailData.business_phone = ownerRow.phone;
         }
 
         await fetch("https://admin.kudiai.app/api/public/email-trigger", {
@@ -719,6 +720,91 @@ serve(async (req) => {
         .eq("user_id", owner_id);
       if (assignErr) return json({ error: assignErr.message }, 500);
       return json({ success: true });
+    }
+
+    // ── Submit a dispute ticket for a contribution ────────────────────────
+    if (action === "submit-dispute") {
+      const { client_id, owner_id, contribution_id, description } = body as {
+        client_id: string; owner_id: string; contribution_id: string; description?: string;
+      };
+      if (!client_id || !owner_id || !contribution_id) {
+        return json({ error: "client_id, owner_id, and contribution_id are required" }, 400);
+      }
+      const { data: contrib } = await sb
+        .from("ajo_contributions")
+        .select("id, aso_client_id, amount, type, created_at, dispute_ticket_no")
+        .eq("id", contribution_id)
+        .eq("aso_client_id", client_id)
+        .maybeSingle();
+      if (!contrib) return json({ error: "Contribution not found" }, 404);
+      if (contrib.dispute_ticket_no) return json({ ticket_no: contrib.dispute_ticket_no, existing: true });
+
+      const { data: clientRow } = await sb
+        .from("aso_clients").select("full_name, email").eq("id", client_id).maybeSingle();
+
+      const entryDate = new Date(contrib.created_at).toLocaleDateString("en-NG");
+      const detail = (description as string | undefined)?.trim()
+        ? `Client reported: ${description}`
+        : "Client reported an issue with this entry.";
+      const fullDesc = `${detail}\n\nEntry ref: ${contribution_id}\nAmount: ₦${contrib.amount}\nType: ${contrib.type}\nDate: ${new Date(contrib.created_at).toLocaleString("en-NG")}`;
+
+      const { data: ticket, error: ticketErr } = await sb
+        .from("support_tickets")
+        .insert({
+          user_id:     null,
+          user_email:  clientRow?.email ?? "",
+          user_name:   clientRow?.full_name ?? "Ajo Client",
+          subject:     `Ajo entry dispute — ${entryDate}`,
+          description: fullDesc,
+          type:        "ajo_dispute",
+          priority:    "medium",
+          status:      "open",
+        })
+        .select("ticket_no")
+        .single();
+      if (ticketErr) return json({ error: ticketErr.message }, 500);
+
+      await sb.from("ajo_contributions")
+        .update({ dispute_ticket_no: ticket.ticket_no })
+        .eq("id", contribution_id);
+
+      return json({ ticket_no: ticket.ticket_no });
+    }
+
+    // ── Savings goal: read ────────────────────────────────────────────────
+    if (action === "get-goal") {
+      const { client_id } = body as { client_id: string };
+      if (!client_id) return json({ error: "client_id required" }, 400);
+      const { data } = await sb
+        .from("ajo_client_goals")
+        .select("target_amount, label")
+        .eq("aso_client_id", client_id)
+        .maybeSingle();
+      return json({ goal: data ? parseFloat(String(data.target_amount)) : 0, label: data?.label ?? "" });
+    }
+
+    // ── Savings goal: write ───────────────────────────────────────────────
+    if (action === "set-goal") {
+      const { client_id, target_amount, label } = body as {
+        client_id: string; target_amount: number; label?: string;
+      };
+      if (!client_id || !target_amount || Number(target_amount) <= 0) {
+        return json({ error: "client_id and target_amount > 0 required" }, 400);
+      }
+      const { error } = await sb.from("ajo_client_goals").upsert(
+        { aso_client_id: client_id, target_amount: Number(target_amount), label: (label as string | undefined) ?? null, updated_at: new Date().toISOString() },
+        { onConflict: "aso_client_id" },
+      );
+      if (error) return json({ error: error.message }, 500);
+      return json({ ok: true });
+    }
+
+    // ── Savings goal: delete ──────────────────────────────────────────────
+    if (action === "delete-goal") {
+      const { client_id } = body as { client_id: string };
+      if (!client_id) return json({ error: "client_id required" }, 400);
+      await sb.from("ajo_client_goals").delete().eq("aso_client_id", client_id);
+      return json({ ok: true });
     }
 
     return json({ error: `Unknown action: ${action}` }, 400);
