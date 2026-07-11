@@ -1785,9 +1785,26 @@ export default function AjoMemberPortal({ session, ajoClient }) {
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "aso_clients", filter: `id=eq.${ajoClient.id}` },
         (payload) => { if (payload.new) setClient(prev => ({ ...prev, ...payload.new })); })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "ajo_contributions", filter: `aso_client_id=eq.${ajoClient.id}` },
-        (payload) => { if (payload.new) setContributions(prev => [payload.new, ...prev]); })
+        (payload) => {
+          if (!payload.new) return;
+          setContributions(prev => [payload.new, ...prev]);
+          const amt = `₦${Number(payload.new.amount || 0).toLocaleString("en-NG")}`;
+          if (payload.new.type === "withdrawal") {
+            notif.addNotification("aso", "Payment Processed", `${amt} paid out to you`);
+          } else if (payload.new.type === "reversal") {
+            notif.addNotification("aso", "Transaction Reversed", `${amt} reversal applied to your account`);
+          } else {
+            notif.addNotification("aso", "Contribution Recorded", `${amt} saved successfully`);
+          }
+        })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "ajo_withdrawal_requests", filter: `aso_client_id=eq.${ajoClient.id}` },
-        () => refreshWithdrawRequests())
+        (payload) => {
+          refreshWithdrawRequests();
+          if (payload.new?.status === "rejected") {
+            const amt = `₦${Number(payload.new.amount || 0).toLocaleString("en-NG")}`;
+            notif.addNotification("aso", "Withdrawal Declined", `Your ${amt} withdrawal request was declined`);
+          }
+        })
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };

@@ -285,6 +285,8 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [withdrawalRequests, setWithdrawalRequests] = useState([]);
   const [processingId,       setProcessingId]       = useState(null);
   const [txnPin,             setTxnPin]             = useState(null);
+  const [contribSuccess,     setContribSuccess]     = useState(null); // { client, amount, showShare }
+
 
   // Ajo Groups management
   const [showGroups,     setShowGroups]     = useState(false);
@@ -1448,13 +1450,17 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           )}
 
           <button
-            onClick={() => {
+            onClick={async () => {
               if (!amt) return;
               const a = parseFloat(amt);
               if (action === "contribute") {
-                asoContribute(selected.id, a);
-                speakConfirmation("ajoDeposit", getLang());
+                const savedClient = selected;
                 setSelected(null); setAction(null); setAmt("");
+                const result = await asoContribute(savedClient.id, a);
+                if (!result?.error) {
+                  speakConfirmation("ajoDeposit", getLang());
+                  setContribSuccess({ client: savedClient, amount: a, showShare: false });
+                }
               } else {
                 // Gate withdrawal with PIN modal; PIN passed through to edge function
                 setTxnPin({
@@ -1549,6 +1555,65 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           onClose={() => setReceipt(null)}
         />
       )}
+
+      {/* ── Cash contribution success screen (Gate 4: WhatsApp share) ── */}
+      {contribSuccess && (() => {
+        const bizName = profile?.business_name || "My Business";
+        const receiptData = buildAsoContributionReceipt(
+          {
+            id:             `CS-${Date.now()}`,
+            type:           "contribution",
+            status:         "completed",
+            amount:         contribSuccess.amount,
+            created_at:     new Date().toISOString(),
+            payment_method: "cash",
+          },
+          contribSuccess.client?.full_name || "Client",
+          bizName
+        );
+        if (contribSuccess.showShare) {
+          return (
+            <TransactionDetailModal
+              data={receiptData}
+              onClose={() => setContribSuccess(s => ({ ...s, showShare: false }))}
+            />
+          );
+        }
+        return (
+          <div className="fixed inset-0 z-[60] bg-white dark:bg-slate-900 flex flex-col">
+            <div className="h-1 w-full" style={{ background: "linear-gradient(90deg,#7c3aed,#10b981)" }} />
+            <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
+              <div className="w-20 h-20 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mb-5 shadow-md">
+                <svg viewBox="0 0 24 24" fill="none" className="w-10 h-10 text-green-500" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+                  <path d="M20 6L9 17l-5-5" />
+                </svg>
+              </div>
+              <p className="text-[10px] font-bold text-green-500 uppercase tracking-widest mb-1">Contribution Recorded</p>
+              <p className="text-3xl font-black text-slate-800 dark:text-white mb-1">
+                ₦{Number(contribSuccess.amount).toLocaleString("en-NG")}
+              </p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                {contribSuccess.client?.full_name} · Cash
+              </p>
+            </div>
+            <div className="flex-none px-5 pb-10 pt-3 space-y-3">
+              <button
+                onClick={() => setContribSuccess(s => ({ ...s, showShare: true }))}
+                className="w-full flex items-center justify-center gap-2 py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] shadow-md">
+                <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                  <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8" /><polyline points="16 6 12 2 8 6" /><line x1="12" y1="2" x2="12" y2="15" />
+                </svg>
+                Share Receipt
+              </button>
+              <button
+                onClick={() => setContribSuccess(null)}
+                className="w-full py-3.5 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-2xl font-bold text-sm transition active:scale-[0.99]">
+                Done
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Per-client Contribution History Modal ────────────────── */}
       {historyFor && (() => {

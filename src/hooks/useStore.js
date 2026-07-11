@@ -592,20 +592,6 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
     }
     // Refresh local state from DB — RPC updated the row atomically
     loadData();
-    const updated = data;
-    fireEmailTrigger("ajo_contribution", {
-      owner_id:      userId,
-      user_email:    authEmailRef.current || profile.email || "",
-      client_id:     id,
-      staff_id:      staffId || null,
-      staff_name:    staffName || "",
-      business_name: profile.business_name || "",
-      business_phone:profile.phone || "",
-      amount,
-      balance:       updated.new_balance ?? 0,
-      reg_fee:       updated.reg_fee ?? 0,
-      date:          today(),
-    });
     return { error: null, data };
   };
 
@@ -623,21 +609,6 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
       return { error: msg };
     }
     loadData();
-    const updated = data;
-    fireEmailTrigger("ajo_withdrawal", {
-      owner_id:      userId,
-      user_email:    authEmailRef.current || profile.email || "",
-      client_id:     id,
-      staff_id:      staffId || null,
-      staff_name:    staffName || "",
-      business_name: profile.business_name || "",
-      business_phone:profile.phone || "",
-      gross_amount:  amount,
-      fee_amount:    updated.fee_amount ?? 0,
-      amount:        updated.net_amount ?? amount,
-      balance_after: updated.new_balance ?? 0,
-      date:          today(),
-    });
     return { error: null, data };
   };
 

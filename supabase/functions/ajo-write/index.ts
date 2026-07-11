@@ -298,20 +298,24 @@ serve(async (req: Request) => {
     if (error) return json({ ok: false, error: error.message });
 
     const rpcWd = data as Record<string, unknown>;
-    const ctx   = await fetchEmailContext(sb, client_id, ownerId, user.id);
-    await fireAjoEmail("ajo_withdrawal", {
-      client_email:  ctx.clientEmail,
-      client_name:   ctx.clientName,
-      user_email:    ctx.ownerEmail,
-      business_name: ctx.businessName,
-      staff_email:   ctx.staffEmail,
-      staff_name:    ctx.staffName,
-      amount:        rpcWd?.net_amount,     // ajo_withdrawal template uses d.amount as net
-      gross_amount:  rpcWd?.gross_amount,
-      fee_amount:    rpcWd?.fee_amount,
-      balance_after: rpcWd?.balance_after,
-      date:          new Date().toLocaleDateString("en-NG"),
-    });
+    // Only fire server-side email for direct withdrawals (no prior request).
+    // Request-based approvals already fire ajo_withdrawal_approved from the client.
+    if (!request_id) {
+      const ctx = await fetchEmailContext(sb, client_id, ownerId, user.id);
+      await fireAjoEmail("ajo_withdrawal", {
+        client_email:  ctx.clientEmail,
+        client_name:   ctx.clientName,
+        user_email:    ctx.ownerEmail,
+        business_name: ctx.businessName,
+        staff_email:   ctx.staffEmail,
+        staff_name:    ctx.staffName,
+        amount:        rpcWd?.net_amount,
+        gross_amount:  rpcWd?.gross_amount,
+        fee_amount:    rpcWd?.fee_amount,
+        balance_after: rpcWd?.balance_after,
+        date:          new Date().toLocaleDateString("en-NG"),
+      });
+    }
 
     return json(data);
   }
