@@ -17,6 +17,8 @@ import TabCardDuoSlot from "../components/slots/TabCardDuoSlot";
 import OffersSection from "../components/slots/OffersSection";
 import AnnouncementBarSlot from "../components/slots/AnnouncementBarSlot";
 import ReferralCard from "../components/ReferralCard";
+import TransactionDetailModal from "../components/shared/TransactionDetailModal";
+import { buildTransactionReceipt } from "../utils/receiptConfig";
 
 function greetingKey() {
   const h = new Date().getHours();
@@ -68,11 +70,11 @@ function getTxStyle(tx) {
 }
 
 /* ── Recent transaction row — colored circle icons ────────────────── */
-function TxRow({ tx }) {
+function TxRow({ tx, onClick }) {
   const isIn  = tx.type === "in";
   const style = getTxStyle(tx);
   return (
-    <div className="flex items-center gap-3 bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 shadow-card border border-slate-100 dark:border-slate-700/50">
+    <button onClick={onClick} className="w-full text-left flex items-center gap-3 bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 shadow-card border border-slate-100 dark:border-slate-700/50 active:scale-[0.98] transition-transform">
       <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${style.bg}`}>
         <Svg d={style.icon} size={15} color={style.color} sw={2.5} />
       </div>
@@ -86,7 +88,7 @@ function TxRow({ tx }) {
         </p>
         <p className="text-[10px] text-slate-300 dark:text-slate-600 mt-0.5">{tx.transaction_date}</p>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -131,6 +133,7 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
   const t = useT();
   const [balanceHidden,      setBalanceHidden]      = useState(false);
   const [search,             setSearch]             = useState("");
+  const [receipt,            setReceipt]            = useState(null);
   const [showProfilePreview, setShowProfilePreview] = useState(false);
   const { slotMap, loading: camLoading, recordEvent } = useCampaigns(
     ["home_banner","popup","feed_card","upsell_inline","announcement_bar","tab_card_quad","tab_card_duo"],
@@ -447,7 +450,7 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
               <p className="text-slate-300 dark:text-slate-600 text-xs mt-1">Try a different search term</p>
             </div>
           ) : (
-            <div className="space-y-2">{results.map(tx => <TxRow key={tx.id} tx={tx} />)}</div>
+            <div className="space-y-2">{results.map(tx => <TxRow key={tx.id} tx={tx} onClick={() => setReceipt(buildTransactionReceipt(tx, profile))} />)}</div>
           );
         })() : transactions.length === 0 ? (
           <div className="text-center py-12 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700/50">
@@ -467,7 +470,7 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
           const recent = transactions.slice(0, 5);
           const rows = [];
           recent.forEach((tx, i) => {
-            rows.push(<TxRow key={tx.id} tx={tx} />);
+            rows.push(<TxRow key={tx.id} tx={tx} onClick={() => setReceipt(buildTransactionReceipt(tx, profile))} />);
             if (i === 2 && feedCampaign) {
               rows.push(<FeedCardSlot key={`fc-${feedCampaign.id}`} campaign={feedCampaign} recordEvent={recordEvent} />);
             }
@@ -499,6 +502,7 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
       {/* ── Popup slot ───────────────────────────────────────────── */}
       <PopupSlot campaigns={popups} loading={camLoading} recordEvent={recordEvent} />
 
+      {receipt && <TransactionDetailModal data={receipt} onClose={() => setReceipt(null)} />}
     </div>
   );
 }

@@ -380,3 +380,32 @@ export function buildAsoClientReceipt(client, businessName) {
     iconType:      'statement',
   };
 }
+
+// ── Coop/Org loan repayment (from CoopDashboard & CoopMemberPortal LoansTab) ──
+export function buildCoopLoanRepaymentReceipt(repayment, loan, memberName, orgName) {
+  const { ref, image, pdf } = receiptFilenames(repayment.id, repayment.created_at);
+  return {
+    title:     'Loan Repayment',
+    direction: 'in',
+    status:    'success',
+    amount:    repayment.amount,
+    datetime:  formatReceiptDateTime(repayment.created_at),
+    fields: [
+      { label: 'Transaction Type',   value: 'Loan Repayment' },
+      memberName                        && { label: 'Member',            value: memberName },
+      loan?.loan_purpose                && { label: 'Loan Purpose',      value: loan.loan_purpose },
+      repayment.principal_portion > 0   && { label: 'Principal Paid',    value: fmtAmt(repayment.principal_portion) },
+      repayment.interest_portion  > 0   && { label: 'Interest Paid',     value: fmtAmt(repayment.interest_portion) },
+      repayment.payment_method          && { label: 'Payment Method',    value: humanize(repayment.payment_method) },
+      loan?.outstanding_balance != null && { label: 'Remaining Balance', value: fmtAmt(loan.outstanding_balance) },
+                                           { label: 'Reference',         value: ref, copy: true },
+    ].filter(Boolean),
+    businessName:  orgName,
+    issuedBy:      orgName,
+    fees:          0,
+    receiptRef:    ref,
+    filenames:     { image, pdf },
+    processorName: null,
+    iconType:      'savings',
+  };
+}

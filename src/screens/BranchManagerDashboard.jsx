@@ -12,6 +12,8 @@ import Inventory         from "./Inventory";
 import SyncBar           from "../components/SyncBar";
 import Icon              from "../components/Icon";
 import { LanguageProvider } from "../contexts/LanguageContext";
+import TransactionDetailModal from "../components/shared/TransactionDetailModal";
+import { buildTransactionReceipt } from "../utils/receiptConfig";
 
 const NAV = [
   { id: "overview",     icon: "home",      label: "Overview"  },
@@ -33,6 +35,7 @@ function StatCard({ label, value, color = "text-slate-800 dark:text-white", sub 
 
 function Overview({ store, branchName }) {
   const { transactions, credits, asoClients, loading } = store;
+  const [receipt, setReceipt] = useState(null);
 
   const todayTx   = transactions.filter(t => t.transaction_date === today());
   const cashIn    = todayTx.filter(t => t.type === "in" ).reduce((s, t) => s + t.amount, 0);
@@ -93,13 +96,14 @@ function Overview({ store, branchName }) {
           <p className="text-[13px] font-bold text-slate-700 dark:text-slate-300 mb-2">Recent Transactions</p>
           <div className="space-y-2">
             {recent.map(tx => (
-              <div key={tx.id} className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3 flex items-center gap-3 border border-slate-100 dark:border-slate-700/50">
+              <button key={tx.id} onClick={() => setReceipt(buildTransactionReceipt(tx, store.profile))}
+                className="w-full text-left bg-white dark:bg-slate-800 rounded-2xl px-4 py-3 flex items-center gap-3 border border-slate-100 dark:border-slate-700/50 active:scale-[0.98] transition-transform">
                 <div className={`w-2 h-2 rounded-full flex-shrink-0 ${tx.type === "in" ? "bg-green-500" : "bg-red-400"}`} />
                 <p className="flex-1 text-sm text-slate-700 dark:text-slate-200 truncate font-medium">{tx.item_name || tx.category}</p>
                 <span className={`text-sm font-extrabold flex-shrink-0 tabular ${tx.type === "in" ? "text-green-600 dark:text-green-400" : "text-red-500"}`}>
                   {tx.type === "in" ? "+" : "−"}{fmt(tx.amount)}
                 </span>
-              </div>
+              </button>
             ))}
           </div>
         </div>
@@ -111,6 +115,8 @@ function Overview({ store, branchName }) {
           <p className="text-slate-400 text-xs mt-1">Go to Sales to record a transaction</p>
         </div>
       )}
+
+      {receipt && <TransactionDetailModal data={receipt} onClose={() => setReceipt(null)} />}
     </div>
   );
 }

@@ -7,7 +7,7 @@ import CashbackCard from "../components/CashbackCard";
 import GroupChat from "./GroupChat";
 import { CoopBulkWithdrawalReceipt } from "../components/shared/Receipt";
 import TransactionDetailModal from "../components/shared/TransactionDetailModal";
-import { buildCoopSavingsReceipt, buildCoopWithdrawalRequestReceipt } from "../utils/receiptConfig";
+import { buildCoopSavingsReceipt, buildCoopWithdrawalRequestReceipt, buildCoopLoanRepaymentReceipt } from "../utils/receiptConfig";
 import { maxDobDate, isAtLeast18, AGE_ERROR } from "../utils/ageValidation";
 import { CoopNotificationBell, useChatUnread, ChatToast } from "../components/shared/CoopNotifications";
 import AIChatWidget from "../components/AIChatWidget";
@@ -1264,9 +1264,10 @@ function LoansTab({ org, members, onRefresh }) {
     member_id: "", amount_requested: "", interest_rate: String(defaultRate),
     loan_purpose: "", repayment_months: "12",
   });
-  const [saving, setSaving] = useState(false);
-  const [error,  setError]  = useState("");
-  const [txnPin, setTxnPin] = useState(null);
+  const [saving,   setSaving]   = useState(false);
+  const [error,    setError]    = useState("");
+  const [txnPin,   setTxnPin]   = useState(null);
+  const [receipt,  setReceipt]  = useState(null);
 
   const load = useCallback(() => {
     coopFn("get-loans", { org_id: org.id })
@@ -1573,7 +1574,8 @@ function LoansTab({ org, members, onRefresh }) {
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Repayment History</p>
               <div className="flex flex-col gap-1.5 max-h-40 overflow-y-auto">
                 {repayments.map(r => (
-                  <div key={r.id} className="flex justify-between items-center bg-slate-50 dark:bg-slate-700 rounded-lg px-2.5 py-1.5">
+                  <button key={r.id} onClick={() => setReceipt(buildCoopLoanRepaymentReceipt(r, selected, selected?.org_members?.full_name, org.name))}
+                    className="w-full text-left flex justify-between items-center bg-slate-50 dark:bg-slate-700 rounded-lg px-2.5 py-1.5 active:scale-[0.98] transition-transform">
                     <div>
                       <p className="text-xs font-bold text-green-600">{fmt(r.amount)}</p>
                       <p className="text-[10px] text-slate-400">{fmtDT(r.created_at)} · {r.payment_method}</p>
@@ -1581,7 +1583,7 @@ function LoansTab({ org, members, onRefresh }) {
                     {r.interest_portion > 0 && (
                       <p className="text-[10px] text-amber-600">+{fmt(r.interest_portion)} interest</p>
                     )}
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>
@@ -1592,6 +1594,7 @@ function LoansTab({ org, members, onRefresh }) {
         </ModalWrap>
       )}
       {txnPin && <TransactionPinModal {...txnPin} onCancel={() => setTxnPin(null)} />}
+      {receipt && <TransactionDetailModal data={receipt} onClose={() => setReceipt(null)} />}
     </div>
   );
 }

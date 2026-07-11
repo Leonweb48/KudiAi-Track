@@ -9,7 +9,7 @@ import GroupChat from "./GroupChat";
 import AIChatWidget from "../components/AIChatWidget";
 import { buildCoopMemberContext } from "../utils/buildContext";
 import TransactionDetailModal from "../components/shared/TransactionDetailModal";
-import { buildCoopSavingsReceipt, buildCoopWithdrawalRequestReceipt } from "../utils/receiptConfig";
+import { buildCoopSavingsReceipt, buildCoopWithdrawalRequestReceipt, buildCoopLoanRepaymentReceipt } from "../utils/receiptConfig";
 import { CoopNotificationBell, useChatUnread, ChatToast } from "../components/shared/CoopNotifications";
 import { sendEmailTrigger } from "../utils/emailTrigger";
 import AppLogo from "../components/AppLogo";
@@ -926,6 +926,7 @@ function LoansTab({ member, org }) {
   const [saving,     setSaving]     = useState(false);
   const [repaying,   setRepaying]   = useState(false);
   const [error,      setError]      = useState("");
+  const [receipt,    setReceipt]    = useState(null);
   const defaultRate  = org.default_loan_interest_rate ?? 10;
   const [form, setForm] = useState({
     amount_requested: "", interest_rate: String(defaultRate),
@@ -1143,7 +1144,8 @@ function LoansTab({ member, org }) {
                 <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Repayment History</p>
                 <div className="flex flex-col gap-1.5 max-h-36 overflow-y-auto">
                   {repayments.map(r => (
-                    <div key={r.id} className="flex justify-between items-center bg-slate-50 dark:bg-slate-700 rounded-lg px-2.5 py-1.5">
+                    <button key={r.id} onClick={() => setReceipt(buildCoopLoanRepaymentReceipt(r, selected, member.full_name, org.name))}
+                      className="w-full text-left flex justify-between items-center bg-slate-50 dark:bg-slate-700 rounded-lg px-2.5 py-1.5 active:scale-[0.98] transition-transform">
                       <div>
                         <p className="text-xs font-bold text-green-600">{fmt(r.amount)}</p>
                         <p className="text-[10px] text-slate-400">{fmtDT(r.created_at)} · {r.payment_method}</p>
@@ -1151,7 +1153,7 @@ function LoansTab({ member, org }) {
                       {r.interest_portion > 0 && (
                         <p className="text-[10px] text-amber-600">+{fmt(r.interest_portion)} interest</p>
                       )}
-                    </div>
+                    </button>
                   ))}
                 </div>
               </div>
@@ -1163,6 +1165,7 @@ function LoansTab({ member, org }) {
         </div>
       )}
       {txnPin && <TransactionPinModal {...txnPin} onCancel={() => setTxnPin(null)} />}
+      {receipt && <TransactionDetailModal data={receipt} onClose={() => setReceipt(null)} />}
     </div>
   );
 }

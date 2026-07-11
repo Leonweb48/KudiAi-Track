@@ -820,6 +820,8 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
 
 // ── Overview tab ──────────────────────────────────────────────────────────
 function OverviewTab({ client, contributions, onWithdrawClick, onPayClick, ownerInfo, withdrawRequests = [] }) {
+  const [receipt, setReceipt] = useState(null);
+
   const totalThisMonth = contributions
     .filter(c => c.type === "contribution" && (c.created_at || "").startsWith(new Date().toISOString().slice(0, 7)))
     .reduce((s, c) => s + (c.amount || 0), 0);
@@ -991,7 +993,8 @@ function OverviewTab({ client, contributions, onWithdrawClick, onPayClick, owner
           <p className="text-[12px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Recent Activity</p>
           <div className="space-y-2">
             {recent.map(c => (
-              <div key={c.id} className="bg-white dark:bg-slate-800 rounded-xl px-3 py-2.5 flex items-center gap-3 border border-slate-100 dark:border-slate-700">
+              <button key={c.id} onClick={() => setReceipt(buildAjoContributionReceipt(c, client.full_name, ownerInfo?.business_name || ownerInfo?.full_name || "Ajo Group"))}
+                className="w-full text-left bg-white dark:bg-slate-800 rounded-xl px-3 py-2.5 flex items-center gap-3 border border-slate-100 dark:border-slate-700 active:scale-[0.98] transition-transform">
                 <div className={`w-2 h-2 rounded-full flex-shrink-0 ${c.type === "contribution" ? "bg-green-500" : "bg-red-400"}`} />
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 capitalize">{c.type}</p>
@@ -1000,11 +1003,13 @@ function OverviewTab({ client, contributions, onWithdrawClick, onPayClick, owner
                 <span className={`text-sm font-extrabold tabular flex-shrink-0 ${c.type === "contribution" ? "text-green-600 dark:text-green-400" : "text-red-500"}`}>
                   {c.type === "contribution" ? "+" : "−"}{fmt(c.amount)}
                 </span>
-              </div>
+              </button>
             ))}
           </div>
         </div>
       )}
+
+      {receipt && <TransactionDetailModal data={receipt} onClose={() => setReceipt(null)} />}
     </div>
   );
 }
