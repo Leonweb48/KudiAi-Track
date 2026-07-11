@@ -123,25 +123,45 @@ async function fetchEmailContext(
   };
 }
 
-// ── Verify caller is the owner or an active staff member for that owner ───────
-// Staff members who can use ASO must have an active row in the staff table
-// linking their auth UUID to the owner's UUID.
-async function isAuthorized(
+// ── Resolve Ajo permissions for the caller ────────────────────────────────────
+// Returns null  → caller is the owner; full access, no staff ID to track.
+// Returns false → caller is not an active staff member for this owner; 403.
+// Returns perms → caller is staff; check individual flags before each action.
+interface AjoStaffPerms {
+  staffId:               string;
+  can_create:            boolean; // record contributions
+  ajo_confirm_deposits:  boolean; // confirm / reject manual deposit claims
+  ajo_record_withdrawals:boolean; // record withdrawals + reverse contributions
+  ajo_manage_clients:    boolean; // create / edit / archive clients
+}
+
+async function resolveAjoPerms(
   sb: ReturnType<typeof createClient>,
   callerUid: string,
   ownerId: string,
-): Promise<boolean> {
-  if (callerUid === ownerId) return true;
+): Promise<AjoStaffPerms | null | false> {
+  if (callerUid === ownerId) return null; // owner = full access
 
-  const { data: staffRow } = await sb
+  const { data } = await sb
     .from("staff")
-    .select("id")
-    .eq("user_id", callerUid)
+    .select("id, staff_permissions(module, can_create, ajo_confirm_deposits, ajo_record_withdrawals, ajo_manage_clients)")
+    .eq("user_id",  callerUid)
     .eq("owner_id", ownerId)
-    .eq("is_active", true)
+    .eq("status",   "active")   // was incorrectly "is_active" = true — fixed
     .maybeSingle();
 
-  return !!staffRow;
+  if (!data) return false; // not an active staff member for this owner
+
+  const p = (data.staff_permissions as Record<string, unknown>[]).find(
+    (sp) => sp.module === "aso",
+  );
+  return {
+    staffId:                data.id,
+    can_create:             Boolean(p?.can_create),
+    ajo_confirm_deposits:   Boolean(p?.ajo_confirm_deposits),
+    ajo_record_withdrawals: Boolean(p?.ajo_record_withdrawals),
+    ajo_manage_clients:     Boolean(p?.ajo_manage_clients),
+  };
 }
 
 serve(async (req: Request) => {
@@ -231,17 +251,22 @@ serve(async (req: Request) => {
   // ── Route to SQL RPC ──────────────────────────────────────────────────────
 
   if (action === "record_contribution") {
-    const { client_id, amount, method, ref, notes, recorded_by } = params as {
+    const { client_id, amount, method, ref, notes } = params as {
       client_id: string; amount: number;
-      method?: string; ref?: string; notes?: string; recorded_by?: string;
+      method?: string; ref?: string; notes?: string;
     };
 
-    // Resolve owner from DB — never trust client-supplied owner_id as the final word
     const ownerId = await resolveClientOwner(sb, client_id);
     if (!ownerId) return json({ ok: false, error: "Client not found" }, 404);
-    if (!await isAuthorized(sb, user.id, ownerId)) {
-      return json({ ok: false, error: "Unauthorized" }, 403);
+
+    const ajoPerms = await resolveAjoPerms(sb, user.id, ownerId);
+    if (ajoPerms === false) return json({ ok: false, error: "Unauthorized" }, 403);
+    if (ajoPerms !== null && !ajoPerms.can_create) {
+      return json({ ok: false, error: "Permission denied: Ajo contribution recording not enabled for your account" }, 403);
     }
+
+    // recorded_by = staff.id for staff callers; null for owner (owner needs no tracking)
+    const recordedBy = ajoPerms === null ? null : ajoPerms.staffId;
 
     const { data, error } = await sb.rpc("ajo_record_contribution", {
       p_client_id:   client_id,
@@ -250,7 +275,7 @@ serve(async (req: Request) => {
       p_method:      method || "cash",
       p_ref:         ref    || null,
       p_notes:       notes  || null,
-      p_recorded_by: recorded_by || null,
+      p_recorded_by: recordedBy,
     });
     if (error) return json({ ok: false, error: error.message });
 
@@ -275,24 +300,29 @@ serve(async (req: Request) => {
   }
 
   if (action === "record_withdrawal") {
-    const { client_id, gross_amount, method, notes, recorded_by, request_id } = params as {
+    const { client_id, gross_amount, method, notes, request_id } = params as {
       client_id: string; gross_amount: number;
-      method?: string; notes?: string; recorded_by?: string; request_id?: string;
+      method?: string; notes?: string; request_id?: string;
     };
 
     const ownerId = await resolveClientOwner(sb, client_id);
     if (!ownerId) return json({ ok: false, error: "Client not found" }, 404);
-    if (!await isAuthorized(sb, user.id, ownerId)) {
-      return json({ ok: false, error: "Unauthorized" }, 403);
+
+    const ajoPerms = await resolveAjoPerms(sb, user.id, ownerId);
+    if (ajoPerms === false) return json({ ok: false, error: "Unauthorized" }, 403);
+    if (ajoPerms !== null && !ajoPerms.ajo_record_withdrawals) {
+      return json({ ok: false, error: "Permission denied: Ajo withdrawal recording not enabled for your account" }, 403);
     }
+
+    const recordedBy = ajoPerms === null ? null : ajoPerms.staffId;
 
     const { data, error } = await sb.rpc("ajo_record_withdrawal", {
       p_client_id:    client_id,
       p_owner_id:     ownerId,
       p_gross_amount: gross_amount,
-      p_method:       method     || "cash",
-      p_notes:        notes      || null,
-      p_recorded_by:  recorded_by || null,
+      p_method:       method || "cash",
+      p_notes:        notes  || null,
+      p_recorded_by:  recordedBy,
       p_request_id:   request_id || null,
     });
     if (error) return json({ ok: false, error: error.message });
@@ -325,8 +355,11 @@ serve(async (req: Request) => {
 
     const { ownerId, clientId } = await resolveContrib(sb, original_id);
     if (!ownerId) return json({ ok: false, error: "Contribution not found" }, 404);
-    if (!await isAuthorized(sb, user.id, ownerId)) {
-      return json({ ok: false, error: "Unauthorized" }, 403);
+
+    const ajoPerms = await resolveAjoPerms(sb, user.id, ownerId);
+    if (ajoPerms === false) return json({ ok: false, error: "Unauthorized" }, 403);
+    if (ajoPerms !== null && !ajoPerms.ajo_record_withdrawals) {
+      return json({ ok: false, error: "Permission denied: Ajo withdrawal/reversal not enabled for your account" }, 403);
     }
 
     const { data, error } = await sb.rpc("ajo_reverse_contribution", {
@@ -369,8 +402,11 @@ serve(async (req: Request) => {
 
     if (!claim) return json({ ok: false, error: "Claim not found" }, 404);
     const ownerId = claim.owner_id;
-    if (!await isAuthorized(sb, user.id, ownerId)) {
-      return json({ ok: false, error: "Unauthorized" }, 403);
+
+    const ajoPerms = await resolveAjoPerms(sb, user.id, ownerId);
+    if (ajoPerms === false) return json({ ok: false, error: "Unauthorized" }, 403);
+    if (ajoPerms !== null && !ajoPerms.ajo_confirm_deposits) {
+      return json({ ok: false, error: "Permission denied: Ajo deposit confirmation not enabled for your account" }, 403);
     }
 
     const { data, error } = await sb.rpc("ajo_confirm_manual_deposit", {
@@ -410,8 +446,11 @@ serve(async (req: Request) => {
 
     if (!claim) return json({ ok: false, error: "Claim not found" }, 404);
     const ownerId = claim.owner_id;
-    if (!await isAuthorized(sb, user.id, ownerId)) {
-      return json({ ok: false, error: "Unauthorized" }, 403);
+
+    const ajoPerms = await resolveAjoPerms(sb, user.id, ownerId);
+    if (ajoPerms === false) return json({ ok: false, error: "Unauthorized" }, 403);
+    if (ajoPerms !== null && !ajoPerms.ajo_confirm_deposits) {
+      return json({ ok: false, error: "Permission denied: Ajo deposit confirmation not enabled for your account" }, 403);
     }
 
     const { data, error } = await sb.rpc("ajo_reject_manual_claim", {
@@ -442,8 +481,11 @@ serve(async (req: Request) => {
 
     const ownerId = await resolveClientOwner(sb, client_id);
     if (!ownerId) return json({ ok: false, error: "Client not found" }, 404);
-    if (!await isAuthorized(sb, user.id, ownerId)) {
-      return json({ ok: false, error: "Unauthorized" }, 403);
+
+    const ajoPerms = await resolveAjoPerms(sb, user.id, ownerId);
+    if (ajoPerms === false) return json({ ok: false, error: "Unauthorized" }, 403);
+    if (ajoPerms !== null && !ajoPerms.ajo_manage_clients) {
+      return json({ ok: false, error: "Permission denied: Ajo client management not enabled for your account" }, 403);
     }
 
     const { data, error } = await sb.rpc("ajo_archive_client", {

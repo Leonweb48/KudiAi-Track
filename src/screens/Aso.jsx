@@ -98,7 +98,7 @@ function isGroupAccount(c) {
 }
 
 /* ── Per-client Ajo Contribution History Modal ─────────────────────────── */
-function AsoClientHistoryModal({ client, contributions, businessName, onClose }) {
+function AsoClientHistoryModal({ client, contributions, businessName, staffMap = {}, onClose }) {
   const [typeFilter, setTypeFilter] = useState("all");
   const [receipt, setReceipt] = useState(null);
   const fmtCurrency = (n) => `₦${Number(n || 0).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
@@ -238,6 +238,9 @@ function AsoClientHistoryModal({ client, contributions, businessName, onClose })
                       {tx.type} · {tx.payment_method || "cash"}
                     </p>
                     <p className="text-[10px] text-slate-400 mt-0.5">{dateStr}</p>
+                    {tx.recorded_by && staffMap[tx.recorded_by] && (
+                      <p className="text-[10px] text-violet-500 dark:text-violet-400 mt-0.5">by: {staffMap[tx.recorded_by]}</p>
+                    )}
                     {tx.notes && <p className="text-[10px] text-slate-400 italic mt-0.5">"{tx.notes}"</p>}
                   </div>
                 </div>
@@ -291,6 +294,9 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [processingDepositId, setProcessingDepositId] = useState(null);
   const [rejectingDeposit,    setRejectingDeposit]    = useState(null);
   const [rejectReason,        setRejectReason]        = useState("");
+
+  // Per-staff Ajo capability flags — null means owner (full access)
+  const [staffAjoPerms, setStaffAjoPerms] = useState(null);
 
 
   // Ajo Groups management
@@ -498,6 +504,18 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     loadGroups();
   }, [plan]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Load granular ajo permissions when rendering in a staff context
+  useEffect(() => {
+    if (!staffId) { setStaffAjoPerms(null); return; }
+    supabase
+      .from("staff_permissions")
+      .select("can_view, can_create, ajo_confirm_deposits, ajo_record_withdrawals, ajo_manage_clients")
+      .eq("staff_id", staffId)
+      .eq("module", "aso")
+      .maybeSingle()
+      .then(({ data }) => setStaffAjoPerms(data || { can_view: false, can_create: false, ajo_confirm_deposits: false, ajo_record_withdrawals: false, ajo_manage_clients: false }));
+  }, [staffId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Realtime: new withdrawal requests from clients ─────────────────────
   useEffect(() => {
     if (!canDo(plan, "aso")) return;
@@ -519,6 +537,12 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [plan]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Per-action capability flags (null staffAjoPerms = owner = all true)
+  const canContribute     = !staffAjoPerms || staffAjoPerms.can_create;
+  const canWithdraw       = !staffAjoPerms || staffAjoPerms.ajo_record_withdrawals;
+  const canConfirmDeposit = !staffAjoPerms || staffAjoPerms.ajo_confirm_deposits;
+  const canManageClients  = !staffAjoPerms || staffAjoPerms.ajo_manage_clients;
 
   // Aggregate stats
   const totalBal      = asoClients.reduce((s, c) => s + (c.current_balance || 0), 0);
@@ -872,10 +896,12 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
               <rect x="2" y="5" width="20" height="14" rx="2" /><line x1="2" y1="10" x2="22" y2="10" />
             </svg>
           </button>
-          <button onClick={() => setShowAdd(true)}
-            className="w-9 h-9 bg-violet-600 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform">
-            <Icon name="plus" size={18} className="text-white" />
-          </button>
+          {canManageClients && (
+            <button onClick={() => setShowAdd(true)}
+              className="w-9 h-9 bg-violet-600 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform">
+              <Icon name="plus" size={18} className="text-white" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -1019,20 +1045,24 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                       )}
                     </div>
                   </div>
-                  <div className="flex gap-2 mt-3">
-                    <button
-                      onClick={() => handleConfirmDeposit(dep)}
-                      disabled={isProc}
-                      className="flex-1 py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-bold text-xs transition active:scale-[0.99] disabled:opacity-50">
-                      {isProc && processingDepositId === dep.id && !rejectingDeposit ? "…" : "Confirm"}
-                    </button>
-                    <button
-                      onClick={() => { setRejectingDeposit(dep); setRejectReason(""); }}
-                      disabled={isProc}
-                      className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-700 hover:bg-red-50 dark:hover:bg-red-900/20 text-slate-600 dark:text-slate-300 hover:text-red-600 dark:hover:text-red-400 rounded-xl font-bold text-xs transition active:scale-[0.99] disabled:opacity-50 border border-slate-200 dark:border-slate-600">
-                      Reject
-                    </button>
-                  </div>
+                  {canConfirmDeposit ? (
+                    <div className="flex gap-2 mt-3">
+                      <button
+                        onClick={() => handleConfirmDeposit(dep)}
+                        disabled={isProc}
+                        className="flex-1 py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-bold text-xs transition active:scale-[0.99] disabled:opacity-50">
+                        {isProc && processingDepositId === dep.id && !rejectingDeposit ? "…" : "Confirm"}
+                      </button>
+                      <button
+                        onClick={() => { setRejectingDeposit(dep); setRejectReason(""); }}
+                        disabled={isProc}
+                        className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-700 hover:bg-red-50 dark:hover:bg-red-900/20 text-slate-600 dark:text-slate-300 hover:text-red-600 dark:hover:text-red-400 rounded-xl font-bold text-xs transition active:scale-[0.99] disabled:opacity-50 border border-slate-200 dark:border-slate-600">
+                        Reject
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="text-[10px] text-slate-400 mt-3 text-center">Contact your manager to confirm or reject deposits</p>
+                  )}
                 </div>
               );
             })}
@@ -1283,24 +1313,28 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                 <div className="flex gap-1.5 pt-3 border-t border-slate-100 dark:border-slate-700/60">
 
                   {/* Contribute */}
-                  <button onClick={() => { setSelected(c); setAction("contribute"); }}
-                    className="flex-1 flex flex-col items-center gap-1 py-2.5 bg-green-50 dark:bg-green-900/20 rounded-xl border border-green-200 dark:border-green-800 active:scale-95 transition"
-                    title="Contribute">
-                    <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-green-600 dark:text-green-400" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
-                    </svg>
-                    <span className="text-[9px] font-black text-green-700 dark:text-green-400 uppercase tracking-wide leading-none">Fund</span>
-                  </button>
+                  {canContribute && (
+                    <button onClick={() => { setSelected(c); setAction("contribute"); }}
+                      className="flex-1 flex flex-col items-center gap-1 py-2.5 bg-green-50 dark:bg-green-900/20 rounded-xl border border-green-200 dark:border-green-800 active:scale-95 transition"
+                      title="Contribute">
+                      <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-green-600 dark:text-green-400" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
+                      </svg>
+                      <span className="text-[9px] font-black text-green-700 dark:text-green-400 uppercase tracking-wide leading-none">Fund</span>
+                    </button>
+                  )}
 
                   {/* Withdraw */}
-                  <button onClick={() => { setSelected(c); setAction("withdraw"); }}
-                    className="flex-1 flex flex-col items-center gap-1 py-2.5 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-800 active:scale-95 transition"
-                    title="Withdraw">
-                    <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-red-600 dark:text-red-400" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="12" cy="12" r="9"/><line x1="8" y1="12" x2="16" y2="12"/>
-                    </svg>
-                    <span className="text-[9px] font-black text-red-600 dark:text-red-400 uppercase tracking-wide leading-none">Pay</span>
-                  </button>
+                  {canWithdraw && (
+                    <button onClick={() => { setSelected(c); setAction("withdraw"); }}
+                      className="flex-1 flex flex-col items-center gap-1 py-2.5 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-800 active:scale-95 transition"
+                      title="Withdraw">
+                      <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-red-600 dark:text-red-400" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="9"/><line x1="8" y1="12" x2="16" y2="12"/>
+                      </svg>
+                      <span className="text-[9px] font-black text-red-600 dark:text-red-400 uppercase tracking-wide leading-none">Pay</span>
+                    </button>
+                  )}
 
                   {/* Reminder */}
                   <button onClick={() => { setReminderFor(c); setCopied(false); }}
@@ -1761,6 +1795,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             client={hc}
             contributions={hcons}
             businessName={bizName}
+            staffMap={store.staffMap || {}}
             onClose={() => setHistoryFor(null)}
           />
         );

@@ -210,7 +210,10 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
     const defaults = ROLE_DEFAULTS[roleId] || [];
     const p = {};
     MODULES.forEach(m => {
-      p[m.id] = { can_view: defaults.includes(m.id), can_create: defaults.includes(m.id) };
+      const on = defaults.includes(m.id);
+      p[m.id] = m.id === "aso"
+        ? { can_view: on, can_create: on, ajo_confirm_deposits: false, ajo_record_withdrawals: false, ajo_manage_clients: false }
+        : { can_view: on, can_create: on };
     });
     p["print-airtime"] = { can_view: false, can_create: false };
     p["print-data"]    = { can_view: false, can_create: false };
@@ -232,7 +235,15 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
     const p = {};
     MODULES.forEach(m => {
       const existing = (s.staff_permissions || []).find(sp => sp.module === m.id);
-      p[m.id] = { can_view: existing?.can_view || false, can_create: existing?.can_create || false };
+      p[m.id] = m.id === "aso"
+        ? {
+            can_view:               existing?.can_view               || false,
+            can_create:             existing?.can_create             || false,
+            ajo_confirm_deposits:   existing?.ajo_confirm_deposits   || false,
+            ajo_record_withdrawals: existing?.ajo_record_withdrawals || false,
+            ajo_manage_clients:     existing?.ajo_manage_clients     || false,
+          }
+        : { can_view: existing?.can_view || false, can_create: existing?.can_create || false };
     });
     const pa = (s.staff_permissions || []).find(sp => sp.module === "print-airtime");
     const pd = (s.staff_permissions || []).find(sp => sp.module === "print-data");
@@ -405,6 +416,11 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
         module:     m.id,
         can_view:   perms[m.id]?.can_view   || false,
         can_create: perms[m.id]?.can_create || false,
+        ...(m.id === "aso" ? {
+          ajo_confirm_deposits:   perms["aso"]?.ajo_confirm_deposits   || false,
+          ajo_record_withdrawals: perms["aso"]?.ajo_record_withdrawals || false,
+          ajo_manage_clients:     perms["aso"]?.ajo_manage_clients     || false,
+        } : {}),
       })),
       { staff_id: staffId, module: "print-airtime", can_view: perms["print-airtime"]?.can_view || false, can_create: false },
       { staff_id: staffId, module: "print-data",    can_view: perms["print-data"]?.can_view    || false, can_create: false },
@@ -828,17 +844,46 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
                           checked={perms[m.id]?.can_view || false}
                           onChange={v => setPerms(p => ({
                             ...p,
-                            [m.id]: { ...p[m.id], can_view: v, can_create: v ? p[m.id]?.can_create : false },
+                            [m.id]: { ...p[m.id], can_view: v, can_create: v ? p[m.id]?.can_create : false,
+                              ...(m.id === "aso" && !v ? { ajo_confirm_deposits: false, ajo_record_withdrawals: false, ajo_manage_clients: false } : {}),
+                            },
                             ...(m.id === "bills" && !v ? { "print-airtime": { can_view: false, can_create: false }, "print-data": { can_view: false, can_create: false } } : {}),
                           }))}
                           label="View"
                         />
-                        <PermToggle
-                          checked={perms[m.id]?.can_create || false}
-                          onChange={v => setPerms(p => ({ ...p, [m.id]: { ...p[m.id], can_create: v, can_view: v ? true : p[m.id]?.can_view } }))}
-                          label="Create"
-                        />
+                        {m.id !== "aso" && (
+                          <PermToggle
+                            checked={perms[m.id]?.can_create || false}
+                            onChange={v => setPerms(p => ({ ...p, [m.id]: { ...p[m.id], can_create: v, can_view: v ? true : p[m.id]?.can_view } }))}
+                            label="Create"
+                          />
+                        )}
                       </div>
+                      {m.id === "aso" && perms["aso"]?.can_view && (
+                        <div className="mt-2 ml-1 pl-3 border-l-2 border-violet-200 dark:border-violet-800 space-y-2">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Ajo Capabilities</p>
+                          <PermToggle
+                            checked={perms["aso"]?.can_create || false}
+                            onChange={v => setPerms(p => ({ ...p, aso: { ...p.aso, can_create: v } }))}
+                            label="Record Contributions"
+                          />
+                          <PermToggle
+                            checked={perms["aso"]?.ajo_confirm_deposits || false}
+                            onChange={v => setPerms(p => ({ ...p, aso: { ...p.aso, ajo_confirm_deposits: v } }))}
+                            label="Confirm Bank Deposits"
+                          />
+                          <PermToggle
+                            checked={perms["aso"]?.ajo_record_withdrawals || false}
+                            onChange={v => setPerms(p => ({ ...p, aso: { ...p.aso, ajo_record_withdrawals: v } }))}
+                            label="Record Withdrawals"
+                          />
+                          <PermToggle
+                            checked={perms["aso"]?.ajo_manage_clients || false}
+                            onChange={v => setPerms(p => ({ ...p, aso: { ...p.aso, ajo_manage_clients: v } }))}
+                            label="Manage Clients"
+                          />
+                        </div>
+                      )}
                       {m.id === "bills" && perms["bills"]?.can_view && (
                         <div className="mt-2 ml-1 pl-3 border-l-2 border-slate-200 dark:border-slate-700 space-y-2">
                           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Print Features</p>
@@ -1045,17 +1090,46 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
                           checked={perms[m.id]?.can_view || false}
                           onChange={v => setPerms(p => ({
                             ...p,
-                            [m.id]: { ...p[m.id], can_view: v, can_create: v ? p[m.id]?.can_create : false },
+                            [m.id]: { ...p[m.id], can_view: v, can_create: v ? p[m.id]?.can_create : false,
+                              ...(m.id === "aso" && !v ? { ajo_confirm_deposits: false, ajo_record_withdrawals: false, ajo_manage_clients: false } : {}),
+                            },
                             ...(m.id === "bills" && !v ? { "print-airtime": { can_view: false, can_create: false }, "print-data": { can_view: false, can_create: false } } : {}),
                           }))}
                           label="View"
                         />
-                        <PermToggle
-                          checked={perms[m.id]?.can_create || false}
-                          onChange={v => setPerms(p => ({ ...p, [m.id]: { ...p[m.id], can_create: v, can_view: v ? true : p[m.id]?.can_view } }))}
-                          label="Create"
-                        />
+                        {m.id !== "aso" && (
+                          <PermToggle
+                            checked={perms[m.id]?.can_create || false}
+                            onChange={v => setPerms(p => ({ ...p, [m.id]: { ...p[m.id], can_create: v, can_view: v ? true : p[m.id]?.can_view } }))}
+                            label="Create"
+                          />
+                        )}
                       </div>
+                      {m.id === "aso" && perms["aso"]?.can_view && (
+                        <div className="mt-2 ml-1 pl-3 border-l-2 border-violet-200 dark:border-violet-800 space-y-2">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Ajo Capabilities</p>
+                          <PermToggle
+                            checked={perms["aso"]?.can_create || false}
+                            onChange={v => setPerms(p => ({ ...p, aso: { ...p.aso, can_create: v } }))}
+                            label="Record Contributions"
+                          />
+                          <PermToggle
+                            checked={perms["aso"]?.ajo_confirm_deposits || false}
+                            onChange={v => setPerms(p => ({ ...p, aso: { ...p.aso, ajo_confirm_deposits: v } }))}
+                            label="Confirm Bank Deposits"
+                          />
+                          <PermToggle
+                            checked={perms["aso"]?.ajo_record_withdrawals || false}
+                            onChange={v => setPerms(p => ({ ...p, aso: { ...p.aso, ajo_record_withdrawals: v } }))}
+                            label="Record Withdrawals"
+                          />
+                          <PermToggle
+                            checked={perms["aso"]?.ajo_manage_clients || false}
+                            onChange={v => setPerms(p => ({ ...p, aso: { ...p.aso, ajo_manage_clients: v } }))}
+                            label="Manage Clients"
+                          />
+                        </div>
+                      )}
                       {m.id === "bills" && perms["bills"]?.can_view && (
                         <div className="mt-2 ml-1 pl-3 border-l-2 border-slate-200 dark:border-slate-700 space-y-2">
                           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Print Features</p>
