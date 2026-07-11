@@ -215,7 +215,14 @@ serve(async (req) => {
         await sb.auth.admin.deleteUser(org.portal_user_id).catch(() => null);
       }
 
-      // Delete org — cascade removes all members, savings, loans, meetings, etc.
+      // Delete org_members first — the sync_org_member_count AFTER DELETE trigger on
+      // org_members tries to UPDATE organizations. If org_members cascade-delete fires
+      // AFTER the org row is already staged for deletion the UPDATE can fail in some
+      // Postgres versions. Pre-deleting members here lets the trigger run while the org
+      // row is still fully alive, then the subsequent org delete cascades cleanly.
+      await sb.from("org_members").delete().eq("org_id", org_id);
+
+      // Delete org — remaining cascades (notifications, savings, loans, etc.) run cleanly.
       const { error } = await sb.from("organizations").delete().eq("id", org_id);
       if (error) return json({ error: error.message }, 400);
 
