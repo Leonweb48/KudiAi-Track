@@ -28,6 +28,17 @@ const CORS = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const EMAIL_TRIGGER_URL    = "https://admin.kudiai.app/api/public/email-trigger";
+const EMAIL_TRIGGER_SECRET = Deno.env.get("EMAIL_TRIGGER_SECRET") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+
+async function fireAjoEmail(event: string, data: Record<string, unknown>): Promise<void> {
+  await fetch(EMAIL_TRIGGER_URL, {
+    method:  "POST",
+    headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
+    body:    JSON.stringify({ event, data }),
+  }).catch(() => null);
+}
+
 // ── PIN verification (same PBKDF2 scheme as pin-manager/index.ts) ─────────────
 async function verifyPinHash(pin: string, stored: string): Promise<boolean> {
   const parts = stored.split("$");
@@ -70,17 +81,46 @@ async function resolveClientOwner(
   return data?.user_id ?? null;
 }
 
-// ── Resolve the true owner UUID for a contribution (reverse action) ───────────
-async function resolveContribOwner(
+// ── Resolve owner + client IDs for a contribution (reverse action) ────────────
+async function resolveContrib(
   sb: ReturnType<typeof createClient>,
   contribId: string,
-): Promise<string | null> {
+): Promise<{ ownerId: string | null; clientId: string | null }> {
   const { data } = await sb
     .from("ajo_contributions")
-    .select("owner_id")
+    .select("owner_id, aso_client_id")
     .eq("id", contribId)
     .maybeSingle();
-  return data?.owner_id ?? null;
+  return { ownerId: data?.owner_id ?? null, clientId: data?.aso_client_id ?? null };
+}
+
+// ── Fetch email metadata for a client, owner, and optional staff caller ────────
+async function fetchEmailContext(
+  sb: ReturnType<typeof createClient>,
+  clientId: string,
+  ownerId: string,
+  callerUid: string,
+): Promise<{
+  clientEmail: string; clientName: string;
+  ownerEmail: string; businessName: string;
+  staffEmail: string; staffName: string;
+}> {
+  const isStaff = callerUid !== ownerId;
+  const [cl, own, st] = await Promise.all([
+    sb.from("aso_clients").select("email, full_name").eq("id", clientId).maybeSingle().then(r => r.data),
+    sb.from("profiles").select("email, business_name").eq("id", ownerId).maybeSingle().then(r => r.data),
+    isStaff
+      ? sb.from("staff").select("email, full_name").eq("user_id", callerUid).eq("owner_id", ownerId).maybeSingle().then(r => r.data)
+      : Promise.resolve(null),
+  ]);
+  return {
+    clientEmail:  cl?.email         || "",
+    clientName:   cl?.full_name     || "",
+    ownerEmail:   own?.email        || "",
+    businessName: own?.business_name || "",
+    staffEmail:   st?.email         || "",
+    staffName:    st?.full_name     || "",
+  };
 }
 
 // ── Verify caller is the owner or an active staff member for that owner ───────
@@ -213,6 +253,24 @@ serve(async (req: Request) => {
       p_recorded_by: recorded_by || null,
     });
     if (error) return json({ ok: false, error: error.message });
+
+    // Fire notification email — non-blocking to caller
+    const ctx = await fetchEmailContext(sb, client_id, ownerId, user.id);
+    await fireAjoEmail("ajo_contribution", {
+      client_email:  ctx.clientEmail,
+      client_name:   ctx.clientName,
+      user_email:    ctx.ownerEmail,
+      business_name: ctx.businessName,
+      staff_email:   ctx.staffEmail,
+      staff_name:    ctx.staffName,
+      amount,
+      balance:       (data as Record<string, unknown>)?.balance_after,
+      reg_fee:       (data as Record<string, unknown>)?.reg_fee_charged
+                       ? (data as Record<string, unknown>)?.registration_fee
+                       : 0,
+      date:          new Date().toLocaleDateString("en-NG"),
+    });
+
     return json(data);
   }
 
@@ -238,13 +296,30 @@ serve(async (req: Request) => {
       p_request_id:   request_id || null,
     });
     if (error) return json({ ok: false, error: error.message });
+
+    const rpcWd = data as Record<string, unknown>;
+    const ctx   = await fetchEmailContext(sb, client_id, ownerId, user.id);
+    await fireAjoEmail("ajo_withdrawal", {
+      client_email:  ctx.clientEmail,
+      client_name:   ctx.clientName,
+      user_email:    ctx.ownerEmail,
+      business_name: ctx.businessName,
+      staff_email:   ctx.staffEmail,
+      staff_name:    ctx.staffName,
+      amount:        rpcWd?.net_amount,     // ajo_withdrawal template uses d.amount as net
+      gross_amount:  rpcWd?.gross_amount,
+      fee_amount:    rpcWd?.fee_amount,
+      balance_after: rpcWd?.balance_after,
+      date:          new Date().toLocaleDateString("en-NG"),
+    });
+
     return json(data);
   }
 
   if (action === "reverse_contribution") {
     const { original_id, reason } = params as { original_id: string; reason: string };
 
-    const ownerId = await resolveContribOwner(sb, original_id);
+    const { ownerId, clientId } = await resolveContrib(sb, original_id);
     if (!ownerId) return json({ ok: false, error: "Contribution not found" }, 404);
     if (!await isAuthorized(sb, user.id, ownerId)) {
       return json({ ok: false, error: "Unauthorized" }, 403);
@@ -256,6 +331,25 @@ serve(async (req: Request) => {
       p_reason:      reason,
     });
     if (error) return json({ ok: false, error: error.message });
+
+    if (clientId) {
+      const rpcRev = data as Record<string, unknown>;
+      const ctx    = await fetchEmailContext(sb, clientId, ownerId, user.id);
+      await fireAjoEmail("ajo_reversal", {
+        client_email:  ctx.clientEmail,
+        client_name:   ctx.clientName,
+        user_email:    ctx.ownerEmail,
+        business_name: ctx.businessName,
+        staff_email:   ctx.staffEmail,
+        staff_name:    ctx.staffName,
+        amount:        rpcRev?.amount,
+        balance_after: rpcRev?.balance_after,
+        reason:        reason || "",
+        original_type: rpcRev?.original_type || "contribution",
+        date:          new Date().toLocaleDateString("en-NG"),
+      });
+    }
+
     return json(data);
   }
 

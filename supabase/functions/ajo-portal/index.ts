@@ -393,14 +393,36 @@ serve(async (req) => {
       const { request_id, owner_id } = body as { request_id: string; owner_id: string };
       if (!request_id || !owner_id) return json({ error: "request_id and owner_id required" }, 400);
 
-      const { data: req } = await sb.from("ajo_withdrawal_requests")
-        .select("id").eq("id", request_id).eq("owner_id", owner_id).eq("status", "pending").maybeSingle();
+      const { data: wReq } = await sb.from("ajo_withdrawal_requests")
+        .select("id, aso_client_id, amount")
+        .eq("id", request_id).eq("owner_id", owner_id).eq("status", "pending").maybeSingle();
 
-      if (!req) return json({ error: "Request not found or already processed" }, 404);
+      if (!wReq) return json({ error: "Request not found or already processed" }, 404);
 
       await sb.from("ajo_withdrawal_requests")
         .update({ status: "rejected", approved_at: new Date().toISOString() })
         .eq("id", request_id);
+
+      // Fire rejection email — non-blocking
+      const [cl, ownerProf] = await Promise.all([
+        sb.from("aso_clients").select("email, full_name").eq("id", wReq.aso_client_id).maybeSingle().then(r => r.data),
+        sb.from("profiles").select("email, business_name").eq("id", owner_id).maybeSingle().then(r => r.data),
+      ]);
+      fetch("https://admin.kudiai.app/api/public/email-trigger", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
+        body: JSON.stringify({
+          event: "ajo_withdrawal_rejected",
+          data: {
+            client_email:  cl?.email         || "",
+            client_name:   cl?.full_name     || "",
+            owner_email:   ownerProf?.email  || "",
+            business_name: ownerProf?.business_name || "",
+            amount:        wReq.amount,
+            date:          new Date().toLocaleDateString("en-NG"),
+          },
+        }),
+      }).catch(() => null);
 
       return json({ success: true });
     }
