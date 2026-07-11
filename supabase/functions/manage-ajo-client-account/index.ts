@@ -80,7 +80,8 @@ serve(async (req) => {
       await adminClient.from("aso_clients").update({ otp_code: null, otp_expires_at: null }).eq("id", clientRow.id);
       const { temp_password: _tp, ...restMeta } = userData.user.user_metadata || {};
       await adminClient.auth.admin.updateUserById(userData.user.id, {
-        user_metadata: { ...restMeta, email_verified: true },
+        // ajo_client_otp_verified is our custom flag — Supabase never auto-sets it
+        user_metadata: { ...restMeta, ajo_client_otp_verified: true },
       });
 
       return json({ success: true });
@@ -149,13 +150,14 @@ serve(async (req) => {
     if (!client.email) return json({ error: "Client email is required to create a login account" }, 400);
 
     const userMetadata = {
-      full_name:            client.full_name,
-      account_type:         "ajo_client",
-      aso_client_id:        client.id,
-      owner_id:             client.user_id,
-      must_change_password: true,
-      email_verified:       false,
-      temp_password:        password,
+      full_name:               client.full_name,
+      account_type:            "ajo_client",
+      aso_client_id:           client.id,
+      owner_id:                client.user_id,
+      must_change_password:    true,
+      // Use a custom flag — Supabase overwrites email_verified:false with true when email_confirm:true
+      ajo_client_otp_verified: false,
+      temp_password:           password,
     };
 
     let authUserId = client.client_user_id;

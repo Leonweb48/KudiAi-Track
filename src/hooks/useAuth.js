@@ -152,9 +152,9 @@ export function useAuth() {
         setAjoClient({ ...ajoClientRow, owner_id: ajoClientRow.user_id });
         subVerified.current = true;
         logPlatformSession(supabase, uid, "ajo_client", ajoClientRow.full_name, email);
-        const emailVerified = sess.user.user_metadata?.email_verified;
-        const needsOtp = emailVerified === false || (emailVerified == null && mustChange);
-        if (needsOtp) {
+        // Use custom flag — Supabase overwrites email_verified when email_confirm:true is set at creation
+        const ajoOtpVerified = sess.user.user_metadata?.ajo_client_otp_verified === true;
+        if (mustChange && !ajoOtpVerified) {
           setStatus("ajo_client_otp");
         } else if (mustChange) {
           fireWelcomeEmail("ajo_client_first_login", { name: ajoClientRow.full_name || "", email: email || "" });
@@ -449,9 +449,9 @@ export function useAuth() {
       if (ajoClientRow) {
         setAjoClient({ ...ajoClientRow, owner_id: ajoClientRow.user_id });
         subVerified.current = true;
-        const emailVerified2 = sess.user.user_metadata?.email_verified;
-        const needsOtp2 = emailVerified2 === false || (emailVerified2 == null && mustChange);
-        if (needsOtp2) {
+        // Use custom flag — Supabase overwrites email_verified when email_confirm:true is set at creation
+        const ajoOtpVerified2 = sess.user.user_metadata?.ajo_client_otp_verified === true;
+        if (mustChange && !ajoOtpVerified2) {
           setStatus("ajo_client_otp");
         } else if (mustChange) {
           fireWelcomeEmail("ajo_client_first_login", { name: ajoClientRow.full_name || "", email: email || "" });
