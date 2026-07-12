@@ -328,10 +328,24 @@ serve(async (req: Request) => {
     if (error) return json({ ok: false, error: error.message });
 
     const rpcWd = data as Record<string, unknown>;
-    // Only fire server-side email for direct withdrawals (no prior request).
-    // Request-based approvals already fire ajo_withdrawal_approved from the client.
-    if (!request_id) {
-      const ctx = await fetchEmailContext(sb, client_id, ownerId, user.id);
+    const ctx   = await fetchEmailContext(sb, client_id, ownerId, user.id);
+    if (request_id) {
+      // Request-based approval — send the approval-specific email server-side
+      await fireAjoEmail("ajo_withdrawal_approved", {
+        client_email:  ctx.clientEmail,
+        client_name:   ctx.clientName,
+        user_email:    ctx.ownerEmail,
+        business_name: ctx.businessName,
+        staff_email:   ctx.staffEmail,
+        staff_name:    ctx.staffName,
+        amount:        rpcWd?.gross_amount,
+        fee_amount:    rpcWd?.fee_amount,
+        net_amount:    rpcWd?.net_amount,
+        balance_after: rpcWd?.balance_after,
+        date:          new Date().toLocaleDateString("en-NG"),
+      });
+    } else {
+      // Direct withdrawal (no prior request) — standard withdrawal email
       await fireAjoEmail("ajo_withdrawal", {
         client_email:  ctx.clientEmail,
         client_name:   ctx.clientName,
@@ -348,6 +362,49 @@ serve(async (req: Request) => {
     }
 
     return json(data);
+  }
+
+  if (action === "reject_withdrawal_request") {
+    const { request_id: rwrId, reason: rwrReason } = params as {
+      request_id: string;
+      reason?: string;
+    };
+    if (!rwrId) return json({ ok: false, error: "request_id required" }, 400);
+
+    const { data: rwrRow, error: rwrErr } = await sb
+      .from("ajo_withdrawal_requests")
+      .select("aso_client_id, owner_id, amount, group_name")
+      .eq("id", rwrId)
+      .single();
+    if (rwrErr || !rwrRow) return json({ ok: false, error: "Request not found" }, 404);
+
+    const ownerId = rwrRow.owner_id as string;
+    const ajoPerms = await resolveAjoPerms(sb, user.id, ownerId);
+    if (ajoPerms === false) return json({ ok: false, error: "Unauthorized" }, 403);
+    if (ajoPerms !== null && !(ajoPerms as Record<string, unknown>).ajo_record_withdrawals) {
+      return json({ ok: false, error: "Permission denied: Ajo withdrawal not enabled for your account" }, 403);
+    }
+
+    const { error: updErr } = await sb
+      .from("ajo_withdrawal_requests")
+      .update({ status: "rejected", approved_at: new Date().toISOString() })
+      .eq("id", rwrId);
+    if (updErr) return json({ ok: false, error: updErr.message });
+
+    const clientId = rwrRow.aso_client_id as string;
+    const ctx = await fetchEmailContext(sb, clientId, ownerId, user.id);
+    await fireAjoEmail("ajo_withdrawal_rejected", {
+      client_email:  ctx.clientEmail,
+      client_name:   ctx.clientName,
+      user_email:    ctx.ownerEmail,
+      business_name: ctx.businessName,
+      group_name:    (rwrRow as Record<string, unknown>).group_name || "",
+      amount:        (rwrRow as Record<string, unknown>).amount,
+      reason:        rwrReason || "",
+      date:          new Date().toLocaleDateString("en-NG"),
+    });
+
+    return json({ ok: true });
   }
 
   if (action === "reverse_contribution") {

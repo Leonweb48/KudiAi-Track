@@ -14,7 +14,6 @@ import { AmountDisplay } from "../components/shared/AmountDisplay";
 import { createReportPdf, fmtCurrency as pdfFmt, fmtDate as pdfFmtDate } from "../utils/generateReportPdf";
 import { useT } from "../contexts/LanguageContext";
 import { getLang, speakConfirmation } from "../utils/i18n";
-import { sendEmailTrigger } from "../utils/emailTrigger";
 import TransactionPinModal from "../components/TransactionPinModal";
 
 const BLANK = {
@@ -783,27 +782,6 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
       const newBalance = writeData.new_balance ?? (cl.current_balance || 0) - req.amount;
 
-      // Rule: always notify business owner + ajo client when withdrawal is approved
-      // Emails resolved server-side from IDs to guarantee fresh delivery
-      sendEmailTrigger("ajo_withdrawal_approved", {
-        client_id:     req.aso_client_id,
-        client_name:   cl.full_name  || "",
-        client_email:  cl.email      || "",
-        client_phone:  cl.phone      || "",
-        owner_id:      req.owner_id,
-        owner_email:   profile?.email || "",
-        business_name: profile?.business_name || "",
-        business_phone:profile?.phone || "",
-        group_name:    cl.group_name || req.group_name || "",
-        amount:        req.amount,
-        fee_type:      req.fee_type,
-        fee_amount:    req.fee_amount,
-        net_amount:    req.net_amount,
-        balance_after: newBalance,
-        approved_by:   profile?.display_name || profile?.business_name || "",
-        date:          new Date().toLocaleDateString("en-NG"),
-      });
-
       reloadWithdrawalRequests();
     } catch (e) {
       console.error("Approve failed:", e);
@@ -815,25 +793,13 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const handleRejectRequest = async (req) => {
     setProcessingId(req.id);
     try {
-      await supabase.from("ajo_withdrawal_requests")
-        .update({ status: "rejected", approved_at: new Date().toISOString() })
-        .eq("id", req.id);
-      const cl = req.aso_clients || {};
-      sendEmailTrigger("ajo_withdrawal_rejected", {
-        client_id:     req.aso_client_id,
-        client_name:   cl.full_name || "",
-        client_email:  cl.email     || "",
-        client_phone:  cl.phone     || "",
-        owner_id:      req.owner_id,
-        owner_email:   profile?.email || "",
-        business_name: profile?.business_name || "",
-        business_phone:profile?.phone || "",
-        group_name:    cl.group_name || req.group_name || "",
-        amount:        req.amount || 0,
-        reason:        req.reason || "",
-        rejected_by:   profile?.display_name || profile?.business_name || "",
-        date:          new Date().toLocaleDateString("en-NG"),
+      const { data: rwData, error: rwErr } = await supabase.functions.invoke("ajo-write", {
+        body: { action: "reject_withdrawal_request", request_id: req.id },
       });
+      if (rwErr || !rwData?.ok) {
+        console.error("Reject failed:", rwErr?.message || rwData?.error);
+        return;
+      }
       reloadWithdrawalRequests();
     } catch (e) {
       console.error("Reject failed:", e);
