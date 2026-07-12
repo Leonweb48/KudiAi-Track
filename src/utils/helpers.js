@@ -1,6 +1,20 @@
 export const fmt = (n) =>
   `₦${Number(n || 0).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
 
+export const fmtDate = (iso) => {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d)) return "—";
+  return d.toLocaleDateString("en-NG", { dateStyle: "medium" });
+};
+
+export const fmtDateTime = (iso) => {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d)) return "—";
+  return d.toLocaleString("en-NG", { dateStyle: "medium", timeStyle: "short" });
+};
+
 export const today = () => new Date().toISOString().split("T")[0];
 
 export const uid = () =>

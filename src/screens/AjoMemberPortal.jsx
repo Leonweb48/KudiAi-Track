@@ -3,7 +3,7 @@ import { openPaystackPopup } from "../utils/paystackCheckout";
 import { supabase } from "../utils/supabase";
 import BillPayments from "./BillPayments";
 import CashbackCard from "../components/CashbackCard";
-import { fmt } from "../utils/helpers";
+import { fmt, fmtDate, fmtDateTime } from "../utils/helpers";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
 import Icon from "../components/Icon";
 import Modal from "../components/shared/Modal";
@@ -71,15 +71,9 @@ function greetingText(t) {
   const h = new Date().getHours();
   return h < 12 ? t("greet.morning") : h < 17 ? t("greet.afternoon") : t("greet.evening");
 }
-function fmtDate(lang) {
+function fmtLocaleDate(lang) {
   const locale = lang === "ha" ? "ha" : lang === "yo" ? "yo" : lang === "ig" ? "ig" : "en-NG";
   return new Date().toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
-}
-function fmtShortDate(iso) {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (isNaN(d)) return "—";
-  return d.toLocaleDateString("en-NG", { dateStyle: "medium" });
 }
 const LEDGER_LABELS = {
   contribution:     "Contribution",
@@ -674,7 +668,7 @@ function ContribCalendar({ contributions }) {
       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Activity — last 90 days</p>
       <div className="flex flex-wrap gap-0.5">
         {cells.map(({ date, has }) => (
-          <div key={date} title={date}
+          <div key={date} title={fmtDate(date)}
             className={`w-3 h-3 rounded-sm ${has ? "bg-brand-500" : "bg-slate-200 dark:bg-slate-700"}`} />
         ))}
       </div>
@@ -1232,7 +1226,7 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
         <h1 className="text-2xl font-black text-slate-800 dark:text-white leading-tight">
           {(client?.full_name || "").split(" ")[0] || "Member"} 👋
         </h1>
-        <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{fmtDate(lang)}</p>
+        <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{fmtLocaleDate(lang)}</p>
       </div>
 
       {/* AI insight card */}
@@ -1373,7 +1367,7 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
                 : `Due in ${daysUntilDue} day${daysUntilDue !== 1 ? "s" : ""}`}
             </p>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 capitalize">
-              {client.contribution_frequency} &middot; {fmt(client.contribution_amount)} &middot; {fmtShortDate(client.next_contribution_date)}
+              {client.contribution_frequency} &middot; {fmt(client.contribution_amount)} &middot; {fmtDate(client.next_contribution_date)}
             </p>
           </div>
         </div>
@@ -1479,7 +1473,7 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-bold text-amber-700 dark:text-amber-300">Pending Review</p>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">{fmtShortDate(r.requested_at)}</p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">{fmtDate(r.requested_at)}</p>
                 </div>
                 <div className="text-right flex-shrink-0">
                   <p className="text-xs font-extrabold text-amber-600 dark:text-amber-400">{fmt(r.amount)}</p>
@@ -1531,7 +1525,7 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
                 <div className={`w-2 h-2 rounded-full flex-shrink-0 ${c.type === "contribution" ? "bg-green-500" : "bg-red-400"}`} />
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">{ledgerTypeLabel(c.type)}</p>
-                  <p className="text-[10px] text-slate-400">{fmtShortDate(c.created_at)} &middot; {c.payment_method || "cash"}</p>
+                  <p className="text-[10px] text-slate-400">{fmtDate(c.created_at)} &middot; {c.payment_method || "cash"}</p>
                 </div>
                 <span className={`text-sm font-extrabold tabular flex-shrink-0 ${c.type === "contribution" ? "text-green-600 dark:text-green-400" : "text-red-500"}`}>
                   {c.type === "contribution" ? "+" : "−"}{fmt(c.amount)}
@@ -1710,7 +1704,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
                   {item.fee_amount > 0 && ` · Fee: ${fmt(item.fee_amount)}`}
                 </p>
                 <p className="text-[10px] text-slate-400 mt-0.5">
-                  {new Date(item.date).toLocaleString("en-NG", { dateStyle: "medium", timeStyle: "short" })}
+                  {fmtDateTime(item.date)}
                 </p>
               </div>
             </div>
@@ -1776,7 +1770,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
                     {item.paystack_ref && ` · Ref: ${item.paystack_ref.slice(-8)}`}
                   </p>
                   <p className="text-[10px] text-slate-400 mt-0.5">
-                    {new Date(item.created_at).toLocaleString("en-NG", { dateStyle: "medium", timeStyle: "short" })}
+                    {fmtDateTime(item.created_at)}
                   </p>
                   {item.claim_notes && <p className="text-[10px] text-slate-400 italic mt-0.5">"{item.claim_notes}"</p>}
                   {!item.claim_notes && item.notes && <p className="text-[10px] text-slate-400 italic mt-0.5">"{item.notes}"</p>}
@@ -1804,7 +1798,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
           <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-2xl p-5 shadow-xl">
             <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-1">Report an Issue</h3>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-3">
-              {fmtShortDate(disputeFor.created_at)} &middot; {disputeFor.type === "contribution" ? "+" : "−"}{fmt(disputeFor.amount)}
+              {fmtDate(disputeFor.created_at)} &middot; {disputeFor.type === "contribution" ? "+" : "−"}{fmt(disputeFor.amount)}
             </p>
             <textarea
               value={disputeDesc}

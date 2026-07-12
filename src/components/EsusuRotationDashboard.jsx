@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import TransactionPinModal from "./TransactionPinModal";
+import { fmtDate } from "../utils/helpers";
 
 const fmtCur = (n) =>
   `₦${Number(n || 0).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
@@ -344,7 +345,7 @@ export default function EsusuRotationDashboard({
               </p>
               {currentTurn.expected_payout_date && (
                 <p className="text-[10px] text-slate-400 mt-0.5">
-                  Due {new Date(currentTurn.expected_payout_date).toLocaleDateString("en-NG", { day: "numeric", month: "short" })}
+                  Due {fmtDate(currentTurn.expected_payout_date)}
                 </p>
               )}
             </div>
@@ -531,7 +532,7 @@ export default function EsusuRotationDashboard({
                   </div>
                   {turn.expected_payout_date && (
                     <p className="text-[10px] text-slate-400 mt-0.5">
-                      Expected: {new Date(turn.expected_payout_date).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })}
+                      Expected: {fmtDate(turn.expected_payout_date)}
                     </p>
                   )}
                   {turn.status === "paid" && turn.payout_contribution_id && (
