@@ -825,7 +825,25 @@ serve(async (req) => {
         }
       }
 
-      return json({ group: grGroup, round: grRound || null, turns, members: memberList, contribution_ticks, pot_size });
+      // Pending Esusu debts for the active round (show to owner; member sees own only)
+      let pending_debts: unknown[] = [];
+      if (grRound) {
+        const { data: dbDebts } = await sb
+          .from("ajo_esusu_debts")
+          .select("id, debtor_client_id, amount, created_at")
+          .eq("round_id", grRound.id)
+          .eq("status", "pending");
+
+        if (isOwnerRequest) {
+          pending_debts = dbDebts || [];
+        } else if (grClientId) {
+          pending_debts = (dbDebts || []).filter(
+            (d: { debtor_client_id: string }) => d.debtor_client_id === grClientId
+          );
+        }
+      }
+
+      return json({ group: grGroup, round: grRound || null, turns, members: memberList, contribution_ticks, pot_size, pending_debts });
     }
 
     // ── Assign a client to an Ajo group ───────────────────────────────────
@@ -840,6 +858,37 @@ serve(async (req) => {
         .eq("id", client_id)
         .eq("user_id", owner_id);
       if (assignErr) return json({ error: assignErr.message }, 500);
+
+      // Email notification when adding to a group (not when removing)
+      if (group_id) {
+        const [assignedClient, assignedGroup, ownerProfile] = await Promise.all([
+          sb.from("aso_clients").select("full_name, email").eq("id", client_id).maybeSingle().then(r => r.data),
+          sb.from("ajo_groups").select("name, group_mode").eq("id", group_id).maybeSingle().then(r => r.data),
+          sb.from("profiles").select("email, business_name").eq("id", owner_id).maybeSingle().then(r => r.data),
+        ]);
+        if ((assignedClient as { email?: string } | null)?.email && assignedGroup) {
+          const event = (assignedGroup as { group_mode?: string }).group_mode === "rotating"
+            ? "ajo_esusu_member_added"
+            : "ajo_savings_group_member_added";
+          fetch("https://admin.kudiai.app/api/public/email-trigger", {
+            method:  "POST",
+            headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
+            body: JSON.stringify({
+              event,
+              data: {
+                client_name:   (assignedClient as { full_name?: string }).full_name || "",
+                client_email:  (assignedClient as { email?: string }).email,
+                group_name:    (assignedGroup as { name?: string }).name || "",
+                group_mode:    (assignedGroup as { group_mode?: string }).group_mode,
+                owner_email:   (ownerProfile as { email?: string } | null)?.email   || "",
+                business_name: (ownerProfile as { business_name?: string } | null)?.business_name || "",
+                date: new Date().toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" }),
+              },
+            }),
+          }).catch(() => null);
+        }
+      }
+
       return json({ success: true });
     }
 

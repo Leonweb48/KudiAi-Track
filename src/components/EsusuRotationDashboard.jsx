@@ -183,7 +183,11 @@ export default function EsusuRotationDashboard({
   const [closingRound,  setClosingRound] = useState(false);
   const [closeResult,   setCloseResult]  = useState(null);
 
-  const { group = null, round = null, turns = [], members = [], contribution_ticks = {}, pot_size = 0 } = data || {};
+  const { group = null, round = null, turns = [], members = [], contribution_ticks = {}, pot_size = 0, pending_debts = [] } = data || {};
+
+  // Build debt lookup: client_id → amount owed (from previous payout periods)
+  const debtMap = {};
+  pending_debts.forEach(d => { debtMap[d.debtor_client_id] = Number(d.amount || 0); });
   const showNames = isOwner || (group?.privacy_show_names !== false);
 
   const currentTurn  = useMemo(() => turns.find(t => t.status === "current"),  [turns]);
@@ -345,18 +349,24 @@ export default function EsusuRotationDashboard({
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">This period</p>
             <div className="flex flex-wrap gap-2">
               {members.map(mb => {
-                const hasPaid = contribution_ticks[mb.id];
-                const isMe    = mb.id === myClientId;
+                const hasPaid  = contribution_ticks[mb.id];
+                const debtAmt  = debtMap[mb.id];
+                const isMe     = mb.id === myClientId;
                 return (
                   <div key={mb.id} title={displayName(mb.display_name, showNames)}
                     className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold border transition
                       ${isMe ? "ring-2 ring-violet-500 ring-offset-1" : ""}
                       ${hasPaid
                         ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800/50 text-green-700 dark:text-green-300"
+                        : debtAmt
+                        ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800/50 text-red-600 dark:text-red-400"
                         : "bg-slate-50 dark:bg-slate-700/50 border-slate-200 dark:border-slate-600 text-slate-400"
                       }`}>
-                    <span>{hasPaid ? "✓" : "·"}</span>
+                    <span>{hasPaid ? "✓" : debtAmt ? "!" : "·"}</span>
                     <span>{displayName(mb.display_name, showNames)}</span>
+                    {debtAmt && isOwner && (
+                      <span className="opacity-70">{fmtCur(debtAmt)}</span>
+                    )}
                   </div>
                 );
               })}
@@ -383,7 +393,19 @@ export default function EsusuRotationDashboard({
             </p>
           )}
           {payoutResult.round_complete && (
-            <p className="text-xs font-bold text-green-600 dark:text-green-400">🎉 Round complete — all members have received their payout.</p>
+            <p className="text-xs font-bold text-green-600 dark:text-green-400">Round complete — all members have received their payout.</p>
+          )}
+          {payoutResult.debtor_count > 0 && (
+            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-xl px-3 py-2 mt-1">
+              <p className="text-[11px] font-bold text-amber-700 dark:text-amber-400 mb-1">
+                {payoutResult.debtor_count} member{payoutResult.debtor_count > 1 ? "s" : ""} have outstanding contributions
+              </p>
+              {(payoutResult.debtors || []).map((d, i) => (
+                <p key={i} className="text-[10px] text-amber-600 dark:text-amber-500">
+                  {d.client_name} — owes {fmtCur(d.amount_owed)}
+                </p>
+              ))}
+            </div>
           )}
           <button onClick={() => setPayoutResult(null)}
             className="text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 underline underline-offset-2">

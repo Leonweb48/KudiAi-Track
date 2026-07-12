@@ -731,17 +731,74 @@ serve(async (req: Request) => {
     if (epErr) return json({ ok: false, error: epErr.message });
     if (!(epData as Record<string, unknown>)?.ok) return json(epData);
 
-    // Fire payout email
+    // Fire payout emails to beneficiary, all members, debtors, and owner
     const epResult = epData as Record<string, unknown>;
-    const { data: ownerRow } = await sb.from("profiles").select("email, business_name").eq("id", ownerId).maybeSingle();
-    await fireAjoEmail("ajo_esusu_payout", {
-      owner_email:       ownerRow?.email        || "",
-      business_name:     ownerRow?.business_name || "",
-      beneficiary_name:  epResult?.beneficiary_name  || "",
-      beneficiary_email: epResult?.beneficiary_email || "",
-      pot_amount:        epResult?.pot_amount        || 0,
-      round_complete:    epResult?.round_complete    || false,
-      date:              new Date().toLocaleDateString("en-NG"),
+    const groupId  = turnRow.group_id as string;
+    const today    = new Date().toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" });
+
+    const [ownerRow, groupRow, allMembers] = await Promise.all([
+      sb.from("profiles").select("email, business_name").eq("id", ownerId).maybeSingle().then(r => r.data),
+      sb.from("ajo_groups").select("name").eq("id", groupId).maybeSingle().then(r => r.data),
+      sb.from("aso_clients").select("id, full_name, email").eq("ajo_group_id", groupId).then(r => r.data || []),
+    ]);
+
+    const beneficiaryClientId = epResult.beneficiary_client_id as string;
+    const potAmount            = epResult.pot_amount as number;
+    const groupName            = (groupRow as { name?: string } | null)?.name || "";
+    const businessName         = (ownerRow as { business_name?: string } | null)?.business_name || "";
+    const ownerEmail           = (ownerRow as { email?: string } | null)?.email || "";
+
+    // 1. Receipt to beneficiary
+    await fireAjoEmail("ajo_esusu_payout_receipt", {
+      beneficiary_name:  epResult.beneficiary_name  || "",
+      beneficiary_email: epResult.beneficiary_email || "",
+      pot_amount:        potAmount,
+      group_name:        groupName,
+      business_name:     businessName,
+      round_complete:    epResult.round_complete || false,
+      date:              today,
+    });
+
+    // 2. Notify all other members
+    for (const member of allMembers as Array<{ id: string; full_name: string; email: string }>) {
+      if (!member.email || member.id === beneficiaryClientId) continue;
+      await fireAjoEmail("ajo_esusu_member_payout_notify", {
+        member_name:      member.full_name || "",
+        member_email:     member.email,
+        beneficiary_name: epResult.beneficiary_name || "",
+        pot_amount:       potAmount,
+        group_name:       groupName,
+        business_name:    businessName,
+        date:             today,
+      });
+    }
+
+    // 3. Debt notices to members who owe
+    const debtors = (epResult.debtors as Array<{ client_id: string; client_name: string; client_email: string; amount_owed: number }>) || [];
+    for (const debtor of debtors) {
+      if (!debtor.client_email) continue;
+      await fireAjoEmail("ajo_esusu_debt_notice", {
+        member_name:   debtor.client_name  || "",
+        member_email:  debtor.client_email,
+        amount_owed:   debtor.amount_owed,
+        group_name:    groupName,
+        business_name: businessName,
+        date:          today,
+      });
+    }
+
+    // 4. Full summary to owner
+    await fireAjoEmail("ajo_esusu_payout_owner_summary", {
+      owner_email:       ownerEmail,
+      business_name:     businessName,
+      beneficiary_name:  epResult.beneficiary_name  || "",
+      beneficiary_email: epResult.beneficiary_email || "",
+      pot_amount:        potAmount,
+      group_name:        groupName,
+      debtor_count:      epResult.debtor_count || 0,
+      debtors:           debtors,
+      round_complete:    epResult.round_complete || false,
+      date:              today,
     });
 
     return json(epData);
