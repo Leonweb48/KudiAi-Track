@@ -43,7 +43,7 @@ async function ajoFn(action, body = {}) {
   return data;
 }
 
-// â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Constants ─────────────────────────────────────────────────────────────
 const ADMIN_URL = "https://admin.kudiai.app";
 const YEAR      = new Date().getFullYear();
 
@@ -111,12 +111,12 @@ async function uploadAjoProof(file, clientId) {
   const path = `${clientId}/${Date.now()}.${ext}`;
   const { error } = await supabase.storage.from("ajo-proofs").upload(path, file, { contentType: file.type });
   if (error) throw new Error(error.message);
-  // Always use the direct Supabase URL â€” the proxy alias (kudiai.app/sb) baked into
+  // Always use the direct Supabase URL — the proxy alias (kudiai.app/sb) baked into
   // getPublicUrl breaks link opening in PWA/browser contexts.
   return `${process.env.REACT_APP_SUPABASE_URL}/storage/v1/object/public/ajo-proofs/${path}`;
 }
 
-// â”€â”€ Micro-components â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Micro-components ──────────────────────────────────────────────────────
 function Svg({ d, size = 18, color = "currentColor", sw = 2 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
@@ -179,7 +179,7 @@ function RowIcon({ d }) {
   return <Svg d={d} size={20} color="#64748b" />;
 }
 
-// â”€â”€ Skeleton loader â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Skeleton loader ────────────────────────────────────────────────────────
 function SkeletonHome() {
   const S = ({ w = "w-full", h = "h-4", r = "rounded-xl" }) => (
     <div className={`${w} ${h} ${r} bg-slate-200 dark:bg-slate-700 animate-pulse`} />
@@ -197,7 +197,7 @@ function SkeletonHome() {
   );
 }
 
-// â”€â”€ PIN setup modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── PIN setup modal ────────────────────────────────────────────────────────
 function PinSetupModal({ onDone, onClose }) {
   const [step,  setStep]  = useState(1);
   const [pin1,  setPin1]  = useState("");
@@ -264,7 +264,7 @@ function PinSetupModal({ onDone, onClose }) {
   );
 }
 
-// â”€â”€ Support ticket modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Support ticket modal ───────────────────────────────────────────────────
 function SupportModal({ onClose, clientName, clientEmail }) {
   const t = useT();
   const TICKET_TYPES = makeTicketTypes(t);
@@ -330,14 +330,14 @@ function SupportModal({ onClose, clientName, clientEmail }) {
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">Description</label>
-            <textarea placeholder="Describe the problem in detailâ€¦" value={form.description} onChange={e => setForm(f => ({...f, description: e.target.value}))} rows={3}
+            <textarea placeholder="Describe the problem in detail…" value={form.description} onChange={e => setForm(f => ({...f, description: e.target.value}))} rows={3}
               className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 resize-none" />
           </div>
-          {err && <p className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 px-3 py-2 rounded-xl">âš  {err}</p>}
+          {err && <p className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 px-3 py-2 rounded-xl">⚠ {err}</p>}
           <button type="submit" disabled={submitting}
             className="w-full py-3 bg-brand-500 disabled:opacity-50 text-white rounded-xl font-bold text-sm transition flex items-center justify-center gap-2">
             {submitting && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-            {submitting ? "Submittingâ€¦" : "Submit Ticket"}
+            {submitting ? "Submitting…" : "Submit Ticket"}
           </button>
         </form>
       )}
@@ -345,16 +345,16 @@ function SupportModal({ onClose, clientName, clientEmail }) {
   );
 }
 
-// â”€â”€ FAQ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── FAQ ────────────────────────────────────────────────────────────────────
 const FAQS = [
   { q: "How do I pay my contribution?",          a: "On the Home tab, tap the green 'Pay Contribution' button. You'll be redirected to a secure Paystack payment page." },
   { q: "How do I check my savings balance?",     a: "Your current balance is shown on the Home tab in the hero card at the top of the screen." },
-  { q: "How do I request a withdrawal?",         a: "On the Home tab, tap 'Request Withdrawal'. Enter the amount and submit â€” your savings agent will review and approve it." },
+  { q: "How do I request a withdrawal?",         a: "On the Home tab, tap 'Request Withdrawal'. Enter the amount and submit — your savings agent will review and approve it." },
   { q: "How do I view my contribution history?", a: "Tap the History tab at the bottom. You can filter by contributions or withdrawals." },
-  { q: "What is the contribution calendar?",     a: "The calendar on the Home tab shows your activity for the last 90 days â€” each purple square is a day you contributed." },
+  { q: "What is the contribution calendar?",     a: "The calendar on the Home tab shows your activity for the last 90 days — each purple square is a day you contributed." },
   { q: "What fees apply to withdrawals?",        a: "Check the fee info card on your Home tab. First withdrawals may have a registration fee; subsequent ones may have a percentage fee." },
-  { q: "What is the PIN lock for?",              a: "The PIN lock protects your portal when you step away. Go to Me â†’ Security to set it up." },
-  { q: "How do I update my profile photo?",      a: "Go to Me â†’ Edit Profile, then tap the camera icon on your avatar." },
+  { q: "What is the PIN lock for?",              a: "The PIN lock protects your portal when you step away. Go to Me → Security to set it up." },
+  { q: "How do I update my profile photo?",      a: "Go to Me → Edit Profile, then tap the camera icon on your avatar." },
   { q: "How do I change my password?",           a: "Go to the Me tab and tap 'Change Password' at the bottom of the page." },
 ];
 
@@ -376,15 +376,15 @@ function FAQ() {
   );
 }
 
-// â”€â”€ Pay Contribution modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// Contribution type selector â€” shown only when client is in a group (2 options)
+// ── Pay Contribution modal ────────────────────────────────────────────────
+// Contribution type selector — shown only when client is in a group (2 options)
 function ContribTypeSelector({ clientGroup, value, onChange }) {
   if (!clientGroup) return null;
   const opts = [
     { key: "personal_savings", label: "Personal Savings", desc: "Add to your personal savings balance" },
     clientGroup.group_mode === "rotating"
-      ? { key: "esusu_rotation", label: clientGroup.name, desc: "Esusu Rotation â€” contribute to the pot" }
-      : { key: "group_savings",  label: clientGroup.name, desc: "Savings Group â€” contribute to the pool" },
+      ? { key: "esusu_rotation", label: clientGroup.name, desc: "Esusu Rotation — contribute to the pot" }
+      : { key: "group_savings",  label: clientGroup.name, desc: "Savings Group — contribute to the pool" },
   ];
   return (
     <div className="mb-4">
@@ -428,7 +428,7 @@ function PayContributionModal({ client, clientGroup, onClose, onSuccess }) {
   const doVerify = useCallback(async (ref) => {
     if (!ref) return;
     setStatus("verifying");
-    setMessage("Verifying your paymentâ€¦");
+    setMessage("Verifying your payment…");
     try {
       const confirmation = await ajoFn("confirm-payment", { client_id: client.id, reference: ref });
       setStatus("done");
@@ -466,7 +466,7 @@ function PayContributionModal({ client, clientGroup, onClose, onSuccess }) {
     }
   };
 
-  // Full-screen success screen â€” tap "Share Receipt" for shareable receipt modal
+  // Full-screen success screen — tap "Share Receipt" for shareable receipt modal
   if (status === "done") {
     const receiptData = buildAjoContributionReceipt(
       {
@@ -474,7 +474,7 @@ function PayContributionModal({ client, clientGroup, onClose, onSuccess }) {
         amount: paidAmt || client?.contribution_amount || 0,
         created_at: new Date().toISOString(), payment_method: "paystack",
       },
-      client?.full_name || "â€”",
+      client?.full_name || "—",
       client?.group_name || "Ajo Group"
     );
 
@@ -559,7 +559,7 @@ function PayContributionModal({ client, clientGroup, onClose, onSuccess }) {
         <div className="bg-brand-50 dark:bg-brand-900/20 rounded-2xl px-4 py-4 mb-5">
           <p className="text-[10px] font-bold text-brand-500 dark:text-brand-400 uppercase tracking-wider mb-2">Amount to Contribute</p>
           <div className="flex items-center gap-2">
-            <span className="text-2xl font-black text-brand-600 dark:text-brand-300">â‚¦</span>
+            <span className="text-2xl font-black text-brand-600 dark:text-brand-300">₦</span>
             <input
               type="number"
               inputMode="numeric"
@@ -575,7 +575,7 @@ function PayContributionModal({ client, clientGroup, onClose, onSuccess }) {
             <button
               onClick={() => setCustomAmt(String(client.contribution_amount))}
               className="mt-2 text-[10px] text-brand-500 dark:text-brand-400 underline underline-offset-2">
-              Reset to default (â‚¦{fmt(client.contribution_amount)})
+              Reset to default (₦{fmt(client.contribution_amount)})
             </button>
           )}
           <p className="text-[11px] text-slate-400 mt-1 capitalize">{client?.contribution_frequency} contribution</p>
@@ -597,8 +597,8 @@ function PayContributionModal({ client, clientGroup, onClose, onSuccess }) {
             disabled={status === "verifying"}
             className="w-full mb-3 py-4 bg-brand-500 hover:bg-brand-600 disabled:opacity-60 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2 shadow-md">
             {status === "verifying"
-              ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Verifyingâ€¦</>
-              : "I've completed payment â€” tap to confirm"}
+              ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Verifying…</>
+              : "I've completed payment — tap to confirm"}
           </button>
         )}
 
@@ -616,9 +616,9 @@ function PayContributionModal({ client, clientGroup, onClose, onSuccess }) {
           disabled={status === "loading" || status === "awaiting" || status === "verifying"}
           className="w-full py-4 bg-brand-500 hover:bg-brand-600 disabled:opacity-60 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2 shadow-md">
           {status === "loading"
-            ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Opening Paystackâ€¦</>
+            ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Opening Paystack…</>
             : status === "awaiting" ? "Open Paystack again"
-            : <>Pay â‚¦{fmt(parseFloat(customAmt) || 0)} now</>}
+            : <>Pay ₦{fmt(parseFloat(customAmt) || 0)} now</>}
         </button>
         <button onClick={onClose} disabled={status === "loading" || status === "verifying"}
           className="w-full mt-3 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition text-center py-2">
@@ -630,7 +630,7 @@ function PayContributionModal({ client, clientGroup, onClose, onSuccess }) {
   );
 }
 
-// â”€â”€ Quick Actions (Staff Portal style) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Quick Actions (Staff Portal style) ────────────────────────────────────
 function ActionBtn({ label, icon, bg, onClick }) {
   return (
     <button onClick={onClick}
@@ -645,7 +645,7 @@ function ActionBtn({ label, icon, bg, onClick }) {
   );
 }
 
-// â”€â”€ Bill service tiles for Quick Services grid â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Bill service tiles for Quick Services grid ─────────────────────────────
 const QUICK_SERVICES = [
   { id: "airtime",     label: "Airtime",     g1: "#ef4444", g2: "#dc2626", d: "M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81 19.79 19.79 0 01.25 2.18 2 2 0 012.22 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" },
   { id: "data",        label: "Data Bundle", g1: "#3b82f6", g2: "#1d4ed8", d: "M1 6l11-4 11 4|M1 12l11-4 11 4|M1 18l11-4 11 4" },
@@ -655,7 +655,7 @@ const QUICK_SERVICES = [
   { id: "more",        label: "More Bills",  g1: "#6366f1", g2: "#4f46e5", d: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2|M9 5a2 2 0 002 2h2a2 2 0 002-2|M9 5a2 2 0 012-2h2a2 2 0 012 2|M9 13h6|M9 17h4" },
 ];
 
-// â”€â”€ Contribution calendar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Contribution calendar ─────────────────────────────────────────────────
 function ContribCalendar({ contributions }) {
   const contribDates = new Set(
     contributions.filter(c => c.type === "contribution" && c.status === "completed")
@@ -670,7 +670,7 @@ function ContribCalendar({ contributions }) {
   }
   return (
     <div>
-      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Activity â€” last 90 days</p>
+      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Activity — last 90 days</p>
       <div className="flex flex-wrap gap-0.5">
         {cells.map(({ date, has }) => (
           <div key={date} title={date}
@@ -691,7 +691,7 @@ function ContribCalendar({ contributions }) {
   );
 }
 
-// â”€â”€ First-login force-password-change â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── First-login force-password-change ─────────────────────────────────────
 function AjoMemberFirstLogin({ ajoClient }) {
   const [password, setPassword] = useState("");
   const [confirm,  setConfirm]  = useState("");
@@ -721,7 +721,7 @@ function AjoMemberFirstLogin({ ajoClient }) {
           </svg>
         </div>
         <h2 className="text-xl font-extrabold text-slate-800 dark:text-white mb-2">Password set!</h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400">Taking you to your dashboardâ€¦</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400">Taking you to your dashboard…</p>
         <div className="mt-6 w-8 h-8 border-[3px] border-brand-500 border-t-transparent rounded-full animate-spin mx-auto" />
       </div>
     </div>
@@ -772,7 +772,7 @@ function AjoMemberFirstLogin({ ajoClient }) {
         {error && <p className="text-xs text-red-500 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/40 rounded-xl px-4 py-2.5">{error}</p>}
         <button onClick={submit} disabled={saving || password.length < 8 || password !== confirm}
           className="w-full bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white font-bold rounded-2xl py-4 text-sm transition">
-          {saving ? "Savingâ€¦" : "Set Password & Enter Dashboard â†’"}
+          {saving ? "Saving…" : "Set Password & Enter Dashboard →"}
         </button>
         <button onClick={() => supabase.auth.signOut()} className="w-full text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition text-center">
           Sign out
@@ -782,7 +782,7 @@ function AjoMemberFirstLogin({ ajoClient }) {
   );
 }
 
-// â”€â”€ Change password modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Change password modal ─────────────────────────────────────────────────
 function ChangePasswordModal({ onClose }) {
   const [pwd,     setPwd]     = useState("");
   const [confirm, setConfirm] = useState("");
@@ -824,7 +824,7 @@ function ChangePasswordModal({ onClose }) {
             </div>
             <button onClick={handle} disabled={saving || pwd.length < 8 || pwd !== confirm}
               className="w-full py-3.5 bg-brand-500 hover:bg-brand-600 text-white rounded-xl font-bold text-sm transition disabled:opacity-50">
-              {saving ? "Updatingâ€¦" : "Update Password"}
+              {saving ? "Updating…" : "Update Password"}
             </button>
           </>
         )}
@@ -833,7 +833,7 @@ function ChangePasswordModal({ onClose }) {
   );
 }
 
-// â”€â”€ Manual deposit modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Manual deposit modal ──────────────────────────────────────────────────
 function ManualDepositModal({ client, clientGroup, ownerInfo, onClose, onSuccess }) {
   const [amount,     setAmount]     = useState("");
   const [payerName,  setPayerName]  = useState("");
@@ -966,7 +966,7 @@ function ManualDepositModal({ client, clientGroup, ownerInfo, onClose, onSuccess
               </div>
             )}
 
-            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Amount Transferred (â‚¦) <span className="text-red-500">*</span></label>
+            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Amount Transferred (₦) <span className="text-red-500">*</span></label>
             <input
               type="number" inputMode="decimal"
               value={amount} onChange={e => setAmount(e.target.value)}
@@ -997,7 +997,7 @@ function ManualDepositModal({ client, clientGroup, ownerInfo, onClose, onSuccess
               <div className="relative mb-3">
                 <img src={proofPrev} alt="Proof" className="w-full rounded-xl object-cover max-h-40 border border-slate-200 dark:border-slate-600" />
                 <button onClick={() => { setProofFile(null); setProofPrev(null); }}
-                  className="absolute top-2 right-2 w-7 h-7 bg-black/50 rounded-full flex items-center justify-center text-white text-xs font-bold">âœ•</button>
+                  className="absolute top-2 right-2 w-7 h-7 bg-black/50 rounded-full flex items-center justify-center text-white text-xs font-bold">✕</button>
               </div>
             ) : (
               <button onClick={() => fileRef.current?.click()}
@@ -1005,7 +1005,7 @@ function ManualDepositModal({ client, clientGroup, ownerInfo, onClose, onSuccess
                 <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                   <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>
                 </svg>
-                Upload screenshot (â‰¤ 2 MB)
+                Upload screenshot (≤ 2 MB)
               </button>
             )}
 
@@ -1015,7 +1015,7 @@ function ManualDepositModal({ client, clientGroup, ownerInfo, onClose, onSuccess
               onClick={handleSubmit}
               disabled={saving || !amtNum || amtNum <= 0}
               className="w-full py-3.5 bg-brand-500 hover:bg-brand-600 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] disabled:opacity-50 shadow-sm flex items-center justify-center gap-2">
-              {uploading ? "Uploading proofâ€¦" : saving ? "Submittingâ€¦" : "Submit Deposit Claim"}
+              {uploading ? "Uploading proof…" : saving ? "Submitting…" : "Submit Deposit Claim"}
             </button>
 
             <p className="text-[10px] text-slate-400 text-center mt-3">
@@ -1029,7 +1029,7 @@ function ManualDepositModal({ client, clientGroup, ownerInfo, onClose, onSuccess
   );
 }
 
-// â”€â”€ Withdrawal request modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Withdrawal request modal ──────────────────────────────────────────────
 function WithdrawRequestModal({ client, onClose, onSuccess }) {
   const [amount,  setAmount]  = useState("");
   const [saving,  setSaving]  = useState(false);
@@ -1092,7 +1092,7 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
             {isFirst && regFee > 0 && (
               <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl px-3 py-2 mb-3">
                 <p className="text-xs text-blue-700 dark:text-blue-300 font-semibold">
-                  First withdrawal â€” Registration fee: {fmt(regFee)} will be deducted
+                  First withdrawal — Registration fee: {fmt(regFee)} will be deducted
                 </p>
               </div>
             )}
@@ -1104,7 +1104,7 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
               </div>
             )}
 
-            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Amount (â‚¦)</label>
+            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Amount (₦)</label>
             <input
               type="number" inputMode="decimal"
               value={amount} onChange={e => setAmount(e.target.value)}
@@ -1123,7 +1123,7 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
                     <span className="text-slate-500 dark:text-slate-400">
                       {isFirst ? "Registration fee" : `Fee (${pctFee}%)`}
                     </span>
-                    <span className="font-bold text-red-500">âˆ’{fmt(feeAmt)}</span>
+                    <span className="font-bold text-red-500">−{fmt(feeAmt)}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-xs border-t border-slate-200 dark:border-slate-600 pt-1.5">
@@ -1149,7 +1149,7 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
               }}
               disabled={saving || !amtNum || amtNum <= 0}
               className="w-full py-3.5 bg-brand-500 hover:bg-brand-600 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] disabled:opacity-50 shadow-sm">
-              {saving ? "Submittingâ€¦" : "Submit Request"}
+              {saving ? "Submitting…" : "Submit Request"}
             </button>
           </>
         )}
@@ -1160,7 +1160,7 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
   );
 }
 
-// â”€â”€ Overview tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Overview tab ──────────────────────────────────────────────────────────
 function OverviewTab({ client, contributions, cycle, rotationData, rotationLoading, onWithdrawClick, onPayClick, onDepositClick, ownerInfo, withdrawRequests = [], onBillsClick, userEmail }) {
   const t = useT();
   const { lang } = useLanguage();
@@ -1210,12 +1210,12 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
   })();
 
   const insight = streak >= 3
-    ? `ðŸ”¥ ${streak}-month savings streak! You're on fire!`
+    ? `🔥 ${streak}-month savings streak! You're on fire!`
     : totalLastMonth > 0 && totalThisMonth > totalLastMonth
-      ? `ðŸ“ˆ You saved ${Math.round(((totalThisMonth - totalLastMonth) / totalLastMonth) * 100)}% more than last month!`
+      ? `📈 You saved ${Math.round(((totalThisMonth - totalLastMonth) / totalLastMonth) * 100)}% more than last month!`
       : healthScore >= 80
-        ? `â­ Your savings health score is ${healthScore}/100 â€” excellent!`
-        : `ðŸ’¡ ${fmt(client.total_saved || 0)} saved so far. Keep it up!`;
+        ? `⭐ Your savings health score is ${healthScore}/100 — excellent!`
+        : `💡 ${fmt(client.total_saved || 0)} saved so far. Keep it up!`;
 
   const daysUntilDue = client.next_contribution_date
     ? Math.ceil((new Date(client.next_contribution_date) - new Date()) / 86400000)
@@ -1229,7 +1229,7 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
       <div>
         <p className="text-sm text-slate-400 dark:text-slate-500 font-medium">{greetingText(t)}</p>
         <h1 className="text-2xl font-black text-slate-800 dark:text-white leading-tight">
-          {(client?.full_name || "").split(" ")[0] || "Member"} ðŸ‘‹
+          {(client?.full_name || "").split(" ")[0] || "Member"} 👋
         </h1>
         <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{fmtDate(lang)}</p>
       </div>
@@ -1250,11 +1250,11 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
           <div className="flex items-center gap-2 mb-4">
             {streak > 0 && (
               <span className="bg-white/15 backdrop-blur-sm rounded-full px-2.5 py-1 text-[11px] font-bold text-white">
-                ðŸ”¥ {streak}mo streak
+                🔥 {streak}mo streak
               </span>
             )}
             <span className="bg-white/15 backdrop-blur-sm rounded-full px-2.5 py-1 text-[11px] font-bold text-white">
-              â­ {healthScore}/100
+              ⭐ {healthScore}/100
             </span>
           </div>
           <div className="grid grid-cols-3 divide-x divide-white/20">
@@ -1299,7 +1299,7 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
             onClick={onBillsClick}
           />
         </div>
-        {/* Manual deposit row â€” full-width secondary button */}
+        {/* Manual deposit row — full-width secondary button */}
         <button
           onClick={onDepositClick}
           className="mt-3 w-full flex items-center justify-between gap-3 py-3 px-4 rounded-xl bg-slate-50 dark:bg-slate-700/60 border border-slate-200 dark:border-slate-600 active:scale-[0.99] transition text-left">
@@ -1431,7 +1431,7 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
           {editGoal ? (
             <div className="flex gap-2">
               <input type="number" value={goalInput} onChange={e => setGoalInput(e.target.value)}
-                placeholder="Target amount (â‚¦)"
+                placeholder="Target amount (₦)"
                 className="flex-1 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500" />
               <button onClick={() => {
                 const g = parseFloat(goalInput) || 0;
@@ -1460,7 +1460,7 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
       ) : (
         <button onClick={() => setEditGoal(true)}
           className="w-full py-3 border-2 border-dashed border-brand-200 dark:border-brand-800/50 rounded-2xl text-sm font-semibold text-brand-500 dark:text-brand-400 flex items-center justify-center gap-2">
-          ðŸŽ¯ Set a Savings Goal
+          🎯 Set a Savings Goal
         </button>
       )}
 
@@ -1482,7 +1482,7 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
                 </div>
                 <div className="text-right flex-shrink-0">
                   <p className="text-xs font-extrabold text-amber-600 dark:text-amber-400">{fmt(r.amount)}</p>
-                  <p className="text-[10px] text-green-600 dark:text-green-400">â†’ {fmt(r.net_amount)}</p>
+                  <p className="text-[10px] text-green-600 dark:text-green-400">→ {fmt(r.net_amount)}</p>
                 </div>
               </div>
             ))}
@@ -1544,7 +1544,7 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
   );
 }
 
-// â”€â”€ History tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── History tab ───────────────────────────────────────────────────────────
 function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo }) {
   const [typeFilter,     setTypeFilter]     = useState("all");
   const [receipt,        setReceipt]        = useState(null);
@@ -1618,7 +1618,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
       return {
         date:        pdfFmtDate(item.created_at || item.date),
         description: desc,
-        reference:   item.payment_method || item.status || "â€”",
+        reference:   item.payment_method || item.status || "—",
         debit:       isWd || isWdReq ? pdfFmt(amt) : "",
         credit:      isWd || isWdReq ? "" : pdfFmt(amt),
         balance:     pdfFmt(runBal),
@@ -1635,7 +1635,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
         ownerInfo?.staff?.phone          ? { value: ownerInfo.staff.phone,      sub: true } : null,
       ].filter(Boolean),
       entityDetails: [
-        { label: "Member",          value: client?.full_name || "â€”" },
+        { label: "Member",          value: client?.full_name || "—" },
         { label: "Current Balance", value: pdfFmt(client?.current_balance || 0) },
         { label: "Total Saved",     value: pdfFmt(client?.total_saved || totC) },
         { label: "Records",         value: String(allItems.length) },
@@ -1701,7 +1701,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-extrabold tabular text-brand-500 dark:text-brand-400">âˆ’{fmt(item.amount)}</span>
+                  <span className="text-sm font-extrabold tabular text-brand-500 dark:text-brand-400">−{fmt(item.amount)}</span>
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize flex-shrink-0 ${statusCls(item.status)}`}>{item.status}</span>
                 </div>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
@@ -1759,7 +1759,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
                       isRejectedManual ? "text-red-500 dark:text-red-400" :
                       isContrib        ? "text-green-600 dark:text-green-400" : "text-red-500"
                     }`}>
-                      {isContrib ? "+" : "âˆ’"}{fmt(item.amount)}
+                      {isContrib ? "+" : "−"}{fmt(item.amount)}
                     </span>
                     {!isPending && (
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize flex-shrink-0 ${statusCls(item.status)}`}>
@@ -1808,7 +1808,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
             <textarea
               value={disputeDesc}
               onChange={e => setDisputeDesc(e.target.value)}
-              placeholder="Describe the issue (optional)â€¦"
+              placeholder="Describe the issue (optional)…"
               rows={3}
               className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none mb-3"
             />
@@ -1832,7 +1832,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
                 setDisputeFor(null);
               }} disabled={disputeLoading}
                 className="flex-1 py-2.5 rounded-xl bg-brand-500 text-white text-sm font-bold disabled:opacity-50">
-                {disputeLoading ? "Submittingâ€¦" : "Submit Report"}
+                {disputeLoading ? "Submitting…" : "Submit Report"}
               </button>
             </div>
           </div>
@@ -1842,7 +1842,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
   );
 }
 
-// â”€â”€ Me tab (Staff Portal structure) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Me tab (Staff Portal structure) ───────────────────────────────────────
 function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProfileUpdate }) {
   const [view,         setView]        = useState("menu");
   const [editForm,     setEditForm]    = useState({ full_name: client?.full_name || "", phone: client?.phone || "" });
@@ -1917,7 +1917,7 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
           ))}
           <div>
             <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Email</p>
-            <input disabled value={client?.email || session?.user?.email || "â€”"}
+            <input disabled value={client?.email || session?.user?.email || "—"}
               className="w-full h-12 rounded-xl border border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-4 text-sm text-slate-400 cursor-not-allowed" />
           </div>
         </div>
@@ -1929,7 +1929,7 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
         )}
         <button onClick={saveProfile} disabled={saving}
           className="w-full h-12 rounded-2xl bg-brand-500 text-white font-bold text-sm flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50">
-          {saving ? "Savingâ€¦" : "Save Changes"}
+          {saving ? "Saving…" : "Save Changes"}
         </button>
       </div>
     </div>
@@ -1956,7 +1956,7 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
           <div className="flex-1 min-w-0">
             <p className="text-base font-extrabold text-slate-800 dark:text-slate-100 truncate">{client?.full_name || "Member"}</p>
             <p className="text-[12px] font-bold text-brand-500 dark:text-brand-400 capitalize mt-0.5">{client?.contribution_frequency || ""} savings</p>
-            <p className="text-[11px] text-slate-400 mt-0.5 font-mono">{client?.membership_number || "â€”"}</p>
+            <p className="text-[11px] text-slate-400 mt-0.5 font-mono">{client?.membership_number || "—"}</p>
           </div>
           <button onClick={() => setView("edit")}
             className="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-900/30 flex items-center justify-center active:scale-90 transition flex-shrink-0">
@@ -2091,7 +2091,7 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
   );
 }
 
-// â”€â”€ Bills wrapper â€” mirrors same store shape as CoopMemberPortal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Bills wrapper — mirrors same store shape as CoopMemberPortal ──────────
 function AjoMemberBillsWrapper({ client, ownerInfo, session, autoService, onAutoOpened }) {
   const [bills, setBills] = useState([]);
 
@@ -2141,7 +2141,7 @@ function AjoMemberBillsWrapper({ client, ownerInfo, session, autoService, onAuto
   );
 }
 
-// â”€â”€ Main portal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Main portal ───────────────────────────────────────────────────────────
 export default function AjoMemberPortal({ session, ajoClient }) {
   const t = useT();
 
@@ -2236,7 +2236,7 @@ export default function AjoMemberPortal({ session, ajoClient }) {
       .finally(() => setLoadingData(false));
   }, [mustChange, ajoClient?.id, ajoClient?.owner_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // â”€â”€ Realtime: sync balance/contributions from business side â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Realtime: sync balance/contributions from business side ────────────
   useEffect(() => {
     if (!ajoClient?.id) return;
 
@@ -2247,7 +2247,7 @@ export default function AjoMemberPortal({ session, ajoClient }) {
         (payload) => {
           if (!payload.new) return;
           setContributions(prev => [payload.new, ...prev]);
-          const amt = `â‚¦${Number(payload.new.amount || 0).toLocaleString("en-NG")}`;
+          const amt = `₦${Number(payload.new.amount || 0).toLocaleString("en-NG")}`;
           if (payload.new.type === "withdrawal") {
             notif.addNotification("aso", "Payment Processed", `${amt} paid out to you`);
           } else if (payload.new.type === "reversal") {
@@ -2260,7 +2260,7 @@ export default function AjoMemberPortal({ session, ajoClient }) {
         (payload) => {
           if (!payload.new) return;
           setContributions(prev => prev.map(c => c.id === payload.new.id ? { ...c, ...payload.new } : c));
-          const amt = `â‚¦${Number(payload.new.amount || 0).toLocaleString("en-NG")}`;
+          const amt = `₦${Number(payload.new.amount || 0).toLocaleString("en-NG")}`;
           if (payload.new.payment_method === "manual_transfer") {
             if (payload.new.status === "completed") {
               notif.addNotification("aso", "Deposit Confirmed", `${amt} bank transfer confirmed and added to your balance`);
@@ -2275,7 +2275,7 @@ export default function AjoMemberPortal({ session, ajoClient }) {
         (payload) => {
           refreshWithdrawRequests();
           if (payload.new?.status === "rejected") {
-            const amt = `â‚¦${Number(payload.new.amount || 0).toLocaleString("en-NG")}`;
+            const amt = `₦${Number(payload.new.amount || 0).toLocaleString("en-NG")}`;
             notif.addNotification("aso", "Withdrawal Declined", `Your ${amt} withdrawal request was declined`);
           }
         })
@@ -2378,7 +2378,7 @@ export default function AjoMemberPortal({ session, ajoClient }) {
             />
           )}
           {!client && tab !== "me" && <SkeletonHome />}
-          {/* Offers section â€” max 1 per session on client portal */}
+          {/* Offers section — max 1 per session on client portal */}
           {tab === "home" && (
             <>
               {ajoTabCard && ajoTabCard.slot === "tab_card_quad" && (
@@ -2399,7 +2399,7 @@ export default function AjoMemberPortal({ session, ajoClient }) {
           )}
         </main>
 
-        {/* Powered by card â€” always visible above bottom nav on client portals */}
+        {/* Powered by card — always visible above bottom nav on client portals */}
         <PoweredByCardSlot portalType="ajo_client" businessId={client?.owner_id} />
 
         {/* Bottom nav */}
@@ -2470,7 +2470,7 @@ export default function AjoMemberPortal({ session, ajoClient }) {
             { label: t("aiChip.coopBenefits")       || "Savings Goal",        q: "How am I doing with my savings goal?" },
             { label: t("aiChip.mySavings") + " Tips"|| "Savings Tips",        q: "Give me tips to save more consistently" },
           ]}
-          inputPlaceholder={t("aiChip.ajoPlaceholder") || "Ask about your savingsâ€¦"}
+          inputPlaceholder={t("aiChip.ajoPlaceholder") || "Ask about your savings…"}
         />
       )}
     </div>
