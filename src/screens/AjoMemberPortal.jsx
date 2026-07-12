@@ -3,7 +3,7 @@ import { openPaystackPopup } from "../utils/paystackCheckout";
 import { supabase } from "../utils/supabase";
 import BillPayments from "./BillPayments";
 import CashbackCard from "../components/CashbackCard";
-import { fmt, fmtDate, fmtDateTime } from "../utils/helpers";
+import { fmt, fmtDate, fmtDateTime, ledgerTypeLabel } from "../utils/helpers";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
 import Icon from "../components/Icon";
 import Modal from "../components/shared/Modal";
@@ -75,23 +75,7 @@ function fmtLocaleDate(lang) {
   const locale = lang === "ha" ? "ha" : lang === "yo" ? "yo" : lang === "ig" ? "ig" : "en-NG";
   return new Date().toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 }
-const LEDGER_LABELS = {
-  contribution:     "Contribution",
-  withdrawal:       "Withdrawal",
-  withdrawal_fee:   "Withdrawal Fee",
-  registration_fee: "Registration Fee",
-  commission:       "Commission",
-  esusu_payout:     "Esusu Payout",
-};
-function ledgerTypeLabel(type) {
-  if (!type) return "Transaction";
-  if (LEDGER_LABELS[type]) return LEDGER_LABELS[type];
-  if (type.startsWith("reversal_")) {
-    const base = LEDGER_LABELS[type.slice(9)];
-    return `Reversal${base ? ` · ${base}` : ""}`;
-  }
-  return type.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
-}
+
 async function uploadAjoAvatar(file, clientId) {
   const ext  = file.name.split(".").pop();
   const path = `ajo/${clientId}/avatar.${ext}`;
@@ -1603,12 +1587,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
       const isWdReq  = item._type === "withdrawal_request";
       const isFee    = item.type === "withdrawal_fee" || item.type === "registration_fee";
       const isWd     = !isWdReq && (item.type === "withdrawal" || isFee || item.type === "commission" || (item.type || "").startsWith("reversal_"));
-      const desc     = isWdReq ? "Withdrawal Request (Pending)"
-        : isFee        ? (item.type === "withdrawal_fee" ? "Withdrawal Fee" : "Registration Fee")
-        : item.type === "withdrawal"  ? "Withdrawal"
-        : item.type === "commission"  ? "Commission"
-        : (item.type || "").startsWith("reversal_") ? "Reversal"
-        : "Contribution";
+      const desc     = isWdReq ? "Withdrawal Request (Pending)" : ledgerTypeLabel(item.type);
       if (!isWdReq) { if (isWd) runBal -= amt; else runBal += amt; }
       return {
         date:        pdfFmtDate(item.created_at || item.date),

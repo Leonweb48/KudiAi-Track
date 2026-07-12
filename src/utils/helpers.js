@@ -1,6 +1,29 @@
 export const fmt = (n) =>
   `₦${Number(n || 0).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
 
+export const LEDGER_LABELS = {
+  contribution:              "Contribution",
+  withdrawal:                "Withdrawal",
+  withdrawal_fee:            "Withdrawal Fee",
+  registration_fee:          "Registration Fee",
+  commission:                "Commission",
+  esusu_payout:              "Esusu Payout",
+  reversal_contribution:     "Reversal · Contribution",
+  reversal_withdrawal:       "Reversal · Withdrawal",
+  reversal_withdrawal_fee:   "Reversal · Withdrawal Fee",
+  reversal_registration_fee: "Reversal · Registration Fee",
+};
+
+export const ledgerTypeLabel = (type) => {
+  if (!type) return "Transaction";
+  if (LEDGER_LABELS[type]) return LEDGER_LABELS[type];
+  if (type.startsWith("reversal_")) {
+    const base = LEDGER_LABELS[type.slice(9)];
+    return `Reversal${base ? ` · ${base}` : ""}`;
+  }
+  return type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+};
+
 export const fmtDate = (iso) => {
   if (!iso) return "—";
   const d = new Date(iso);

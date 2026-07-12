@@ -1,6 +1,8 @@
 // Builds standardized receipt data from raw transaction records per screen type.
 // Every function returns a common shape consumed by TransactionDetailModal + ReceiptCard.
 
+import { ledgerTypeLabel } from './helpers';
+
 // Change this when migrating payment processors (e.g. to Anchor).
 export const PROCESSOR_NAME = 'Paystack';
 
@@ -220,18 +222,23 @@ export function buildCoopWithdrawalRequestReceipt(request, memberName, orgName) 
 
 // ── Ajo contribution (logged — from AjoMemberPortal history list) ────────────
 export function buildAjoContributionReceipt(contribution, clientName, businessName) {
-  const isWithdrawal = contribution.type === 'withdrawal';
+  const t        = contribution.type || '';
+  const label    = t === 'contribution' ? 'Ajo Contribution'
+                 : t === 'withdrawal'   ? 'Ajo Withdrawal'
+                 : ledgerTypeLabel(t);
+  const isOut    = t === 'withdrawal' || t === 'withdrawal_fee' || t === 'registration_fee'
+                 || t === 'commission' || t.startsWith('reversal_');
   const statusMap = { completed: 'success', confirmed: 'success', pending: 'pending' };
   const { ref, image, pdf } = receiptFilenames(contribution.id, contribution.created_at || contribution.date);
 
   return {
-    title:     isWithdrawal ? 'Ajo Withdrawal' : 'Ajo Contribution',
-    direction: isWithdrawal ? 'out' : 'in',
+    title:     label,
+    direction: isOut ? 'out' : 'in',
     status:    statusMap[contribution.status] || 'success',
     amount:    contribution.amount,
     datetime:  formatReceiptDateTime(contribution.created_at || contribution.date),
     fields: [
-      { label: 'Transaction Type', value: isWithdrawal ? 'Ajo Withdrawal' : 'Ajo Contribution' },
+      { label: 'Transaction Type', value: label },
       clientName                  && { label: 'Member',         value: clientName },
       contribution.payment_method && { label: 'Payment Method', value: humanize(contribution.payment_method) },
                                      { label: 'Reference',      value: ref, copy: true },
