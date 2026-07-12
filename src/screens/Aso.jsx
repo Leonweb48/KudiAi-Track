@@ -15,6 +15,8 @@ import { createReportPdf, fmtCurrency as pdfFmt, fmtDate as pdfFmtDate } from ".
 import { useT } from "../contexts/LanguageContext";
 import { getLang, speakConfirmation } from "../utils/i18n";
 import TransactionPinModal from "../components/TransactionPinModal";
+import { Capacitor } from "@capacitor/core";
+import { InAppBrowser, ToolBarType } from "@capgo/capacitor-inappbrowser";
 
 const BLANK = {
   full_name: "", contribution_frequency: "daily", contribution_amount: "",
@@ -1043,14 +1045,25 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                           /^https:\/\/kudiai\.app\/sb\//,
                           `${process.env.REACT_APP_SUPABASE_URL}/`
                         );
+                        const openProof = () => {
+                          if (Capacitor.isNativePlatform()) {
+                            InAppBrowser.openWebView({
+                              url: proofHref,
+                              toolbarType: ToolBarType.COMPACT,
+                              title: "Payment Proof",
+                            }).catch(() => window.open(proofHref, "_blank"));
+                          } else {
+                            window.open(proofHref, "_blank");
+                          }
+                        };
                         return (
-                          <a href={proofHref} target="_blank" rel="noopener noreferrer"
+                          <button onClick={openProof}
                             className="inline-flex items-center gap-1 text-[10px] font-bold text-violet-600 dark:text-violet-400 mt-1 hover:underline">
                             <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                               <path d="M14.5 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7.5L14.5 2z" /><polyline points="14 2 14 8 20 8" />
                             </svg>
                             View Proof
-                          </a>
+                          </button>
                         );
                       })()}
                     </div>
