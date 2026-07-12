@@ -330,7 +330,7 @@ const FAQS = [
   { q: "How do I check my savings balance?",     a: "Your current balance is shown on the Home tab in the hero card at the top of the screen." },
   { q: "How do I request a withdrawal?",         a: "On the Home tab, tap 'Request Withdrawal'. Enter the amount and submit — your savings agent will review and approve it." },
   { q: "How do I view my contribution history?", a: "Tap the History tab at the bottom. You can filter by contributions or withdrawals." },
-  { q: "What is the contribution calendar?",     a: "The calendar on the Home tab shows your activity for the last 90 days — each purple square is a day you contributed." },
+  { q: "What is the contribution calendar?",     a: "The calendar on the Home tab shows your activity for the last 90 days — each green square is a day you contributed." },
   { q: "What fees apply to withdrawals?",        a: "Check the fee info card on your Home tab. First withdrawals may have a registration fee; subsequent ones may have a percentage fee." },
   { q: "What is the PIN lock for?",              a: "The PIN lock protects your portal when you step away. Go to Me → Security to set it up." },
   { q: "How do I update my profile photo?",      a: "Go to Me → Edit Profile, then tap the camera icon on your avatar." },
