@@ -416,7 +416,7 @@ export default function ContributionCard({
         <TransactionPinModal
           title="Confirm Commission"
           subtitle={`Deduct ${fmtCurrency(commission.amount)} from ${clientName}'s balance`}
-          onConfirm={handleCommissionPin}
+          onApprove={handleCommissionPin}
           onCancel={() => setShowPinForCommission(false)}
         />
       )}

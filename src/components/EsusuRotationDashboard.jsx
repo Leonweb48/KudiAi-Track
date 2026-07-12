@@ -570,7 +570,7 @@ export default function EsusuRotationDashboard({
             pinFor.action === "skip"    ? "Confirm Skip" :
             "Confirm Reorder"
           }
-          onConfirm={handlePin}
+          onApprove={handlePin}
           onCancel={() => { setPinFor(null); setActionErr(""); }}
         />
       )}
