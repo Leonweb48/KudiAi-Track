@@ -13,6 +13,7 @@ import { fmt, today } from "../utils/helpers";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
 import { createReportPdf, fmtCurrency as pdfFmt, fmtDate as pdfFmtDate } from "../utils/generateReportPdf";
 import ContributionCard from "../components/ContributionCard";
+import EsusuRotationDashboard from "../components/EsusuRotationDashboard";
 import { useT } from "../contexts/LanguageContext";
 import { getLang, speakConfirmation } from "../utils/i18n";
 import TransactionPinModal from "../components/TransactionPinModal";
@@ -33,6 +34,7 @@ const BLANK = {
 const BLANK_GROUP = {
   name: "", description: "", contribution_amount: "", contribution_frequency: "monthly",
   bank_code: "", account_number: "", account_name: "",
+  group_mode: "savings", privacy_show_names: true, privacy_show_amounts: false,
 };
 
 const FREQ_DAYS = { daily: 1, weekly: 7, monthly: 30 };
@@ -372,6 +374,10 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const setG = (k, v) => setGf(p => ({ ...p, [k]: v }));
   const [groupSaving,    setGroupSaving]    = useState(false);
   const [groupError,     setGroupError]     = useState("");
+  // Rotation management
+  const [showRotation,   setShowRotation]   = useState(null); // group object
+  const [rotationData,   setRotationData]   = useState(null);
+  const [rotationLoading, setRotationLoading] = useState(false);
   const [resolving,      setResolving]      = useState(false);
   const [resolvedName,   setResolvedName]   = useState("");
   const [subAcctCreating, setSubAcctCreating] = useState(null); // group id
@@ -459,6 +465,65 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     }
   };
 
+  const loadRotation = async (groupId) => {
+    setRotationLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("ajo-portal", {
+        body: { action: "get-rotation", group_id: groupId },
+      });
+      if (error || data?.error) throw new Error(data?.error || error?.message || "Failed to load rotation");
+      setRotationData(data);
+    } catch (e) {
+      console.error("loadRotation:", e);
+      setRotationData(null);
+    } finally {
+      setRotationLoading(false);
+    }
+  };
+
+  const openRotation = (grp) => {
+    setShowRotation(grp);
+    setRotationData(null);
+    loadRotation(grp.id);
+  };
+
+  const handleStartRound = async (turns) => {
+    const { data, error } = await supabase.functions.invoke("ajo-write", {
+      body: { action: "start_round", group_id: showRotation.id, turns },
+    });
+    if (error || !data?.ok) throw new Error(data?.error || error?.message || "Failed to start round");
+    await loadRotation(showRotation.id);
+  };
+
+  const handleExecutePayout = async (turnId, pin) => {
+    const { data, error } = await supabase.functions.invoke("ajo-write", {
+      body: { action: "execute_payout", turn_id: turnId, pin },
+    });
+    if (error || !data?.ok) throw new Error(data?.error || error?.message || "Payout failed");
+  };
+
+  const handleSkipTurn = async (turnId, reason, moveToEnd, pin) => {
+    const { data, error } = await supabase.functions.invoke("ajo-write", {
+      body: { action: "skip_turn", turn_id: turnId, reason, move_to_end: moveToEnd, pin },
+    });
+    if (error || !data?.ok) throw new Error(data?.error || error?.message || "Skip failed");
+  };
+
+  const handleReorderTurns = async (roundId, newOrder, pin) => {
+    const { data, error } = await supabase.functions.invoke("ajo-write", {
+      body: { action: "reorder_turns", round_id: roundId, new_order: newOrder, pin },
+    });
+    if (error || !data?.ok) throw new Error(data?.error || error?.message || "Reorder failed");
+  };
+
+  const handleCloseRound = async (roundId) => {
+    const { data, error } = await supabase.functions.invoke("ajo-write", {
+      body: { action: "close_round", round_id: roundId },
+    });
+    if (error || !data?.ok) throw new Error(data?.error || error?.message || "Failed to close round");
+    return data;
+  };
+
   const resolveAccount = async () => {
     if (!gf.account_number || !gf.bank_code) { setGroupError("Select a bank and enter the account number first"); return; }
     setResolving(true); setGroupError(""); setResolvedName("");
@@ -498,6 +563,9 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           bank_code: gf.bank_code || null,
           account_number: gf.account_number || null,
           account_name: gf.account_name || null,
+          group_mode: gf.group_mode || "savings",
+          privacy_show_names:   gf.privacy_show_names  !== false,
+          privacy_show_amounts: gf.privacy_show_amounts === true,
         },
       });
       if (error || data?.error) throw new Error(data?.error || error?.message || "Failed to create group");
@@ -2151,6 +2219,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                   {groups.map(grp => {
                     const clientCount = asoClients.filter(c => c.ajo_group_id === grp.id).length;
                     const hasSubacct  = Boolean(grp.paystack_subaccount_code);
+                    const isRotating  = grp.group_mode === "rotating";
                     return (
                       <div key={grp.id} className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 border border-slate-100 dark:border-slate-700 shadow-sm">
                         <div className="flex items-start gap-3">
@@ -2168,6 +2237,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                               <span className="text-[10px] text-slate-400">{clientCount} client{clientCount !== 1 ? "s" : ""}</span>
                               {grp.contribution_frequency && <span className="text-[10px] text-slate-400">· {grp.contribution_frequency}</span>}
                               {grp.contribution_amount   && <span className="text-[10px] text-slate-400">· ₦{fmt(grp.contribution_amount)}</span>}
+                              {isRotating && <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300">Rotating</span>}
                             </div>
                             {grp.account_number && (
                               <p className="text-[10px] text-slate-400 mt-0.5 font-mono">
@@ -2197,6 +2267,16 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                             }
                           </button>
                         )}
+                        {isRotating && (
+                          <button
+                            onClick={() => { setShowGroups(false); openRotation(grp); }}
+                            className="w-full mt-2 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-bold text-xs transition active:scale-[0.99] flex items-center justify-center gap-1.5">
+                            <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                              <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                            </svg>
+                            Manage Rotation
+                          </button>
+                        )}
                       </div>
                     );
                   })}
@@ -2209,6 +2289,42 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                   <p className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">New Ajo Group</p>
                   {groupError && <p className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-xl">{groupError}</p>}
                   <Field label="Group Name *" value={gf.name} onChange={e => setG("name", e.target.value)} placeholder="e.g. Monday Women Ajo" />
+
+                  {/* Group mode toggle */}
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Group Type</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[["savings", "Savings Group"], ["rotating", "Rotating (Esusu)"]].map(([val, label]) => (
+                        <button key={val} type="button" onClick={() => setG("group_mode", val)}
+                          className={`py-2.5 rounded-xl text-xs font-bold border transition
+                            ${gf.group_mode === val
+                              ? "bg-violet-600 border-violet-600 text-white"
+                              : "bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-300"}`}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Privacy toggles for rotating groups */}
+                  {gf.group_mode === "rotating" && (
+                    <div className="bg-violet-50 dark:bg-violet-900/20 rounded-2xl p-3 space-y-2.5">
+                      <p className="text-[10px] font-bold text-violet-600 dark:text-violet-400 uppercase tracking-wider">Member Privacy</p>
+                      {[
+                        { key: "privacy_show_names",   label: "Show full names to members" },
+                        { key: "privacy_show_amounts", label: "Show others' amounts to members" },
+                      ].map(({ key, label }) => (
+                        <label key={key} className="flex items-center gap-3 cursor-pointer">
+                          <div className={`w-9 h-5 rounded-full transition-colors flex-shrink-0 relative ${gf[key] ? "bg-violet-600" : "bg-slate-300 dark:bg-slate-600"}`}
+                            onClick={() => setG(key, !gf[key])}>
+                            <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-all ${gf[key] ? "left-4" : "left-0.5"}`} />
+                          </div>
+                          <span className="text-xs text-slate-600 dark:text-slate-300">{label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-2 gap-2">
                     <Field label="Monthly Amount (₦)" type="number" value={gf.contribution_amount} onChange={e => setG("contribution_amount", e.target.value)} placeholder="0" />
                     <Field label="Frequency" as="select" value={gf.contribution_frequency} onChange={e => setG("contribution_frequency", e.target.value)}>
@@ -2268,6 +2384,47 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         </div>
       )}
       {txnPin && <TransactionPinModal {...txnPin} onCancel={() => setTxnPin(null)} />}
+
+      {/* ── Esusu Rotation Dashboard Modal ──────────────────────────────────── */}
+      {showRotation && (
+        <div className="fixed inset-0 z-[80] bg-black/50 flex items-end justify-center" onClick={e => { if (e.target === e.currentTarget) setShowRotation(null); }}>
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-t-3xl shadow-2xl flex flex-col" style={{ maxHeight: "92dvh" }}>
+            {/* Header */}
+            <div className="flex items-center gap-3 px-5 pt-5 pb-3 border-b border-slate-100 dark:border-slate-700 flex-shrink-0">
+              <div className="w-9 h-9 bg-violet-100 dark:bg-violet-900/40 rounded-xl flex items-center justify-center flex-shrink-0">
+                <svg viewBox="0 0 24 24" fill="none" className="w-4.5 h-4.5 text-violet-600 dark:text-violet-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                  <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                </svg>
+              </div>
+              <div className="flex-1">
+                <p className="font-extrabold text-slate-800 dark:text-white text-sm">{showRotation.name}</p>
+                <p className="text-[10px] text-slate-400">Esusu Rotation</p>
+              </div>
+              <button onClick={() => setShowRotation(null)} className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-500">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="w-3.5 h-3.5">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+              <EsusuRotationDashboard
+                data={rotationData}
+                loading={rotationLoading}
+                isOwner={true}
+                myClientId={null}
+                onRefresh={() => loadRotation(showRotation.id)}
+                onStartRound={handleStartRound}
+                onExecutePayout={handleExecutePayout}
+                onSkipTurn={handleSkipTurn}
+                onReorderTurns={handleReorderTurns}
+                onCloseRound={handleCloseRound}
+              />
+              <div className="h-4" />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

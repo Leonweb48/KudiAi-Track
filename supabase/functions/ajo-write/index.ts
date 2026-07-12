@@ -66,7 +66,7 @@ function json(body: unknown, status = 200): Response {
 }
 
 // ── PIN-requiring actions ─────────────────────────────────────────────────────
-const PIN_GATED = new Set(["record_withdrawal", "reverse_contribution", "archive_client", "confirm_manual_deposit", "execute_commission"]);
+const PIN_GATED = new Set(["record_withdrawal", "reverse_contribution", "archive_client", "confirm_manual_deposit", "execute_commission", "execute_payout", "skip_turn", "reorder_turns"]);
 
 // ── Resolve the true owner UUID for a client from the DB ─────────────────────
 async function resolveClientOwner(
@@ -678,6 +678,171 @@ serve(async (req: Request) => {
       .eq("id", contribution_id);
 
     return json({ ok: true });
+  }
+
+  // ── Esusu: start_round ─────────────────────────────────────────────────
+  if (action === "start_round") {
+    const { group_id: srGroupId, turns: srTurns } =
+      params as { group_id: string; turns: Array<{ client_id: string; expected_payout_date?: string }> };
+    if (!srGroupId) return json({ ok: false, error: "group_id required" }, 400);
+    if (!srTurns?.length) return json({ ok: false, error: "turns array required" }, 400);
+
+    const { data: grpRow } = await sb.from("ajo_groups").select("owner_id").eq("id", srGroupId).maybeSingle();
+    if (!grpRow) return json({ ok: false, error: "Group not found" }, 404);
+
+    const ajoPerms = await resolveAjoPerms(sb, user.id, grpRow.owner_id as string);
+    if (ajoPerms === false) return json({ ok: false, error: "Unauthorized" }, 403);
+    if (ajoPerms !== null && !ajoPerms.ajo_manage_clients) {
+      return json({ ok: false, error: "Permission denied: Ajo client management not enabled" }, 403);
+    }
+
+    const { data: srData, error: srErr } = await sb.rpc("ajo_start_round", {
+      p_group_id: srGroupId,
+      p_owner_id: grpRow.owner_id as string,
+      p_turns:    srTurns,
+    });
+    if (srErr) return json({ ok: false, error: srErr.message });
+    return json(srData);
+  }
+
+  // ── Esusu: execute_payout (PIN-gated) ──────────────────────────────────
+  if (action === "execute_payout") {
+    const { turn_id: epTurnId } = params as { turn_id: string };
+    if (!epTurnId) return json({ ok: false, error: "turn_id required" }, 400);
+
+    const { data: turnRow } = await sb.from("ajo_group_turns").select("group_id").eq("id", epTurnId).maybeSingle();
+    if (!turnRow) return json({ ok: false, error: "Turn not found" }, 404);
+
+    const { data: grpRow } = await sb.from("ajo_groups").select("owner_id").eq("id", turnRow.group_id as string).maybeSingle();
+    if (!grpRow) return json({ ok: false, error: "Group not found" }, 404);
+
+    const ownerId = grpRow.owner_id as string;
+    const ajoPerms = await resolveAjoPerms(sb, user.id, ownerId);
+    if (ajoPerms === false) return json({ ok: false, error: "Unauthorized" }, 403);
+    if (ajoPerms !== null && !ajoPerms.ajo_record_withdrawals) {
+      return json({ ok: false, error: "Permission denied: Ajo withdrawal recording not enabled" }, 403);
+    }
+
+    const { data: epData, error: epErr } = await sb.rpc("ajo_execute_payout", {
+      p_turn_id:  epTurnId,
+      p_owner_id: ownerId,
+    });
+    if (epErr) return json({ ok: false, error: epErr.message });
+    if (!(epData as Record<string, unknown>)?.ok) return json(epData);
+
+    // Fire payout email
+    const epResult = epData as Record<string, unknown>;
+    const { data: ownerRow } = await sb.from("profiles").select("email, business_name").eq("id", ownerId).maybeSingle();
+    await fireAjoEmail("ajo_esusu_payout", {
+      owner_email:       ownerRow?.email        || "",
+      business_name:     ownerRow?.business_name || "",
+      beneficiary_name:  epResult?.beneficiary_name  || "",
+      beneficiary_email: epResult?.beneficiary_email || "",
+      pot_amount:        epResult?.pot_amount        || 0,
+      round_complete:    epResult?.round_complete    || false,
+      date:              new Date().toLocaleDateString("en-NG"),
+    });
+
+    return json(epData);
+  }
+
+  // ── Esusu: skip_turn (PIN-gated) ───────────────────────────────────────
+  if (action === "skip_turn") {
+    const { turn_id: stTurnId, reason: stReason, move_to_end: stMoveToEnd = true } =
+      params as { turn_id: string; reason: string; move_to_end?: boolean };
+    if (!stTurnId)  return json({ ok: false, error: "turn_id required" }, 400);
+    if (!stReason)  return json({ ok: false, error: "reason required" }, 400);
+
+    const { data: turnRow } = await sb.from("ajo_group_turns").select("group_id, client_id").eq("id", stTurnId).maybeSingle();
+    if (!turnRow) return json({ ok: false, error: "Turn not found" }, 404);
+
+    const { data: grpRow } = await sb.from("ajo_groups").select("owner_id").eq("id", turnRow.group_id as string).maybeSingle();
+    if (!grpRow) return json({ ok: false, error: "Group not found" }, 404);
+
+    const ownerId = grpRow.owner_id as string;
+    const ajoPerms = await resolveAjoPerms(sb, user.id, ownerId);
+    if (ajoPerms === false) return json({ ok: false, error: "Unauthorized" }, 403);
+    if (ajoPerms !== null && !ajoPerms.ajo_manage_clients) {
+      return json({ ok: false, error: "Permission denied: Ajo client management not enabled" }, 403);
+    }
+
+    const { data: stData, error: stErr } = await sb.rpc("ajo_skip_turn", {
+      p_turn_id:     stTurnId,
+      p_owner_id:    ownerId,
+      p_reason:      stReason,
+      p_move_to_end: stMoveToEnd,
+    });
+    if (stErr) return json({ ok: false, error: stErr.message });
+    if (!(stData as Record<string, unknown>)?.ok) return json(stData);
+
+    // Notify the affected member
+    const ctx = await fetchEmailContext(sb, turnRow.client_id as string, ownerId, user.id);
+    await fireAjoEmail("ajo_esusu_turn_skipped", {
+      client_email:  ctx.clientEmail,
+      client_name:   ctx.clientName,
+      owner_email:   ctx.ownerEmail,
+      business_name: ctx.businessName,
+      reason:        stReason,
+      moved_to_end:  stMoveToEnd,
+      date:          new Date().toLocaleDateString("en-NG"),
+    });
+
+    return json(stData);
+  }
+
+  // ── Esusu: reorder_turns (PIN-gated) ───────────────────────────────────
+  if (action === "reorder_turns") {
+    const { round_id: rtRoundId, new_order: rtNewOrder } =
+      params as { round_id: string; new_order: Array<{ turn_id: string; position: number }> };
+    if (!rtRoundId)        return json({ ok: false, error: "round_id required" }, 400);
+    if (!rtNewOrder?.length) return json({ ok: false, error: "new_order required" }, 400);
+
+    const { data: roundRow } = await sb.from("ajo_group_rounds").select("group_id").eq("id", rtRoundId).maybeSingle();
+    if (!roundRow) return json({ ok: false, error: "Round not found" }, 404);
+
+    const { data: grpRow } = await sb.from("ajo_groups").select("owner_id").eq("id", roundRow.group_id as string).maybeSingle();
+    if (!grpRow) return json({ ok: false, error: "Group not found" }, 404);
+
+    const ownerId = grpRow.owner_id as string;
+    const ajoPerms = await resolveAjoPerms(sb, user.id, ownerId);
+    if (ajoPerms === false) return json({ ok: false, error: "Unauthorized" }, 403);
+    if (ajoPerms !== null && !ajoPerms.ajo_manage_clients) {
+      return json({ ok: false, error: "Permission denied: Ajo client management not enabled" }, 403);
+    }
+
+    const { data: rtData, error: rtErr } = await sb.rpc("ajo_reorder_turns", {
+      p_round_id:  rtRoundId,
+      p_owner_id:  ownerId,
+      p_new_order: rtNewOrder,
+    });
+    if (rtErr) return json({ ok: false, error: rtErr.message });
+    return json(rtData);
+  }
+
+  // ── Esusu: close_round ─────────────────────────────────────────────────
+  if (action === "close_round") {
+    const { round_id: crRoundId } = params as { round_id: string };
+    if (!crRoundId) return json({ ok: false, error: "round_id required" }, 400);
+
+    const { data: roundRow } = await sb.from("ajo_group_rounds").select("group_id").eq("id", crRoundId).maybeSingle();
+    if (!roundRow) return json({ ok: false, error: "Round not found" }, 404);
+
+    const { data: grpRow } = await sb.from("ajo_groups").select("owner_id").eq("id", roundRow.group_id as string).maybeSingle();
+    if (!grpRow) return json({ ok: false, error: "Group not found" }, 404);
+
+    const ownerId = grpRow.owner_id as string;
+    const ajoPerms = await resolveAjoPerms(sb, user.id, ownerId);
+    if (ajoPerms === false) return json({ ok: false, error: "Unauthorized" }, 403);
+    if (ajoPerms !== null && !ajoPerms.ajo_manage_clients) {
+      return json({ ok: false, error: "Permission denied: Ajo client management not enabled" }, 403);
+    }
+
+    const { data: crData, error: crErr } = await sb.rpc("ajo_close_round", {
+      p_round_id: crRoundId,
+      p_owner_id: ownerId,
+    });
+    if (crErr) return json({ ok: false, error: crErr.message });
+    return json(crData);
   }
 
   return json({ ok: false, error: `Unknown action: ${action}` }, 400);

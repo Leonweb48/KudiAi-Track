@@ -26,6 +26,7 @@ import { buildAjoMemberContext } from "../utils/buildContext";
 import { useT, useLanguage } from "../contexts/LanguageContext";
 import { createReportPdf, fmtCurrency as pdfFmt, fmtDate as pdfFmtDate } from "../utils/generateReportPdf";
 import ContributionCard from "../components/ContributionCard";
+import EsusuRotationDashboard from "../components/EsusuRotationDashboard";
 
 async function ajoFn(action, body = {}) {
   const { data, error } = await supabase.functions.invoke("ajo-portal", {
@@ -1095,7 +1096,7 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
 }
 
 // ── Overview tab ──────────────────────────────────────────────────────────
-function OverviewTab({ client, contributions, cycle, onWithdrawClick, onPayClick, onDepositClick, ownerInfo, withdrawRequests = [], onBillsClick, userEmail }) {
+function OverviewTab({ client, contributions, cycle, rotationData, rotationLoading, onWithdrawClick, onPayClick, onDepositClick, ownerInfo, withdrawRequests = [], onBillsClick, userEmail }) {
   const t = useT();
   const { lang } = useLanguage();
 
@@ -1433,6 +1434,20 @@ function OverviewTab({ client, contributions, cycle, onWithdrawClick, onPayClick
           clientName={client?.full_name || ""}
           businessName={ownerInfo?.owner?.business_name || ""}
         />
+      )}
+
+      {/* Esusu rotation dashboard (shown when member is in a rotating group with an active round) */}
+      {(rotationData?.round || rotationLoading) && (
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4 space-y-4">
+          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Ajo Rotation</p>
+          <EsusuRotationDashboard
+            data={rotationData}
+            loading={rotationLoading}
+            isOwner={false}
+            myClientId={client?.id}
+            onRefresh={null}
+          />
+        </div>
       )}
 
       {/* Activity calendar (always shown) */}
@@ -2059,6 +2074,8 @@ export default function AjoMemberPortal({ session, ajoClient }) {
   const [client,           setClient]           = useState(ajoClient || null);
   const [contributions,    setContributions]    = useState([]);
   const [cycle,            setCycle]            = useState(null);
+  const [rotationData,     setRotationData]     = useState(null);
+  const [rotationLoading,  setRotationLoading]  = useState(false);
   const [ownerInfo,        setOwnerInfo]        = useState(null);
   const [loadingData,      setLoadingData]      = useState(false);
   const [tab,              setTab]              = useState(() => {
@@ -2110,11 +2127,13 @@ export default function AjoMemberPortal({ session, ajoClient }) {
       ajoFn("get-active-cycle",       { client_id: ajoClient.id }),
     ])
       .then(([clientRes, contribRes, ownerRes, reqRes, cycleRes]) => {
+        let resolvedClient = null;
         if (clientRes.status === "fulfilled" && clientRes.value?.client) {
-          setClient(prev => ({
+          resolvedClient = {
             ...clientRes.value.client,
-            user_id: clientRes.value.client.user_id || prev?.user_id,
-          }));
+            user_id: clientRes.value.client.user_id || ajoClient?.user_id,
+          };
+          setClient(resolvedClient);
         }
         if (contribRes.status === "fulfilled" && contribRes.value?.contributions)
           setContributions(contribRes.value.contributions);
@@ -2124,6 +2143,18 @@ export default function AjoMemberPortal({ session, ajoClient }) {
           setWithdrawRequests(reqRes.value.requests);
         if (cycleRes.status === "fulfilled" && cycleRes.value?.cycle)
           setCycle(cycleRes.value.cycle);
+
+        // Fetch rotation data if the client belongs to a rotating group
+        const groupId = (resolvedClient || ajoClient)?.ajo_group_id;
+        if (groupId) {
+          setRotationLoading(true);
+          ajoFn("get-rotation", { group_id: groupId, client_id: ajoClient.id })
+            .then(rd => {
+              if (rd?.round) setRotationData(rd);
+            })
+            .catch(() => null)
+            .finally(() => setRotationLoading(false));
+        }
       })
       .catch(console.error)
       .finally(() => setLoadingData(false));
@@ -2214,6 +2245,8 @@ export default function AjoMemberPortal({ session, ajoClient }) {
               userEmail={client?.email || session?.user?.email}
               contributions={contributions}
               cycle={cycle}
+              rotationData={rotationData}
+              rotationLoading={rotationLoading}
               onWithdrawClick={() => setShowWithdraw(true)}
               onPayClick={() => setShowPay(true)}
               onDepositClick={() => setShowDeposit(true)}

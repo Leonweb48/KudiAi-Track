@@ -676,10 +676,12 @@ serve(async (req) => {
     // ── Create an Ajo group (business portal) ─────────────────────────────
     if (action === "create-group") {
       const { owner_id, name, description, contribution_amount, contribution_frequency,
-              bank_code, account_number, account_name } = body as {
+              bank_code, account_number, account_name,
+              group_mode, privacy_show_names, privacy_show_amounts } = body as {
         owner_id: string; name: string; description?: string;
         contribution_amount?: number; contribution_frequency?: string;
         bank_code?: string; account_number?: string; account_name?: string;
+        group_mode?: string; privacy_show_names?: boolean; privacy_show_amounts?: boolean;
       };
       if (!owner_id || !name) return json({ error: "owner_id and name required" }, 400);
 
@@ -692,6 +694,9 @@ serve(async (req) => {
         bank_code: bank_code || null,
         account_number: account_number || null,
         account_name: account_name || null,
+        group_mode: group_mode || "savings",
+        privacy_show_names:   privacy_show_names  !== false,
+        privacy_show_amounts: privacy_show_amounts === true,
       }).select().single();
 
       if (grpErr) return json({ error: grpErr.message }, 500);
@@ -718,6 +723,97 @@ serve(async (req) => {
         .single();
       if (grpErr) return json({ error: grpErr.message }, 500);
       return json({ group: grp });
+    }
+
+    // ── Get group rotation data (owner + member portal) ──────────────────
+    if (action === "get-rotation") {
+      const { group_id: grGroupId, client_id: grClientId } =
+        body as { group_id?: string; client_id?: string };
+      if (!grGroupId) return json({ error: "group_id required" }, 400);
+
+      // Fetch group
+      const { data: grGroup } = await sb.from("ajo_groups").select("*").eq("id", grGroupId).maybeSingle();
+      if (!grGroup) return json({ error: "Group not found" }, 404);
+
+      // If client_id provided, validate the client belongs to this group
+      const isOwnerRequest = !grClientId;
+      if (grClientId) {
+        const { data: grCl } = await sb.from("aso_clients").select("ajo_group_id").eq("id", grClientId).maybeSingle();
+        if (!grCl || grCl.ajo_group_id !== grGroupId) return json({ error: "Access denied" }, 403);
+      }
+
+      // Group members
+      const { data: grMembers } = await sb.from("aso_clients")
+        .select("id, full_name")
+        .eq("ajo_group_id", grGroupId)
+        .eq("status", "active");
+
+      const showFull = isOwnerRequest || (grGroup.privacy_show_names !== false);
+
+      const memberList = (grMembers || []).map((m: { id: string; full_name: string }) => ({
+        id:           m.id,
+        display_name: showFull
+          ? m.full_name
+          : (m.full_name || "").split(" ").map((w: string, i: number) => i === 0 ? w : w[0] + ".").join(" "),
+      }));
+
+      // Active round
+      const { data: grRound } = await sb.from("ajo_group_rounds")
+        .select("*")
+        .eq("group_id", grGroupId)
+        .eq("status", "active")
+        .maybeSingle();
+
+      let turns: unknown[] = [];
+      let contribution_ticks: Record<string, boolean> = {};
+      let pot_size = 0;
+
+      if (grRound) {
+        const { data: grTurns } = await sb.from("ajo_group_turns")
+          .select("*")
+          .eq("round_id", grRound.id)
+          .order("position", { ascending: true });
+
+        // Look up client names for turns
+        const turnClientIds = [...new Set((grTurns || []).map((t: { client_id: string }) => t.client_id))];
+        const { data: turnClients } = await sb.from("aso_clients").select("id, full_name").in("id", turnClientIds);
+        const clientNameMap: Record<string, string> = {};
+        (turnClients || []).forEach((c: { id: string; full_name: string }) => { clientNameMap[c.id] = c.full_name; });
+
+        turns = (grTurns || []).map((t: Record<string, unknown>) => {
+          const fullName = clientNameMap[t.client_id as string] || "";
+          return {
+            ...t,
+            client_name: showFull
+              ? fullName
+              : fullName.split(" ").map((w: string, i: number) => i === 0 ? w : w[0] + ".").join(" "),
+          };
+        });
+
+        // Pot + ticks from the current turn's period_start
+        const currentTurn = (turns as Array<{ status: string; period_start?: string }>).find(t => t.status === "current");
+        if (currentTurn?.period_start) {
+          const memberIds = memberList.map((m: { id: string }) => m.id);
+          if (memberIds.length > 0) {
+            const { data: grContribs } = await sb.from("ajo_contributions")
+              .select("aso_client_id, amount")
+              .in("aso_client_id", memberIds)
+              .eq("type", "contribution")
+              .eq("status", "completed")
+              .gte("created_at", currentTurn.period_start);
+
+            pot_size = (grContribs || []).reduce(
+              (s: number, c: { amount: number }) => s + Number(c.amount || 0), 0
+            );
+            const paidSet = new Set((grContribs || []).map((c: { aso_client_id: string }) => c.aso_client_id));
+            for (const m of memberList) {
+              contribution_ticks[m.id] = paidSet.has(m.id);
+            }
+          }
+        }
+      }
+
+      return json({ group: grGroup, round: grRound || null, turns, members: memberList, contribution_ticks, pot_size });
     }
 
     // ── Assign a client to an Ajo group ───────────────────────────────────
