@@ -355,7 +355,43 @@ function FAQ() {
 }
 
 // ── Pay Contribution modal ────────────────────────────────────────────────
-function PayContributionModal({ client, onClose, onSuccess }) {
+// Contribution type selector — shown only when client is in a group (2 options)
+function ContribTypeSelector({ clientGroup, value, onChange }) {
+  if (!clientGroup) return null;
+  const opts = [
+    { key: "personal_savings", label: "Personal Savings", desc: "Add to your personal savings balance" },
+    clientGroup.group_mode === "rotating"
+      ? { key: "esusu_rotation", label: clientGroup.name, desc: "Esusu Rotation — contribute to the pot" }
+      : { key: "group_savings",  label: clientGroup.name, desc: "Savings Group — contribute to the pool" },
+  ];
+  return (
+    <div className="mb-4">
+      <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Contributing to</p>
+      <div className="space-y-2">
+        {opts.map(opt => (
+          <button key={opt.key} type="button" onClick={() => onChange(opt.key)}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl border-2 text-left transition ${
+              value === opt.key
+                ? "border-violet-500 bg-violet-50 dark:bg-violet-900/20"
+                : "border-slate-200 dark:border-slate-700"
+            }`}>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-slate-800 dark:text-white truncate">{opt.label}</p>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">{opt.desc}</p>
+            </div>
+            <div className={`flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+              value === opt.key ? "border-violet-500 bg-violet-500" : "border-slate-300 dark:border-slate-600"
+            }`}>
+              {value === opt.key && <div className="w-2 h-2 rounded-full bg-white" />}
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PayContributionModal({ client, clientGroup, onClose, onSuccess }) {
   const [status,     setStatus]    = useState("idle"); // idle | loading | awaiting | verifying | done | error
   const [message,    setMessage]   = useState("");
   const [pendingRef, setPendingRef] = useState(null);
@@ -363,6 +399,7 @@ function PayContributionModal({ client, onClose, onSuccess }) {
   const [customAmt,  setCustomAmt] = useState(String(client?.contribution_amount || ""));
   const [txnPin,     setTxnPin]    = useState(null);
   const [showShare,  setShowShare] = useState(false);
+  const [contribCtx, setContribCtx] = useState("personal_savings");
   const popupCleanup = useRef(null);
   useEffect(() => () => popupCleanup.current?.(), []);
 
@@ -388,7 +425,7 @@ function PayContributionModal({ client, onClose, onSuccess }) {
     setPaidAmt(amt);
 
     try {
-      const res = await ajoFn("initialize-payment", { client_id: client.id, amount: amt });
+      const res = await ajoFn("initialize-payment", { client_id: client.id, amount: amt, contribution_context: contribCtx });
       if (!res.authorization_url) throw new Error("Payment initialization failed");
 
       const ref = res.reference;
@@ -444,7 +481,7 @@ function PayContributionModal({ client, onClose, onSuccess }) {
           <p className="text-[11px] font-bold text-green-500 uppercase tracking-widest mb-1">Transaction Successful</p>
           <AmountDisplay amount={paidAmt || client?.contribution_amount || 0} size="hero" align="center" style={{ marginBottom: 4 }} />
           <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 capitalize">
-            {client?.contribution_frequency} contribution · Paid via Paystack
+            {contribCtx === "esusu_rotation" ? "Esusu Rotation" : contribCtx === "group_savings" ? "Savings Group" : "Personal Savings"} · Paid via Paystack
           </p>
 
           <p className="text-[11px] text-slate-400 dark:text-slate-500">
@@ -493,6 +530,8 @@ function PayContributionModal({ client, onClose, onSuccess }) {
             </svg>
           </button>
         </div>
+
+        <ContribTypeSelector clientGroup={clientGroup} value={contribCtx} onChange={setContribCtx} />
 
         {/* Amount */}
         <div className="bg-violet-50 dark:bg-violet-900/20 rounded-2xl px-4 py-4 mb-5">
@@ -773,7 +812,7 @@ function ChangePasswordModal({ onClose }) {
 }
 
 // ── Manual deposit modal ──────────────────────────────────────────────────
-function ManualDepositModal({ client, ownerInfo, onClose, onSuccess }) {
+function ManualDepositModal({ client, clientGroup, ownerInfo, onClose, onSuccess }) {
   const [amount,     setAmount]     = useState("");
   const [payerName,  setPayerName]  = useState("");
   const [notes,      setNotes]      = useState("");
@@ -783,6 +822,7 @@ function ManualDepositModal({ client, ownerInfo, onClose, onSuccess }) {
   const [saving,     setSaving]     = useState(false);
   const [error,      setError]      = useState("");
   const [done,       setDone]       = useState(false);
+  const [contribCtx, setContribCtx] = useState("personal_savings");
   const fileRef = useRef(null);
 
   // Prefer the client's own dedicated account; fall back to the owner's business account
@@ -817,12 +857,13 @@ function ManualDepositModal({ client, ownerInfo, onClose, onSuccess }) {
         setUploading(false);
       }
       await ajoFn("submit-manual-claim", {
-        client_id:  client.id,
-        owner_id:   client.user_id,
-        amount:     amtNum,
-        payer_name: payerName.trim() || null,
-        notes:      notes.trim()     || null,
-        proof_url:  proofUrl,
+        client_id:            client.id,
+        owner_id:             client.user_id,
+        amount:               amtNum,
+        payer_name:           payerName.trim()    || null,
+        notes:                notes.trim()        || null,
+        proof_url:            proofUrl,
+        contribution_context: contribCtx,
       });
       setDone(true);
       onSuccess?.();
@@ -857,6 +898,8 @@ function ManualDepositModal({ client, ownerInfo, onClose, onSuccess }) {
           <>
             <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-0.5">Make a Deposit</h3>
             <p className="text-xs text-slate-400 dark:text-slate-500 mb-4">Transfer to the account below, then submit your claim here.</p>
+
+            <ContribTypeSelector clientGroup={clientGroup} value={contribCtx} onChange={setContribCtx} />
 
             {/* Bank details */}
             {hasBank ? (() => {
@@ -2150,7 +2193,7 @@ export default function AjoMemberPortal({ session, ajoClient }) {
           setRotationLoading(true);
           ajoFn("get-rotation", { group_id: groupId, client_id: ajoClient.id })
             .then(rd => {
-              if (rd?.round) setRotationData(rd);
+              if (rd?.group) setRotationData(rd);
             })
             .catch(() => null)
             .finally(() => setRotationLoading(false));
@@ -2337,6 +2380,7 @@ export default function AjoMemberPortal({ session, ajoClient }) {
       {showPay && client && (
         <PayContributionModal
           client={client}
+          clientGroup={rotationData?.group || null}
           onClose={() => setShowPay(false)}
           onSuccess={(ref, updatedClient) => {
             if (updatedClient) setClient(prev => ({ ...prev, ...updatedClient }));
@@ -2353,6 +2397,7 @@ export default function AjoMemberPortal({ session, ajoClient }) {
       {showDeposit && client && (
         <ManualDepositModal
           client={client}
+          clientGroup={rotationData?.group || null}
           ownerInfo={ownerInfo}
           onClose={() => setShowDeposit(false)}
           onSuccess={() => setShowDeposit(false)}

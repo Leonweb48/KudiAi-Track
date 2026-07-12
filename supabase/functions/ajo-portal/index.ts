@@ -448,9 +448,9 @@ serve(async (req) => {
 
     // ── Client submits a manual bank-transfer claim ───────────────
     if (action === "submit-manual-claim") {
-      const { client_id, owner_id, amount, payer_name, notes, proof_url } = body as {
+      const { client_id, owner_id, amount, payer_name, notes, proof_url, contribution_context = "personal_savings" } = body as {
         client_id: string; owner_id: string; amount: number;
-        payer_name?: string; notes?: string; proof_url?: string;
+        payer_name?: string; notes?: string; proof_url?: string; contribution_context?: string;
       };
 
       if (!client_id || !owner_id) return json({ error: "client_id and owner_id required" }, 400);
@@ -458,12 +458,13 @@ serve(async (req) => {
       if (!numAmt || numAmt <= 0) return json({ error: "Amount must be greater than zero" }, 400);
 
       const { data: rpcResult } = await sb.rpc("ajo_submit_manual_claim", {
-        p_client_id:  client_id,
-        p_owner_id:   owner_id,
-        p_amount:     numAmt,
-        p_payer_name: payer_name || null,
-        p_notes:      notes      || null,
-        p_proof_url:  proof_url  || null,
+        p_client_id:             client_id,
+        p_owner_id:              owner_id,
+        p_amount:                numAmt,
+        p_payer_name:            payer_name             || null,
+        p_notes:                 notes                  || null,
+        p_proof_url:             proof_url              || null,
+        p_contribution_context:  contribution_context,
       });
 
       if (!rpcResult?.ok) return json({ error: rpcResult?.error || "Failed to submit claim" }, 400);
@@ -508,13 +509,15 @@ serve(async (req) => {
 
     // ── Initialize a Paystack contribution payment (client self-pay) ─────
     if (action === "initialize-payment") {
-      const { client_id, amount: requestedAmount } = body as { client_id: string; amount?: number };
+      const { client_id, amount: requestedAmount, contribution_context = "personal_savings" } = body as {
+        client_id: string; amount?: number; contribution_context?: string;
+      };
       if (!client_id) return json({ error: "client_id required" }, 400);
       if (!PAYSTACK_SECRET) return json({ error: "Paystack not configured" }, 503);
 
       const { data: cl, error: clErr } = await sb
         .from("aso_clients")
-        .select("id, email, contribution_amount, contribution_frequency, user_id, paystack_subaccount_code, full_name, next_contribution_date")
+        .select("id, email, contribution_amount, contribution_frequency, user_id, paystack_subaccount_code, full_name, next_contribution_date, ajo_group_id")
         .eq("id", client_id)
         .maybeSingle();
 
@@ -527,16 +530,24 @@ serve(async (req) => {
       const ownerId = cl.user_id;
       if (!ownerId) return json({ error: "Could not resolve business owner. Contact support." }, 422);
 
-      // Use caller-supplied amount if valid, otherwise fall back to the client's default
       const amount = (requestedAmount && requestedAmount > 0)
         ? Number(requestedAmount)
         : Number(cl.contribution_amount);
       if (!amount || amount <= 0) return json({ error: "Enter an amount to contribute." }, 422);
-      const ref            = genRef("AJO");
-      // Each client has their own subaccount created at registration
-      const subaccountCode = cl.paystack_subaccount_code ?? undefined;
+      const ref = genRef("AJO");
 
-      // Initialize transaction with Paystack
+      // Route to group subaccount for group_savings / esusu_rotation;
+      // fall back to the client's personal subaccount for personal_savings.
+      let subaccountCode: string | undefined = cl.paystack_subaccount_code ?? undefined;
+      if ((contribution_context === "group_savings" || contribution_context === "esusu_rotation") && cl.ajo_group_id) {
+        const { data: grp } = await sb
+          .from("ajo_groups")
+          .select("paystack_subaccount_code")
+          .eq("id", cl.ajo_group_id)
+          .maybeSingle();
+        if (grp?.paystack_subaccount_code) subaccountCode = grp.paystack_subaccount_code;
+      }
+
       const psRes = await fetch("https://api.paystack.co/transaction/initialize", {
         method: "POST",
         headers: {
@@ -553,9 +564,10 @@ serve(async (req) => {
           bearer:       subaccountCode ? "subaccount" : undefined,
           metadata: {
             client_id,
-            owner_id:    ownerId,
-            client_name: cl.full_name || "",
-            type:        "ajo_contribution",
+            owner_id:             ownerId,
+            client_name:          cl.full_name || "",
+            type:                 "ajo_contribution",
+            contribution_context,
           },
         }),
       });
@@ -565,30 +577,30 @@ serve(async (req) => {
         return json({ error: psData.message || "Failed to initialize payment" }, 422);
       }
 
-      // Create a PENDING contribution record — confirmed by webhook
       const { error: insErr } = await sb.from("ajo_contributions").insert({
-        aso_client_id:   client_id,
-        owner_id:        ownerId,
+        aso_client_id:        client_id,
+        owner_id:             ownerId,
         amount,
-        type:            "contribution",
-        payment_method:  "paystack",
-        paystack_ref:    ref,
-        paystack_status: "pending",
-        initiated_by:    "client",
-        status:          "pending",
-        subaccount_code: subaccountCode || null,
-        notes:           `Self-pay initiated by client · ref: ${ref}`,
+        type:                 "contribution",
+        payment_method:       "paystack",
+        paystack_ref:         ref,
+        paystack_status:      "pending",
+        initiated_by:         "client",
+        status:               "pending",
+        subaccount_code:      subaccountCode || null,
+        contribution_context,
+        notes:                `Self-pay (${contribution_context}) initiated by client · ref: ${ref}`,
       });
       if (insErr) return json({ error: `DB error: ${insErr.message}` }, 500);
 
       return json({
-        access_code:       psData.data.access_code,
-        authorization_url: psData.data.authorization_url,
-        reference:         ref,
+        access_code:          psData.data.access_code,
+        authorization_url:    psData.data.authorization_url,
+        reference:            ref,
         amount,
-        email:             cl.email,
-        public_key:        PAYSTACK_PUBLIC,
-        subaccount_code:   subaccountCode || null,
+        email:                cl.email,
+        public_key:           PAYSTACK_PUBLIC,
+        subaccount_code:      subaccountCode || null,
       });
     }
 

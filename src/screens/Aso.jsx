@@ -26,7 +26,7 @@ const BLANK = {
   phone: "", email: "", nin: "",
   address: "", state: "", lga: "", ward: "",
   next_of_kin: "", next_of_kin_phone: "", next_of_kin_email: "", next_of_kin_address: "",
-  staff_id: "",
+  staff_id: "", ajo_group_id: null,
   bank_code: "", account_number: "", account_name: "", bank_name: "",
   commission_model: "none", commission_percent: "",
 };
@@ -324,6 +324,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [selected,     setSelected]     = useState(null);
   const [action,       setAction]       = useState(null);
   const [amt,          setAmt]          = useState("");
+  const [contributeCtx, setContributeCtx] = useState("personal_savings");
   const [receipt,      setReceipt]      = useState(null);
   const [historyFor,   setHistoryFor]   = useState(null); // { client, contributions, cycle }
   const [histLoading,  setHistLoading]  = useState(false);
@@ -1709,6 +1710,21 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             </>
           )}
 
+          {groups.length > 0 && (
+            <>
+              <SectionLabel>Group Membership</SectionLabel>
+              <Field label="Ajo Group" as="select" value={f.ajo_group_id || ""}
+                onChange={e => set("ajo_group_id", e.target.value || null)}>
+                <option value="">No group</option>
+                {groups.map(g => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}{g.group_mode === "rotating" ? " (Rotating)" : ""}
+                  </option>
+                ))}
+              </Field>
+            </>
+          )}
+
           <SectionLabel>Notes</SectionLabel>
           <Field as="textarea" value={f.notes}
             onChange={e => set("notes", e.target.value)} placeholder="Optional notes about this client…" />
@@ -1734,7 +1750,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       {selected && action && (
         <Modal
           title={`${action === "contribute" ? "Record Contribution" : "Process Withdrawal"} — ${selected.full_name}`}
-          onClose={() => { setSelected(null); setAction(null); setAmt(""); }}>
+          onClose={() => { setSelected(null); setAction(null); setAmt(""); setContributeCtx("personal_savings"); }}>
 
           <div className="bg-violet-50 dark:bg-violet-900/20 rounded-xl px-4 py-3 mb-3 border border-violet-100 dark:border-violet-800/60">
             <p className="text-xs text-slate-500 dark:text-slate-400">Current balance</p>
@@ -1762,6 +1778,42 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
               ℹ Registration fee of {fmt(selected.registration_charge)} will be automatically deducted from this first deposit.
             </p>
           )}
+
+          {action === "contribute" && (() => {
+            const sg = groups.find(g => g.id === selected.ajo_group_id);
+            if (!sg) return null;
+            const opts = [
+              { key: "personal_savings", label: "Personal Savings", desc: "Add to client's personal savings" },
+              sg.group_mode === "rotating"
+                ? { key: "esusu_rotation", label: sg.name, desc: "Esusu Rotation — add to the pot" }
+                : { key: "group_savings",  label: sg.name, desc: "Savings Group — add to group pool" },
+            ];
+            return (
+              <div className="mb-3">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Contributing to</p>
+                <div className="space-y-1.5">
+                  {opts.map(opt => (
+                    <button key={opt.key} type="button" onClick={() => setContributeCtx(opt.key)}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border-2 text-left transition ${
+                        contributeCtx === opt.key
+                          ? "border-violet-500 bg-violet-50 dark:bg-violet-900/20"
+                          : "border-slate-200 dark:border-slate-700"
+                      }`}>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-bold text-slate-800 dark:text-white truncate">{opt.label}</p>
+                        <p className="text-[10px] text-slate-400">{opt.desc}</p>
+                      </div>
+                      <div className={`flex-shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                        contributeCtx === opt.key ? "border-violet-500 bg-violet-500" : "border-slate-300 dark:border-slate-600"
+                      }`}>
+                        {contributeCtx === opt.key && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
 
           {action === "withdraw" && (
             <div className="mb-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/60 rounded-xl px-3 py-2 space-y-0.5">
@@ -1793,8 +1845,9 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
               const a = parseFloat(amt);
               if (action === "contribute") {
                 const savedClient = selected;
-                setSelected(null); setAction(null); setAmt("");
-                const result = await asoContribute(savedClient.id, a);
+                const savedCtx = contributeCtx;
+                setSelected(null); setAction(null); setAmt(""); setContributeCtx("personal_savings");
+                const result = await asoContribute(savedClient.id, a, savedCtx);
                 if (!result?.error) {
                   speakConfirmation("ajoDeposit", getLang());
                   setContribSuccess({ client: savedClient, amount: a, showShare: false });
@@ -1803,7 +1856,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                 // Clear modal first so it unmounts before PIN sheet opens
                 const savedClient = selected;
                 const savedAmt = a;
-                setSelected(null); setAction(null); setAmt("");
+                setSelected(null); setAction(null); setAmt(""); setContributeCtx("personal_savings");
                 setTxnPin({
                   title: "Confirm Withdrawal",
                   amount: Math.round(savedAmt * 100),

@@ -251,9 +251,9 @@ serve(async (req: Request) => {
   // ── Route to SQL RPC ──────────────────────────────────────────────────────
 
   if (action === "record_contribution") {
-    const { client_id, amount, method, ref, notes } = params as {
+    const { client_id, amount, method, ref, notes, contribution_context } = params as {
       client_id: string; amount: number;
-      method?: string; ref?: string; notes?: string;
+      method?: string; ref?: string; notes?: string; contribution_context?: string;
     };
 
     const ownerId = await resolveClientOwner(sb, client_id);
@@ -269,13 +269,14 @@ serve(async (req: Request) => {
     const recordedBy = ajoPerms === null ? null : ajoPerms.staffId;
 
     const { data, error } = await sb.rpc("ajo_record_contribution", {
-      p_client_id:   client_id,
-      p_owner_id:    ownerId,
-      p_amount:      amount,
-      p_method:      method || "cash",
-      p_ref:         ref    || null,
-      p_notes:       notes  || null,
-      p_recorded_by: recordedBy,
+      p_client_id:             client_id,
+      p_owner_id:              ownerId,
+      p_amount:                amount,
+      p_method:                method || "cash",
+      p_ref:                   ref    || null,
+      p_notes:                 notes  || null,
+      p_recorded_by:           recordedBy,
+      p_contribution_context:  contribution_context || "personal_savings",
     });
     if (error) return json({ ok: false, error: error.message });
 
