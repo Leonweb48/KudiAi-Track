@@ -158,20 +158,97 @@ function RowIcon({ d }) {
   return <Svg d={d} size={20} color="#64748b" />;
 }
 
-// ── Skeleton loader ────────────────────────────────────────────────────────
+// ── Skeleton primitives ────────────────────────────────────────────────────
+const Sk = ({ w = "w-full", h = "h-4", r = "rounded-xl", className = "" }) => (
+  <div className={`${w} ${h} ${r} bg-slate-200 dark:bg-slate-700 animate-pulse ${className}`} />
+);
+
 function SkeletonHome() {
-  const S = ({ w = "w-full", h = "h-4", r = "rounded-xl" }) => (
-    <div className={`${w} ${h} ${r} bg-slate-200 dark:bg-slate-700 animate-pulse`} />
-  );
   return (
-    <div className="px-4 pt-5 pb-28 space-y-4">
-      <S w="w-36" h="h-3" r="rounded-full" />
-      <S w="w-48" h="h-3" r="rounded-full" />
-      <S h="h-[130px]" r="rounded-3xl" />
-      <S h="h-[52px]" />
-      <S h="h-14" />
-      <S h="h-14" />
-      <S h="h-14" />
+    <div className="px-4 pt-5 pb-36 space-y-4">
+      {/* Greeting */}
+      <div className="space-y-2">
+        <Sk w="w-28" h="h-3" r="rounded-full" />
+        <Sk w="w-44" h="h-5" r="rounded-full" />
+      </div>
+      {/* Insight pill */}
+      <Sk h="h-11" r="rounded-2xl" />
+      {/* Hero card */}
+      <Sk h="h-[152px]" r="rounded-3xl" />
+      {/* Status line */}
+      <Sk w="w-52" h="h-3" r="rounded-full" />
+      {/* Quick actions */}
+      <Sk h="h-[148px]" r="rounded-2xl" />
+      {/* Cashback + services */}
+      <Sk h="h-16" r="rounded-2xl" />
+      <Sk h="h-[140px]" r="rounded-2xl" />
+    </div>
+  );
+}
+
+function SkeletonHistory() {
+  return (
+    <div className="px-4 pt-5 pb-36 space-y-4">
+      {/* Filter pill row */}
+      <div className="flex gap-2">
+        {[80, 96, 76].map(w => (
+          <div key={w} className="animate-pulse h-8 rounded-full bg-slate-200 dark:bg-slate-700" style={{ width: w }} />
+        ))}
+      </div>
+      {/* Transaction rows */}
+      <div className="space-y-3">
+        {[1, 2, 3, 4, 5].map(i => (
+          <div key={i} className="flex items-center gap-3">
+            <Sk w="w-10" h="h-10" r="rounded-xl" className="flex-shrink-0" />
+            <div className="flex-1 space-y-2">
+              <Sk w="w-32" h="h-3" r="rounded-full" />
+              <Sk w="w-20" h="h-2.5" r="rounded-full" />
+            </div>
+            <Sk w="w-16" h="h-3" r="rounded-full" className="flex-shrink-0" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SkeletonBills() {
+  return (
+    <div className="px-4 pt-5 pb-36 space-y-4">
+      {/* Category grid */}
+      <div className="grid grid-cols-4 gap-3">
+        {[1, 2, 3, 4].map(i => (
+          <div key={i} className="flex flex-col items-center gap-2">
+            <Sk w="w-14" h="h-14" r="rounded-2xl" />
+            <Sk w="w-10" h="h-2.5" r="rounded-full" />
+          </div>
+        ))}
+      </div>
+      {/* Second row */}
+      <div className="grid grid-cols-4 gap-3">
+        {[1, 2, 3, 4].map(i => (
+          <div key={i} className="flex flex-col items-center gap-2">
+            <Sk w="w-14" h="h-14" r="rounded-2xl" />
+            <Sk w="w-10" h="h-2.5" r="rounded-full" />
+          </div>
+        ))}
+      </div>
+      {/* Feature tiles */}
+      <Sk h="h-24" r="rounded-2xl" />
+      <Sk h="h-24" r="rounded-2xl" />
+      {/* Recent bill rows */}
+      <div className="space-y-3">
+        {[1, 2, 3].map(i => (
+          <div key={i} className="flex items-center gap-3">
+            <Sk w="w-10" h="h-10" r="rounded-xl" className="flex-shrink-0" />
+            <div className="flex-1 space-y-2">
+              <Sk w="w-28" h="h-3" r="rounded-full" />
+              <Sk w="w-16" h="h-2.5" r="rounded-full" />
+            </div>
+            <Sk w="w-14" h="h-3" r="rounded-full" className="flex-shrink-0" />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -2347,7 +2424,7 @@ export default function AjoMemberPortal({ session, ajoClient }) {
               onBillsClick={() => setTab("bills")}
             />
           )}
-          {tab === "bills" && (
+          {tab === "bills" && client && (
             <div className="h-full overflow-y-auto">
               <AjoMemberBillsWrapper
                 client={client}
@@ -2356,7 +2433,7 @@ export default function AjoMemberPortal({ session, ajoClient }) {
               />
             </div>
           )}
-          {tab === "history" && (
+          {tab === "history" && client && (
             <HistoryTab
               contributions={contributions}
               withdrawRequests={withdrawRequests}
@@ -2374,7 +2451,9 @@ export default function AjoMemberPortal({ session, ajoClient }) {
               onProfileUpdate={updates => setClient(prev => ({ ...prev, ...updates }))}
             />
           )}
-          {!client && tab !== "me" && <SkeletonHome />}
+          {!client && tab === "home" && <SkeletonHome />}
+          {!client && tab === "bills" && <SkeletonBills />}
+          {!client && tab === "history" && <SkeletonHistory />}
           {/* Offers section — max 1 per session on client portal */}
           {tab === "home" && (
             <>
@@ -2401,19 +2480,20 @@ export default function AjoMemberPortal({ session, ajoClient }) {
 
         {/* Bottom nav */}
         <nav className="flex-none z-40 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 shadow-sm">
-          <div className="flex items-stretch h-[60px]">
+          <div className="flex items-stretch h-[62px]">
             {NAV.map(n => {
               const active = tab === n.id;
               return (
                 <button key={n.id} onClick={() => setTab(n.id)}
-                  className="flex-1 flex flex-col items-center justify-center gap-0.5 relative focus-visible:outline-none">
-                  {active && <span className="absolute top-0 left-1/2 -translate-x-1/2 w-5 h-0.5 rounded-full bg-brand-500 dark:bg-brand-400" />}
-                  <div className={`transition-all duration-200 ${active ? "scale-110" : "scale-100"}`}>
-                    <Icon name={n.icon} size={21} className={active ? "text-brand-500 dark:text-brand-400" : "text-slate-400 dark:text-slate-500"} />
+                  className="flex-1 flex items-center justify-center focus-visible:outline-none active:opacity-70 transition-opacity">
+                  <div className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-2xl transition-all duration-200 ${
+                    active ? "bg-brand-50 dark:bg-brand-900/30" : ""
+                  }`}>
+                    <Icon name={n.icon} size={20} className={active ? "text-brand-500 dark:text-brand-400" : "text-slate-400 dark:text-slate-500"} />
+                    <span className={`text-[11px] font-bold leading-none ${active ? "text-brand-500 dark:text-brand-400" : "text-slate-400 dark:text-slate-500"}`}>
+                      {n.label}
+                    </span>
                   </div>
-                  <span className={`text-[8px] font-bold uppercase tracking-wide leading-none ${active ? "text-brand-500 dark:text-brand-400" : "text-slate-400 dark:text-slate-500"}`}>
-                    {n.label}
-                  </span>
                 </button>
               );
             })}
