@@ -317,6 +317,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [processingDepositId, setProcessingDepositId] = useState(null);
   const [rejectingDeposit,    setRejectingDeposit]    = useState(null);
   const [rejectReason,        setRejectReason]        = useState("");
+  const [depositFeedback,     setDepositFeedback]     = useState(null); // { type:"ok"|"err", msg:string }
 
   // Per-staff Ajo capability flags — null means owner (full access)
   const [staffAjoPerms, setStaffAjoPerms] = useState(null);
@@ -391,12 +392,13 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   };
 
   const reloadPendingDeposits = async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("ajo_contributions")
       .select("*, aso_clients(full_name, email, membership_number)")
       .eq("status", "pending")
       .eq("payment_method", "manual_transfer")
       .order("created_at", { ascending: false });
+    if (error) { console.error("reloadPendingDeposits:", error.message); return; }
     setPendingDeposits(data || []);
   };
 
@@ -840,16 +842,22 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     }
   };
 
-  const handleConfirmDeposit = async (claim) => {
+  const flashDeposit = (type, msg) => {
+    setDepositFeedback({ type, msg });
+    setTimeout(() => setDepositFeedback(null), type === "err" ? 6000 : 4000);
+  };
+
+  const handleConfirmDeposit = async (claim, pin) => {
     setProcessingDepositId(claim.id);
     try {
       const { data, error } = await supabase.functions.invoke("ajo-write", {
-        body: { action: "confirm_manual_deposit", claim_id: claim.id },
+        body: { action: "confirm_manual_deposit", claim_id: claim.id, pin },
       });
       if (error || !data?.ok) throw new Error(data?.error || error?.message || "Confirm failed");
+      flashDeposit("ok", `₦${Number(data.amount || claim.amount).toLocaleString("en-NG")} confirmed — client balance updated.`);
       reloadPendingDeposits();
     } catch (e) {
-      console.error("Confirm deposit failed:", e);
+      flashDeposit("err", e.message || "Confirm failed");
     } finally {
       setProcessingDepositId(null);
     }
@@ -864,9 +872,10 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       if (error || !data?.ok) throw new Error(data?.error || error?.message || "Reject failed");
       setRejectingDeposit(null);
       setRejectReason("");
+      flashDeposit("ok", "Deposit claim rejected — client has been notified.");
       reloadPendingDeposits();
     } catch (e) {
-      console.error("Reject deposit failed:", e);
+      flashDeposit("err", e.message || "Reject failed");
     } finally {
       setProcessingDepositId(null);
     }
@@ -1023,6 +1032,15 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       )}
 
       {/* Pending deposits panel */}
+      {depositFeedback && (
+        <div className={`mb-3 px-4 py-3 rounded-xl border text-sm font-semibold ${
+          depositFeedback.type === "ok"
+            ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800/60 text-green-700 dark:text-green-300"
+            : "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800/60 text-red-600 dark:text-red-400"
+        }`}>
+          {depositFeedback.msg}
+        </div>
+      )}
       {pendingDeposits.length > 0 && (
         <div className="mb-4">
           <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2">
@@ -1072,7 +1090,13 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                   {canConfirmDeposit ? (
                     <div className="flex gap-2 mt-3">
                       <button
-                        onClick={() => handleConfirmDeposit(dep)}
+                        onClick={() => setTxnPin({
+                          title:       "Confirm Deposit",
+                          amount:      Math.round((dep.amount || 0) * 100),
+                          recipient:   cl.full_name || "client",
+                          description: `Manual bank transfer · ₦${Number(dep.amount).toLocaleString("en-NG")}`,
+                          onApprove:   (pin) => { setTxnPin(null); handleConfirmDeposit(dep, pin); },
+                        })}
                         disabled={isProc}
                         className="flex-1 py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-bold text-xs transition active:scale-[0.99] disabled:opacity-50">
                         {isProc && processingDepositId === dep.id && !rejectingDeposit ? "…" : "Confirm"}
