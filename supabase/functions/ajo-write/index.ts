@@ -66,7 +66,7 @@ function json(body: unknown, status = 200): Response {
 }
 
 // ── PIN-requiring actions ─────────────────────────────────────────────────────
-const PIN_GATED = new Set(["record_withdrawal", "reverse_contribution", "archive_client", "confirm_manual_deposit", "approve_contribution", "execute_commission", "execute_payout", "skip_turn", "reorder_turns"]);
+const PIN_GATED = new Set(["record_withdrawal", "reverse_contribution", "archive_client", "confirm_manual_deposit", "approve_contribution", "collection_record", "execute_commission", "execute_payout", "skip_turn", "reorder_turns"]);
 
 // ── Resolve the true owner UUID for a client from the DB ─────────────────────
 async function resolveClientOwner(
@@ -339,6 +339,67 @@ serve(async (req: Request) => {
     });
 
     return json(acData);
+  }
+
+  // ── Collection record: record + immediately approve (owner/staff physically collecting) ──
+  if (action === "collection_record") {
+    const { client_id, amount, contribution_context } = params as {
+      client_id: string; amount: number; contribution_context?: string;
+    };
+
+    const ownerId = await resolveClientOwner(sb, client_id);
+    if (!ownerId) return json({ ok: false, error: "Client not found" }, 404);
+
+    const ajoPerms = await resolveAjoPerms(sb, user.id, ownerId);
+    if (ajoPerms === false) return json({ ok: false, error: "Unauthorized" }, 403);
+    if (ajoPerms !== null && !ajoPerms.can_create) {
+      return json({ ok: false, error: "Permission denied: contribution recording not enabled for your account" }, 403);
+    }
+
+    const recordedBy = ajoPerms === null ? null : ajoPerms.staffId;
+    const context    = contribution_context || "personal_savings";
+    const dateStr    = new Date().toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" });
+
+    // Step 1: create pending entry
+    const { data: recData, error: recErr } = await sb.rpc("ajo_record_contribution", {
+      p_client_id:            client_id,
+      p_owner_id:             ownerId,
+      p_amount:               amount,
+      p_method:               "cash",
+      p_ref:                  null,
+      p_notes:                null,
+      p_recorded_by:          recordedBy,
+      p_contribution_context: context,
+    });
+    if (recErr || !(recData as Record<string, unknown>)?.ok) {
+      return json({ ok: false, error: recErr?.message || (recData as Record<string, unknown>)?.error || "Recording failed" });
+    }
+
+    // Step 2: immediately approve — the collector IS the authorising party
+    const { data: appData, error: appErr } = await sb.rpc("ajo_approve_contribution", {
+      p_contribution_id: (recData as Record<string, unknown>).contribution_id,
+      p_owner_id:        ownerId,
+      p_approver_id:     user.id,
+    });
+    if (appErr || !(appData as Record<string, unknown>)?.ok) {
+      return json({ ok: false, error: appErr?.message || (appData as Record<string, unknown>)?.error || "Approval failed" });
+    }
+
+    const app = appData as Record<string, unknown>;
+    const ctx = await fetchEmailContext(sb, client_id, ownerId, user.id);
+    await fireAjoEmail("ajo_contribution_collected", {
+      client_email:  ctx.clientEmail,
+      client_name:   ctx.clientName,
+      owner_email:   ctx.ownerEmail,
+      business_name: ctx.businessName,
+      staff_name:    ctx.staffName,
+      amount,
+      method:        "cash",
+      date:          dateStr,
+      new_balance:   app.new_balance || 0,
+    });
+
+    return json({ ok: true, ...app });
   }
 
   if (action === "record_withdrawal") {

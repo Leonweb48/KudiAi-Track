@@ -14,6 +14,7 @@ import { AmountDisplay } from "../components/shared/AmountDisplay";
 import { createReportPdf, fmtCurrency as pdfFmt, fmtDate as pdfFmtDate } from "../utils/generateReportPdf";
 import ContributionCard from "../components/ContributionCard";
 import EsusuRotationDashboard from "../components/EsusuRotationDashboard";
+import TodaysCollection from "../components/TodaysCollection";
 import { useT } from "../contexts/LanguageContext";
 import { getLang, speakConfirmation } from "../utils/i18n";
 import TransactionPinModal from "../components/TransactionPinModal";
@@ -345,10 +346,11 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   // Filters
   const [search,         setSearch]         = useState("");
   const [filter,         setFilter]         = useState("all");
-  const [showDateFilter, setShowDateFilter] = useState(false);
-  const [dueBefore,      setDueBefore]      = useState("");
+  const [showDateFilter,  setShowDateFilter]  = useState(false);
+  const [dueBefore,       setDueBefore]       = useState("");
+  const [showCollection,  setShowCollection]  = useState(false);
 
-  const { asoClients, addAsoClient, asoContribute, asoWithdraw, updateAsoClient, deleteAsoClient, profile, staffMap = {} } = store;
+  const { asoClients, addAsoClient, asoContribute, asoCollectionRecord, asoWithdraw, updateAsoClient, deleteAsoClient, profile, staffMap = {} } = store;
   const staffOptions = Object.entries(staffMap).map(([id, name]) => ({ id, name }));
 
   const [withdrawalRequests,  setWithdrawalRequests]  = useState([]);
@@ -1012,6 +1014,19 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           )}
         </div>
         <div className="flex items-center gap-2">
+          {/* Today's Collection */}
+          <button
+            onClick={() => { if (!showCollection) loadGroups(); setShowCollection(v => !v); }}
+            title="Today's Collection"
+            className={`w-9 h-9 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-all ${
+              showCollection
+                ? "bg-violet-600 text-white"
+                : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
+            }`}>
+            <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+              <path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" />
+            </svg>
+          </button>
           <button
             onClick={() => { loadGroups(); setShowGroups(true); }}
             title="Manage Ajo Groups & Paystack Subaccounts"
@@ -1422,6 +1437,16 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                     {missed > 0 && (
                       <span className="text-[10px] font-bold text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-1.5 py-0.5 rounded-full">
                         {missed} missed
+                      </span>
+                    )}
+                    {nextDaysDiff >= 7 && (
+                      <span className="text-[10px] font-bold text-white bg-red-500 px-1.5 py-0.5 rounded-full">
+                        {nextDaysDiff}d overdue
+                      </span>
+                    )}
+                    {nextDaysDiff >= 3 && nextDaysDiff < 7 && (
+                      <span className="text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/30 px-1.5 py-0.5 rounded-full">
+                        {nextDaysDiff}d overdue
                       </span>
                     )}
                   </div>
@@ -2248,6 +2273,37 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             {processingDepositId === rejectingDeposit.id ? "Rejecting…" : "Reject & Notify Client"}
           </button>
         </Modal>
+      )}
+
+      {/* ── Today's Collection overlay ──────────────────────────────────── */}
+      {showCollection && (
+        <div className="fixed inset-0 z-[65] flex flex-col bg-white dark:bg-slate-900">
+          {/* Header */}
+          <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-100 dark:border-slate-700/60 bg-white dark:bg-slate-900 flex-shrink-0">
+            <button
+              onClick={() => setShowCollection(false)}
+              className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-500 dark:text-slate-400 active:scale-95 transition-transform">
+              <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+                <path d="M19 12H5M12 5l-7 7 7 7" />
+              </svg>
+            </button>
+            <div className="flex-1">
+              <p className="font-extrabold text-slate-800 dark:text-white text-base">Today's Collection</p>
+              <p className="text-[10px] text-slate-400 dark:text-slate-500">
+                {asoClients.filter(c => c.status === "active" && c.next_contribution_date && c.next_contribution_date <= today()).length} clients due
+              </p>
+            </div>
+          </div>
+          {/* Scrollable content */}
+          <div className="flex-1 overflow-y-auto px-4 py-4">
+            <TodaysCollection
+              clients={asoClients}
+              groups={groups}
+              onRecord={asoCollectionRecord}
+              staffCanRecord={canContribute}
+            />
+          </div>
+        </div>
       )}
 
       {/* ── Ajo Groups Management Modal ─────────────────────────────────── */}

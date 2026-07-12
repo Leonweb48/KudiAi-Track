@@ -598,6 +598,16 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
     return { error: null, data };
   };
 
+  const asoCollectionRecord = async (clientId, amount, context, pin) => {
+    const { data, error } = await supabase.functions.invoke("ajo-write", {
+      body: { action: "collection_record", client_id: clientId, amount, contribution_context: context, pin },
+    });
+    if (error) return { error: error.message || "Collection failed" };
+    if (!data?.ok) return { error: data?.error || "Collection failed" };
+    loadData();
+    return { error: null, data };
+  };
+
   const asoWithdraw = async (id, amount, pin) => {
     const { data, error } = await supabase.functions.invoke("ajo-write", {
       body: {
@@ -694,6 +704,6 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
     // Staff cannot delete transactions — only business owners (no staffId) can
     deleteTransaction: staffId ? null : deleteTransaction,
     addCredit, repayCredit, updateCredit, debtPayments,
-    addAsoClient, asoContribute, asoWithdraw, updateAsoClient, deleteAsoClient,
+    addAsoClient, asoContribute, asoCollectionRecord, asoWithdraw, updateAsoClient, deleteAsoClient,
   };
 }
