@@ -780,8 +780,6 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         return { error: writeData?.error || writeErr?.message || "Approval failed" };
       }
 
-      const newBalance = writeData.new_balance ?? (cl.current_balance || 0) - req.amount;
-
       reloadWithdrawalRequests();
     } catch (e) {
       console.error("Approve failed:", e);
