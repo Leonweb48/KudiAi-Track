@@ -112,7 +112,6 @@ function AsoClientHistoryModal({ client, contributions, cycle, businessName, sta
   const [reverseFor,    setReverseFor]    = useState(null);   // tx being reversed
   const [reverseReason, setReverseReason] = useState("");
   const [reverseStep,   setReverseStep]   = useState("reason"); // "reason" | "pin"
-  const [reverseBusy,   setReverseBusy]   = useState(false);
   const [reverseError,  setReverseError]  = useState("");
   const fmtCurrency = (n) => `₦${Number(n || 0).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
 
@@ -235,9 +234,7 @@ function AsoClientHistoryModal({ client, contributions, cycle, businessName, sta
           description={`Reverse ₦${Number(reverseFor.amount || 0).toLocaleString("en-NG")} · ${reverseReason}`}
           onCancel={() => { setReverseStep("reason"); setReverseError(""); }}
           onApprove={async (pin) => {
-            setReverseBusy(true);
             const result = await onReverseContrib(reverseFor, reverseReason.trim(), pin);
-            setReverseBusy(false);
             if (result?.error) {
               setReverseStep("reason");
               setReverseError(result.error);
