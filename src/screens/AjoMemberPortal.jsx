@@ -22,6 +22,7 @@ import TransactionDetailModal from "../components/shared/TransactionDetailModal"
 import { buildAjoContributionReceipt, buildAjoWithdrawalReceipt } from "../utils/receiptConfig";
 import AIChatWidget from "../components/AIChatWidget";
 import { buildAjoMemberContext } from "../utils/buildContext";
+import AppLogo from "../components/AppLogo";
 import { useT, useLanguage } from "../contexts/LanguageContext";
 import { createReportPdf, fmtCurrency as pdfFmt, fmtDate as pdfFmtDate } from "../utils/generateReportPdf";
 import ContributionCard from "../components/ContributionCard";
@@ -2296,26 +2297,12 @@ export default function AjoMemberPortal({ session, ajoClient }) {
         {/* Header */}
         <header className="flex-none z-30 min-h-[56px] flex items-center justify-between px-4 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shadow-sm" style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
 
-          {/* Business identity tile — logo if owner uploaded one, else brand initials */}
-          {ownerInfo?.owner?.profile_image_url
-            ? (
-              <div className="flex-none w-9 h-9 rounded-[10px] overflow-hidden border border-slate-100 dark:border-slate-700 shadow-sm">
-                <img src={ownerInfo.owner.profile_image_url} alt="" className="w-9 h-9 object-cover" />
-              </div>
-            )
-            : (
-              <div className="flex-none w-9 h-9 rounded-[10px] bg-brand-50 dark:bg-brand-900/30 border border-brand-100 dark:border-brand-800/40 flex items-center justify-center shadow-sm">
-                <span className="text-[12px] font-black text-brand-600 dark:text-brand-300 leading-none select-none">
-                  {(ownerInfo?.owner?.business_name || "SV").slice(0, 2).toUpperCase()}
-                </span>
-              </div>
-            )
-          }
-
-          {/* Business name — truncates at any viewport width via block+w-full+truncate */}
-          <div className="flex flex-col items-center select-none min-w-0 flex-1 px-2">
-            <span className="block w-full text-center text-[15px] font-black tracking-tight text-slate-800 dark:text-white leading-none truncate">
-              {ownerInfo?.owner?.business_name || "Savings Portal"}
+          {/* KudiAI brand: logo + stylish wordmark */}
+          <div className="flex items-center gap-2 flex-none">
+            <AppLogo className="h-8 w-8 flex-none" />
+            <span className="text-[17px] font-black tracking-tight leading-none select-none">
+              <span className="bg-gradient-to-br from-brand-500 to-brand-600 bg-clip-text text-transparent">KudiAI</span>
+              <span className="text-navy dark:text-slate-200"> Track</span>
             </span>
           </div>
 
