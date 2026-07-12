@@ -756,7 +756,7 @@ serve(async (req) => {
           user_name:   clientRow?.full_name ?? "Ajo Client",
           subject:     `Ajo entry dispute — ${entryDate}`,
           description: fullDesc,
-          type:        "ajo_dispute",
+          type:        "ajo",
           priority:    "medium",
           status:      "open",
         })
