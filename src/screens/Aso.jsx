@@ -500,8 +500,8 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     const { data, error } = await supabase.functions.invoke("ajo-write", {
       body: { action: "execute_payout", turn_id: turnId, pin },
     });
-    if (error || !data?.ok) throw new Error(data?.error || error?.message || "Payout failed");
-    return data;
+    if (error) throw new Error(error.message || "Payout failed");
+    return data; // caller checks data.ok — blocked payouts return ok:false with details
   };
 
   const handleSkipTurn = async (turnId, reason, moveToEnd, pin) => {

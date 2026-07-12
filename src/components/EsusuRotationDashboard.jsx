@@ -178,6 +178,7 @@ export default function EsusuRotationDashboard({
   const [reorderMode,   setReorderMode]  = useState(false);
   const [reorderQueue,  setReorderQueue] = useState(null); // prepared new order
   const [actionErr,     setActionErr]    = useState("");
+  const [payoutBlocked, setPayoutBlocked] = useState(null); // { error, missing_count, missing_contributors }
   const [actionSuccess, setActionSuccess] = useState(""); // brief success text for skip/reorder
   const [payoutResult,  setPayoutResult] = useState(null); // payout success data
   const [closingRound,  setClosingRound] = useState(false);
@@ -200,8 +201,15 @@ export default function EsusuRotationDashboard({
     try {
       if (pinFor.action === "payout") {
         const result = await onExecutePayout(pinFor.turnId, pin);
-        setPayoutResult(result);
-        onRefresh?.();
+        if (result?.ok) {
+          setPayoutBlocked(null);
+          setPayoutResult(result);
+          onRefresh?.();
+        } else if (result?.blocked) {
+          setPayoutBlocked(result);
+        } else {
+          throw new Error(result?.error || "Payout failed");
+        }
       } else if (pinFor.action === "skip") {
         await onSkipTurn(pinFor.turnId, skipReason, skipToEnd, pin);
         setSkipDialog(null); setSkipReason("");
@@ -375,6 +383,40 @@ export default function EsusuRotationDashboard({
         )}
       </div>
 
+      {/* Payout blocked — missing contributors */}
+      {payoutBlocked && (
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 rounded-2xl p-4 space-y-2">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 bg-red-500 rounded-full flex items-center justify-center flex-shrink-0">
+              <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-white" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+              </svg>
+            </div>
+            <p className="font-extrabold text-red-700 dark:text-red-400 text-sm">Payout Blocked</p>
+          </div>
+          <p className="text-xs text-slate-700 dark:text-slate-300">
+            {payoutBlocked.missing_count} member{payoutBlocked.missing_count > 1 ? "s have" : " has"} not completed {payoutBlocked.missing_count > 1 ? "their" : "their"} contribution for this period.
+            All contributions must be received before the payout can proceed.
+          </p>
+          <div className="space-y-1">
+            {(payoutBlocked.missing_contributors || []).map((m, i) => (
+              <div key={i} className="flex items-center justify-between bg-red-100/60 dark:bg-red-900/30 rounded-lg px-3 py-1.5">
+                <span className="text-[11px] font-semibold text-red-800 dark:text-red-300">{m.client_name}</span>
+                <span className="text-[11px] text-red-700 dark:text-red-400">
+                  {m.amount_paid > 0
+                    ? `Paid ${fmtCur(m.amount_paid)} of ${fmtCur(m.amount_due)}`
+                    : `Owes ${fmtCur(m.amount_due)}`}
+                </span>
+              </div>
+            ))}
+          </div>
+          <button onClick={() => setPayoutBlocked(null)}
+            className="text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 underline underline-offset-2">
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {/* Payout success card */}
       {payoutResult && (
         <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/50 rounded-2xl p-4 space-y-1.5">
@@ -394,18 +436,6 @@ export default function EsusuRotationDashboard({
           )}
           {payoutResult.round_complete && (
             <p className="text-xs font-bold text-green-600 dark:text-green-400">Round complete — all members have received their payout.</p>
-          )}
-          {payoutResult.debtor_count > 0 && (
-            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-xl px-3 py-2 mt-1">
-              <p className="text-[11px] font-bold text-amber-700 dark:text-amber-400 mb-1">
-                {payoutResult.debtor_count} member{payoutResult.debtor_count > 1 ? "s" : ""} have outstanding contributions
-              </p>
-              {(payoutResult.debtors || []).map((d, i) => (
-                <p key={i} className="text-[10px] text-amber-600 dark:text-amber-500">
-                  {d.client_name} — owes {fmtCur(d.amount_owed)}
-                </p>
-              ))}
-            </div>
           )}
           <button onClick={() => setPayoutResult(null)}
             className="text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 underline underline-offset-2">
