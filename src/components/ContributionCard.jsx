@@ -94,8 +94,8 @@ function buildPeriods(cycle, contributions) {
 const MARK_CLS = {
   paid:     "bg-emerald-500 text-white",
   partial:  "bg-amber-400 text-white",
-  missed:   "bg-red-400 text-white",
-  current:  "bg-brand-500 text-white ring-2 ring-brand-200",
+  missed:   "border-2 border-red-300 dark:border-red-700 text-red-400 dark:text-red-500 bg-transparent",
+  current:  "bg-brand-500 text-white ring-2 ring-brand-300 dark:ring-brand-600 animate-pulse",
   upcoming: "bg-slate-100 text-slate-400 dark:bg-slate-700 dark:text-slate-500",
 };
 
@@ -342,9 +342,9 @@ export default function ContributionCard({
         </span>
       </div>
 
-      {/* Grid */}
+      {/* Grid — CC-11: max-height + internal scroll for long cycles */}
       <div
-        className="px-4 pb-4 grid gap-1.5"
+        className="px-4 pb-4 grid gap-1.5 max-h-52 overflow-y-auto"
         style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
       >
         {periods.map((p) => (

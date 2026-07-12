@@ -1148,6 +1148,17 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
   const [editGoal,  setEditGoal]  = useState(false);
   const [goalInput, setGoalInput] = useState("");
 
+  const [balanceHidden, setBalanceHidden] = useState(() =>
+    sessionStorage.getItem("ajo_balance_hidden") === "1"
+  );
+  const toggleBalance = () => {
+    setBalanceHidden(h => {
+      const next = !h;
+      sessionStorage.setItem("ajo_balance_hidden", next ? "1" : "0");
+      return next;
+    });
+  };
+
   useEffect(() => {
     if (!client?.id) return;
     ajoFn("get-goal", { client_id: client.id }).then(({ data }) => {
@@ -1203,7 +1214,7 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
   const recent = contributions.slice(0, 5);
 
   return (
-    <div className="px-4 pt-5 pb-28 space-y-4">
+    <div className="px-4 pt-5 pb-36 space-y-4">
       {/* Greeting */}
       <div>
         <p className="text-sm text-slate-400 dark:text-slate-500 font-medium">{greetingText(t)}</p>
@@ -1218,14 +1229,31 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
         <p className="text-[13px] font-semibold text-brand-700 dark:text-brand-200">{insight}</p>
       </div>
 
-      {/* Hero savings card */}
+      {/* Hero savings card — AMP-01 eye-toggle, AMP-11 FitText via AmountDisplay */}
       <div className="rounded-3xl px-5 py-5 text-white relative overflow-hidden shadow-lg"
         style={{ background: "linear-gradient(145deg,#16255A 0%,#1D3070 55%,#0F1A42 100%)" }}>
         <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full bg-white/5 pointer-events-none" />
         <div className="absolute -bottom-10 -left-6 w-40 h-40 rounded-full bg-white/5 pointer-events-none" />
+        {/* Eye toggle — AMP-01 */}
+        <button onClick={toggleBalance} aria-label={balanceHidden ? "Show balance" : "Hide balance"}
+          className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-white/10 active:scale-90 transition-transform z-10">
+          {balanceHidden
+            ? <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-white/70" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24" />
+                <line x1="1" y1="1" x2="23" y2="23" />
+              </svg>
+            : <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-white/70" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+          }
+        </button>
         <div className="relative">
           <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-0.5">Current Balance</p>
-          <AmountDisplay amount={client.current_balance || 0} size="hero" align="left" style={{ color: '#fff', marginBottom: 12 }} />
+          {balanceHidden
+            ? <p className="text-3xl font-black text-white/50 tracking-widest mb-3 leading-none select-none">₦ • • •</p>
+            : <AmountDisplay amount={client.current_balance || 0} size="hero" align="left" style={{ color: '#fff', marginBottom: 12 }} />
+          }
           <div className="flex items-center gap-2 mb-4">
             {streak > 0 && (
               <span className="bg-white/15 backdrop-blur-sm rounded-full px-2.5 py-1 text-[11px] font-bold text-white">
@@ -1239,24 +1267,56 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
           <div className="grid grid-cols-3 divide-x divide-white/20">
             <div className="pr-3 min-w-0">
               <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">Total Saved</p>
-              <AmountDisplay amount={client.total_saved || 0} size="small" align="left" style={{ color: '#bbf7d0' }} />
+              {balanceHidden
+                ? <p className="text-sm font-black text-white/40 tracking-widest select-none">• • •</p>
+                : <AmountDisplay amount={client.total_saved || 0} size="small" align="left" style={{ color: '#bbf7d0' }} />
+              }
             </div>
             <div className="px-3 min-w-0">
               <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">Withdrawn</p>
-              <AmountDisplay amount={client.total_withdrawn || 0} size="small" align="left" style={{ color: '#fecaca' }} />
+              {balanceHidden
+                ? <p className="text-sm font-black text-white/40 tracking-widest select-none">• • •</p>
+                : <AmountDisplay amount={client.total_withdrawn || 0} size="small" align="left" style={{ color: '#fecaca' }} />
+              }
             </div>
             <div className="pl-3 min-w-0">
               <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">This Month</p>
-              <AmountDisplay amount={totalThisMonth} size="small" align="left" style={{ color: '#bfdbfe' }} />
+              {balanceHidden
+                ? <p className="text-sm font-black text-white/40 tracking-widest select-none">• • •</p>
+                : <AmountDisplay amount={totalThisMonth} size="small" align="left" style={{ color: '#bfdbfe' }} />
+              }
             </div>
           </div>
         </div>
       </div>
 
-      {/* Quick Actions */}
+      {/* Status line — compact next-contribution status beneath hero */}
+      {client.next_contribution_date && client.contribution_amount > 0 && (
+        <div className={`flex items-center gap-1.5 text-[12px] font-semibold px-1 ${
+          daysUntilDue != null && daysUntilDue < 0
+            ? "text-red-500 dark:text-red-400"
+            : daysUntilDue === 0
+              ? "text-amber-500 dark:text-amber-400"
+              : "text-slate-500 dark:text-slate-400"
+        }`}>
+          <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 flex-shrink-0" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+            <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
+          </svg>
+          <span>
+            Next contribution: {balanceHidden ? "• • •" : fmt(client.contribution_amount)} &middot;{" "}
+            {daysUntilDue != null && daysUntilDue < 0
+              ? `${Math.abs(daysUntilDue)}d overdue`
+              : daysUntilDue === 0 ? "due today"
+              : daysUntilDue === 1 ? "due tomorrow"
+              : `due in ${daysUntilDue}d`}
+          </span>
+        </div>
+      )}
+
+      {/* Quick Actions — AMP-08 Deposit elevated to primary grid slot */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4 shadow-sm">
         <p className="text-sm font-extrabold text-slate-800 dark:text-white mb-4">Quick Actions</p>
-        <div className={`grid gap-4 ${client?.contribution_amount > 0 ? "grid-cols-3" : "grid-cols-2"}`}>
+        <div className={`grid gap-4 ${client?.contribution_amount > 0 ? "grid-cols-2" : "grid-cols-3"}`}>
           {client?.contribution_amount > 0 && (
             <ActionBtn
               label="Pay Contribution"
@@ -1272,32 +1332,18 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
             onClick={onWithdrawClick}
           />
           <ActionBtn
+            label="Make a Deposit"
+            icon="M12 5v14|M5 12l7-7 7 7"
+            bg="bg-gradient-to-br from-brand-500 to-brand-600"
+            onClick={onDepositClick}
+          />
+          <ActionBtn
             label="Pay Bills"
             icon="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2|M9 5a2 2 0 002 2h2a2 2 0 002-2|M9 13h6|M9 17h4"
             bg="bg-gradient-to-br from-blue-500 to-blue-600"
             onClick={onBillsClick}
           />
         </div>
-        {/* Manual deposit row — full-width secondary button */}
-        <button
-          onClick={onDepositClick}
-          className="mt-3 w-full flex items-center justify-between gap-3 py-3 px-4 rounded-xl bg-slate-50 dark:bg-slate-700/60 border border-slate-200 dark:border-slate-600 active:scale-[0.99] transition text-left">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-brand-100 dark:bg-brand-900/40 flex items-center justify-center flex-shrink-0">
-              <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-brand-500 dark:text-brand-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-                <rect x="2" y="5" width="20" height="14" rx="2"/>
-                <path d="M12 10v4|M10 12h4"/>
-              </svg>
-            </div>
-            <div>
-              <p className="text-xs font-extrabold text-slate-700 dark:text-slate-200">Make a Deposit</p>
-              <p className="text-[10px] text-slate-400 dark:text-slate-500">Bank transfer · get balance credited</p>
-            </div>
-          </div>
-          <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-400 flex-shrink-0" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-            <path d="M9 18l6-6-6-6"/>
-          </svg>
-        </button>
       </div>
 
       {/* Cashback Balance */}
@@ -1326,36 +1372,6 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
         </div>
       </div>
 
-      {/* Next due */}
-      {client.next_contribution_date && (
-        <div className={`rounded-2xl px-4 py-3 border flex items-center gap-3 ${
-          daysUntilDue != null && daysUntilDue < 0
-            ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
-            : daysUntilDue === 0
-              ? "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800"
-              : "bg-brand-50 dark:bg-brand-900/20 border-brand-200 dark:border-brand-800"
-        }`}>
-          <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
-            daysUntilDue != null && daysUntilDue < 0 ? "bg-red-100 dark:bg-red-900/40" : "bg-brand-100 dark:bg-brand-900/40"
-          }`}>
-            <svg viewBox="0 0 24 24" fill="none" className={`w-5 h-5 ${daysUntilDue != null && daysUntilDue < 0 ? "text-red-500" : "text-brand-500"}`}
-              stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-              <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
-            </svg>
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className={`text-xs font-bold ${daysUntilDue != null && daysUntilDue < 0 ? "text-red-600 dark:text-red-400" : "text-brand-600 dark:text-brand-300"}`}>
-              {daysUntilDue != null && daysUntilDue < 0
-                ? `Overdue by ${Math.abs(daysUntilDue)} day${Math.abs(daysUntilDue) !== 1 ? "s" : ""}`
-                : daysUntilDue === 0 ? "Due Today!"
-                : `Due in ${daysUntilDue} day${daysUntilDue !== 1 ? "s" : ""}`}
-            </p>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 capitalize">
-              {client.contribution_frequency} &middot; {fmt(client.contribution_amount)} &middot; {fmtDate(client.next_contribution_date)}
-            </p>
-          </div>
-        </div>
-      )}
 
       {/* Assigned savings officer */}
       {ownerInfo?.staff && (
@@ -1499,23 +1515,29 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
         <ContribCalendar contributions={contributions} />
       </div>
 
-      {/* Recent activity */}
+      {/* Recent activity — green in / navy out / amber pending */}
       {recent.length > 0 && (
         <div>
           <p className="text-[12px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Recent Activity</p>
           <div className="space-y-2">
-            {recent.map(c => (
-              <div key={c.id} className="bg-white dark:bg-slate-800 rounded-xl px-3 py-2.5 flex items-center gap-3 border border-slate-100 dark:border-slate-700">
-                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${c.type === "contribution" ? "bg-green-500" : "bg-red-400"}`} />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">{ledgerTypeLabel(c.type)}</p>
-                  <p className="text-[10px] text-slate-400">{fmtDate(c.created_at)} &middot; {c.payment_method || "cash"}</p>
+            {recent.map(c => {
+              const isCredit  = c.type === "contribution" || c.type === "esusu_payout";
+              const isPending = c.status === "pending";
+              const dotCls    = isPending ? "bg-amber-400" : isCredit ? "bg-green-500" : "bg-navy dark:bg-slate-400";
+              const amtCls    = isPending ? "text-amber-500 dark:text-amber-400" : isCredit ? "text-green-600 dark:text-green-400" : "text-navy dark:text-slate-200";
+              return (
+                <div key={c.id} className="bg-white dark:bg-slate-800 rounded-xl px-3 py-2.5 flex items-center gap-3 border border-slate-100 dark:border-slate-700">
+                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${dotCls}`} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">{ledgerTypeLabel(c.type)}</p>
+                    <p className="text-[10px] text-slate-400">{fmtDate(c.created_at)} &middot; {c.payment_method || "cash"}</p>
+                  </div>
+                  <span className={`text-sm font-extrabold tabular flex-shrink-0 ${amtCls}`}>
+                    {isCredit ? "+" : "−"}{balanceHidden ? "• • •" : fmt(c.amount)}
+                  </span>
                 </div>
-                <span className={`text-sm font-extrabold tabular flex-shrink-0 ${c.type === "contribution" ? "text-green-600 dark:text-green-400" : "text-red-500"}`}>
-                  {c.type === "contribution" ? "+" : "−"}{fmt(c.amount)}
-                </span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -2270,13 +2292,28 @@ export default function AjoMemberPortal({ session, ajoClient }) {
         {/* Header */}
         <header className="flex-none z-30 min-h-[56px] flex items-center justify-between px-4 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shadow-sm" style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
 
-          {/* KudiAI brand: logo + stylish wordmark */}
-          <div className="flex items-center gap-2 flex-none">
-            <AppLogo className="h-8 w-8 flex-none" />
-            <span className="text-[17px] font-black tracking-tight leading-none select-none">
-              <span className="bg-gradient-to-br from-brand-500 to-brand-600 bg-clip-text text-transparent">KudiAI</span>
-              <span className="text-navy dark:text-slate-200"> Track</span>
-            </span>
+          {/* Business identity — falls back to KudiAI brand until ownerInfo loads */}
+          <div className="flex items-center gap-2 flex-none min-w-0">
+            {ownerInfo?.owner?.business_name ? (
+              <>
+                <div className="w-8 h-8 rounded-xl flex-shrink-0 overflow-hidden bg-navy flex items-center justify-center">
+                  <span className="text-white font-black text-sm leading-none select-none">
+                    {ownerInfo.owner.business_name[0].toUpperCase()}
+                  </span>
+                </div>
+                <p className="text-[15px] font-black text-slate-800 dark:text-white leading-tight truncate" style={{ maxWidth: 160 }}>
+                  {ownerInfo.owner.business_name}
+                </p>
+              </>
+            ) : (
+              <>
+                <AppLogo className="h-8 w-8 flex-none" />
+                <span className="text-[17px] font-black tracking-tight leading-none select-none">
+                  <span className="bg-gradient-to-br from-brand-500 to-brand-600 bg-clip-text text-transparent">KudiAI</span>
+                  <span className="text-navy dark:text-slate-200"> Track</span>
+                </span>
+              </>
+            )}
           </div>
 
           <div className="flex-none flex items-center gap-2">
