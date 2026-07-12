@@ -1739,10 +1739,15 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
                     }`}>
                       {isContrib ? "+" : "−"}{fmt(item.amount)}
                     </span>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize flex-shrink-0 ${statusCls(item.status)}`}>
-                      {pendingLabel || item.status}
-                    </span>
+                    {!isPending && (
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize flex-shrink-0 ${statusCls(item.status)}`}>
+                        {item.status}
+                      </span>
+                    )}
                   </div>
+                  {isPending && pendingLabel && (
+                    <p className="text-[10px] font-bold text-violet-600 dark:text-violet-400 mt-0.5">{pendingLabel}</p>
+                  )}
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 capitalize">
                     {item.type}{isManual ? " · Bank transfer" : ` · ${item.payment_method || "cash"}`}
                     {item.paystack_ref && ` · Ref: ${item.paystack_ref.slice(-8)}`}
