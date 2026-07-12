@@ -2053,6 +2053,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           onSave={updateAsoClient}
           onClose={() => setClientProf(null)}
           staffList={staffOptions}
+          groups={groups}
           onResetPwd={handleResetPwd}
           onDelete={deleteAsoClient}
           canEditBank={!staffId}

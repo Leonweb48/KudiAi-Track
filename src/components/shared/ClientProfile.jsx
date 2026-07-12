@@ -73,7 +73,7 @@ function StatusBadge({ status }) {
 }
 
 /* ── Main component ───────────────────────────────────────────────── */
-export function ClientProfile({ record, type, onSave, onClose, staffList = [], onResetPwd, onDelete, canEditBank = false, businessName = "" }) {
+export function ClientProfile({ record, type, onSave, onClose, staffList = [], groups = [], onResetPwd, onDelete, canEditBank = false, businessName = "" }) {
   const [editing,      setEditing]      = useState(false);
   const [form,         setForm]         = useState({ ...record });
   const [photoFile,    setPhotoFile]    = useState(null);
@@ -412,6 +412,18 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], o
                         <select value={form.staff_id || ""} onChange={e => set("staff_id", e.target.value)} className={inputCls}>
                           <option value="">No staff assigned</option>
                           {staffList.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                        </select>
+                      </FormField>
+                    )}
+                    {groups.length > 0 && (
+                      <FormField label="Ajo Group">
+                        <select value={form.ajo_group_id || ""} onChange={e => set("ajo_group_id", e.target.value || null)} className={inputCls}>
+                          <option value="">No group</option>
+                          {groups.map(g => (
+                            <option key={g.id} value={g.id}>
+                              {g.name}{g.group_mode === "rotating" ? " (Rotating)" : ""}
+                            </option>
+                          ))}
                         </select>
                       </FormField>
                     )}
