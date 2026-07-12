@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+mport { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { openPaystackPopup } from "../utils/paystackCheckout";
 import { supabase } from "../utils/supabase";
 import BillPayments from "./BillPayments";
