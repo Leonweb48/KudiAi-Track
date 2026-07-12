@@ -5,7 +5,6 @@ import BillPayments from "./BillPayments";
 import CashbackCard from "../components/CashbackCard";
 import { fmt } from "../utils/helpers";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
-import AppLogo from "../components/AppLogo";
 import Icon from "../components/Icon";
 import Modal from "../components/shared/Modal";
 import { useBiometricLock } from "../hooks/useBiometricLock";
@@ -2296,14 +2295,31 @@ export default function AjoMemberPortal({ session, ajoClient }) {
 
         {/* Header */}
         <header className="flex-none z-30 min-h-[56px] flex items-center justify-between px-4 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shadow-sm" style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
-          <AppLogo className="h-8 w-8" />
+
+          {/* Business identity tile — logo if owner uploaded one, else brand initials */}
+          {ownerInfo?.owner?.profile_image_url
+            ? (
+              <div className="flex-none w-9 h-9 rounded-[10px] overflow-hidden border border-slate-100 dark:border-slate-700 shadow-sm">
+                <img src={ownerInfo.owner.profile_image_url} alt="" className="w-9 h-9 object-cover" />
+              </div>
+            )
+            : (
+              <div className="flex-none w-9 h-9 rounded-[10px] bg-brand-50 dark:bg-brand-900/30 border border-brand-100 dark:border-brand-800/40 flex items-center justify-center shadow-sm">
+                <span className="text-[12px] font-black text-brand-600 dark:text-brand-300 leading-none select-none">
+                  {(ownerInfo?.owner?.business_name || "SV").slice(0, 2).toUpperCase()}
+                </span>
+              </div>
+            )
+          }
+
+          {/* Business name — truncates at any viewport width via block+w-full+truncate */}
           <div className="flex flex-col items-center select-none min-w-0 flex-1 px-2">
-            {ownerInfo?.owner?.business_name
-              ? <span className="text-[15px] font-black tracking-tight text-slate-800 dark:text-white leading-none truncate max-w-full">{ownerInfo.owner.business_name}</span>
-              : <span className="text-[15px] font-black tracking-tight text-slate-800 dark:text-white leading-none">Savings Portal</span>}
-            <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500 mt-0.5">Powered by KudiAI</span>
+            <span className="block w-full text-center text-[15px] font-black tracking-tight text-slate-800 dark:text-white leading-none truncate">
+              {ownerInfo?.owner?.business_name || "Savings Portal"}
+            </span>
           </div>
-          <div className="flex items-center gap-2">
+
+          <div className="flex-none flex items-center gap-2">
             {loadingData && <div className="w-3.5 h-3.5 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />}
             <NotificationBell unreadCount={notif.unreadCount} onClick={() => notif.setOpen(true)} />
             <button onClick={() => setTab("me")}
