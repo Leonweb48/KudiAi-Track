@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+﻿import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { openPaystackPopup } from "../utils/paystackCheckout";
 import { supabase } from "../utils/supabase";
 import BillPayments from "./BillPayments";
@@ -44,7 +44,7 @@ async function ajoFn(action, body = {}) {
   return data;
 }
 
-// ── Constants ─────────────────────────────────────────────────────────────
+// â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const ADMIN_URL = "https://admin.kudiai.app";
 const YEAR      = new Date().getFullYear();
 
@@ -75,6 +75,29 @@ function fmtDate(lang) {
   const locale = lang === "ha" ? "ha" : lang === "yo" ? "yo" : lang === "ig" ? "ig" : "en-NG";
   return new Date().toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 }
+function fmtShortDate(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d)) return "—";
+  return d.toLocaleDateString("en-NG", { dateStyle: "medium" });
+}
+const LEDGER_LABELS = {
+  contribution:     "Contribution",
+  withdrawal:       "Withdrawal",
+  withdrawal_fee:   "Withdrawal Fee",
+  registration_fee: "Registration Fee",
+  commission:       "Commission",
+  esusu_payout:     "Esusu Payout",
+};
+function ledgerTypeLabel(type) {
+  if (!type) return "Transaction";
+  if (LEDGER_LABELS[type]) return LEDGER_LABELS[type];
+  if (type.startsWith("reversal_")) {
+    const base = LEDGER_LABELS[type.slice(9)];
+    return `Reversal${base ? ` · ${base}` : ""}`;
+  }
+  return type.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+}
 async function uploadAjoAvatar(file, clientId) {
   const ext  = file.name.split(".").pop();
   const path = `ajo/${clientId}/avatar.${ext}`;
@@ -89,12 +112,12 @@ async function uploadAjoProof(file, clientId) {
   const path = `${clientId}/${Date.now()}.${ext}`;
   const { error } = await supabase.storage.from("ajo-proofs").upload(path, file, { contentType: file.type });
   if (error) throw new Error(error.message);
-  // Always use the direct Supabase URL — the proxy alias (kudiai.app/sb) baked into
+  // Always use the direct Supabase URL â€” the proxy alias (kudiai.app/sb) baked into
   // getPublicUrl breaks link opening in PWA/browser contexts.
   return `${process.env.REACT_APP_SUPABASE_URL}/storage/v1/object/public/ajo-proofs/${path}`;
 }
 
-// ── Micro-components ──────────────────────────────────────────────────────
+// â”€â”€ Micro-components â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function Svg({ d, size = 18, color = "currentColor", sw = 2 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
@@ -157,7 +180,7 @@ function RowIcon({ d }) {
   return <Svg d={d} size={20} color="#64748b" />;
 }
 
-// ── Skeleton loader ────────────────────────────────────────────────────────
+// â”€â”€ Skeleton loader â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function SkeletonHome() {
   const S = ({ w = "w-full", h = "h-4", r = "rounded-xl" }) => (
     <div className={`${w} ${h} ${r} bg-slate-200 dark:bg-slate-700 animate-pulse`} />
@@ -175,7 +198,7 @@ function SkeletonHome() {
   );
 }
 
-// ── PIN setup modal ────────────────────────────────────────────────────────
+// â”€â”€ PIN setup modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function PinSetupModal({ onDone, onClose }) {
   const [step,  setStep]  = useState(1);
   const [pin1,  setPin1]  = useState("");
@@ -210,7 +233,7 @@ function PinSetupModal({ onDone, onClose }) {
         </p>
         <div className="flex gap-4">
           {[0, 1, 2, 3].map(i => (
-            <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all ${active.length > i ? "bg-violet-500 border-violet-500 scale-110" : "border-slate-300 dark:border-slate-600"}`} />
+            <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all ${active.length > i ? "bg-brand-500 border-brand-500 scale-110" : "border-slate-300 dark:border-slate-600"}`} />
           ))}
         </div>
         {error && <p className="text-xs text-red-500 font-semibold -mt-2">{error}</p>}
@@ -242,7 +265,7 @@ function PinSetupModal({ onDone, onClose }) {
   );
 }
 
-// ── Support ticket modal ───────────────────────────────────────────────────
+// â”€â”€ Support ticket modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function SupportModal({ onClose, clientName, clientEmail }) {
   const t = useT();
   const TICKET_TYPES = makeTicketTypes(t);
@@ -278,10 +301,10 @@ function SupportModal({ onClose, clientName, clientEmail }) {
           </div>
           <div>
             <p className="text-base font-bold text-slate-800 dark:text-slate-100">Ticket Submitted!</p>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Your ticket number is <span className="font-bold text-violet-600 dark:text-violet-400">#{done}</span></p>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Your ticket number is <span className="font-bold text-brand-500 dark:text-brand-400">#{done}</span></p>
             <p className="text-xs text-slate-400 mt-2">Our team will respond to {form.user_email} shortly.</p>
           </div>
-          <button onClick={onClose} className="mt-2 w-full py-3 bg-violet-600 text-white rounded-xl font-bold text-sm transition">Close</button>
+          <button onClick={onClose} className="mt-2 w-full py-3 bg-brand-500 text-white rounded-xl font-bold text-sm transition">Close</button>
         </div>
       ) : (
         <form onSubmit={submit} className="space-y-4">
@@ -290,7 +313,7 @@ function SupportModal({ onClose, clientName, clientEmail }) {
               <div key={k}>
                 <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">{l}</label>
                 <input type={t} placeholder={ph} value={form[k]} onChange={e => setForm(f => ({...f, [k]: e.target.value}))}
-                  className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
+                  className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30" />
               </div>
             ))}
           </div>
@@ -304,18 +327,18 @@ function SupportModal({ onClose, clientName, clientEmail }) {
           <div>
             <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">Subject *</label>
             <input placeholder="Brief summary of your issue" value={form.subject} onChange={e => setForm(f => ({...f, subject: e.target.value}))} required
-              className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
+              className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30" />
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">Description</label>
-            <textarea placeholder="Describe the problem in detail…" value={form.description} onChange={e => setForm(f => ({...f, description: e.target.value}))} rows={3}
-              className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30 resize-none" />
+            <textarea placeholder="Describe the problem in detailâ€¦" value={form.description} onChange={e => setForm(f => ({...f, description: e.target.value}))} rows={3}
+              className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 resize-none" />
           </div>
-          {err && <p className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 px-3 py-2 rounded-xl">⚠ {err}</p>}
+          {err && <p className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 px-3 py-2 rounded-xl">âš  {err}</p>}
           <button type="submit" disabled={submitting}
-            className="w-full py-3 bg-violet-600 disabled:opacity-50 text-white rounded-xl font-bold text-sm transition flex items-center justify-center gap-2">
+            className="w-full py-3 bg-brand-500 disabled:opacity-50 text-white rounded-xl font-bold text-sm transition flex items-center justify-center gap-2">
             {submitting && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-            {submitting ? "Submitting…" : "Submit Ticket"}
+            {submitting ? "Submittingâ€¦" : "Submit Ticket"}
           </button>
         </form>
       )}
@@ -323,16 +346,16 @@ function SupportModal({ onClose, clientName, clientEmail }) {
   );
 }
 
-// ── FAQ ────────────────────────────────────────────────────────────────────
+// â”€â”€ FAQ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const FAQS = [
   { q: "How do I pay my contribution?",          a: "On the Home tab, tap the green 'Pay Contribution' button. You'll be redirected to a secure Paystack payment page." },
   { q: "How do I check my savings balance?",     a: "Your current balance is shown on the Home tab in the hero card at the top of the screen." },
-  { q: "How do I request a withdrawal?",         a: "On the Home tab, tap 'Request Withdrawal'. Enter the amount and submit — your savings agent will review and approve it." },
+  { q: "How do I request a withdrawal?",         a: "On the Home tab, tap 'Request Withdrawal'. Enter the amount and submit â€” your savings agent will review and approve it." },
   { q: "How do I view my contribution history?", a: "Tap the History tab at the bottom. You can filter by contributions or withdrawals." },
-  { q: "What is the contribution calendar?",     a: "The calendar on the Home tab shows your activity for the last 90 days — each purple square is a day you contributed." },
+  { q: "What is the contribution calendar?",     a: "The calendar on the Home tab shows your activity for the last 90 days â€” each purple square is a day you contributed." },
   { q: "What fees apply to withdrawals?",        a: "Check the fee info card on your Home tab. First withdrawals may have a registration fee; subsequent ones may have a percentage fee." },
-  { q: "What is the PIN lock for?",              a: "The PIN lock protects your portal when you step away. Go to Me → Security to set it up." },
-  { q: "How do I update my profile photo?",      a: "Go to Me → Edit Profile, then tap the camera icon on your avatar." },
+  { q: "What is the PIN lock for?",              a: "The PIN lock protects your portal when you step away. Go to Me â†’ Security to set it up." },
+  { q: "How do I update my profile photo?",      a: "Go to Me â†’ Edit Profile, then tap the camera icon on your avatar." },
   { q: "How do I change my password?",           a: "Go to the Me tab and tap 'Change Password' at the bottom of the page." },
 ];
 
@@ -354,15 +377,15 @@ function FAQ() {
   );
 }
 
-// ── Pay Contribution modal ────────────────────────────────────────────────
-// Contribution type selector — shown only when client is in a group (2 options)
+// â”€â”€ Pay Contribution modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Contribution type selector â€” shown only when client is in a group (2 options)
 function ContribTypeSelector({ clientGroup, value, onChange }) {
   if (!clientGroup) return null;
   const opts = [
     { key: "personal_savings", label: "Personal Savings", desc: "Add to your personal savings balance" },
     clientGroup.group_mode === "rotating"
-      ? { key: "esusu_rotation", label: clientGroup.name, desc: "Esusu Rotation — contribute to the pot" }
-      : { key: "group_savings",  label: clientGroup.name, desc: "Savings Group — contribute to the pool" },
+      ? { key: "esusu_rotation", label: clientGroup.name, desc: "Esusu Rotation â€” contribute to the pot" }
+      : { key: "group_savings",  label: clientGroup.name, desc: "Savings Group â€” contribute to the pool" },
   ];
   return (
     <div className="mb-4">
@@ -372,7 +395,7 @@ function ContribTypeSelector({ clientGroup, value, onChange }) {
           <button key={opt.key} type="button" onClick={() => onChange(opt.key)}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl border-2 text-left transition ${
               value === opt.key
-                ? "border-violet-500 bg-violet-50 dark:bg-violet-900/20"
+                ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20"
                 : "border-slate-200 dark:border-slate-700"
             }`}>
             <div className="flex-1 min-w-0">
@@ -380,7 +403,7 @@ function ContribTypeSelector({ clientGroup, value, onChange }) {
               <p className="text-[11px] text-slate-400 dark:text-slate-500">{opt.desc}</p>
             </div>
             <div className={`flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-              value === opt.key ? "border-violet-500 bg-violet-500" : "border-slate-300 dark:border-slate-600"
+              value === opt.key ? "border-brand-500 bg-brand-500" : "border-slate-300 dark:border-slate-600"
             }`}>
               {value === opt.key && <div className="w-2 h-2 rounded-full bg-white" />}
             </div>
@@ -406,7 +429,7 @@ function PayContributionModal({ client, clientGroup, onClose, onSuccess }) {
   const doVerify = useCallback(async (ref) => {
     if (!ref) return;
     setStatus("verifying");
-    setMessage("Verifying your payment…");
+    setMessage("Verifying your paymentâ€¦");
     try {
       const confirmation = await ajoFn("confirm-payment", { client_id: client.id, reference: ref });
       setStatus("done");
@@ -444,7 +467,7 @@ function PayContributionModal({ client, clientGroup, onClose, onSuccess }) {
     }
   };
 
-  // Full-screen success screen — tap "Share Receipt" for shareable receipt modal
+  // Full-screen success screen â€” tap "Share Receipt" for shareable receipt modal
   if (status === "done") {
     const receiptData = buildAjoContributionReceipt(
       {
@@ -452,7 +475,7 @@ function PayContributionModal({ client, clientGroup, onClose, onSuccess }) {
         amount: paidAmt || client?.contribution_amount || 0,
         created_at: new Date().toISOString(), payment_method: "paystack",
       },
-      client?.full_name || "—",
+      client?.full_name || "â€”",
       client?.group_name || "Ajo Group"
     );
 
@@ -468,7 +491,7 @@ function PayContributionModal({ client, clientGroup, onClose, onSuccess }) {
     return (
       <div className="fixed inset-0 z-[100] bg-white dark:bg-slate-900 flex flex-col">
         {/* Top accent */}
-        <div className="h-1.5 w-full" style={{ background: "linear-gradient(90deg,#7c3aed,#10b981)" }} />
+        <div className="h-1.5 w-full" style={{ background: "linear-gradient(90deg,#16255A,#3DA829)" }} />
 
         <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
           {/* Checkmark */}
@@ -534,10 +557,10 @@ function PayContributionModal({ client, clientGroup, onClose, onSuccess }) {
         <ContribTypeSelector clientGroup={clientGroup} value={contribCtx} onChange={setContribCtx} />
 
         {/* Amount */}
-        <div className="bg-violet-50 dark:bg-violet-900/20 rounded-2xl px-4 py-4 mb-5">
-          <p className="text-[10px] font-bold text-violet-500 dark:text-violet-400 uppercase tracking-wider mb-2">Amount to Contribute</p>
+        <div className="bg-brand-50 dark:bg-brand-900/20 rounded-2xl px-4 py-4 mb-5">
+          <p className="text-[10px] font-bold text-brand-500 dark:text-brand-400 uppercase tracking-wider mb-2">Amount to Contribute</p>
           <div className="flex items-center gap-2">
-            <span className="text-2xl font-black text-violet-700 dark:text-violet-300">₦</span>
+            <span className="text-2xl font-black text-brand-600 dark:text-brand-300">â‚¦</span>
             <input
               type="number"
               inputMode="numeric"
@@ -546,14 +569,14 @@ function PayContributionModal({ client, clientGroup, onClose, onSuccess }) {
               onChange={e => setCustomAmt(e.target.value)}
               disabled={status === "loading" || status === "awaiting" || status === "verifying"}
               placeholder="Enter amount"
-              className="flex-1 bg-transparent text-2xl font-black text-violet-700 dark:text-violet-300 outline-none placeholder:text-violet-300 dark:placeholder:text-violet-600 tabular [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              className="flex-1 bg-transparent text-2xl font-black text-brand-600 dark:text-brand-300 outline-none placeholder:text-brand-200 dark:placeholder:text-brand-500 tabular [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
             />
           </div>
           {client?.contribution_amount > 0 && Number(customAmt) !== client.contribution_amount && (
             <button
               onClick={() => setCustomAmt(String(client.contribution_amount))}
-              className="mt-2 text-[10px] text-violet-500 dark:text-violet-400 underline underline-offset-2">
-              Reset to default (₦{fmt(client.contribution_amount)})
+              className="mt-2 text-[10px] text-brand-500 dark:text-brand-400 underline underline-offset-2">
+              Reset to default (â‚¦{fmt(client.contribution_amount)})
             </button>
           )}
           <p className="text-[11px] text-slate-400 mt-1 capitalize">{client?.contribution_frequency} contribution</p>
@@ -573,10 +596,10 @@ function PayContributionModal({ client, clientGroup, onClose, onSuccess }) {
           <button
             onClick={() => doVerify(pendingRef)}
             disabled={status === "verifying"}
-            className="w-full mb-3 py-4 bg-violet-600 hover:bg-violet-700 disabled:opacity-60 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2 shadow-md">
+            className="w-full mb-3 py-4 bg-brand-500 hover:bg-brand-600 disabled:opacity-60 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2 shadow-md">
             {status === "verifying"
-              ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Verifying…</>
-              : "I've completed payment — tap to confirm"}
+              ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Verifyingâ€¦</>
+              : "I've completed payment â€” tap to confirm"}
           </button>
         )}
 
@@ -594,9 +617,9 @@ function PayContributionModal({ client, clientGroup, onClose, onSuccess }) {
           disabled={status === "loading" || status === "awaiting" || status === "verifying"}
           className="w-full py-4 bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2 shadow-md">
           {status === "loading"
-            ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Opening Paystack…</>
+            ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Opening Paystackâ€¦</>
             : status === "awaiting" ? "Open Paystack again"
-            : <>Pay ₦{fmt(parseFloat(customAmt) || 0)} now</>}
+            : <>Pay â‚¦{fmt(parseFloat(customAmt) || 0)} now</>}
         </button>
         <button onClick={onClose} disabled={status === "loading" || status === "verifying"}
           className="w-full mt-3 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition text-center py-2">
@@ -608,7 +631,7 @@ function PayContributionModal({ client, clientGroup, onClose, onSuccess }) {
   );
 }
 
-// ── Quick Actions (Staff Portal style) ────────────────────────────────────
+// â”€â”€ Quick Actions (Staff Portal style) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function ActionBtn({ label, icon, bg, onClick }) {
   return (
     <button onClick={onClick}
@@ -623,7 +646,7 @@ function ActionBtn({ label, icon, bg, onClick }) {
   );
 }
 
-// ── Bill service tiles for Quick Services grid ─────────────────────────────
+// â”€â”€ Bill service tiles for Quick Services grid â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const QUICK_SERVICES = [
   { id: "airtime",     label: "Airtime",     g1: "#ef4444", g2: "#dc2626", d: "M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81 19.79 19.79 0 01.25 2.18 2 2 0 012.22 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" },
   { id: "data",        label: "Data Bundle", g1: "#3b82f6", g2: "#1d4ed8", d: "M1 6l11-4 11 4|M1 12l11-4 11 4|M1 18l11-4 11 4" },
@@ -633,7 +656,7 @@ const QUICK_SERVICES = [
   { id: "more",        label: "More Bills",  g1: "#6366f1", g2: "#4f46e5", d: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2|M9 5a2 2 0 002 2h2a2 2 0 002-2|M9 5a2 2 0 012-2h2a2 2 0 012 2|M9 13h6|M9 17h4" },
 ];
 
-// ── Contribution calendar ─────────────────────────────────────────────────
+// â”€â”€ Contribution calendar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function ContribCalendar({ contributions }) {
   const contribDates = new Set(
     contributions.filter(c => c.type === "contribution" && c.status === "completed")
@@ -648,16 +671,16 @@ function ContribCalendar({ contributions }) {
   }
   return (
     <div>
-      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Activity — last 90 days</p>
+      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Activity â€” last 90 days</p>
       <div className="flex flex-wrap gap-0.5">
         {cells.map(({ date, has }) => (
           <div key={date} title={date}
-            className={`w-3 h-3 rounded-sm ${has ? "bg-violet-500" : "bg-slate-200 dark:bg-slate-700"}`} />
+            className={`w-3 h-3 rounded-sm ${has ? "bg-brand-500" : "bg-slate-200 dark:bg-slate-700"}`} />
         ))}
       </div>
       <div className="flex items-center gap-3 mt-2">
         <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-sm bg-violet-500" />
+          <div className="w-3 h-3 rounded-sm bg-brand-500" />
           <span className="text-[10px] text-slate-400">Contributed</span>
         </div>
         <div className="flex items-center gap-1.5">
@@ -669,7 +692,7 @@ function ContribCalendar({ contributions }) {
   );
 }
 
-// ── First-login force-password-change ─────────────────────────────────────
+// â”€â”€ First-login force-password-change â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function AjoMemberFirstLogin({ ajoClient }) {
   const [password, setPassword] = useState("");
   const [confirm,  setConfirm]  = useState("");
@@ -693,14 +716,14 @@ function AjoMemberFirstLogin({ ajoClient }) {
   if (success) return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center px-6">
       <div className="text-center">
-        <div className="w-20 h-20 bg-violet-100 dark:bg-violet-900/30 rounded-full flex items-center justify-center mx-auto mb-5">
-          <svg viewBox="0 0 24 24" fill="none" className="w-10 h-10 text-violet-600" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+        <div className="w-20 h-20 bg-brand-100 dark:bg-brand-900/30 rounded-full flex items-center justify-center mx-auto mb-5">
+          <svg viewBox="0 0 24 24" fill="none" className="w-10 h-10 text-brand-500" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
             <path d="M20 6L9 17l-5-5" />
           </svg>
         </div>
         <h2 className="text-xl font-extrabold text-slate-800 dark:text-white mb-2">Password set!</h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400">Taking you to your dashboard…</p>
-        <div className="mt-6 w-8 h-8 border-[3px] border-violet-500 border-t-transparent rounded-full animate-spin mx-auto" />
+        <p className="text-sm text-slate-500 dark:text-slate-400">Taking you to your dashboardâ€¦</p>
+        <div className="mt-6 w-8 h-8 border-[3px] border-brand-500 border-t-transparent rounded-full animate-spin mx-auto" />
       </div>
     </div>
   );
@@ -708,7 +731,7 @@ function AjoMemberFirstLogin({ ajoClient }) {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col">
       <div className="bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 px-5 pb-5" style={{ paddingTop: "max(56px, env(safe-area-inset-top, 56px))" }}>
-        <div className="w-12 h-12 bg-violet-600 rounded-2xl flex items-center justify-center mb-4">
+        <div className="w-12 h-12 bg-brand-500 rounded-2xl flex items-center justify-center mb-4">
           <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6 text-white" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
           </svg>
@@ -725,9 +748,9 @@ function AjoMemberFirstLogin({ ajoClient }) {
             <input type={showPwd ? "text" : "password"} value={password}
               onChange={e => { setPassword(e.target.value); setError(""); }}
               placeholder="Minimum 8 characters"
-              className="w-full border border-slate-200 dark:border-slate-700 rounded-xl pl-4 pr-14 py-3 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500" />
+              className="w-full border border-slate-200 dark:border-slate-700 rounded-xl pl-4 pr-14 py-3 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500" />
             <button type="button" onClick={() => setShowPwd(v => !v)}
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-violet-600 dark:text-violet-400">
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-brand-500 dark:text-brand-400">
               {showPwd ? "Hide" : "Show"}
             </button>
           </div>
@@ -744,13 +767,13 @@ function AjoMemberFirstLogin({ ajoClient }) {
           <input type={showPwd ? "text" : "password"} value={confirm}
             onChange={e => { setConfirm(e.target.value); setError(""); }}
             placeholder="Repeat your password"
-            className={`w-full border rounded-xl px-4 py-3 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500 ${confirm && confirm !== password ? "border-red-400 dark:border-red-600" : "border-slate-200 dark:border-slate-700"}`} />
+            className={`w-full border rounded-xl px-4 py-3 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500 ${confirm && confirm !== password ? "border-red-400 dark:border-red-600" : "border-slate-200 dark:border-slate-700"}`} />
           {confirm && confirm !== password && <p className="text-[10px] text-red-500 mt-1 font-medium">Passwords don't match</p>}
         </div>
         {error && <p className="text-xs text-red-500 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/40 rounded-xl px-4 py-2.5">{error}</p>}
         <button onClick={submit} disabled={saving || password.length < 8 || password !== confirm}
-          className="w-full bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white font-bold rounded-2xl py-4 text-sm transition">
-          {saving ? "Saving…" : "Set Password & Enter Dashboard →"}
+          className="w-full bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white font-bold rounded-2xl py-4 text-sm transition">
+          {saving ? "Savingâ€¦" : "Set Password & Enter Dashboard â†’"}
         </button>
         <button onClick={() => supabase.auth.signOut()} className="w-full text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition text-center">
           Sign out
@@ -760,7 +783,7 @@ function AjoMemberFirstLogin({ ajoClient }) {
   );
 }
 
-// ── Change password modal ─────────────────────────────────────────────────
+// â”€â”€ Change password modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function ChangePasswordModal({ onClose }) {
   const [pwd,     setPwd]     = useState("");
   const [confirm, setConfirm] = useState("");
@@ -794,15 +817,15 @@ function ChangePasswordModal({ onClose }) {
             <div className="space-y-3 mb-4">
               <div className="relative">
                 <input type={showPwd ? "text" : "password"} value={pwd} onChange={e => setPwd(e.target.value)} placeholder="New password (min. 8 chars)"
-                  className="w-full px-3 pr-14 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" />
-                <button type="button" onClick={() => setShowPwd(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-violet-600">{showPwd ? "Hide" : "Show"}</button>
+                  className="w-full px-3 pr-14 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                <button type="button" onClick={() => setShowPwd(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-brand-500">{showPwd ? "Hide" : "Show"}</button>
               </div>
               <input type={showPwd ? "text" : "password"} value={confirm} onChange={e => setConfirm(e.target.value)} placeholder="Confirm new password"
-                className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" />
+                className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
             </div>
             <button onClick={handle} disabled={saving || pwd.length < 8 || pwd !== confirm}
-              className="w-full py-3.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-bold text-sm transition disabled:opacity-50">
-              {saving ? "Updating…" : "Update Password"}
+              className="w-full py-3.5 bg-brand-500 hover:bg-brand-600 text-white rounded-xl font-bold text-sm transition disabled:opacity-50">
+              {saving ? "Updatingâ€¦" : "Update Password"}
             </button>
           </>
         )}
@@ -811,7 +834,7 @@ function ChangePasswordModal({ onClose }) {
   );
 }
 
-// ── Manual deposit modal ──────────────────────────────────────────────────
+// â”€â”€ Manual deposit modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function ManualDepositModal({ client, clientGroup, ownerInfo, onClose, onSuccess }) {
   const [amount,     setAmount]     = useState("");
   const [payerName,  setPayerName]  = useState("");
@@ -883,14 +906,14 @@ function ManualDepositModal({ client, clientGroup, ownerInfo, onClose, onSuccess
 
         {done ? (
           <div className="text-center py-4">
-            <div className="w-14 h-14 bg-violet-100 dark:bg-violet-900/30 rounded-full flex items-center justify-center mx-auto mb-3">
-              <svg viewBox="0 0 24 24" fill="none" className="w-7 h-7 text-violet-600 dark:text-violet-400" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+            <div className="w-14 h-14 bg-brand-100 dark:bg-brand-900/30 rounded-full flex items-center justify-center mx-auto mb-3">
+              <svg viewBox="0 0 24 24" fill="none" className="w-7 h-7 text-brand-500 dark:text-brand-400" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
                 <path d="M20 6L9 17l-5-5" />
               </svg>
             </div>
             <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">Claim Submitted!</h3>
             <p className="text-xs text-slate-400 dark:text-slate-500">Your savings agent will verify the transfer and confirm your deposit. You'll be notified by email.</p>
-            <button onClick={onClose} className="mt-5 w-full py-3.5 bg-violet-600 text-white rounded-xl font-bold text-sm">
+            <button onClick={onClose} className="mt-5 w-full py-3.5 bg-brand-500 text-white rounded-xl font-bold text-sm">
               Close
             </button>
           </div>
@@ -908,8 +931,8 @@ function ManualDepositModal({ client, clientGroup, ownerInfo, onClose, onSuccess
               const acctName = isClientAcct ? clientBank.account_name    : ownerBank.bank_account_name;
               const bankName = isClientAcct ? clientBank.bank_name       : ownerBank.bank_name;
               return (
-                <div className="bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 rounded-2xl px-4 py-4 mb-4">
-                  <p className="text-[10px] font-bold text-violet-500 dark:text-violet-400 uppercase tracking-wider mb-3">
+                <div className="bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-800 rounded-2xl px-4 py-4 mb-4">
+                  <p className="text-[10px] font-bold text-brand-500 dark:text-brand-400 uppercase tracking-wider mb-3">
                     {isClientAcct ? "Your Dedicated Savings Account" : "Business Bank Account"}
                   </p>
                   <div className="space-y-2">
@@ -918,7 +941,7 @@ function ManualDepositModal({ client, clientGroup, ownerInfo, onClose, onSuccess
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-black text-slate-800 dark:text-white tracking-wider">{acctNum}</span>
                         <button onClick={() => copyText(acctNum)}
-                          className="text-[10px] font-bold text-violet-600 dark:text-violet-400 bg-violet-100 dark:bg-violet-900/40 px-2 py-0.5 rounded-md active:scale-95 transition">
+                          className="text-[10px] font-bold text-brand-500 dark:text-brand-400 bg-brand-100 dark:bg-brand-900/40 px-2 py-0.5 rounded-md active:scale-95 transition">
                           Copy
                         </button>
                       </div>
@@ -944,12 +967,12 @@ function ManualDepositModal({ client, clientGroup, ownerInfo, onClose, onSuccess
               </div>
             )}
 
-            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Amount Transferred (₦) <span className="text-red-500">*</span></label>
+            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Amount Transferred (â‚¦) <span className="text-red-500">*</span></label>
             <input
               type="number" inputMode="decimal"
               value={amount} onChange={e => setAmount(e.target.value)}
               placeholder="Enter the exact amount you transferred"
-              className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 mb-3"
+              className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 mb-3"
             />
 
             <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Sender Name (optional)</label>
@@ -957,7 +980,7 @@ function ManualDepositModal({ client, clientGroup, ownerInfo, onClose, onSuccess
               type="text"
               value={payerName} onChange={e => setPayerName(e.target.value)}
               placeholder="Name on the transfer receipt"
-              className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 mb-3"
+              className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 mb-3"
             />
 
             <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Reference / Note (optional)</label>
@@ -965,7 +988,7 @@ function ManualDepositModal({ client, clientGroup, ownerInfo, onClose, onSuccess
               type="text"
               value={notes} onChange={e => setNotes(e.target.value)}
               placeholder="e.g. January contribution"
-              className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 mb-3"
+              className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 mb-3"
             />
 
             {/* Proof upload */}
@@ -975,7 +998,7 @@ function ManualDepositModal({ client, clientGroup, ownerInfo, onClose, onSuccess
               <div className="relative mb-3">
                 <img src={proofPrev} alt="Proof" className="w-full rounded-xl object-cover max-h-40 border border-slate-200 dark:border-slate-600" />
                 <button onClick={() => { setProofFile(null); setProofPrev(null); }}
-                  className="absolute top-2 right-2 w-7 h-7 bg-black/50 rounded-full flex items-center justify-center text-white text-xs font-bold">✕</button>
+                  className="absolute top-2 right-2 w-7 h-7 bg-black/50 rounded-full flex items-center justify-center text-white text-xs font-bold">âœ•</button>
               </div>
             ) : (
               <button onClick={() => fileRef.current?.click()}
@@ -983,7 +1006,7 @@ function ManualDepositModal({ client, clientGroup, ownerInfo, onClose, onSuccess
                 <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                   <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>
                 </svg>
-                Upload screenshot (≤ 2 MB)
+                Upload screenshot (â‰¤ 2 MB)
               </button>
             )}
 
@@ -992,8 +1015,8 @@ function ManualDepositModal({ client, clientGroup, ownerInfo, onClose, onSuccess
             <button
               onClick={handleSubmit}
               disabled={saving || !amtNum || amtNum <= 0}
-              className="w-full py-3.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] disabled:opacity-50 shadow-sm flex items-center justify-center gap-2">
-              {uploading ? "Uploading proof…" : saving ? "Submitting…" : "Submit Deposit Claim"}
+              className="w-full py-3.5 bg-brand-500 hover:bg-brand-600 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] disabled:opacity-50 shadow-sm flex items-center justify-center gap-2">
+              {uploading ? "Uploading proofâ€¦" : saving ? "Submittingâ€¦" : "Submit Deposit Claim"}
             </button>
 
             <p className="text-[10px] text-slate-400 text-center mt-3">
@@ -1007,7 +1030,7 @@ function ManualDepositModal({ client, clientGroup, ownerInfo, onClose, onSuccess
   );
 }
 
-// ── Withdrawal request modal ──────────────────────────────────────────────
+// â”€â”€ Withdrawal request modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function WithdrawRequestModal({ client, onClose, onSuccess }) {
   const [amount,  setAmount]  = useState("");
   const [saving,  setSaving]  = useState(false);
@@ -1056,7 +1079,7 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
             </div>
             <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">Request Submitted!</h3>
             <p className="text-xs text-slate-400 dark:text-slate-500">You'll be notified by email once your request is reviewed.</p>
-            <button onClick={onClose} className="mt-5 w-full py-3.5 bg-violet-600 text-white rounded-xl font-bold text-sm">
+            <button onClick={onClose} className="mt-5 w-full py-3.5 bg-brand-500 text-white rounded-xl font-bold text-sm">
               Close
             </button>
           </div>
@@ -1070,7 +1093,7 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
             {isFirst && regFee > 0 && (
               <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl px-3 py-2 mb-3">
                 <p className="text-xs text-blue-700 dark:text-blue-300 font-semibold">
-                  First withdrawal — Registration fee: {fmt(regFee)} will be deducted
+                  First withdrawal â€” Registration fee: {fmt(regFee)} will be deducted
                 </p>
               </div>
             )}
@@ -1082,12 +1105,12 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
               </div>
             )}
 
-            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Amount (₦)</label>
+            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Amount (â‚¦)</label>
             <input
               type="number" inputMode="decimal"
               value={amount} onChange={e => setAmount(e.target.value)}
               placeholder="Enter amount"
-              className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 mb-3"
+              className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 mb-3"
             />
 
             {amtNum > 0 && (
@@ -1101,7 +1124,7 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
                     <span className="text-slate-500 dark:text-slate-400">
                       {isFirst ? "Registration fee" : `Fee (${pctFee}%)`}
                     </span>
-                    <span className="font-bold text-red-500">−{fmt(feeAmt)}</span>
+                    <span className="font-bold text-red-500">âˆ’{fmt(feeAmt)}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-xs border-t border-slate-200 dark:border-slate-600 pt-1.5">
@@ -1126,8 +1149,8 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
                 });
               }}
               disabled={saving || !amtNum || amtNum <= 0}
-              className="w-full py-3.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] disabled:opacity-50 shadow-sm">
-              {saving ? "Submitting…" : "Submit Request"}
+              className="w-full py-3.5 bg-brand-500 hover:bg-brand-600 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] disabled:opacity-50 shadow-sm">
+              {saving ? "Submittingâ€¦" : "Submit Request"}
             </button>
           </>
         )}
@@ -1138,7 +1161,7 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
   );
 }
 
-// ── Overview tab ──────────────────────────────────────────────────────────
+// â”€â”€ Overview tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function OverviewTab({ client, contributions, cycle, rotationData, rotationLoading, onWithdrawClick, onPayClick, onDepositClick, ownerInfo, withdrawRequests = [], onBillsClick, userEmail }) {
   const t = useT();
   const { lang } = useLanguage();
@@ -1188,12 +1211,12 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
   })();
 
   const insight = streak >= 3
-    ? `🔥 ${streak}-month savings streak! You're on fire!`
+    ? `ðŸ”¥ ${streak}-month savings streak! You're on fire!`
     : totalLastMonth > 0 && totalThisMonth > totalLastMonth
-      ? `📈 You saved ${Math.round(((totalThisMonth - totalLastMonth) / totalLastMonth) * 100)}% more than last month!`
+      ? `ðŸ“ˆ You saved ${Math.round(((totalThisMonth - totalLastMonth) / totalLastMonth) * 100)}% more than last month!`
       : healthScore >= 80
-        ? `⭐ Your savings health score is ${healthScore}/100 — excellent!`
-        : `💡 ${fmt(client.total_saved || 0)} saved so far. Keep it up!`;
+        ? `â­ Your savings health score is ${healthScore}/100 â€” excellent!`
+        : `ðŸ’¡ ${fmt(client.total_saved || 0)} saved so far. Keep it up!`;
 
   const daysUntilDue = client.next_contribution_date
     ? Math.ceil((new Date(client.next_contribution_date) - new Date()) / 86400000)
@@ -1207,19 +1230,19 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
       <div>
         <p className="text-sm text-slate-400 dark:text-slate-500 font-medium">{greetingText(t)}</p>
         <h1 className="text-2xl font-black text-slate-800 dark:text-white leading-tight">
-          {(client?.full_name || "").split(" ")[0] || "Member"} 👋
+          {(client?.full_name || "").split(" ")[0] || "Member"} ðŸ‘‹
         </h1>
         <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{fmtDate(lang)}</p>
       </div>
 
       {/* AI insight card */}
-      <div className="bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800/50 rounded-2xl px-4 py-3">
-        <p className="text-[13px] font-semibold text-violet-800 dark:text-violet-200">{insight}</p>
+      <div className="bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-800/50 rounded-2xl px-4 py-3">
+        <p className="text-[13px] font-semibold text-brand-700 dark:text-brand-200">{insight}</p>
       </div>
 
       {/* Hero savings card */}
       <div className="rounded-3xl px-5 py-5 text-white relative overflow-hidden shadow-lg"
-        style={{ background: "linear-gradient(145deg,#7c3aed 0%,#6d28d9 55%,#4c1d95 100%)" }}>
+        style={{ background: "linear-gradient(145deg,#16255A 0%,#1D3070 55%,#0F1A42 100%)" }}>
         <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full bg-white/5 pointer-events-none" />
         <div className="absolute -bottom-10 -left-6 w-40 h-40 rounded-full bg-white/5 pointer-events-none" />
         <div className="relative">
@@ -1228,11 +1251,11 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
           <div className="flex items-center gap-2 mb-4">
             {streak > 0 && (
               <span className="bg-white/15 backdrop-blur-sm rounded-full px-2.5 py-1 text-[11px] font-bold text-white">
-                🔥 {streak}mo streak
+                ðŸ”¥ {streak}mo streak
               </span>
             )}
             <span className="bg-white/15 backdrop-blur-sm rounded-full px-2.5 py-1 text-[11px] font-bold text-white">
-              ⭐ {healthScore}/100
+              â­ {healthScore}/100
             </span>
           </div>
           <div className="grid grid-cols-3 divide-x divide-white/20">
@@ -1267,7 +1290,7 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
           <ActionBtn
             label="Withdraw"
             icon="M12 19V5|M5 12l7 7 7-7"
-            bg="bg-gradient-to-br from-violet-500 to-violet-700"
+            bg="bg-gradient-to-br from-brand-500 to-brand-600"
             onClick={onWithdrawClick}
           />
           <ActionBtn
@@ -1277,13 +1300,13 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
             onClick={onBillsClick}
           />
         </div>
-        {/* Manual deposit row — full-width secondary button */}
+        {/* Manual deposit row â€” full-width secondary button */}
         <button
           onClick={onDepositClick}
           className="mt-3 w-full flex items-center justify-between gap-3 py-3 px-4 rounded-xl bg-slate-50 dark:bg-slate-700/60 border border-slate-200 dark:border-slate-600 active:scale-[0.99] transition text-left">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center flex-shrink-0">
-              <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-violet-600 dark:text-violet-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+            <div className="w-8 h-8 rounded-lg bg-brand-100 dark:bg-brand-900/40 flex items-center justify-center flex-shrink-0">
+              <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-brand-500 dark:text-brand-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                 <rect x="2" y="5" width="20" height="14" rx="2"/>
                 <path d="M12 10v4|M10 12h4"/>
               </svg>
@@ -1307,7 +1330,7 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
         <div className="flex items-center justify-between mb-3">
           <p className="text-sm font-extrabold text-slate-800 dark:text-white">Quick Services</p>
           <button onClick={onBillsClick}
-            className="text-[11px] text-violet-600 dark:text-violet-400 font-bold">View all</button>
+            className="text-[11px] text-brand-500 dark:text-brand-400 font-bold">View all</button>
         </div>
         <div className="grid grid-cols-3 gap-3">
           {QUICK_SERVICES.map(s => (
@@ -1332,25 +1355,25 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
             ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
             : daysUntilDue === 0
               ? "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800"
-              : "bg-violet-50 dark:bg-violet-900/20 border-violet-200 dark:border-violet-800"
+              : "bg-brand-50 dark:bg-brand-900/20 border-brand-200 dark:border-brand-800"
         }`}>
           <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
-            daysUntilDue != null && daysUntilDue < 0 ? "bg-red-100 dark:bg-red-900/40" : "bg-violet-100 dark:bg-violet-900/40"
+            daysUntilDue != null && daysUntilDue < 0 ? "bg-red-100 dark:bg-red-900/40" : "bg-brand-100 dark:bg-brand-900/40"
           }`}>
-            <svg viewBox="0 0 24 24" fill="none" className={`w-5 h-5 ${daysUntilDue != null && daysUntilDue < 0 ? "text-red-500" : "text-violet-500"}`}
+            <svg viewBox="0 0 24 24" fill="none" className={`w-5 h-5 ${daysUntilDue != null && daysUntilDue < 0 ? "text-red-500" : "text-brand-500"}`}
               stroke="currentColor" strokeWidth={2} strokeLinecap="round">
               <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
             </svg>
           </div>
           <div className="flex-1 min-w-0">
-            <p className={`text-xs font-bold ${daysUntilDue != null && daysUntilDue < 0 ? "text-red-600 dark:text-red-400" : "text-violet-700 dark:text-violet-300"}`}>
+            <p className={`text-xs font-bold ${daysUntilDue != null && daysUntilDue < 0 ? "text-red-600 dark:text-red-400" : "text-brand-600 dark:text-brand-300"}`}>
               {daysUntilDue != null && daysUntilDue < 0
                 ? `Overdue by ${Math.abs(daysUntilDue)} day${Math.abs(daysUntilDue) !== 1 ? "s" : ""}`
                 : daysUntilDue === 0 ? "Due Today!"
                 : `Due in ${daysUntilDue} day${daysUntilDue !== 1 ? "s" : ""}`}
             </p>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 capitalize">
-              {client.contribution_frequency} · {fmt(client.contribution_amount)} · {client.next_contribution_date}
+              {client.contribution_frequency} &middot; {fmt(client.contribution_amount)} &middot; {fmtShortDate(client.next_contribution_date)}
             </p>
           </div>
         </div>
@@ -1359,10 +1382,10 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
       {/* Assigned savings officer */}
       {ownerInfo?.staff && (
         <div className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3 border border-slate-100 dark:border-slate-700 flex items-center gap-3 shadow-sm">
-          <div className="w-11 h-11 rounded-xl bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center flex-shrink-0 overflow-hidden border border-violet-100 dark:border-violet-800">
+          <div className="w-11 h-11 rounded-xl bg-brand-100 dark:bg-brand-900/40 flex items-center justify-center flex-shrink-0 overflow-hidden border border-brand-100 dark:border-brand-800">
             {ownerInfo.staff.profile_image_url
               ? <img src={ownerInfo.staff.profile_image_url} alt="" className="w-full h-full object-cover" />
-              : <span className="text-violet-600 dark:text-violet-400 font-black text-lg">{(ownerInfo.staff.full_name || "?")[0].toUpperCase()}</span>
+              : <span className="text-brand-500 dark:text-brand-400 font-black text-lg">{(ownerInfo.staff.full_name || "?")[0].toUpperCase()}</span>
             }
           </div>
           <div className="flex-1 min-w-0">
@@ -1370,7 +1393,7 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
             <p className="text-sm font-extrabold text-slate-800 dark:text-white truncate leading-tight">{ownerInfo.staff.full_name}</p>
             {ownerInfo.staff.phone && <p className="text-[11px] text-slate-400 mt-0.5">{ownerInfo.staff.phone}</p>}
           </div>
-          <span className="text-[9px] bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 font-bold px-2 py-1 rounded-full capitalize flex-shrink-0">
+          <span className="text-[9px] bg-brand-100 dark:bg-brand-900/30 text-brand-500 dark:text-brand-400 font-bold px-2 py-1 rounded-full capitalize flex-shrink-0">
             {ownerInfo.staff.role || "staff"}
           </span>
         </div>
@@ -1379,8 +1402,8 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
       {/* Fee info card */}
       {((client.registration_charge > 0) || (client.withdrawal_fee_percent > 0)) && (
         <div className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3 border border-slate-100 dark:border-slate-700 flex items-center gap-3 shadow-sm">
-          <div className="w-9 h-9 rounded-xl bg-violet-50 dark:bg-violet-900/30 flex items-center justify-center flex-shrink-0">
-            <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-violet-500" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+          <div className="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-900/30 flex items-center justify-center flex-shrink-0">
+            <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-brand-500" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
               <circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/>
             </svg>
           </div>
@@ -1388,11 +1411,11 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
             <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Withdrawal Fees</p>
             {(client.total_withdrawn || 0) === 0 && client.registration_charge > 0 ? (
               <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                First withdrawal: <span className="text-violet-600 dark:text-violet-400 font-bold">{fmt(client.registration_charge)} registration fee</span>
+                First withdrawal: <span className="text-brand-500 dark:text-brand-400 font-bold">{fmt(client.registration_charge)} registration fee</span>
               </p>
             ) : client.withdrawal_fee_percent > 0 ? (
               <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                Withdrawal fee: <span className="text-violet-600 dark:text-violet-400 font-bold">{client.withdrawal_fee_percent}% of amount</span>
+                Withdrawal fee: <span className="text-brand-500 dark:text-brand-400 font-bold">{client.withdrawal_fee_percent}% of amount</span>
               </p>
             ) : null}
           </div>
@@ -1404,20 +1427,20 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
         <div className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-4 border border-slate-100 dark:border-slate-700 shadow-sm">
           <div className="flex items-center justify-between mb-2">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Savings Goal</p>
-            <button onClick={() => { setEditGoal(true); setGoalInput(String(goal)); }} className="text-[11px] text-violet-600 dark:text-violet-400 font-bold">Edit</button>
+            <button onClick={() => { setEditGoal(true); setGoalInput(String(goal)); }} className="text-[11px] text-brand-500 dark:text-brand-400 font-bold">Edit</button>
           </div>
           {editGoal ? (
             <div className="flex gap-2">
               <input type="number" value={goalInput} onChange={e => setGoalInput(e.target.value)}
-                placeholder="Target amount (₦)"
-                className="flex-1 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-400" />
+                placeholder="Target amount (â‚¦)"
+                className="flex-1 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500" />
               <button onClick={() => {
                 const g = parseFloat(goalInput) || 0;
                 setGoal(g);
                 setEditGoal(false);
                 if (g > 0) ajoFn("set-goal", { client_id: client.id, target_amount: g }).catch(() => null);
                 else ajoFn("delete-goal", { client_id: client.id }).catch(() => null);
-              }} className="px-3 py-2 bg-violet-600 text-white rounded-xl text-sm font-bold">Save</button>
+              }} className="px-3 py-2 bg-brand-500 text-white rounded-xl text-sm font-bold">Save</button>
             </div>
           ) : (
             <>
@@ -1426,7 +1449,7 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
                 <span className="text-slate-400 dark:text-slate-500">{fmt(goal)}</span>
               </div>
               <div className="h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
-                <div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-violet-400 transition-all duration-700"
+                <div className="h-full rounded-full bg-gradient-to-r from-brand-500 to-brand-400 transition-all duration-700"
                   style={{ width: `${Math.min(((client.current_balance || 0) / goal) * 100, 100).toFixed(1)}%` }} />
               </div>
               <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5">
@@ -1437,8 +1460,8 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
         </div>
       ) : (
         <button onClick={() => setEditGoal(true)}
-          className="w-full py-3 border-2 border-dashed border-violet-200 dark:border-violet-800/50 rounded-2xl text-sm font-semibold text-violet-500 dark:text-violet-400 flex items-center justify-center gap-2">
-          🎯 Set a Savings Goal
+          className="w-full py-3 border-2 border-dashed border-brand-200 dark:border-brand-800/50 rounded-2xl text-sm font-semibold text-brand-500 dark:text-brand-400 flex items-center justify-center gap-2">
+          ðŸŽ¯ Set a Savings Goal
         </button>
       )}
 
@@ -1456,11 +1479,11 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-bold text-amber-700 dark:text-amber-300">Pending Review</p>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">{r.requested_at?.slice(0, 10)}</p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">{fmtShortDate(r.requested_at)}</p>
                 </div>
                 <div className="text-right flex-shrink-0">
                   <p className="text-xs font-extrabold text-amber-600 dark:text-amber-400">{fmt(r.amount)}</p>
-                  <p className="text-[10px] text-green-600 dark:text-green-400">→ {fmt(r.net_amount)}</p>
+                  <p className="text-[10px] text-green-600 dark:text-green-400">â†’ {fmt(r.net_amount)}</p>
                 </div>
               </div>
             ))}
@@ -1507,8 +1530,8 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
               <div key={c.id} className="bg-white dark:bg-slate-800 rounded-xl px-3 py-2.5 flex items-center gap-3 border border-slate-100 dark:border-slate-700">
                 <div className={`w-2 h-2 rounded-full flex-shrink-0 ${c.type === "contribution" ? "bg-green-500" : "bg-red-400"}`} />
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 capitalize">{c.type}</p>
-                  <p className="text-[10px] text-slate-400">{c.created_at?.slice(0, 10)} · {c.payment_method || "cash"}</p>
+                  <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">{ledgerTypeLabel(c.type)}</p>
+                  <p className="text-[10px] text-slate-400">{fmtShortDate(c.created_at)} &middot; {c.payment_method || "cash"}</p>
                 </div>
                 <span className={`text-sm font-extrabold tabular flex-shrink-0 ${c.type === "contribution" ? "text-green-600 dark:text-green-400" : "text-red-500"}`}>
                   {c.type === "contribution" ? "+" : "−"}{fmt(c.amount)}
@@ -1522,7 +1545,7 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
   );
 }
 
-// ── History tab ───────────────────────────────────────────────────────────
+// â”€â”€ History tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo }) {
   const [typeFilter,     setTypeFilter]     = useState("all");
   const [receipt,        setReceipt]        = useState(null);
@@ -1559,8 +1582,8 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
   if (!allItems.length) {
     return (
       <div className="flex flex-col items-center justify-center py-20 px-4 text-center">
-        <div className="w-16 h-16 bg-violet-50 dark:bg-violet-900/20 rounded-full flex items-center justify-center mb-4">
-          <svg viewBox="0 0 24 24" fill="none" className="w-7 h-7 text-violet-400" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round">
+        <div className="w-16 h-16 bg-brand-50 dark:bg-brand-900/20 rounded-full flex items-center justify-center mb-4">
+          <svg viewBox="0 0 24 24" fill="none" className="w-7 h-7 text-brand-400" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round">
             <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M16 13H8M16 17H8" />
           </svg>
         </div>
@@ -1596,7 +1619,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
       return {
         date:        pdfFmtDate(item.created_at || item.date),
         description: desc,
-        reference:   item.payment_method || item.status || "—",
+        reference:   item.payment_method || item.status || "â€”",
         debit:       isWd || isWdReq ? pdfFmt(amt) : "",
         credit:      isWd || isWdReq ? "" : pdfFmt(amt),
         balance:     pdfFmt(runBal),
@@ -1613,7 +1636,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
         ownerInfo?.staff?.phone          ? { value: ownerInfo.staff.phone,      sub: true } : null,
       ].filter(Boolean),
       entityDetails: [
-        { label: "Member",          value: client?.full_name || "—" },
+        { label: "Member",          value: client?.full_name || "â€”" },
         { label: "Current Balance", value: pdfFmt(client?.current_balance || 0) },
         { label: "Total Saved",     value: pdfFmt(client?.total_saved || totC) },
         { label: "Records",         value: String(allItems.length) },
@@ -1650,7 +1673,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
               onClick={() => setTypeFilter(f.id)}
               className={`px-4 py-1.5 rounded-full text-xs font-bold flex-shrink-0 transition-colors
                 ${typeFilter === f.id
-                  ? "bg-violet-600 text-white shadow-sm"
+                  ? "bg-brand-500 text-white shadow-sm"
                   : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300"}`}>
               {f.label}
             </button>
@@ -1672,14 +1695,14 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
           <button key={`wr-${item.id}`} onClick={() => setReceipt({ ...item, type: "withdrawal" })}
             className="w-full text-left bg-white dark:bg-slate-800 rounded-2xl px-4 py-3 border border-slate-100 dark:border-slate-700 active:scale-[0.98] transition-transform">
             <div className="flex items-start gap-3">
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-violet-50 dark:bg-violet-900/20">
-                <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-violet-500" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-brand-50 dark:bg-brand-900/20">
+                <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-brand-500" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                   <path d="M12 19V5M5 12l7 7 7-7"/>
                 </svg>
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-extrabold tabular text-violet-600 dark:text-violet-400">−{fmt(item.amount)}</span>
+                  <span className="text-sm font-extrabold tabular text-brand-500 dark:text-brand-400">âˆ’{fmt(item.amount)}</span>
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize flex-shrink-0 ${statusCls(item.status)}`}>{item.status}</span>
                 </div>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
@@ -1700,7 +1723,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
           const isManual          = item.payment_method === "manual_transfer";
           const isContrib         = item.type === "contribution";
           const cardCls = isPending
-            ? "bg-violet-50 dark:bg-violet-900/10 border-violet-200 dark:border-violet-800/60"
+            ? "bg-brand-50 dark:bg-brand-900/20 border-brand-200 dark:border-brand-800/60"
             : isRejectedManual
               ? "bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800/60"
               : "bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700";
@@ -1718,12 +1741,12 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
             <Row {...rowProps}>
               <div className="flex items-start gap-3">
                 <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                  isPending        ? "bg-violet-100 dark:bg-violet-900/40" :
+                  isPending        ? "bg-brand-100 dark:bg-brand-900/40" :
                   isRejectedManual ? "bg-red-100 dark:bg-red-900/30" :
                   isContrib        ? "bg-green-50 dark:bg-green-900/20" : "bg-red-50 dark:bg-red-900/20"
                 }`}>
                   <svg viewBox="0 0 24 24" fill="none" className={`w-4 h-4 ${
-                    isPending        ? "text-violet-500 dark:text-violet-400" :
+                    isPending        ? "text-brand-500 dark:text-brand-400" :
                     isRejectedManual ? "text-red-500" :
                     isContrib        ? "text-green-600 dark:text-green-400" : "text-red-500"
                   }`} stroke="currentColor" strokeWidth={2} strokeLinecap="round">
@@ -1733,11 +1756,11 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
                     <span className={`text-sm font-extrabold tabular ${
-                      isPending        ? "text-violet-600 dark:text-violet-400" :
+                      isPending        ? "text-brand-500 dark:text-brand-400" :
                       isRejectedManual ? "text-red-500 dark:text-red-400" :
                       isContrib        ? "text-green-600 dark:text-green-400" : "text-red-500"
                     }`}>
-                      {isContrib ? "+" : "−"}{fmt(item.amount)}
+                      {isContrib ? "+" : "âˆ’"}{fmt(item.amount)}
                     </span>
                     {!isPending && (
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize flex-shrink-0 ${statusCls(item.status)}`}>
@@ -1746,10 +1769,10 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
                     )}
                   </div>
                   {isPending && pendingLabel && (
-                    <p className="text-[10px] font-bold text-violet-600 dark:text-violet-400 mt-0.5">{pendingLabel}</p>
+                    <p className="text-[10px] font-bold text-brand-500 dark:text-brand-400 mt-0.5">{pendingLabel}</p>
                   )}
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 capitalize">
-                    {item.type}{isManual ? " · Bank transfer" : ` · ${item.payment_method || "cash"}`}
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    {ledgerTypeLabel(item.type)}{isManual ? " · Bank transfer" : ` · ${item.payment_method || "cash"}`}
                     {item.paystack_ref && ` · Ref: ${item.paystack_ref.slice(-8)}`}
                   </p>
                   <p className="text-[10px] text-slate-400 mt-0.5">
@@ -1781,14 +1804,14 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
           <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-2xl p-5 shadow-xl">
             <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-1">Report an Issue</h3>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-3">
-              {new Date(disputeFor.created_at).toLocaleDateString("en-NG", { dateStyle: "medium" })} · {disputeFor.type === "contribution" ? "+" : "−"}{fmt(disputeFor.amount)}
+              {fmtShortDate(disputeFor.created_at)} &middot; {disputeFor.type === "contribution" ? "+" : "−"}{fmt(disputeFor.amount)}
             </p>
             <textarea
               value={disputeDesc}
               onChange={e => setDisputeDesc(e.target.value)}
-              placeholder="Describe the issue (optional)…"
+              placeholder="Describe the issue (optional)â€¦"
               rows={3}
-              className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-400 resize-none mb-3"
+              className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none mb-3"
             />
             <div className="flex gap-2">
               <button onClick={() => setDisputeFor(null)}
@@ -1809,8 +1832,8 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
                 setDisputeLoading(false);
                 setDisputeFor(null);
               }} disabled={disputeLoading}
-                className="flex-1 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-bold disabled:opacity-50">
-                {disputeLoading ? "Submitting…" : "Submit Report"}
+                className="flex-1 py-2.5 rounded-xl bg-brand-500 text-white text-sm font-bold disabled:opacity-50">
+                {disputeLoading ? "Submittingâ€¦" : "Submit Report"}
               </button>
             </div>
           </div>
@@ -1820,7 +1843,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
   );
 }
 
-// ── Me tab (Staff Portal structure) ───────────────────────────────────────
+// â”€â”€ Me tab (Staff Portal structure) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProfileUpdate }) {
   const [view,         setView]        = useState("menu");
   const [editForm,     setEditForm]    = useState({ full_name: client?.full_name || "", phone: client?.phone || "" });
@@ -1871,13 +1894,13 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
       <div className="flex-1 overflow-y-auto px-4 py-5 space-y-5 pb-6">
         <div className="flex flex-col items-center gap-3">
           <div className="relative">
-            <div className="w-24 h-24 rounded-3xl bg-violet-600 flex items-center justify-center shadow-lg overflow-hidden">
+            <div className="w-24 h-24 rounded-3xl bg-brand-500 flex items-center justify-center shadow-lg overflow-hidden">
               {photoPreview ? <img src={photoPreview} alt="" className="w-full h-full object-cover" />
                 : client?.profile_image_url ? <img src={client.profile_image_url} alt="" className="w-full h-full object-cover" />
                 : <span className="text-2xl font-black text-white">{initials}</span>}
             </div>
             <button onClick={() => fileRef.current?.click()}
-              className="absolute -bottom-1 -right-1 w-9 h-9 rounded-full bg-violet-600 border-2 border-white dark:border-slate-900 flex items-center justify-center shadow-md active:scale-90 transition">
+              className="absolute -bottom-1 -right-1 w-9 h-9 rounded-full bg-brand-500 border-2 border-white dark:border-slate-900 flex items-center justify-center shadow-md active:scale-90 transition">
               <Svg d={P.cam} size={15} color="#fff" />
             </button>
           </div>
@@ -1890,12 +1913,12 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
             <div key={k}>
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">{l}</p>
               <input type={t} value={editForm[k]} onChange={e => setEditForm(p => ({...p, [k]: e.target.value}))}
-                className="w-full h-12 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
+                className="w-full h-12 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/30" />
             </div>
           ))}
           <div>
             <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Email</p>
-            <input disabled value={client?.email || session?.user?.email || "—"}
+            <input disabled value={client?.email || session?.user?.email || "â€”"}
               className="w-full h-12 rounded-xl border border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-4 text-sm text-slate-400 cursor-not-allowed" />
           </div>
         </div>
@@ -1906,8 +1929,8 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
           </div>
         )}
         <button onClick={saveProfile} disabled={saving}
-          className="w-full h-12 rounded-2xl bg-violet-600 text-white font-bold text-sm flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50">
-          {saving ? "Saving…" : "Save Changes"}
+          className="w-full h-12 rounded-2xl bg-brand-500 text-white font-bold text-sm flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50">
+          {saving ? "Savingâ€¦" : "Save Changes"}
         </button>
       </div>
     </div>
@@ -1915,7 +1938,7 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
 
   const Toggle = (
     <button onClick={e => { e.stopPropagation(); toggleDark(); }}
-      className={`w-12 h-6 rounded-full transition-colors duration-200 relative flex-shrink-0 ${isDark ? "bg-violet-600" : "bg-slate-200 dark:bg-slate-600"}`}>
+      className={`w-12 h-6 rounded-full transition-colors duration-200 relative flex-shrink-0 ${isDark ? "bg-brand-500" : "bg-slate-200 dark:bg-slate-600"}`}>
       <span className="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all duration-200"
         style={{ left: isDark ? "calc(100% - 22px)" : "2px" }} />
     </button>
@@ -1926,18 +1949,18 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
       {/* Profile card */}
       <div className="mx-4 mt-5 mb-5">
         <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700/50 p-5 flex items-center gap-4">
-          <div className="w-16 h-16 rounded-2xl bg-violet-600 flex items-center justify-center shadow-lg flex-shrink-0 overflow-hidden">
+          <div className="w-16 h-16 rounded-2xl bg-brand-500 flex items-center justify-center shadow-lg flex-shrink-0 overflow-hidden">
             {client?.profile_image_url
               ? <img src={client.profile_image_url} alt="" className="w-full h-full object-cover" />
               : <span className="text-xl font-black text-white">{initials}</span>}
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-base font-extrabold text-slate-800 dark:text-slate-100 truncate">{client?.full_name || "Member"}</p>
-            <p className="text-[12px] font-bold text-violet-600 dark:text-violet-400 capitalize mt-0.5">{client?.contribution_frequency || ""} savings</p>
-            <p className="text-[11px] text-slate-400 mt-0.5 font-mono">{client?.membership_number || "—"}</p>
+            <p className="text-[12px] font-bold text-brand-500 dark:text-brand-400 capitalize mt-0.5">{client?.contribution_frequency || ""} savings</p>
+            <p className="text-[11px] text-slate-400 mt-0.5 font-mono">{client?.membership_number || "â€”"}</p>
           </div>
           <button onClick={() => setView("edit")}
-            className="w-9 h-9 rounded-xl bg-violet-50 dark:bg-violet-900/30 flex items-center justify-center active:scale-90 transition flex-shrink-0">
+            className="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-900/30 flex items-center justify-center active:scale-90 transition flex-shrink-0">
             <Svg d={P.pen} size={16} color="#7c3aed" />
           </button>
         </div>
@@ -1977,7 +2000,7 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
                     setShowPinSetup(true);
                   }
                 }}
-                className={`w-12 h-6 rounded-full transition-colors duration-200 relative flex-shrink-0 ${lock.enabled ? "bg-violet-600" : "bg-slate-200 dark:bg-slate-600"}`}>
+                className={`w-12 h-6 rounded-full transition-colors duration-200 relative flex-shrink-0 ${lock.enabled ? "bg-brand-500" : "bg-slate-200 dark:bg-slate-600"}`}>
                 {lockBusy
                   ? <span className="absolute inset-0 flex items-center justify-center"><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /></span>
                   : <span className="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all duration-200" style={{ left: lock.enabled ? "calc(100% - 22px)" : "2px" }} />
@@ -2014,7 +2037,7 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
       {/* Change Password */}
       <div className="px-4 mb-3">
         <button onClick={onChangePwdClick}
-          className="w-full py-[15px] bg-violet-50 dark:bg-violet-950/30 rounded-2xl font-bold text-sm border border-violet-100 dark:border-violet-900/40 active:bg-violet-100 transition-colors flex items-center justify-center gap-2.5 text-violet-600 dark:text-violet-400">
+          className="w-full py-[15px] bg-brand-50 dark:bg-brand-900/20 rounded-2xl font-bold text-sm border border-brand-100 dark:border-brand-900/40 active:bg-brand-100 transition-colors flex items-center justify-center gap-2.5 text-brand-500 dark:text-brand-400">
           <Svg d={P.shield} size={18} color="currentColor" />
           Change Password
         </button>
@@ -2031,8 +2054,8 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
 
       {/* Footer */}
       <div className="text-center py-4 px-8 space-y-1">
-        <p className="text-[11px] text-slate-400 dark:text-slate-500 font-medium">KudiAI Track · Savings Member Portal</p>
-        <p className="text-[10px] text-slate-300 dark:text-slate-600">Powered by AMAYA &amp; Co. Technologies<br />All rights reserved © {YEAR}</p>
+        <p className="text-[11px] text-slate-400 dark:text-slate-500 font-medium">KudiAI Track &middot; Savings Member Portal</p>
+        <p className="text-[10px] text-slate-300 dark:text-slate-600">Powered by AMAYA &amp; Co. Technologies<br />All rights reserved &copy; {YEAR}</p>
       </div>
 
       {/* FAQ inline view */}
@@ -2069,7 +2092,7 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
   );
 }
 
-// ── Bills wrapper — mirrors same store shape as CoopMemberPortal ──────────
+// â”€â”€ Bills wrapper â€” mirrors same store shape as CoopMemberPortal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function AjoMemberBillsWrapper({ client, ownerInfo, session, autoService, onAutoOpened }) {
   const [bills, setBills] = useState([]);
 
@@ -2119,7 +2142,7 @@ function AjoMemberBillsWrapper({ client, ownerInfo, session, autoService, onAuto
   );
 }
 
-// ── Main portal ───────────────────────────────────────────────────────────
+// â”€â”€ Main portal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function AjoMemberPortal({ session, ajoClient }) {
   const t = useT();
 
@@ -2214,7 +2237,7 @@ export default function AjoMemberPortal({ session, ajoClient }) {
       .finally(() => setLoadingData(false));
   }, [mustChange, ajoClient?.id, ajoClient?.owner_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Realtime: sync balance/contributions from business side ────────────
+  // â”€â”€ Realtime: sync balance/contributions from business side â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     if (!ajoClient?.id) return;
 
@@ -2225,7 +2248,7 @@ export default function AjoMemberPortal({ session, ajoClient }) {
         (payload) => {
           if (!payload.new) return;
           setContributions(prev => [payload.new, ...prev]);
-          const amt = `₦${Number(payload.new.amount || 0).toLocaleString("en-NG")}`;
+          const amt = `â‚¦${Number(payload.new.amount || 0).toLocaleString("en-NG")}`;
           if (payload.new.type === "withdrawal") {
             notif.addNotification("aso", "Payment Processed", `${amt} paid out to you`);
           } else if (payload.new.type === "reversal") {
@@ -2238,7 +2261,7 @@ export default function AjoMemberPortal({ session, ajoClient }) {
         (payload) => {
           if (!payload.new) return;
           setContributions(prev => prev.map(c => c.id === payload.new.id ? { ...c, ...payload.new } : c));
-          const amt = `₦${Number(payload.new.amount || 0).toLocaleString("en-NG")}`;
+          const amt = `â‚¦${Number(payload.new.amount || 0).toLocaleString("en-NG")}`;
           if (payload.new.payment_method === "manual_transfer") {
             if (payload.new.status === "completed") {
               notif.addNotification("aso", "Deposit Confirmed", `${amt} bank transfer confirmed and added to your balance`);
@@ -2253,7 +2276,7 @@ export default function AjoMemberPortal({ session, ajoClient }) {
         (payload) => {
           refreshWithdrawRequests();
           if (payload.new?.status === "rejected") {
-            const amt = `₦${Number(payload.new.amount || 0).toLocaleString("en-NG")}`;
+            const amt = `â‚¦${Number(payload.new.amount || 0).toLocaleString("en-NG")}`;
             notif.addNotification("aso", "Withdrawal Declined", `Your ${amt} withdrawal request was declined`);
           }
         })
@@ -2274,17 +2297,17 @@ export default function AjoMemberPortal({ session, ajoClient }) {
         {/* Header */}
         <header className="flex-none z-30 min-h-[56px] flex items-center justify-between px-4 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shadow-sm" style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
           <AppLogo className="h-8 w-8" />
-          <div className="flex items-baseline gap-0.5 select-none">
-            <span className="text-[17px] font-black tracking-tight text-slate-800 dark:text-white leading-none">Kudi</span>
-            <span className="text-[17px] font-black tracking-tight leading-none"
-              style={{ background: "linear-gradient(135deg,#7c3aed,#6d28d9)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>AI</span>
-            <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 tracking-widest uppercase leading-none ml-1">Track</span>
+          <div className="flex flex-col items-center select-none min-w-0 flex-1 px-2">
+            {ownerInfo?.owner?.business_name
+              ? <span className="text-[15px] font-black tracking-tight text-slate-800 dark:text-white leading-none truncate max-w-full">{ownerInfo.owner.business_name}</span>
+              : <span className="text-[15px] font-black tracking-tight text-slate-800 dark:text-white leading-none">Savings Portal</span>}
+            <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500 mt-0.5">Powered by KudiAI</span>
           </div>
           <div className="flex items-center gap-2">
-            {loadingData && <div className="w-3.5 h-3.5 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />}
+            {loadingData && <div className="w-3.5 h-3.5 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />}
             <NotificationBell unreadCount={notif.unreadCount} onClick={() => notif.setOpen(true)} />
             <button onClick={() => setTab("me")}
-              className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500 to-violet-700 flex items-center justify-center border-2 border-slate-100 dark:border-slate-700 shadow-sm active:scale-90 transition-transform overflow-hidden">
+              className="w-9 h-9 rounded-full bg-gradient-to-br from-brand-500 to-brand-600 flex items-center justify-center border-2 border-slate-100 dark:border-slate-700 shadow-sm active:scale-90 transition-transform overflow-hidden">
               {client?.profile_image_url
                 ? <img src={client.profile_image_url} alt="" className="w-9 h-9 object-cover" />
                 : <span className="text-sm font-black text-white">{avatarInitial}</span>}
@@ -2339,7 +2362,7 @@ export default function AjoMemberPortal({ session, ajoClient }) {
             />
           )}
           {!client && tab !== "me" && <SkeletonHome />}
-          {/* Offers section — max 1 per session on client portal */}
+          {/* Offers section â€” max 1 per session on client portal */}
           {tab === "home" && (
             <>
               {ajoTabCard && ajoTabCard.slot === "tab_card_quad" && (
@@ -2360,7 +2383,7 @@ export default function AjoMemberPortal({ session, ajoClient }) {
           )}
         </main>
 
-        {/* Powered by card — always visible above bottom nav on client portals */}
+        {/* Powered by card â€” always visible above bottom nav on client portals */}
         <PoweredByCardSlot portalType="ajo_client" businessId={client?.owner_id} />
 
         {/* Bottom nav */}
@@ -2371,11 +2394,11 @@ export default function AjoMemberPortal({ session, ajoClient }) {
               return (
                 <button key={n.id} onClick={() => setTab(n.id)}
                   className="flex-1 flex flex-col items-center justify-center gap-0.5 relative focus-visible:outline-none">
-                  {active && <span className="absolute top-0 left-1/2 -translate-x-1/2 w-5 h-0.5 rounded-full bg-violet-600 dark:bg-violet-400" />}
+                  {active && <span className="absolute top-0 left-1/2 -translate-x-1/2 w-5 h-0.5 rounded-full bg-brand-500 dark:bg-brand-400" />}
                   <div className={`transition-all duration-200 ${active ? "scale-110" : "scale-100"}`}>
-                    <Icon name={n.icon} size={21} className={active ? "text-violet-600 dark:text-violet-400" : "text-slate-400 dark:text-slate-500"} />
+                    <Icon name={n.icon} size={21} className={active ? "text-brand-500 dark:text-brand-400" : "text-slate-400 dark:text-slate-500"} />
                   </div>
-                  <span className={`text-[8px] font-bold uppercase tracking-wide leading-none ${active ? "text-violet-600 dark:text-violet-400" : "text-slate-400 dark:text-slate-500"}`}>
+                  <span className={`text-[8px] font-bold uppercase tracking-wide leading-none ${active ? "text-brand-500 dark:text-brand-400" : "text-slate-400 dark:text-slate-500"}`}>
                     {n.label}
                   </span>
                 </button>
@@ -2431,9 +2454,11 @@ export default function AjoMemberPortal({ session, ajoClient }) {
             { label: t("aiChip.coopBenefits")       || "Savings Goal",        q: "How am I doing with my savings goal?" },
             { label: t("aiChip.mySavings") + " Tips"|| "Savings Tips",        q: "Give me tips to save more consistently" },
           ]}
-          inputPlaceholder={t("aiChip.ajoPlaceholder") || "Ask about your savings…"}
+          inputPlaceholder={t("aiChip.ajoPlaceholder") || "Ask about your savingsâ€¦"}
         />
       )}
     </div>
   );
 }
+
+

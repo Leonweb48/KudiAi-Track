@@ -2,6 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Brand tokens ─────────────────────────────────────────────────── */
+:root {
+  --brand-green: #3DA829;
+  --brand-green-dark: #2E8020;
+  --brand-green-light: #5AC43D;
+  --navy: #16255A;
+  --navy-mid: #1D3070;
+  --navy-dark: #0F1A42;
+}
+
 /* ── Safe-area insets (Capacitor edge-to-edge) ────────────────────── */
 .safe-top    { padding-top:    env(safe-area-inset-top);    }
 .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
