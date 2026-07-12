@@ -87,7 +87,9 @@ async function uploadAjoProof(file, clientId) {
   const path = `${clientId}/${Date.now()}.${ext}`;
   const { error } = await supabase.storage.from("ajo-proofs").upload(path, file, { contentType: file.type });
   if (error) throw new Error(error.message);
-  return supabase.storage.from("ajo-proofs").getPublicUrl(path).data.publicUrl;
+  // Always use the direct Supabase URL — the proxy alias (kudiai.app/sb) baked into
+  // getPublicUrl breaks link opening in PWA/browser contexts.
+  return `${process.env.REACT_APP_SUPABASE_URL}/storage/v1/object/public/ajo-proofs/${path}`;
 }
 
 // ── Micro-components ──────────────────────────────────────────────────────

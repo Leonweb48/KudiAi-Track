@@ -1038,15 +1038,21 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                       {dep.payer_name  && <p className="text-[10px] text-slate-400 mt-0.5">Paid by: {dep.payer_name}</p>}
                       {dep.claim_notes && <p className="text-[10px] text-slate-400 italic mt-0.5">"{dep.claim_notes}"</p>}
                       <p className="text-[10px] text-slate-400 mt-0.5">{dateStr}</p>
-                      {dep.proof_url && (
-                        <a href={dep.proof_url} target="_blank" rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-[10px] font-bold text-violet-600 dark:text-violet-400 mt-1 hover:underline">
-                          <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-                            <path d="M14.5 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7.5L14.5 2z" /><polyline points="14 2 14 8 20 8" />
-                          </svg>
-                          View Proof
-                        </a>
-                      )}
+                      {dep.proof_url && (() => {
+                        const proofHref = dep.proof_url.replace(
+                          /^https:\/\/kudiai\.app\/sb\//,
+                          `${process.env.REACT_APP_SUPABASE_URL}/`
+                        );
+                        return (
+                          <a href={proofHref} target="_blank" rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-[10px] font-bold text-violet-600 dark:text-violet-400 mt-1 hover:underline">
+                            <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                              <path d="M14.5 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7.5L14.5 2z" /><polyline points="14 2 14 8 20 8" />
+                            </svg>
+                            View Proof
+                          </a>
+                        );
+                      })()}
                     </div>
                   </div>
                   {canConfirmDeposit ? (
