@@ -1527,10 +1527,11 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
       const amt      = parseFloat(item.amount) || 0;
       const isWdReq  = item._type === "withdrawal_request";
       const isFee    = item.type === "withdrawal_fee" || item.type === "registration_fee";
-      const isWd     = !isWdReq && (item.type === "withdrawal" || isFee || (item.type || "").startsWith("reversal_"));
+      const isWd     = !isWdReq && (item.type === "withdrawal" || isFee || item.type === "commission" || (item.type || "").startsWith("reversal_"));
       const desc     = isWdReq ? "Withdrawal Request (Pending)"
         : isFee        ? (item.type === "withdrawal_fee" ? "Withdrawal Fee" : "Registration Fee")
-        : item.type === "withdrawal" ? "Withdrawal"
+        : item.type === "withdrawal"  ? "Withdrawal"
+        : item.type === "commission"  ? "Commission"
         : (item.type || "").startsWith("reversal_") ? "Reversal"
         : "Contribution";
       if (!isWdReq) { if (isWd) runBal -= amt; else runBal += amt; }

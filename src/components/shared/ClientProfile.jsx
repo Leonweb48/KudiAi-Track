@@ -390,6 +390,20 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], o
                         <input type="number" value={form.contribution_amount || ""} onChange={e => set("contribution_amount", parseFloat(e.target.value)||0)} className={inputCls} placeholder="0.00" />
                       </FormField>
                     </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <FormField label="Commission Model">
+                        <select value={form.commission_model || "none"} onChange={e => set("commission_model", e.target.value)} className={inputCls}>
+                          <option value="none">None</option>
+                          <option value="first_period">First Period</option>
+                          <option value="percent">Percent</option>
+                        </select>
+                      </FormField>
+                      {form.commission_model === "percent" && (
+                        <FormField label="Commission %">
+                          <input type="number" value={form.commission_percent || ""} onChange={e => set("commission_percent", parseFloat(e.target.value) || null)} className={inputCls} placeholder="e.g. 5" min="0.01" max="100" step="0.01" />
+                        </FormField>
+                      )}
+                    </div>
                     <FormField label="Next Due Date">
                       <input type="date" value={form.next_contribution_date || ""} onChange={e => set("next_contribution_date", e.target.value)} className={inputCls} />
                     </FormField>

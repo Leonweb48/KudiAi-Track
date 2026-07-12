@@ -66,7 +66,7 @@ function json(body: unknown, status = 200): Response {
 }
 
 // ── PIN-requiring actions ─────────────────────────────────────────────────────
-const PIN_GATED = new Set(["record_withdrawal", "reverse_contribution", "archive_client", "confirm_manual_deposit"]);
+const PIN_GATED = new Set(["record_withdrawal", "reverse_contribution", "archive_client", "confirm_manual_deposit", "execute_commission"]);
 
 // ── Resolve the true owner UUID for a client from the DB ─────────────────────
 async function resolveClientOwner(
@@ -408,8 +408,14 @@ serve(async (req: Request) => {
   }
 
   if (action === "open_cycle") {
-    const { client_id: ocClientId, start_date, length_periods, expected_amount_per_period, label: ocLabel } =
-      params as { client_id: string; start_date?: string; length_periods?: number; expected_amount_per_period?: number; label?: string };
+    const {
+      client_id: ocClientId, start_date, length_periods, expected_amount_per_period,
+      label: ocLabel, commission_model: ocCommModel, commission_percent: ocCommPct, force: ocForce,
+    } = params as {
+      client_id: string; start_date?: string; length_periods?: number;
+      expected_amount_per_period?: number; label?: string;
+      commission_model?: string; commission_percent?: number; force?: boolean;
+    };
     if (!ocClientId) return json({ ok: false, error: "client_id required" }, 400);
 
     const ownerId = await resolveClientOwner(sb, ocClientId);
@@ -422,12 +428,15 @@ serve(async (req: Request) => {
     }
 
     const { data: ocData, error: ocErr } = await sb.rpc("ajo_open_cycle", {
-      p_client_id: ocClientId,
-      p_owner_id:  ownerId,
-      p_start:     start_date || null,
-      p_length:    length_periods || null,
-      p_amount:    expected_amount_per_period || null,
-      p_label:     ocLabel || null,
+      p_client_id:        ocClientId,
+      p_owner_id:         ownerId,
+      p_start:            start_date        || null,
+      p_length:           length_periods    || null,
+      p_amount:           expected_amount_per_period || null,
+      p_label:            ocLabel           || null,
+      p_commission_model: ocCommModel       || null,
+      p_commission_pct:   ocCommPct         || null,
+      p_force:            ocForce           || false,
     });
     if (ocErr) return json({ ok: false, error: ocErr.message });
     return json(ocData);
@@ -458,6 +467,50 @@ serve(async (req: Request) => {
     });
     if (ccErr) return json({ ok: false, error: ccErr.message });
     return json(ccData);
+  }
+
+  if (action === "execute_commission") {
+    const { cycle_id: ecCycleId, amount: ecAmount } =
+      params as { cycle_id: string; amount: number };
+    if (!ecCycleId) return json({ ok: false, error: "cycle_id required" }, 400);
+    if (!ecAmount || Number(ecAmount) <= 0) return json({ ok: false, error: "amount must be > 0" }, 400);
+
+    const { data: cycleRow } = await sb
+      .from("ajo_cycles")
+      .select("client_id, owner_id, commission_model")
+      .eq("id", ecCycleId)
+      .maybeSingle();
+    if (!cycleRow) return json({ ok: false, error: "Cycle not found" }, 404);
+
+    const ajoPerms = await resolveAjoPerms(sb, user.id, cycleRow.owner_id as string);
+    if (ajoPerms === false) return json({ ok: false, error: "Unauthorized" }, 403);
+    if (ajoPerms !== null && !ajoPerms.ajo_record_withdrawals) {
+      return json({ ok: false, error: "Permission denied: Ajo withdrawal recording not enabled" }, 403);
+    }
+
+    const { data: ecData, error: ecErr } = await sb.rpc("ajo_execute_commission", {
+      p_cycle_id: ecCycleId,
+      p_owner_id: cycleRow.owner_id as string,
+      p_amount:   Number(ecAmount),
+    });
+    if (ecErr) return json({ ok: false, error: ecErr.message });
+    if (!(ecData as Record<string, unknown>)?.ok) return json(ecData);
+
+    const ctx = await fetchEmailContext(sb, cycleRow.client_id as string, cycleRow.owner_id as string, user.id);
+    await fireAjoEmail("ajo_commission", {
+      client_email:     ctx.clientEmail,
+      client_name:      ctx.clientName,
+      user_email:       ctx.ownerEmail,
+      business_name:    ctx.businessName,
+      staff_email:      ctx.staffEmail,
+      staff_name:       ctx.staffName,
+      amount:           Number(ecAmount),
+      balance_after:    (ecData as Record<string, unknown>)?.balance_after,
+      commission_model: cycleRow.commission_model,
+      date:             new Date().toLocaleDateString("en-NG"),
+    });
+
+    return json(ecData);
   }
 
   if (action === "reverse_contribution") {

@@ -27,6 +27,7 @@ const BLANK = {
   next_of_kin: "", next_of_kin_phone: "", next_of_kin_email: "", next_of_kin_address: "",
   staff_id: "",
   bank_code: "", account_number: "", account_name: "", bank_name: "",
+  commission_model: "none", commission_percent: "",
 };
 
 const BLANK_GROUP = {
@@ -100,7 +101,7 @@ function isGroupAccount(c) {
 }
 
 /* ── Per-client Ajo Contribution History Modal ─────────────────────────── */
-function AsoClientHistoryModal({ client, contributions, cycle, businessName, staffMap = {}, onClose, onOpenCycle, onCloseCycle }) {
+function AsoClientHistoryModal({ client, contributions, cycle, businessName, staffMap = {}, onClose, onOpenCycle, onCloseCycle, onExecuteCommission }) {
   const [tab,         setTab]         = useState(cycle ? "card" : "history");
   const [typeFilter,  setTypeFilter]  = useState("all");
   const [receipt,     setReceipt]     = useState(null);
@@ -117,10 +118,11 @@ function AsoClientHistoryModal({ client, contributions, cycle, businessName, sta
     const rows = sorted.map(c => {
       const amt   = parseFloat(c.amount) || 0;
       const isFee = c.type === "withdrawal_fee" || c.type === "registration_fee";
-      const isWd  = c.type === "withdrawal" || isFee || (c.type || "").startsWith("reversal_");
+      const isWd  = c.type === "withdrawal" || isFee || c.type === "commission" || (c.type || "").startsWith("reversal_");
       const desc  = isFee
         ? (c.type === "withdrawal_fee" ? "Withdrawal Fee" : "Registration Fee")
         : c.type === "withdrawal" ? "Withdrawal"
+        : c.type === "commission" ? "Commission"
         : (c.type || "").startsWith("reversal_") ? "Reversal"
         : "Contribution";
       if (isWd) runBal -= amt; else runBal += amt;
@@ -134,7 +136,7 @@ function AsoClientHistoryModal({ client, contributions, cycle, businessName, sta
       };
     });
     const totContrib = contributions.filter(c => c.type === "contribution").reduce((s, c) => s + (parseFloat(c.amount) || 0), 0);
-    const totWd      = contributions.filter(c => c.type === "withdrawal" || c.type === "withdrawal_fee" || c.type === "registration_fee").reduce((s, c) => s + (parseFloat(c.amount) || 0), 0);
+    const totWd      = contributions.filter(c => c.type === "withdrawal" || c.type === "withdrawal_fee" || c.type === "registration_fee" || c.type === "commission").reduce((s, c) => s + (parseFloat(c.amount) || 0), 0);
     const pdf = await createReportPdf({
       title: "Ajo Statement", businessName: businessName || "My Business",
       period: client.full_name,
@@ -231,6 +233,7 @@ function AsoClientHistoryModal({ client, contributions, cycle, businessName, sta
               businessName={businessName}
               onOpenCycle={onOpenCycle}
               onCloseCycle={cycle ? onCloseCycle : undefined}
+              onExecuteCommission={cycle && cycle.status !== "active" ? onExecuteCommission : undefined}
             />
           </div>
         )}
@@ -724,6 +727,8 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       contribution_amount:    parseFloat(f.contribution_amount    || 0),
       registration_charge:    parseFloat(f.registration_charge    || 0),
       withdrawal_fee_percent: parseFloat(f.withdrawal_fee_percent || 5),
+      commission_model:       f.commission_model   || "none",
+      commission_percent:     f.commission_model === "percent" ? parseFloat(f.commission_percent || 0) || null : null,
       status:                 "active",
       next_contribution_date: today(),
     });
@@ -1526,6 +1531,23 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           <Field label="Withdrawal Fee %" type="number" value={f.withdrawal_fee_percent}
             onChange={e => set("withdrawal_fee_percent", e.target.value)} placeholder="5" />
 
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">Commission Model</p>
+              <select value={f.commission_model}
+                onChange={e => set("commission_model", e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm text-slate-800 dark:text-white">
+                <option value="none">None</option>
+                <option value="first_period">First Period</option>
+                <option value="percent">Percent</option>
+              </select>
+            </div>
+            {f.commission_model === "percent" && (
+              <Field label="Commission %" type="number" value={f.commission_percent}
+                onChange={e => set("commission_percent", e.target.value)} placeholder="e.g. 5" />
+            )}
+          </div>
+
           <SectionLabel>Contact & Identity</SectionLabel>
           <div className="grid grid-cols-2 gap-2">
             <Field label="Phone" type="tel" value={f.phone}
@@ -1870,22 +1892,41 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         const { client: hc, contributions: hcons, cycle: hcycle } = historyFor;
         const bizName = profile?.business_name || profile?.owner_name || "My Business";
 
-        const handleOpenCycle = async () => {
-          const { data, error } = await supabase.functions.invoke("ajo-write", {
-            body: {
-              action: "open_cycle",
-              client_id: hc.id,
-              start_date: hc.registration_date || new Date().toISOString().slice(0, 10),
-              expected_amount_per_period: hc.contribution_amount,
-            },
-          });
-          if (error || !data?.ok) {
-            alert(data?.error || error?.message || "Failed to open cycle");
+        const handleOpenCycle = async (force = false) => {
+          const body = {
+            action: "open_cycle",
+            client_id: hc.id,
+            start_date: hc.registration_date || new Date().toISOString().slice(0, 10),
+            expected_amount_per_period: hc.contribution_amount,
+            commission_model: hc.commission_model || "none",
+            commission_percent: hc.commission_percent || null,
+            force,
+          };
+          const { data, error } = await supabase.functions.invoke("ajo-write", { body });
+          if (error) { alert(error.message || "Failed to open cycle"); return; }
+
+          // Conflict: first_period commission + reg fee
+          if (!data?.ok && data?.conflict === "REG_FEE_AND_FIRST_PERIOD") {
+            const choice = window.confirm(
+              `⚠ Double-charge conflict\n\nThis client has a ₦${Number(data.reg_charge || 0).toLocaleString()} registration fee. ` +
+              `Opening with first-period commission may charge the client twice.\n\n` +
+              `Press OK to open WITHOUT commission for this cycle.\n` +
+              `Press Cancel to go back and change the commission model.`
+            );
+            if (choice) {
+              // Re-open with commission_model forced to none
+              const { data: d2, error: e2 } = await supabase.functions.invoke("ajo-write", {
+                body: { ...body, commission_model: "none", force: true },
+              });
+              if (e2 || !d2?.ok) { alert(d2?.error || e2?.message || "Failed to open cycle"); return; }
+              const { data: newCycle } = await supabase.from("ajo_cycles").select("*").eq("id", d2.cycle_id).maybeSingle();
+              setHistoryFor(prev => ({ ...prev, cycle: newCycle || null }));
+            }
             return;
           }
-          // Refresh cycle in historyFor
-          const { data: newCycle } = await supabase
-            .from("ajo_cycles").select("*").eq("id", data.cycle_id).maybeSingle();
+
+          if (!data?.ok) { alert(data?.error || "Failed to open cycle"); return; }
+          const { data: newCycle } = await supabase.from("ajo_cycles").select("*").eq("id", data.cycle_id).maybeSingle();
           setHistoryFor(prev => ({ ...prev, cycle: newCycle || null }));
         };
 
@@ -1899,7 +1940,27 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             alert(data?.error || error?.message || "Failed to close cycle");
             return;
           }
-          setHistoryFor(prev => ({ ...prev, cycle: null }));
+          // Reload cycle as completed (so commission execute button appears)
+          const { data: updatedCycle } = await supabase.from("ajo_cycles").select("*").eq("id", hcycle.id).maybeSingle();
+          setHistoryFor(prev => ({ ...prev, cycle: updatedCycle || null }));
+        };
+
+        const handleExecuteCommission = async (amount, pin) => {
+          if (!hcycle) return;
+          const { data, error } = await supabase.functions.invoke("ajo-write", {
+            body: { action: "execute_commission", cycle_id: hcycle.id, amount, pin },
+          });
+          if (error || !data?.ok) {
+            alert(data?.error || error?.message || "Commission execution failed");
+            return;
+          }
+          // Refresh contributions so commission entry appears and button hides
+          const { data: freshContribs } = await supabase
+            .from("ajo_contributions")
+            .select("*")
+            .eq("aso_client_id", hc.id)
+            .order("created_at", { ascending: false });
+          setHistoryFor(prev => ({ ...prev, contributions: freshContribs || prev.contributions }));
         };
 
         return (
@@ -1912,6 +1973,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             onClose={() => setHistoryFor(null)}
             onOpenCycle={handleOpenCycle}
             onCloseCycle={handleCloseCycle}
+            onExecuteCommission={handleExecuteCommission}
           />
         );
       })()}

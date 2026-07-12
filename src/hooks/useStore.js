@@ -543,6 +543,8 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
       contribution_amount:    cl.contribution_amount  || 0,
       registration_charge:    cl.registration_charge  || 0,
       withdrawal_fee_percent: cl.withdrawal_fee_percent || 5,
+      commission_model:       cl.commission_model   || "none",
+      commission_percent:     cl.commission_percent || null,
       total_saved:            0,
       total_withdrawn:        0,
       current_balance:        0,

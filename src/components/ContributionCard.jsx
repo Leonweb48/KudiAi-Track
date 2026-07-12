@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { createReportPdf, fmtCurrency, fmtDate } from "../utils/generateReportPdf";
+import TransactionPinModal from "./TransactionPinModal";
 
 // ── Period math ───────────────────────────────────────────────────────────────
 
@@ -128,14 +129,45 @@ function fmtPeriodRange(p, freq) {
   return freq === "daily" ? from : `${from} – ${to}`;
 }
 
+// ── Commission helpers ────────────────────────────────────────────────────────
+
+function computeCommission(cycle, contributions) {
+  if (!cycle || !cycle.commission_model || cycle.commission_model === "none") {
+    return { amount: 0, label: null };
+  }
+  const ledgerContribs = contributions.filter(
+    (c) => c.type === "contribution" || c.type === undefined
+  );
+  if (cycle.commission_model === "first_period") {
+    return {
+      amount: Number(cycle.expected_amount_per_period),
+      label: `Period 1 (${fmtCurrency(cycle.expected_amount_per_period)})`,
+    };
+  }
+  if (cycle.commission_model === "percent") {
+    const totalPaid = ledgerContribs.reduce((s, c) => s + Number(c.amount || 0), 0);
+    const pct = Number(cycle.commission_percent || 0);
+    return {
+      amount: (totalPaid * pct) / 100,
+      label: `${pct}% of ${fmtCurrency(totalPaid)}`,
+    };
+  }
+  return { amount: 0, label: null };
+}
+
+function commissionAlreadyExecuted(contributions) {
+  return contributions.some((c) => c.type === "commission");
+}
+
 // ── PDF export ────────────────────────────────────────────────────────────────
 
-async function exportCardPdf({ cycle, periods, clientName, businessName }) {
+async function exportCardPdf({ cycle, periods, contributions, clientName, businessName }) {
   const freq = cycle.frequency || cycle.contribution_frequency || "monthly";
   const paid    = periods.filter((p) => p.status === "paid").length;
   const partial = periods.filter((p) => p.status === "partial").length;
   const missed  = periods.filter((p) => p.status === "missed").length;
   const totalPaid = periods.reduce((s, p) => s + p.paid, 0);
+  const commission = computeCommission(cycle, contributions || []);
 
   const pdf = await createReportPdf({
     title:        "Contribution Card",
@@ -149,12 +181,16 @@ async function exportCardPdf({ cycle, periods, clientName, businessName }) {
     ],
   });
 
-  pdf.addStats([
-    { label: "Paid",           value: `${paid} / ${cycle.length_periods}`,      color: "#059669" },
-    { label: "Partial",        value: String(partial),                            color: "#d97706" },
-    { label: "Missed",         value: String(missed),                             color: "#dc2626" },
-    { label: "Total Collected", value: fmtCurrency(totalPaid),                   color: "#0f1c45" },
-  ]);
+  const stats = [
+    { label: "Paid",            value: `${paid} / ${cycle.length_periods}`, color: "#059669" },
+    { label: "Partial",         value: String(partial),                      color: "#d97706" },
+    { label: "Missed",          value: String(missed),                       color: "#dc2626" },
+    { label: "Total Collected", value: fmtCurrency(totalPaid),               color: "#0f1c45" },
+  ];
+  if (commission.amount > 0) {
+    stats.push({ label: "Commission Earned", value: fmtCurrency(commission.amount), color: "#7c3aed" });
+  }
+  pdf.addStats(stats);
 
   pdf.addSectionTitle("Period Breakdown");
 
@@ -175,11 +211,16 @@ async function exportCardPdf({ cycle, periods, clientName, businessName }) {
   }));
 
   pdf.addTable(cols, rows);
-  pdf.addTotalsBlock([
-    { label: "Total Expected", value: fmtCurrency(Number(cycle.expected_amount_per_period) * cycle.length_periods) },
+  const totalsRows = [
+    { label: "Total Expected",  value: fmtCurrency(Number(cycle.expected_amount_per_period) * cycle.length_periods) },
     { label: "Total Collected", value: fmtCurrency(totalPaid), bold: true, green: totalPaid >= Number(cycle.expected_amount_per_period) * cycle.length_periods },
-    { label: "Outstanding", value: fmtCurrency(Math.max(0, Number(cycle.expected_amount_per_period) * cycle.length_periods - totalPaid)), red: true },
-  ]);
+    { label: "Outstanding",     value: fmtCurrency(Math.max(0, Number(cycle.expected_amount_per_period) * cycle.length_periods - totalPaid)), red: true },
+  ];
+  if (commission.amount > 0) {
+    totalsRows.push({ sep: true });
+    totalsRows.push({ label: `Commission (${cycle.commission_model === "first_period" ? "Period 1" : `${cycle.commission_percent}%`})`, value: fmtCurrency(commission.amount), bold: true });
+  }
+  pdf.addTotalsBlock(totalsRows);
 
   await pdf.save(`contribution-card-${clientName.toLowerCase().replace(/\s+/g, "-")}.pdf`);
 }
@@ -194,10 +235,13 @@ export default function ContributionCard({
   businessName,
   onOpenCycle,
   onCloseCycle,
+  onExecuteCommission,
   compact = false,
 }) {
   const [selected, setSelected] = useState(null);
   const [exporting, setExporting] = useState(false);
+  const [showPinForCommission, setShowPinForCommission] = useState(false);
+  const [commissionExecuting, setCommissionExecuting] = useState(false);
 
   const freq = frequency || cycle?.frequency || cycle?.contribution_frequency || "monthly";
   const cols = COLS_BY_FREQ[freq] || 4;
@@ -211,6 +255,11 @@ export default function ContributionCard({
   const missedCount  = periods.filter((p) => p.status === "missed").length;
   const partialCount = periods.filter((p) => p.status === "partial").length;
   const totalPaid    = periods.reduce((s, p) => s + p.paid, 0);
+
+  const commission        = useMemo(() => computeCommission(cycle, contributions), [cycle, contributions]);
+  const commissionDone    = useMemo(() => commissionAlreadyExecuted(contributions), [contributions]);
+  const canExecCommission = !compact && onExecuteCommission && cycle &&
+    cycle.status !== "active" && commission.amount > 0 && !commissionDone;
   const totalExp     = cycle ? Number(cycle.expected_amount_per_period) * cycle.length_periods : 0;
 
   if (!cycle) {
@@ -230,8 +279,15 @@ export default function ContributionCard({
 
   const handleExport = async () => {
     setExporting(true);
-    try { await exportCardPdf({ cycle: { ...cycle, frequency: freq }, periods, clientName, businessName }); }
+    try { await exportCardPdf({ cycle: { ...cycle, frequency: freq }, periods, contributions, clientName, businessName }); }
     finally { setExporting(false); }
+  };
+
+  const handleCommissionPin = async (pin) => {
+    setShowPinForCommission(false);
+    setCommissionExecuting(true);
+    try { await onExecuteCommission(commission.amount, pin); }
+    finally { setCommissionExecuting(false); }
   };
 
   return (
@@ -309,6 +365,38 @@ export default function ContributionCard({
         ))}
       </div>
 
+      {/* Commission strip */}
+      {!compact && commission.amount > 0 && (
+        <div className="mx-4 mb-3 rounded-xl bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 px-3 py-2.5 flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-bold text-violet-500 uppercase tracking-wide">Collector Commission</p>
+            <p className="text-xs text-violet-700 dark:text-violet-300 mt-0.5">{commission.label}</p>
+          </div>
+          <div className="text-right flex-shrink-0">
+            <p className="font-extrabold text-violet-700 dark:text-violet-300 text-sm">{fmtCurrency(commission.amount)}</p>
+            {commissionDone && (
+              <p className="text-[10px] text-emerald-600 font-semibold mt-0.5">Executed ✓</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Settlement / execute commission */}
+      {canExecCommission && (
+        <div className="mx-4 mb-3">
+          <button
+            onClick={() => setShowPinForCommission(true)}
+            disabled={commissionExecuting}
+            className="w-full py-2.5 rounded-xl bg-violet-600 text-white text-sm font-bold hover:bg-violet-700 transition-colors disabled:opacity-50 active:scale-[0.98]"
+          >
+            {commissionExecuting ? "Processing…" : `Execute Commission — ${fmtCurrency(commission.amount)}`}
+          </button>
+          <p className="text-[10px] text-gray-400 dark:text-gray-500 text-center mt-1">
+            PIN-gated · deducts from client balance · client is notified
+          </p>
+        </div>
+      )}
+
       {/* Legend */}
       {!compact && (
         <div className="px-4 pb-3 flex flex-wrap gap-3">
@@ -321,6 +409,16 @@ export default function ContributionCard({
             </span>
           ))}
         </div>
+      )}
+
+      {/* PIN modal for commission execution */}
+      {showPinForCommission && (
+        <TransactionPinModal
+          title="Confirm Commission"
+          subtitle={`Deduct ${fmtCurrency(commission.amount)} from ${clientName}'s balance`}
+          onConfirm={handleCommissionPin}
+          onCancel={() => setShowPinForCommission(false)}
+        />
       )}
 
       {/* Period detail bottom sheet */}
