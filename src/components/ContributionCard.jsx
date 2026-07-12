@@ -95,8 +95,8 @@ const MARK_CLS = {
   paid:     "bg-emerald-500 text-white",
   partial:  "bg-amber-400 text-white",
   missed:   "bg-red-400 text-white",
-  current:  "bg-violet-500 text-white ring-2 ring-violet-300",
-  upcoming: "bg-gray-100 text-gray-400 dark:bg-gray-700 dark:text-gray-500",
+  current:  "bg-brand-500 text-white ring-2 ring-brand-200",
+  upcoming: "bg-slate-100 text-slate-400 dark:bg-slate-700 dark:text-slate-500",
 };
 
 const MARK_ICON = {
@@ -188,7 +188,7 @@ async function exportCardPdf({ cycle, periods, contributions, clientName, busine
     { label: "Total Collected", value: fmtCurrency(totalPaid),               color: "#0f1c45" },
   ];
   if (commission.amount > 0) {
-    stats.push({ label: "Commission Earned", value: fmtCurrency(commission.amount), color: "#7c3aed" });
+    stats.push({ label: "Commission Earned", value: fmtCurrency(commission.amount), color: "#3DA829" });
   }
   pdf.addStats(stats);
 
@@ -265,11 +265,11 @@ export default function ContributionCard({
   if (!cycle) {
     if (!onOpenCycle) return null;
     return (
-      <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-6 text-center">
-        <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">No active cycle. Start one to track contributions.</p>
+      <div className="rounded-xl border border-dashed border-slate-300 dark:border-slate-600 p-6 text-center">
+        <p className="text-sm text-slate-500 dark:text-slate-400 mb-3">No active cycle. Start one to track contributions.</p>
         <button
           onClick={onOpenCycle}
-          className="px-4 py-2 bg-violet-600 text-white text-sm font-semibold rounded-lg hover:bg-violet-700 transition-colors"
+          className="px-4 py-2 bg-brand-500 text-white text-sm font-semibold rounded-lg hover:bg-brand-600 transition-colors"
         >
           Open Cycle
         </button>
@@ -291,15 +291,15 @@ export default function ContributionCard({
   };
 
   return (
-    <div className="rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
+    <div className="rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
       {/* Header */}
       <div className="px-4 pt-4 pb-3 flex items-start justify-between gap-2">
         <div>
-          <p className="text-xs font-semibold text-violet-600 uppercase tracking-wide">
+          <p className="text-xs font-semibold text-brand-500 uppercase tracking-wide">
             {freq.charAt(0).toUpperCase() + freq.slice(1)} Cycle
             {cycle.label ? ` — ${cycle.label}` : ""}
           </p>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
             From {fmtDate(cycle.start_date)} · {cycle.length_periods} periods
           </p>
         </div>
@@ -308,7 +308,7 @@ export default function ContributionCard({
             <button
               onClick={handleExport}
               disabled={exporting}
-              className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 hover:text-violet-600 transition-colors disabled:opacity-50"
+              className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 hover:text-brand-500 transition-colors disabled:opacity-50"
             >
               {exporting ? "Exporting…" : "PDF"}
             </button>
@@ -324,7 +324,7 @@ export default function ContributionCard({
           {!compact && onOpenCycle && cycle.status !== "active" && (
             <button
               onClick={onOpenCycle}
-              className="text-[11px] font-semibold text-violet-600 hover:text-violet-700 transition-colors"
+              className="text-[11px] font-semibold text-brand-500 hover:text-brand-600 transition-colors"
             >
               New Cycle
             </button>
@@ -337,7 +337,7 @@ export default function ContributionCard({
         <span className="text-emerald-600 font-semibold">{paidCount} paid</span>
         {partialCount > 0 && <span className="text-amber-500 font-semibold">{partialCount} partial</span>}
         {missedCount > 0 && <span className="text-red-500 font-semibold">{missedCount} missed</span>}
-        <span className="ml-auto text-gray-500 dark:text-gray-400">
+        <span className="ml-auto text-slate-500 dark:text-slate-400">
           {fmtCurrency(totalPaid)} / {fmtCurrency(totalExp)}
         </span>
       </div>
@@ -367,13 +367,13 @@ export default function ContributionCard({
 
       {/* Commission strip */}
       {!compact && commission.amount > 0 && (
-        <div className="mx-4 mb-3 rounded-xl bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 px-3 py-2.5 flex items-center justify-between gap-3">
+        <div className="mx-4 mb-3 rounded-xl bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-800 px-3 py-2.5 flex items-center justify-between gap-3">
           <div>
-            <p className="text-[10px] font-bold text-violet-500 uppercase tracking-wide">Collector Commission</p>
-            <p className="text-xs text-violet-700 dark:text-violet-300 mt-0.5">{commission.label}</p>
+            <p className="text-[10px] font-bold text-brand-500 uppercase tracking-wide">Collector Commission</p>
+            <p className="text-xs text-brand-600 dark:text-brand-300 mt-0.5">{commission.label}</p>
           </div>
           <div className="text-right flex-shrink-0">
-            <p className="font-extrabold text-violet-700 dark:text-violet-300 text-sm">{fmtCurrency(commission.amount)}</p>
+            <p className="font-extrabold text-brand-600 dark:text-brand-300 text-sm">{fmtCurrency(commission.amount)}</p>
             {commissionDone && (
               <p className="text-[10px] text-emerald-600 font-semibold mt-0.5">Executed ✓</p>
             )}
@@ -387,11 +387,11 @@ export default function ContributionCard({
           <button
             onClick={() => setShowPinForCommission(true)}
             disabled={commissionExecuting}
-            className="w-full py-2.5 rounded-xl bg-violet-600 text-white text-sm font-bold hover:bg-violet-700 transition-colors disabled:opacity-50 active:scale-[0.98]"
+            className="w-full py-2.5 rounded-xl bg-brand-500 text-white text-sm font-bold hover:bg-brand-600 transition-colors disabled:opacity-50 active:scale-[0.98]"
           >
             {commissionExecuting ? "Processing…" : `Execute Commission — ${fmtCurrency(commission.amount)}`}
           </button>
-          <p className="text-[10px] text-gray-400 dark:text-gray-500 text-center mt-1">
+          <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center mt-1">
             PIN-gated · deducts from client balance · client is notified
           </p>
         </div>
@@ -401,7 +401,7 @@ export default function ContributionCard({
       {!compact && (
         <div className="px-4 pb-3 flex flex-wrap gap-3">
           {Object.entries(MARK_LABEL).map(([k, v]) => (
-            <span key={k} className="flex items-center gap-1 text-[10px] text-gray-500 dark:text-gray-400">
+            <span key={k} className="flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400">
               <span className={`w-3 h-3 rounded flex items-center justify-center text-[8px] font-bold ${MARK_CLS[k]}`}>
                 {MARK_ICON[k]}
               </span>
@@ -429,48 +429,48 @@ export default function ContributionCard({
         >
           <div className="absolute inset-0 bg-black/40" />
           <div
-            className="relative w-full bg-white dark:bg-gray-900 rounded-t-2xl shadow-2xl p-5 max-w-lg mx-auto"
+            className="relative w-full bg-white dark:bg-slate-900 rounded-t-2xl shadow-2xl p-5 max-w-lg mx-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-3">
-              <p className="font-bold text-gray-900 dark:text-white text-base">
+              <p className="font-bold text-slate-900 dark:text-white text-base">
                 Period #{selected.idx + 1}
               </p>
               <button
                 onClick={() => setSelected(null)}
-                className="text-gray-400 hover:text-gray-600 text-xl leading-none"
+                className="text-slate-400 hover:text-slate-600 text-xl leading-none"
               >
                 ×
               </button>
             </div>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
-                <span className="text-gray-500 dark:text-gray-400">Status</span>
+                <span className="text-slate-500 dark:text-slate-400">Status</span>
                 <span className={`font-semibold ${
                   selected.status === "paid" ? "text-emerald-600"
                   : selected.status === "missed" ? "text-red-500"
                   : selected.status === "partial" ? "text-amber-500"
-                  : selected.status === "current" ? "text-violet-600"
-                  : "text-gray-400"
+                  : selected.status === "current" ? "text-brand-500"
+                  : "text-slate-400"
                 }`}>{MARK_LABEL[selected.status]}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-500 dark:text-gray-400">Range</span>
-                <span className="font-medium text-gray-900 dark:text-white">{fmtPeriodRange(selected, freq)}</span>
+                <span className="text-slate-500 dark:text-slate-400">Range</span>
+                <span className="font-medium text-slate-900 dark:text-white">{fmtPeriodRange(selected, freq)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-500 dark:text-gray-400">Expected</span>
-                <span className="font-medium text-gray-900 dark:text-white">{fmtCurrency(cycle.expected_amount_per_period)}</span>
+                <span className="text-slate-500 dark:text-slate-400">Expected</span>
+                <span className="font-medium text-slate-900 dark:text-white">{fmtCurrency(cycle.expected_amount_per_period)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-500 dark:text-gray-400">Paid</span>
-                <span className={`font-semibold ${selected.paid >= Number(cycle.expected_amount_per_period) ? "text-emerald-600" : selected.paid > 0 ? "text-amber-500" : "text-gray-400"}`}>
+                <span className="text-slate-500 dark:text-slate-400">Paid</span>
+                <span className={`font-semibold ${selected.paid >= Number(cycle.expected_amount_per_period) ? "text-emerald-600" : selected.paid > 0 ? "text-amber-500" : "text-slate-400"}`}>
                   {fmtCurrency(selected.paid)}
                 </span>
               </div>
               {selected.paid < Number(cycle.expected_amount_per_period) && (
                 <div className="flex justify-between">
-                  <span className="text-gray-500 dark:text-gray-400">Shortfall</span>
+                  <span className="text-slate-500 dark:text-slate-400">Shortfall</span>
                   <span className="font-semibold text-red-500">
                     {fmtCurrency(Math.max(0, Number(cycle.expected_amount_per_period) - selected.paid))}
                   </span>

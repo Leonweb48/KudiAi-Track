@@ -615,7 +615,7 @@ function PayContributionModal({ client, clientGroup, onClose, onSuccess }) {
             });
           }}
           disabled={status === "loading" || status === "awaiting" || status === "verifying"}
-          className="w-full py-4 bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2 shadow-md">
+          className="w-full py-4 bg-brand-500 hover:bg-brand-600 disabled:opacity-60 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2 shadow-md">
           {status === "loading"
             ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Opening Paystackâ€¦</>
             : status === "awaiting" ? "Open Paystack again"
@@ -1283,7 +1283,7 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
             <ActionBtn
               label="Pay Contribution"
               icon="M1 4h22|M1 10h22|M3 20h18a1 1 0 001-1V5a1 1 0 00-1-1H3a1 1 0 00-1 1v14a1 1 0 001 1z"
-              bg="bg-gradient-to-br from-green-500 to-green-600"
+              bg="bg-gradient-to-br from-brand-500 to-brand-600"
               onClick={onPayClick}
             />
           )}
@@ -1643,7 +1643,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
       ],
     });
     pdf.addStats([
-      { label: "Total Contributed", value: pdfFmt(totC),                        color: "#22c55e" },
+      { label: "Total Contributed", value: pdfFmt(totC),                        color: "#3DA829" },
       { label: "Total Withdrawn",   value: pdfFmt(totD),                        color: "#ef4444" },
       { label: "Current Balance",   value: pdfFmt(client?.current_balance || 0) },
       { label: "Records",           value: String(allItems.length) },
@@ -1961,7 +1961,7 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
           </div>
           <button onClick={() => setView("edit")}
             className="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-900/30 flex items-center justify-center active:scale-90 transition flex-shrink-0">
-            <Svg d={P.pen} size={16} color="#7c3aed" />
+            <Svg d={P.pen} size={16} color="#3DA829" />
           </button>
         </div>
       </div>

@@ -18,7 +18,7 @@ function displayName(name = "", showFull) {
 }
 
 const STATUS_BADGE = {
-  current:  { cls: "bg-violet-100 dark:bg-violet-900/50 text-violet-700 dark:text-violet-300", label: "Current" },
+  current:  { cls: "bg-brand-100 dark:bg-brand-900/50 text-brand-600 dark:text-brand-300", label: "Current" },
   upcoming: { cls: "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300",        label: "Upcoming" },
   paid:     { cls: "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300",     label: "Paid" },
   skipped:  { cls: "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300",     label: "Skipped" },
@@ -36,7 +36,7 @@ function Badge({ status }) {
 function Spin() {
   return (
     <div className="flex justify-center py-8">
-      <div className="w-6 h-6 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
+      <div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
     </div>
   );
 }
@@ -97,8 +97,8 @@ function SetupView({ members = [], loading, onStart }) {
 
   return (
     <div className="space-y-4">
-      <div className="bg-violet-50 dark:bg-violet-900/20 border border-violet-100 dark:border-violet-800/40 rounded-2xl px-4 py-3">
-        <p className="text-[11px] text-violet-700 dark:text-violet-300 font-medium leading-relaxed">
+      <div className="bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800/40 rounded-2xl px-4 py-3">
+        <p className="text-[11px] text-brand-600 dark:text-brand-300 font-medium leading-relaxed">
           Set the rotation order below. Position 1 collects first. Once started, changes require your PIN.
         </p>
       </div>
@@ -113,11 +113,11 @@ function SetupView({ members = [], loading, onStart }) {
           if (!mb) return null;
           return (
             <div key={id} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 px-3 py-3 flex items-center gap-3">
-              <span className="w-6 h-6 flex-shrink-0 bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300 rounded-full text-[11px] font-black flex items-center justify-center">
+              <span className="w-6 h-6 flex-shrink-0 bg-brand-100 dark:bg-brand-900/40 text-brand-600 dark:text-brand-300 rounded-full text-[11px] font-black flex items-center justify-center">
                 {idx + 1}
               </span>
 
-              <div className="w-8 h-8 flex-shrink-0 rounded-full bg-gradient-to-br from-violet-400 to-violet-600 flex items-center justify-center">
+              <div className="w-8 h-8 flex-shrink-0 rounded-full bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center">
                 <span className="text-[10px] font-black text-white">{initials(mb.display_name)}</span>
               </div>
 
@@ -150,7 +150,7 @@ function SetupView({ members = [], loading, onStart }) {
       <button
         onClick={handleStart}
         disabled={saving || members.length === 0}
-        className="w-full py-3 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded-2xl font-bold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2">
+        className="w-full py-3 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white rounded-2xl font-bold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2">
         {saving && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
         {saving ? "Starting Round…" : "Start Round 1"}
       </button>
@@ -288,7 +288,7 @@ export default function EsusuRotationDashboard({
             <span className="font-bold text-slate-800 dark:text-white">{closeResult.skipped_count ?? 0}</span>
           </div>
         </div>
-        <button onClick={onRefresh} className="w-full py-3 bg-violet-600 text-white rounded-2xl font-bold text-sm transition active:scale-[0.99]">
+        <button onClick={onRefresh} className="w-full py-3 bg-brand-500 text-white rounded-2xl font-bold text-sm transition active:scale-[0.99]">
           Done
         </button>
       </div>
@@ -324,17 +324,17 @@ export default function EsusuRotationDashboard({
         <div className="flex items-center justify-between">
           <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Round {round.round_number} · {roundProgress}</p>
           {isOwner && (
-            <span className="text-[10px] text-violet-600 dark:text-violet-400 font-bold">
+            <span className="text-[10px] text-brand-500 dark:text-brand-400 font-bold">
               {round.status === "active" ? "Active" : "Closed"}
             </span>
           )}
         </div>
 
         {/* Pot size */}
-        <div className="flex items-center justify-between bg-violet-50 dark:bg-violet-900/20 rounded-xl px-4 py-3">
+        <div className="flex items-center justify-between bg-brand-50 dark:bg-brand-900/20 rounded-xl px-4 py-3">
           <div>
-            <p className="text-[11px] text-violet-500 font-semibold">Current pot</p>
-            <p className="text-xl font-black text-violet-700 dark:text-violet-300">{fmtCur(pot_size)}</p>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold">Current pot</p>
+            <p className="text-xl font-black text-navy dark:text-white">{fmtCur(pot_size)}</p>
           </div>
           {currentTurn && (
             <div className="text-right">
@@ -363,7 +363,7 @@ export default function EsusuRotationDashboard({
                 return (
                   <div key={mb.id} title={displayName(mb.display_name, showNames)}
                     className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold border transition
-                      ${isMe ? "ring-2 ring-violet-500 ring-offset-1" : ""}
+                      ${isMe ? "ring-2 ring-brand-500 ring-offset-1" : ""}
                       ${hasPaid
                         ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800/50 text-green-700 dark:text-green-300"
                         : debtAmt
@@ -500,7 +500,7 @@ export default function EsusuRotationDashboard({
           <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Rotation Order</p>
           {isOwner && upcomingCount > 1 && !reorderMode && (
             <button onClick={startReorder}
-              className="text-[10px] font-bold text-violet-600 dark:text-violet-400 px-2 py-1 rounded-lg bg-violet-50 dark:bg-violet-900/20 transition active:scale-95">
+              className="text-[10px] font-bold text-brand-500 dark:text-brand-400 px-2 py-1 rounded-lg bg-brand-50 dark:bg-brand-900/20 transition active:scale-95">
               Reorder Remaining
             </button>
           )}
@@ -513,11 +513,11 @@ export default function EsusuRotationDashboard({
           return (
             <div key={turn.id}
               className={`rounded-2xl border px-4 py-3 transition
-                ${isCurrent ? "bg-violet-50 dark:bg-violet-900/20 border-violet-200 dark:border-violet-700" : "bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700"}
-                ${isMine ? "ring-1 ring-violet-400 dark:ring-violet-500" : ""}`}>
+                ${isCurrent ? "bg-brand-50 dark:bg-brand-900/20 border-brand-200 dark:border-brand-700" : "bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700"}
+                ${isMine ? "ring-1 ring-brand-400 dark:ring-brand-500" : ""}`}>
               <div className="flex items-center gap-3">
                 <span className={`w-7 h-7 flex-shrink-0 rounded-full flex items-center justify-center text-[11px] font-black
-                  ${isCurrent ? "bg-violet-600 text-white" : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300"}`}>
+                  ${isCurrent ? "bg-brand-500 text-white" : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300"}`}>
                   {turn.position}
                 </span>
 
@@ -525,7 +525,7 @@ export default function EsusuRotationDashboard({
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="text-sm font-bold text-slate-800 dark:text-white truncate">
                       {displayName(turn.client_name, showNames)}
-                      {isMine && <span className="ml-1 text-[10px] font-semibold text-violet-500">(You)</span>}
+                      {isMine && <span className="ml-1 text-[10px] font-semibold text-brand-500">(You)</span>}
                     </p>
                     <Badge status={turn.status} />
                   </div>
@@ -546,7 +546,7 @@ export default function EsusuRotationDashboard({
                 {isOwner && isCurrent && onExecutePayout && (
                   <button
                     onClick={() => { setActionErr(""); setPinFor({ action: "payout", turnId: turn.id }); }}
-                    className="flex-shrink-0 px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-bold text-[11px] transition active:scale-95 whitespace-nowrap">
+                    className="flex-shrink-0 px-3 py-1.5 bg-brand-500 hover:bg-brand-600 text-white rounded-xl font-bold text-[11px] transition active:scale-95 whitespace-nowrap">
                     Pay Out
                   </button>
                 )}
