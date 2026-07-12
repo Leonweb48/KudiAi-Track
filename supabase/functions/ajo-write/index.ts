@@ -66,7 +66,7 @@ function json(body: unknown, status = 200): Response {
 }
 
 // ── PIN-requiring actions ─────────────────────────────────────────────────────
-const PIN_GATED = new Set(["record_withdrawal", "reverse_contribution", "archive_client", "confirm_manual_deposit", "execute_commission", "execute_payout", "skip_turn", "reorder_turns"]);
+const PIN_GATED = new Set(["record_withdrawal", "reverse_contribution", "archive_client", "confirm_manual_deposit", "approve_contribution", "execute_commission", "execute_payout", "skip_turn", "reorder_turns"]);
 
 // ── Resolve the true owner UUID for a client from the DB ─────────────────────
 async function resolveClientOwner(
@@ -280,24 +280,65 @@ serve(async (req: Request) => {
     });
     if (error) return json({ ok: false, error: error.message });
 
-    // Fire notification email — non-blocking to caller
+    // Notify client that a contribution was recorded and is awaiting approval
     const ctx = await fetchEmailContext(sb, client_id, ownerId, user.id);
-    await fireAjoEmail("ajo_contribution", {
+    await fireAjoEmail("ajo_contribution_pending", {
       client_email:  ctx.clientEmail,
       client_name:   ctx.clientName,
-      user_email:    ctx.ownerEmail,
+      owner_email:   ctx.ownerEmail,
       business_name: ctx.businessName,
-      staff_email:   ctx.staffEmail,
       staff_name:    ctx.staffName,
       amount,
-      balance:       (data as Record<string, unknown>)?.balance_after,
-      reg_fee:       (data as Record<string, unknown>)?.reg_fee_charged
-                       ? (data as Record<string, unknown>)?.registration_fee
-                       : 0,
-      date:          new Date().toLocaleDateString("en-NG"),
+      method:        method || "cash",
+      date:          new Date().toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" }),
     });
 
     return json(data);
+  }
+
+  // ── Approve a pending manual contribution (PIN-gated) ──────────────────────
+  if (action === "approve_contribution") {
+    const { contribution_id: acId } = params as { contribution_id: string };
+    if (!acId) return json({ ok: false, error: "contribution_id required" }, 400);
+
+    // Look up the contribution to determine the business owner
+    const { data: acContrib } = await sb.from("ajo_contributions")
+      .select("owner_id, aso_client_id, amount, payment_method, contribution_context")
+      .eq("id", acId)
+      .eq("status", "pending")
+      .maybeSingle();
+    if (!acContrib) return json({ ok: false, error: "Pending contribution not found" }, 404);
+
+    const acOwnerId = (acContrib.owner_id as string) || await resolveClientOwner(sb, acContrib.aso_client_id as string);
+    if (!acOwnerId) return json({ ok: false, error: "Owner not found" }, 404);
+
+    const acPerms = await resolveAjoPerms(sb, user.id, acOwnerId);
+    if (acPerms === false) return json({ ok: false, error: "Unauthorized" }, 403);
+
+    const { data: acData, error: acErr } = await sb.rpc("ajo_approve_contribution", {
+      p_contribution_id: acId,
+      p_owner_id:        acOwnerId,
+      p_approver_id:     user.id,
+    });
+    if (acErr) return json({ ok: false, error: acErr.message });
+    if (!(acData as Record<string, unknown>)?.ok) return json(acData);
+
+    const acResult = acData as Record<string, unknown>;
+    const acCtx = await fetchEmailContext(sb, acContrib.aso_client_id as string, acOwnerId, user.id);
+    await fireAjoEmail("ajo_contribution_approved", {
+      client_email:  acCtx.clientEmail,
+      client_name:   acCtx.clientName,
+      owner_email:   acCtx.ownerEmail,
+      business_name: acCtx.businessName,
+      staff_name:    acCtx.staffName,
+      amount:        acContrib.amount,
+      method:        acContrib.payment_method,
+      new_balance:   acResult.new_balance || 0,
+      reg_fee:       acResult.reg_fee     || 0,
+      date:          new Date().toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" }),
+    });
+
+    return json(acData);
   }
 
   if (action === "record_withdrawal") {

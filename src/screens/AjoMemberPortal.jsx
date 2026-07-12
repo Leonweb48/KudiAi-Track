@@ -1693,18 +1693,24 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
             </div>
           </button>
         ) : (() => {
-          const isPendingManual   = item.payment_method === "manual_transfer" && item.status === "pending";
+          const isPending         = item.type === "contribution" && item.status === "pending";
+          const isPendingManual   = isPending && item.payment_method === "manual_transfer";
+          const isPendingRecorded = isPending && item.payment_method !== "manual_transfer";
           const isRejectedManual  = item.payment_method === "manual_transfer" && item.status === "rejected";
           const isManual          = item.payment_method === "manual_transfer";
           const isContrib         = item.type === "contribution";
-          const cardCls = isPendingManual
+          const cardCls = isPending
             ? "bg-violet-50 dark:bg-violet-900/10 border-violet-200 dark:border-violet-800/60"
             : isRejectedManual
               ? "bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800/60"
               : "bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700";
 
-          const Row = isPendingManual ? "div" : "button";
-          const rowProps = isPendingManual
+          const pendingLabel = isPendingManual   ? "Awaiting bank transfer confirmation"
+                             : isPendingRecorded ? "Pending approval"
+                             : null;
+
+          const Row = isPending ? "div" : "button";
+          const rowProps = isPending
             ? { key: `c-${item.id}`, className: `w-full text-left rounded-2xl px-4 py-3 border ${cardCls}` }
             : { key: `c-${item.id}`, onClick: () => setReceipt(item), className: `w-full text-left rounded-2xl px-4 py-3 border active:scale-[0.98] transition-transform ${cardCls}` };
 
@@ -1712,12 +1718,12 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
             <Row {...rowProps}>
               <div className="flex items-start gap-3">
                 <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                  isPendingManual  ? "bg-violet-100 dark:bg-violet-900/40" :
+                  isPending        ? "bg-violet-100 dark:bg-violet-900/40" :
                   isRejectedManual ? "bg-red-100 dark:bg-red-900/30" :
                   isContrib        ? "bg-green-50 dark:bg-green-900/20" : "bg-red-50 dark:bg-red-900/20"
                 }`}>
                   <svg viewBox="0 0 24 24" fill="none" className={`w-4 h-4 ${
-                    isPendingManual  ? "text-violet-500 dark:text-violet-400" :
+                    isPending        ? "text-violet-500 dark:text-violet-400" :
                     isRejectedManual ? "text-red-500" :
                     isContrib        ? "text-green-600 dark:text-green-400" : "text-red-500"
                   }`} stroke="currentColor" strokeWidth={2} strokeLinecap="round">
@@ -1727,14 +1733,14 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
                     <span className={`text-sm font-extrabold tabular ${
-                      isPendingManual  ? "text-violet-600 dark:text-violet-400" :
+                      isPending        ? "text-violet-600 dark:text-violet-400" :
                       isRejectedManual ? "text-red-500 dark:text-red-400" :
                       isContrib        ? "text-green-600 dark:text-green-400" : "text-red-500"
                     }`}>
                       {isContrib ? "+" : "−"}{fmt(item.amount)}
                     </span>
                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize flex-shrink-0 ${statusCls(item.status)}`}>
-                      {isPendingManual ? "Awaiting confirmation" : item.status}
+                      {pendingLabel || item.status}
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 capitalize">
@@ -1751,9 +1757,9 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
                   )}
                   {(item.dispute_ticket_no || disputedIds.has(item.id)) ? (
                     <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1 font-semibold">
-                      ⚠ Dispute filed{item.dispute_ticket_no ? ` · ${item.dispute_ticket_no}` : ""}
+                      Dispute filed{item.dispute_ticket_no ? ` · ${item.dispute_ticket_no}` : ""}
                     </p>
-                  ) : !isPendingManual && isContrib && (
+                  ) : !isPending && isContrib && (
                     <button onClick={e => { e.stopPropagation(); setDisputeFor(item); setDisputeDesc(""); }}
                       className="text-[10px] text-slate-400 hover:text-red-500 dark:hover:text-red-400 mt-1 underline text-left">
                       Report an issue
@@ -2234,6 +2240,8 @@ export default function AjoMemberPortal({ session, ajoClient }) {
             } else if (payload.new.status === "rejected") {
               notif.addNotification("aso", "Deposit Declined", `Your ${amt} bank transfer claim was not confirmed`);
             }
+          } else if (payload.new.type === "contribution" && payload.new.status === "completed" && payload.old?.status === "pending") {
+            notif.addNotification("aso", "Contribution Approved", `Your ${amt} contribution has been approved and added to your balance`);
           }
         })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "ajo_withdrawal_requests", filter: `aso_client_id=eq.${ajoClient.id}` },

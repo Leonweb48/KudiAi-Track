@@ -443,7 +443,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       .from("ajo_contributions")
       .select("*, aso_clients(full_name, email, membership_number)")
       .eq("status", "pending")
-      .eq("payment_method", "manual_transfer")
+      .eq("type", "contribution")
       .order("created_at", { ascending: false });
     if (error) { console.error("reloadPendingDeposits:", error.message); return; }
     setPendingDeposits(data || []);
@@ -956,6 +956,22 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     }
   };
 
+  const handleApproveContribution = async (dep, pin) => {
+    setProcessingDepositId(dep.id);
+    try {
+      const { data, error } = await supabase.functions.invoke("ajo-write", {
+        body: { action: "approve_contribution", contribution_id: dep.id, owner_id: profile?.id, pin },
+      });
+      if (error || !data?.ok) throw new Error(data?.error || error?.message || "Approve failed");
+      flashDeposit("ok", `₦${Number(data.amount || dep.amount).toLocaleString("en-NG")} approved — client balance updated.`);
+      reloadPendingDeposits();
+    } catch (e) {
+      flashDeposit("err", e.message || "Approve failed");
+    } finally {
+      setProcessingDepositId(null);
+    }
+  };
+
   const reminderMsg = reminderFor ? buildReminderMsg(reminderFor, profile?.business_name) : "";
   const waLink = reminderFor?.phone
     ? `https://wa.me/${reminderFor.phone.replace(/\D/g, "")}?text=${encodeURIComponent(reminderMsg)}`
@@ -1124,17 +1140,22 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           </p>
           <div className="space-y-2">
             {pendingDeposits.map(dep => {
-              const cl      = dep.aso_clients || {};
-              const isProc  = processingDepositId === dep.id;
-              const daysOld = Math.floor((Date.now() - new Date(dep.created_at).getTime()) / 86400000);
-              const isStale = daysOld >= 7;
-              const dateStr = dep.created_at
+              const cl             = dep.aso_clients || {};
+              const isProc         = processingDepositId === dep.id;
+              const isManualClaim  = dep.payment_method === "manual_transfer";
+              const daysOld        = Math.floor((Date.now() - new Date(dep.created_at).getTime()) / 86400000);
+              const isStale        = daysOld >= 7;
+              const dateStr        = dep.created_at
                 ? new Date(dep.created_at).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })
                 : "";
+              const methodLabel    = isManualClaim ? "Bank Transfer" : (dep.payment_method || "cash").replace(/_/g, " ");
+              const ctxLabel       = dep.contribution_context === "esusu_rotation" ? "Esusu"
+                                   : dep.contribution_context === "group_savings"  ? "Group Savings"
+                                   : "Personal Savings";
               return (
                 <div key={dep.id} className={`bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 border shadow-sm ${isStale ? "border-red-200 dark:border-red-800/60" : "border-violet-200 dark:border-violet-800/60"}`}>
                   {isStale && (
-                    <p className="text-[10px] font-bold text-red-500 dark:text-red-400 mb-2">⏰ Awaiting confirmation for {daysOld}+ days</p>
+                    <p className="text-[10px] font-bold text-red-500 dark:text-red-400 mb-2">Awaiting confirmation for {daysOld}+ days</p>
                   )}
                   <div className="flex items-start gap-3">
                     <div className="w-10 h-10 rounded-xl bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center flex-shrink-0">
@@ -1146,10 +1167,12 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                       <p className="text-sm font-extrabold text-slate-800 dark:text-white truncate">{cl.full_name || "—"}</p>
                       <p className="text-[10px] text-slate-400 font-mono">{cl.membership_number || ""}</p>
                       <p className="text-xs font-bold text-violet-700 dark:text-violet-300 mt-1">
-                        Claims ₦{Number(dep.amount).toLocaleString("en-NG")}
+                        {isManualClaim ? "Claims" : "Recorded"} ₦{Number(dep.amount).toLocaleString("en-NG")}
+                        <span className="ml-1.5 font-normal text-slate-400 text-[10px]">{methodLabel} · {ctxLabel}</span>
                       </p>
                       {dep.payer_name  && <p className="text-[10px] text-slate-400 mt-0.5">Paid by: {dep.payer_name}</p>}
                       {dep.claim_notes && <p className="text-[10px] text-slate-400 italic mt-0.5">"{dep.claim_notes}"</p>}
+                      {dep.notes       && !isManualClaim && <p className="text-[10px] text-slate-400 italic mt-0.5">"{dep.notes}"</p>}
                       <p className="text-[10px] text-slate-400 mt-0.5">{dateStr}</p>
                       {dep.proof_url && (() => {
                         const proofHref = dep.proof_url.replace(
@@ -1183,15 +1206,19 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                     <div className="flex gap-2 mt-3">
                       <button
                         onClick={() => setTxnPin({
-                          title:       "Confirm Deposit",
+                          title:       isManualClaim ? "Confirm Deposit" : "Approve Contribution",
                           amount:      Math.round((dep.amount || 0) * 100),
                           recipient:   cl.full_name || "client",
-                          description: `Manual bank transfer · ₦${Number(dep.amount).toLocaleString("en-NG")}`,
-                          onApprove:   (pin) => { setTxnPin(null); handleConfirmDeposit(dep, pin); },
+                          description: `${isManualClaim ? "Bank transfer claim" : "Recorded contribution"} · ₦${Number(dep.amount).toLocaleString("en-NG")}`,
+                          onApprove:   (pin) => {
+                            setTxnPin(null);
+                            if (isManualClaim) handleConfirmDeposit(dep, pin);
+                            else handleApproveContribution(dep, pin);
+                          },
                         })}
                         disabled={isProc}
                         className="flex-1 py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-bold text-xs transition active:scale-[0.99] disabled:opacity-50">
-                        {isProc && processingDepositId === dep.id && !rejectingDeposit ? "…" : "Confirm"}
+                        {isProc && processingDepositId === dep.id && !rejectingDeposit ? "…" : isManualClaim ? "Confirm" : "Approve"}
                       </button>
                       <button
                         onClick={() => { setRejectingDeposit(dep); setRejectReason(""); }}
