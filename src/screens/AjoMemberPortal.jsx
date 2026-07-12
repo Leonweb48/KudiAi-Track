@@ -443,8 +443,8 @@ function ContribTypeSelector({ clientGroup, value, onChange }) {
       : { key: "group_savings",  label: clientGroup.name, desc: "Savings Group — contribute to the pool" },
   ];
   return (
-    <div className="mb-4">
-      <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Contributing to</p>
+    <div className="mb-5">
+      <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">Contributing to</p>
       <div className="space-y-2">
         {opts.map(opt => (
           <button key={opt.key} type="button" onClick={() => onChange(opt.key)}
@@ -454,7 +454,7 @@ function ContribTypeSelector({ clientGroup, value, onChange }) {
                 : "border-slate-200 dark:border-slate-700"
             }`}>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-slate-800 dark:text-white truncate">{opt.label}</p>
+              <p className="text-[15px] font-extrabold text-slate-800 dark:text-white truncate">{opt.label}</p>
               <p className="text-[11px] text-slate-400 dark:text-slate-500">{opt.desc}</p>
             </div>
             <div className={`flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center ${
@@ -608,6 +608,36 @@ function PayContributionModal({ client, clientGroup, onClose, onSuccess }) {
             </svg>
           </button>
         </div>
+
+        {/* Step indicator — visible during active payment flow */}
+        {(status === "loading" || status === "awaiting" || status === "verifying") && (
+          <div className="flex items-center mb-5 px-1">
+            {["loading", "awaiting", "verifying"].map((step, i) => {
+              const steps = ["loading", "awaiting", "verifying"];
+              const cur = steps.indexOf(status);
+              const isDone = i < cur;
+              const isActive = i === cur;
+              const labels = ["Opening", "Paying", "Confirming"];
+              return (
+                <React.Fragment key={step}>
+                  {i > 0 && <div className={`flex-1 h-0.5 rounded-full mx-1 ${isDone ? "bg-brand-500" : "bg-slate-200 dark:bg-slate-700"}`} />}
+                  <div className="flex flex-col items-center gap-0.5">
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center font-extrabold ${
+                      isDone    ? "bg-brand-500 text-white"
+                      : isActive ? "bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 ring-2 ring-brand-400"
+                      : "bg-slate-100 dark:bg-slate-700 text-slate-400"
+                    }`}>
+                      {isDone
+                        ? <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3" stroke="currentColor" strokeWidth={3} strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                        : <span className="text-[10px]">{i + 1}</span>}
+                    </div>
+                    <span className={`text-[9px] font-bold leading-none ${isActive ? "text-brand-500 dark:text-brand-400" : "text-slate-400 dark:text-slate-500"}`}>{labels[i]}</span>
+                  </div>
+                </React.Fragment>
+              );
+            })}
+          </div>
+        )}
 
         <ContribTypeSelector clientGroup={clientGroup} value={contribCtx} onChange={setContribCtx} />
 
@@ -891,16 +921,17 @@ function ChangePasswordModal({ onClose }) {
 
 // ── Manual deposit modal ──────────────────────────────────────────────────
 function ManualDepositModal({ client, clientGroup, ownerInfo, onClose, onSuccess }) {
-  const [amount,     setAmount]     = useState("");
-  const [payerName,  setPayerName]  = useState("");
-  const [notes,      setNotes]      = useState("");
-  const [proofFile,  setProofFile]  = useState(null);
-  const [proofPrev,  setProofPrev]  = useState(null);
-  const [uploading,  setUploading]  = useState(false);
-  const [saving,     setSaving]     = useState(false);
-  const [error,      setError]      = useState("");
-  const [done,       setDone]       = useState(false);
-  const [contribCtx, setContribCtx] = useState("personal_savings");
+  const [amount,      setAmount]      = useState("");
+  const [payerName,   setPayerName]   = useState("");
+  const [notes,       setNotes]       = useState("");
+  const [proofFile,   setProofFile]   = useState(null);
+  const [proofPrev,   setProofPrev]   = useState(null);
+  const [uploading,   setUploading]   = useState(false);
+  const [saving,      setSaving]      = useState(false);
+  const [error,       setError]       = useState("");
+  const [done,        setDone]        = useState(false);
+  const [contribCtx,  setContribCtx]  = useState("personal_savings");
+  const [copiedField, setCopiedField] = useState(null);
   const fileRef = useRef(null);
 
   // Prefer the client's own dedicated account; fall back to the owner's business account
@@ -911,8 +942,12 @@ function ManualDepositModal({ client, clientGroup, ownerInfo, onClose, onSuccess
     : !!(ownerBank?.bank_account_number && ownerBank?.bank_name);
   const amtNum  = parseFloat(amount) || 0;
 
-  const copyText = async (text) => {
-    try { await navigator.clipboard.writeText(text); } catch { /* fallback silent */ }
+  const copyText = async (text, field) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedField(field);
+      setTimeout(() => setCopiedField(null), 2000);
+    } catch { /* silent */ }
   };
 
   const pickFile = (e) => {
@@ -960,22 +995,36 @@ function ManualDepositModal({ client, clientGroup, ownerInfo, onClose, onSuccess
         <div className="w-10 h-1 bg-slate-300 dark:bg-slate-600 rounded-full mx-auto mb-5" />
 
         {done ? (
-          <div className="text-center py-4">
-            <div className="w-14 h-14 bg-brand-100 dark:bg-brand-900/30 rounded-full flex items-center justify-center mx-auto mb-3">
-              <svg viewBox="0 0 24 24" fill="none" className="w-7 h-7 text-brand-500 dark:text-brand-400" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
-                <path d="M20 6L9 17l-5-5" />
+          <div className="text-center py-6">
+            {/* Amber clock — deliberately NOT green, cannot be mistaken for credited */}
+            <div className="w-20 h-20 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg viewBox="0 0 24 24" fill="none" className="w-10 h-10 text-amber-500 dark:text-amber-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
               </svg>
             </div>
-            <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">Claim Submitted!</h3>
-            <p className="text-xs text-slate-400 dark:text-slate-500">Your savings agent will verify the transfer and confirm your deposit. You'll be notified by email.</p>
-            <button onClick={onClose} className="mt-5 w-full py-3.5 bg-brand-500 text-white rounded-xl font-bold text-sm">
-              Close
+            <p className="text-[10px] font-bold text-amber-500 uppercase tracking-widest mb-1">Pending Review</p>
+            <h3 className="text-lg font-extrabold text-slate-800 dark:text-white mb-3">Transfer Submitted</h3>
+            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl px-4 py-3 mb-5 text-left">
+              <p className="text-xs font-bold text-amber-700 dark:text-amber-300 mb-1">Your balance has NOT been credited yet</p>
+              <p className="text-xs text-amber-600 dark:text-amber-400 leading-relaxed">Your savings agent will verify the bank transfer. Your balance will only be updated after confirmation — this may take a few hours.</p>
+            </div>
+            <button onClick={onClose} className="w-full py-3.5 bg-slate-800 dark:bg-slate-700 text-white rounded-2xl font-bold text-sm active:scale-[0.99] transition">
+              Got it
             </button>
           </div>
         ) : (
           <>
-            <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-0.5">Make a Deposit</h3>
-            <p className="text-xs text-slate-400 dark:text-slate-500 mb-4">Transfer to the account below, then submit your claim here.</p>
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-10 h-10 bg-brand-100 dark:bg-brand-900/40 rounded-2xl flex items-center justify-center flex-shrink-0">
+                <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-brand-600 dark:text-brand-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                  <path d="M12 5v14M5 12l7-7 7 7" />
+                </svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-extrabold text-slate-800 dark:text-white">Make a Deposit</p>
+                <p className="text-[11px] text-slate-400">Transfer then submit your claim below</p>
+              </div>
+            </div>
 
             <ContribTypeSelector clientGroup={clientGroup} value={contribCtx} onChange={setContribCtx} />
 
@@ -990,21 +1039,33 @@ function ManualDepositModal({ client, clientGroup, ownerInfo, onClose, onSuccess
                   <p className="text-[10px] font-bold text-brand-500 dark:text-brand-400 uppercase tracking-wider mb-3">
                     {isClientAcct ? "Your Dedicated Savings Account" : "Business Bank Account"}
                   </p>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-slate-500 dark:text-slate-400">Account Number</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-black text-slate-800 dark:text-white tracking-wider">{acctNum}</span>
-                        <button onClick={() => copyText(acctNum)}
-                          className="text-[10px] font-bold text-brand-500 dark:text-brand-400 bg-brand-100 dark:bg-brand-900/40 px-2 py-0.5 rounded-md active:scale-95 transition">
-                          Copy
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs text-slate-500 dark:text-slate-400 flex-shrink-0">Account Number</span>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-sm font-black text-slate-800 dark:text-white tracking-widest tabular">{acctNum}</span>
+                        <button onClick={() => copyText(acctNum, "acctNum")}
+                          className={`flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center transition active:scale-90 ${copiedField === "acctNum" ? "bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400" : "bg-brand-100 dark:bg-brand-900/40 text-brand-500 dark:text-brand-400"}`}>
+                          {copiedField === "acctNum"
+                            ? <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={3} strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                            : <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                          }
                         </button>
                       </div>
                     </div>
                     {acctName && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-slate-500 dark:text-slate-400">Account Name</span>
-                        <span className="text-xs font-bold text-slate-700 dark:text-slate-200 text-right max-w-[60%] truncate">{acctName}</span>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs text-slate-500 dark:text-slate-400 flex-shrink-0">Account Name</span>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate">{acctName}</span>
+                          <button onClick={() => copyText(acctName, "acctName")}
+                            className={`flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center transition active:scale-90 ${copiedField === "acctName" ? "bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400" : "bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500"}`}>
+                            {copiedField === "acctName"
+                              ? <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={3} strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                              : <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                            }
+                          </button>
+                        </div>
                       </div>
                     )}
                     {bankName && (
@@ -1022,13 +1083,21 @@ function ManualDepositModal({ client, clientGroup, ownerInfo, onClose, onSuccess
               </div>
             )}
 
-            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Amount Transferred (₦) <span className="text-red-500">*</span></label>
-            <input
-              type="number" inputMode="decimal"
-              value={amount} onChange={e => setAmount(e.target.value)}
-              placeholder="Enter the exact amount you transferred"
-              className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 mb-3"
-            />
+            <div className="bg-brand-50 dark:bg-brand-900/20 rounded-2xl px-4 py-4 mb-3">
+              <p className="text-[10px] font-bold text-brand-500 dark:text-brand-400 uppercase tracking-wider mb-2">Amount Transferred <span className="text-red-400">*</span></p>
+              <div className="flex items-center gap-2">
+                <span className="text-2xl font-black text-brand-600 dark:text-brand-300">₦</span>
+                <input
+                  type="number" inputMode="decimal" min="1"
+                  value={amount} onChange={e => setAmount(e.target.value)}
+                  placeholder="0.00"
+                  className="flex-1 bg-transparent text-2xl font-black text-brand-600 dark:text-brand-300 outline-none placeholder:text-brand-200 dark:placeholder:text-brand-700 tabular [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                />
+              </div>
+              {amtNum > 0 && (
+                <p className="text-[11px] text-brand-400 dark:text-brand-500 mt-1">{fmt(amtNum)} — exact transfer amount</p>
+              )}
+            </div>
 
             <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Sender Name (optional)</label>
             <input
@@ -1049,13 +1118,25 @@ function ManualDepositModal({ client, clientGroup, ownerInfo, onClose, onSuccess
             {/* Proof upload */}
             <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Proof of Transfer (optional)</label>
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={pickFile} />
-            {proofPrev ? (
+            {uploading && (
+              <div className="mb-3 px-1">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[11px] font-bold text-brand-600 dark:text-brand-400">Uploading screenshot…</span>
+                  <div className="w-3.5 h-3.5 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+                </div>
+                <div className="h-1.5 bg-brand-100 dark:bg-brand-800 rounded-full overflow-hidden">
+                  <div className="h-full bg-brand-500 rounded-full animate-pulse" style={{ width: "75%" }} />
+                </div>
+              </div>
+            )}
+            {!uploading && proofPrev && (
               <div className="relative mb-3">
                 <img src={proofPrev} alt="Proof" className="w-full rounded-xl object-cover max-h-40 border border-slate-200 dark:border-slate-600" />
                 <button onClick={() => { setProofFile(null); setProofPrev(null); }}
                   className="absolute top-2 right-2 w-7 h-7 bg-black/50 rounded-full flex items-center justify-center text-white text-xs font-bold">✕</button>
               </div>
-            ) : (
+            )}
+            {!uploading && !proofPrev && (
               <button onClick={() => fileRef.current?.click()}
                 className="w-full py-3 mb-3 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl text-xs font-bold text-slate-400 dark:text-slate-500 flex items-center justify-center gap-2 active:scale-[0.99] transition">
                 <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
@@ -1069,9 +1150,11 @@ function ManualDepositModal({ client, clientGroup, ownerInfo, onClose, onSuccess
 
             <button
               onClick={handleSubmit}
-              disabled={saving || !amtNum || amtNum <= 0}
-              className="w-full py-3.5 bg-brand-500 hover:bg-brand-600 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] disabled:opacity-50 shadow-sm flex items-center justify-center gap-2">
-              {uploading ? "Uploading proof…" : saving ? "Submitting…" : "Submit Deposit Claim"}
+              disabled={saving || uploading || !amtNum || amtNum <= 0}
+              className="w-full py-3.5 bg-brand-500 hover:bg-brand-600 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] disabled:opacity-50 shadow-sm flex items-center justify-center gap-2">
+              {saving
+                ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Submitting…</>
+                : "Submit Deposit Claim"}
             </button>
 
             <p className="text-[10px] text-slate-400 text-center mt-3">
@@ -1123,7 +1206,7 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
   return (
     <>
     <div className="fixed inset-0 z-[60] bg-black/60 flex items-end justify-center" onClick={onClose}>
-      <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-t-3xl px-5 py-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+      <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-t-3xl px-5 py-6 shadow-2xl max-h-[92dvh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="w-10 h-1 bg-slate-300 dark:bg-slate-600 rounded-full mx-auto mb-5" />
         {done ? (
           <div className="text-center py-4">
@@ -1140,54 +1223,60 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
           </div>
         ) : (
           <>
-            <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-0.5">Request Withdrawal</h3>
-            <p className="text-xs text-slate-400 dark:text-slate-500 mb-4">
-              Balance: <strong className="text-slate-600 dark:text-slate-300">{fmt(client.current_balance || 0)}</strong>
-            </p>
-
-            {isFirst && regFee > 0 && (
-              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl px-3 py-2 mb-3">
-                <p className="text-xs text-blue-700 dark:text-blue-300 font-semibold">
-                  First withdrawal — Registration fee: {fmt(regFee)} will be deducted
-                </p>
+            {/* Header with balance */}
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-slate-100 dark:bg-slate-700 rounded-2xl flex items-center justify-center flex-shrink-0">
+                <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                  <path d="M12 19V5M5 12l7 7 7-7" />
+                </svg>
               </div>
-            )}
-            {!isFirst && pctFee > 0 && (
-              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-3 py-2 mb-3">
-                <p className="text-xs text-amber-700 dark:text-amber-300 font-semibold">
-                  Withdrawal fee: {pctFee}% will be deducted
-                </p>
+              <div className="flex-1 min-w-0">
+                <p className="font-extrabold text-slate-800 dark:text-white">Request Withdrawal</p>
+                <p className="text-[11px] text-slate-400">Available: <strong className="text-slate-600 dark:text-slate-300">{fmt(client.current_balance || 0)}</strong></p>
               </div>
-            )}
+            </div>
 
-            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Amount (₦)</label>
-            <input
-              type="number" inputMode="decimal"
-              value={amount} onChange={e => setAmount(e.target.value)}
-              placeholder="Enter amount"
-              className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 mb-3"
-            />
+            {/* Amount input */}
+            <div className="bg-slate-50 dark:bg-slate-700/50 rounded-2xl px-4 py-4 mb-3">
+              <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Withdrawal Amount</p>
+              <div className="flex items-center gap-2">
+                <span className="text-2xl font-black text-slate-700 dark:text-slate-200">₦</span>
+                <input
+                  type="number" inputMode="decimal" min="1"
+                  value={amount} onChange={e => setAmount(e.target.value)}
+                  placeholder="0.00"
+                  className="flex-1 bg-transparent text-2xl font-black text-slate-700 dark:text-slate-200 outline-none placeholder:text-slate-300 dark:placeholder:text-slate-600 tabular [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                />
+              </div>
+              {amtNum > (client.current_balance || 0) && (
+                <p className="text-[11px] text-red-500 mt-1">Exceeds available balance</p>
+              )}
+            </div>
 
-            {amtNum > 0 && (
-              <div className="bg-slate-50 dark:bg-slate-700/60 rounded-xl px-4 py-3 mb-3 space-y-1.5 border border-slate-100 dark:border-slate-600">
+            {/* Fee breakdown card — always visible, shows rule and live calculation */}
+            <div className="bg-slate-50 dark:bg-slate-700/40 border border-slate-200 dark:border-slate-600 rounded-2xl px-4 py-3 mb-3 space-y-2">
+              <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                {isFirst && regFee > 0 ? `First withdrawal · flat fee ${fmt(regFee)}`
+                  : pctFee > 0 ? `Withdrawal fee · ${pctFee}%`
+                  : "No withdrawal fee"}
+              </p>
+              <div className="flex justify-between text-xs">
+                <span className="text-slate-500 dark:text-slate-400">Requested</span>
+                <span className="font-bold text-slate-700 dark:text-slate-200">{amtNum > 0 ? fmt(amtNum) : "—"}</span>
+              </div>
+              {feeAmt > 0 && amtNum > 0 && (
                 <div className="flex justify-between text-xs">
-                  <span className="text-slate-500 dark:text-slate-400">Requested</span>
-                  <span className="font-bold text-slate-700 dark:text-slate-200">{fmt(amtNum)}</span>
+                  <span className="text-slate-500 dark:text-slate-400">{isFirst ? "Registration fee" : `Fee (${pctFee}%)`}</span>
+                  <span className="font-bold text-red-500">−{fmt(feeAmt)}</span>
                 </div>
-                {feeAmt > 0 && (
-                  <div className="flex justify-between text-xs">
-                    <span className="text-slate-500 dark:text-slate-400">
-                      {isFirst ? "Registration fee" : `Fee (${pctFee}%)`}
-                    </span>
-                    <span className="font-bold text-red-500">−{fmt(feeAmt)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between text-xs border-t border-slate-200 dark:border-slate-600 pt-1.5">
-                  <span className="font-bold text-slate-600 dark:text-slate-300">You receive</span>
-                  <span className="font-extrabold text-green-600 dark:text-green-400">{fmt(Math.max(0, netAmt))}</span>
-                </div>
+              )}
+              <div className="flex justify-between text-xs border-t border-slate-200 dark:border-slate-600 pt-2">
+                <span className="font-extrabold text-slate-600 dark:text-slate-300">You receive</span>
+                <span className={`font-extrabold ${amtNum > 0 && netAmt > 0 ? "text-green-600 dark:text-green-400" : "text-slate-400 dark:text-slate-500"}`}>
+                  {amtNum > 0 ? fmt(Math.max(0, netAmt)) : "—"}
+                </span>
               </div>
-            )}
+            </div>
 
             {error && <p className="text-xs text-red-500 mb-3">{error}</p>}
 
