@@ -171,15 +171,17 @@ export default function EsusuRotationDashboard({
   onReorderTurns,
   onCloseRound,
 }) {
-  const [pinFor,       setPinFor]       = useState(null); // { action, turnId?, roundId? }
-  const [skipDialog,   setSkipDialog]   = useState(null); // { turnId }
-  const [skipReason,   setSkipReason]   = useState("");
-  const [skipToEnd,    setSkipToEnd]    = useState(true);
-  const [reorderMode,  setReorderMode]  = useState(false);
-  const [reorderQueue, setReorderQueue] = useState(null); // prepared new order
-  const [actionErr,    setActionErr]    = useState("");
-  const [closingRound, setClosingRound] = useState(false);
-  const [closeResult,  setCloseResult]  = useState(null);
+  const [pinFor,        setPinFor]       = useState(null); // { action, turnId?, roundId? }
+  const [skipDialog,    setSkipDialog]   = useState(null); // { turnId }
+  const [skipReason,    setSkipReason]   = useState("");
+  const [skipToEnd,     setSkipToEnd]    = useState(true);
+  const [reorderMode,   setReorderMode]  = useState(false);
+  const [reorderQueue,  setReorderQueue] = useState(null); // prepared new order
+  const [actionErr,     setActionErr]    = useState("");
+  const [actionSuccess, setActionSuccess] = useState(""); // brief success text for skip/reorder
+  const [payoutResult,  setPayoutResult] = useState(null); // payout success data
+  const [closingRound,  setClosingRound] = useState(false);
+  const [closeResult,   setCloseResult]  = useState(null);
 
   const { group = null, round = null, turns = [], members = [], contribution_ticks = {}, pot_size = 0 } = data || {};
   const showNames = isOwner || (group?.privacy_show_names !== false);
@@ -190,18 +192,21 @@ export default function EsusuRotationDashboard({
 
   const handlePin = async (pin) => {
     if (!pinFor) return;
-    setActionErr("");
+    setActionErr(""); setActionSuccess("");
     try {
       if (pinFor.action === "payout") {
-        await onExecutePayout(pinFor.turnId, pin);
+        const result = await onExecutePayout(pinFor.turnId, pin);
+        setPayoutResult(result);
         onRefresh?.();
       } else if (pinFor.action === "skip") {
         await onSkipTurn(pinFor.turnId, skipReason, skipToEnd, pin);
         setSkipDialog(null); setSkipReason("");
+        setActionSuccess("Turn skipped successfully.");
         onRefresh?.();
       } else if (pinFor.action === "reorder") {
         await onReorderTurns(round.id, reorderQueue, pin);
         setReorderMode(false); setReorderQueue(null);
+        setActionSuccess("Turn order updated.");
         onRefresh?.();
       }
     } catch (e) {
@@ -360,8 +365,46 @@ export default function EsusuRotationDashboard({
         )}
       </div>
 
+      {/* Payout success card */}
+      {payoutResult && (
+        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/50 rounded-2xl p-4 space-y-1.5">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0">
+              <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-white" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+                <path d="M20 6L9 17l-5-5" />
+              </svg>
+            </div>
+            <p className="font-extrabold text-green-700 dark:text-green-400 text-sm">Payout Successful!</p>
+          </div>
+          {payoutResult.beneficiary_name && (
+            <p className="text-sm text-slate-700 dark:text-slate-200">
+              <span className="font-semibold">{payoutResult.beneficiary_name}</span> has been paid
+              {payoutResult.pot_amount ? ` — ₦${Number(payoutResult.pot_amount).toLocaleString()}` : ""}
+            </p>
+          )}
+          {payoutResult.round_complete && (
+            <p className="text-xs font-bold text-green-600 dark:text-green-400">🎉 Round complete — all members have received their payout.</p>
+          )}
+          <button onClick={() => setPayoutResult(null)}
+            className="text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 underline underline-offset-2">
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {/* Skip / reorder success */}
+      {actionSuccess && (
+        <div className="flex items-center justify-between bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/50 rounded-xl px-3 py-2">
+          <p className="text-xs font-semibold text-green-700 dark:text-green-400">{actionSuccess}</p>
+          <button onClick={() => setActionSuccess("")} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 ml-3 text-xs">✕</button>
+        </div>
+      )}
+
       {actionErr && (
-        <p className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-xl">{actionErr}</p>
+        <div className="flex items-center justify-between bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 rounded-xl px-3 py-2">
+          <p className="text-xs font-semibold text-red-600 dark:text-red-400">{actionErr}</p>
+          <button onClick={() => setActionErr("")} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 ml-3 text-xs">✕</button>
+        </div>
       )}
 
       {/* Reorder mode */}

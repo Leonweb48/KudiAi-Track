@@ -501,6 +501,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       body: { action: "execute_payout", turn_id: turnId, pin },
     });
     if (error || !data?.ok) throw new Error(data?.error || error?.message || "Payout failed");
+    return data;
   };
 
   const handleSkipTurn = async (turnId, reason, moveToEnd, pin) => {
