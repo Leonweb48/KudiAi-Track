@@ -12,6 +12,7 @@ import { canDo, featureLimit, upgradeLabel, planRequiredLabel, planAvailableText
 import { fmt, today } from "../utils/helpers";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
 import { createReportPdf, fmtCurrency as pdfFmt, fmtDate as pdfFmtDate } from "../utils/generateReportPdf";
+import ContributionCard from "../components/ContributionCard";
 import { useT } from "../contexts/LanguageContext";
 import { getLang, speakConfirmation } from "../utils/i18n";
 import TransactionPinModal from "../components/TransactionPinModal";
@@ -99,7 +100,8 @@ function isGroupAccount(c) {
 }
 
 /* ── Per-client Ajo Contribution History Modal ─────────────────────────── */
-function AsoClientHistoryModal({ client, contributions, businessName, staffMap = {}, onClose }) {
+function AsoClientHistoryModal({ client, contributions, cycle, businessName, staffMap = {}, onClose, onOpenCycle, onCloseCycle }) {
+  const [tab,         setTab]         = useState(cycle ? "card" : "history");
   const [typeFilter,  setTypeFilter]  = useState("all");
   const [receipt,     setReceipt]     = useState(null);
   const [clearedIds,  setClearedIds]  = useState(() => new Set());
@@ -179,13 +181,13 @@ function AsoClientHistoryModal({ client, contributions, businessName, staffMap =
       )}
       <div className="bg-white dark:bg-slate-900 flex flex-col h-full max-w-lg w-full mx-auto">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 pb-4 border-b border-slate-100 dark:border-slate-800" style={{ paddingTop: "max(16px, env(safe-area-inset-top, 16px))" }}>
+        <div className="flex items-center justify-between px-4 pb-3 border-b border-slate-100 dark:border-slate-800" style={{ paddingTop: "max(16px, env(safe-area-inset-top, 16px))" }}>
           <div>
             <h2 className="text-base font-black text-slate-800 dark:text-white">{client.full_name}</h2>
-            <p className="text-xs text-slate-400 mt-0.5">Ajo Transaction History</p>
+            <p className="text-xs text-slate-400 mt-0.5">{tab === "card" ? "Contribution Card" : "Ajo Transaction History"}</p>
           </div>
           <div className="flex items-center gap-2">
-            {contributions.length > 0 && (
+            {tab === "history" && contributions.length > 0 && (
               <button onClick={handleExportPdf}
                 className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center active:scale-90 transition">
                 <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -202,6 +204,39 @@ function AsoClientHistoryModal({ client, contributions, businessName, staffMap =
           </div>
         </div>
 
+        {/* Tab row */}
+        <div className="flex border-b border-slate-100 dark:border-slate-800 px-4 gap-4">
+          <button
+            onClick={() => setTab("card")}
+            className={`pb-2 pt-2 text-xs font-bold transition-colors border-b-2 ${tab === "card" ? "border-violet-600 text-violet-600" : "border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"}`}
+          >
+            Card
+          </button>
+          <button
+            onClick={() => setTab("history")}
+            className={`pb-2 pt-2 text-xs font-bold transition-colors border-b-2 ${tab === "history" ? "border-blue-600 text-blue-600" : "border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"}`}
+          >
+            History
+          </button>
+        </div>
+
+        {/* Card tab */}
+        {tab === "card" && (
+          <div className="flex-1 overflow-y-auto px-4 py-4">
+            <ContributionCard
+              cycle={cycle}
+              contributions={contributions}
+              frequency={client.contribution_frequency}
+              clientName={client.full_name}
+              businessName={businessName}
+              onOpenCycle={onOpenCycle}
+              onCloseCycle={cycle ? onCloseCycle : undefined}
+            />
+          </div>
+        )}
+
+        {/* History tab */}
+        {tab === "history" && <>
         {/* Filter chips */}
         <div className="flex gap-2 px-4 py-3 overflow-x-auto no-scrollbar">
           {FILTERS.map(f => (
@@ -272,6 +307,7 @@ function AsoClientHistoryModal({ client, contributions, businessName, staffMap =
             );
           })}
         </div>
+        </>}
       </div>
     </div>
   );
@@ -284,7 +320,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [action,       setAction]       = useState(null);
   const [amt,          setAmt]          = useState("");
   const [receipt,      setReceipt]      = useState(null);
-  const [historyFor,   setHistoryFor]   = useState(null); // { client, contributions }
+  const [historyFor,   setHistoryFor]   = useState(null); // { client, contributions, cycle }
   const [histLoading,  setHistLoading]  = useState(false);
   const [clientProf,   setClientProf]   = useState(null);
   const [photoFile,    setPhotoFile]    = useState(null);
@@ -1389,15 +1425,23 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                     <span className="text-[9px] font-black text-violet-600 dark:text-violet-400 uppercase tracking-wide leading-none">Stmt</span>
                   </button>
 
-                  {/* History */}
+                  {/* History + Card */}
                   <button onClick={async () => {
                     setHistLoading(true);
-                    const { data } = await supabase
-                      .from("ajo_contributions")
-                      .select("*")
-                      .eq("aso_client_id", c.id)
-                      .order("created_at", { ascending: false });
-                    setHistoryFor({ client: c, contributions: data || [] });
+                    const [contribRes, cycleRes] = await Promise.all([
+                      supabase
+                        .from("ajo_contributions")
+                        .select("*")
+                        .eq("aso_client_id", c.id)
+                        .order("created_at", { ascending: false }),
+                      supabase
+                        .from("ajo_cycles")
+                        .select("*")
+                        .eq("client_id", c.id)
+                        .eq("status", "active")
+                        .maybeSingle(),
+                    ]);
+                    setHistoryFor({ client: c, contributions: contribRes.data || [], cycle: cycleRes.data || null });
                     setHistLoading(false);
                   }}
                     className="flex-1 flex flex-col items-center gap-1 py-2.5 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-200 dark:border-blue-800 active:scale-95 transition"
@@ -1823,15 +1867,51 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
       {/* ── Per-client Contribution History Modal ────────────────── */}
       {historyFor && (() => {
-        const { client: hc, contributions: hcons } = historyFor;
+        const { client: hc, contributions: hcons, cycle: hcycle } = historyFor;
         const bizName = profile?.business_name || profile?.owner_name || "My Business";
+
+        const handleOpenCycle = async () => {
+          const { data, error } = await supabase.functions.invoke("ajo-write", {
+            body: {
+              action: "open_cycle",
+              client_id: hc.id,
+              start_date: hc.registration_date || new Date().toISOString().slice(0, 10),
+              expected_amount_per_period: hc.contribution_amount,
+            },
+          });
+          if (error || !data?.ok) {
+            alert(data?.error || error?.message || "Failed to open cycle");
+            return;
+          }
+          // Refresh cycle in historyFor
+          const { data: newCycle } = await supabase
+            .from("ajo_cycles").select("*").eq("id", data.cycle_id).maybeSingle();
+          setHistoryFor(prev => ({ ...prev, cycle: newCycle || null }));
+        };
+
+        const handleCloseCycle = async () => {
+          if (!hcycle) return;
+          if (!window.confirm("Mark this cycle as completed?")) return;
+          const { data, error } = await supabase.functions.invoke("ajo-write", {
+            body: { action: "close_cycle", cycle_id: hcycle.id, status: "completed" },
+          });
+          if (error || !data?.ok) {
+            alert(data?.error || error?.message || "Failed to close cycle");
+            return;
+          }
+          setHistoryFor(prev => ({ ...prev, cycle: null }));
+        };
+
         return (
           <AsoClientHistoryModal
             client={hc}
             contributions={hcons}
+            cycle={hcycle}
             businessName={bizName}
             staffMap={store.staffMap || {}}
             onClose={() => setHistoryFor(null)}
+            onOpenCycle={handleOpenCycle}
+            onCloseCycle={handleCloseCycle}
           />
         );
       })()}

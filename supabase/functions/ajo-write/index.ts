@@ -407,6 +407,59 @@ serve(async (req: Request) => {
     return json({ ok: true });
   }
 
+  if (action === "open_cycle") {
+    const { client_id: ocClientId, start_date, length_periods, expected_amount_per_period, label: ocLabel } =
+      params as { client_id: string; start_date?: string; length_periods?: number; expected_amount_per_period?: number; label?: string };
+    if (!ocClientId) return json({ ok: false, error: "client_id required" }, 400);
+
+    const ownerId = await resolveClientOwner(sb, ocClientId);
+    if (!ownerId) return json({ ok: false, error: "Client not found" }, 404);
+
+    const ajoPerms = await resolveAjoPerms(sb, user.id, ownerId);
+    if (ajoPerms === false) return json({ ok: false, error: "Unauthorized" }, 403);
+    if (ajoPerms !== null && !ajoPerms.ajo_manage_clients) {
+      return json({ ok: false, error: "Permission denied: Ajo client management not enabled" }, 403);
+    }
+
+    const { data: ocData, error: ocErr } = await sb.rpc("ajo_open_cycle", {
+      p_client_id: ocClientId,
+      p_owner_id:  ownerId,
+      p_start:     start_date || null,
+      p_length:    length_periods || null,
+      p_amount:    expected_amount_per_period || null,
+      p_label:     ocLabel || null,
+    });
+    if (ocErr) return json({ ok: false, error: ocErr.message });
+    return json(ocData);
+  }
+
+  if (action === "close_cycle") {
+    const { cycle_id, status: closeStatus } =
+      params as { cycle_id: string; status?: string };
+    if (!cycle_id) return json({ ok: false, error: "cycle_id required" }, 400);
+
+    const { data: cycleRow } = await sb
+      .from("ajo_cycles")
+      .select("client_id, owner_id")
+      .eq("id", cycle_id)
+      .maybeSingle();
+    if (!cycleRow) return json({ ok: false, error: "Cycle not found" }, 404);
+
+    const ajoPerms = await resolveAjoPerms(sb, user.id, cycleRow.owner_id as string);
+    if (ajoPerms === false) return json({ ok: false, error: "Unauthorized" }, 403);
+    if (ajoPerms !== null && !ajoPerms.ajo_manage_clients) {
+      return json({ ok: false, error: "Permission denied: Ajo client management not enabled" }, 403);
+    }
+
+    const { data: ccData, error: ccErr } = await sb.rpc("ajo_close_cycle", {
+      p_cycle_id: cycle_id,
+      p_owner_id: cycleRow.owner_id as string,
+      p_status:   closeStatus || "completed",
+    });
+    if (ccErr) return json({ ok: false, error: ccErr.message });
+    return json(ccData);
+  }
+
   if (action === "reverse_contribution") {
     const { original_id, reason } = params as { original_id: string; reason: string };
 

@@ -112,6 +112,19 @@ serve(async (req) => {
       return json({ contributions: data || [] });
     }
 
+    // ── Active cycle for card view ────────────────────────────────
+    if (action === "get-active-cycle") {
+      const { client_id } = body as { client_id: string };
+      if (!client_id) return json({ error: "client_id required" }, 400);
+      const { data: cycle } = await sb
+        .from("ajo_cycles")
+        .select("*")
+        .eq("client_id", client_id)
+        .eq("status", "active")
+        .maybeSingle();
+      return json({ cycle: cycle || null });
+    }
+
     // ── Owner + assigned-staff info ───────────────────────────────
     if (action === "get-owner-info") {
       const { owner_id, client_id } = body as { owner_id: string; client_id: string };

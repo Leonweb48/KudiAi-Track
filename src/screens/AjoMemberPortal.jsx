@@ -25,6 +25,7 @@ import AIChatWidget from "../components/AIChatWidget";
 import { buildAjoMemberContext } from "../utils/buildContext";
 import { useT, useLanguage } from "../contexts/LanguageContext";
 import { createReportPdf, fmtCurrency as pdfFmt, fmtDate as pdfFmtDate } from "../utils/generateReportPdf";
+import ContributionCard from "../components/ContributionCard";
 
 async function ajoFn(action, body = {}) {
   const { data, error } = await supabase.functions.invoke("ajo-portal", {
@@ -1094,7 +1095,7 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
 }
 
 // ── Overview tab ──────────────────────────────────────────────────────────
-function OverviewTab({ client, contributions, onWithdrawClick, onPayClick, onDepositClick, ownerInfo, withdrawRequests = [], onBillsClick, userEmail }) {
+function OverviewTab({ client, contributions, cycle, onWithdrawClick, onPayClick, onDepositClick, ownerInfo, withdrawRequests = [], onBillsClick, userEmail }) {
   const t = useT();
   const { lang } = useLanguage();
 
@@ -1423,7 +1424,18 @@ function OverviewTab({ client, contributions, onWithdrawClick, onPayClick, onDep
         </div>
       )}
 
-      {/* Activity calendar */}
+      {/* Contribution card (shown when a cycle is active) */}
+      {cycle && (
+        <ContributionCard
+          cycle={cycle}
+          contributions={contributions}
+          frequency={client?.contribution_frequency}
+          clientName={client?.full_name || ""}
+          businessName={ownerInfo?.owner?.business_name || ""}
+        />
+      )}
+
+      {/* Activity calendar (always shown) */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-4 border border-slate-100 dark:border-slate-700">
         <ContribCalendar contributions={contributions} />
       </div>
@@ -2045,6 +2057,7 @@ export default function AjoMemberPortal({ session, ajoClient }) {
 
   const [client,           setClient]           = useState(ajoClient || null);
   const [contributions,    setContributions]    = useState([]);
+  const [cycle,            setCycle]            = useState(null);
   const [ownerInfo,        setOwnerInfo]        = useState(null);
   const [loadingData,      setLoadingData]      = useState(false);
   const [tab,              setTab]              = useState(() => {
@@ -2093,8 +2106,9 @@ export default function AjoMemberPortal({ session, ajoClient }) {
       ajoFn("get-contributions",      { client_id: ajoClient.id }),
       ajoFn("get-owner-info",         { owner_id: ajoClient.user_id,  client_id: ajoClient.id }),
       ajoFn("get-withdrawal-requests",{ client_id: ajoClient.id }),
+      ajoFn("get-active-cycle",       { client_id: ajoClient.id }),
     ])
-      .then(([clientRes, contribRes, ownerRes, reqRes]) => {
+      .then(([clientRes, contribRes, ownerRes, reqRes, cycleRes]) => {
         if (clientRes.status === "fulfilled" && clientRes.value?.client) {
           setClient(prev => ({
             ...clientRes.value.client,
@@ -2107,6 +2121,8 @@ export default function AjoMemberPortal({ session, ajoClient }) {
           setOwnerInfo(ownerRes.value);
         if (reqRes.status === "fulfilled" && reqRes.value?.requests)
           setWithdrawRequests(reqRes.value.requests);
+        if (cycleRes.status === "fulfilled" && cycleRes.value?.cycle)
+          setCycle(cycleRes.value.cycle);
       })
       .catch(console.error)
       .finally(() => setLoadingData(false));
@@ -2196,6 +2212,7 @@ export default function AjoMemberPortal({ session, ajoClient }) {
               client={client}
               userEmail={client?.email || session?.user?.email}
               contributions={contributions}
+              cycle={cycle}
               onWithdrawClick={() => setShowWithdraw(true)}
               onPayClick={() => setShowPay(true)}
               onDepositClick={() => setShowDeposit(true)}
