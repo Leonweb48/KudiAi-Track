@@ -342,6 +342,15 @@ serve(async (req: Request) => {
   }
 
   // ── Collection record: record + immediately approve (owner/staff physically collecting) ──
+  //
+  // Orphan-recovery design: if the approve step previously failed after the record step
+  // succeeded, a pending row tagged contribution_source='collection' is left in the DB.
+  // On retry, we detect this orphan (matching client + amount + source='collection' + pending)
+  // and skip the insert, running only the approve step on the existing row.
+  //
+  // The source='collection' tag ensures this check never touches client-submitted
+  // manual-deposit claims (those use initiated_by='client'), which must always wait
+  // for explicit owner confirmation and must never be auto-approved by a collection retry.
   if (action === "collection_record") {
     const { client_id, amount, contribution_context } = params as {
       client_id: string; amount: number; contribution_context?: string;
@@ -360,29 +369,59 @@ serve(async (req: Request) => {
     const context    = contribution_context || "personal_savings";
     const dateStr    = new Date().toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" });
 
-    // Step 1: create pending entry
-    const { data: recData, error: recErr } = await sb.rpc("ajo_record_contribution", {
-      p_client_id:            client_id,
-      p_owner_id:             ownerId,
-      p_amount:               amount,
-      p_method:               "cash",
-      p_ref:                  null,
-      p_notes:                null,
-      p_recorded_by:          recordedBy,
-      p_contribution_context: context,
-    });
-    if (recErr || !(recData as Record<string, unknown>)?.ok) {
-      return json({ ok: false, error: recErr?.message || (recData as Record<string, unknown>)?.error || "Recording failed" });
+    // Check for orphaned pending row left by a prior collection attempt for this client+amount
+    const { data: orphan } = await sb
+      .from("ajo_contributions")
+      .select("id")
+      .eq("aso_client_id", client_id)
+      .eq("amount", amount)
+      .eq("status", "pending")
+      .eq("contribution_source", "collection")
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    let contribId: string;
+    const recovered = !!orphan?.id;
+
+    if (recovered) {
+      // Recovery path: orphan found — skip the insert, run only approve
+      contribId = orphan!.id as string;
+    } else {
+      // Normal path: create new pending entry tagged as collection
+      const { data: recData, error: recErr } = await sb.rpc("ajo_record_contribution", {
+        p_client_id:            client_id,
+        p_owner_id:             ownerId,
+        p_amount:               amount,
+        p_method:               "cash",
+        p_ref:                  null,
+        p_notes:                null,
+        p_recorded_by:          recordedBy,
+        p_contribution_context: context,
+        p_source:               "collection",
+      });
+      if (recErr || !(recData as Record<string, unknown>)?.ok) {
+        return json({
+          ok:    false,
+          stage: "record",
+          error: "Couldn't record — nothing saved, retry safely",
+        });
+      }
+      contribId = (recData as Record<string, unknown>).contribution_id as string;
     }
 
-    // Step 2: immediately approve — the collector IS the authorising party
+    // Approve the pending entry (new or recovered orphan)
     const { data: appData, error: appErr } = await sb.rpc("ajo_approve_contribution", {
-      p_contribution_id: (recData as Record<string, unknown>).contribution_id,
+      p_contribution_id: contribId,
       p_owner_id:        ownerId,
       p_approver_id:     user.id,
     });
     if (appErr || !(appData as Record<string, unknown>)?.ok) {
-      return json({ ok: false, error: appErr?.message || (appData as Record<string, unknown>)?.error || "Approval failed" });
+      return json({
+        ok:    false,
+        stage: "approve",
+        error: "Recorded but not credited — retry to complete; do not re-enter manually",
+      });
     }
 
     const app = appData as Record<string, unknown>;
@@ -399,7 +438,7 @@ serve(async (req: Request) => {
       new_balance:   app.new_balance || 0,
     });
 
-    return json({ ok: true, ...app });
+    return json({ ok: true, recovered, ...app });
   }
 
   if (action === "record_withdrawal") {

@@ -159,7 +159,7 @@ export default function TodaysCollection({ clients, groups, onRecord, staffCanRe
         setRecording(prev => new Set(prev).add(item.client.id));
         const result = await onRecord(item.client.id, item.amount, item.context, pin);
         setRecording(prev => { const s = new Set(prev); s.delete(item.client.id); return s; });
-        results.push({ client: item.client, amount: item.amount, ok: !result?.error, error: result?.error });
+        results.push({ client: item.client, amount: item.amount, ok: !result?.error, error: result?.error, recovered: result?.data?.recovered === true });
       }
       setBatchResults(results);
       setSelected(new Set());
@@ -257,9 +257,18 @@ export default function TodaysCollection({ clients, groups, onRecord, staffCanRe
               <span className="flex-1 text-[12px] font-semibold text-slate-700 dark:text-slate-200 truncate">
                 {r.client.full_name}
               </span>
-              <span className={`text-[11px] font-bold ${r.ok ? "text-green-700 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
-                {r.ok ? fmtCur(r.amount) : r.error}
-              </span>
+              {r.ok ? (
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  <span className="text-[11px] font-bold text-green-700 dark:text-green-400">{fmtCur(r.amount)}</span>
+                  {r.recovered && (
+                    <span className="text-[9px] font-bold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 px-1.5 py-0.5 rounded-full">
+                      recovered
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <span className="text-[11px] font-bold text-red-600 dark:text-red-400 text-right max-w-[140px]">{r.error}</span>
+              )}
             </div>
           ))}
           <div className="pt-1.5 border-t border-slate-100 dark:border-slate-700 flex items-center gap-3">
