@@ -49,6 +49,26 @@ module.exports = {
         "3xl": "24px",
         "4xl": "32px",
       },
+      // ── Z-index token scale ───────────────────────────────────────────────
+      // Tier order: content(0) < sticky(30) < nav(40) < floating(55) <
+      //   sheet(60) < modal(100) < lock(200) < pin-auth(210) <
+      //   card-detail(260) < pin-scrim(300) < pin-sheet(301) < toast(400)
+      // No ad-hoc z-[N] values outside this scale.
+      // CSS custom-property mirrors live in src/index.css (--z-*).
+      zIndex: {
+        "sticky":      "30",
+        "nav":         "40",
+        "floating":    "55",
+        "sheet":       "60",
+        "modal":       "100",
+        "lock":        "200",
+        "pin-auth":    "210",
+        "card-detail": "260",
+        "pin-scrim":   "300",
+        "pin-sheet":   "301",
+        "toast":       "400",
+        "tooltip":     "9999",
+      },
       animation: {
         "fade-up":   "fadeUp 0.3s ease-out",
         "fade-in":   "fadeIn 0.2s ease-out",

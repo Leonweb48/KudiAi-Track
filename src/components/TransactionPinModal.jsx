@@ -94,18 +94,18 @@ export default function TransactionPinModal({
     <>
       <style>{shakeCSS}</style>
 
-      {/* Scrim */}
+      {/* Scrim — z-pin-scrim (300) from token scale */}
       <div
         onClick={onCancel}
         style={{
-          position: "fixed", inset: 0, zIndex: 300,
+          position: "fixed", inset: 0, zIndex: "var(--z-pin-scrim)",
           background: "rgba(0,0,0,0.55)",
         }}
       />
 
-      {/* Bottom sheet */}
+      {/* Bottom sheet — z-pin-sheet (301) from token scale */}
       <div style={{
-        position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 301,
+        position: "fixed", left: 0, right: 0, bottom: 0, zIndex: "var(--z-pin-sheet)",
         background: "white",
         borderRadius: "24px 24px 0 0",
         paddingBottom: "env(safe-area-inset-bottom, 16px)",

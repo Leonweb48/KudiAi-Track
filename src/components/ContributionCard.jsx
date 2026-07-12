@@ -424,7 +424,7 @@ export default function ContributionCard({
       {/* Period detail bottom sheet */}
       {selected && (
         <div
-          className="fixed inset-0 z-[250] flex items-end"
+          className="fixed inset-0 z-card-detail flex items-end"
           onClick={() => setSelected(null)}
         >
           <div className="absolute inset-0 bg-black/40" />
