@@ -608,6 +608,16 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
     return { error: null, data };
   };
 
+  const asoReverseContribution = async (contributionId, reason, pin) => {
+    const { data, error } = await supabase.functions.invoke("ajo-write", {
+      body: { action: "reverse_contribution", original_id: contributionId, reason, pin },
+    });
+    if (error) return { error: error.message || "Reversal failed" };
+    if (!data?.ok) return { error: data?.error || "Reversal failed" };
+    loadData();
+    return { error: null, data };
+  };
+
   const asoWithdraw = async (id, amount, pin) => {
     const { data, error } = await supabase.functions.invoke("ajo-write", {
       body: {
@@ -705,5 +715,6 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
     deleteTransaction: staffId ? null : deleteTransaction,
     addCredit, repayCredit, updateCredit, debtPayments,
     addAsoClient, asoContribute, asoCollectionRecord, asoWithdraw, updateAsoClient, deleteAsoClient,
+    asoReverseContribution,
   };
 }

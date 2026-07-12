@@ -104,11 +104,16 @@ function isGroupAccount(c) {
 }
 
 /* ── Per-client Ajo Contribution History Modal ─────────────────────────── */
-function AsoClientHistoryModal({ client, contributions, cycle, businessName, staffMap = {}, onClose, onOpenCycle, onCloseCycle, onExecuteCommission }) {
-  const [tab,         setTab]         = useState(cycle ? "card" : "history");
-  const [typeFilter,  setTypeFilter]  = useState("all");
-  const [receipt,     setReceipt]     = useState(null);
-  const [clearedIds,  setClearedIds]  = useState(() => new Set());
+function AsoClientHistoryModal({ client, contributions, cycle, businessName, staffMap = {}, onClose, onOpenCycle, onCloseCycle, onExecuteCommission, onReverseContrib }) {
+  const [tab,           setTab]           = useState(cycle ? "card" : "history");
+  const [typeFilter,    setTypeFilter]    = useState("all");
+  const [receipt,       setReceipt]       = useState(null);
+  const [clearedIds,    setClearedIds]    = useState(() => new Set());
+  const [reverseFor,    setReverseFor]    = useState(null);   // tx being reversed
+  const [reverseReason, setReverseReason] = useState("");
+  const [reverseStep,   setReverseStep]   = useState("reason"); // "reason" | "pin"
+  const [reverseBusy,   setReverseBusy]   = useState(false);
+  const [reverseError,  setReverseError]  = useState("");
   const fmtCurrency = (n) => `₦${Number(n || 0).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
 
   const filtered = typeFilter === "all"
@@ -184,6 +189,68 @@ function AsoClientHistoryModal({ client, contributions, cycle, businessName, sta
           onClose={() => setReceipt(null)}
         />
       )}
+
+      {/* Reverse entry — reason step */}
+      {reverseFor && reverseStep === "reason" && (
+        <div className="fixed inset-0 z-[70] bg-black/60 flex items-end justify-center">
+          <div className="bg-white dark:bg-slate-900 rounded-t-2xl w-full max-w-lg p-5 pb-8">
+            <h3 className="text-base font-black text-slate-800 dark:text-white mb-1">Reverse Entry</h3>
+            <p className="text-xs text-slate-400 mb-4">
+              Reverse ₦{Number(reverseFor.amount || 0).toLocaleString("en-NG")} contribution
+              from {new Date(reverseFor.created_at).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })}
+            </p>
+            <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1.5">Reason (required)</label>
+            <textarea
+              value={reverseReason}
+              onChange={e => setReverseReason(e.target.value)}
+              placeholder="e.g. Entered by mistake, wrong amount, duplicate..."
+              rows={3}
+              className="w-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-white rounded-xl px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-amber-400"
+            />
+            {reverseError && <p className="text-xs text-red-500 mt-2">{reverseError}</p>}
+            <div className="flex gap-3 mt-4">
+              <button onClick={() => { setReverseFor(null); setReverseReason(""); setReverseError(""); }}
+                className="flex-1 py-3 rounded-xl font-bold text-sm text-slate-500 bg-slate-100 dark:bg-slate-800 active:scale-[0.98] transition">
+                Cancel
+              </button>
+              <button onClick={() => {
+                if (!reverseReason.trim()) { setReverseError("Please enter a reason."); return; }
+                setReverseError("");
+                setReverseStep("pin");
+              }}
+                className="flex-1 py-3 rounded-xl font-bold text-sm text-white bg-amber-500 active:scale-[0.98] transition">
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reverse entry — PIN step */}
+      {reverseFor && reverseStep === "pin" && (
+        <TransactionPinModal
+          title="Confirm Reversal"
+          amount={Math.round((reverseFor.amount || 0) * 100)}
+          recipient={client.full_name}
+          description={`Reverse ₦${Number(reverseFor.amount || 0).toLocaleString("en-NG")} · ${reverseReason}`}
+          onCancel={() => { setReverseStep("reason"); setReverseError(""); }}
+          onApprove={async (pin) => {
+            setReverseBusy(true);
+            const result = await onReverseContrib(reverseFor, reverseReason.trim(), pin);
+            setReverseBusy(false);
+            if (result?.error) {
+              setReverseStep("reason");
+              setReverseError(result.error);
+            } else {
+              setReverseFor(null);
+              setReverseReason("");
+              setReverseStep("reason");
+              setReverseError("");
+            }
+          }}
+        />
+      )}
+
       <div className="bg-white dark:bg-slate-900 flex flex-col h-full max-w-lg w-full mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between px-4 pb-3 border-b border-slate-100 dark:border-slate-800" style={{ paddingTop: "max(16px, env(safe-area-inset-top, 16px))" }}>
@@ -293,6 +360,18 @@ function AsoClientHistoryModal({ client, contributions, cycle, businessName, sta
                       <p className="text-[10px] text-violet-500 dark:text-violet-400 mt-0.5">by: {staffMap[tx.recorded_by]}</p>
                     )}
                     {tx.notes && <p className="text-[10px] text-slate-400 italic mt-0.5">"{tx.notes}"</p>}
+                    {onReverseContrib && tx.type === "contribution" && (tx.status === "completed" || tx.status === "approved") && (
+                      <button onClick={e => {
+                        e.stopPropagation();
+                        setReverseFor(tx);
+                        setReverseReason("");
+                        setReverseStep("reason");
+                        setReverseError("");
+                      }}
+                        className="mt-1.5 text-[10px] font-bold text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 rounded-full active:scale-95 transition">
+                        Reverse entry
+                      </button>
+                    )}
                     {tx.dispute_ticket_no && !clearedIds.has(tx.id) && (
                       <div className="flex items-center justify-between mt-1">
                         <p className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">⚠ {tx.dispute_ticket_no}</p>
@@ -350,7 +429,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [dueBefore,       setDueBefore]       = useState("");
   const [showCollection,  setShowCollection]  = useState(false);
 
-  const { asoClients, addAsoClient, asoContribute, asoCollectionRecord, asoWithdraw, updateAsoClient, deleteAsoClient, profile, staffMap = {} } = store;
+  const { asoClients, addAsoClient, asoContribute, asoCollectionRecord, asoWithdraw, asoReverseContribution, updateAsoClient, deleteAsoClient, profile, staffMap = {} } = store;
   const staffOptions = Object.entries(staffMap).map(([id, name]) => ({ id, name }));
 
   const [withdrawalRequests,  setWithdrawalRequests]  = useState([]);
@@ -2137,6 +2216,18 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           setHistoryFor(prev => ({ ...prev, contributions: freshContribs || prev.contributions }));
         };
 
+        const handleReverseContrib = async (tx, reason, pin) => {
+          const result = await asoReverseContribution(tx.id, reason, pin);
+          if (result.error) return result;
+          const { data: freshContribs } = await supabase
+            .from("ajo_contributions")
+            .select("*")
+            .eq("aso_client_id", hc.id)
+            .order("created_at", { ascending: false });
+          setHistoryFor(prev => ({ ...prev, contributions: freshContribs || prev.contributions }));
+          return result;
+        };
+
         return (
           <AsoClientHistoryModal
             client={hc}
@@ -2148,6 +2239,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             onOpenCycle={handleOpenCycle}
             onCloseCycle={handleCloseCycle}
             onExecuteCommission={handleExecuteCommission}
+            onReverseContrib={handleReverseContrib}
           />
         );
       })()}
