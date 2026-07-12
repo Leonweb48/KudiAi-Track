@@ -101,7 +101,7 @@ export default function TodaysCollection({ clients, groups, onRecord, staffCanRe
   const batchTotal = useMemo(() =>
     [...selected].reduce((sum, id) => {
       const c = dueClients.find(x => x.id === id);
-      return sum + effectiveAmount(c || {});
+      return sum + (c ? (customAmounts[id] || c.contribution_amount || 0) : 0);
     }, 0)
   , [selected, dueClients, customAmounts]);
 
