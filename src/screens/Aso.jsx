@@ -762,8 +762,6 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const handleApproveRequest = async (req, pin) => {
     setProcessingId(req.id);
     try {
-      const cl = req.aso_clients || {};
-
       // Atomic withdrawal via ajo-write edge fn (PIN-verified, two-row fee ledger)
       const { data: writeData, error: writeErr } = await supabase.functions.invoke("ajo-write", {
         body: {
