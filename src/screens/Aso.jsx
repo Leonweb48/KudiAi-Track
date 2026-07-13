@@ -467,6 +467,13 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [groupApprSubmitting,  setGroupApprSubmitting]  = useState(false);
   const [groupApprMsg,         setGroupApprMsg]         = useState({ id: null, text: "", ok: false });
   const [groupApprovals,       setGroupApprovals]       = useState([]); // pending requests
+  const [directEditGroup,      setDirectEditGroup]      = useState(null); // grp.id
+  const [directEditGf,         setDirectEditGf]         = useState({});
+  const setDEG = (k, v) => setDirectEditGf(p => ({ ...p, [k]: v }));
+  const [directEditSaving,     setDirectEditSaving]     = useState(false);
+  const [directEditMsg,        setDirectEditMsg]        = useState({ id: null, text: "", ok: false });
+  const [archiveSafety,        setArchiveSafety]        = useState({}); // { [grpId]: {safe,activeRound,unsettledMembers} }
+  const [archiveSafetyLoading, setArchiveSafetyLoading] = useState(null); // grp.id being checked
   // Rotation management
   const [showRotation,   setShowRotation]   = useState(null); // group object
   const [rotationData,   setRotationData]   = useState(null);
@@ -497,11 +504,11 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   }, [autoOpen, onAutoOpened, plan]);
 
   useEffect(() => {
-    if ((!showAdd && !showGroupAdd) || banks.length > 0) return;
+    if ((!showAdd && !showGroupAdd && !editingGroup) || banks.length > 0) return;
     supabase.functions.invoke("paystack", { body: { action: "list-banks" } })
       .then(({ data }) => { if (data?.data) setBanks(data.data); })
       .catch(() => {});
-  }, [showAdd, showGroupAdd]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [showAdd, showGroupAdd, editingGroup]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const resolveClientAccount = async () => {
     if (!f.account_number || !f.bank_code) return;
@@ -589,22 +596,22 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     try {
       const payload = {
         old: {
-          name:                  grp.name,
-          description:           grp.description || "",
-          contribution_amount:   grp.contribution_amount,
-          contribution_frequency:grp.contribution_frequency,
-          group_mode:            grp.group_mode,
-          privacy_show_names:    grp.privacy_show_names,
-          privacy_show_amounts:  grp.privacy_show_amounts,
+          contribution_amount:    grp.contribution_amount,
+          contribution_frequency: grp.contribution_frequency,
+          group_mode:             grp.group_mode,
+          percentage_charge:      grp.percentage_charge,
+          bank_code:              grp.bank_code      || "",
+          account_number:         grp.account_number || "",
+          account_name:           grp.account_name   || "",
         },
         new: {
-          name:                  editGf.name?.trim()               || grp.name,
-          description:           editGf.description?.trim()        ?? grp.description ?? "",
-          contribution_amount:   editGf.contribution_amount != null ? Number(editGf.contribution_amount) : grp.contribution_amount,
-          contribution_frequency:editGf.contribution_frequency     || grp.contribution_frequency,
-          group_mode:            editGf.group_mode                 || grp.group_mode,
-          privacy_show_names:    editGf.privacy_show_names != null ? Boolean(editGf.privacy_show_names) : grp.privacy_show_names,
-          privacy_show_amounts:  editGf.privacy_show_amounts != null ? Boolean(editGf.privacy_show_amounts) : grp.privacy_show_amounts,
+          contribution_amount:    editGf.contribution_amount != null ? Number(editGf.contribution_amount) : grp.contribution_amount,
+          contribution_frequency: editGf.contribution_frequency || grp.contribution_frequency,
+          group_mode:             editGf.group_mode             || grp.group_mode,
+          percentage_charge:      editGf.percentage_charge != null ? Number(editGf.percentage_charge) : grp.percentage_charge,
+          bank_code:              editGf.bank_code?.trim()      || grp.bank_code      || "",
+          account_number:         editGf.account_number?.trim() || grp.account_number || "",
+          account_name:           editGf.account_name?.trim()   || grp.account_name   || "",
         },
       };
       const { error } = await supabase.rpc("submit_approval_request", {
@@ -664,6 +671,57 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       loadGroupApprovals();
     } catch (e) {
       setGroupApprMsg({ id: grpId, text: e?.message || "Failed to cancel", ok: false });
+    }
+  };
+
+  const submitDirectEdit = async (grp) => {
+    setDirectEditSaving(true);
+    setDirectEditMsg({ id: null, text: "", ok: false });
+    try {
+      const { error } = await supabase
+        .from("ajo_groups")
+        .update({
+          name:                 directEditGf.name?.trim()         || grp.name,
+          description:          directEditGf.description?.trim()  ?? grp.description ?? "",
+          privacy_show_names:   directEditGf.privacy_show_names   ?? grp.privacy_show_names,
+          privacy_show_amounts: directEditGf.privacy_show_amounts ?? grp.privacy_show_amounts,
+          updated_at:           new Date().toISOString(),
+        })
+        .eq("id", grp.id);
+      if (error) throw error;
+      setDirectEditMsg({ id: grp.id, text: "Group details updated.", ok: true });
+      setDirectEditGroup(null);
+      loadGroups();
+    } catch (e) {
+      setDirectEditMsg({ id: grp.id, text: e?.message || "Failed to save", ok: false });
+    } finally {
+      setDirectEditSaving(false);
+    }
+  };
+
+  const openArchiveRequest = async (grp) => {
+    setDeletingGroup(grp.id);
+    setGroupApprReason("");
+    setGroupApprMsg({ id: null, text: "", ok: false });
+    setArchiveSafetyLoading(grp.id);
+    try {
+      const [roundRes, clientsRes] = await Promise.all([
+        grp.group_mode === "rotating"
+          ? supabase.from("ajo_group_rounds").select("id").eq("group_id", grp.id).eq("status", "active").limit(1)
+          : Promise.resolve({ data: [] }),
+        supabase.from("aso_clients").select("id, full_name, current_balance").eq("ajo_group_id", grp.id).gt("current_balance", 0),
+      ]);
+      const activeRound      = (roundRes.data?.length ?? 0) > 0;
+      const unsettledMembers = clientsRes.data || [];
+      setArchiveSafety(prev => ({
+        ...prev,
+        [grp.id]: { safe: !activeRound && unsettledMembers.length === 0, activeRound, unsettledMembers },
+      }));
+    } catch (e) {
+      console.error("archiveSafety:", e);
+      setArchiveSafety(prev => ({ ...prev, [grp.id]: { safe: false, activeRound: false, unsettledMembers: [], error: true } }));
+    } finally {
+      setArchiveSafetyLoading(null);
     }
   };
 
@@ -2642,12 +2700,13 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                     const clientCount = asoClients.filter(c => c.ajo_group_id === grp.id).length;
                     const hasSubacct  = Boolean(grp.paystack_subaccount_code);
                     const isRotating  = grp.group_mode === "rotating";
-                    const pendingAppr   = groupApprovals.find(r => r.target_id === grp.id);
-                    const isPendingEdit = pendingAppr?.request_type === "group_edit";
-                    const isLocked      = Boolean(pendingAppr);
-                    const approvalMsg   = groupApprMsg.id === grp.id ? groupApprMsg : null;
-                    const isEditOpen    = editingGroup === grp.id;
-                    const isDeleteOpen  = deletingGroup === grp.id;
+                    const pendingAppr      = groupApprovals.find(r => r.target_id === grp.id);
+                    const isPendingEdit    = pendingAppr?.request_type === "group_edit";
+                    const isLocked         = Boolean(pendingAppr);
+                    const approvalMsg      = groupApprMsg.id === grp.id ? groupApprMsg : null;
+                    const isEditOpen       = editingGroup === grp.id;
+                    const isDeleteOpen     = deletingGroup === grp.id;
+                    const isDirectEditOpen = directEditGroup === grp.id;
 
                     return (
                       <div key={grp.id} className={`bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 border shadow-sm ${isLocked ? "border-amber-200 dark:border-amber-700/50" : "border-slate-100 dark:border-slate-700"}`}>
@@ -2726,38 +2785,96 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                           </div>
                         )}
 
-                        {/* ── Approval action result message ── */}
+                        {/* ── Direct-edit result ── */}
+                        {directEditMsg.id === grp.id && (
+                          <p className={`mt-3 text-[10px] font-semibold px-3 py-2 rounded-xl ${directEditMsg.ok ? "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400" : "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400"}`}>
+                            {directEditMsg.text}
+                          </p>
+                        )}
+
+                        {/* ── Approval action result ── */}
                         {approvalMsg && (
                           <p className={`mt-3 text-[10px] font-semibold px-3 py-2 rounded-xl ${approvalMsg.ok ? "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400" : "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400"}`}>
                             {approvalMsg.text}
                           </p>
                         )}
 
-                        {/* ── Edit / Archive request buttons ── */}
-                        {!isLocked && !isEditOpen && !isDeleteOpen && (
-                          <div className="mt-3 flex gap-2">
+                        {/* ── Action buttons ── */}
+                        {!isLocked && !isEditOpen && !isDeleteOpen && !isDirectEditOpen && (
+                          <div className="mt-3 grid grid-cols-3 gap-1.5">
                             <button
-                              onClick={() => { setEditingGroup(grp.id); setEditGf({ name: grp.name, description: grp.description || "", contribution_amount: grp.contribution_amount || "", contribution_frequency: grp.contribution_frequency || "monthly", group_mode: grp.group_mode || "savings", privacy_show_names: grp.privacy_show_names, privacy_show_amounts: grp.privacy_show_amounts }); setGroupApprReason(""); setGroupApprMsg({ id: null, text: "", ok: false }); }}
-                              className="flex-1 py-2 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 rounded-xl font-bold text-xs border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition active:scale-[0.99]">
-                              Request Edit
+                              onClick={() => { setDirectEditGroup(grp.id); setDirectEditGf({ name: grp.name, description: grp.description || "", privacy_show_names: grp.privacy_show_names, privacy_show_amounts: grp.privacy_show_amounts }); setDirectEditMsg({ id: null, text: "", ok: false }); }}
+                              className="py-2 bg-slate-50 dark:bg-slate-700/50 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-[10px] border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 transition active:scale-[0.99]">
+                              Edit Details
                             </button>
                             <button
-                              onClick={() => { setDeletingGroup(grp.id); setGroupApprReason(""); setGroupApprMsg({ id: null, text: "", ok: false }); }}
-                              className="flex-1 py-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl font-bold text-xs border border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/30 transition active:scale-[0.99]">
-                              Request Archive
+                              onClick={() => { setEditingGroup(grp.id); setEditGf({ contribution_amount: grp.contribution_amount ?? "", contribution_frequency: grp.contribution_frequency || "monthly", group_mode: grp.group_mode || "savings", percentage_charge: grp.percentage_charge ?? 100, bank_code: grp.bank_code || "", account_number: grp.account_number || "", account_name: grp.account_name || "" }); setGroupApprReason(""); setGroupApprMsg({ id: null, text: "", ok: false }); }}
+                              className="py-2 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 rounded-xl font-bold text-[10px] border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition active:scale-[0.99]">
+                              Settings
+                            </button>
+                            <button
+                              onClick={() => openArchiveRequest(grp)}
+                              className="py-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl font-bold text-[10px] border border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/30 transition active:scale-[0.99]">
+                              Archive
                             </button>
                           </div>
                         )}
 
-                        {/* ── Inline edit form ── */}
-                        {isEditOpen && (
-                          <div className="mt-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl p-3 space-y-2.5 border border-blue-200 dark:border-blue-800">
-                            <p className="text-xs font-bold text-blue-700 dark:text-blue-300 uppercase tracking-wider">Request Group Edit</p>
-                            <p className="text-[10px] text-blue-600 dark:text-blue-400">Changes will not apply until an admin approves them.</p>
+                        {/* ── Direct-edit panel — name, description, privacy (no approval needed) ── */}
+                        {isDirectEditOpen && (
+                          <div className="mt-3 bg-slate-50 dark:bg-slate-700/40 rounded-xl p-3 space-y-2.5 border border-slate-200 dark:border-slate-600">
+                            <p className="text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider">Edit Group Details</p>
+                            <p className="text-[10px] text-slate-500 dark:text-slate-400">Name and description changes apply immediately without admin approval.</p>
                             {[
                               { label: "Group Name", key: "name", type: "text" },
                               { label: "Description", key: "description", type: "text" },
+                            ].map(({ label, key, type }) => (
+                              <div key={key}>
+                                <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-0.5">{label}</p>
+                                <input type={type} value={directEditGf[key] ?? ""} onChange={e => setDEG(key, e.target.value)}
+                                  className="w-full text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 text-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-slate-400" />
+                              </div>
+                            ))}
+                            <div>
+                              <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1">Privacy</p>
+                              <div className="flex flex-col gap-1.5">
+                                {[
+                                  { label: "Show member names to other members", key: "privacy_show_names" },
+                                  { label: "Show contribution amounts to members", key: "privacy_show_amounts" },
+                                ].map(({ label, key }) => (
+                                  <button key={key} type="button"
+                                    onClick={() => setDEG(key, !(directEditGf[key] ?? false))}
+                                    className={`flex items-center gap-2 text-[10px] font-semibold px-2.5 py-1.5 rounded-lg border transition text-left ${(directEditGf[key] ?? false) ? "bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700 text-green-700 dark:text-green-400" : "bg-slate-100 dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400"}`}>
+                                    <span className={`w-3 h-3 rounded-full flex-shrink-0 ${(directEditGf[key] ?? false) ? "bg-green-500" : "bg-slate-300 dark:bg-slate-500"}`} />
+                                    {label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                            <div className="flex gap-2 pt-1">
+                              <button
+                                onClick={() => submitDirectEdit(grp)}
+                                disabled={directEditSaving}
+                                className="flex-1 py-2 bg-slate-700 hover:bg-slate-800 dark:bg-slate-600 dark:hover:bg-slate-500 disabled:opacity-40 text-white rounded-xl font-bold text-xs transition active:scale-[0.99] flex items-center justify-center gap-1.5">
+                                {directEditSaving ? <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />Saving…</> : "Save Changes"}
+                              </button>
+                              <button onClick={() => setDirectEditGroup(null)}
+                                className="px-4 py-2 bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 rounded-xl font-bold text-xs border border-slate-200 dark:border-slate-600 transition active:scale-[0.99]">
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* ── Settings change panel — financial fields (approval required) ── */}
+                        {isEditOpen && (
+                          <div className="mt-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl p-3 space-y-2.5 border border-blue-200 dark:border-blue-800">
+                            <p className="text-xs font-bold text-blue-700 dark:text-blue-300 uppercase tracking-wider">Request Settings Change</p>
+                            <p className="text-[10px] text-blue-600 dark:text-blue-400">Financial changes require admin approval and apply only after a decision.</p>
+                            {[
                               { label: "Contribution Amount (₦)", key: "contribution_amount", type: "number" },
+                              { label: "Account Number", key: "account_number", type: "text" },
+                              { label: "Account Name", key: "account_name", type: "text" },
                             ].map(({ label, key, type }) => (
                               <div key={key}>
                                 <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-0.5">{label}</p>
@@ -2769,12 +2886,33 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                               <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-0.5">Frequency</p>
                               <select value={editGf.contribution_frequency || "monthly"} onChange={e => setEG("contribution_frequency", e.target.value)}
                                 className="w-full text-sm bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-700 rounded-lg px-3 py-2 text-slate-800 dark:text-white focus:outline-none">
-                                {["daily","weekly","monthly"].map(f => <option key={f} value={f}>{f.charAt(0).toUpperCase() + f.slice(1)}</option>)}
+                                {["daily","weekly","monthly"].map(fr => <option key={fr} value={fr}>{fr.charAt(0).toUpperCase() + fr.slice(1)}</option>)}
                               </select>
                             </div>
                             <div>
-                              <p className="text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-wide mb-0.5">Reason for edit *</p>
-                              <textarea rows={2} value={groupApprReason} onChange={e => setGroupApprReason(e.target.value)} placeholder="Why do you need to edit this group?"
+                              <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-0.5">Group Mode</p>
+                              <select value={editGf.group_mode || "savings"} onChange={e => setEG("group_mode", e.target.value)}
+                                className="w-full text-sm bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-700 rounded-lg px-3 py-2 text-slate-800 dark:text-white focus:outline-none">
+                                <option value="savings">Savings</option>
+                                <option value="rotating">Rotating (Esusu)</option>
+                              </select>
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-0.5">Bank</p>
+                              {banks.length > 0 ? (
+                                <select value={editGf.bank_code || ""} onChange={e => setEG("bank_code", e.target.value)}
+                                  className="w-full text-sm bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-700 rounded-lg px-3 py-2 text-slate-800 dark:text-white focus:outline-none">
+                                  <option value="">Select bank…</option>
+                                  {banks.map(b => <option key={b.code} value={b.code}>{b.name}</option>)}
+                                </select>
+                              ) : (
+                                <input type="text" value={editGf.bank_code || ""} onChange={e => setEG("bank_code", e.target.value)} placeholder="Bank code"
+                                  className="w-full text-sm bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-700 rounded-lg px-3 py-2 text-slate-800 dark:text-white focus:outline-none" />
+                              )}
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-wide mb-0.5">Reason for change *</p>
+                              <textarea rows={2} value={groupApprReason} onChange={e => setGroupApprReason(e.target.value)} placeholder="Why do you need to change these settings?"
                                 className="w-full text-sm bg-white dark:bg-slate-800 border border-red-200 dark:border-red-700 rounded-lg px-3 py-2 text-slate-800 dark:text-white focus:outline-none resize-none" />
                             </div>
                             <div className="flex gap-2 pt-1">
@@ -2792,30 +2930,72 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                           </div>
                         )}
 
-                        {/* ── Inline archive confirmation ── */}
+                        {/* ── Archive panel — safety-gated ── */}
                         {isDeleteOpen && (
                           <div className="mt-3 bg-red-50 dark:bg-red-900/20 rounded-xl p-3 space-y-2.5 border border-red-200 dark:border-red-800">
                             <p className="text-xs font-bold text-red-700 dark:text-red-300 uppercase tracking-wider">Request Group Archive</p>
-                            <p className="text-[10px] text-red-600 dark:text-red-400 leading-relaxed">
-                              Archiving <strong>{grp.name}</strong> will remove it from active use and detach all {clientCount} member{clientCount !== 1 ? "s" : ""}. This requires admin approval and cannot be reversed through the portal. All records are preserved.
-                            </p>
-                            <div>
-                              <p className="text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-wide mb-0.5">Reason for archive *</p>
-                              <textarea rows={2} value={groupApprReason} onChange={e => setGroupApprReason(e.target.value)} placeholder="Why do you need to archive this group?"
-                                className="w-full text-sm bg-white dark:bg-slate-800 border border-red-200 dark:border-red-700 rounded-lg px-3 py-2 text-slate-800 dark:text-white focus:outline-none resize-none" />
-                            </div>
-                            <div className="flex gap-2 pt-1">
-                              <button
-                                onClick={() => submitGroupDeleteRequest(grp)}
-                                disabled={groupApprSubmitting || !groupApprReason.trim()}
-                                className="flex-1 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white rounded-xl font-bold text-xs transition active:scale-[0.99] flex items-center justify-center gap-1.5">
-                                {groupApprSubmitting ? <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />Submitting…</> : "Submit Archive Request"}
-                              </button>
-                              <button onClick={() => { setDeletingGroup(null); setGroupApprReason(""); }}
-                                className="px-4 py-2 bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 rounded-xl font-bold text-xs border border-slate-200 dark:border-slate-600 transition active:scale-[0.99]">
-                                Cancel
-                              </button>
-                            </div>
+                            {archiveSafetyLoading === grp.id ? (
+                              <div className="flex items-center gap-2 py-1">
+                                <div className="w-4 h-4 border-2 border-red-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                                <p className="text-[10px] text-red-600 dark:text-red-400">Checking group status…</p>
+                              </div>
+                            ) : archiveSafety[grp.id] ? (
+                              archiveSafety[grp.id].safe ? (
+                                <div className="space-y-2.5">
+                                  <p className="text-[10px] text-red-600 dark:text-red-400 leading-relaxed">
+                                    Archiving <strong>{grp.name}</strong> will remove it from active use and detach all {clientCount} member{clientCount !== 1 ? "s" : ""}. This requires admin approval and cannot be reversed through the portal. All contribution records, rounds, and payout history are preserved.
+                                  </p>
+                                  <div>
+                                    <p className="text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-wide mb-0.5">Reason for archive *</p>
+                                    <textarea rows={2} value={groupApprReason} onChange={e => setGroupApprReason(e.target.value)} placeholder="Why do you need to archive this group?"
+                                      className="w-full text-sm bg-white dark:bg-slate-800 border border-red-200 dark:border-red-700 rounded-lg px-3 py-2 text-slate-800 dark:text-white focus:outline-none resize-none" />
+                                  </div>
+                                  <div className="flex gap-2 pt-1">
+                                    <button
+                                      onClick={() => submitGroupDeleteRequest(grp)}
+                                      disabled={groupApprSubmitting || !groupApprReason.trim()}
+                                      className="flex-1 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white rounded-xl font-bold text-xs transition active:scale-[0.99] flex items-center justify-center gap-1.5">
+                                      {groupApprSubmitting ? <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />Submitting…</> : "Submit Archive Request"}
+                                    </button>
+                                    <button onClick={() => { setDeletingGroup(null); setGroupApprReason(""); }}
+                                      className="px-4 py-2 bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 rounded-xl font-bold text-xs border border-slate-200 dark:border-slate-600 transition active:scale-[0.99]">
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="space-y-2">
+                                  <p className="text-[10px] font-semibold text-red-700 dark:text-red-300">This group cannot be archived yet:</p>
+                                  {archiveSafety[grp.id].activeRound && (
+                                    <div className="bg-red-100 dark:bg-red-900/30 rounded-lg px-3 py-2">
+                                      <p className="text-[10px] font-bold text-red-700 dark:text-red-300">Active rotation round in progress</p>
+                                      <p className="text-[10px] text-red-600 dark:text-red-400 mt-0.5">Close the current round in the Rotation Dashboard before requesting archive.</p>
+                                    </div>
+                                  )}
+                                  {archiveSafety[grp.id].unsettledMembers.length > 0 && (
+                                    <div className="bg-red-100 dark:bg-red-900/30 rounded-lg px-3 py-2 space-y-1">
+                                      <p className="text-[10px] font-bold text-red-700 dark:text-red-300">
+                                        {archiveSafety[grp.id].unsettledMembers.length} member{archiveSafety[grp.id].unsettledMembers.length !== 1 ? "s" : ""} with unsettled balance
+                                      </p>
+                                      <ul className="space-y-0.5">
+                                        {archiveSafety[grp.id].unsettledMembers.map(m => (
+                                          <li key={m.id} className="text-[10px] text-red-600 dark:text-red-400 flex justify-between">
+                                            <span>{m.full_name}</span>
+                                            <span className="font-mono font-bold">₦{fmt(m.current_balance)}</span>
+                                          </li>
+                                        ))}
+                                      </ul>
+                                      <p className="text-[10px] text-red-600 dark:text-red-400">All member balances must be withdrawn before archiving.</p>
+                                    </div>
+                                  )}
+                                  <button
+                                    onClick={() => { setDeletingGroup(null); setArchiveSafety(prev => { const n = { ...prev }; delete n[grp.id]; return n; }); }}
+                                    className="w-full mt-1 py-2 bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 rounded-xl font-bold text-xs border border-slate-200 dark:border-slate-600 transition active:scale-[0.99]">
+                                    Close
+                                  </button>
+                                </div>
+                              )
+                            ) : null}
                           </div>
                         )}
                       </div>
