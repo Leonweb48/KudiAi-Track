@@ -2268,21 +2268,45 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
 
 // ── Me tab (Staff Portal structure) ───────────────────────────────────────
 function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProfileUpdate, contributions = [], withdrawRequests = [] }) {
-  const [view,         setView]        = useState("menu");
-  const [editForm,     setEditForm]    = useState({ full_name: client?.full_name || "", phone: client?.phone || "" });
-  const [photoFile,    setPhotoFile]   = useState(null);
-  const [photoPreview, setPhotoPreview] = useState(null);
-  const [saving,       setSaving]      = useState(false);
-  const [saveMsg,      setSaveMsg]     = useState("");
-  const [lockBusy,     setLockBusy]    = useState(false);
-  const [showPinSetup, setShowPinSetup] = useState(false);
-  const [isDark,       setIsDark]      = useState(() => localStorage.getItem("kuditrack_dark") === "1");
-  const [faqTab,       setFaqTab]      = useState("faq");
-  const [faqSearch,    setFaqSearch]   = useState("");
-  const [aiAnswer,     setAiAnswer]    = useState("");
-  const [aiLoading,    setAiLoading]   = useState(false);
-  const [aiError,      setAiError]     = useState("");
+  const [view,           setView]           = useState("menu");
+  const [editForm,       setEditForm]       = useState({
+    full_name: client?.full_name || "",
+    phone:     client?.phone     || "",
+    email:     client?.email     || session?.user?.email || "",
+    address:   client?.address   || "",
+    state:     client?.state     || "",
+    lga:       client?.lga       || "",
+    ward:      client?.ward      || "",
+    nin:       client?.nin       || "",
+    nok_name:  client?.next_of_kin_name    || "",
+    nok_phone: client?.next_of_kin_phone   || "",
+    nok_email: client?.next_of_kin_email   || "",
+    nok_addr:  client?.next_of_kin_address || "",
+  });
+  const [photoFile,      setPhotoFile]      = useState(null);
+  const [photoPreview,   setPhotoPreview]   = useState(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [saving,         setSaving]         = useState(false);
+  const [saveMsg,        setSaveMsg]        = useState("");
+  const [lightboxOpen,   setLightboxOpen]   = useState(false);
+  const [lbZoom,         setLbZoom]         = useState(1);
+  const [lbPinchDist,    setLbPinchDist]    = useState(null);
+  const [pendingEmail,   setPendingEmail]   = useState(null);
+  const [emailOtp,       setEmailOtp]       = useState("");
+  const [otpSending,     setOtpSending]     = useState(false);
+  const [otpError,       setOtpError]       = useState("");
+  const [lockBusy,       setLockBusy]       = useState(false);
+  const [showPinSetup,   setShowPinSetup]   = useState(false);
+  const [isDark,         setIsDark]         = useState(() => localStorage.getItem("kuditrack_dark") === "1");
+  const [faqTab,         setFaqTab]         = useState("faq");
+  const [faqSearch,      setFaqSearch]      = useState("");
+  const [aiAnswer,       setAiAnswer]       = useState("");
+  const [aiLoading,      setAiLoading]      = useState(false);
+  const [aiError,        setAiError]        = useState("");
   const fileRef = useRef(null);
+
+  const phoneRegex = /^(\+?234|0)[7-9][01]\d{8}$/;
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
   const askAI = async (query) => {
     setAiLoading(true); setAiAnswer(""); setAiError("");
@@ -2319,75 +2343,329 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
     document.documentElement.classList.toggle("dark", next);
   };
 
-  const saveProfile = async () => {
+  const doSave = async (confirmedEmail) => {
     setSaving(true); setSaveMsg("");
     try {
       let photoUrl = client?.profile_image_url;
-      if (photoFile) photoUrl = await uploadAjoAvatar(photoFile, clientId);
-      await supabase.from("aso_clients").update({ full_name: editForm.full_name, phone: editForm.phone, profile_image_url: photoUrl }).eq("id", clientId);
-      onProfileUpdate?.({ full_name: editForm.full_name, phone: editForm.phone, profile_image_url: photoUrl });
+      if (photoFile) {
+        let prog = 0;
+        const tick = setInterval(() => { prog = Math.min(90, prog + 15); setUploadProgress(prog); }, 200);
+        try { photoUrl = await uploadAjoAvatar(photoFile, clientId); }
+        finally { clearInterval(tick); setUploadProgress(100); setTimeout(() => setUploadProgress(0), 600); }
+      }
+      const payload = {
+        full_name:           editForm.full_name,
+        phone:               editForm.phone,
+        address:             editForm.address,
+        state:               editForm.state,
+        lga:                 editForm.lga,
+        ward:                editForm.ward,
+        nin:                 editForm.nin,
+        next_of_kin_name:    editForm.nok_name,
+        next_of_kin_phone:   editForm.nok_phone,
+        next_of_kin_email:   editForm.nok_email,
+        next_of_kin_address: editForm.nok_addr,
+        profile_image_url:   photoUrl,
+      };
+      if (confirmedEmail) payload.email = confirmedEmail;
+      await supabase.from("aso_clients").update(payload).eq("id", clientId);
+      ajoFn("log-profile-update", { client_id: clientId }).catch(() => {});
+      onProfileUpdate?.(payload);
       setSaveMsg("Profile saved!");
-      setTimeout(() => { setSaveMsg(""); setView("menu"); }, 1500);
+      setTimeout(() => { setSaveMsg(""); setView("profile"); }, 1500);
     } catch { setSaveMsg("Save failed. Please try again."); }
     setSaving(false);
   };
 
-  const SubHeader = ({ title }) => (
+  const sendEmailOtp = async () => {
+    setOtpSending(true); setOtpError("");
+    try {
+      await ajoFn("send-profile-otp", { client_id: clientId, field: "email", new_value: editForm.email });
+      setPendingEmail(editForm.email);
+    } catch (err) {
+      setOtpError(err.message || "Couldn't send OTP — try again");
+    } finally { setOtpSending(false); }
+  };
+
+  const verifyEmailOtp = async () => {
+    setOtpSending(true); setOtpError("");
+    try {
+      await ajoFn("verify-profile-otp", { client_id: clientId, field: "email", new_value: pendingEmail, otp: emailOtp });
+      const confirmed = pendingEmail;
+      setPendingEmail(null);
+      setEmailOtp("");
+      await doSave(confirmed);
+    } catch (err) {
+      setOtpError(err.message || "Invalid code — check and try again");
+      setOtpSending(false);
+    }
+  };
+
+  const saveProfile = async () => {
+    setSaveMsg("");
+    if (editForm.phone && !phoneRegex.test(editForm.phone)) { setSaveMsg("Enter a valid Nigerian phone number."); return; }
+    if (editForm.email && !emailRegex.test(editForm.email)) { setSaveMsg("Enter a valid email address."); return; }
+    const currentEmail = client?.email || session?.user?.email || "";
+    const emailChanged = editForm.email && editForm.email !== currentEmail;
+    if (emailChanged) { await sendEmailOtp(); } else { await doSave(null); }
+  };
+
+  const SubHeader = ({ title, onBack }) => (
     <div className="flex items-center gap-3 px-4 py-4 border-b border-slate-100 dark:border-slate-700/50 flex-shrink-0 bg-white dark:bg-slate-900">
-      <button onClick={() => setView("menu")} className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center active:scale-90 transition">
+      <button onClick={onBack || (() => setView("menu"))} className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center active:scale-90 transition">
         <Svg d={P.back} size={18} color="#64748b" />
       </button>
-      <p className="text-base font-extrabold text-slate-800 dark:text-slate-100">{title}</p>
+      <p className="text-base font-extrabold text-slate-800 dark:text-slate-100 flex-1">{title}</p>
     </div>
   );
 
-  if (view === "edit") return (
-    <div className="h-full flex flex-col">
-      <SubHeader title="Edit Profile" />
-      <div className="flex-1 overflow-y-auto px-4 py-5 space-y-5 pb-6">
-        <div className="flex flex-col items-center gap-3">
-          <div className="relative">
-            <div className="w-24 h-24 rounded-3xl bg-brand-500 flex items-center justify-center shadow-lg overflow-hidden">
-              {photoPreview ? <img src={photoPreview} alt="" className="w-full h-full object-cover" />
-                : client?.profile_image_url ? <img src={client.profile_image_url} alt="" className="w-full h-full object-cover" />
-                : <span className="text-2xl font-black text-white">{initials}</span>}
-            </div>
-            <button onClick={() => fileRef.current?.click()}
-              className="absolute -bottom-1 -right-1 w-9 h-9 rounded-full bg-brand-500 border-2 border-white dark:border-slate-900 flex items-center justify-center shadow-md active:scale-90 transition">
-              <Svg d={P.cam} size={15} color="#fff" />
-            </button>
-          </div>
-          <p className="text-[12px] text-slate-400">Tap camera to change photo</p>
-          <input ref={fileRef} type="file" accept="image/*" className="hidden"
-            onChange={e => { const f = e.target.files?.[0]; if (!f) return; setPhotoFile(f); setPhotoPreview(URL.createObjectURL(f)); }} />
+  /* ── Profile preview ─────────────────────────────────────────────── */
+  if (view === "profile") {
+    const avatarSrc = photoPreview || client?.profile_image_url;
+    const InfoRow = ({ label, value }) => (
+      <div className="flex items-start py-[11px] border-b border-slate-50 dark:border-slate-700/30 last:border-0">
+        <p className="text-[12px] text-slate-400 dark:text-slate-500 w-28 flex-shrink-0 leading-relaxed">{label}</p>
+        <p className="text-[13px] font-semibold text-slate-700 dark:text-slate-200 flex-1 leading-relaxed break-all">{value || "—"}</p>
+      </div>
+    );
+    const InfoCard = ({ title, children }) => (
+      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700/50 shadow-sm overflow-hidden">
+        <p className="px-4 pt-3 pb-2 text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest border-b border-slate-50 dark:border-slate-700/30">{title}</p>
+        <div className="px-4">{children}</div>
+      </div>
+    );
+    return (
+      <div className="h-full flex flex-col">
+        {/* Header */}
+        <div className="flex items-center gap-3 px-4 py-4 border-b border-slate-100 dark:border-slate-700/50 flex-shrink-0 bg-white dark:bg-slate-900">
+          <button onClick={() => setView("menu")} className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center active:scale-90 transition">
+            <Svg d={P.back} size={18} color="#64748b" />
+          </button>
+          <p className="text-base font-extrabold text-slate-800 dark:text-slate-100 flex-1">Profile</p>
+          <button onClick={() => setView("edit")}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-brand-50 dark:bg-brand-900/30 text-brand-500 dark:text-brand-400 text-[13px] font-bold active:scale-90 transition">
+            <Svg d={P.pen} size={14} color="currentColor" />
+            Edit
+          </button>
         </div>
-        <div className="space-y-3">
-          {[["Full Name","full_name","text"],["Phone","phone","tel"]].map(([l, k, t]) => (
-            <div key={k}>
-              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">{l}</p>
-              <input type={t} value={editForm[k]} onChange={e => setEditForm(p => ({...p, [k]: e.target.value}))}
+        <div className="flex-1 overflow-y-auto pb-10">
+          {/* Avatar hero */}
+          <div className="flex flex-col items-center pt-7 pb-5 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700/30">
+            <button
+              onClick={() => { setLightboxOpen(true); setLbZoom(1); }}
+              className="relative active:scale-95 transition">
+              <div className="w-24 h-24 rounded-full bg-brand-500 flex items-center justify-center shadow-lg overflow-hidden ring-2 ring-brand-200 dark:ring-brand-800">
+                {avatarSrc
+                  ? <img src={avatarSrc} alt="" className="w-full h-full object-cover" />
+                  : <span className="text-2xl font-black text-white">{initials}</span>}
+              </div>
+            </button>
+            <p className="text-base font-extrabold text-slate-800 dark:text-slate-100 mt-3">{client?.full_name || "Member"}</p>
+            <div className="flex items-center gap-2 mt-1.5">
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 text-[11px] font-bold capitalize">
+                {client?.status || "Active"}
+              </span>
+              <span className="text-[11px] text-slate-400 font-mono">{client?.membership_number || "—"}</span>
+            </div>
+            {avatarSrc && <p className="text-[11px] text-slate-400 dark:text-slate-600 mt-2">Tap photo to view full size</p>}
+          </div>
+          {/* Info cards */}
+          <div className="px-4 pt-5 space-y-4">
+            <InfoCard title="Personal">
+              <InfoRow label="Full Name"  value={client?.full_name} />
+              <InfoRow label="Phone"      value={client?.phone} />
+              <InfoRow label="Email"      value={client?.email || session?.user?.email} />
+              {client?.nin ? <InfoRow label="NIN" value={`••••••••${(client.nin || "").slice(-3)}`} /> : null}
+            </InfoCard>
+            <InfoCard title="Location">
+              <InfoRow label="Address"    value={client?.address} />
+              <InfoRow label="State"      value={client?.state} />
+              <InfoRow label="LGA"        value={client?.lga} />
+              <InfoRow label="Ward"       value={client?.ward} />
+            </InfoCard>
+            <InfoCard title="Next of Kin">
+              <InfoRow label="Name"       value={client?.next_of_kin_name} />
+              <InfoRow label="Phone"      value={client?.next_of_kin_phone} />
+              <InfoRow label="Email"      value={client?.next_of_kin_email} />
+              <InfoRow label="Address"    value={client?.next_of_kin_address} />
+            </InfoCard>
+            <InfoCard title="Membership">
+              <InfoRow label="Member No."  value={client?.membership_number} />
+              <InfoRow label="Since"       value={client?.created_at ? new Date(client.created_at).toLocaleDateString("en-NG", { month: "short", year: "numeric" }) : "—"} />
+              <InfoRow label="Group"       value={client?.group_name} />
+              <InfoRow label="Frequency"   value={client?.contribution_frequency ? `${client.contribution_frequency.charAt(0).toUpperCase()}${client.contribution_frequency.slice(1)}` : "—"} />
+              <InfoRow label="Amount"      value={client?.contribution_amount ? `₦${Number(client.contribution_amount).toLocaleString("en-NG")} / ${client?.contribution_frequency || "cycle"}` : "—"} />
+            </InfoCard>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ── Edit profile ─────────────────────────────────────────────────── */
+  if (view === "edit") {
+    const avatarSrcEdit = photoPreview || client?.profile_image_url;
+    const currentEmail  = client?.email || session?.user?.email || "";
+
+    /* OTP verification step */
+    if (pendingEmail) return (
+      <div className="h-full flex flex-col">
+        <SubHeader title="Verify New Email" onBack={() => { setPendingEmail(null); setEmailOtp(""); setOtpError(""); }} />
+        <div className="flex-1 overflow-y-auto px-4 py-6 space-y-5 pb-8">
+          <div className="bg-brand-50 dark:bg-brand-900/20 rounded-2xl p-4">
+            <p className="text-sm font-bold text-brand-700 dark:text-brand-300 mb-1">Check your inbox</p>
+            <p className="text-[13px] text-brand-600/80 dark:text-brand-400/80 leading-relaxed">
+              We sent a 6-digit code to <span className="font-bold">{pendingEmail}</span>. Enter it below to confirm your new email address.
+            </p>
+          </div>
+          <div>
+            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">Verification Code</p>
+            <input
+              type="number" inputMode="numeric" value={emailOtp}
+              onChange={e => { setEmailOtp(e.target.value.replace(/\D/g, "").slice(0, 6)); setOtpError(""); }}
+              placeholder="000000"
+              className="w-full h-14 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 text-xl font-bold text-center text-slate-700 dark:text-slate-200 tracking-[0.3em] focus:outline-none focus:ring-2 focus:ring-brand-500/30"
+            />
+          </div>
+          {otpError && (
+            <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-900/30 text-red-600">
+              <Svg d={P.alert} size={15} color="currentColor" />
+              <p className="text-sm font-semibold">{otpError}</p>
+            </div>
+          )}
+          <button onClick={verifyEmailOtp} disabled={emailOtp.length !== 6 || otpSending}
+            className="w-full h-12 rounded-2xl bg-brand-500 text-white font-bold text-sm disabled:opacity-50 active:scale-95 transition">
+            {otpSending ? "Verifying…" : "Confirm Email Change"}
+          </button>
+          <button onClick={sendEmailOtp} disabled={otpSending}
+            className="w-full py-3 text-[13px] text-slate-400 dark:text-slate-500 font-semibold">
+            Didn't receive it? Resend code
+          </button>
+        </div>
+      </div>
+    );
+
+    return (
+      <div className="h-full flex flex-col">
+        <SubHeader title="Edit Profile" onBack={() => { setSaveMsg(""); setView("profile"); }} />
+        <div className="flex-1 overflow-y-auto px-4 py-5 space-y-6 pb-8">
+
+          {/* Avatar */}
+          <div className="flex flex-col items-center gap-2">
+            <div className="relative">
+              <div className="w-24 h-24 rounded-full bg-brand-500 flex items-center justify-center shadow-lg overflow-hidden ring-2 ring-brand-200 dark:ring-brand-800">
+                {avatarSrcEdit
+                  ? <img src={avatarSrcEdit} alt="" className="w-full h-full object-cover" />
+                  : <span className="text-2xl font-black text-white">{initials}</span>}
+              </div>
+              <button onClick={() => fileRef.current?.click()}
+                className="absolute -bottom-1 -right-1 w-9 h-9 rounded-full bg-brand-500 border-2 border-white dark:border-slate-900 flex items-center justify-center shadow-md active:scale-90 transition">
+                <Svg d={P.cam} size={15} color="#fff" />
+              </button>
+            </div>
+            <p className="text-[12px] text-slate-400">Tap camera to change · Max 2 MB</p>
+            {uploadProgress > 0 && (
+              <div className="w-48">
+                <div className="h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                  <div className="h-full bg-brand-500 rounded-full transition-all duration-200" style={{ width: `${uploadProgress}%` }} />
+                </div>
+              </div>
+            )}
+            <input ref={fileRef} type="file" accept="image/*" className="hidden"
+              onChange={e => {
+                const f = e.target.files?.[0];
+                if (!f) return;
+                if (f.size > 2 * 1024 * 1024) { setSaveMsg("Photo must be under 2 MB."); return; }
+                setPhotoFile(f);
+                setPhotoPreview(URL.createObjectURL(f));
+                setSaveMsg("");
+              }} />
+          </div>
+
+          {/* Personal */}
+          <div className="space-y-3">
+            <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Personal</p>
+            {[["Full Name", "full_name", "text"], ["Phone", "phone", "tel"]].map(([lbl, k, t]) => (
+              <div key={k}>
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">{lbl}</p>
+                <input type={t} value={editForm[k]} onChange={e => setEditForm(p => ({ ...p, [k]: e.target.value }))}
+                  className="w-full h-12 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/30" />
+              </div>
+            ))}
+            <div>
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Email</p>
+              <input type="email" value={editForm.email}
+                onChange={e => setEditForm(p => ({ ...p, email: e.target.value }))}
+                className="w-full h-12 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/30" />
+              {editForm.email && editForm.email !== currentEmail && emailRegex.test(editForm.email) && (
+                <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1.5 px-1">Email changed — you'll receive a code to verify</p>
+              )}
+            </div>
+            <div>
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">NIN</p>
+              <input type="text" inputMode="numeric" maxLength={11} value={editForm.nin} placeholder="11-digit NIN"
+                onChange={e => setEditForm(p => ({ ...p, nin: e.target.value.replace(/\D/g, "").slice(0, 11) }))}
                 className="w-full h-12 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/30" />
             </div>
-          ))}
-          <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Email</p>
-            <input disabled value={client?.email || session?.user?.email || "—"}
-              className="w-full h-12 rounded-xl border border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-4 text-sm text-slate-400 cursor-not-allowed" />
           </div>
+
+          {/* Location */}
+          <div className="space-y-3">
+            <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Location</p>
+            {[["Address", "address"], ["State", "state"], ["LGA", "lga"], ["Ward", "ward"]].map(([lbl, k]) => (
+              <div key={k}>
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">{lbl}</p>
+                <input type="text" value={editForm[k]} onChange={e => setEditForm(p => ({ ...p, [k]: e.target.value }))}
+                  className="w-full h-12 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/30" />
+              </div>
+            ))}
+          </div>
+
+          {/* Next of Kin */}
+          <div className="space-y-3">
+            <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Next of Kin</p>
+            {[["Name", "nok_name", "text"], ["Phone", "nok_phone", "tel"], ["Email", "nok_email", "email"], ["Address", "nok_addr", "text"]].map(([lbl, k, t]) => (
+              <div key={k}>
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">{lbl}</p>
+                <input type={t} value={editForm[k]} onChange={e => setEditForm(p => ({ ...p, [k]: e.target.value }))}
+                  className="w-full h-12 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/30" />
+              </div>
+            ))}
+          </div>
+
+          {/* Membership — read-only */}
+          <div className="space-y-3">
+            <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Membership (read-only)</p>
+            <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700/50 overflow-hidden divide-y divide-slate-100 dark:divide-slate-700/30">
+              {[
+                ["Member No.", client?.membership_number],
+                ["Since", client?.created_at ? new Date(client.created_at).toLocaleDateString("en-NG", { month: "short", year: "numeric" }) : null],
+                ["Group", client?.group_name],
+                ["Frequency", client?.contribution_frequency],
+                ["Amount", client?.contribution_amount ? `₦${Number(client.contribution_amount).toLocaleString("en-NG")}` : null],
+              ].map(([lbl, val]) => (
+                <div key={lbl} className="flex items-center px-4 py-3">
+                  <p className="text-[12px] text-slate-400 dark:text-slate-500 w-28 flex-shrink-0">{lbl}</p>
+                  <p className="text-[13px] font-semibold text-slate-400 dark:text-slate-500">{val || "—"}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {saveMsg && (
+            <div className={`flex items-center gap-2 px-4 py-3 rounded-xl ${saveMsg.includes("saved") ? "bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400" : "bg-red-50 dark:bg-red-900/30 text-red-600"}`}>
+              <Svg d={saveMsg.includes("saved") ? P.check : P.alert} size={16} color="currentColor" />
+              <p className="text-sm font-semibold">{saveMsg}</p>
+            </div>
+          )}
+          <button onClick={saveProfile} disabled={saving}
+            className="w-full h-12 rounded-2xl bg-brand-500 text-white font-bold text-sm flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50">
+            {saving ? "Saving…" : "Save Changes"}
+          </button>
         </div>
-        {saveMsg && (
-          <div className={`flex items-center gap-2 px-4 py-3 rounded-xl ${saveMsg.includes("saved") ? "bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400" : "bg-red-50 dark:bg-red-900/30 text-red-600"}`}>
-            <Svg d={saveMsg.includes("saved") ? P.check : P.alert} size={16} color="currentColor" />
-            <p className="text-sm font-semibold">{saveMsg}</p>
-          </div>
-        )}
-        <button onClick={saveProfile} disabled={saving}
-          className="w-full h-12 rounded-2xl bg-brand-500 text-white font-bold text-sm flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50">
-          {saving ? "Saving…" : "Save Changes"}
-        </button>
       </div>
-    </div>
-  );
+    );
+  }
 
   const Toggle = (
     <button onClick={e => { e.stopPropagation(); toggleDark(); }}
@@ -2412,7 +2690,7 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
             <p className="text-[12px] font-bold text-brand-500 dark:text-brand-400 capitalize mt-0.5">{client?.contribution_frequency || ""} savings</p>
             <p className="text-[11px] text-slate-400 mt-0.5 font-mono">{client?.membership_number || "—"}</p>
           </div>
-          <button onClick={() => setView("edit")}
+          <button onClick={() => setView("profile")}
             className="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-900/30 flex items-center justify-center active:scale-90 transition flex-shrink-0">
             <Svg d={P.pen} size={16} color="#3DA829" />
           </button>
@@ -2424,7 +2702,7 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
         <SectionLabel>Account</SectionLabel>
         <SettingsCard>
           <Row iconCls="bg-brand-50 dark:bg-brand-900/30" icon={<RowIcon d={P.person} color="#3DA829" />}
-            label="Edit Profile" sub="Update your name, phone, and photo" onClick={() => setView("edit")} />
+            label="Profile" sub="View and edit your personal information" onClick={() => setView("profile")} />
         </SettingsCard>
       </div>
 
@@ -2578,6 +2856,52 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
               <SupportInline client={client} session={session} />
             </div>
           )}
+        </div>
+      )}
+
+      {/* Avatar lightbox — z below PIN tier (z-[260] < z-[300]) */}
+      {lightboxOpen && (
+        <div
+          className="fixed inset-0 z-[260] flex flex-col items-center justify-center bg-black/90"
+          onClick={e => { if (e.target === e.currentTarget) { setLightboxOpen(false); setLbZoom(1); } }}>
+          <button
+            onClick={() => { setLightboxOpen(false); setLbZoom(1); }}
+            style={{ top: "max(16px, env(safe-area-inset-top, 16px))" }}
+            className="absolute right-4 w-10 h-10 rounded-full bg-white/15 flex items-center justify-center active:scale-90 transition">
+            <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.5} strokeLinecap="round" width={18} height={18}>
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+          <div
+            style={{ transform: `scale(${lbZoom})`, touchAction: "none", transition: lbPinchDist ? "none" : "transform 0.2s" }}
+            className="w-72 h-72 rounded-full overflow-hidden flex-shrink-0"
+            onTouchStart={e => {
+              if (e.touches.length === 2) {
+                const dx = e.touches[0].clientX - e.touches[1].clientX;
+                const dy = e.touches[0].clientY - e.touches[1].clientY;
+                setLbPinchDist(Math.hypot(dx, dy));
+              }
+            }}
+            onTouchMove={e => {
+              if (e.touches.length === 2 && lbPinchDist !== null) {
+                e.preventDefault();
+                const dx = e.touches[0].clientX - e.touches[1].clientX;
+                const dy = e.touches[0].clientY - e.touches[1].clientY;
+                const newDist = Math.hypot(dx, dy);
+                setLbZoom(prev => Math.min(5, Math.max(0.8, prev * (newDist / lbPinchDist))));
+                setLbPinchDist(newDist);
+              }
+            }}
+            onTouchEnd={() => setLbPinchDist(null)}
+            onDoubleClick={() => setLbZoom(z => z > 1.1 ? 1 : 2.5)}>
+            {(photoPreview || client?.profile_image_url)
+              ? <img src={photoPreview || client.profile_image_url} alt={client?.full_name || "Avatar"}
+                  className="w-full h-full object-cover" draggable={false} />
+              : <div className="w-full h-full bg-brand-500 flex items-center justify-center">
+                  <span className="text-7xl font-black text-white">{initials}</span>
+                </div>}
+          </div>
+          <p className="absolute bottom-8 text-white/30 text-[11px]">Pinch to zoom · Double-tap to toggle</p>
         </div>
       )}
 
