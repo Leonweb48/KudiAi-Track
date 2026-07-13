@@ -8,6 +8,11 @@ const CORS = {
 
 const EMAIL_TRIGGER_SECRET = Deno.env.get("EMAIL_TRIGGER_SECRET") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 
+// High-value withdrawal threshold for 24h security hold after a PIN change.
+// Withdrawals at or above this amount, submitted within 24h of a PIN reset, are
+// auto-held for manual owner review. May become owner-configurable in a future release.
+const HIGH_VALUE_HOLD_THRESHOLD = 50_000;
+
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -278,7 +283,7 @@ serve(async (req) => {
       const withinPinHold = pinChangedAt
         ? (Date.now() - new Date(pinChangedAt).getTime()) < 24 * 60 * 60 * 1000
         : false;
-      const isHighValue = amount >= 50000;
+      const isHighValue = amount >= HIGH_VALUE_HOLD_THRESHOLD;
 
       // First withdrawal uses flat registration_charge; subsequent use withdrawal_fee_percent
       const isFirst    = (cl.total_withdrawn || 0) === 0;

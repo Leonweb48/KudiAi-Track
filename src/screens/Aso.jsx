@@ -439,6 +439,9 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [processingDepositId, setProcessingDepositId] = useState(null);
   const [rejectingDeposit,    setRejectingDeposit]    = useState(null);
   const [rejectReason,        setRejectReason]        = useState("");
+  const [rejectingHeld,       setRejectingHeld]       = useState(null);
+  const [heldRejectReason,    setHeldRejectReason]    = useState("");
+  const [heldRejectBusy,      setHeldRejectBusy]      = useState(false);
   const [depositFeedback,     setDepositFeedback]     = useState(null); // { type:"ok"|"err", msg:string }
   const [depError,            setDepError]            = useState(null);
 
@@ -514,7 +517,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       const { data, error } = await supabase
         .from("ajo_withdrawal_requests")
         .select("*, aso_clients(full_name, email, membership_number, current_balance, total_withdrawn)")
-        .eq("status", "pending")
+        .in("status", ["pending", "held_24h"])
         .order("requested_at", { ascending: false });
       if (error) throw error;
       setWithdrawalRequests(data || []);
@@ -990,11 +993,11 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     }
   };
 
-  const handleRejectRequest = async (req) => {
+  const handleRejectRequest = async (req, reason) => {
     setProcessingId(req.id);
     try {
       const { data: rwData, error: rwErr } = await supabase.functions.invoke("ajo-write", {
-        body: { action: "reject_withdrawal_request", request_id: req.id },
+        body: { action: "reject_withdrawal_request", request_id: req.id, reason: reason || undefined },
       });
       if (rwErr || !rwData?.ok) {
         console.error("Reject failed:", rwErr?.message || rwData?.error);
@@ -1173,67 +1176,94 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           </svg>
         </button>
       )}
-      {withdrawalRequests.length > 0 && (
-        <div className="mb-4">
-          <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2">
-            Withdrawal Requests
-            <span className="ml-2 bg-amber-500 text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded-full">{withdrawalRequests.length}</span>
-          </p>
-          <div className="space-y-2">
-            {withdrawalRequests.map(req => {
-              const cl     = req.aso_clients || {};
-              const isProc = processingId === req.id;
-              const feeLabel = req.fee_type === "registration_fee" ? "Reg fee" : `${req.withdrawal_fee_percent || ""}% fee`;
-              return (
-                <div key={req.id} className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 border border-amber-200 dark:border-amber-800/60 shadow-sm">
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center flex-shrink-0">
-                      <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-amber-600 dark:text-amber-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-                        <path d="M12 19V5M5 12l7 7 7-7" />
-                      </svg>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-extrabold text-slate-800 dark:text-white truncate">{cl.full_name || "—"}</p>
-                      <p className="text-[10px] text-slate-400 font-mono">{cl.membership_number || ""}</p>
-                      <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                        <span className="text-xs font-bold text-amber-700 dark:text-amber-300">
-                          Requests {fmt(req.amount)}
-                        </span>
-                        {req.fee_amount > 0 && (
-                          <span className="text-[10px] text-slate-400">
-                            − {fmt(req.fee_amount)} {feeLabel} = <strong className="text-green-600 dark:text-green-400">{fmt(req.net_amount)}</strong>
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[10px] text-slate-400 mt-0.5">{req.requested_at?.slice(0, 10)}</p>
-                    </div>
-                  </div>
-                  <div className="flex gap-2 mt-3">
-                    <button
-                      onClick={() => setTxnPin({
-                        title: "Approve Withdrawal",
-                        amount: Math.round((req.net_amount || 0) * 100),
-                        recipient: req.aso_clients?.full_name,
-                        description: "Savings withdrawal approval",
-                        onApprove: (pin) => { setTxnPin(null); handleApproveRequest(req, pin); },
-                      })}
-                      disabled={isProc}
-                      className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold text-xs transition active:scale-[0.99] disabled:opacity-50">
-                      {isProc ? "…" : "Approve"}
-                    </button>
-                    <button
-                      onClick={() => handleRejectRequest(req)}
-                      disabled={isProc}
-                      className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-700 hover:bg-red-50 dark:hover:bg-red-900/20 text-slate-600 dark:text-slate-300 hover:text-red-600 dark:hover:text-red-400 rounded-xl font-bold text-xs transition active:scale-[0.99] disabled:opacity-50 border border-slate-200 dark:border-slate-600">
-                      {isProc ? "…" : "Reject"}
-                    </button>
-                  </div>
+      {withdrawalRequests.length > 0 && (() => {
+        const heldReqs    = withdrawalRequests.filter(r => r.status === "held_24h");
+        const pendingReqs = withdrawalRequests.filter(r => r.status === "pending");
+        const WithdrawCard = ({ req, isHeld }) => {
+          const cl       = req.aso_clients || {};
+          const isProc   = processingId === req.id;
+          const feeLabel = req.fee_type === "registration_fee" ? "Reg fee" : `${req.withdrawal_fee_percent || ""}% fee`;
+          return (
+            <div key={req.id} className={`bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 border shadow-sm ${isHeld ? "border-orange-300 dark:border-orange-700/60" : "border-amber-200 dark:border-amber-800/60"}`}>
+              {isHeld && (
+                <div className="flex items-center gap-1.5 mb-2.5 px-2 py-1.5 bg-orange-50 dark:bg-orange-900/20 rounded-xl">
+                  <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400 flex-shrink-0" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                  </svg>
+                  <p className="text-[10px] font-bold text-orange-700 dark:text-orange-400">Security hold — PIN recently changed</p>
                 </div>
-              );
-            })}
+              )}
+              <div className="flex items-start gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${isHeld ? "bg-orange-100 dark:bg-orange-900/40" : "bg-amber-100 dark:bg-amber-900/40"}`}>
+                  <svg viewBox="0 0 24 24" fill="none" className={`w-5 h-5 ${isHeld ? "text-orange-600 dark:text-orange-400" : "text-amber-600 dark:text-amber-400"}`} stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                    <path d="M12 19V5M5 12l7 7 7-7" />
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-extrabold text-slate-800 dark:text-white truncate">{cl.full_name || "—"}</p>
+                  <p className="text-[10px] text-slate-400 font-mono">{cl.membership_number || ""}</p>
+                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                    <span className={`text-xs font-bold ${isHeld ? "text-orange-700 dark:text-orange-300" : "text-amber-700 dark:text-amber-300"}`}>
+                      Requests {fmt(req.amount)}
+                    </span>
+                    {req.fee_amount > 0 && (
+                      <span className="text-[10px] text-slate-400">
+                        − {fmt(req.fee_amount)} {feeLabel} = <strong className="text-green-600 dark:text-green-400">{fmt(req.net_amount)}</strong>
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-0.5">{req.requested_at?.slice(0, 10)}</p>
+                </div>
+              </div>
+              <div className="flex gap-2 mt-3">
+                <button
+                  onClick={() => setTxnPin({
+                    title: isHeld ? "Release & Approve Withdrawal" : "Approve Withdrawal",
+                    amount: Math.round((req.net_amount || 0) * 100),
+                    recipient: cl.full_name,
+                    description: isHeld ? "Security hold release — savings withdrawal" : "Savings withdrawal approval",
+                    onApprove: (pin) => { setTxnPin(null); handleApproveRequest(req, pin); },
+                  })}
+                  disabled={isProc}
+                  className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold text-xs transition active:scale-[0.99] disabled:opacity-50">
+                  {isProc ? "…" : isHeld ? "Release & Approve" : "Approve"}
+                </button>
+                <button
+                  onClick={() => isHeld
+                    ? (setRejectingHeld(req), setHeldRejectReason(""))
+                    : handleRejectRequest(req)}
+                  disabled={isProc}
+                  className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-700 hover:bg-red-50 dark:hover:bg-red-900/20 text-slate-600 dark:text-slate-300 hover:text-red-600 dark:hover:text-red-400 rounded-xl font-bold text-xs transition active:scale-[0.99] disabled:opacity-50 border border-slate-200 dark:border-slate-600">
+                  {isProc ? "…" : "Reject"}
+                </button>
+              </div>
+            </div>
+          );
+        };
+        return (
+          <div className="mb-4 space-y-4">
+            {heldReqs.length > 0 && (
+              <div>
+                <p className="text-[11px] font-bold text-orange-600 dark:text-orange-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                  <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                  Security Holds
+                  <span className="ml-1 bg-orange-500 text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded-full">{heldReqs.length}</span>
+                </p>
+                <div className="space-y-2">{heldReqs.map(r => <WithdrawCard key={r.id} req={r} isHeld />)}</div>
+              </div>
+            )}
+            {pendingReqs.length > 0 && (
+              <div>
+                <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2">
+                  Withdrawal Requests
+                  <span className="ml-2 bg-amber-500 text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded-full">{pendingReqs.length}</span>
+                </p>
+                <div className="space-y-2">{pendingReqs.map(r => <WithdrawCard key={r.id} req={r} isHeld={false} />)}</div>
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Pending deposits panel */}
       {depError && (
@@ -2373,6 +2403,32 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Security Hold Reject Modal ──────────────────────────────────── */}
+      {rejectingHeld && (
+        <Modal title="Reject Security-Held Withdrawal" onClose={() => { setRejectingHeld(null); setHeldRejectReason(""); }}>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
+            Rejecting <strong className="text-slate-700 dark:text-slate-200">{rejectingHeld.aso_clients?.full_name || "client"}</strong>&apos;s request of{" "}
+            <strong className="text-orange-700 dark:text-orange-300">{fmt(rejectingHeld.amount)}</strong>.
+            The client will be notified with your reason.
+          </p>
+          <Field as="textarea" label="Reason (required)" value={heldRejectReason}
+            onChange={e => setHeldRejectReason(e.target.value)}
+            placeholder="e.g. Security review period has not elapsed — please retry in 24h…" />
+          <button
+            onClick={async () => {
+              setHeldRejectBusy(true);
+              await handleRejectRequest(rejectingHeld, heldRejectReason);
+              setRejectingHeld(null);
+              setHeldRejectReason("");
+              setHeldRejectBusy(false);
+            }}
+            disabled={!heldRejectReason.trim() || heldRejectBusy}
+            className="w-full py-3.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] mt-1">
+            {heldRejectBusy ? "Rejecting…" : "Reject & Notify Client"}
+          </button>
+        </Modal>
       )}
 
       {/* ── Manual Deposit Reject Reason Modal ──────────────────────────── */}

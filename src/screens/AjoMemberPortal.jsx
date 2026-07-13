@@ -2202,6 +2202,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
   const statusCls = (s) => {
     if (s === "completed" || s === "approved") return "bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400";
     if (s === "rejected")                      return "bg-red-50 dark:bg-red-900/20 text-red-500";
+    if (s === "held_24h")                      return "bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400";
     return "bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400";
   };
 
@@ -2270,6 +2271,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
   const renderItem = (item) => {
     const isWdReq    = item._type === "withdrawal_request";
     const isPending  = item.status === "pending";
+    const isHeld24h  = item.status === "held_24h";
     const isReversal = item.type?.startsWith("reversal_");
     const isReversed = reversedIdSet.has(item.id);
     const isManual   = item.payment_method === "manual_transfer";
@@ -2336,8 +2338,9 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
             {/* Status / badge row */}
             <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
               {isPending && <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 px-1.5 py-0.5 rounded-full">Pending · tap for info</span>}
+              {isHeld24h && <span className="text-[10px] font-bold text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 px-1.5 py-0.5 rounded-full">Under review for your security — up to 24h</span>}
               {isReversed && <span className="text-[10px] font-bold text-red-500 bg-red-50 dark:bg-red-900/20 px-1.5 py-0.5 rounded-full">Reversed</span>}
-              {!isPending && !isReversed && <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full capitalize ${statusCls(item.status)}`}>{item.status || "—"}</span>}
+              {!isPending && !isHeld24h && !isReversed && <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full capitalize ${statusCls(item.status)}`}>{item.status || "—"}</span>}
               {isWdReq && item.net_amount != null && <span className="text-[10px] text-slate-400 dark:text-slate-500">Net: {fmt(item.net_amount)}</span>}
             </div>
             <p className="text-[10px] text-slate-400 mt-0.5">
