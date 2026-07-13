@@ -7,7 +7,7 @@ import { fmt, fmtDate, fmtDateTime, ledgerTypeLabel } from "../utils/helpers";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
 import Icon from "../components/Icon";
 import Modal from "../components/shared/Modal";
-import { useBiometricLock, sha256, LS_PIN_HASH } from "../hooks/useBiometricLock";
+// useBiometricLock removed — locking is handled by usePinLock in App.jsx via pinLock prop
 import { useNotifications } from "../hooks/useNotifications";
 import { useCampaigns } from "../hooks/useCampaigns";
 import { usePartnerOffers } from "../hooks/usePartnerOffers";
@@ -114,8 +114,6 @@ const AUTO_LOCK_OPTIONS = [
   { label: "30 minutes",  secs: 1800 },
   { label: "Never",       secs: 0    },
 ];
-const LS_AUTO_LOCK_SECS = "kt_auto_lock_secs";
-const LS_LAST_HIDDEN    = "kt_last_hidden";
 
 const P = {
   in:     "M12 19V5|M5 12l7-7 7 7",
@@ -404,113 +402,6 @@ function AjoPinPad({ title, subtitle, length = 6, minLength, onComplete, onCance
 
       <div className="flex-shrink-0 px-6 pb-6">
         {loading ? (
-          <div className="flex justify-center py-10">
-            <div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
-          </div>
-        ) : (
-          <div className="grid grid-cols-3 gap-3 max-w-[288px] mx-auto">
-            {[1,2,3,4,5,6,7,8,9,"",0,"del"].map((k, i) => {
-              if (k === "") return <div key={i} />;
-              if (k === "del") return (
-                <button key={i} onClick={del}
-                  className="h-[62px] rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center active:scale-95 active:bg-slate-200 dark:active:bg-slate-700 transition">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" width={20} height={20}>
-                    <path d="M21 4H8l-7 8 7 8h13a2 2 0 002-2V6a2 2 0 00-2-2z" />
-                    <line x1="18" y1="9" x2="12" y2="15" /><line x1="12" y1="9" x2="18" y2="15" />
-                  </svg>
-                </button>
-              );
-              return (
-                <button key={i} onClick={() => addDigit(String(k))} onPaste={e => e.preventDefault()}
-                  className="h-[62px] rounded-2xl bg-slate-100 dark:bg-slate-800 text-[22px] font-bold text-slate-800 dark:text-slate-100 active:scale-95 active:bg-slate-200 dark:active:bg-slate-700 transition">
-                  {k}
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ── App lock screen ────────────────────────────────────────────────────────
-// Shown over the entire portal when isLocked=true. Manages its own digit state.
-function AjoLockScreen({ lock, onUnlock, clientName, initials }) {
-  const [digits,  setDigits]  = useState("");
-  const [error,   setError]   = useState("");
-  const [shaking, setShaking] = useState(false);
-  const [busy,    setBusy]    = useState(false);
-
-  const shake = () => { setShaking(true); setTimeout(() => setShaking(false), 420); };
-
-  const verifyPin = useCallback(async (pin) => {
-    setBusy(true); setError("");
-    try {
-      const stored = localStorage.getItem(LS_PIN_HASH);
-      if (!stored) { onUnlock(); return; }
-      const entered = await sha256(pin);
-      if (entered === stored) { onUnlock(); }
-      else { shake(); setError("Incorrect PIN"); setDigits(""); }
-    } finally { setBusy(false); }
-  }, [onUnlock]);
-
-  const addDigit = useCallback((d) => {
-    if (busy) return;
-    const len = lock.pinLen || 4;
-    setDigits(prev => {
-      if (prev.length >= len) return prev;
-      const next = prev + d;
-      if (next.length === len) setTimeout(() => verifyPin(next), 120);
-      return next;
-    });
-  }, [busy, verifyPin, lock.pinLen]);
-
-  const del = () => { if (!busy) setDigits(v => v.slice(0, -1)); };
-
-  const tryBiometric = async () => {
-    setBusy(true);
-    try { await lock.unlockWithBiometric(); onUnlock(); }
-    catch { setError("Biometric failed — enter PIN"); }
-    finally { setBusy(false); }
-  };
-
-  return (
-    <div className="fixed inset-0 z-[302] flex flex-col bg-white dark:bg-slate-900 select-none"
-      style={{ paddingTop: "max(0px, env(safe-area-inset-top, 0px))", paddingBottom: "max(0px, env(safe-area-inset-bottom, 0px))" }}>
-      <style>{PIN_PAD_CSS}</style>
-
-      <div className="flex-1 flex flex-col items-center justify-center gap-6 px-8">
-        <div className="w-16 h-16 rounded-full bg-brand-500 flex items-center justify-center shadow-lg">
-          <span className="text-xl font-black text-white">{(initials || "M").slice(0, 2)}</span>
-        </div>
-        <div className="text-center -mt-1">
-          <p className="text-xs text-slate-400 dark:text-slate-500">Welcome back</p>
-          <p className="text-lg font-extrabold text-slate-800 dark:text-slate-100 mt-0.5">{clientName || "Member"}</p>
-        </div>
-
-        <div className={`flex gap-[18px] mt-2 ${shaking ? "ajo-pin-shake" : ""}`}>
-          {Array.from({ length: lock.pinLen || 4 }).map((_, i) => (
-            <div key={i} className={`w-[14px] h-[14px] rounded-full border-2 transition-all duration-150 ${
-              i < digits.length ? "bg-brand-500 border-brand-500 scale-110" : "border-slate-300 dark:border-slate-600"
-            }`} />
-          ))}
-        </div>
-
-        {error && <p className="text-sm text-red-500 font-semibold text-center -mt-1">{error}</p>}
-        {!error && <p className="text-[12px] text-slate-400 dark:text-slate-500 -mt-1">Enter your {lock.pinLen || 4}-digit PIN</p>}
-
-        {lock.hasBiometric && (
-          <button onClick={tryBiometric} disabled={busy}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-brand-50 dark:bg-brand-900/20 text-brand-600 dark:text-brand-400 text-sm font-semibold active:scale-90 transition disabled:opacity-50">
-            <Svg d={P.finger} size={16} color="currentColor" />
-            Use Fingerprint / Face ID
-          </button>
-        )}
-      </div>
-
-      <div className="flex-shrink-0 px-6 pb-6">
-        {busy ? (
           <div className="flex justify-center py-10">
             <div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
           </div>
@@ -2490,7 +2381,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
 }
 
 // ── Me tab (Staff Portal structure) ───────────────────────────────────────
-function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProfileUpdate, contributions = [], withdrawRequests = [], autoLockSecs, onAutoLockChanged }) {
+function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onProfileUpdate, contributions = [], withdrawRequests = [] }) {
   const [view,           setView]           = useState("menu");
   const [editForm,       setEditForm]       = useState({
     full_name: client?.full_name || "",
@@ -2540,6 +2431,7 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
   const [secStep,      setSecStep]      = useState(1);
   const [secNewPin,    setSecNewPin]    = useState("");
   const [oldTxnPin,    setOldTxnPin]    = useState("");
+  const [oldAppPin,    setOldAppPin]    = useState("");
   const [secErr,       setSecErr]       = useState("");
   const [secShake,     setSecShake]     = useState(false);
   const [secBusy,      setSecBusy]      = useState(false);
@@ -2550,7 +2442,7 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
   const [legalView,     setLegalView]     = useState(null); // null | "terms" | "privacy"
   const [consentRecord, setConsentRecord] = useState(null); // { tnc_version, privacy_version, consented_at }
 
-  const autoLabel = autoLockSecs === null ? "Not configured" : autoLockSecs === 0 ? "Never" : (AUTO_LOCK_OPTIONS.find(o => o.secs === autoLockSecs)?.label || `${autoLockSecs}s`);
+  const autoLabel = pinLock.autoLockTimeout === 0 ? "Never" : (AUTO_LOCK_OPTIONS.find(o => o.secs === pinLock.autoLockTimeout)?.label || `${pinLock.autoLockTimeout}s`);
 
   useEffect(() => {
     ajoFn("get-txn-pin-status", { client_id: clientId })
@@ -2577,39 +2469,36 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
   }, []);
 
   const resetSecView = useCallback(() => {
-    setSecView(null); setSecStep(1); setSecNewPin(""); setOldTxnPin(""); setSecErr(""); setSecBusy(false);
+    setSecView(null); setSecStep(1); setSecNewPin(""); setOldTxnPin(""); setOldAppPin(""); setSecErr(""); setSecBusy(false);
   }, []);
 
-  // App PIN change — step router
+  // App PIN change — step router (now wired to pinLock / pin-manager)
   const handleAppPinStep = useCallback(async (pin) => {
     setSecBusy(true); setSecErr("");
     try {
       if (secStep === 1) {
-        const stored = localStorage.getItem(LS_PIN_HASH);
-        if (stored) {
-          const h = await sha256(pin);
-          if (h !== stored) { triggerSecShake(); setSecErr("Incorrect PIN"); setSecBusy(false); return; }
-        }
+        // Capture current PIN — server verifies it in step 3 via changeAppPin
+        setOldAppPin(pin);
         setSecStep(2);
       } else if (secStep === 2) {
         setSecNewPin(pin);
         setSecStep(3);
       } else if (secStep === 3) {
         if (pin !== secNewPin) { triggerSecShake(); setSecErr("PINs don't match — try again"); setSecBusy(false); return; }
-        const isFirstSetup = !lock.hasPIN;
-        await lock.setupPIN(pin);
-        ajoFn("set-app-pin", { client_id: clientId, pin }).catch(() => {});
-        resetSecView();
-        // Guide first-time users to configure when the lock engages.
-        // Pre-arm with a 5-min default so the lock always fires even if they dismiss the picker.
-        if (isFirstSetup && autoLockSecs === null) {
-          onAutoLockChanged(300);
-          setTimeout(() => setShowLockPick(true), 500);
+        if (pinLock.appPinSet) {
+          await pinLock.changeAppPin(oldAppPin, pin);
+        } else {
+          await pinLock.setupAppPin(pin);
         }
+        resetSecView();
       }
-    } catch { setSecErr("Something went wrong. Try again."); }
+    } catch (e) {
+      const msg = (e?.message || "").toLowerCase();
+      triggerSecShake();
+      setSecErr(msg.includes("incorrect") || msg.includes("wrong") || msg.includes("invalid") ? "Incorrect PIN — try again" : "Something went wrong. Try again.");
+    }
     setSecBusy(false);
-  }, [secStep, secNewPin, lock, clientId, triggerSecShake, resetSecView, autoLockSecs, onAutoLockChanged]);
+  }, [secStep, secNewPin, oldAppPin, pinLock, triggerSecShake, resetSecView]);
 
   // Transaction PIN change — step 1 (old PIN) → 2 (OTP) → 3 (new PIN) → 4 (confirm)
   const handleTxnPinStep = useCallback(async (pin) => {
@@ -3112,8 +3001,8 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
             iconCls="bg-blue-50 dark:bg-blue-900/20"
             icon={<RowIcon d={P.lock} color="#3b82f6" />}
             label="App Lock PIN"
-            sub={lock.hasPIN ? "Change your 6-digit unlock PIN" : "Set a 6-digit PIN to lock this app"}
-            onClick={() => { setSecView("app-pin"); setSecStep(lock.hasPIN ? 1 : 2); setSecErr(""); setSecNewPin(""); }}
+            sub={pinLock.appPinSet ? "Change your 6-digit unlock PIN" : "Set a 6-digit PIN to lock this app"}
+            onClick={() => { setSecView("app-pin"); setSecStep(pinLock.appPinSet ? 1 : 2); setSecErr(""); setSecNewPin(""); }}
           />
           {/* 2 — Transaction PIN */}
           <Row
@@ -3132,29 +3021,35 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
             ) : undefined}
           />
           {/* 3 — Biometric Unlock (hidden when not supported) */}
-          {lock.bioAvailable && (
+          {pinLock.biometricAvailable && (
             <Row
               iconCls="bg-blue-50 dark:bg-blue-900/20"
               icon={<RowIcon d={P.finger} color="#3b82f6" />}
               label="Biometric Unlock"
-              sub={lock.hasBiometric ? "Fingerprint / Face ID enabled" : "Use fingerprint or face to unlock"}
+              sub={pinLock.biometricEnabled ? "Fingerprint / Face ID enabled" : "Use fingerprint or face to unlock"}
               onClick={async () => {
-                if (!lock.hasPIN) { setShowPinSetup(true); return; }
-                if (lock.hasBiometric) { lock.disableBiometric(); }
-                else { setLockBusy(true); try { await lock.enableLock(); } catch {} setLockBusy(false); }
+                if (!pinLock.appPinSet) { setShowPinSetup(true); return; }
+                setLockBusy(true);
+                try {
+                  if (pinLock.biometricEnabled) { await pinLock.disableBiometric(); }
+                  else { await pinLock.registerBiometric(); }
+                } catch {} finally { setLockBusy(false); }
               }}
               right={
                 <button
                   onClick={async (e) => {
                     e.stopPropagation();
-                    if (!lock.hasPIN) { setShowPinSetup(true); return; }
-                    if (lock.hasBiometric) { lock.disableBiometric(); }
-                    else { setLockBusy(true); try { await lock.enableLock(); } catch {} setLockBusy(false); }
+                    if (!pinLock.appPinSet) { setShowPinSetup(true); return; }
+                    setLockBusy(true);
+                    try {
+                      if (pinLock.biometricEnabled) { await pinLock.disableBiometric(); }
+                      else { await pinLock.registerBiometric(); }
+                    } catch {} finally { setLockBusy(false); }
                   }}
-                  className={`w-12 h-6 rounded-full transition-colors duration-200 relative flex-shrink-0 ${lock.hasBiometric ? "bg-brand-500" : "bg-slate-200 dark:bg-slate-600"}`}>
+                  className={`w-12 h-6 rounded-full transition-colors duration-200 relative flex-shrink-0 ${pinLock.biometricEnabled ? "bg-brand-500" : "bg-slate-200 dark:bg-slate-600"}`}>
                   {lockBusy
                     ? <span className="absolute inset-0 flex items-center justify-center"><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /></span>
-                    : <span className="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all duration-200" style={{ left: lock.hasBiometric ? "calc(100% - 22px)" : "2px" }} />
+                    : <span className="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all duration-200" style={{ left: pinLock.biometricEnabled ? "calc(100% - 22px)" : "2px" }} />
                   }
                 </button>
               }
@@ -3165,7 +3060,7 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
             iconCls="bg-blue-50 dark:bg-blue-900/20"
             icon={<RowIcon d={P.lock} color="#3b82f6" />}
             label="Auto Lock"
-            sub={autoLockSecs === 0 ? "Auto lock is disabled" : autoLockSecs !== null ? `Locks after ${autoLabel}` : "Set how long before app locks"}
+            sub={pinLock.autoLockTimeout === 0 ? "Auto lock is disabled" : `Locks after ${autoLabel}`}
             onClick={() => setShowLockPick(true)}
           />
         </SettingsCard>
@@ -3268,17 +3163,17 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
               {AUTO_LOCK_OPTIONS.map(opt => (
                 <button key={opt.secs} onClick={() => {
                   if (opt.secs === 0 && !neverCaution) { setNeverCaution(true); return; }
-                  onAutoLockChanged?.(opt.secs);
+                  pinLock.updateSettings({ autoLockTimeout: opt.secs });
                   setShowLockPick(false);
                   setNeverCaution(false);
                 }}
                   className={`w-full py-3.5 px-4 rounded-2xl text-sm font-semibold text-left flex items-center justify-between transition-colors ${
-                    autoLockSecs === opt.secs
+                    pinLock.autoLockTimeout === opt.secs
                       ? "bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400"
                       : "text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700/40"
                   }`}>
                   {opt.label}
-                  {autoLockSecs === opt.secs && <Svg d={P.check} size={16} color="currentColor" />}
+                  {pinLock.autoLockTimeout === opt.secs && <Svg d={P.check} size={16} color="currentColor" />}
                 </button>
               ))}
             </div>
@@ -3291,9 +3186,9 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
       {/* ── App Lock PIN flows (z-[300]) ────────────────────────────────── */}
       {secView === "app-pin" && secStep === 1 && (
         <AjoPinPad
-          length={lock.pinLen || 4}
+          length={6}
           title="Enter current PIN"
-          subtitle={`Enter your ${lock.pinLen || 4}-digit app unlock PIN`}
+          subtitle="Enter your 6-digit app unlock PIN"
           onComplete={handleAppPinStep}
           onCancel={resetSecView}
           error={secErr} shaking={secShake} loading={secBusy}
@@ -3302,7 +3197,7 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
       {secView === "app-pin" && secStep === 2 && (
         <AjoPinPad
           length={6}
-          title={lock.hasPIN ? "Enter new PIN" : "Set your PIN"}
+          title={pinLock.appPinSet ? "Enter new PIN" : "Set your PIN"}
           subtitle="Choose a 6-digit unlock PIN for this app"
           onComplete={handleAppPinStep}
           onCancel={resetSecView}
@@ -3474,12 +3369,12 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
         </div>
       )}
 
-      {/* PIN setup modal */}
+      {/* PIN setup modal — shown when user tries to enable biometric without an app PIN */}
       {showPinSetup && (
         <PinSetupModal onClose={() => setShowPinSetup(false)} onDone={async (pin) => {
           setShowPinSetup(false);
-          await lock.setupPIN(pin);
-          await lock.enableLock();
+          await pinLock.setupAppPin(pin);
+          await pinLock.registerBiometric();
         }} />
       )}
 
@@ -3539,7 +3434,7 @@ function AjoMemberBillsWrapper({ client, ownerInfo, session, autoService, onAuto
 }
 
 // ── Main portal ───────────────────────────────────────────────────────────
-export default function AjoMemberPortal({ session, ajoClient }) {
+export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
   const t = useT();
 
   const NAV = useMemo(() => makeNav(t), [t]);
@@ -3569,56 +3464,8 @@ export default function AjoMemberPortal({ session, ajoClient }) {
   const [withdrawRequests, setWithdrawRequests] = useState([]);
   const [showPwdModal,     setShowPwdModal]     = useState(false);
 
-  const lock  = useBiometricLock(ajoClient?.id);
   const notif = useNotifications(ajoClient?.id);
 
-  // ── App lock: managed here so the lock screen covers header + nav ──────
-  // Lazy init: if a PIN + timeout are configured and enough time has elapsed since last hide
-  // (stored in localStorage), start locked even on a fresh launch / after the app was killed.
-  const [isLocked, setIsLocked] = useState(() => {
-    if (!localStorage.getItem(LS_PIN_HASH)) return false;
-    const stored = localStorage.getItem(LS_AUTO_LOCK_SECS);
-    const secs = stored !== null ? parseInt(stored, 10) : null;
-    if (!secs || secs <= 0) return false;
-    const hiddenMs = parseInt(localStorage.getItem(LS_LAST_HIDDEN) || "0", 10);
-    if (!hiddenMs) return false;
-    return Date.now() - hiddenMs >= secs * 1000;
-  });
-  const [autoLockSecs, setAutoLockSecs] = useState(() => {
-    const v = localStorage.getItem(LS_AUTO_LOCK_SECS);
-    return v !== null ? parseInt(v, 10) : null; // null = not configured
-  });
-  const lastHiddenRef = useRef(null);
-
-  useEffect(() => {
-    if (!lock.hasPIN) return;
-    const onHide = () => { lastHiddenRef.current = Date.now(); localStorage.setItem(LS_LAST_HIDDEN, String(Date.now())); };
-    const onShow = () => {
-      // Read directly from localStorage — immune to the async ref-update race condition
-      const stored = localStorage.getItem(LS_AUTO_LOCK_SECS);
-      const secs = stored !== null ? parseInt(stored, 10) : null;
-      if (!secs || secs <= 0) return; // null (not configured), NaN, or 0 (Never) → skip
-      const hiddenAt = lastHiddenRef.current ?? parseInt(localStorage.getItem(LS_LAST_HIDDEN) || "0", 10);
-      if (!hiddenAt) return; // never hidden this session and no stored timestamp → skip
-      if (Date.now() - hiddenAt >= secs * 1000) setIsLocked(true);
-    };
-    const onVis = () => { if (document.visibilityState === "hidden") onHide(); else onShow(); };
-    document.addEventListener("visibilitychange", onVis);
-    let capCleanup;
-    import("@capacitor/app").then(({ App: CapApp }) => {
-      CapApp.addListener("appStateChange", s => { if (!s.isActive) onHide(); else onShow(); })
-        .then(h => { capCleanup = h; });
-    }).catch(() => {});
-    return () => {
-      document.removeEventListener("visibilitychange", onVis);
-      capCleanup?.remove?.();
-    };
-  }, [lock.hasPIN]);
-
-  const handleAutoLockChanged = useCallback((secs) => {
-    setAutoLockSecs(secs);
-    localStorage.setItem(LS_AUTO_LOCK_SECS, String(secs));
-  }, []);
   const { slotMap: camSlots, loading: camLoading, recordEvent: recordCamEvent } = useCampaigns(["announcement_bar","tab_card_quad","tab_card_duo"], "ajo_client", "ajo_client.home");
   const ajoTabCard = (camSlots.tab_card_quad || [])[0] ?? (camSlots.tab_card_duo || [])[0] ?? null;
   const annBars = camSlots.announcement_bar || [];
@@ -3855,13 +3702,11 @@ export default function AjoMemberPortal({ session, ajoClient }) {
               client={client || ajoClient}
               session={session}
               clientId={clientId}
-              lock={lock}
+              pinLock={pinLock}
               onChangePwdClick={() => setShowPwdModal(true)}
               onProfileUpdate={updates => setClient(prev => ({ ...prev, ...updates }))}
               contributions={contributions}
               withdrawRequests={withdrawRequests}
-              autoLockSecs={autoLockSecs}
-              onAutoLockChanged={handleAutoLockChanged}
             />
           )}
           {!client && tab === "home" && <SkeletonHome />}
@@ -3973,16 +3818,6 @@ export default function AjoMemberPortal({ session, ajoClient }) {
       )}
       {showPwdModal && (
         <ChangePasswordModal onClose={() => setShowPwdModal(false)} />
-      )}
-
-      {/* App lock screen — covers header, content, and nav at z-[302] */}
-      {isLocked && lock.hasPIN && (
-        <AjoLockScreen
-          lock={lock}
-          onUnlock={() => setIsLocked(false)}
-          clientName={client?.full_name || ajoClient?.full_name}
-          initials={(client?.full_name || ajoClient?.full_name || "M").split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2)}
-        />
       )}
 
       {client && (

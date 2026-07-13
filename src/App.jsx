@@ -347,7 +347,7 @@ export default function App() {
 
   // Ajo client — OTP first, then password setup
   if (status === "ajo_client_otp")   return <AjoClientOtpVerify ajoClient={ajoClient} />;
-  if (status === "ajo_client_setup") return <AjoMemberPortal session={session} ajoClient={ajoClient} />;
+  if (status === "ajo_client_setup") return <AjoMemberPortal session={session} ajoClient={ajoClient} pinLock={pinLock} />;
   if (status === "unauthenticated")  return <Auth />;
   if (status === "onboarding")       return <Onboarding session={session} onComplete={refetch} />;
   if (status === "subscribing")      return <SubscriptionPlan session={session} onComplete={setReady} />;
@@ -373,16 +373,19 @@ export default function App() {
   }
   // Lock screen (inactivity or new device)
   if (pinLock.locked) {
+    const isAjoCli = status === "ajo_client" || status === "ajo_client_setup";
     return <LockScreen
       pinLock={pinLock}
-      businessName={store.profile?.business_name || store.profile?.owner_name || staff?.business_name}
-      avatarUrl={store.profile?.profile_image_url}
+      businessName={isAjoCli
+        ? (ajoClient?.full_name || "Member")
+        : (store.profile?.business_name || store.profile?.owner_name || staff?.business_name)}
+      avatarUrl={isAjoCli ? ajoClient?.profile_image_url : store.profile?.profile_image_url}
     />;
   }
   // ── Authenticated portals (PIN already set) ──
   if (status === "organisation")  return <OrgPortal session={session} org={org} />;
   if (status === "org_member")    return <CoopMemberPortal member={orgMember} />;
-  if (status === "ajo_client")    return <AjoMemberPortal session={session} ajoClient={ajoClient} />;
+  if (status === "ajo_client")    return <AjoMemberPortal session={session} ajoClient={ajoClient} pinLock={pinLock} />;
   if (status === "staff")         return <StaffDashboard session={session} staff={staff} pinLock={pinLock} />;
   if (status === "branch_manager") return <ManagerDashboard session={session} staff={staff} />;
   if (status === "marketer")      return <MarketerDashboard marketer={marketer} />;
