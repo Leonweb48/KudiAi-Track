@@ -2600,8 +2600,13 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
         await lock.setupPIN(pin);
         ajoFn("set-app-pin", { client_id: clientId, pin }).catch(() => {});
         resetSecView();
-        // Guide first-time users to configure when the lock engages
-        if (isFirstSetup && autoLockSecs === null) setTimeout(() => setShowLockPick(true), 500);
+        // Guide first-time users to configure when the lock engages.
+        // Pre-arm with a 5-min default so the lock always fires even if they dismiss the picker.
+        if (isFirstSetup && autoLockSecs === null) {
+          setAutoLockSecs(300);
+          localStorage.setItem(LS_AUTO_LOCK_SECS, "300");
+          setTimeout(() => setShowLockPick(true), 500);
+        }
       }
     } catch { setSecErr("Something went wrong. Try again."); }
     setSecBusy(false);
@@ -3569,7 +3574,17 @@ export default function AjoMemberPortal({ session, ajoClient }) {
   const notif = useNotifications(ajoClient?.id);
 
   // ── App lock: managed here so the lock screen covers header + nav ──────
-  const [isLocked,     setIsLocked]     = useState(false);
+  // Lazy init: if a PIN + timeout are configured and enough time has elapsed since last hide
+  // (stored in localStorage), start locked even on a fresh launch / after the app was killed.
+  const [isLocked, setIsLocked] = useState(() => {
+    if (!localStorage.getItem(LS_PIN_HASH)) return false;
+    const stored = localStorage.getItem(LS_AUTO_LOCK_SECS);
+    const secs = stored !== null ? parseInt(stored, 10) : null;
+    if (!secs || secs <= 0) return false;
+    const hiddenMs = parseInt(localStorage.getItem(LS_LAST_HIDDEN) || "0", 10);
+    if (!hiddenMs) return false;
+    return Date.now() - hiddenMs >= secs * 1000;
+  });
   const [autoLockSecs, setAutoLockSecs] = useState(() => {
     const v = localStorage.getItem(LS_AUTO_LOCK_SECS);
     return v !== null ? parseInt(v, 10) : null; // null = not configured
