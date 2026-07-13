@@ -731,7 +731,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     reloadWithdrawalRequests();
     reloadPendingDeposits();
     loadGroups();
-  }, [plan]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [plan, profile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load granular ajo permissions when rendering in a staff context
   useEffect(() => {
