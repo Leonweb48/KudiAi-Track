@@ -62,6 +62,9 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
             dark_mode: dk,
           }));
         }
+      } else {
+        // Offline and no cache — nothing to show; surface the error banner
+        setLoadError("Couldn't load your data — check your connection");
       }
       // Merge pending (unsaved) transactions into the list
       try {
