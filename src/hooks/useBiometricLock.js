@@ -141,6 +141,11 @@ export function useBiometricLock(userId) {
     setLocked(false);
   }, []);
 
+  const disableBiometric = useCallback(() => {
+    localStorage.removeItem(LS_CRED_ID);
+    setHasBiometric(false);
+  }, []);
+
   const clearAll = useCallback(() => {
     [LS_ENABLED, LS_PIN_HASH, LS_CRED_ID].forEach(k => localStorage.removeItem(k));
     setEnabled(false);
@@ -176,6 +181,7 @@ export function useBiometricLock(userId) {
     setupPIN,
     enableLock,
     disableLock,
+    disableBiometric,
     clearAll,
     unlockWithPIN,
     unlockWithBiometric,

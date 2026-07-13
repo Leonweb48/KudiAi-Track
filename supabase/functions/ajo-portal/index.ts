@@ -977,6 +977,27 @@ serve(async (req) => {
       return json({ ok: true });
     }
 
+    // ── Transaction PIN ──────────────────────────────────────────────────────
+    if (action === "get-txn-pin-status") {
+      const { client_id } = body as { client_id: string };
+      if (!client_id) return json({ error: "client_id required" }, 400);
+      const { data: cl } = await sb.from("aso_clients").select("portal_pin").eq("id", client_id).maybeSingle();
+      return json({ pin_set: !!cl?.portal_pin });
+    }
+
+    if (action === "set-txn-pin") {
+      const { client_id, old_pin, new_pin } = body as { client_id: string; old_pin?: string | null; new_pin: string };
+      if (!new_pin || !/^\d{4}$/.test(new_pin)) return json({ error: "PIN must be exactly 4 digits" }, 400);
+      if (!client_id) return json({ error: "client_id required" }, 400);
+      const { data: cl } = await sb.from("aso_clients").select("portal_pin").eq("id", client_id).maybeSingle();
+      if (!cl) return json({ error: "Client not found" }, 404);
+      if (cl.portal_pin) {
+        if (!old_pin || String(old_pin).trim() !== cl.portal_pin) return json({ error: "Current PIN is incorrect" }, 401);
+      }
+      await sb.from("aso_clients").update({ portal_pin: new_pin }).eq("id", client_id);
+      return json({ success: true });
+    }
+
     return json({ error: `Unknown action: ${action}` }, 400);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

@@ -2540,7 +2540,7 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
   const [secView,      setSecView]      = useState(null); // null | "app-pin" | "txn-pin"
   const [secStep,      setSecStep]      = useState(1);
   const [secNewPin,    setSecNewPin]    = useState("");
-  const [secOtpCode,   setSecOtpCode]   = useState("");
+  const [oldTxnPin,    setOldTxnPin]    = useState("");
   const [secErr,       setSecErr]       = useState("");
   const [secShake,     setSecShake]     = useState(false);
   const [secBusy,      setSecBusy]      = useState(false);
@@ -2552,11 +2552,8 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
   const autoLabel = autoLockSecs === null ? "Not configured" : autoLockSecs === 0 ? "Never" : (AUTO_LOCK_OPTIONS.find(o => o.secs === autoLockSecs)?.label || `${autoLockSecs}s`);
 
   useEffect(() => {
-    ajoFn("get-security-settings", { client_id: clientId })
-      .then(d => {
-        if (d?.txn_pin_reset_at) setTxnResetAt(d.txn_pin_reset_at);
-        if (d?.txn_pin_set != null) setTxnPinSet(!!d.txn_pin_set);
-      })
+    ajoFn("get-txn-pin-status", { client_id: clientId })
+      .then(d => { if (d?.pin_set != null) setTxnPinSet(!!d.pin_set); })
       .catch(() => {});
   }, [clientId]);
 
@@ -2565,7 +2562,7 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
   }, []);
 
   const resetSecView = useCallback(() => {
-    setSecView(null); setSecStep(1); setSecNewPin(""); setSecOtpCode(""); setSecErr(""); setSecBusy(false);
+    setSecView(null); setSecStep(1); setSecNewPin(""); setOldTxnPin(""); setSecErr(""); setSecBusy(false);
   }, []);
 
   // App PIN change — step router
@@ -2573,7 +2570,6 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
     setSecBusy(true); setSecErr("");
     try {
       if (secStep === 1) {
-        // Verify current PIN (client-side sha256 compare)
         const stored = localStorage.getItem(LS_PIN_HASH);
         if (stored) {
           const h = await sha256(pin);
@@ -2585,44 +2581,36 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
         setSecStep(3);
       } else if (secStep === 3) {
         if (pin !== secNewPin) { triggerSecShake(); setSecErr("PINs don't match — try again"); setSecBusy(false); return; }
+        const isFirstSetup = !lock.hasPIN;
         await lock.setupPIN(pin);
         ajoFn("set-app-pin", { client_id: clientId, pin }).catch(() => {});
         resetSecView();
+        // Guide first-time users to configure when the lock engages
+        if (isFirstSetup && autoLockSecs === null) setTimeout(() => setShowLockPick(true), 500);
       }
     } catch { setSecErr("Something went wrong. Try again."); }
     setSecBusy(false);
-  }, [secStep, secNewPin, lock, clientId, triggerSecShake, resetSecView]);
+  }, [secStep, secNewPin, lock, clientId, triggerSecShake, resetSecView, autoLockSecs]);
 
-  // Transaction PIN change — step router
+  // Transaction PIN change — step 1 (old PIN) → 3 (new PIN) → 4 (confirm)
   const handleTxnPinStep = useCallback(async (pin) => {
     setSecBusy(true); setSecErr("");
     try {
       if (secStep === 1) {
-        await ajoFn("verify-txn-pin", { client_id: clientId, pin });
-        await ajoFn("send-txn-pin-otp", { client_id: clientId });
-        setSecStep(2);
+        // Capture old PIN; server verifies it atomically at the final step
+        setOldTxnPin(pin); setSecStep(3);
       } else if (secStep === 3) {
-        setSecNewPin(pin);
-        setSecStep(4);
+        setSecNewPin(pin); setSecStep(4);
       } else if (secStep === 4) {
         if (pin !== secNewPin) { triggerSecShake(); setSecErr("PINs don't match — try again"); setSecBusy(false); return; }
-        await ajoFn("set-txn-pin", { client_id: clientId, new_pin: pin });
+        await ajoFn("set-txn-pin", { client_id: clientId, old_pin: oldTxnPin || null, new_pin: pin });
         setTxnPinSet(true);
         setTxnResetAt(new Date().toISOString());
         resetSecView();
       }
     } catch (err) { setSecErr(err.message || "Verification failed — try again"); }
     setSecBusy(false);
-  }, [secStep, secNewPin, clientId, triggerSecShake, resetSecView]);
-
-  const verifyTxnOtp = useCallback(async () => {
-    setSecBusy(true); setSecErr("");
-    try {
-      await ajoFn("verify-txn-pin-otp", { client_id: clientId, otp: secOtpCode });
-      setSecOtpCode(""); setSecStep(3);
-    } catch (err) { setSecErr(err.message || "Invalid code — check and try again"); }
-    setSecBusy(false);
-  }, [clientId, secOtpCode]);
+  }, [secStep, secNewPin, oldTxnPin, clientId, triggerSecShake, resetSecView]);
 
   const txnCooling = txnResetAt && (Date.now() - new Date(txnResetAt).getTime()) < 24 * 60 * 60 * 1000;
 
@@ -3038,7 +3026,7 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
             sub={txnCooling
               ? "Recently reset — high-value operations under 24h review"
               : txnPinSet ? "Change your 4-digit transaction PIN" : "Set a 4-digit transaction PIN"}
-            onClick={() => { setSecView("txn-pin"); setSecStep(txnPinSet ? 1 : 3); setSecErr(""); setSecNewPin(""); setSecOtpCode(""); }}
+            onClick={() => { setSecView("txn-pin"); setSecStep(txnPinSet ? 1 : 3); setSecErr(""); setSecNewPin(""); setOldTxnPin(""); }}
             right={txnCooling ? (
               <span className="text-[11px] font-bold text-amber-500 dark:text-amber-400 flex-shrink-0">24h</span>
             ) : undefined}
@@ -3052,16 +3040,16 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
               sub={lock.hasBiometric ? "Fingerprint / Face ID enabled" : "Use fingerprint or face to unlock"}
               onClick={async () => {
                 if (!lock.hasPIN) { setShowPinSetup(true); return; }
-                if (lock.hasBiometric) { lock.disableLock(); }
-                else { setLockBusy(true); await lock.enableLock(); setLockBusy(false); }
+                if (lock.hasBiometric) { lock.disableBiometric(); }
+                else { setLockBusy(true); try { await lock.enableLock(); } catch {} setLockBusy(false); }
               }}
               right={
                 <button
                   onClick={async (e) => {
                     e.stopPropagation();
                     if (!lock.hasPIN) { setShowPinSetup(true); return; }
-                    if (lock.hasBiometric) { lock.disableLock(); }
-                    else { setLockBusy(true); await lock.enableLock(); setLockBusy(false); }
+                    if (lock.hasBiometric) { lock.disableBiometric(); }
+                    else { setLockBusy(true); try { await lock.enableLock(); } catch {} setLockBusy(false); }
                   }}
                   className={`w-12 h-6 rounded-full transition-colors duration-200 relative flex-shrink-0 ${lock.hasBiometric ? "bg-brand-500" : "bg-slate-200 dark:bg-slate-600"}`}>
                   {lockBusy
@@ -3208,44 +3196,6 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
           onCancel={resetSecView}
           error={secErr} shaking={secShake} loading={secBusy}
         />
-      )}
-      {secView === "txn-pin" && secStep === 2 && (
-        <div className="fixed inset-0 z-[300] flex flex-col bg-white dark:bg-slate-900"
-          style={{ paddingTop: "max(0px, env(safe-area-inset-top, 0px))", paddingBottom: "max(0px, env(safe-area-inset-bottom, 0px))" }}>
-          <div className="flex items-center px-4 pt-4 pb-1">
-            <button onClick={resetSecView} className="w-10 h-10 rounded-xl flex items-center justify-center active:scale-90 transition">
-              <Svg d={P.back} size={18} color="#64748b" />
-            </button>
-            <p className="text-base font-extrabold text-slate-800 dark:text-slate-100 ml-2">Verify via Email</p>
-          </div>
-          <div className="flex-1 overflow-y-auto px-5 py-6 space-y-5">
-            <div className="bg-brand-50 dark:bg-brand-900/20 rounded-2xl p-4">
-              <p className="text-sm font-bold text-brand-700 dark:text-brand-300 mb-1">Check your email</p>
-              <p className="text-[13px] text-brand-600/80 dark:text-brand-400/80 leading-relaxed">
-                A 6-digit code was sent to <span className="font-bold">{client?.email || session?.user?.email}</span>. Enter it below.
-              </p>
-            </div>
-            <div>
-              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">Verification Code</p>
-              <input type="number" inputMode="numeric" value={secOtpCode}
-                onChange={e => { setSecOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6)); setSecErr(""); }}
-                onPaste={e => e.preventDefault()}
-                placeholder="000000"
-                className="w-full h-14 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 text-xl font-bold text-center tracking-[0.3em] text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/30"
-              />
-            </div>
-            {secErr && (
-              <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-900/30 text-red-600">
-                <Svg d={P.alert} size={15} color="currentColor" />
-                <p className="text-sm font-semibold">{secErr}</p>
-              </div>
-            )}
-            <button onClick={verifyTxnOtp} disabled={secOtpCode.length !== 6 || secBusy}
-              className="w-full h-12 rounded-2xl bg-brand-500 text-white font-bold text-sm disabled:opacity-50 active:scale-95 transition">
-              {secBusy ? "Verifying…" : "Verify Code"}
-            </button>
-          </div>
-        </div>
       )}
       {secView === "txn-pin" && secStep === 3 && (
         <AjoPinPad
@@ -3491,14 +3441,12 @@ export default function AjoMemberPortal({ session, ajoClient }) {
     const onHide = () => { lastHiddenRef.current = Date.now(); localStorage.setItem(LS_LAST_HIDDEN, String(Date.now())); };
     const onShow = () => {
       const secs = autoLockSecsRef.current;
-      if (secs === 0) return; // Never
+      if (secs === null || secs === 0) return; // not configured or explicitly Never
       const elapsed = Date.now() - (lastHiddenRef.current ?? parseInt(localStorage.getItem(LS_LAST_HIDDEN) || "0", 10));
-      const threshold = secs !== null ? secs * 1000 : 30000; // default 30s if not configured
-      if (elapsed >= threshold) setIsLocked(true);
+      if (elapsed >= secs * 1000) setIsLocked(true);
     };
     const onVis = () => { if (document.visibilityState === "hidden") onHide(); else onShow(); };
     document.addEventListener("visibilitychange", onVis);
-    // Capacitor
     let capCleanup;
     import("@capacitor/app").then(({ App: CapApp }) => {
       CapApp.addListener("appStateChange", s => { if (!s.isActive) onHide(); else onShow(); })
@@ -3513,8 +3461,7 @@ export default function AjoMemberPortal({ session, ajoClient }) {
   const handleAutoLockChanged = useCallback((secs) => {
     setAutoLockSecs(secs);
     localStorage.setItem(LS_AUTO_LOCK_SECS, String(secs));
-    if (secs === 0) { lock.disableLock(); } else if (lock.hasPIN) { lock.enableLock().catch(() => {}); }
-  }, [lock]);
+  }, []);
   const { slotMap: camSlots, loading: camLoading, recordEvent: recordCamEvent } = useCampaigns(["announcement_bar","tab_card_quad","tab_card_duo"], "ajo_client", "ajo_client.home");
   const ajoTabCard = (camSlots.tab_card_quad || [])[0] ?? (camSlots.tab_card_duo || [])[0] ?? null;
   const annBars = camSlots.announcement_bar || [];
