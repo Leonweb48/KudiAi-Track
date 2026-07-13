@@ -2633,7 +2633,9 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
     setSecBusy(false);
   }, [secStep, secNewPin, oldTxnPin, clientId, triggerSecShake, resetSecView]);
 
-  const txnCooling = txnResetAt && (Date.now() - new Date(txnResetAt).getTime()) < 24 * 60 * 60 * 1000;
+  // Use server-side portal_pin_changed_at (survives page reload); fall back to local state for optimistic UI
+  const _pinChangedAt = client?.portal_pin_changed_at || txnResetAt;
+  const txnCooling = _pinChangedAt && (Date.now() - new Date(_pinChangedAt).getTime()) < 24 * 60 * 60 * 1000;
 
   const askAI = async (query) => {
     setAiLoading(true); setAiAnswer(""); setAiError("");
