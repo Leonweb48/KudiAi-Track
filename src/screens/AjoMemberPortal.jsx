@@ -2677,32 +2677,26 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
 
   return (
     <div className="h-full overflow-y-auto pb-4">
-      {/* Profile card */}
-      <div className="mx-4 mt-5 mb-5">
-        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700/50 p-5 flex items-center gap-4">
-          <div className="w-16 h-16 rounded-2xl bg-brand-500 flex items-center justify-center shadow-lg flex-shrink-0 overflow-hidden">
-            {client?.profile_image_url
-              ? <img src={client.profile_image_url} alt="" className="w-full h-full object-cover" />
-              : <span className="text-xl font-black text-white">{initials}</span>}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-base font-extrabold text-slate-800 dark:text-slate-100 truncate">{client?.full_name || "Member"}</p>
-            <p className="text-[12px] font-bold text-brand-500 dark:text-brand-400 capitalize mt-0.5">{client?.contribution_frequency || ""} savings</p>
-            <p className="text-[11px] text-slate-400 mt-0.5 font-mono">{client?.membership_number || "—"}</p>
-          </div>
-          <button onClick={() => setView("profile")}
-            className="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-900/30 flex items-center justify-center active:scale-90 transition flex-shrink-0">
-            <Svg d={P.pen} size={16} color="#3DA829" />
-          </button>
-        </div>
-      </div>
-
       {/* Account */}
-      <div className="px-4 mb-5">
+      <div className="px-4 mt-5 mb-5">
         <SectionLabel>Account</SectionLabel>
         <SettingsCard>
-          <Row iconCls="bg-brand-50 dark:bg-brand-900/30" icon={<RowIcon d={P.person} color="#3DA829" />}
-            label="Profile" sub="View and edit your personal information" onClick={() => setView("profile")} />
+          {/* Profile summary row — full row taps to open profile preview */}
+          <button onClick={() => setView("profile")}
+            className="w-full flex items-center gap-4 px-4 py-4 text-left active:bg-slate-50 dark:active:bg-slate-700/40 transition-colors">
+            <div className="w-12 h-12 rounded-full bg-brand-500 flex-shrink-0 overflow-hidden shadow-sm ring-2 ring-brand-100 dark:ring-brand-900/40">
+              {(photoPreview || client?.profile_image_url)
+                ? <img src={photoPreview || client.profile_image_url} alt="" className="w-full h-full object-cover" />
+                : <span className="w-full h-full flex items-center justify-center text-base font-black text-white">{initials}</span>}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-extrabold text-[15px] leading-snug text-slate-800 dark:text-slate-100 truncate">{client?.full_name || "Member"}</p>
+              <p className="text-[12px] text-slate-400 dark:text-slate-500 mt-0.5 truncate capitalize">
+                {[client?.contribution_frequency ? `${client.contribution_frequency} savings` : null, client?.membership_number].filter(Boolean).join(" · ") || "View profile"}
+              </p>
+            </div>
+            <Svg d="M9 18l6-6-6-6" size={16} color="#cbd5e1" />
+          </button>
         </SettingsCard>
       </div>
 
