@@ -136,11 +136,11 @@ function SettingsCard({ children }) {
   );
 }
 
-function Row({ icon, label, sub, onClick, right }) {
+function Row({ icon, label, sub, onClick, right, iconCls }) {
   return (
     <button onClick={onClick}
       className="w-full flex items-center gap-3.5 px-4 py-[14px] text-left active:bg-slate-50 dark:active:bg-slate-700/40 transition-colors">
-      <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center flex-shrink-0">
+      <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${iconCls || "bg-slate-100 dark:bg-slate-700"}`}>
         {icon}
       </div>
       <div className="flex-1 min-w-0">
@@ -154,8 +154,8 @@ function Row({ icon, label, sub, onClick, right }) {
   );
 }
 
-function RowIcon({ d }) {
-  return <Svg d={d} size={20} color="#64748b" />;
+function RowIcon({ d, color = "#64748b" }) {
+  return <Svg d={d} size={20} color={color} />;
 }
 
 // ── Skeleton primitives ────────────────────────────────────────────────────
@@ -403,32 +403,195 @@ function SupportModal({ onClose, clientName, clientEmail }) {
 
 // ── FAQ ────────────────────────────────────────────────────────────────────
 const FAQS = [
-  { q: "How do I pay my contribution?",          a: "On the Home tab, tap the green 'Pay Contribution' button. You'll be redirected to a secure Paystack payment page." },
-  { q: "How do I check my savings balance?",     a: "Your current balance is shown on the Home tab in the hero card at the top of the screen." },
-  { q: "How do I request a withdrawal?",         a: "On the Home tab, tap 'Request Withdrawal'. Enter the amount and submit — your savings agent will review and approve it." },
-  { q: "How do I view my contribution history?", a: "Tap the History tab at the bottom. You can filter by contributions or withdrawals." },
-  { q: "What is the contribution calendar?",     a: "The calendar on the Home tab shows your activity for the last 90 days — each green square is a day you contributed." },
-  { q: "What fees apply to withdrawals?",        a: "Check the fee info card on your Home tab. First withdrawals may have a registration fee; subsequent ones may have a percentage fee." },
-  { q: "What is the PIN lock for?",              a: "The PIN lock protects your portal when you step away. Go to Me → Security to set it up." },
-  { q: "How do I update my profile photo?",      a: "Go to Me → Edit Profile, then tap the camera icon on your avatar." },
-  { q: "How do I change my password?",           a: "Go to the Me tab and tap 'Change Password' at the bottom of the page." },
+  { q: "How do I pay my contribution?",
+    a: "On the Home tab, tap the green 'Pay Contribution' button. Choose Paystack (card/bank) or Manual Transfer. For manual, send to the account shown and upload your receipt." },
+  { q: "How do I check my savings balance?",
+    a: "Your balance is shown on the Home tab in the hero card. Tap the eye icon to hide or reveal it." },
+  { q: "How do I request a withdrawal?",
+    a: "On the Home tab, tap 'Withdraw'. Enter the amount — you'll see a fee breakdown before confirming. Your savings agent reviews and approves all requests." },
+  { q: "How do I view my transaction history?",
+    a: "Tap the History tab. Filter by Deposits, Withdrawals, or Fees. Each row opens a full receipt with a dispute option." },
+  { q: "What is the contribution calendar?",
+    a: "The green squares on the Home tab show your activity for the last 90 days — each square is a day you contributed." },
+  { q: "What fees apply?",
+    a: "A registration fee may apply on your first withdrawal. Subsequent ones may carry a percentage fee. The breakdown is shown before you confirm any withdrawal." },
+  { q: "What is Esusu rotation?",
+    a: "If your group uses Esusu mode, each member takes turns collecting the full pot. Check the Rotation section on your Home tab to see the current turn and schedule." },
+  { q: "How do I set a savings goal?",
+    a: "On the Home tab, tap 'Set a Savings Goal'. Enter your target amount. A progress ring shows how close you are and estimates your completion date." },
+  { q: "What is the PIN lock?",
+    a: "The PIN lock protects your portal when you step away. Go to Me → Security to set or change your PIN. Biometric (fingerprint/face) is supported on compatible devices." },
+  { q: "How do I update my profile?",
+    a: "Go to the Me tab and tap the pen icon on your profile card, or go to Me → Edit Profile to change your name, phone, and photo." },
+  { q: "How do I change my password?",
+    a: "Go to the Me tab and tap 'Change Password' at the bottom." },
+  { q: "How do I dispute a transaction?",
+    a: "Open the History tab, tap any completed transaction row to view the receipt, then tap 'Dispute' to submit a report." },
 ];
 
-function FAQ() {
+function FAQ({ faqSearch = "", aiAnswer = "", aiLoading = false, aiError = "" }) {
   const [open, setOpen] = useState(null);
+  const q = faqSearch.trim().toLowerCase();
+  const filtered = q
+    ? FAQS.filter(f => (f.q + " " + f.a).toLowerCase().includes(q))
+    : FAQS;
   return (
     <div className="space-y-2">
-      {FAQS.map((f, i) => (
-        <div key={i} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700/50 shadow-sm overflow-hidden">
-          <button onClick={() => setOpen(open === i ? null : i)}
-            className="w-full flex items-center justify-between px-4 py-4 text-left gap-3">
-            <span className="text-sm font-semibold text-slate-700 dark:text-slate-200 flex-1">{f.q}</span>
-            <Svg d={open === i ? "M18 15l-6-6-6 6" : "M6 9l6 6 6-6"} size={16} color="#94a3b8" />
-          </button>
-          {open === i && <div className="px-4 pb-4"><p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">{f.a}</p></div>}
+      {filtered.length === 0 && !aiLoading && !aiAnswer && !aiError && (
+        <div className="flex flex-col items-center py-8 gap-2 text-center">
+          <div className="w-10 h-10 rounded-2xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
+            <Svg d={P.faq} size={20} color="#94a3b8" />
+          </div>
+          <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">No matches found</p>
+          <p className="text-xs text-slate-400">Tap <span className="font-bold text-brand-500">Ask AI</span> to get a personalised answer.</p>
         </div>
-      ))}
+      )}
+      {filtered.map((f, i) => {
+        const idx = FAQS.indexOf(f);
+        return (
+          <div key={idx} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700/50 shadow-sm overflow-hidden">
+            <button onClick={() => setOpen(open === idx ? null : idx)}
+              className="w-full flex items-start gap-3 px-4 py-4 text-left">
+              <div className="w-6 h-6 rounded-lg bg-brand-50 dark:bg-brand-900/30 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <span className="text-[10px] font-black text-brand-500 dark:text-brand-400">
+                  {String(idx + 1).padStart(2, "0")}
+                </span>
+              </div>
+              <span className="text-sm font-semibold text-slate-700 dark:text-slate-200 flex-1 leading-snug">{f.q}</span>
+              <Svg d={open === idx ? "M18 15l-6-6-6 6" : "M6 9l6 6 6-6"} size={16} color="#94a3b8" />
+            </button>
+            {open === idx && (
+              <div className="px-4 pb-4 pl-[52px]">
+                <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">{f.a}</p>
+              </div>
+            )}
+          </div>
+        );
+      })}
+      {(aiAnswer || aiLoading || aiError) && (
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-brand-200 dark:border-brand-800/40 p-4 space-y-2">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-lg bg-brand-50 dark:bg-brand-900/30 flex items-center justify-center">
+              <svg viewBox="0 0 24 24" fill="none" width="13" height="13" stroke="#3DA829" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+              </svg>
+            </div>
+            <p className="text-[11px] font-bold text-brand-600 dark:text-brand-400 uppercase tracking-wider">AI Answer</p>
+          </div>
+          {aiLoading && (
+            <div className="flex gap-1.5 py-1">
+              {[0, 1, 2].map(i => (
+                <span key={i} className="w-2 h-2 rounded-full bg-brand-400 animate-bounce"
+                  style={{ animationDelay: `${i * 0.15}s` }} />
+              ))}
+            </div>
+          )}
+          {aiError && <p className="text-xs text-red-500">{aiError}</p>}
+          {aiAnswer && <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">{aiAnswer}</p>}
+        </div>
+      )}
     </div>
+  );
+}
+
+function SupportInline({ client, session }) {
+  const t = useT();
+  const TICKET_TYPES = makeTicketTypes(t);
+  const [form, setForm] = useState({
+    subject: "", description: "", type: "general", priority: "medium",
+    user_name: client?.full_name || "",
+    user_email: client?.email || session?.user?.email || "",
+  });
+  const [submitting, setSub] = useState(false);
+  const [done, setDone]      = useState(null);
+  const [err, setErr]        = useState("");
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!form.subject.trim() || !form.user_email.trim()) { setErr("Subject and email are required."); return; }
+    setSub(true); setErr("");
+    try {
+      const res = await fetch(`${ADMIN_URL}/api/public/support`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...form, source: "ajo_client", submitter_type: "ajo_client" }),
+      });
+      const d = await res.json();
+      if (!res.ok) { setErr(d.error || "Failed to submit ticket"); return; }
+      setDone(d.ticket_no);
+    } catch { setErr("Network error. Please try again."); }
+    finally { setSub(false); }
+  };
+
+  if (done) {
+    return (
+      <div className="flex flex-col items-center gap-4 py-10 text-center px-4">
+        <div className="w-16 h-16 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+          <Svg d={P.check} size={28} color="#22c55e" sw={2.5} />
+        </div>
+        <div>
+          <p className="text-base font-extrabold text-slate-800 dark:text-white">Ticket Submitted</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+            Your ticket number is <span className="font-bold text-brand-500">#{done}</span>
+          </p>
+          <p className="text-xs text-slate-400 mt-2">Our team will respond to {form.user_email} shortly.</p>
+        </div>
+        <button onClick={() => setDone(null)}
+          className="px-6 py-3 bg-brand-500 text-white rounded-2xl font-bold text-sm">
+          Submit another
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={submit} className="space-y-4">
+      <div className="bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800/40 rounded-2xl px-4 py-3">
+        <p className="text-[11px] text-brand-600 dark:text-brand-300 font-medium leading-relaxed">
+          Describe your issue and our support team will respond by email within 24 hours.
+        </p>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        {[["Your Name", "user_name", "text", "Your name"], ["Email *", "user_email", "email", "your@email.com"]].map(([l, k, tp, ph]) => (
+          <div key={k}>
+            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">{l}</p>
+            <input type={tp} placeholder={ph} value={form[k]}
+              onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))}
+              className="w-full h-11 px-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/30" />
+          </div>
+        ))}
+      </div>
+      <div>
+        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Category</p>
+        <select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
+          className="w-full h-11 px-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/30">
+          {TICKET_TYPES.map(tt => <option key={tt.value} value={tt.value}>{tt.label}</option>)}
+        </select>
+      </div>
+      <div>
+        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Subject *</p>
+        <input placeholder="Brief summary of your issue" value={form.subject}
+          onChange={e => setForm(f => ({ ...f, subject: e.target.value }))} required
+          className="w-full h-11 px-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/30" />
+      </div>
+      <div>
+        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Description</p>
+        <textarea placeholder="Describe the problem in detail…" value={form.description} rows={4}
+          onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+          className="w-full px-3 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/30 resize-none" />
+      </div>
+      {err && (
+        <div className="flex items-center gap-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 rounded-xl px-3 py-2">
+          <Svg d={P.alert} size={14} color="#ef4444" />
+          <p className="text-xs text-red-500">{err}</p>
+        </div>
+      )}
+      <button type="submit" disabled={submitting}
+        className="w-full h-12 bg-brand-500 disabled:opacity-50 text-white rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition active:scale-[0.99]">
+        {submitting && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+        {submitting ? "Submitting…" : "Submit Ticket"}
+      </button>
+    </form>
   );
 }
 
@@ -1310,9 +1473,10 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
   const t = useT();
   const { lang } = useLanguage();
 
-  const [goal,      setGoal]      = useState(0);
-  const [editGoal,  setEditGoal]  = useState(false);
-  const [goalInput, setGoalInput] = useState("");
+  const [goal,         setGoal]        = useState(0);
+  const [editGoal,     setEditGoal]    = useState(false);
+  const [goalInput,    setGoalInput]   = useState("");
+  const [clearConfirm, setClearConfirm] = useState(false);
 
   const [balanceHidden, setBalanceHidden] = useState(() =>
     sessionStorage.getItem("ajo_balance_hidden") === "1"
@@ -1365,13 +1529,18 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
     );
   })();
 
-  const insight = streak >= 3
-    ? `🔥 ${streak}-month savings streak! You're on fire!`
+  const avgMonthly  = totalThisMonth > 0 ? totalThisMonth : totalLastMonth;
+  const monthsNeeded = avgMonthly > 0 && goal > 0
+    ? (() => { const rem = Math.max(0, goal - (client.current_balance || 0)); return rem > 0 ? Math.ceil(rem / avgMonthly) : 0; })()
+    : null;
+
+  const insightData = streak >= 3
+    ? { type: "fire", text: `${streak}-month savings streak — you're on a roll!` }
     : totalLastMonth > 0 && totalThisMonth > totalLastMonth
-      ? `📈 You saved ${Math.round(((totalThisMonth - totalLastMonth) / totalLastMonth) * 100)}% more than last month!`
+      ? { type: "up",   text: `You saved ${Math.round(((totalThisMonth - totalLastMonth) / totalLastMonth) * 100)}% more than last month!` }
       : healthScore >= 80
-        ? `⭐ Your savings health score is ${healthScore}/100 — excellent!`
-        : `💡 ${fmt(client.total_saved || 0)} saved so far. Keep it up!`;
+        ? { type: "star", text: `Your savings health score is ${healthScore}/100 — excellent!` }
+        : { type: "tip",  text: `${fmt(client.total_saved || 0)} saved so far. Keep it up!` };
 
   const daysUntilDue = client.next_contribution_date
     ? Math.ceil((new Date(client.next_contribution_date) - new Date()) / 86400000)
@@ -1390,9 +1559,31 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
         <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{fmtLocaleDate(lang)}</p>
       </div>
 
-      {/* AI insight card */}
-      <div className="bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-800/50 rounded-2xl px-4 py-3">
-        <p className="text-[13px] font-semibold text-brand-700 dark:text-brand-200">{insight}</p>
+      {/* AI insight chip — AMP-19: SVG icon, brand-tinted */}
+      <div className="bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-800/50 rounded-2xl px-4 py-3 flex items-center gap-3">
+        <div className="w-9 h-9 rounded-xl bg-brand-100 dark:bg-brand-900/40 flex items-center justify-center flex-shrink-0">
+          {insightData.type === "fire" && (
+            <svg viewBox="0 0 24 24" fill="none" width="18" height="18" stroke="#3DA829" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M8.5 14.5A2.5 2.5 0 0011 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 11-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 002.5 3z" />
+            </svg>
+          )}
+          {insightData.type === "up" && (
+            <svg viewBox="0 0 24 24" fill="none" width="18" height="18" stroke="#3DA829" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" /><polyline points="17 6 23 6 23 12" />
+            </svg>
+          )}
+          {insightData.type === "star" && (
+            <svg viewBox="0 0 24 24" fill="none" width="18" height="18" stroke="#3DA829" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+            </svg>
+          )}
+          {insightData.type === "tip" && (
+            <svg viewBox="0 0 24 24" fill="none" width="18" height="18" stroke="#3DA829" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" />
+            </svg>
+          )}
+        </div>
+        <p className="text-[13px] font-semibold text-brand-700 dark:text-brand-200 leading-snug">{insightData.text}</p>
       </div>
 
       {/* Hero savings card — AMP-01 eye-toggle, AMP-11 FitText via AmountDisplay */}
@@ -1582,13 +1773,40 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
         </div>
       )}
 
-      {/* Savings goal */}
+      {/* Savings goal — AMP-22: ring + projected date + confirm-before-clear */}
       {(goal > 0 || editGoal) ? (
         <div className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-4 border border-slate-100 dark:border-slate-700 shadow-sm">
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between mb-3">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Savings Goal</p>
-            <button onClick={() => { setEditGoal(true); setGoalInput(String(goal)); }} className="text-[11px] text-brand-500 dark:text-brand-400 font-bold">Edit</button>
+            {!editGoal && !clearConfirm && (
+              <div className="flex items-center gap-3">
+                <button onClick={() => setClearConfirm(true)}
+                  className="text-[11px] text-red-400 dark:text-red-500 font-semibold">Clear</button>
+                <button onClick={() => { setEditGoal(true); setGoalInput(String(goal)); }}
+                  className="text-[11px] text-brand-500 dark:text-brand-400 font-bold">Edit</button>
+              </div>
+            )}
           </div>
+
+          {clearConfirm && (
+            <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/40 rounded-xl px-3 py-3 mb-3 space-y-2">
+              <p className="text-xs font-extrabold text-amber-700 dark:text-amber-400">Remove savings goal?</p>
+              <p className="text-[11px] text-amber-600 dark:text-amber-500">Your balance stays — only the target is cleared.</p>
+              <div className="flex gap-2">
+                <button onClick={() => setClearConfirm(false)}
+                  className="flex-1 py-2 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg text-xs font-bold">
+                  Keep it
+                </button>
+                <button onClick={() => {
+                  setClearConfirm(false); setGoal(0);
+                  ajoFn("delete-goal", { client_id: client.id }).catch(() => null);
+                }} className="flex-1 py-2 bg-amber-600 text-white rounded-lg text-xs font-bold">
+                  Clear Goal
+                </button>
+              </div>
+            </div>
+          )}
+
           {editGoal ? (
             <div className="flex gap-2">
               <input type="number" value={goalInput} onChange={e => setGoalInput(e.target.value)}
@@ -1596,32 +1814,60 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
                 className="flex-1 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500" />
               <button onClick={() => {
                 const g = parseFloat(goalInput) || 0;
-                setGoal(g);
+                if (g > 0) { setGoal(g); ajoFn("set-goal", { client_id: client.id, target_amount: g }).catch(() => null); }
                 setEditGoal(false);
-                if (g > 0) ajoFn("set-goal", { client_id: client.id, target_amount: g }).catch(() => null);
-                else ajoFn("delete-goal", { client_id: client.id }).catch(() => null);
               }} className="px-3 py-2 bg-brand-500 text-white rounded-xl text-sm font-bold">Save</button>
+              <button onClick={() => setEditGoal(false)}
+                className="px-3 py-2 bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 rounded-xl text-sm font-bold">✕</button>
             </div>
-          ) : (
-            <>
-              <div className="flex justify-between text-xs mb-1.5">
-                <span className="font-semibold text-slate-700 dark:text-slate-300">{fmt(client.current_balance || 0)}</span>
-                <span className="text-slate-400 dark:text-slate-500">{fmt(goal)}</span>
+          ) : (() => {
+            const pct = Math.min(((client.current_balance || 0) / goal) * 100, 100);
+            const R = 40; const C = 2 * Math.PI * R;
+            return (
+              <div className="flex items-center gap-4">
+                <div className="relative flex-shrink-0 w-[88px] h-[88px]">
+                  <svg width="88" height="88" viewBox="0 0 88 88" style={{ transform: "rotate(-90deg)" }}>
+                    <circle cx="44" cy="44" r={R} fill="none" strokeWidth="7" className="stroke-slate-100 dark:stroke-slate-700" />
+                    <circle cx="44" cy="44" r={R} fill="none" strokeWidth="7" strokeLinecap="round"
+                      className="stroke-brand-500 transition-all duration-700"
+                      strokeDasharray={C} strokeDashoffset={C - (pct / 100) * C} />
+                  </svg>
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <span className="text-[14px] font-black text-slate-800 dark:text-white leading-none">
+                      {Math.round(pct)}%
+                    </span>
+                  </div>
+                </div>
+                <div className="flex-1 min-w-0 space-y-0.5">
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500 font-semibold">Saved</p>
+                  <p className="text-base font-extrabold text-slate-800 dark:text-white leading-tight">{fmt(client.current_balance || 0)}</p>
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500">of {fmt(goal)}</p>
+                  {monthsNeeded != null && monthsNeeded > 0 && (
+                    <p className="text-[11px] text-brand-500 dark:text-brand-400 font-semibold mt-1">
+                      Est. {(() => {
+                        const d = new Date(); d.setMonth(d.getMonth() + monthsNeeded);
+                        return d.toLocaleDateString("en-NG", { month: "short", year: "numeric" });
+                      })()}
+                    </p>
+                  )}
+                  {pct >= 100 && (
+                    <div className="flex items-center gap-1 mt-1">
+                      <svg viewBox="0 0 24 24" fill="none" width="11" height="11" stroke="#22c55e" strokeWidth={2.5} strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                      <p className="text-[11px] text-green-500 font-bold">Goal reached!</p>
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
-                <div className="h-full rounded-full bg-gradient-to-r from-brand-500 to-brand-400 transition-all duration-700"
-                  style={{ width: `${Math.min(((client.current_balance || 0) / goal) * 100, 100).toFixed(1)}%` }} />
-              </div>
-              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5">
-                {Math.round(((client.current_balance || 0) / goal) * 100)}% of your goal reached
-              </p>
-            </>
-          )}
+            );
+          })()}
         </div>
       ) : (
         <button onClick={() => setEditGoal(true)}
           className="w-full py-3 border-2 border-dashed border-brand-200 dark:border-brand-800/50 rounded-2xl text-sm font-semibold text-brand-500 dark:text-brand-400 flex items-center justify-center gap-2">
-          🎯 Set a Savings Goal
+          <svg viewBox="0 0 24 24" fill="none" width="16" height="16" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
+          </svg>
+          Set a Savings Goal
         </button>
       )}
 
@@ -2101,7 +2347,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
 }
 
 // ── Me tab (Staff Portal structure) ───────────────────────────────────────
-function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProfileUpdate }) {
+function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProfileUpdate, contributions = [], withdrawRequests = [] }) {
   const [view,         setView]        = useState("menu");
   const [editForm,     setEditForm]    = useState({ full_name: client?.full_name || "", phone: client?.phone || "" });
   const [photoFile,    setPhotoFile]   = useState(null);
@@ -2112,7 +2358,38 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
   const [lockBusy,     setLockBusy]    = useState(false);
   const [showPinSetup, setShowPinSetup] = useState(false);
   const [isDark,       setIsDark]      = useState(() => localStorage.getItem("kuditrack_dark") === "1");
+  const [faqTab,       setFaqTab]      = useState("faq");
+  const [faqSearch,    setFaqSearch]   = useState("");
+  const [aiAnswer,     setAiAnswer]    = useState("");
+  const [aiLoading,    setAiLoading]   = useState(false);
+  const [aiError,      setAiError]     = useState("");
   const fileRef = useRef(null);
+
+  const askAI = async (query) => {
+    setAiLoading(true); setAiAnswer(""); setAiError("");
+    try {
+      const ctx = [
+        `Member: ${client?.full_name || "Unknown"}`,
+        `Balance: ₦${(client?.current_balance || 0).toLocaleString("en-NG")}`,
+        `Group: ${client?.group_name || "N/A"}`,
+        `Frequency: ${client?.contribution_frequency || "N/A"}`,
+        `Total saved: ₦${(client?.total_saved || 0).toLocaleString("en-NG")}`,
+        `Recent contributions: ${contributions.slice(0, 5).map(c => `${c.type} ₦${c.amount} (${c.status})`).join("; ") || "none"}`,
+      ].join(". ");
+      const res = await fetch(`${ADMIN_URL}/api/public/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: query, context: ctx, portal: "ajo_member" }),
+      });
+      if (!res.ok) throw new Error("AI unavailable");
+      const text = await res.text();
+      setAiAnswer(text || "No answer returned.");
+    } catch {
+      setAiError("Couldn't get an AI answer right now. Please try again.");
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   const initials = (client?.full_name || "M").split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
 
@@ -2227,7 +2504,8 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
       <div className="px-4 mb-5">
         <SectionLabel>Account</SectionLabel>
         <SettingsCard>
-          <Row icon={<RowIcon d={P.person} />} label="Edit Profile" sub="Update your name, phone, and photo" onClick={() => setView("edit")} />
+          <Row iconCls="bg-brand-50 dark:bg-brand-900/30" icon={<RowIcon d={P.person} color="#3DA829" />}
+            label="Edit Profile" sub="Update your name, phone, and photo" onClick={() => setView("edit")} />
         </SettingsCard>
       </div>
 
@@ -2236,7 +2514,8 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
         <SectionLabel>Security</SectionLabel>
         <SettingsCard>
           <Row
-            icon={<RowIcon d={P.lock} />}
+            iconCls="bg-blue-50 dark:bg-blue-900/20"
+            icon={<RowIcon d={P.lock} color="#3b82f6" />}
             label="App Lock"
             sub={lock.enabled ? (lock.hasBiometric ? "Locked · Fingerprint / Face + PIN" : "Locked · PIN only") : lock.hasPIN ? "PIN set but lock is off" : "Protect app when you leave"}
             onClick={async () => {
@@ -2253,9 +2532,7 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
                   e.stopPropagation();
                   if (lock.enabled) { lock.disableLock(); }
                   else if (lock.hasPIN) { setLockBusy(true); await lock.enableLock(); setLockBusy(false); }
-                  else {
-                    setShowPinSetup(true);
-                  }
+                  else { setShowPinSetup(true); }
                 }}
                 className={`w-12 h-6 rounded-full transition-colors duration-200 relative flex-shrink-0 ${lock.enabled ? "bg-brand-500" : "bg-slate-200 dark:bg-slate-600"}`}>
                 {lockBusy
@@ -2266,7 +2543,8 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
             }
           />
           <Row
-            icon={<RowIcon d={P.shield} />}
+            iconCls="bg-blue-50 dark:bg-blue-900/20"
+            icon={<RowIcon d={P.shield} color="#3b82f6" />}
             label={lock.hasPIN ? "Change PIN" : "Set PIN"}
             sub={lock.hasPIN ? (lock.hasBiometric ? "Biometric registered · tap to change PIN" : "Change your 4-digit unlock PIN") : "Set a 4-digit PIN to enable App Lock"}
             onClick={() => { const evt = new CustomEvent("ajo_open_pin_setup"); window.dispatchEvent(evt); }}
@@ -2278,7 +2556,8 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
       <div className="px-4 mb-5">
         <SectionLabel>Preferences</SectionLabel>
         <SettingsCard>
-          <Row icon={<RowIcon d={isDark ? P.moon : P.sun} />} label="Dark Mode" onClick={toggleDark} right={Toggle} />
+          <Row iconCls="bg-amber-50 dark:bg-amber-900/20" icon={<RowIcon d={isDark ? P.moon : P.sun} color="#f59e0b" />}
+            label="Dark Mode" onClick={toggleDark} right={Toggle} />
         </SettingsCard>
       </div>
 
@@ -2286,8 +2565,10 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
       <div className="px-4 mb-5">
         <SectionLabel>Help & Support</SectionLabel>
         <SettingsCard>
-          <Row icon={<RowIcon d={P.faq} />}  label="Frequently Asked Questions" sub="Browse common questions" onClick={() => setView("faq")} />
-          <Row icon={<RowIcon d={P.help} />} label="Contact Support"            sub="Submit a support ticket"  onClick={() => setShowSupport(true)} />
+          <Row iconCls="bg-violet-50 dark:bg-violet-900/20" icon={<RowIcon d={P.faq} color="#7c3aed" />}
+            label="FAQ & AI Help" sub="Search questions or ask AI" onClick={() => { setView("faq"); setFaqTab("faq"); }} />
+          <Row iconCls="bg-violet-50 dark:bg-violet-900/20" icon={<RowIcon d={P.help} color="#7c3aed" />}
+            label="Contact Support" sub="Submit a support ticket" onClick={() => { setView("faq"); setFaqTab("support"); }} />
         </SettingsCard>
       </div>
 
@@ -2315,26 +2596,70 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
         <p className="text-[10px] text-slate-300 dark:text-slate-600">Powered by AMAYA &amp; Co. Technologies<br />All rights reserved &copy; {YEAR}</p>
       </div>
 
-      {/* FAQ inline view */}
+      {/* Help & Support overlay (FAQ + AI Search + Support Tickets) */}
       {view === "faq" && (
         <div className="fixed inset-0 z-[60] bg-slate-50 dark:bg-slate-900 flex flex-col">
-          <div className="flex items-center gap-3 px-4 pb-4 border-b border-slate-100 dark:border-slate-700/50 bg-white dark:bg-slate-900" style={{ paddingTop: "max(16px, env(safe-area-inset-top, 16px))" }}>
-            <button onClick={() => setView("menu")} className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center active:scale-90 transition">
+          {/* Header */}
+          <div className="flex items-center gap-3 px-4 pb-0 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700/50 flex-shrink-0"
+            style={{ paddingTop: "max(16px, env(safe-area-inset-top, 16px))" }}>
+            <button onClick={() => { setView("menu"); setFaqSearch(""); setAiAnswer(""); setAiError(""); }}
+              className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center active:scale-90 transition flex-shrink-0">
               <Svg d={P.back} size={18} color="#64748b" />
             </button>
-            <p className="text-base font-extrabold text-slate-800 dark:text-slate-100">Frequently Asked Questions</p>
+            <p className="text-base font-extrabold text-slate-800 dark:text-slate-100 flex-1">Help & Support</p>
+            {/* Tabs */}
+            <div className="flex gap-1 pb-0">
+              {[["faq", "FAQ"], ["support", "Support"]].map(([id, lbl]) => (
+                <button key={id} onClick={() => { setFaqTab(id); setFaqSearch(""); setAiAnswer(""); setAiError(""); }}
+                  className={`px-3 py-2 text-[12px] font-bold rounded-t-xl border-b-2 transition ${
+                    faqTab === id
+                      ? "text-brand-500 dark:text-brand-400 border-brand-500 dark:border-brand-400"
+                      : "text-slate-400 dark:text-slate-500 border-transparent"
+                  }`}>
+                  {lbl}
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="flex-1 overflow-y-auto px-4 py-4 pb-6"><FAQ /></div>
-        </div>
-      )}
 
-      {/* Support modal */}
-      {showSupport && (
-        <SupportModal
-          onClose={() => setShowSupport(false)}
-          clientName={client?.full_name}
-          clientEmail={client?.email || session?.user?.email || ""}
-        />
+          {faqTab === "faq" && (
+            <div className="flex-1 flex flex-col overflow-hidden">
+              {/* Search bar */}
+              <div className="px-4 py-3 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700/50 flex-shrink-0">
+                <div className="relative flex items-center">
+                  <div className="absolute left-3 pointer-events-none">
+                    <svg viewBox="0 0 24 24" fill="none" width="15" height="15" stroke="#94a3b8" strokeWidth={2} strokeLinecap="round">
+                      <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                    </svg>
+                  </div>
+                  <input
+                    value={faqSearch}
+                    onChange={e => { setFaqSearch(e.target.value); setAiAnswer(""); setAiError(""); }}
+                    onKeyDown={e => { if (e.key === "Enter" && faqSearch.trim()) askAI(faqSearch.trim()); }}
+                    placeholder="Search or ask anything…"
+                    className="w-full pl-9 pr-20 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30"
+                  />
+                  {faqSearch.trim() && (
+                    <button onClick={() => askAI(faqSearch.trim())} disabled={aiLoading}
+                      className="absolute right-2 px-2.5 py-1 bg-brand-500 disabled:opacity-50 text-white rounded-lg text-[11px] font-bold">
+                      Ask AI
+                    </button>
+                  )}
+                </div>
+              </div>
+              {/* FAQ list */}
+              <div className="flex-1 overflow-y-auto px-4 py-4 pb-6">
+                <FAQ faqSearch={faqSearch} aiAnswer={aiAnswer} aiLoading={aiLoading} aiError={aiError} />
+              </div>
+            </div>
+          )}
+
+          {faqTab === "support" && (
+            <div className="flex-1 overflow-y-auto px-4 py-4 pb-8">
+              <SupportInline client={client} session={session} />
+            </div>
+          )}
+        </div>
       )}
 
       {/* PIN setup modal */}
@@ -2634,6 +2959,8 @@ export default function AjoMemberPortal({ session, ajoClient }) {
               lock={lock}
               onChangePwdClick={() => setShowPwdModal(true)}
               onProfileUpdate={updates => setClient(prev => ({ ...prev, ...updates }))}
+              contributions={contributions}
+              withdrawRequests={withdrawRequests}
             />
           )}
           {!client && tab === "home" && <SkeletonHome />}
