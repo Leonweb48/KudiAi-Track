@@ -173,15 +173,17 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
     );
   }
 
-  // Aggregate stats
-  const totalDebt   = credits.reduce((s, c) => s + (c.total_amount  || 0), 0);
-  const totalOut    = credits.reduce((s, c) => s + (c.outstanding   || 0), 0);
-  const totalRecov  = credits.reduce((s, c) => s + (c.amount_paid   || 0), 0);
-  const overdueList = credits.filter(c => c.status === "overdue");
+  // Voided records are excluded from all stats, totals, and overdue alerts
+  const nonVoided   = credits.filter(c => c.status !== "voided");
+  const totalDebt   = nonVoided.reduce((s, c) => s + (c.total_amount  || 0), 0);
+  const totalOut    = nonVoided.reduce((s, c) => s + (c.outstanding   || 0), 0);
+  const totalRecov  = nonVoided.reduce((s, c) => s + (c.amount_paid   || 0), 0);
+  const overdueList = nonVoided.filter(c => c.status === "overdue");
+  const voidedCount = credits.length - nonVoided.length;
 
-  // Filtered list — voided records are excluded (preserved in DB, not shown)
+  // Voided tab shows only voided; all other tabs exclude voided
   const filtered = credits
-    .filter(c => c.status !== "voided")
+    .filter(c => filter === "voided" ? c.status === "voided" : c.status !== "voided")
     .filter(c => {
       if (!search) return true;
       const q = search.toLowerCase();
@@ -193,13 +195,14 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
       if (filter === "paid")    return c.status === "paid";
       return true;
     })
-    .filter(c => !dueBefore || (c.due_date && c.due_date <= dueBefore));
+    .filter(c => filter === "voided" || !dueBefore || (c.due_date && c.due_date <= dueBefore));
 
   const CHIPS = [
-    { key: "all",     label: "All",     count: credits.length },
-    { key: "active",  label: "Active",  count: credits.filter(c => c.status === "active").length },
+    { key: "all",     label: "All",     count: nonVoided.length },
+    { key: "active",  label: "Active",  count: nonVoided.filter(c => c.status === "active").length },
     { key: "overdue", label: "Overdue", count: overdueList.length },
-    { key: "paid",    label: "Paid",    count: credits.filter(c => c.status === "paid").length },
+    { key: "paid",    label: "Paid",    count: nonVoided.filter(c => c.status === "paid").length },
+    { key: "voided",  label: "Voided",  count: voidedCount },
   ];
 
   const handlePhotoChange = (e) => {
@@ -339,7 +342,8 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
             className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold transition-all active:scale-95 ${
               filter === key
                 ? key === "overdue" ? "bg-red-500 text-white shadow-sm"
-                  : key === "paid"  ? "bg-green-500 text-white shadow-sm"
+                  : key === "paid"   ? "bg-green-500 text-white shadow-sm"
+                  : key === "voided" ? "bg-slate-500 text-white shadow-sm"
                   : "bg-amber-500 text-white shadow-sm"
                 : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
             }`}>
@@ -413,6 +417,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
             const overdueDays = daysOverdue(c.due_date);
             const isOverdue = c.status === "overdue";
             const isPaid    = c.status === "paid";
+            const isVoided  = c.status === "voided";
 
             const pendingVoid    = creditApprovals.find(r => r.target_id === c.id);
             const isVoidLocked   = Boolean(pendingVoid);
@@ -422,7 +427,10 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
             return (
               <div key={c.id}
                 className={`bg-white dark:bg-slate-800 rounded-2xl px-4 py-4 shadow-card border ${
-                  isOverdue ? "border-red-200 dark:border-red-800/50" : isVoidLocked ? "border-amber-200 dark:border-amber-700/50" : "border-slate-100 dark:border-slate-700/60"
+                  isVoided    ? "border-slate-200 dark:border-slate-700/40 opacity-70"
+                  : isOverdue ? "border-red-200 dark:border-red-800/50"
+                  : isVoidLocked ? "border-amber-200 dark:border-amber-700/50"
+                  : "border-slate-100 dark:border-slate-700/60"
                 }`}>
 
                 {/* Card header — avatar clickable to open profile */}
@@ -436,7 +444,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                   </button>
 
                   <div className="flex-1 min-w-0">
-                    <p className="font-bold text-slate-800 dark:text-slate-100 truncate">{c.customer_name}</p>
+                    <p className={`font-bold truncate ${isVoided ? "text-slate-400 dark:text-slate-500 line-through decoration-slate-400/60" : "text-slate-800 dark:text-slate-100"}`}>{c.customer_name}</p>
                     <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
                       {c.phone && <span className="text-xs text-slate-400 dark:text-slate-500">{c.phone}</span>}
                       {c.due_date && (
@@ -502,7 +510,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
 
                 {/* Actions */}
                 <div className="flex gap-2 pt-2.5 border-t border-slate-50 dark:border-slate-700/60">
-                  {c.outstanding > 0 && (
+                  {c.outstanding > 0 && !isVoidLocked && !isVoided && (
                     <button onClick={() => setRepaying(c)}
                       className="flex-1 py-2 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 rounded-xl font-bold text-xs border border-green-200 dark:border-green-800 hover:bg-green-100 dark:hover:bg-green-900/30 transition active:scale-[0.99]">
                       Record Payment
@@ -538,7 +546,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                       Payments
                     </button>
                   )}
-                  {!isVoidLocked && !isVoidOpen && (
+                  {!isVoidLocked && !isVoidOpen && !isVoided && (
                     <button
                       onClick={() => { setVoidingCredit(c.id); setVoidReason(""); setVoidMsg({ id: null, text: "", ok: false }); }}
                       className="py-2 px-3 bg-red-50 dark:bg-red-900/20 text-red-500 dark:text-red-400 rounded-xl font-bold text-xs border border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/30 transition flex items-center gap-1.5 active:scale-[0.99]">
@@ -574,6 +582,21 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                   </p>
                 )}
 
+                {/* ── Voided record info ── */}
+                {isVoided && (c.voided_at || c.voided_reason) && (
+                  <div className="mt-3 bg-slate-50 dark:bg-slate-700/30 rounded-xl px-3 py-2.5 border border-slate-200 dark:border-slate-700/40 space-y-0.5">
+                    <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Voided</p>
+                    {c.voided_at && (
+                      <p className="text-[10px] text-slate-400 dark:text-slate-500">
+                        {new Date(c.voided_at).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })}
+                      </p>
+                    )}
+                    {c.voided_reason && (
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400 italic">"{c.voided_reason}"</p>
+                    )}
+                  </div>
+                )}
+
                 {/* ── Inline void confirmation form ── */}
                 {isVoidOpen && (
                   <div className="mt-3 bg-red-50 dark:bg-red-900/20 rounded-xl p-3 space-y-2.5 border border-red-200 dark:border-red-800">
@@ -581,6 +604,14 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                     <p className="text-[10px] text-red-600 dark:text-red-400 leading-relaxed">
                       Voiding <strong>{c.customer_name}</strong>'s credit record (₦{fmt(c.total_amount)}) requires admin approval. All payment history will be preserved. The record will be removed from your active list once approved.
                     </p>
+                    {c.amount_paid > 0 && (
+                      <div className="bg-amber-50 dark:bg-amber-900/20 rounded-lg px-3 py-2 border border-amber-200 dark:border-amber-700/40">
+                        <p className="text-[10px] font-bold text-amber-700 dark:text-amber-300">Partial repayments already recorded</p>
+                        <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5 leading-relaxed">
+                          ₦{fmt(c.amount_paid)} has been repaid against this credit. Voiding is permanent — those repayments stay in your transaction history but will no longer count toward outstanding totals.
+                        </p>
+                      </div>
+                    )}
                     <div>
                       <p className="text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-wide mb-0.5">Reason *</p>
                       <textarea rows={2} value={voidReason} onChange={e => setVoidReason(e.target.value)} placeholder="Why do you need to void this credit record?"
