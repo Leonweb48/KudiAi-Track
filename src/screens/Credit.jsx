@@ -68,8 +68,14 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
   const [photoFile,    setPhotoFile]    = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
   const [adding,       setAdding]       = useState(false);
-  const [reminderFor,  setReminderFor]  = useState(null);
-  const [copied,       setCopied]       = useState(false);
+  const [reminderFor,           setReminderFor]           = useState(null);
+  const [copied,                setCopied]                = useState(false);
+  // Credit void (admin-approval) state
+  const [creditApprovals,       setCreditApprovals]       = useState([]); // pending requests
+  const [voidingCredit,         setVoidingCredit]         = useState(null); // credit.id
+  const [voidReason,            setVoidReason]            = useState("");
+  const [voidSubmitting,        setVoidSubmitting]        = useState(false);
+  const [voidMsg,               setVoidMsg]               = useState({ id: null, text: "", ok: false });
 
   // Filters
   const [search,         setSearch]         = useState("");
@@ -88,6 +94,65 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
   useEffect(() => {
     if (autoOpen) { setShowAdd(true); onAutoOpened?.(); }
   }, [autoOpen, onAutoOpened]);
+
+  // Load pending credit-void approval requests for this owner
+  const loadCreditApprovals = async () => {
+    try {
+      const { data } = await supabase
+        .from("admin_approval_requests")
+        .select("id, target_id, status, requested_at")
+        .eq("request_type", "credit_delete")
+        .eq("status", "pending");
+      setCreditApprovals(data || []);
+    } catch (e) {
+      console.error("loadCreditApprovals:", e);
+    }
+  };
+
+  useEffect(() => { loadCreditApprovals(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const submitCreditVoidRequest = async (c) => {
+    if (!voidReason.trim()) return;
+    setVoidSubmitting(true);
+    try {
+      const { error } = await supabase.rpc("submit_approval_request", {
+        p_type:      "credit_delete",
+        p_target_id: c.id,
+        p_payload: {
+          customer_name: c.customer_name,
+          total_amount:  c.total_amount,
+          amount_paid:   c.amount_paid,
+          outstanding:   c.outstanding,
+          status:        c.status,
+          due_date:      c.due_date || null,
+          notes:         c.notes || "",
+          phone:         c.phone || "",
+          email:         c.email || "",
+        },
+        p_reason: voidReason.trim(),
+      });
+      if (error) throw error;
+      setVoidMsg({ id: c.id, text: "Void request submitted. You'll be notified by email when an admin decides.", ok: true });
+      setVoidingCredit(null);
+      setVoidReason("");
+      loadCreditApprovals();
+    } catch (e) {
+      setVoidMsg({ id: c.id, text: e?.message || "Failed to submit request", ok: false });
+    } finally {
+      setVoidSubmitting(false);
+    }
+  };
+
+  const cancelCreditVoidRequest = async (requestId, creditId) => {
+    try {
+      const { error } = await supabase.rpc("cancel_approval_request", { p_request_id: requestId });
+      if (error) throw error;
+      setVoidMsg({ id: creditId, text: "Request cancelled.", ok: true });
+      loadCreditApprovals();
+    } catch (e) {
+      setVoidMsg({ id: creditId, text: e?.message || "Failed to cancel", ok: false });
+    }
+  };
 
   if (!canDo(plan, "credit")) {
     return (
@@ -114,8 +179,9 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
   const totalRecov  = credits.reduce((s, c) => s + (c.amount_paid   || 0), 0);
   const overdueList = credits.filter(c => c.status === "overdue");
 
-  // Filtered list
+  // Filtered list — voided records are excluded (preserved in DB, not shown)
   const filtered = credits
+    .filter(c => c.status !== "voided")
     .filter(c => {
       if (!search) return true;
       const q = search.toLowerCase();
@@ -348,10 +414,15 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
             const isOverdue = c.status === "overdue";
             const isPaid    = c.status === "paid";
 
+            const pendingVoid    = creditApprovals.find(r => r.target_id === c.id);
+            const isVoidLocked   = Boolean(pendingVoid);
+            const isVoidOpen     = voidingCredit === c.id;
+            const creditVoidMsg  = voidMsg.id === c.id ? voidMsg : null;
+
             return (
               <div key={c.id}
                 className={`bg-white dark:bg-slate-800 rounded-2xl px-4 py-4 shadow-card border ${
-                  isOverdue ? "border-red-200 dark:border-red-800/50" : "border-slate-100 dark:border-slate-700/60"
+                  isOverdue ? "border-red-200 dark:border-red-800/50" : isVoidLocked ? "border-amber-200 dark:border-amber-700/50" : "border-slate-100 dark:border-slate-700/60"
                 }`}>
 
                 {/* Card header — avatar clickable to open profile */}
@@ -467,7 +538,68 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                       Payments
                     </button>
                   )}
+                  {!isVoidLocked && !isVoidOpen && (
+                    <button
+                      onClick={() => { setVoidingCredit(c.id); setVoidReason(""); setVoidMsg({ id: null, text: "", ok: false }); }}
+                      className="py-2 px-3 bg-red-50 dark:bg-red-900/20 text-red-500 dark:text-red-400 rounded-xl font-bold text-xs border border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/30 transition flex items-center gap-1.5 active:scale-[0.99]">
+                      <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                        <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
+                      </svg>
+                      Void
+                    </button>
+                  )}
                 </div>
+
+                {/* ── Pending void badge ── */}
+                {isVoidLocked && !creditVoidMsg && (
+                  <div className="mt-3 flex items-center justify-between gap-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 rounded-xl px-3 py-2">
+                    <div className="flex items-center gap-1.5">
+                      <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                        <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                      </svg>
+                      <p className="text-[10px] font-bold text-amber-700 dark:text-amber-300">Pending admin approval — void request</p>
+                    </div>
+                    <button
+                      onClick={() => cancelCreditVoidRequest(pendingVoid.id, c.id)}
+                      className="text-[10px] font-bold text-amber-600 dark:text-amber-400 hover:underline flex-shrink-0">
+                      Cancel
+                    </button>
+                  </div>
+                )}
+
+                {/* ── Void result message ── */}
+                {creditVoidMsg && (
+                  <p className={`mt-3 text-[10px] font-semibold px-3 py-2 rounded-xl ${creditVoidMsg.ok ? "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400" : "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400"}`}>
+                    {creditVoidMsg.text}
+                  </p>
+                )}
+
+                {/* ── Inline void confirmation form ── */}
+                {isVoidOpen && (
+                  <div className="mt-3 bg-red-50 dark:bg-red-900/20 rounded-xl p-3 space-y-2.5 border border-red-200 dark:border-red-800">
+                    <p className="text-xs font-bold text-red-700 dark:text-red-300 uppercase tracking-wider">Request Credit Void</p>
+                    <p className="text-[10px] text-red-600 dark:text-red-400 leading-relaxed">
+                      Voiding <strong>{c.customer_name}</strong>'s credit record (₦{fmt(c.total_amount)}) requires admin approval. All payment history will be preserved. The record will be removed from your active list once approved.
+                    </p>
+                    <div>
+                      <p className="text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-wide mb-0.5">Reason *</p>
+                      <textarea rows={2} value={voidReason} onChange={e => setVoidReason(e.target.value)} placeholder="Why do you need to void this credit record?"
+                        className="w-full text-sm bg-white dark:bg-slate-800 border border-red-200 dark:border-red-700 rounded-lg px-3 py-2 text-slate-800 dark:text-white focus:outline-none resize-none" />
+                    </div>
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        onClick={() => submitCreditVoidRequest(c)}
+                        disabled={voidSubmitting || !voidReason.trim()}
+                        className="flex-1 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white rounded-xl font-bold text-xs transition active:scale-[0.99] flex items-center justify-center gap-1.5">
+                        {voidSubmitting ? <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />Submitting…</> : "Submit Void Request"}
+                      </button>
+                      <button onClick={() => { setVoidingCredit(null); setVoidReason(""); }}
+                        className="px-4 py-2 bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 rounded-xl font-bold text-xs border border-slate-200 dark:border-slate-600 transition active:scale-[0.99]">
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}

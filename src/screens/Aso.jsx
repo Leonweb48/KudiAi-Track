@@ -450,14 +450,23 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
 
   // Ajo Groups management
-  const [showGroups,     setShowGroups]     = useState(false);
-  const [groups,         setGroups]         = useState([]);
-  const [groupsLoading,  setGroupsLoading]  = useState(false);
-  const [showGroupAdd,   setShowGroupAdd]   = useState(false);
-  const [gf,             setGf]             = useState(BLANK_GROUP);
+  const [showGroups,           setShowGroups]           = useState(false);
+  const [groups,               setGroups]               = useState([]);
+  const [groupsLoading,        setGroupsLoading]        = useState(false);
+  const [showGroupAdd,         setShowGroupAdd]         = useState(false);
+  const [gf,                   setGf]                   = useState(BLANK_GROUP);
   const setG = (k, v) => setGf(p => ({ ...p, [k]: v }));
-  const [groupSaving,    setGroupSaving]    = useState(false);
-  const [groupError,     setGroupError]     = useState("");
+  const [groupSaving,          setGroupSaving]          = useState(false);
+  const [groupError,           setGroupError]           = useState("");
+  // Group approval requests
+  const [editingGroup,         setEditingGroup]         = useState(null); // grp.id
+  const [editGf,               setEditGf]               = useState({});
+  const setEG = (k, v) => setEditGf(p => ({ ...p, [k]: v }));
+  const [deletingGroup,        setDeletingGroup]        = useState(null); // grp.id
+  const [groupApprReason,      setGroupApprReason]      = useState("");
+  const [groupApprSubmitting,  setGroupApprSubmitting]  = useState(false);
+  const [groupApprMsg,         setGroupApprMsg]         = useState({ id: null, text: "", ok: false });
+  const [groupApprovals,       setGroupApprovals]       = useState([]); // pending requests
   // Rotation management
   const [showRotation,   setShowRotation]   = useState(null); // group object
   const [rotationData,   setRotationData]   = useState(null);
@@ -551,12 +560,110 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         .from("ajo_groups")
         .select("*")
         .eq("owner_id", profile.id)
+        .eq("is_active", true)
         .order("created_at", { ascending: true });
       setGroups(grps || []);
     } catch (e) {
       console.error("loadGroups:", e);
     } finally {
       setGroupsLoading(false);
+    }
+  };
+
+  const loadGroupApprovals = async () => {
+    try {
+      const { data } = await supabase
+        .from("admin_approval_requests")
+        .select("id, request_type, target_id, status, requested_at")
+        .in("request_type", ["group_edit", "group_delete"])
+        .eq("status", "pending");
+      setGroupApprovals(data || []);
+    } catch (e) {
+      console.error("loadGroupApprovals:", e);
+    }
+  };
+
+  const submitGroupEditRequest = async (grp) => {
+    if (!groupApprReason.trim()) return;
+    setGroupApprSubmitting(true);
+    try {
+      const payload = {
+        old: {
+          name:                  grp.name,
+          description:           grp.description || "",
+          contribution_amount:   grp.contribution_amount,
+          contribution_frequency:grp.contribution_frequency,
+          group_mode:            grp.group_mode,
+          privacy_show_names:    grp.privacy_show_names,
+          privacy_show_amounts:  grp.privacy_show_amounts,
+        },
+        new: {
+          name:                  editGf.name?.trim()               || grp.name,
+          description:           editGf.description?.trim()        ?? grp.description ?? "",
+          contribution_amount:   editGf.contribution_amount != null ? Number(editGf.contribution_amount) : grp.contribution_amount,
+          contribution_frequency:editGf.contribution_frequency     || grp.contribution_frequency,
+          group_mode:            editGf.group_mode                 || grp.group_mode,
+          privacy_show_names:    editGf.privacy_show_names != null ? Boolean(editGf.privacy_show_names) : grp.privacy_show_names,
+          privacy_show_amounts:  editGf.privacy_show_amounts != null ? Boolean(editGf.privacy_show_amounts) : grp.privacy_show_amounts,
+        },
+      };
+      const { error } = await supabase.rpc("submit_approval_request", {
+        p_type:      "group_edit",
+        p_target_id: grp.id,
+        p_payload:   payload,
+        p_reason:    groupApprReason.trim(),
+      });
+      if (error) throw error;
+      setGroupApprMsg({ id: grp.id, text: "Request submitted. You'll be notified by email when an admin decides.", ok: true });
+      setEditingGroup(null);
+      setGroupApprReason("");
+      loadGroupApprovals();
+    } catch (e) {
+      setGroupApprMsg({ id: grp.id, text: e?.message || "Failed to submit request", ok: false });
+    } finally {
+      setGroupApprSubmitting(false);
+    }
+  };
+
+  const submitGroupDeleteRequest = async (grp) => {
+    if (!groupApprReason.trim()) return;
+    setGroupApprSubmitting(true);
+    const clientCount = asoClients.filter(c => c.ajo_group_id === grp.id).length;
+    try {
+      const payload = {
+        name:                  grp.name,
+        description:           grp.description || "",
+        group_mode:            grp.group_mode,
+        contribution_amount:   grp.contribution_amount,
+        contribution_frequency:grp.contribution_frequency,
+        member_count:          clientCount,
+      };
+      const { error } = await supabase.rpc("submit_approval_request", {
+        p_type:      "group_delete",
+        p_target_id: grp.id,
+        p_payload:   payload,
+        p_reason:    groupApprReason.trim(),
+      });
+      if (error) throw error;
+      setGroupApprMsg({ id: grp.id, text: "Archive request submitted. You'll be notified by email when an admin decides.", ok: true });
+      setDeletingGroup(null);
+      setGroupApprReason("");
+      loadGroupApprovals();
+    } catch (e) {
+      setGroupApprMsg({ id: grp.id, text: e?.message || "Failed to submit request", ok: false });
+    } finally {
+      setGroupApprSubmitting(false);
+    }
+  };
+
+  const cancelGroupRequest = async (requestId, grpId) => {
+    try {
+      const { error } = await supabase.rpc("cancel_approval_request", { p_request_id: requestId });
+      if (error) throw error;
+      setGroupApprMsg({ id: grpId, text: "Request cancelled.", ok: true });
+      loadGroupApprovals();
+    } catch (e) {
+      setGroupApprMsg({ id: grpId, text: e?.message || "Failed to cancel", ok: false });
     }
   };
 
@@ -731,6 +838,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     reloadWithdrawalRequests();
     reloadPendingDeposits();
     loadGroups();
+    loadGroupApprovals();
   }, [plan, profile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load granular ajo permissions when rendering in a staff context
@@ -2534,8 +2642,16 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                     const clientCount = asoClients.filter(c => c.ajo_group_id === grp.id).length;
                     const hasSubacct  = Boolean(grp.paystack_subaccount_code);
                     const isRotating  = grp.group_mode === "rotating";
+                    const pendingAppr   = groupApprovals.find(r => r.target_id === grp.id);
+                    const isPendingEdit = pendingAppr?.request_type === "group_edit";
+                    const isPendingDel  = pendingAppr?.request_type === "group_delete";
+                    const isLocked      = Boolean(pendingAppr);
+                    const approvalMsg   = groupApprMsg.id === grp.id ? groupApprMsg : null;
+                    const isEditOpen    = editingGroup === grp.id;
+                    const isDeleteOpen  = deletingGroup === grp.id;
+
                     return (
-                      <div key={grp.id} className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 border border-slate-100 dark:border-slate-700 shadow-sm">
+                      <div key={grp.id} className={`bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 border shadow-sm ${isLocked ? "border-amber-200 dark:border-amber-700/50" : "border-slate-100 dark:border-slate-700"}`}>
                         <div className="flex items-start gap-3">
                           <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${hasSubacct ? "bg-green-100 dark:bg-green-900/30" : "bg-slate-100 dark:bg-slate-700"}`}>
                             <svg viewBox="0 0 24 24" fill="none" className={`w-4 h-4 ${hasSubacct ? "text-green-600 dark:text-green-400" : "text-slate-400"}`} stroke="currentColor" strokeWidth={2} strokeLinecap="round">
@@ -2590,6 +2706,118 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                             </svg>
                             Manage Rotation
                           </button>
+                        )}
+
+                        {/* ── Pending approval badge ── */}
+                        {isLocked && !approvalMsg && (
+                          <div className="mt-3 flex items-center justify-between gap-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 rounded-xl px-3 py-2">
+                            <div className="flex items-center gap-1.5">
+                              <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                              </svg>
+                              <p className="text-[10px] font-bold text-amber-700 dark:text-amber-300">
+                                Pending admin approval — {isPendingEdit ? "edit" : "archive"} request
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => cancelGroupRequest(pendingAppr.id, grp.id)}
+                              className="text-[10px] font-bold text-amber-600 dark:text-amber-400 hover:underline flex-shrink-0">
+                              Cancel
+                            </button>
+                          </div>
+                        )}
+
+                        {/* ── Approval action result message ── */}
+                        {approvalMsg && (
+                          <p className={`mt-3 text-[10px] font-semibold px-3 py-2 rounded-xl ${approvalMsg.ok ? "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400" : "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400"}`}>
+                            {approvalMsg.text}
+                          </p>
+                        )}
+
+                        {/* ── Edit / Archive request buttons ── */}
+                        {!isLocked && !isEditOpen && !isDeleteOpen && (
+                          <div className="mt-3 flex gap-2">
+                            <button
+                              onClick={() => { setEditingGroup(grp.id); setEditGf({ name: grp.name, description: grp.description || "", contribution_amount: grp.contribution_amount || "", contribution_frequency: grp.contribution_frequency || "monthly", group_mode: grp.group_mode || "savings", privacy_show_names: grp.privacy_show_names, privacy_show_amounts: grp.privacy_show_amounts }); setGroupApprReason(""); setGroupApprMsg({ id: null, text: "", ok: false }); }}
+                              className="flex-1 py-2 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 rounded-xl font-bold text-xs border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition active:scale-[0.99]">
+                              Request Edit
+                            </button>
+                            <button
+                              onClick={() => { setDeletingGroup(grp.id); setGroupApprReason(""); setGroupApprMsg({ id: null, text: "", ok: false }); }}
+                              className="flex-1 py-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl font-bold text-xs border border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/30 transition active:scale-[0.99]">
+                              Request Archive
+                            </button>
+                          </div>
+                        )}
+
+                        {/* ── Inline edit form ── */}
+                        {isEditOpen && (
+                          <div className="mt-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl p-3 space-y-2.5 border border-blue-200 dark:border-blue-800">
+                            <p className="text-xs font-bold text-blue-700 dark:text-blue-300 uppercase tracking-wider">Request Group Edit</p>
+                            <p className="text-[10px] text-blue-600 dark:text-blue-400">Changes will not apply until an admin approves them.</p>
+                            {[
+                              { label: "Group Name", key: "name", type: "text" },
+                              { label: "Description", key: "description", type: "text" },
+                              { label: "Contribution Amount (₦)", key: "contribution_amount", type: "number" },
+                            ].map(({ label, key, type }) => (
+                              <div key={key}>
+                                <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-0.5">{label}</p>
+                                <input type={type} value={editGf[key] ?? ""} onChange={e => setEG(key, e.target.value)}
+                                  className="w-full text-sm bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-700 rounded-lg px-3 py-2 text-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                              </div>
+                            ))}
+                            <div>
+                              <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-0.5">Frequency</p>
+                              <select value={editGf.contribution_frequency || "monthly"} onChange={e => setEG("contribution_frequency", e.target.value)}
+                                className="w-full text-sm bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-700 rounded-lg px-3 py-2 text-slate-800 dark:text-white focus:outline-none">
+                                {["daily","weekly","monthly"].map(f => <option key={f} value={f}>{f.charAt(0).toUpperCase() + f.slice(1)}</option>)}
+                              </select>
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-wide mb-0.5">Reason for edit *</p>
+                              <textarea rows={2} value={groupApprReason} onChange={e => setGroupApprReason(e.target.value)} placeholder="Why do you need to edit this group?"
+                                className="w-full text-sm bg-white dark:bg-slate-800 border border-red-200 dark:border-red-700 rounded-lg px-3 py-2 text-slate-800 dark:text-white focus:outline-none resize-none" />
+                            </div>
+                            <div className="flex gap-2 pt-1">
+                              <button
+                                onClick={() => submitGroupEditRequest(grp)}
+                                disabled={groupApprSubmitting || !groupApprReason.trim()}
+                                className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded-xl font-bold text-xs transition active:scale-[0.99] flex items-center justify-center gap-1.5">
+                                {groupApprSubmitting ? <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />Submitting…</> : "Submit Request"}
+                              </button>
+                              <button onClick={() => { setEditingGroup(null); setGroupApprReason(""); }}
+                                className="px-4 py-2 bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 rounded-xl font-bold text-xs border border-slate-200 dark:border-slate-600 transition active:scale-[0.99]">
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* ── Inline archive confirmation ── */}
+                        {isDeleteOpen && (
+                          <div className="mt-3 bg-red-50 dark:bg-red-900/20 rounded-xl p-3 space-y-2.5 border border-red-200 dark:border-red-800">
+                            <p className="text-xs font-bold text-red-700 dark:text-red-300 uppercase tracking-wider">Request Group Archive</p>
+                            <p className="text-[10px] text-red-600 dark:text-red-400 leading-relaxed">
+                              Archiving <strong>{grp.name}</strong> will remove it from active use and detach all {clientCount} member{clientCount !== 1 ? "s" : ""}. This requires admin approval and cannot be reversed through the portal. All records are preserved.
+                            </p>
+                            <div>
+                              <p className="text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-wide mb-0.5">Reason for archive *</p>
+                              <textarea rows={2} value={groupApprReason} onChange={e => setGroupApprReason(e.target.value)} placeholder="Why do you need to archive this group?"
+                                className="w-full text-sm bg-white dark:bg-slate-800 border border-red-200 dark:border-red-700 rounded-lg px-3 py-2 text-slate-800 dark:text-white focus:outline-none resize-none" />
+                            </div>
+                            <div className="flex gap-2 pt-1">
+                              <button
+                                onClick={() => submitGroupDeleteRequest(grp)}
+                                disabled={groupApprSubmitting || !groupApprReason.trim()}
+                                className="flex-1 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white rounded-xl font-bold text-xs transition active:scale-[0.99] flex items-center justify-center gap-1.5">
+                                {groupApprSubmitting ? <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />Submitting…</> : "Submit Archive Request"}
+                              </button>
+                              <button onClick={() => { setDeletingGroup(null); setGroupApprReason(""); }}
+                                className="px-4 py-2 bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 rounded-xl font-bold text-xs border border-slate-200 dark:border-slate-600 transition active:scale-[0.99]">
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
                         )}
                       </div>
                     );
