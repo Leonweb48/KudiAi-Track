@@ -5,6 +5,7 @@ import { App as CapApp } from "@capacitor/app";
 export const LS_ENABLED  = "kt_lock_enabled";
 export const LS_PIN_HASH = "kt_lock_pin_hash";
 export const LS_CRED_ID  = "kt_lock_cred_id";
+export const LS_PIN_LEN  = "kt_lock_pin_len";
 
 export async function sha256(text) {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
@@ -55,8 +56,10 @@ async function webauthnRegister(userId) {
   return bufToB64url(cred.rawId);
 }
 
+// credId="bio" means the user enabled biometric but WebAuthn registration failed —
+// use allowCredentials:[] so the platform shows its own biometric prompt on native.
 async function webauthnVerify(credId) {
-  const allowCredentials = credId
+  const allowCredentials = credId && credId !== "bio"
     ? [{ type: "public-key", id: b64urlToBuf(credId), transports: ["internal"] }]
     : [];
   await navigator.credentials.get({
@@ -75,6 +78,8 @@ export function useBiometricLock(userId) {
   const [hasPIN,       setHasPIN]       = useState(() => !!localStorage.getItem(LS_PIN_HASH));
   const [hasBiometric, setHasBiometric] = useState(() => !!localStorage.getItem(LS_CRED_ID));
   const [bioAvailable, setBioAvailable] = useState(false);
+  // Default 4 for backward compat with PINs set before this field was stored
+  const [pinLen,       setPinLen]       = useState(() => parseInt(localStorage.getItem(LS_PIN_LEN) || "4", 10));
 
   const wasActiveRef = useRef(true);
 
@@ -115,20 +120,26 @@ export function useBiometricLock(userId) {
   const setupPIN = useCallback(async (pin) => {
     const hash = await sha256(pin);
     localStorage.setItem(LS_PIN_HASH, hash);
+    localStorage.setItem(LS_PIN_LEN, String(pin.length));
     setHasPIN(true);
+    setPinLen(pin.length);
   }, []);
 
-  // Enable lock + try to register biometric credential
+  // Enable lock + try to register biometric credential.
+  // Sets the "bio" placeholder immediately so the UI responds before WebAuthn resolves.
   const enableLock = useCallback(async () => {
     localStorage.setItem(LS_ENABLED, "true");
     setEnabled(true);
     if (bioAvailable) {
+      // Show toggle ON immediately — don't wait for WebAuthn
+      localStorage.setItem(LS_CRED_ID, "bio");
+      setHasBiometric(true);
       try {
         const credId = await webauthnRegister(userId);
+        // Real credential registered — replace placeholder
         localStorage.setItem(LS_CRED_ID, credId);
-        setHasBiometric(true);
       } catch {
-        // User declined biometric — PIN-only mode, still valid
+        // Keep "bio" placeholder; webauthnVerify will use allowCredentials:[] at unlock time
       }
     }
   }, [bioAvailable, userId]);
@@ -147,10 +158,11 @@ export function useBiometricLock(userId) {
   }, []);
 
   const clearAll = useCallback(() => {
-    [LS_ENABLED, LS_PIN_HASH, LS_CRED_ID].forEach(k => localStorage.removeItem(k));
+    [LS_ENABLED, LS_PIN_HASH, LS_CRED_ID, LS_PIN_LEN].forEach(k => localStorage.removeItem(k));
     setEnabled(false);
     setHasPIN(false);
     setHasBiometric(false);
+    setPinLen(4);
     setLocked(false);
   }, []);
 
@@ -178,6 +190,7 @@ export function useBiometricLock(userId) {
     hasPIN,
     hasBiometric,
     bioAvailable,
+    pinLen,
     setupPIN,
     enableLock,
     disableLock,

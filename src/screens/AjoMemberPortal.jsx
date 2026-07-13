@@ -276,11 +276,11 @@ function PinSetupModal({ onDone, onClose }) {
   const setActive = step === 1 ? setPin1 : setPin2;
 
   const handleDigit = (d) => {
-    if (active.length >= 4) return;
+    if (active.length >= 6) return;
     const next = active + d;
     setActive(next);
     setError("");
-    if (next.length === 4) {
+    if (next.length === 6) {
       if (step === 1) {
         setTimeout(() => setStep(2), 250);
       } else {
@@ -296,10 +296,10 @@ function PinSetupModal({ onDone, onClose }) {
     <Modal title={step === 1 ? "Set App PIN" : "Confirm PIN"} onClose={onClose}>
       <div className="flex flex-col items-center gap-6 py-2">
         <p className="text-sm text-slate-500 dark:text-slate-400 text-center">
-          {step === 1 ? "Choose a 4-digit PIN to protect your app" : "Enter your PIN again to confirm"}
+          {step === 1 ? "Choose a 6-digit PIN to protect your app" : "Enter your PIN again to confirm"}
         </p>
         <div className="flex gap-4">
-          {[0, 1, 2, 3].map(i => (
+          {[0, 1, 2, 3, 4, 5].map(i => (
             <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all ${active.length > i ? "bg-brand-500 border-brand-500 scale-110" : "border-slate-300 dark:border-slate-600"}`} />
           ))}
         </div>
@@ -455,24 +455,14 @@ function AjoLockScreen({ lock, onUnlock, clientName, initials }) {
 
   const addDigit = useCallback((d) => {
     if (busy) return;
+    const len = lock.pinLen || 4;
     setDigits(prev => {
-      if (prev.length >= 6) return prev;
+      if (prev.length >= len) return prev;
       const next = prev + d;
-      if (next.length === 6) setTimeout(() => verifyPin(next), 120);
-      else if (next.length === 4) {
-        // Try 4-digit legacy PIN
-        setTimeout(async () => {
-          const stored = localStorage.getItem(LS_PIN_HASH);
-          if (stored) {
-            const h = await sha256(next);
-            if (h === stored) { onUnlock(); return; }
-          }
-          // 4-digit wrong or no match — wait for more digits
-        }, 0);
-      }
+      if (next.length === len) setTimeout(() => verifyPin(next), 120);
       return next;
     });
-  }, [busy, verifyPin, onUnlock]);
+  }, [busy, verifyPin, lock.pinLen]);
 
   const del = () => { if (!busy) setDigits(v => v.slice(0, -1)); };
 
@@ -498,7 +488,7 @@ function AjoLockScreen({ lock, onUnlock, clientName, initials }) {
         </div>
 
         <div className={`flex gap-[18px] mt-2 ${shaking ? "ajo-pin-shake" : ""}`}>
-          {Array.from({ length: 6 }).map((_, i) => (
+          {Array.from({ length: lock.pinLen || 4 }).map((_, i) => (
             <div key={i} className={`w-[14px] h-[14px] rounded-full border-2 transition-all duration-150 ${
               i < digits.length ? "bg-brand-500 border-brand-500 scale-110" : "border-slate-300 dark:border-slate-600"
             }`} />
@@ -506,7 +496,7 @@ function AjoLockScreen({ lock, onUnlock, clientName, initials }) {
         </div>
 
         {error && <p className="text-sm text-red-500 font-semibold text-center -mt-1">{error}</p>}
-        {!error && <p className="text-[12px] text-slate-400 dark:text-slate-500 -mt-1">Enter your 6-digit PIN</p>}
+        {!error && <p className="text-[12px] text-slate-400 dark:text-slate-500 -mt-1">Enter your {lock.pinLen || 4}-digit PIN</p>}
 
         {lock.hasBiometric && (
           <button onClick={tryBiometric} disabled={busy}
@@ -3156,9 +3146,9 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
       {/* ── App Lock PIN flows (z-[300]) ────────────────────────────────── */}
       {secView === "app-pin" && secStep === 1 && (
         <AjoPinPad
-          length={6}
+          length={lock.pinLen || 4}
           title="Enter current PIN"
-          subtitle="Enter your 6-digit app unlock PIN"
+          subtitle={`Enter your ${lock.pinLen || 4}-digit app unlock PIN`}
           onComplete={handleAppPinStep}
           onCancel={resetSecView}
           error={secErr} shaking={secShake} loading={secBusy}
