@@ -2655,6 +2655,9 @@ export default function AjoMemberPortal({ session, ajoClient }) {
   const [rotationLoading,  setRotationLoading]  = useState(false);
   const [ownerInfo,        setOwnerInfo]        = useState(null);
   const [loadingData,      setLoadingData]      = useState(false);
+  const [isStale,          setIsStale]          = useState(false);
+  const [portalLoadError,  setPortalLoadError]  = useState(false);
+  const [reloadKey,        setReloadKey]        = useState(0);
   const [tab,              setTab]              = useState(() => {
     // Auto-open Bills tab if returning from a Paystack bill payment redirect
     const p   = new URLSearchParams(window.location.search);
@@ -2683,6 +2686,12 @@ export default function AjoMemberPortal({ session, ajoClient }) {
     document.documentElement.classList.toggle("dark", localStorage.getItem("kuditrack_dark") === "1");
   }, []);
 
+  const retryLoad = useCallback(() => {
+    setIsStale(false);
+    setPortalLoadError(false);
+    setReloadKey(k => k + 1);
+  }, []);
+
   const refreshWithdrawRequests = useCallback(async () => {
     if (!ajoClient?.id) return;
     try {
@@ -2696,6 +2705,8 @@ export default function AjoMemberPortal({ session, ajoClient }) {
   useEffect(() => {
     if (mustChange || !ajoClient?.id) return;
     setLoadingData(true);
+    setIsStale(false);
+    setPortalLoadError(false);
     Promise.allSettled([
       ajoFn("get-client",             { client_id: ajoClient.id, owner_id: ajoClient.owner_id }),
       ajoFn("get-contributions",      { client_id: ajoClient.id }),
@@ -2721,6 +2732,20 @@ export default function AjoMemberPortal({ session, ajoClient }) {
         if (cycleRes.status === "fulfilled" && cycleRes.value?.cycle)
           setCycle(cycleRes.value.cycle);
 
+        // Determine error / stale state based on what succeeded
+        const allRejected = [clientRes, contribRes, ownerRes, reqRes, cycleRes]
+          .every(r => r.status === "rejected");
+        if (allRejected) {
+          if (ajoClient?.current_balance != null) {
+            setIsStale(true);
+          } else {
+            setPortalLoadError(true);
+          }
+        } else if (clientRes.status === "rejected") {
+          // Balance shown is auth-token fallback (ajoClient prop), not live data
+          setIsStale(true);
+        }
+
         // Fetch rotation data if the client belongs to a rotating group
         const groupId = (resolvedClient || ajoClient)?.ajo_group_id;
         if (groupId) {
@@ -2735,7 +2760,7 @@ export default function AjoMemberPortal({ session, ajoClient }) {
       })
       .catch(console.error)
       .finally(() => setLoadingData(false));
-  }, [mustChange, ajoClient?.id, ajoClient?.owner_id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mustChange, ajoClient?.id, ajoClient?.owner_id, reloadKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Realtime: sync balance/contributions from business side ────────────
   useEffect(() => {
@@ -2833,6 +2858,18 @@ export default function AjoMemberPortal({ session, ajoClient }) {
           </div>
         </header>
 
+        {/* Stale-data indicator — shown when balance comes from auth-token fallback */}
+        {isStale && !loadingData && (
+          <div className="flex-none flex items-center justify-between px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800/30">
+            <p className="text-xs text-amber-700 dark:text-amber-400 leading-snug">
+              Showing last known balance — reconnect to refresh
+            </p>
+            <button onClick={retryLoad} className="text-xs font-bold text-amber-700 dark:text-amber-400 ml-3 flex-shrink-0 active:opacity-60">
+              Refresh
+            </button>
+          </div>
+        )}
+
         {/* Content */}
         <main className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
           <AnnouncementBarSlot campaigns={annBars} loading={camLoading} recordEvent={recordCamEvent} />
@@ -2904,6 +2941,32 @@ export default function AjoMemberPortal({ session, ajoClient }) {
             </>
           )}
         </main>
+
+        {/* Load-failure banner — all 5 RPCs rejected and no fallback balance available */}
+        {portalLoadError && !loadingData && (
+          <div className="absolute bottom-[70px] inset-x-0 z-50 px-4">
+            <div className="bg-orange-600 text-white rounded-2xl px-4 py-3 shadow-xl flex items-start gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold">Couldn't load your data</p>
+                <p className="text-xs opacity-80 mt-0.5">Check your connection and try again.</p>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button
+                  onClick={retryLoad}
+                  disabled={loadingData}
+                  className="text-xs font-bold bg-white/20 hover:bg-white/30 px-2 py-1 rounded-lg disabled:opacity-50 transition-opacity"
+                >
+                  Retry
+                </button>
+                <button onClick={() => setPortalLoadError(false)} className="text-white/70 hover:text-white">
+                  <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Powered by card — always visible above bottom nav on client portals */}
         <PoweredByCardSlot portalType="ajo_client" businessId={client?.owner_id} />
