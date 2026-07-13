@@ -111,13 +111,24 @@ serve(async (req) => {
     // ── Refresh client data by ID (session already validated) ─────
     if (action === "get-client") {
       const { client_id } = body as { client_id: string };
-      const { data: client } = await sb
+      const { data: clientRaw, error: clientErr } = await sb
         .from("aso_clients")
         .select(CLIENT_SELECT)
         .eq("id", client_id)
         .maybeSingle();
+      // If the ajo_groups join fails (e.g. FK not yet in PostgREST schema cache),
+      // retry without the join so ajo_group_id is still returned and the portal loads.
+      let client: Record<string, unknown> | null = clientRaw as Record<string, unknown> | null;
+      if (clientErr && !client) {
+        const { data: fallback } = await sb
+          .from("aso_clients")
+          .select(CLIENT_SELECT.replace(/,?\s*ajo_groups\(name\)/, ""))
+          .eq("id", client_id)
+          .maybeSingle();
+        client = fallback as Record<string, unknown> | null;
+      }
       if (!client) return json({ error: "Client not found" }, 404);
-      return json({ client: normalizeClient(client as Record<string, unknown>) });
+      return json({ client: normalizeClient(client) });
     }
 
     // ── Contribution history ───────────────────────────────────────

@@ -3544,8 +3544,9 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
           ajoFn("get-rotation", { group_id: groupId, client_id: ajoClient.id })
             .then(rd => {
               if (rd?.group) setRotationData(rd);
+              else console.warn("[rotation] response missing group:", rd);
             })
-            .catch(() => null)
+            .catch(e => console.error("[rotation] fetch failed:", e?.message))
             .finally(() => setRotationLoading(false));
         }
       })
