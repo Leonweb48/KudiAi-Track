@@ -184,6 +184,7 @@ export default function EsusuRotationDashboard({
   const [payoutResult,  setPayoutResult] = useState(null); // payout success data
   const [closingRound,  setClosingRound] = useState(false);
   const [closeResult,   setCloseResult]  = useState(null);
+  const [closeConfirm,  setCloseConfirm] = useState(false);
 
   const { group = null, round = null, turns = [], members = [], contribution_ticks = {}, pot_size = 0, pending_debts = [] } = data || {};
 
@@ -192,9 +193,11 @@ export default function EsusuRotationDashboard({
   pending_debts.forEach(d => { debtMap[d.debtor_client_id] = Number(d.amount || 0); });
   const showNames = isOwner || (group?.privacy_show_names !== false);
 
-  const currentTurn  = useMemo(() => turns.find(t => t.status === "current"),  [turns]);
+  const currentTurn   = useMemo(() => turns.find(t => t.status === "current"),  [turns]);
   const upcomingCount = useMemo(() => turns.filter(t => t.status === "upcoming").length, [turns]);
   const paidCount     = useMemo(() => turns.filter(t => t.status === "paid").length,     [turns]);
+  const nextTurn      = useMemo(() => [...turns].filter(t => t.status === "upcoming").sort((a, b) => a.position - b.position)[0] || null, [turns]);
+  const myTurnIsNext  = nextTurn?.client_id === myClientId;
 
   const handlePin = async (pin) => {
     if (!pinFor) return;
@@ -230,8 +233,8 @@ export default function EsusuRotationDashboard({
   };
 
   const handleCloseRound = async () => {
-    if (!window.confirm("Close this round? Any unpaid turns will be marked skipped.")) return;
     setClosingRound(true); setActionErr("");
+    setCloseConfirm(false);
     try {
       const result = await onCloseRound(round.id);
       setCloseResult(result);
@@ -320,69 +323,114 @@ export default function EsusuRotationDashboard({
 
   return (
     <>
-      {/* Pot + ticks panel */}
-      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Round {round.round_number} · {roundProgress}</p>
-          {isOwner && (
-            <span className="text-[10px] text-brand-500 dark:text-brand-400 font-bold">
-              {round.status === "active" ? "Active" : "Closed"}
-            </span>
-          )}
-        </div>
+      {/* Round label */}
+      <div className="flex items-center justify-between px-1">
+        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Round {round.round_number} · {roundProgress}</p>
+        {isOwner && (
+          <span className="text-[10px] text-brand-500 dark:text-brand-400 font-bold">
+            {round.status === "active" ? "Active" : "Closed"}
+          </span>
+        )}
+      </div>
 
-        {/* Pot size */}
-        <div className="flex items-center justify-between bg-brand-50 dark:bg-brand-900/20 rounded-xl px-4 py-3">
-          <div>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold">Current pot</p>
-            <p className="text-xl font-black text-navy dark:text-white">{fmtCur(pot_size)}</p>
-          </div>
-          {currentTurn && (
-            <div className="text-right">
-              <p className="text-[10px] text-slate-400">Collecting now</p>
-              <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
+      {/* Navy hero stat — ERD-09 */}
+      <div className="bg-[#16255A] rounded-2xl px-5 py-5">
+        <p className="text-[11px] font-bold text-white/50 uppercase tracking-widest mb-1">Current Pot</p>
+        <p className="text-[34px] font-black text-white leading-none tracking-tight">{fmtCur(pot_size)}</p>
+        {currentTurn && (
+          <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[10px] text-white/50 font-semibold uppercase tracking-wider">Collecting now</p>
+              <p className="text-sm font-extrabold text-white truncate">
                 {displayName(currentTurn.client_name, showNames)}
               </p>
-              {currentTurn.expected_payout_date && (
-                <p className="text-[10px] text-slate-400 mt-0.5">
-                  Due {fmtDate(currentTurn.expected_payout_date)}
-                </p>
-              )}
             </div>
-          )}
-        </div>
-
-        {/* Contribution ticks */}
-        {Object.keys(contribution_ticks).length > 0 && (
-          <div>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">This period</p>
-            <div className="flex flex-wrap gap-2">
-              {members.map(mb => {
-                const hasPaid  = contribution_ticks[mb.id];
-                const debtAmt  = debtMap[mb.id];
-                const isMe     = mb.id === myClientId;
-                return (
-                  <div key={mb.id} title={displayName(mb.display_name, showNames)}
-                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold border transition
-                      ${isMe ? "ring-2 ring-brand-500 ring-offset-1" : ""}
-                      ${hasPaid
-                        ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800/50 text-green-700 dark:text-green-300"
-                        : debtAmt
-                        ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800/50 text-red-600 dark:text-red-400"
-                        : "bg-slate-50 dark:bg-slate-700/50 border-slate-200 dark:border-slate-600 text-slate-400"
-                      }`}>
-                    <span>{hasPaid ? "✓" : debtAmt ? "!" : "·"}</span>
-                    <span>{displayName(mb.display_name, showNames)}</span>
-                    {debtAmt && isOwner && (
-                      <span className="opacity-70">{fmtCur(debtAmt)}</span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+            {currentTurn.expected_payout_date && (
+              <div className="text-right flex-shrink-0">
+                <p className="text-[10px] text-white/50">Payout due</p>
+                <p className="text-xs font-bold text-white/80">{fmtDate(currentTurn.expected_payout_date)}</p>
+              </div>
+            )}
           </div>
         )}
       </div>
+
+      {/* Contribution ticks */}
+      {Object.keys(contribution_ticks).length > 0 && (
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 px-4 py-3 space-y-2">
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">This period</p>
+          <div className="flex flex-wrap gap-2">
+            {members.map(mb => {
+              const hasPaid  = contribution_ticks[mb.id];
+              const debtAmt  = debtMap[mb.id];
+              const isMe     = mb.id === myClientId;
+              return (
+                <div key={mb.id} title={displayName(mb.display_name, showNames)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold border transition
+                    ${isMe ? "ring-2 ring-brand-500 ring-offset-1" : ""}
+                    ${hasPaid
+                      ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800/50 text-green-700 dark:text-green-300"
+                      : debtAmt
+                      ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800/50 text-red-600 dark:text-red-400"
+                      : "bg-slate-50 dark:bg-slate-700/50 border-slate-200 dark:border-slate-600 text-slate-400"
+                    }`}>
+                  <span>{hasPaid ? "✓" : debtAmt ? "!" : "·"}</span>
+                  <span>{displayName(mb.display_name, showNames)}</span>
+                  {debtAmt && isOwner && (
+                    <span className="opacity-70">{fmtCur(debtAmt)}</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Avatar rail — current turn highlighted */}
+      <div className="overflow-x-auto -mx-1 px-1">
+        <div className="flex gap-4 pb-1" style={{ minWidth: "max-content" }}>
+          {[...turns].sort((a, b) => a.position - b.position).map(turn => {
+            const isCur  = turn.status === "current";
+            const isPaid = turn.status === "paid";
+            const isSkip = turn.status === "skipped";
+            const isMine = turn.client_id === myClientId;
+            return (
+              <div key={turn.id} className="flex flex-col items-center gap-1">
+                <div className={`flex items-center justify-center rounded-full font-black transition
+                  ${isCur
+                    ? "w-12 h-12 text-[13px] bg-brand-500 text-white ring-4 ring-brand-200 dark:ring-brand-800 shadow-md"
+                    : "w-10 h-10 text-[11px]"}
+                  ${!isCur && isPaid  ? "bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400" : ""}
+                  ${!isCur && isSkip  ? "bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400" : ""}
+                  ${!isCur && !isPaid && !isSkip ? "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300" : ""}
+                  ${isMine && !isCur  ? "ring-2 ring-brand-400 dark:ring-brand-500" : ""}`}>
+                  {initials(turn.client_name)}
+                </div>
+                <span className={`text-[9px] font-bold leading-none ${isCur ? "text-brand-500 dark:text-brand-400" : "text-slate-400 dark:text-slate-500"}`}>
+                  {turn.position}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Your turn is next banner */}
+      {myTurnIsNext && (
+        <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/40 rounded-2xl px-4 py-3 flex items-center gap-3">
+          <div className="w-8 h-8 bg-amber-100 dark:bg-amber-900/40 rounded-full flex items-center justify-center flex-shrink-0">
+            <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-amber-600 dark:text-amber-400" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+              <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+            </svg>
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs font-extrabold text-amber-700 dark:text-amber-400">Your turn is next</p>
+            <p className="text-[11px] text-amber-600 dark:text-amber-500 leading-relaxed">
+              Be ready — you collect after the current member{nextTurn?.expected_payout_date ? `. Expected ${fmtDate(nextTurn.expected_payout_date)}` : ""}.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Payout blocked — missing contributors */}
       {payoutBlocked && (
@@ -523,8 +571,8 @@ export default function EsusuRotationDashboard({
                 </span>
 
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className="text-sm font-bold text-slate-800 dark:text-white truncate">
+                  <div className="flex items-center gap-2 flex-wrap min-w-0">
+                    <p className="text-sm font-bold text-slate-800 dark:text-white truncate min-w-0">
                       {displayName(turn.client_name, showNames)}
                       {isMine && <span className="ml-1 text-[10px] font-semibold text-brand-500">(You)</span>}
                     </p>
@@ -605,14 +653,33 @@ export default function EsusuRotationDashboard({
         </div>
       )}
 
-      {/* Close round button */}
-      {isOwner && onCloseRound && (
+      {/* Close round — ERD-13: inline amber confirm, no window.confirm, no PIN */}
+      {isOwner && onCloseRound && !closeConfirm && (
         <button
-          onClick={handleCloseRound}
+          onClick={() => setCloseConfirm(true)}
           disabled={closingRound}
           className="w-full py-3 border-2 border-dashed border-slate-200 dark:border-slate-600 text-slate-400 dark:text-slate-500 rounded-2xl font-bold text-sm transition hover:border-red-300 hover:text-red-500 dark:hover:border-red-700 dark:hover:text-red-400 active:scale-[0.99]">
-          {closingRound ? "Closing…" : "Close Round"}
+          Close Round
         </button>
+      )}
+      {isOwner && onCloseRound && closeConfirm && (
+        <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/40 rounded-2xl p-4 space-y-3">
+          <p className="text-sm font-extrabold text-amber-800 dark:text-amber-300">Close this round?</p>
+          <p className="text-xs text-amber-700 dark:text-amber-500 leading-relaxed">
+            Any unpaid turns will be marked as skipped. This action cannot be undone.
+          </p>
+          <div className="flex gap-2">
+            <button onClick={() => setCloseConfirm(false)}
+              className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm transition active:scale-[0.99]">
+              Cancel
+            </button>
+            <button onClick={handleCloseRound} disabled={closingRound}
+              className="flex-1 py-2.5 bg-amber-600 disabled:opacity-50 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2">
+              {closingRound && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+              {closingRound ? "Closing…" : "Close Round"}
+            </button>
+          </div>
+        </div>
       )}
 
       {/* PIN modal */}
