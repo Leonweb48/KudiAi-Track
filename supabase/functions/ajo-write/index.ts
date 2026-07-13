@@ -470,6 +470,32 @@ serve(async (req: Request) => {
     if (error) return json({ ok: false, error: error.message });
 
     const rpcWd = data as Record<string, unknown>;
+
+    // RPC returns ok:false on domain errors (e.g. "Insufficient balance") — these are
+    // not PostgreSQL errors so `error` is null above; guard explicitly here.
+    if (!rpcWd?.ok) {
+      const rpcErr = (rpcWd?.error as string) || "Withdrawal failed";
+      // Auto-reject the request so it does not remain pending — the client must
+      // re-submit once their balance is sufficient.
+      if (request_id) {
+        await sb.from("ajo_withdrawal_requests")
+          .update({ status: "rejected", approved_at: new Date().toISOString() })
+          .eq("id", request_id);
+        const rCtx = await fetchEmailContext(sb, client_id, ownerId, user.id);
+        await fireAjoEmail("ajo_withdrawal_rejected", {
+          client_email:  rCtx.clientEmail,
+          client_name:   rCtx.clientName,
+          user_email:    rCtx.ownerEmail,
+          business_name: rCtx.businessName,
+          group_name:    "",
+          amount:        gross_amount,
+          reason:        `Insufficient balance at time of approval. ${rpcErr}`,
+          date:          new Date().toLocaleDateString("en-NG"),
+        }).catch(() => {});
+      }
+      return json({ ok: false, error: rpcErr }, 400);
+    }
+
     const ctx   = await fetchEmailContext(sb, client_id, ownerId, user.id);
     if (request_id) {
       // Request-based approval — send the approval-specific email server-side

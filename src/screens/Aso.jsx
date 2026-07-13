@@ -431,6 +431,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
   const [withdrawalRequests,  setWithdrawalRequests]  = useState([]);
   const [processingId,        setProcessingId]        = useState(null);
+  const [approveError,        setApproveError]        = useState({ id: null, text: "" });
   const [txnPin,              setTxnPin]              = useState(null);
   const [contribSuccess,      setContribSuccess]      = useState(null); // { client, amount, showShare }
   const [wdError,             setWdError]             = useState(null);
@@ -1146,14 +1147,15 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         },
       });
       if (writeErr || !writeData?.ok) {
-        console.error("Approve failed:", writeErr?.message || writeData?.error);
-        setProcessingId(null);
-        return { error: writeData?.error || writeErr?.message || "Approval failed" };
+        const errMsg = writeData?.error || writeErr?.message || "Approval failed";
+        setApproveError({ id: req.id, text: errMsg });
+        reloadWithdrawalRequests(); // request was auto-rejected server-side
+        return;
       }
-
+      setApproveError({ id: null, text: "" });
       reloadWithdrawalRequests();
     } catch (e) {
-      console.error("Approve failed:", e);
+      setApproveError({ id: req.id, text: e?.message || "Approval failed" });
     } finally {
       setProcessingId(null);
     }
@@ -1403,6 +1405,11 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                   {isProc ? "…" : "Reject"}
                 </button>
               </div>
+              {approveError.id === req.id && (
+                <p className="mt-2 text-[10px] font-bold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 rounded-xl px-3 py-2 leading-relaxed">
+                  {approveError.text}
+                </p>
+              )}
             </div>
           );
         };
