@@ -2644,7 +2644,6 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                     const isRotating  = grp.group_mode === "rotating";
                     const pendingAppr   = groupApprovals.find(r => r.target_id === grp.id);
                     const isPendingEdit = pendingAppr?.request_type === "group_edit";
-                    const isPendingDel  = pendingAppr?.request_type === "group_delete";
                     const isLocked      = Boolean(pendingAppr);
                     const approvalMsg   = groupApprMsg.id === grp.id ? groupApprMsg : null;
                     const isEditOpen    = editingGroup === grp.id;
