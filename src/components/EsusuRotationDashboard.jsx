@@ -159,6 +159,40 @@ function SetupView({ members = [], loading, onStart }) {
   );
 }
 
+// ── Loading skeleton — mirrors active-round layout to eliminate CLS ─────────
+function SkeletonEsusuRotation() {
+  return (
+    <>
+      {/* Round label row */}
+      <div className="w-44 h-[11px] rounded-full bg-slate-200 dark:bg-slate-700 animate-pulse" />
+      {/* Navy hero card — same shell as the real card */}
+      <div className="bg-[#16255A] rounded-2xl px-5 py-5 overflow-hidden animate-pulse">
+        <div className="w-20 h-[11px] rounded-full bg-white/20 mb-1" />
+        <div className="w-40 h-[34px] rounded-lg bg-white/20" />
+        <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between gap-3">
+          <div>
+            <div className="w-24 h-[10px] rounded-full bg-white/20 mb-1.5" />
+            <div className="w-32 h-[14px] rounded-lg bg-white/20" />
+          </div>
+          <div className="flex flex-col items-end">
+            <div className="w-16 h-[10px] rounded-full bg-white/20 mb-1.5" />
+            <div className="w-20 h-3 rounded-lg bg-white/20" />
+          </div>
+        </div>
+      </div>
+      {/* Avatar rail — 4 placeholder circles matching real turn avatars */}
+      <div className="flex gap-4 overflow-hidden">
+        {[0, 1, 2, 3].map(i => (
+          <div key={i} className="flex flex-col items-center gap-1 flex-shrink-0 animate-pulse">
+            <div className={`rounded-full bg-slate-200 dark:bg-slate-700 ${i === 0 ? "w-12 h-12" : "w-10 h-10"}`} />
+            <div className="w-3 h-[9px] rounded-full bg-slate-200 dark:bg-slate-700" />
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
 // ── Main component ─────────────────────────────────────────────────────────
 export default function EsusuRotationDashboard({
   data,
@@ -271,7 +305,7 @@ export default function EsusuRotationDashboard({
     setPinFor({ action: "reorder" });
   };
 
-  if (loading) return <Spin />;
+  if (loading) return <SkeletonEsusuRotation />;
   if (!group) return null;
 
   // Closed round summary

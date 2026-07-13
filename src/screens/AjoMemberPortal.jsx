@@ -166,19 +166,20 @@ const Sk = ({ w = "w-full", h = "h-4", r = "rounded-xl", className = "" }) => (
 function SkeletonHome() {
   return (
     <div className="px-4 pt-5 pb-36 space-y-4">
-      {/* Greeting */}
-      <div className="space-y-2">
-        <Sk w="w-28" h="h-3" r="rounded-full" />
-        <Sk w="w-44" h="h-5" r="rounded-full" />
+      {/* Greeting — 3 lines: text-sm label / text-2xl name / text-[11px] date ≈ 60px */}
+      <div className="space-y-[5px]">
+        <Sk w="w-24" h="h-[14px]" r="rounded-full" />
+        <Sk w="w-44" h="h-[24px]" r="rounded-lg" />
+        <Sk w="w-36" h="h-[11px]" r="rounded-full" />
       </div>
       {/* Insight pill */}
       <Sk h="h-11" r="rounded-2xl" />
-      {/* Hero card */}
-      <Sk h="h-[152px]" r="rounded-3xl" />
+      {/* Hero card — matches rounded-3xl py-5 card */}
+      <Sk h="h-[200px]" r="rounded-3xl" />
       {/* Status line */}
       <Sk w="w-52" h="h-3" r="rounded-full" />
-      {/* Quick actions */}
-      <Sk h="h-[148px]" r="rounded-2xl" />
+      {/* Quick actions — p-4 card with header + 2×2 button grid */}
+      <Sk h="h-[220px]" r="rounded-2xl" />
       {/* Cashback + services */}
       <Sk h="h-16" r="rounded-2xl" />
       <Sk h="h-[140px]" r="rounded-2xl" />
