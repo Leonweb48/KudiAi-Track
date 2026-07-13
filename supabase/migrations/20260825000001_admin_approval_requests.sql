@@ -235,9 +235,11 @@ $$;
 
 REVOKE ALL ON FUNCTION public.execute_credit_delete(UUID, UUID, TEXT) FROM PUBLIC;
 
--- ── 8. expire_stale_approval_requests (cron-callable) ────────────────────────
--- Marks pending requests older than 14 days as expired.
-CREATE OR REPLACE FUNCTION public.expire_stale_approval_requests()
+-- ── 8. expire_admin_approval_requests (cron-callable) ────────────────────────
+-- Marks pending admin_approval_requests older than 14 days as expired.
+-- Named distinctly from the existing expire_stale_approval_requests() which
+-- operates on the staff approval_requests table.
+CREATE OR REPLACE FUNCTION public.expire_admin_approval_requests()
 RETURNS INTEGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
   v_count INTEGER;
