@@ -3478,7 +3478,6 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
   }, []);
 
   const retryLoad = useCallback(() => {
-    setIsStale(false);
     setPortalLoadError(false);
     setReloadKey(k => k + 1);
   }, []);
@@ -3496,7 +3495,6 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
   useEffect(() => {
     if (mustChange || !ajoClient?.id) return;
     setLoadingData(true);
-    setIsStale(false);
     setPortalLoadError(false);
     Promise.allSettled([
       ajoFn("get-client",             { client_id: ajoClient.id, owner_id: ajoClient.owner_id }),
@@ -3526,14 +3524,17 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
         // Determine error / stale state based on what succeeded
         const allRejected = [clientRes, contribRes, ownerRes, reqRes, cycleRes]
           .every(r => r.status === "rejected");
-        if (allRejected) {
+        if (clientRes.status === "fulfilled") {
+          setIsStale(false);
+        } else if (allRejected) {
           if (ajoClient?.current_balance != null) {
             setIsStale(true);
           } else {
+            setIsStale(false);
             setPortalLoadError(true);
           }
-        } else if (clientRes.status === "rejected") {
-          // Balance shown is auth-token fallback (ajoClient prop), not live data
+        } else {
+          // clientRes rejected but some calls succeeded — balance is auth-token fallback
           setIsStale(true);
         }
 
@@ -3651,14 +3652,21 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
         </header>
 
         {/* Stale-data indicator — shown when balance comes from auth-token fallback */}
-        {isStale && !loadingData && (
+        {isStale && (
           <div className="flex-none flex items-center justify-between px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800/30">
             <p className="text-xs text-amber-700 dark:text-amber-400 leading-snug">
-              Showing last known balance — reconnect to refresh
+              {loadingData ? "Checking balance…" : "Showing last known balance — reconnect to refresh"}
             </p>
-            <button onClick={retryLoad} className="text-xs font-bold text-amber-700 dark:text-amber-400 ml-3 flex-shrink-0 active:opacity-60">
-              Refresh
-            </button>
+            {loadingData ? (
+              <svg className="animate-spin h-4 w-4 text-amber-600 dark:text-amber-400 ml-3 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+              </svg>
+            ) : (
+              <button onClick={retryLoad} className="text-xs font-bold text-amber-700 dark:text-amber-400 ml-3 flex-shrink-0 active:opacity-60">
+                Refresh
+              </button>
+            )}
           </div>
         )}
 
