@@ -2603,14 +2603,13 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
         // Guide first-time users to configure when the lock engages.
         // Pre-arm with a 5-min default so the lock always fires even if they dismiss the picker.
         if (isFirstSetup && autoLockSecs === null) {
-          setAutoLockSecs(300);
-          localStorage.setItem(LS_AUTO_LOCK_SECS, "300");
+          onAutoLockChanged(300);
           setTimeout(() => setShowLockPick(true), 500);
         }
       }
     } catch { setSecErr("Something went wrong. Try again."); }
     setSecBusy(false);
-  }, [secStep, secNewPin, lock, clientId, triggerSecShake, resetSecView, autoLockSecs]);
+  }, [secStep, secNewPin, lock, clientId, triggerSecShake, resetSecView, autoLockSecs, onAutoLockChanged]);
 
   // Transaction PIN change — step 1 (old PIN) → 2 (OTP) → 3 (new PIN) → 4 (confirm)
   const handleTxnPinStep = useCallback(async (pin) => {
