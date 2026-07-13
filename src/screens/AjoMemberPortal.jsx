@@ -27,6 +27,7 @@ import { useT, useLanguage } from "../contexts/LanguageContext";
 import { createReportPdf, fmtCurrency as pdfFmt, fmtDate as pdfFmtDate } from "../utils/generateReportPdf";
 import ContributionCard from "../components/ContributionCard";
 import EsusuRotationDashboard from "../components/EsusuRotationDashboard";
+import LegalScreen from "./LegalScreen";
 
 async function ajoFn(action, body = {}) {
   const { data, error } = await supabase.functions.invoke("ajo-portal", {
@@ -133,6 +134,7 @@ const P = {
   finger: "M12 10a2 2 0 00-2 2v4a2 2 0 004 0v-4a2 2 0 00-2-2z|M12 4a8 8 0 018 8|M4 12a8 8 0 018-8",
   alert:  "M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z|M12 9v4|M12 17h.01",
   help:   "M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3|M12 17h.01",
+  doc:    "M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z|M14 2v6h6|M16 13H8|M16 17H8|M10 9H8",
 };
 
 function SectionLabel({ children }) {
@@ -2538,6 +2540,8 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
   const [txnResetAt,   setTxnResetAt]   = useState(null);
   const [showLockPick, setShowLockPick] = useState(false);
   const [neverCaution, setNeverCaution] = useState(false);
+  const [legalView,     setLegalView]     = useState(null); // null | "terms" | "privacy"
+  const [consentRecord, setConsentRecord] = useState(null); // { tnc_version, privacy_version, consented_at }
 
   const autoLabel = autoLockSecs === null ? "Not configured" : autoLockSecs === 0 ? "Never" : (AUTO_LOCK_OPTIONS.find(o => o.secs === autoLockSecs)?.label || `${autoLockSecs}s`);
 
@@ -2546,6 +2550,20 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
       .then(d => { if (d?.pin_set != null) setTxnPinSet(!!d.pin_set); })
       .catch(() => {});
   }, [clientId]);
+
+  useEffect(() => {
+    const uid = session?.user?.id;
+    if (!uid) return;
+    supabase
+      .from("user_consents")
+      .select("tnc_version, privacy_version, consented_at")
+      .eq("user_id", uid)
+      .order("consented_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => { if (data) setConsentRecord(data); })
+      .catch(() => {});
+  }, [session?.user?.id]);
 
   const triggerSecShake = useCallback(() => {
     setSecShake(true); setTimeout(() => setSecShake(false), 450);
@@ -3081,6 +3099,41 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
         </SettingsCard>
       </div>
 
+      {/* Legal */}
+      <div className="px-4 mb-5">
+        <SectionLabel>Legal</SectionLabel>
+        <SettingsCard>
+          <Row
+            iconCls="bg-slate-100 dark:bg-slate-700"
+            icon={<RowIcon d={P.doc} color="#475569" />}
+            label="Terms & Conditions"
+            sub="View the full terms of service"
+            onClick={() => setLegalView("terms")}
+          />
+          <Row
+            iconCls="bg-slate-100 dark:bg-slate-700"
+            icon={<RowIcon d={P.doc} color="#475569" />}
+            label="Privacy Policy"
+            sub="How we collect and use your data"
+            onClick={() => setLegalView("privacy")}
+          />
+          {consentRecord && (
+            <div className="flex items-center gap-3.5 px-4 py-[14px]">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-emerald-50 dark:bg-emerald-900/20">
+                <Svg d={P.check} size={20} color="#10b981" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-[14px] leading-snug text-slate-700 dark:text-slate-200">Your consent record</p>
+                <p className="text-[12px] text-slate-400 dark:text-slate-500 mt-0.5 leading-relaxed">
+                  You accepted T&amp;C v{consentRecord.tnc_version} and Privacy Policy v{consentRecord.privacy_version} on{" "}
+                  {new Date(consentRecord.consented_at).toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" })}
+                </p>
+              </div>
+            </div>
+          )}
+        </SettingsCard>
+      </div>
+
       {/* Change Password */}
       <div className="px-4 mb-3">
         <button onClick={onChangePwdClick}
@@ -3327,6 +3380,8 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
           await lock.enableLock();
         }} />
       )}
+
+      {legalView && <LegalScreen type={legalView} onBack={() => setLegalView(null)} />}
     </div>
   );
 }
