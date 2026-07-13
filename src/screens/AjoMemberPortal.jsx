@@ -7,7 +7,7 @@ import { fmt, fmtDate, fmtDateTime, ledgerTypeLabel } from "../utils/helpers";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
 import Icon from "../components/Icon";
 import Modal from "../components/shared/Modal";
-import { useBiometricLock } from "../hooks/useBiometricLock";
+import { useBiometricLock, sha256, LS_PIN_HASH } from "../hooks/useBiometricLock";
 import { useNotifications } from "../hooks/useNotifications";
 import { useCampaigns } from "../hooks/useCampaigns";
 import { usePartnerOffers } from "../hooks/usePartnerOffers";
@@ -104,6 +104,17 @@ function Svg({ d, size = 18, color = "currentColor", sw = 2 }) {
     </svg>
   );
 }
+
+const AUTO_LOCK_OPTIONS = [
+  { label: "30 seconds",  secs: 30   },
+  { label: "1 minute",    secs: 60   },
+  { label: "5 minutes",   secs: 300  },
+  { label: "15 minutes",  secs: 900  },
+  { label: "30 minutes",  secs: 1800 },
+  { label: "Never",       secs: 0    },
+];
+const LS_AUTO_LOCK_SECS = "kt_auto_lock_secs";
+const LS_LAST_HIDDEN    = "kt_last_hidden";
 
 const P = {
   in:     "M12 19V5|M5 12l7-7 7 7",
@@ -318,6 +329,223 @@ function PinSetupModal({ onDone, onClose }) {
         </p>
       </div>
     </Modal>
+  );
+}
+
+// ── Security PIN pad ───────────────────────────────────────────────────────
+// Full-screen numpad overlay at z-[300]. Shared by App PIN and Txn PIN flows.
+// minLength: when set, a "Continue" button appears at that count (for variable-length current PIN step).
+const PIN_PAD_CSS = `@keyframes ajoPinShake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-10px)}40%,80%{transform:translateX(10px)}}.ajo-pin-shake{animation:ajoPinShake 0.38s ease}`;
+
+function AjoPinPad({ title, subtitle, length = 6, minLength, onComplete, onCancel, error, shaking, loading, hint }) {
+  const [digits, setDigits] = useState("");
+
+  useEffect(() => {
+    if (shaking) { const t = setTimeout(() => setDigits(""), 420); return () => clearTimeout(t); }
+  }, [shaking]);
+
+  const addDigit = useCallback((d) => {
+    if (loading) return;
+    setDigits(prev => {
+      if (prev.length >= length) return prev;
+      const next = prev + d;
+      if (next.length === length) setTimeout(() => { onComplete(next); setDigits(""); }, 120);
+      return next;
+    });
+  }, [loading, length, onComplete]);
+
+  const del = useCallback(() => { if (!loading) setDigits(v => v.slice(0, -1)); }, [loading]);
+
+  const manualSubmit = () => { if (digits.length >= (minLength || length)) { const d = digits; setDigits(""); onComplete(d); } };
+  const showContinue = minLength && digits.length >= minLength && digits.length < length;
+
+  return (
+    <div className="fixed inset-0 z-[300] flex flex-col bg-white dark:bg-slate-900 select-none"
+      style={{ paddingTop: "max(0px, env(safe-area-inset-top, 0px))", paddingBottom: "max(0px, env(safe-area-inset-bottom, 0px))" }}>
+      <style>{PIN_PAD_CSS}</style>
+
+      <div className="flex items-center px-4 pt-4 pb-1 flex-shrink-0">
+        {onCancel && (
+          <button onClick={onCancel} className="w-10 h-10 rounded-xl flex items-center justify-center active:scale-90 transition">
+            <Svg d={P.back} size={18} color="#64748b" />
+          </button>
+        )}
+      </div>
+
+      <div className="flex-1 flex flex-col items-center justify-center gap-6 px-8">
+        <div className="text-center space-y-1.5">
+          <p className="text-xl font-extrabold text-slate-800 dark:text-slate-100">{title}</p>
+          {subtitle && <p className="text-sm text-slate-400 dark:text-slate-500 leading-relaxed">{subtitle}</p>}
+        </div>
+
+        <div className={`flex gap-[18px] ${shaking ? "ajo-pin-shake" : ""}`}>
+          {Array.from({ length }).map((_, i) => (
+            <div key={i} className={`w-[14px] h-[14px] rounded-full border-2 transition-all duration-150 ${
+              i < digits.length ? "bg-brand-500 border-brand-500 scale-110" : "border-slate-300 dark:border-slate-600"
+            }`} />
+          ))}
+        </div>
+
+        {error ? (
+          <p className="text-sm text-red-500 font-semibold text-center -mt-1">{error}</p>
+        ) : hint ? (
+          <p className="text-[12px] text-slate-400 text-center -mt-1">{hint}</p>
+        ) : null}
+
+        {showContinue && !loading && (
+          <button onClick={manualSubmit}
+            className="px-8 py-2.5 bg-brand-500 text-white rounded-xl font-bold text-sm active:scale-95 transition -mt-1">
+            Continue
+          </button>
+        )}
+      </div>
+
+      <div className="flex-shrink-0 px-6 pb-6">
+        {loading ? (
+          <div className="flex justify-center py-10">
+            <div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-3 gap-3 max-w-[288px] mx-auto">
+            {[1,2,3,4,5,6,7,8,9,"",0,"del"].map((k, i) => {
+              if (k === "") return <div key={i} />;
+              if (k === "del") return (
+                <button key={i} onClick={del}
+                  className="h-[62px] rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center active:scale-95 active:bg-slate-200 dark:active:bg-slate-700 transition">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" width={20} height={20}>
+                    <path d="M21 4H8l-7 8 7 8h13a2 2 0 002-2V6a2 2 0 00-2-2z" />
+                    <line x1="18" y1="9" x2="12" y2="15" /><line x1="12" y1="9" x2="18" y2="15" />
+                  </svg>
+                </button>
+              );
+              return (
+                <button key={i} onClick={() => addDigit(String(k))} onPaste={e => e.preventDefault()}
+                  className="h-[62px] rounded-2xl bg-slate-100 dark:bg-slate-800 text-[22px] font-bold text-slate-800 dark:text-slate-100 active:scale-95 active:bg-slate-200 dark:active:bg-slate-700 transition">
+                  {k}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── App lock screen ────────────────────────────────────────────────────────
+// Shown over the entire portal when isLocked=true. Manages its own digit state.
+function AjoLockScreen({ lock, onUnlock, clientName, initials }) {
+  const [digits,  setDigits]  = useState("");
+  const [error,   setError]   = useState("");
+  const [shaking, setShaking] = useState(false);
+  const [busy,    setBusy]    = useState(false);
+
+  const shake = () => { setShaking(true); setTimeout(() => setShaking(false), 420); };
+
+  const verifyPin = useCallback(async (pin) => {
+    setBusy(true); setError("");
+    try {
+      const stored = localStorage.getItem(LS_PIN_HASH);
+      if (!stored) { onUnlock(); return; }
+      const entered = await sha256(pin);
+      if (entered === stored) { onUnlock(); }
+      else { shake(); setError("Incorrect PIN"); setDigits(""); }
+    } finally { setBusy(false); }
+  }, [onUnlock]);
+
+  const addDigit = useCallback((d) => {
+    if (busy) return;
+    setDigits(prev => {
+      if (prev.length >= 6) return prev;
+      const next = prev + d;
+      if (next.length === 6) setTimeout(() => verifyPin(next), 120);
+      else if (next.length === 4) {
+        // Try 4-digit legacy PIN
+        setTimeout(async () => {
+          const stored = localStorage.getItem(LS_PIN_HASH);
+          if (stored) {
+            const h = await sha256(next);
+            if (h === stored) { onUnlock(); return; }
+          }
+          // 4-digit wrong or no match — wait for more digits
+        }, 0);
+      }
+      return next;
+    });
+  }, [busy, verifyPin, onUnlock]);
+
+  const del = () => { if (!busy) setDigits(v => v.slice(0, -1)); };
+
+  const tryBiometric = async () => {
+    setBusy(true);
+    try { await lock.unlockWithBiometric(); onUnlock(); }
+    catch { setError("Biometric failed — enter PIN"); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[302] flex flex-col bg-white dark:bg-slate-900 select-none"
+      style={{ paddingTop: "max(0px, env(safe-area-inset-top, 0px))", paddingBottom: "max(0px, env(safe-area-inset-bottom, 0px))" }}>
+      <style>{PIN_PAD_CSS}</style>
+
+      <div className="flex-1 flex flex-col items-center justify-center gap-6 px-8">
+        <div className="w-16 h-16 rounded-full bg-brand-500 flex items-center justify-center shadow-lg">
+          <span className="text-xl font-black text-white">{(initials || "M").slice(0, 2)}</span>
+        </div>
+        <div className="text-center -mt-1">
+          <p className="text-xs text-slate-400 dark:text-slate-500">Welcome back</p>
+          <p className="text-lg font-extrabold text-slate-800 dark:text-slate-100 mt-0.5">{clientName || "Member"}</p>
+        </div>
+
+        <div className={`flex gap-[18px] mt-2 ${shaking ? "ajo-pin-shake" : ""}`}>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className={`w-[14px] h-[14px] rounded-full border-2 transition-all duration-150 ${
+              i < digits.length ? "bg-brand-500 border-brand-500 scale-110" : "border-slate-300 dark:border-slate-600"
+            }`} />
+          ))}
+        </div>
+
+        {error && <p className="text-sm text-red-500 font-semibold text-center -mt-1">{error}</p>}
+        {!error && <p className="text-[12px] text-slate-400 dark:text-slate-500 -mt-1">Enter your 6-digit PIN</p>}
+
+        {lock.hasBiometric && (
+          <button onClick={tryBiometric} disabled={busy}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-brand-50 dark:bg-brand-900/20 text-brand-600 dark:text-brand-400 text-sm font-semibold active:scale-90 transition disabled:opacity-50">
+            <Svg d={P.finger} size={16} color="currentColor" />
+            Use Fingerprint / Face ID
+          </button>
+        )}
+      </div>
+
+      <div className="flex-shrink-0 px-6 pb-6">
+        {busy ? (
+          <div className="flex justify-center py-10">
+            <div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-3 gap-3 max-w-[288px] mx-auto">
+            {[1,2,3,4,5,6,7,8,9,"",0,"del"].map((k, i) => {
+              if (k === "") return <div key={i} />;
+              if (k === "del") return (
+                <button key={i} onClick={del}
+                  className="h-[62px] rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center active:scale-95 active:bg-slate-200 dark:active:bg-slate-700 transition">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" width={20} height={20}>
+                    <path d="M21 4H8l-7 8 7 8h13a2 2 0 002-2V6a2 2 0 00-2-2z" />
+                    <line x1="18" y1="9" x2="12" y2="15" /><line x1="12" y1="9" x2="18" y2="15" />
+                  </svg>
+                </button>
+              );
+              return (
+                <button key={i} onClick={() => addDigit(String(k))} onPaste={e => e.preventDefault()}
+                  className="h-[62px] rounded-2xl bg-slate-100 dark:bg-slate-800 text-[22px] font-bold text-slate-800 dark:text-slate-100 active:scale-95 active:bg-slate-200 dark:active:bg-slate-700 transition">
+                  {k}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -2267,7 +2495,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
 }
 
 // ── Me tab (Staff Portal structure) ───────────────────────────────────────
-function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProfileUpdate, contributions = [], withdrawRequests = [] }) {
+function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProfileUpdate, contributions = [], withdrawRequests = [], autoLockSecs, onAutoLockChanged }) {
   const [view,           setView]           = useState("menu");
   const [editForm,       setEditForm]       = useState({
     full_name: client?.full_name || "",
@@ -2307,6 +2535,96 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
 
   const phoneRegex = /^(\+?234|0)[7-9][01]\d{8}$/;
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  // ── Security section state ────────────────────────────────────────────
+  const [secView,      setSecView]      = useState(null); // null | "app-pin" | "txn-pin"
+  const [secStep,      setSecStep]      = useState(1);
+  const [secNewPin,    setSecNewPin]    = useState("");
+  const [secOtpCode,   setSecOtpCode]   = useState("");
+  const [secErr,       setSecErr]       = useState("");
+  const [secShake,     setSecShake]     = useState(false);
+  const [secBusy,      setSecBusy]      = useState(false);
+  const [txnPinSet,    setTxnPinSet]    = useState(false);
+  const [txnResetAt,   setTxnResetAt]   = useState(null);
+  const [showLockPick, setShowLockPick] = useState(false);
+  const [neverCaution, setNeverCaution] = useState(false);
+
+  const autoLabel = autoLockSecs === null ? "Not configured" : autoLockSecs === 0 ? "Never" : (AUTO_LOCK_OPTIONS.find(o => o.secs === autoLockSecs)?.label || `${autoLockSecs}s`);
+
+  useEffect(() => {
+    ajoFn("get-security-settings", { client_id: clientId })
+      .then(d => {
+        if (d?.txn_pin_reset_at) setTxnResetAt(d.txn_pin_reset_at);
+        if (d?.txn_pin_set != null) setTxnPinSet(!!d.txn_pin_set);
+      })
+      .catch(() => {});
+  }, [clientId]);
+
+  const triggerSecShake = useCallback(() => {
+    setSecShake(true); setTimeout(() => setSecShake(false), 450);
+  }, []);
+
+  const resetSecView = useCallback(() => {
+    setSecView(null); setSecStep(1); setSecNewPin(""); setSecOtpCode(""); setSecErr(""); setSecBusy(false);
+  }, []);
+
+  // App PIN change — step router
+  const handleAppPinStep = useCallback(async (pin) => {
+    setSecBusy(true); setSecErr("");
+    try {
+      if (secStep === 1) {
+        // Verify current PIN (client-side sha256 compare)
+        const stored = localStorage.getItem(LS_PIN_HASH);
+        if (stored) {
+          const h = await sha256(pin);
+          if (h !== stored) { triggerSecShake(); setSecErr("Incorrect PIN"); setSecBusy(false); return; }
+        }
+        setSecStep(2);
+      } else if (secStep === 2) {
+        setSecNewPin(pin);
+        setSecStep(3);
+      } else if (secStep === 3) {
+        if (pin !== secNewPin) { triggerSecShake(); setSecErr("PINs don't match — try again"); setSecBusy(false); return; }
+        await lock.setupPIN(pin);
+        ajoFn("set-app-pin", { client_id: clientId, pin }).catch(() => {});
+        resetSecView();
+      }
+    } catch { setSecErr("Something went wrong. Try again."); }
+    setSecBusy(false);
+  }, [secStep, secNewPin, lock, clientId, triggerSecShake, resetSecView]);
+
+  // Transaction PIN change — step router
+  const handleTxnPinStep = useCallback(async (pin) => {
+    setSecBusy(true); setSecErr("");
+    try {
+      if (secStep === 1) {
+        await ajoFn("verify-txn-pin", { client_id: clientId, pin });
+        await ajoFn("send-txn-pin-otp", { client_id: clientId });
+        setSecStep(2);
+      } else if (secStep === 3) {
+        setSecNewPin(pin);
+        setSecStep(4);
+      } else if (secStep === 4) {
+        if (pin !== secNewPin) { triggerSecShake(); setSecErr("PINs don't match — try again"); setSecBusy(false); return; }
+        await ajoFn("set-txn-pin", { client_id: clientId, new_pin: pin });
+        setTxnPinSet(true);
+        setTxnResetAt(new Date().toISOString());
+        resetSecView();
+      }
+    } catch (err) { setSecErr(err.message || "Verification failed — try again"); }
+    setSecBusy(false);
+  }, [secStep, secNewPin, clientId, triggerSecShake, resetSecView]);
+
+  const verifyTxnOtp = useCallback(async () => {
+    setSecBusy(true); setSecErr("");
+    try {
+      await ajoFn("verify-txn-pin-otp", { client_id: clientId, otp: secOtpCode });
+      setSecOtpCode(""); setSecStep(3);
+    } catch (err) { setSecErr(err.message || "Invalid code — check and try again"); }
+    setSecBusy(false);
+  }, [clientId, secOtpCode]);
+
+  const txnCooling = txnResetAt && (Date.now() - new Date(txnResetAt).getTime()) < 24 * 60 * 60 * 1000;
 
   const askAI = async (query) => {
     setAiLoading(true); setAiAnswer(""); setAiError("");
@@ -2704,41 +3022,63 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
       <div className="px-4 mb-5">
         <SectionLabel>Security</SectionLabel>
         <SettingsCard>
+          {/* 1 — App Lock PIN */}
           <Row
             iconCls="bg-blue-50 dark:bg-blue-900/20"
             icon={<RowIcon d={P.lock} color="#3b82f6" />}
-            label="App Lock"
-            sub={lock.enabled ? (lock.hasBiometric ? "Locked · Fingerprint / Face + PIN" : "Locked · PIN only") : lock.hasPIN ? "PIN set but lock is off" : "Protect app when you leave"}
-            onClick={async () => {
-              if (lock.enabled) { lock.disableLock(); }
-              else if (lock.hasPIN) { setLockBusy(true); await lock.enableLock(); setLockBusy(false); }
-              else {
-                const evt = new CustomEvent("ajo_open_pin_setup");
-                window.dispatchEvent(evt);
-              }
-            }}
-            right={
-              <button
-                onClick={async (e) => {
-                  e.stopPropagation();
-                  if (lock.enabled) { lock.disableLock(); }
-                  else if (lock.hasPIN) { setLockBusy(true); await lock.enableLock(); setLockBusy(false); }
-                  else { setShowPinSetup(true); }
-                }}
-                className={`w-12 h-6 rounded-full transition-colors duration-200 relative flex-shrink-0 ${lock.enabled ? "bg-brand-500" : "bg-slate-200 dark:bg-slate-600"}`}>
-                {lockBusy
-                  ? <span className="absolute inset-0 flex items-center justify-center"><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /></span>
-                  : <span className="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all duration-200" style={{ left: lock.enabled ? "calc(100% - 22px)" : "2px" }} />
-                }
-              </button>
-            }
+            label="App Lock PIN"
+            sub={lock.hasPIN ? "Change your 6-digit unlock PIN" : "Set a 6-digit PIN to lock this app"}
+            onClick={() => { setSecView("app-pin"); setSecStep(lock.hasPIN ? 1 : 2); setSecErr(""); setSecNewPin(""); }}
           />
+          {/* 2 — Transaction PIN */}
           <Row
             iconCls="bg-blue-50 dark:bg-blue-900/20"
             icon={<RowIcon d={P.shield} color="#3b82f6" />}
-            label={lock.hasPIN ? "Change PIN" : "Set PIN"}
-            sub={lock.hasPIN ? (lock.hasBiometric ? "Biometric registered · tap to change PIN" : "Change your 4-digit unlock PIN") : "Set a 4-digit PIN to enable App Lock"}
-            onClick={() => { const evt = new CustomEvent("ajo_open_pin_setup"); window.dispatchEvent(evt); }}
+            label="Transaction PIN"
+            sub={txnCooling
+              ? "Recently reset — high-value operations under 24h review"
+              : txnPinSet ? "Change your 4-digit transaction PIN" : "Set a 4-digit transaction PIN"}
+            onClick={() => { setSecView("txn-pin"); setSecStep(txnPinSet ? 1 : 3); setSecErr(""); setSecNewPin(""); setSecOtpCode(""); }}
+            right={txnCooling ? (
+              <span className="text-[11px] font-bold text-amber-500 dark:text-amber-400 flex-shrink-0">24h</span>
+            ) : undefined}
+          />
+          {/* 3 — Biometric Unlock (hidden when not supported) */}
+          {lock.bioAvailable && (
+            <Row
+              iconCls="bg-blue-50 dark:bg-blue-900/20"
+              icon={<RowIcon d={P.finger} color="#3b82f6" />}
+              label="Biometric Unlock"
+              sub={lock.hasBiometric ? "Fingerprint / Face ID enabled" : "Use fingerprint or face to unlock"}
+              onClick={async () => {
+                if (!lock.hasPIN) { setShowPinSetup(true); return; }
+                if (lock.hasBiometric) { lock.disableLock(); }
+                else { setLockBusy(true); await lock.enableLock(); setLockBusy(false); }
+              }}
+              right={
+                <button
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    if (!lock.hasPIN) { setShowPinSetup(true); return; }
+                    if (lock.hasBiometric) { lock.disableLock(); }
+                    else { setLockBusy(true); await lock.enableLock(); setLockBusy(false); }
+                  }}
+                  className={`w-12 h-6 rounded-full transition-colors duration-200 relative flex-shrink-0 ${lock.hasBiometric ? "bg-brand-500" : "bg-slate-200 dark:bg-slate-600"}`}>
+                  {lockBusy
+                    ? <span className="absolute inset-0 flex items-center justify-center"><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /></span>
+                    : <span className="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all duration-200" style={{ left: lock.hasBiometric ? "calc(100% - 22px)" : "2px" }} />
+                  }
+                </button>
+              }
+            />
+          )}
+          {/* 4 — Auto Lock */}
+          <Row
+            iconCls="bg-blue-50 dark:bg-blue-900/20"
+            icon={<RowIcon d={P.lock} color="#3b82f6" />}
+            label="Auto Lock"
+            sub={autoLockSecs === 0 ? "Auto lock is disabled" : autoLockSecs !== null ? `Locks after ${autoLabel}` : "Set how long before app locks"}
+            onClick={() => setShowLockPick(true)}
           />
         </SettingsCard>
       </div>
@@ -2786,6 +3126,147 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
         <p className="text-[11px] text-slate-400 dark:text-slate-500 font-medium">KudiAI Track &middot; Savings Member Portal</p>
         <p className="text-[10px] text-slate-300 dark:text-slate-600">Powered by AMAYA &amp; Co. Technologies<br />All rights reserved &copy; {YEAR}</p>
       </div>
+
+      {/* ── Auto Lock picker ───────────────────────────────────────────── */}
+      {showLockPick && (
+        <div className="fixed inset-0 z-[60] flex flex-col justify-end bg-black/40"
+          onClick={e => { if (e.target === e.currentTarget) setShowLockPick(false); }}>
+          <div className="bg-white dark:bg-slate-800 rounded-t-3xl pb-safe px-4 pt-5"
+            style={{ paddingBottom: "max(24px, env(safe-area-inset-bottom, 24px))" }}>
+            <p className="text-base font-extrabold text-slate-800 dark:text-slate-100 mb-4 text-center">Auto Lock</p>
+            {neverCaution && (
+              <div className="mb-3 px-4 py-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/30">
+                <p className="text-[12px] text-amber-700 dark:text-amber-400 leading-relaxed">
+                  Your app won&apos;t lock automatically. Anyone with access to your device can open it without a PIN.
+                </p>
+              </div>
+            )}
+            <div className="space-y-1">
+              {AUTO_LOCK_OPTIONS.map(opt => (
+                <button key={opt.secs} onClick={() => {
+                  if (opt.secs === 0 && !neverCaution) { setNeverCaution(true); return; }
+                  onAutoLockChanged?.(opt.secs);
+                  setShowLockPick(false);
+                  setNeverCaution(false);
+                }}
+                  className={`w-full py-3.5 px-4 rounded-2xl text-sm font-semibold text-left flex items-center justify-between transition-colors ${
+                    autoLockSecs === opt.secs
+                      ? "bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400"
+                      : "text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700/40"
+                  }`}>
+                  {opt.label}
+                  {autoLockSecs === opt.secs && <Svg d={P.check} size={16} color="currentColor" />}
+                </button>
+              ))}
+            </div>
+            <button onClick={() => { setShowLockPick(false); setNeverCaution(false); }}
+              className="mt-3 w-full py-3 text-sm text-slate-400 font-semibold">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── App Lock PIN flows (z-[300]) ────────────────────────────────── */}
+      {secView === "app-pin" && secStep === 1 && (
+        <AjoPinPad
+          length={6} minLength={4}
+          title="Enter current PIN"
+          subtitle="Enter your current app unlock PIN to continue"
+          onComplete={handleAppPinStep}
+          onCancel={resetSecView}
+          error={secErr} shaking={secShake} loading={secBusy}
+          hint="Type 4–6 digits and tap Continue, or enter all 6 for auto-submit"
+        />
+      )}
+      {secView === "app-pin" && secStep === 2 && (
+        <AjoPinPad
+          length={6}
+          title={lock.hasPIN ? "Enter new PIN" : "Set your PIN"}
+          subtitle="Choose a 6-digit unlock PIN for this app"
+          onComplete={handleAppPinStep}
+          onCancel={resetSecView}
+          error={secErr} shaking={secShake} loading={secBusy}
+        />
+      )}
+      {secView === "app-pin" && secStep === 3 && (
+        <AjoPinPad
+          length={6}
+          title="Confirm new PIN"
+          subtitle="Enter your new PIN one more time"
+          onComplete={handleAppPinStep}
+          onCancel={() => { setSecStep(2); setSecErr(""); }}
+          error={secErr} shaking={secShake} loading={secBusy}
+        />
+      )}
+
+      {/* ── Transaction PIN flows (z-[300]) ─────────────────────────────── */}
+      {secView === "txn-pin" && secStep === 1 && (
+        <AjoPinPad
+          length={4}
+          title="Enter current transaction PIN"
+          subtitle="Verify your identity before changing your transaction PIN"
+          onComplete={handleTxnPinStep}
+          onCancel={resetSecView}
+          error={secErr} shaking={secShake} loading={secBusy}
+        />
+      )}
+      {secView === "txn-pin" && secStep === 2 && (
+        <div className="fixed inset-0 z-[300] flex flex-col bg-white dark:bg-slate-900"
+          style={{ paddingTop: "max(0px, env(safe-area-inset-top, 0px))", paddingBottom: "max(0px, env(safe-area-inset-bottom, 0px))" }}>
+          <div className="flex items-center px-4 pt-4 pb-1">
+            <button onClick={resetSecView} className="w-10 h-10 rounded-xl flex items-center justify-center active:scale-90 transition">
+              <Svg d={P.back} size={18} color="#64748b" />
+            </button>
+            <p className="text-base font-extrabold text-slate-800 dark:text-slate-100 ml-2">Verify via Email</p>
+          </div>
+          <div className="flex-1 overflow-y-auto px-5 py-6 space-y-5">
+            <div className="bg-brand-50 dark:bg-brand-900/20 rounded-2xl p-4">
+              <p className="text-sm font-bold text-brand-700 dark:text-brand-300 mb-1">Check your email</p>
+              <p className="text-[13px] text-brand-600/80 dark:text-brand-400/80 leading-relaxed">
+                A 6-digit code was sent to <span className="font-bold">{client?.email || session?.user?.email}</span>. Enter it below.
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">Verification Code</p>
+              <input type="number" inputMode="numeric" value={secOtpCode}
+                onChange={e => { setSecOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6)); setSecErr(""); }}
+                onPaste={e => e.preventDefault()}
+                placeholder="000000"
+                className="w-full h-14 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 text-xl font-bold text-center tracking-[0.3em] text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/30"
+              />
+            </div>
+            {secErr && (
+              <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-900/30 text-red-600">
+                <Svg d={P.alert} size={15} color="currentColor" />
+                <p className="text-sm font-semibold">{secErr}</p>
+              </div>
+            )}
+            <button onClick={verifyTxnOtp} disabled={secOtpCode.length !== 6 || secBusy}
+              className="w-full h-12 rounded-2xl bg-brand-500 text-white font-bold text-sm disabled:opacity-50 active:scale-95 transition">
+              {secBusy ? "Verifying…" : "Verify Code"}
+            </button>
+          </div>
+        </div>
+      )}
+      {secView === "txn-pin" && secStep === 3 && (
+        <AjoPinPad
+          length={4}
+          title="Set new transaction PIN"
+          subtitle="Choose a 4-digit PIN for authorising transactions"
+          onComplete={handleTxnPinStep}
+          onCancel={resetSecView}
+          error={secErr} shaking={secShake} loading={secBusy}
+        />
+      )}
+      {secView === "txn-pin" && secStep === 4 && (
+        <AjoPinPad
+          length={4}
+          title="Confirm new PIN"
+          subtitle="Enter your new transaction PIN once more"
+          onComplete={handleTxnPinStep}
+          onCancel={() => { setSecStep(3); setSecErr(""); }}
+          error={secErr} shaking={secShake} loading={secBusy}
+        />
+      )}
 
       {/* Help & Support overlay (FAQ + AI Search + Support Tickets) */}
       {view === "faq" && (
@@ -2994,6 +3475,46 @@ export default function AjoMemberPortal({ session, ajoClient }) {
 
   const lock  = useBiometricLock(ajoClient?.id);
   const notif = useNotifications(ajoClient?.id);
+
+  // ── App lock: managed here so the lock screen covers header + nav ──────
+  const [isLocked,     setIsLocked]     = useState(false);
+  const [autoLockSecs, setAutoLockSecs] = useState(() => {
+    const v = localStorage.getItem(LS_AUTO_LOCK_SECS);
+    return v !== null ? parseInt(v, 10) : null; // null = not configured
+  });
+  const lastHiddenRef = useRef(null);
+  const autoLockSecsRef = useRef(autoLockSecs);
+  useEffect(() => { autoLockSecsRef.current = autoLockSecs; }, [autoLockSecs]);
+
+  useEffect(() => {
+    if (!lock.hasPIN) return;
+    const onHide = () => { lastHiddenRef.current = Date.now(); localStorage.setItem(LS_LAST_HIDDEN, String(Date.now())); };
+    const onShow = () => {
+      const secs = autoLockSecsRef.current;
+      if (secs === 0) return; // Never
+      const elapsed = Date.now() - (lastHiddenRef.current ?? parseInt(localStorage.getItem(LS_LAST_HIDDEN) || "0", 10));
+      const threshold = secs !== null ? secs * 1000 : 30000; // default 30s if not configured
+      if (elapsed >= threshold) setIsLocked(true);
+    };
+    const onVis = () => { if (document.visibilityState === "hidden") onHide(); else onShow(); };
+    document.addEventListener("visibilitychange", onVis);
+    // Capacitor
+    let capCleanup;
+    import("@capacitor/app").then(({ App: CapApp }) => {
+      CapApp.addListener("appStateChange", s => { if (!s.isActive) onHide(); else onShow(); })
+        .then(h => { capCleanup = h; });
+    }).catch(() => {});
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      capCleanup?.remove?.();
+    };
+  }, [lock.hasPIN]);
+
+  const handleAutoLockChanged = useCallback((secs) => {
+    setAutoLockSecs(secs);
+    localStorage.setItem(LS_AUTO_LOCK_SECS, String(secs));
+    if (secs === 0) { lock.disableLock(); } else if (lock.hasPIN) { lock.enableLock().catch(() => {}); }
+  }, [lock]);
   const { slotMap: camSlots, loading: camLoading, recordEvent: recordCamEvent } = useCampaigns(["announcement_bar","tab_card_quad","tab_card_duo"], "ajo_client", "ajo_client.home");
   const ajoTabCard = (camSlots.tab_card_quad || [])[0] ?? (camSlots.tab_card_duo || [])[0] ?? null;
   const annBars = camSlots.announcement_bar || [];
@@ -3235,6 +3756,8 @@ export default function AjoMemberPortal({ session, ajoClient }) {
               onProfileUpdate={updates => setClient(prev => ({ ...prev, ...updates }))}
               contributions={contributions}
               withdrawRequests={withdrawRequests}
+              autoLockSecs={autoLockSecs}
+              onAutoLockChanged={handleAutoLockChanged}
             />
           )}
           {!client && tab === "home" && <SkeletonHome />}
@@ -3346,6 +3869,16 @@ export default function AjoMemberPortal({ session, ajoClient }) {
       )}
       {showPwdModal && (
         <ChangePasswordModal onClose={() => setShowPwdModal(false)} />
+      )}
+
+      {/* App lock screen — covers header, content, and nav at z-[302] */}
+      {isLocked && lock.hasPIN && (
+        <AjoLockScreen
+          lock={lock}
+          onUnlock={() => setIsLocked(false)}
+          clientName={client?.full_name || ajoClient?.full_name}
+          initials={(client?.full_name || ajoClient?.full_name || "M").split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2)}
+        />
       )}
 
       {client && (
