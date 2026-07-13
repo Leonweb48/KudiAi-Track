@@ -619,7 +619,7 @@ function PayContributionModal({ client, clientGroup, onClose, onSuccess }) {
               const isActive = i === cur;
               const labels = ["Opening", "Paying", "Confirming"];
               return (
-                <React.Fragment key={step}>
+                <div key={step} className="flex items-center flex-1">
                   {i > 0 && <div className={`flex-1 h-0.5 rounded-full mx-1 ${isDone ? "bg-brand-500" : "bg-slate-200 dark:bg-slate-700"}`} />}
                   <div className="flex flex-col items-center gap-0.5">
                     <div className={`w-6 h-6 rounded-full flex items-center justify-center font-extrabold ${
@@ -633,7 +633,7 @@ function PayContributionModal({ client, clientGroup, onClose, onSuccess }) {
                     </div>
                     <span className={`text-[9px] font-bold leading-none ${isActive ? "text-brand-500 dark:text-brand-400" : "text-slate-400 dark:text-slate-500"}`}>{labels[i]}</span>
                   </div>
-                </React.Fragment>
+                </div>
               );
             })}
           </div>
