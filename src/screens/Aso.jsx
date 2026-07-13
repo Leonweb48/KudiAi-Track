@@ -533,7 +533,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     try {
       const { data, error } = await supabase
         .from("ajo_withdrawal_requests")
-        .select("*, aso_clients(full_name, email, membership_number, current_balance, total_withdrawn)")
+        .select("*, aso_clients(full_name, email, membership_number, current_balance, total_withdrawn, account_number, account_name, bank_name)")
         .in("status", ["pending", "held_24h"])
         .order("requested_at", { ascending: false });
       if (error) throw error;
@@ -1383,6 +1383,14 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                   <p className="text-[10px] text-slate-400 mt-0.5">{req.requested_at?.slice(0, 10)}</p>
                 </div>
               </div>
+              {(cl.account_number || cl.account_name) && (
+                <div className="mt-3 bg-slate-50 dark:bg-slate-700/40 rounded-xl px-3 py-2 space-y-0.5">
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Pay to</p>
+                  {cl.bank_name && <p className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">{cl.bank_name}</p>}
+                  {cl.account_number && <p className="text-[11px] font-mono text-slate-700 dark:text-slate-200 tracking-widest">{cl.account_number}</p>}
+                  {cl.account_name && <p className="text-[10px] text-slate-500 dark:text-slate-400">{cl.account_name}</p>}
+                </div>
+              )}
               <div className="flex gap-2 mt-3">
                 <button
                   onClick={() => setTxnPin({
