@@ -539,6 +539,29 @@ export default function App() {
             </div>
           )}
 
+          {store.loadError && (
+            <div className="fixed bottom-28 left-4 right-4 max-w-md mx-auto z-[58] bg-orange-600 text-white rounded-2xl px-4 py-3 shadow-lg flex items-start gap-3 fade-in" role="alert">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold">Couldn't load your data</p>
+                <p className="text-xs opacity-80 mt-0.5">Check your connection and try again.</p>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button
+                  onClick={() => store.reloadData()}
+                  disabled={store.loading}
+                  className="text-xs font-bold bg-white/20 hover:bg-white/30 px-2 py-1 rounded-lg disabled:opacity-50 transition-opacity"
+                >
+                  Retry
+                </button>
+                <button onClick={store.clearLoadError} className="text-white/70 hover:text-white">
+                  <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          )}
+
         </div>
       </div>
 

@@ -33,6 +33,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
   const [loading,     setLoading]     = useState(true);
   const [isOnline,    setIsOnline]    = useState(navigator.onLine);
   const [dbError,     setDbError]     = useState(null);
+  const [loadError,   setLoadError]   = useState(null);
   const [pendingSync, setPendingSync] = useState(0);
   const [isSyncing,   setIsSyncing]   = useState(false);
 
@@ -44,6 +45,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
   const loadData = useCallback(async () => {
     if (!userId) return;
     setLoading(true);
+    setLoadError(null);
 
     // ── Offline: serve from local cache ───────────────────────
     if (!navigator.onLine) {
@@ -193,8 +195,23 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
       setPendingSync(count);
     } catch { /**/ }
 
-    } catch (loadErr) {
-      setDbError(loadErr?.message || "Could not load your data. Check your connection and refresh.");
+    } catch {
+      const cached = loadCacheLS(`kt_store_${userId}`);
+      if (cached) {
+        if (cached.transactions) setTransactions(cached.transactions);
+        if (cached.credits)      setCredits(cached.credits);
+        if (cached.asoClients)   setAsoClients(cached.asoClients);
+        if (cached.profile) {
+          const dk = cached.profile.dark_mode ?? (localStorage.getItem("kuditrack_dark") === "1");
+          setProfileState(prev => ({
+            ...prev,
+            business_name: cached.profile.business_name || prev.business_name,
+            dark_mode: dk,
+          }));
+        }
+      } else {
+        setLoadError("Couldn't load your data — check your connection");
+      }
     } finally {
       setLoading(false);
     }
@@ -713,7 +730,8 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
   return {
     transactions, credits, asoClients, profile, staffMap,
     setProfile, isOnline, loading, pendingSync, isSyncing, runSync,
-    dbError, clearDbError: () => setDbError(null), reloadData: loadData,
+    dbError, clearDbError: () => setDbError(null),
+    loadError, clearLoadError: () => setLoadError(null), reloadData: loadData,
     addTransaction,
     patchTransactionNote,
     // Staff cannot delete transactions — only business owners (no staffId) can
