@@ -151,7 +151,8 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
       .in("aso_client_id", asoClients.map(c => c.id))
       .eq("type", "contribution")
       .gte("created_at", todayStart)
-      .then(({ data }) => setTodayAjo((data || []).reduce((s, c) => s + (parseFloat(c.amount) || 0), 0)));
+      .then(({ data }) => setTodayAjo((data || []).reduce((s, c) => s + (parseFloat(c.amount) || 0), 0)))
+      .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [asoClients.length]);
   const { slotMap, loading: camLoading, recordEvent } = useCampaigns(

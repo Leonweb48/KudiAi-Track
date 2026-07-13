@@ -433,12 +433,14 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [processingId,        setProcessingId]        = useState(null);
   const [txnPin,              setTxnPin]              = useState(null);
   const [contribSuccess,      setContribSuccess]      = useState(null); // { client, amount, showShare }
+  const [wdError,             setWdError]             = useState(null);
 
   const [pendingDeposits,     setPendingDeposits]     = useState([]);
   const [processingDepositId, setProcessingDepositId] = useState(null);
   const [rejectingDeposit,    setRejectingDeposit]    = useState(null);
   const [rejectReason,        setRejectReason]        = useState("");
   const [depositFeedback,     setDepositFeedback]     = useState(null); // { type:"ok"|"err", msg:string }
+  const [depError,            setDepError]            = useState(null);
 
   // Per-staff Ajo capability flags — null means owner (full access)
   const [staffAjoPerms, setStaffAjoPerms] = useState(null);
@@ -508,23 +510,34 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   };
 
   const reloadWithdrawalRequests = async () => {
-    const { data } = await supabase
-      .from("ajo_withdrawal_requests")
-      .select("*, aso_clients(full_name, email, membership_number, current_balance, total_withdrawn)")
-      .eq("status", "pending")
-      .order("requested_at", { ascending: false });
-    setWithdrawalRequests(data || []);
+    try {
+      const { data, error } = await supabase
+        .from("ajo_withdrawal_requests")
+        .select("*, aso_clients(full_name, email, membership_number, current_balance, total_withdrawn)")
+        .eq("status", "pending")
+        .order("requested_at", { ascending: false });
+      if (error) throw error;
+      setWithdrawalRequests(data || []);
+      setWdError(null);
+    } catch {
+      setWdError("Couldn't refresh — tap to retry");
+    }
   };
 
   const reloadPendingDeposits = async () => {
-    const { data, error } = await supabase
-      .from("ajo_contributions")
-      .select("*, aso_clients(full_name, email, membership_number)")
-      .eq("status", "pending")
-      .eq("type", "contribution")
-      .order("created_at", { ascending: false });
-    if (error) { console.error("reloadPendingDeposits:", error.message); return; }
-    setPendingDeposits(data || []);
+    try {
+      const { data, error } = await supabase
+        .from("ajo_contributions")
+        .select("*, aso_clients(full_name, email, membership_number)")
+        .eq("status", "pending")
+        .eq("type", "contribution")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      setPendingDeposits(data || []);
+      setDepError(null);
+    } catch {
+      setDepError("Couldn't refresh — tap to retry");
+    }
   };
 
   const loadGroups = async () => {
@@ -1151,6 +1164,15 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       </div>
 
       {/* Withdrawal requests panel */}
+      {wdError && (
+        <button onClick={reloadWithdrawalRequests}
+          className="w-full flex items-center justify-between px-3 py-2 mb-2 rounded-xl text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/30 active:opacity-60">
+          <span>{wdError}</span>
+          <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 flex-shrink-0 ml-2" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+            <path d="M1 4v6h6M23 20v-6h-6M20.49 9A9 9 0 005.64 5.64L1 10M23 14l-4.64 4.36A9 9 0 013.51 15" />
+          </svg>
+        </button>
+      )}
       {withdrawalRequests.length > 0 && (
         <div className="mb-4">
           <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2">
@@ -1214,6 +1236,15 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       )}
 
       {/* Pending deposits panel */}
+      {depError && (
+        <button onClick={reloadPendingDeposits}
+          className="w-full flex items-center justify-between px-3 py-2 mb-2 rounded-xl text-xs text-violet-700 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800/30 active:opacity-60">
+          <span>{depError}</span>
+          <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 flex-shrink-0 ml-2" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+            <path d="M1 4v6h6M23 20v-6h-6M20.49 9A9 9 0 005.64 5.64L1 10M23 14l-4.64 4.36A9 9 0 013.51 15" />
+          </svg>
+        </button>
+      )}
       {depositFeedback && (
         <div className={`mb-3 px-4 py-3 rounded-xl border text-sm font-semibold ${
           depositFeedback.type === "ok"
