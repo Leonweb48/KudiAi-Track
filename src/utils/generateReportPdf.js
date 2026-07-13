@@ -369,6 +369,81 @@ export async function createReportPdf({
     y += 4;
   }
 
+  // ── Period visual grid — mirrors on-screen ContributionCard cell colours ──
+  function addGrid(periods, gridCols) {
+    if (!periods?.length) return;
+    const cols  = gridCols || 4;
+    const CELL  = 9;    // mm — square cell
+    const GAP   = 1.5;  // mm — gap between cells
+    const R     = 1.5;  // mm — corner radius
+    const STEP  = CELL + GAP;
+
+    const rowsNeeded = Math.ceil(periods.length / cols);
+    need(rowsNeeded * STEP + 14); // 14 = 4 gap + 10 legend
+
+    // Light-mode colour map — mirrors MARK_CLS / MARK_ICON on-screen
+    const STATUS = {
+      paid:     { fill: [5, 150, 105],   txt: WHITE, stroke: null         },
+      partial:  { fill: [251, 191, 36],  txt: WHITE, stroke: null         },
+      missed:   { fill: WHITE,           txt: RED,   stroke: RED          },
+      current:  { fill: GREEN,           txt: WHITE, stroke: null         },
+      upcoming: { fill: PANEL,           txt: MUTED, stroke: HAIRLN       },
+    };
+    const SYM = { paid: "✓", partial: "~", missed: "✗", current: "→", upcoming: "·" };
+
+    periods.forEach((p, i) => {
+      const ci  = i % cols;
+      const ri  = Math.floor(i / cols);
+      const cx  = ML + ci * STEP;
+      const cy  = y + ri * STEP;
+      const s   = STATUS[p.status] || STATUS.upcoming;
+
+      doc.setFillColor(...s.fill);
+      if (s.stroke) {
+        doc.setDrawColor(...s.stroke);
+        doc.setLineWidth(0.5);
+        doc.roundedRect(cx, cy, CELL, CELL, R, R, "FD");
+      } else {
+        doc.roundedRect(cx, cy, CELL, CELL, R, R, "F");
+      }
+
+      // Icon in upper portion of cell
+      setMed(7); col(...s.txt);
+      doc.text(SYM[p.status] || "·", cx + CELL / 2, cy + 4.2, { align: "center" });
+
+      // Period number at bottom of cell
+      setReg(4.5); col(...s.txt);
+      doc.text(String((p.idx ?? i) + 1), cx + CELL / 2, cy + CELL - 1.2, { align: "center" });
+    });
+
+    y += rowsNeeded * STEP + 4;
+
+    // Colour legend
+    const LEGEND = [
+      { fill: [5, 150, 105],  stroke: null,   label: "Paid"     },
+      { fill: [251, 191, 36], stroke: null,   label: "Partial"  },
+      { fill: WHITE,          stroke: RED,    label: "Missed"   },
+      { fill: PANEL,          stroke: HAIRLN, label: "Upcoming" },
+    ];
+    const LS = 5;    // legend square size mm
+    const LW = 29;   // mm per legend item
+    LEGEND.forEach((l, i) => {
+      const lx = ML + i * LW;
+      doc.setFillColor(...l.fill);
+      if (l.stroke) {
+        doc.setDrawColor(...l.stroke);
+        doc.setLineWidth(0.4);
+        doc.roundedRect(lx, y, LS, LS, 0.8, 0.8, "FD");
+      } else {
+        doc.roundedRect(lx, y, LS, LS, 0.8, 0.8, "F");
+      }
+      setReg(5.5); col(...SEC);
+      doc.text(l.label, lx + LS + 1.5, y + 4);
+    });
+
+    y += 10;
+  }
+
   function addBarChart(bars) {
     if (!bars?.length) return;
     const CH = 40;
@@ -486,5 +561,5 @@ export async function createReportPdf({
     return doc.output("datauristring").split(",")[1];
   }
 
-  return { addStats, addSectionTitle, addTable, addTotalsBlock, addBarChart, addEntityPanel, addStatement, save, getBase64, fmtN: fmtCurrency, fmtD: fmtDate };
+  return { addStats, addSectionTitle, addTable, addTotalsBlock, addBarChart, addEntityPanel, addStatement, addGrid, save, getBase64, fmtN: fmtCurrency, fmtD: fmtDate };
 }

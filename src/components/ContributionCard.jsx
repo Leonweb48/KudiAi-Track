@@ -192,6 +192,11 @@ async function exportCardPdf({ cycle, periods, contributions, clientName, busine
   }
   pdf.addStats(stats);
 
+  // CC-13: visual grid above the period table, matching on-screen cell colours
+  pdf.addSectionTitle("Period Grid");
+  const FREQ_COLS = { daily: 7, weekly: 5, monthly: 4 };
+  pdf.addGrid(periods, FREQ_COLS[freq] || 4);
+
   pdf.addSectionTitle("Period Breakdown");
 
   const cols = [
