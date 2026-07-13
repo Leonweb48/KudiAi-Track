@@ -73,7 +73,7 @@ function StatusBadge({ status }) {
 }
 
 /* ── Main component ───────────────────────────────────────────────── */
-export function ClientProfile({ record, type, onSave, onClose, staffList = [], groups = [], onResetPwd, onDelete, canEditBank = false, businessName = "" }) {
+export function ClientProfile({ record, type, onSave, onClose, staffList = [], groups = [], onResetPwd, onDelete, onRequestArchive, canEditBank = false, businessName = "" }) {
   const [editing,      setEditing]      = useState(false);
   const [form,         setForm]         = useState({ ...record });
   const [photoFile,    setPhotoFile]    = useState(null);
@@ -85,8 +85,10 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
   const [confirmDel,   setConfirmDel]   = useState(false);
   const [deleting,     setDeleting]     = useState(false);
   const [delErr,       setDelErr]       = useState("");
-  const [archivePin,   setArchivePin]   = useState("");
-  const [pinErr,       setPinErr]       = useState("");
+  const [archivePin,    setArchivePin]    = useState("");
+  const [pinErr,        setPinErr]        = useState("");
+  const [archiveReason, setArchiveReason] = useState("");
+  const [archiveReqSent, setArchiveReqSent] = useState(false);
 
   // Bank account editing state (owner-only, Aso only)
   const [banks,             setBanks]             = useState([]);
@@ -172,6 +174,32 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
     setDeleting(false);
     if (res?.error) { setDelErr(res.error); return; }
     onClose();
+  };
+
+  const doRequestArchive = async () => {
+    if (!archivePin || archivePin.length < 4) {
+      setPinErr("Enter your 4-digit transaction PIN to confirm.");
+      return;
+    }
+    if (!archiveReason.trim()) {
+      setDelErr("A reason is required.");
+      return;
+    }
+    setPinErr(""); setDelErr(""); setDeleting(true);
+    const { data: pinData } = await supabase.functions.invoke("pin-manager", {
+      body: { action: "verify_txn_pin", pin: archivePin },
+    });
+    if (!pinData?.success) {
+      setDeleting(false);
+      setPinErr(pinData?.locked ? "PIN locked — try again later." : "Incorrect PIN. Try again.");
+      setArchivePin("");
+      return;
+    }
+    const res = await onRequestArchive(record.id, archivePin, archiveReason.trim());
+    setDeleting(false);
+    if (res?.error) { setDelErr(res.error); return; }
+    setArchiveReqSent(true);
+    setTimeout(() => onClose(), 2500);
   };
 
   const handleSave = async () => {
@@ -652,8 +680,100 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                 </div>
               )}
 
-              {/* Archive client — Aso only (replaces delete; preserves all history) */}
-              {!isCredit && onDelete && (
+              {/* Archive client — Aso only (approval-gated; preserves all history) */}
+              {!isCredit && onRequestArchive && (
+                <div className="space-y-2">
+                  {archiveReqSent ? (
+                    <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-2xl px-4 py-4 text-center">
+                      <p className="text-sm font-extrabold text-green-700 dark:text-green-400">Request submitted</p>
+                      <p className="text-xs text-green-600 dark:text-green-400 mt-1 leading-relaxed">The admin team will review and action this shortly. The client card will show a pending badge until resolved.</p>
+                    </div>
+                  ) : (
+                    <>
+                      {delErr && (
+                        <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/40 text-red-600 dark:text-red-400 text-xs rounded-xl px-4 py-3">
+                          {delErr}
+                        </div>
+                      )}
+                      {!confirmDel ? (
+                        <button
+                          onClick={() => {
+                            if ((record.current_balance || 0) !== 0) {
+                              setDelErr(`Balance must be ₦0.00 before requesting archive. Current balance: ${fmt(record.current_balance)}. Record a settling withdrawal first.`);
+                              return;
+                            }
+                            setDelErr(""); setArchivePin(""); setPinErr(""); setArchiveReason("");
+                            setConfirmDel(true);
+                          }}
+                          className="w-full py-3 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 rounded-2xl font-bold text-sm border border-amber-200 dark:border-amber-800 active:scale-[0.99] transition flex items-center justify-center gap-2">
+                          <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                            <path d="M21 8v13H3V8M1 3h22v5H1zM10 12h4" />
+                          </svg>
+                          Request Client Archive
+                        </button>
+                      ) : (
+                        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-4 space-y-3">
+                          <p className="text-sm font-extrabold text-amber-700 dark:text-amber-400">Request archive for {record.full_name}?</p>
+
+                          {/* Client snapshot */}
+                          <div className="bg-white dark:bg-slate-800 rounded-xl px-3 py-2.5 space-y-1 border border-amber-100 dark:border-amber-900/40">
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Client summary</p>
+                            {record.membership_number && <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">{record.membership_number}</p>}
+                            <p className="text-[11px] text-slate-600 dark:text-slate-300">Total saved: <span className="font-bold text-green-600 dark:text-green-400">{fmt(record.total_saved)}</span></p>
+                            <p className="text-[11px] text-slate-600 dark:text-slate-300">Total withdrawn: <span className="font-bold">{fmt(record.total_withdrawn)}</span></p>
+                            <p className="text-[11px] font-bold text-green-700 dark:text-green-400 flex items-center gap-1">
+                              <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                              Balance confirmed ₦0.00
+                            </p>
+                          </div>
+
+                          <p className="text-xs text-amber-600 dark:text-amber-400 leading-relaxed">
+                            The request will be reviewed by an admin. The client card will show "Archive pending admin approval" until a decision is made. All contribution history is preserved.
+                          </p>
+
+                          {/* Reason */}
+                          <div>
+                            <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wide mb-1">Reason <span className="text-red-500">*</span></p>
+                            <textarea
+                              rows={2}
+                              value={archiveReason}
+                              onChange={e => { setArchiveReason(e.target.value); setDelErr(""); }}
+                              placeholder="Why is this client being archived?"
+                              className="w-full px-3 py-2 rounded-xl border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-xs resize-none placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                            />
+                          </div>
+
+                          {/* PIN */}
+                          <input
+                            type="password"
+                            inputMode="numeric"
+                            maxLength={4}
+                            placeholder="4-digit transaction PIN"
+                            value={archivePin}
+                            onChange={e => { setArchivePin(e.target.value.replace(/\D/g, "").slice(0, 4)); setPinErr(""); }}
+                            className="w-full px-3 py-2.5 rounded-xl border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-sm font-mono text-center tracking-[0.4em] placeholder:tracking-normal placeholder:font-sans placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                          />
+                          {pinErr && <p className="text-xs text-red-500">{pinErr}</p>}
+
+                          <div className="grid grid-cols-2 gap-2">
+                            <button onClick={() => { setConfirmDel(false); setArchivePin(""); setPinErr(""); setArchiveReason(""); setDelErr(""); }} disabled={deleting}
+                              className="py-2.5 rounded-xl font-bold text-sm bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 transition">
+                              Cancel
+                            </button>
+                            <button onClick={doRequestArchive} disabled={deleting || archivePin.length < 4 || !archiveReason.trim()}
+                              className="py-2.5 rounded-xl font-bold text-sm bg-amber-600 hover:bg-amber-700 text-white transition disabled:opacity-60">
+                              {deleting ? "Submitting…" : "Submit Request"}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Legacy direct-archive path (kept for non-Aso callers that still pass onDelete) */}
+              {!isCredit && onDelete && !onRequestArchive && (
                 <div className="space-y-2">
                   {delErr && (
                     <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/40 text-red-600 dark:text-red-400 text-xs rounded-xl px-4 py-3">
@@ -667,10 +787,7 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                           setDelErr(`Balance must be ₦0.00 before archiving. Current balance: ${fmt(record.current_balance)}. Record a settling withdrawal first.`);
                           return;
                         }
-                        setDelErr("");
-                        setArchivePin("");
-                        setPinErr("");
-                        setConfirmDel(true);
+                        setDelErr(""); setArchivePin(""); setPinErr(""); setConfirmDel(true);
                       }}
                       className="w-full py-3 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 rounded-2xl font-bold text-sm border border-amber-200 dark:border-amber-800 active:scale-[0.99] transition flex items-center justify-center gap-2">
                       <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
@@ -680,17 +797,12 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                     </button>
                   ) : (
                     <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-4 space-y-3">
-                      <p className="text-sm font-extrabold text-amber-700 dark:text-amber-400">Archive {name}?</p>
+                      <p className="text-sm font-extrabold text-amber-700 dark:text-amber-400">Archive {record.full_name}?</p>
                       <p className="text-xs text-amber-600 dark:text-amber-400 leading-relaxed">
                         The client and all their contribution history will be preserved but moved to the archived list. Their portal login will be deactivated. Enter your transaction PIN to confirm.
                       </p>
-                      <input
-                        type="password"
-                        inputMode="numeric"
-                        maxLength={4}
-                        placeholder="4-digit transaction PIN"
-                        value={archivePin}
-                        onChange={e => { setArchivePin(e.target.value.replace(/\D/g, "").slice(0, 4)); setPinErr(""); }}
+                      <input type="password" inputMode="numeric" maxLength={4} placeholder="4-digit transaction PIN"
+                        value={archivePin} onChange={e => { setArchivePin(e.target.value.replace(/\D/g, "").slice(0, 4)); setPinErr(""); }}
                         className="w-full px-3 py-2.5 rounded-xl border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-sm font-mono text-center tracking-[0.4em] placeholder:tracking-normal placeholder:font-sans placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-400"
                       />
                       {pinErr && <p className="text-xs text-red-500">{pinErr}</p>}

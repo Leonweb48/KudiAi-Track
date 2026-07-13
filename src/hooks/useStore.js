@@ -691,6 +691,20 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
     return { error: null };
   };
 
+  // ── Request Aso Client Archive (approval-gated flow) ─────────────────────────
+  // Submits a client_archive approval request — owner PIN-gated.
+  // On success: flags the client as pending_archive locally so the card shows the badge.
+  const requestAsoClientArchive = async (id, pin, reason) => {
+    const { data, error } = await supabase.functions.invoke("ajo-write", {
+      body: { action: "request_client_archive", client_id: id, pin, reason },
+    });
+    if (error || !data?.ok) {
+      return { error: error?.message || data?.error || "Request failed" };
+    }
+    setAsoClients(p => p.map(c => c.id === id ? { ...c, pending_archive: true } : c));
+    return { error: null };
+  };
+
   // ── Profile ────────────────────────────────────────────────────
   const setProfile = async (updater) => {
     const prev = profile;
@@ -740,7 +754,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
     // Staff cannot delete transactions — only business owners (no staffId) can
     deleteTransaction: staffId ? null : deleteTransaction,
     addCredit, repayCredit, updateCredit, debtPayments,
-    addAsoClient, asoContribute, asoCollectionRecord, asoWithdraw, updateAsoClient, deleteAsoClient,
+    addAsoClient, asoContribute, asoCollectionRecord, asoWithdraw, updateAsoClient, deleteAsoClient, requestAsoClientArchive,
     asoReverseContribution,
   };
 }

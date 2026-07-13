@@ -426,7 +426,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [dueBefore,       setDueBefore]       = useState("");
   const [showCollection,  setShowCollection]  = useState(false);
 
-  const { asoClients, addAsoClient, asoContribute, asoCollectionRecord, asoWithdraw, asoReverseContribution, updateAsoClient, deleteAsoClient, profile, staffMap = {} } = store;
+  const { asoClients, addAsoClient, asoContribute, asoCollectionRecord, asoWithdraw, asoReverseContribution, updateAsoClient, deleteAsoClient, requestAsoClientArchive, profile, staffMap = {} } = store;
   const staffOptions = Object.entries(staffMap).map(([id, name]) => ({ id, name }));
 
   const [withdrawalRequests,  setWithdrawalRequests]  = useState([]);
@@ -1735,6 +1735,16 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                   overdue ? "border-red-200 dark:border-red-800/50" : "border-slate-100 dark:border-slate-700/60"
                 }`}>
 
+                {/* Pending archive banner */}
+                {c.pending_archive && (
+                  <div className="flex items-center gap-2 mb-3 px-2.5 py-1.5 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-700/40">
+                    <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                      <circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>
+                    </svg>
+                    <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400">Archive pending admin approval</p>
+                  </div>
+                )}
+
                 {/* Card header — avatar opens profile */}
                 <div className="flex items-start gap-3 mb-3">
                   <button onClick={() => setClientProf(c)}
@@ -1859,7 +1869,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                 <div className="flex gap-1.5 pt-3 border-t border-slate-100 dark:border-slate-700/60">
 
                   {/* Contribute */}
-                  {canContribute && (
+                  {canContribute && !c.pending_archive && (
                     <button onClick={() => { setSelected(c); setAction("contribute"); }}
                       className="flex-1 flex flex-col items-center gap-1 py-2.5 bg-green-50 dark:bg-green-900/20 rounded-xl border border-green-200 dark:border-green-800 active:scale-95 transition"
                       title="Contribute">
@@ -1871,7 +1881,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                   )}
 
                   {/* Withdraw */}
-                  {canWithdraw && (
+                  {canWithdraw && !c.pending_archive && (
                     <button onClick={() => { setSelected(c); setAction("withdraw"); }}
                       className="flex-1 flex flex-col items-center gap-1 py-2.5 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-800 active:scale-95 transition"
                       title="Withdraw">
@@ -2528,7 +2538,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           staffList={staffOptions}
           groups={groups}
           onResetPwd={handleResetPwd}
-          onDelete={deleteAsoClient}
+          onRequestArchive={requestAsoClientArchive}
           canEditBank={!staffId}
           businessName={profile?.business_name || profile?.owner_name || ""}
         />

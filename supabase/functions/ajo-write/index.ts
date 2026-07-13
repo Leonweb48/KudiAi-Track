@@ -66,7 +66,7 @@ function json(body: unknown, status = 200): Response {
 }
 
 // ── PIN-requiring actions ─────────────────────────────────────────────────────
-const PIN_GATED = new Set(["record_withdrawal", "reverse_contribution", "archive_client", "confirm_manual_deposit", "approve_contribution", "collection_record", "execute_commission", "execute_payout", "skip_turn", "reorder_turns"]);
+const PIN_GATED = new Set(["record_withdrawal", "reverse_contribution", "archive_client", "request_client_archive", "confirm_manual_deposit", "approve_contribution", "collection_record", "execute_commission", "execute_payout", "skip_turn", "reorder_turns"]);
 
 // ── Resolve the true owner UUID for a client from the DB ─────────────────────
 async function resolveClientOwner(
@@ -265,6 +265,12 @@ serve(async (req: Request) => {
       return json({ ok: false, error: "Permission denied: Ajo contribution recording not enabled for your account" }, 403);
     }
 
+    // Block contributions while a client archive request is pending
+    const { data: clPaC } = await sb.from("aso_clients").select("pending_archive").eq("id", client_id).maybeSingle();
+    if (clPaC?.pending_archive) {
+      return json({ ok: false, error: "This client has a pending archive request — contributions cannot be recorded until it is resolved." }, 409);
+    }
+
     // recorded_by = staff.id for staff callers; null for owner (owner needs no tracking)
     const recordedBy = ajoPerms === null ? null : ajoPerms.staffId;
 
@@ -457,6 +463,16 @@ serve(async (req: Request) => {
     }
 
     const recordedBy = ajoPerms === null ? null : ajoPerms.staffId;
+
+    // Block direct withdrawals while a client archive request is pending.
+    // Approvals of existing withdrawal requests (request_id present) are still allowed
+    // so the owner can clear pending requests before or after the archive executes.
+    if (!request_id) {
+      const { data: clPaW } = await sb.from("aso_clients").select("pending_archive").eq("id", client_id).maybeSingle();
+      if (clPaW?.pending_archive) {
+        return json({ ok: false, error: "This client has a pending archive request — direct withdrawals cannot be recorded until it is resolved." }, 409);
+      }
+    }
 
     const { data, error } = await sb.rpc("ajo_record_withdrawal", {
       p_client_id:    client_id,
@@ -825,6 +841,57 @@ serve(async (req: Request) => {
     });
     if (error) return json({ ok: false, error: error.message });
     return json(data);
+  }
+
+  // ── Submit a client archive approval request (PIN-gated) ─────────────────────
+  if (action === "request_client_archive") {
+    const { client_id, reason } = params as { client_id: string; reason?: string };
+    if (!client_id) return json({ ok: false, error: "client_id required" }, 400);
+    if (!reason?.trim()) return json({ ok: false, error: "A reason is required" }, 400);
+
+    const ownerId = await resolveClientOwner(sb, client_id);
+    if (!ownerId) return json({ ok: false, error: "Client not found" }, 404);
+
+    const ajoPerms = await resolveAjoPerms(sb, user.id, ownerId);
+    if (ajoPerms === false) return json({ ok: false, error: "Unauthorized" }, 403);
+    if (ajoPerms !== null && !ajoPerms.ajo_manage_clients) {
+      return json({ ok: false, error: "Permission denied: client management not enabled for your account" }, 403);
+    }
+
+    const { data: client } = await sb
+      .from("aso_clients")
+      .select("full_name, membership_number, total_saved, total_withdrawn, current_balance, pending_archive")
+      .eq("id", client_id)
+      .maybeSingle();
+    if (!client) return json({ ok: false, error: "Client not found" }, 404);
+
+    if (Number(client.current_balance || 0) !== 0) {
+      return json({ ok: false, error: `Balance must be ₦0.00 before requesting archive. Current balance: ₦${client.current_balance}` }, 400);
+    }
+    if (client.pending_archive) {
+      return json({ ok: false, error: "An archive request is already pending for this client" }, 409);
+    }
+
+    const { data: ownerProfile } = await sb.from("profiles").select("business_name").eq("id", ownerId).maybeSingle();
+
+    const { error: insertErr } = await sb.from("admin_approval_requests").insert({
+      request_type: "client_archive",
+      requester:    ownerId,
+      business:     (ownerProfile as Record<string, string> | null)?.business_name ?? "",
+      target_id:    client_id,
+      payload: {
+        full_name:         client.full_name,
+        membership_number: client.membership_number,
+        total_saved:       Number(client.total_saved) || 0,
+        total_withdrawn:   Number(client.total_withdrawn) || 0,
+      },
+      reason: reason.trim(),
+    });
+    if (insertErr) return json({ ok: false, error: insertErr.message }, 500);
+
+    await sb.from("aso_clients").update({ pending_archive: true }).eq("id", client_id);
+
+    return json({ ok: true });
   }
 
   if (action === "resolve_dispute") {
