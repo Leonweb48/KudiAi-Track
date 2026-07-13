@@ -22,8 +22,23 @@ const CLIENT_SELECT = `
   next_contribution_date, contribution_frequency, contribution_amount,
   registration_date, membership_number, portal_active, status,
   address, state, lga, ward, notes,
-  registration_charge, withdrawal_fee_percent
+  registration_charge, withdrawal_fee_percent,
+  nin, next_of_kin_name, next_of_kin_phone, next_of_kin_email, next_of_kin_address,
+  portal_pin_changed_at, created_at,
+  ajo_groups(name)
 `;
+
+function normalizeClient(client: Record<string, unknown> | null) {
+  if (!client) return null;
+  const grp = client.ajo_groups as { name?: string } | null;
+  const out = { ...client, group_name: grp?.name ?? "" };
+  delete out.ajo_groups;
+  return out;
+}
+
+function genOtp(): string {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
 
 const PAYSTACK_SECRET = Deno.env.get("PAYSTACK_SECRET_KEY") ?? "";
 const PAYSTACK_PUBLIC = Deno.env.get("PAYSTACK_PUBLIC_KEY") ?? "";
@@ -60,7 +75,7 @@ serve(async (req) => {
         .maybeSingle();
 
       if (error || !client) return json({ error: "Invalid membership number or PIN" }, 401);
-      if (!client.portal_active) {
+      if (!(client as Record<string, unknown>).portal_active) {
         return json({ error: "Portal access is disabled. Contact your savings agent." }, 403);
       }
 
@@ -85,7 +100,7 @@ serve(async (req) => {
         }).catch(() => null);
       }
 
-      return json({ client });
+      return json({ client: normalizeClient(client as Record<string, unknown>) });
     }
 
     // ── Refresh client data by ID (session already validated) ─────
@@ -97,7 +112,7 @@ serve(async (req) => {
         .eq("id", client_id)
         .maybeSingle();
       if (!client) return json({ error: "Client not found" }, 404);
-      return json({ client });
+      return json({ client: normalizeClient(client as Record<string, unknown>) });
     }
 
     // ── Contribution history ───────────────────────────────────────
@@ -251,12 +266,19 @@ serve(async (req) => {
       if (!client_id || !amount || amount <= 0) return json({ error: "client_id and amount are required" }, 400);
 
       const { data: cl } = await sb.from("aso_clients")
-        .select("full_name, email, user_id, current_balance, total_withdrawn, registration_charge, withdrawal_fee_percent")
+        .select("full_name, email, user_id, current_balance, total_withdrawn, registration_charge, withdrawal_fee_percent, portal_pin_changed_at")
         .eq("id", client_id)
         .maybeSingle();
 
       if (!cl) return json({ error: "Client not found" }, 404);
       if (amount > (cl.current_balance || 0)) return json({ error: "Insufficient balance" }, 400);
+
+      // 24h security hold: high-value withdrawals after a PIN reset get status "held_24h"
+      const pinChangedAt = (cl as Record<string, unknown>).portal_pin_changed_at as string | null;
+      const withinPinHold = pinChangedAt
+        ? (Date.now() - new Date(pinChangedAt).getTime()) < 24 * 60 * 60 * 1000
+        : false;
+      const isHighValue = amount >= 50000;
 
       // First withdrawal uses flat registration_charge; subsequent use withdrawal_fee_percent
       const isFirst    = (cl.total_withdrawn || 0) === 0;
@@ -270,6 +292,8 @@ serve(async (req) => {
 
       const resolvedOwnerId = cl.user_id || owner_id;
 
+      const withdrawalStatus = (withinPinHold && isHighValue) ? "held_24h" : "pending";
+
       const { data: request, error: reqErr } = await sb.from("ajo_withdrawal_requests").insert({
         aso_client_id: client_id,
         owner_id: resolvedOwnerId,
@@ -277,7 +301,7 @@ serve(async (req) => {
         fee_type:   feeType,
         fee_amount: feeAmount,
         net_amount: netAmount,
-        status:     "pending",
+        status:     withdrawalStatus,
       }).select().single();
 
       if (reqErr) return json({ error: reqErr.message }, 500);
@@ -994,8 +1018,159 @@ serve(async (req) => {
       if (cl.portal_pin) {
         if (!old_pin || String(old_pin).trim() !== cl.portal_pin) return json({ error: "Current PIN is incorrect" }, 401);
       }
-      await sb.from("aso_clients").update({ portal_pin: new_pin }).eq("id", client_id);
+      await sb.from("aso_clients").update({ portal_pin: new_pin, portal_pin_changed_at: new Date().toISOString() }).eq("id", client_id);
       return json({ success: true });
+    }
+
+    // ── Profile audit log ──────────────────────────────────────────────────
+    if (action === "log-profile-update") {
+      const { client_id, fields_changed } = body as { client_id: string; fields_changed?: string[] };
+      if (!client_id) return json({ error: "client_id required" }, 400);
+
+      await sb.from("aso_client_profile_logs").insert({
+        client_id,
+        changed_by: "client",
+        fields_changed: fields_changed ?? [],
+      });
+
+      // Resolve owner to notify via email
+      const { data: cl } = await sb.from("aso_clients")
+        .select("full_name, email, user_id")
+        .eq("id", client_id)
+        .maybeSingle();
+      if (cl) {
+        const resolvedOwner = (cl as Record<string, unknown>).user_id as string | null;
+        if (resolvedOwner) {
+          const { data: owner } = await sb.from("profiles")
+            .select("email, business_name").eq("id", resolvedOwner).maybeSingle();
+          if (owner?.email) {
+            await fetch("https://admin.kudiai.app/api/public/email-trigger", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
+              body: JSON.stringify({
+                event: "ajo_profile_updated",
+                data: {
+                  client_id,
+                  client_name:   (cl as Record<string, unknown>).full_name as string || "",
+                  client_email:  (cl as Record<string, unknown>).email as string || "",
+                  owner_email:   owner.email,
+                  business_name: (owner as Record<string, unknown>).business_name as string || "",
+                  fields_changed: (fields_changed ?? []).join(", "),
+                  date: new Date().toLocaleDateString("en-NG"),
+                },
+              }),
+            }).catch(() => null);
+          }
+        }
+      }
+      return json({ ok: true });
+    }
+
+    // ── Profile OTP: send ──────────────────────────────────────────────────
+    if (action === "send-profile-otp") {
+      const { client_id, field, new_value } = body as { client_id: string; field: string; new_value: string };
+      if (!client_id || !field || !new_value) return json({ error: "client_id, field, new_value required" }, 400);
+
+      const { data: cl } = await sb.from("aso_clients")
+        .select("full_name, email").eq("id", client_id).maybeSingle();
+      if (!cl) return json({ error: "Client not found" }, 404);
+
+      const otp = genOtp();
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 min
+      await sb.from("aso_clients").update({ pending_otp: otp, pending_otp_expires_at: expiresAt }).eq("id", client_id);
+
+      // Send to new email for email changes; current email for phone changes
+      const toEmail = field === "email" ? new_value : (cl as Record<string, unknown>).email as string;
+      await fetch("https://admin.kudiai.app/api/public/email-trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
+        body: JSON.stringify({
+          event: "ajo_profile_otp",
+          data: {
+            name:    (cl as Record<string, unknown>).full_name as string || "",
+            email:   toEmail,
+            otp,
+            field,
+            expires_in: "10 minutes",
+          },
+        }),
+      }).catch(() => null);
+
+      return json({ ok: true });
+    }
+
+    // ── Profile OTP: verify and apply ─────────────────────────────────────
+    if (action === "verify-profile-otp") {
+      const { client_id, field, new_value, otp } = body as { client_id: string; field: string; new_value: string; otp: string };
+      if (!client_id || !field || !new_value || !otp) return json({ error: "client_id, field, new_value, otp required" }, 400);
+
+      const { data: cl } = await sb.from("aso_clients")
+        .select("pending_otp, pending_otp_expires_at").eq("id", client_id).maybeSingle();
+      if (!cl) return json({ error: "Client not found" }, 404);
+
+      const storedOtp = (cl as Record<string, unknown>).pending_otp as string | null;
+      const expiresAt = (cl as Record<string, unknown>).pending_otp_expires_at as string | null;
+      if (!storedOtp || storedOtp !== otp) return json({ error: "Invalid OTP — check and try again" }, 401);
+      if (!expiresAt || new Date(expiresAt) < new Date()) return json({ error: "OTP has expired — request a new one" }, 401);
+
+      // Apply the field change and clear OTP
+      const updatePayload: Record<string, string | null> = { pending_otp: null, pending_otp_expires_at: null };
+      if (field === "email") updatePayload.email = new_value;
+      if (field === "phone") updatePayload.phone = new_value;
+      await sb.from("aso_clients").update(updatePayload).eq("id", client_id);
+
+      return json({ ok: true });
+    }
+
+    // ── Transaction PIN OTP: send ──────────────────────────────────────────
+    if (action === "send-txn-pin-otp") {
+      const { client_id } = body as { client_id: string };
+      if (!client_id) return json({ error: "client_id required" }, 400);
+
+      const { data: cl } = await sb.from("aso_clients")
+        .select("full_name, email").eq("id", client_id).maybeSingle();
+      if (!cl) return json({ error: "Client not found" }, 404);
+
+      const clEmail = (cl as Record<string, unknown>).email as string | null;
+      if (!clEmail) return json({ error: "No email on file — contact your agent" }, 400);
+
+      const otp = genOtp();
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+      await sb.from("aso_clients").update({ pending_otp: otp, pending_otp_expires_at: expiresAt }).eq("id", client_id);
+
+      await fetch("https://admin.kudiai.app/api/public/email-trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
+        body: JSON.stringify({
+          event: "ajo_txn_pin_otp",
+          data: {
+            name:    (cl as Record<string, unknown>).full_name as string || "",
+            email:   clEmail,
+            otp,
+            expires_in: "10 minutes",
+          },
+        }),
+      }).catch(() => null);
+
+      return json({ ok: true });
+    }
+
+    // ── Transaction PIN OTP: verify ────────────────────────────────────────
+    if (action === "verify-txn-pin-otp") {
+      const { client_id, otp } = body as { client_id: string; otp: string };
+      if (!client_id || !otp) return json({ error: "client_id and otp required" }, 400);
+
+      const { data: cl } = await sb.from("aso_clients")
+        .select("pending_otp, pending_otp_expires_at").eq("id", client_id).maybeSingle();
+      if (!cl) return json({ error: "Client not found" }, 404);
+
+      const storedOtp = (cl as Record<string, unknown>).pending_otp as string | null;
+      const expiresAt = (cl as Record<string, unknown>).pending_otp_expires_at as string | null;
+      if (!storedOtp || storedOtp !== otp) return json({ error: "Invalid OTP — check and try again" }, 401);
+      if (!expiresAt || new Date(expiresAt) < new Date()) return json({ error: "OTP has expired — request a new one" }, 401);
+
+      await sb.from("aso_clients").update({ pending_otp: null, pending_otp_expires_at: null }).eq("id", client_id);
+      return json({ ok: true });
     }
 
     return json({ error: `Unknown action: ${action}` }, 400);

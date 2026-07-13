@@ -2511,10 +2511,14 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
   const [lightboxOpen,   setLightboxOpen]   = useState(false);
   const [lbZoom,         setLbZoom]         = useState(1);
   const [lbPinchDist,    setLbPinchDist]    = useState(null);
-  const [pendingEmail,   setPendingEmail]   = useState(null);
-  const [emailOtp,       setEmailOtp]       = useState("");
-  const [otpSending,     setOtpSending]     = useState(false);
-  const [otpError,       setOtpError]       = useState("");
+  const [pendingEmail,      setPendingEmail]      = useState(null);
+  const [emailOtp,          setEmailOtp]          = useState("");
+  const [otpSending,        setOtpSending]        = useState(false);
+  const [otpError,          setOtpError]          = useState("");
+  const [pendingPhone,      setPendingPhone]      = useState(null);
+  const [phoneOtp,          setPhoneOtp]          = useState("");
+  const [phoneOtpSending,   setPhoneOtpSending]   = useState(false);
+  const [phoneOtpError,     setPhoneOtpError]     = useState("");
   const [lockBusy,       setLockBusy]       = useState(false);
   const [showPinSetup,   setShowPinSetup]   = useState(false);
   const [isDark,         setIsDark]         = useState(() => localStorage.getItem("kuditrack_dark") === "1");
@@ -2600,13 +2604,19 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
     setSecBusy(false);
   }, [secStep, secNewPin, lock, clientId, triggerSecShake, resetSecView, autoLockSecs]);
 
-  // Transaction PIN change — step 1 (old PIN) → 3 (new PIN) → 4 (confirm)
+  // Transaction PIN change — step 1 (old PIN) → 2 (OTP) → 3 (new PIN) → 4 (confirm)
   const handleTxnPinStep = useCallback(async (pin) => {
     setSecBusy(true); setSecErr("");
     try {
       if (secStep === 1) {
-        // Capture old PIN; server verifies it atomically at the final step
-        setOldTxnPin(pin); setSecStep(3);
+        // Capture old PIN, send OTP to their email, then move to OTP step
+        setOldTxnPin(pin);
+        await ajoFn("send-txn-pin-otp", { client_id: clientId });
+        setSecStep(2);
+      } else if (secStep === 2) {
+        // Verify OTP
+        await ajoFn("verify-txn-pin-otp", { client_id: clientId, otp: pin });
+        setSecStep(3);
       } else if (secStep === 3) {
         setSecNewPin(pin); setSecStep(4);
       } else if (secStep === 4) {
@@ -2657,7 +2667,7 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
     document.documentElement.classList.toggle("dark", next);
   };
 
-  const doSave = async (confirmedEmail) => {
+  const doSave = async (confirmedEmail, confirmedPhone) => {
     setSaving(true); setSaveMsg("");
     try {
       let photoUrl = client?.profile_image_url;
@@ -2682,8 +2692,10 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
         profile_image_url:   photoUrl,
       };
       if (confirmedEmail) payload.email = confirmedEmail;
+      if (confirmedPhone) payload.phone = confirmedPhone;
       await supabase.from("aso_clients").update(payload).eq("id", clientId);
-      ajoFn("log-profile-update", { client_id: clientId }).catch(() => {});
+      const changedFields = Object.keys(payload).filter(k => k !== "profile_image_url");
+      ajoFn("log-profile-update", { client_id: clientId, fields_changed: changedFields }).catch(() => {});
       onProfileUpdate?.(payload);
       setSaveMsg("Profile saved!");
       setTimeout(() => { setSaveMsg(""); setView("profile"); }, 1500);
@@ -2715,13 +2727,41 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
     }
   };
 
+  const sendPhoneOtp = async () => {
+    setPhoneOtpSending(true); setPhoneOtpError("");
+    try {
+      await ajoFn("send-profile-otp", { client_id: clientId, field: "phone", new_value: editForm.phone });
+      setPendingPhone(editForm.phone);
+    } catch (err) {
+      setPhoneOtpError(err.message || "Couldn't send OTP — try again");
+    } finally { setPhoneOtpSending(false); }
+  };
+
+  const verifyPhoneOtp = async () => {
+    setPhoneOtpSending(true); setPhoneOtpError("");
+    try {
+      await ajoFn("verify-profile-otp", { client_id: clientId, field: "phone", new_value: pendingPhone, otp: phoneOtp });
+      const confirmed = pendingPhone;
+      setPendingPhone(null);
+      setPhoneOtp("");
+      await doSave(null, confirmed);
+    } catch (err) {
+      setPhoneOtpError(err.message || "Invalid code — check and try again");
+      setPhoneOtpSending(false);
+    }
+  };
+
   const saveProfile = async () => {
     setSaveMsg("");
     if (editForm.phone && !phoneRegex.test(editForm.phone)) { setSaveMsg("Enter a valid Nigerian phone number."); return; }
     if (editForm.email && !emailRegex.test(editForm.email)) { setSaveMsg("Enter a valid email address."); return; }
     const currentEmail = client?.email || session?.user?.email || "";
+    const currentPhone = client?.phone || "";
     const emailChanged = editForm.email && editForm.email !== currentEmail;
-    if (emailChanged) { await sendEmailOtp(); } else { await doSave(null); }
+    const phoneChanged = editForm.phone && editForm.phone !== currentPhone;
+    if (emailChanged) { await sendEmailOtp(); }
+    else if (phoneChanged) { await sendPhoneOtp(); }
+    else { await doSave(null); }
   };
 
   const SubHeader = ({ title, onBack }) => (
@@ -2821,7 +2861,45 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
     const avatarSrcEdit = photoPreview || client?.profile_image_url;
     const currentEmail  = client?.email || session?.user?.email || "";
 
-    /* OTP verification step */
+    /* Phone OTP verification step */
+    if (pendingPhone) return (
+      <div className="h-full flex flex-col">
+        <SubHeader title="Verify Phone Change" onBack={() => { setPendingPhone(null); setPhoneOtp(""); setPhoneOtpError(""); }} />
+        <div className="flex-1 overflow-y-auto px-4 py-6 space-y-5 pb-8">
+          <div className="bg-brand-50 dark:bg-brand-900/20 rounded-2xl p-4">
+            <p className="text-sm font-bold text-brand-700 dark:text-brand-300 mb-1">Check your email</p>
+            <p className="text-[13px] text-brand-600/80 dark:text-brand-400/80 leading-relaxed">
+              We sent a 6-digit code to your registered email. Enter it below to confirm your new phone number.
+            </p>
+          </div>
+          <div>
+            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">Verification Code</p>
+            <input
+              type="number" inputMode="numeric" value={phoneOtp}
+              onChange={e => { setPhoneOtp(e.target.value.replace(/\D/g, "").slice(0, 6)); setPhoneOtpError(""); }}
+              placeholder="000000"
+              className="w-full h-14 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 text-xl font-bold text-center text-slate-700 dark:text-slate-200 tracking-[0.3em] focus:outline-none focus:ring-2 focus:ring-brand-500/30"
+            />
+          </div>
+          {phoneOtpError && (
+            <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-900/30 text-red-600">
+              <Svg d={P.alert} size={15} color="currentColor" />
+              <p className="text-sm font-semibold">{phoneOtpError}</p>
+            </div>
+          )}
+          <button onClick={verifyPhoneOtp} disabled={phoneOtp.length !== 6 || phoneOtpSending}
+            className="w-full h-12 rounded-2xl bg-brand-500 text-white font-bold text-sm disabled:opacity-50 active:scale-95 transition">
+            {phoneOtpSending ? "Verifying…" : "Confirm Phone Change"}
+          </button>
+          <button onClick={sendPhoneOtp} disabled={phoneOtpSending}
+            className="w-full py-3 text-[13px] text-slate-400 dark:text-slate-500 font-semibold">
+            Didn&apos;t receive it? Resend code
+          </button>
+        </div>
+      </div>
+    );
+
+    /* Email OTP verification step */
     if (pendingEmail) return (
       <div className="h-full flex flex-col">
         <SubHeader title="Verify New Email" onBack={() => { setPendingEmail(null); setEmailOtp(""); setOtpError(""); }} />
@@ -2957,6 +3035,8 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
                 ["Group", client?.group_name],
                 ["Frequency", client?.contribution_frequency],
                 ["Amount", client?.contribution_amount ? `₦${Number(client.contribution_amount).toLocaleString("en-NG")}` : null],
+                ["Reg. Fee", client?.registration_charge != null ? `₦${Number(client.registration_charge).toLocaleString("en-NG")}` : null],
+                ["Withdrawal Fee", client?.withdrawal_fee_percent != null ? `${client.withdrawal_fee_percent}%` : null],
               ].map(([lbl, val]) => (
                 <div key={lbl} className="flex items-center px-4 py-3">
                   <p className="text-[12px] text-slate-400 dark:text-slate-500 w-28 flex-shrink-0">{lbl}</p>
@@ -3034,7 +3114,10 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
             sub={txnCooling
               ? "Recently reset — high-value operations under 24h review"
               : txnPinSet ? "Change your 4-digit transaction PIN" : "Set a 4-digit transaction PIN"}
-            onClick={() => { setSecView("txn-pin"); setSecStep(txnPinSet ? 1 : 3); setSecErr(""); setSecNewPin(""); setOldTxnPin(""); }}
+            onClick={() => {
+              setSecView("txn-pin"); setSecStep(txnPinSet ? 1 : 3);
+              setSecErr(""); setSecNewPin(""); setOldTxnPin("");
+            }}
             right={txnCooling ? (
               <span className="text-[11px] font-bold text-amber-500 dark:text-amber-400 flex-shrink-0">24h</span>
             ) : undefined}
@@ -3236,6 +3319,16 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
           subtitle="Verify your identity before changing your transaction PIN"
           onComplete={handleTxnPinStep}
           onCancel={resetSecView}
+          error={secErr} shaking={secShake} loading={secBusy}
+        />
+      )}
+      {secView === "txn-pin" && secStep === 2 && (
+        <AjoPinPad
+          length={6}
+          title="Enter OTP"
+          subtitle="We sent a 6-digit code to your registered email"
+          onComplete={handleTxnPinStep}
+          onCancel={() => { setSecStep(1); setSecErr(""); }}
           error={secErr} shaking={secShake} loading={secBusy}
         />
       )}
