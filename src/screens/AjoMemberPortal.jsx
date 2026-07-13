@@ -2163,7 +2163,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
 
       {/* Dispute success toast (AMP-21) */}
       {disputeToast && (
-        <div className="fixed bottom-24 inset-x-4 z-[400] bg-green-600 text-white text-sm font-bold px-4 py-3 rounded-2xl shadow-xl flex items-center gap-2 animate-[fadeIn_0.2s_ease]">
+        <div className="fixed bottom-24 inset-x-4 z-[280] bg-green-600 text-white text-sm font-bold px-4 py-3 rounded-2xl shadow-xl flex items-center gap-2 animate-[fadeIn_0.2s_ease]">
           <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 flex-shrink-0" stroke="currentColor" strokeWidth={3} strokeLinecap="round">
             <path d="M20 6L9 17l-5-5"/>
           </svg>

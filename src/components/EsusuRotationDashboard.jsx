@@ -334,9 +334,9 @@ export default function EsusuRotationDashboard({
       </div>
 
       {/* Navy hero stat — ERD-09 */}
-      <div className="bg-[#16255A] rounded-2xl px-5 py-5">
+      <div className="bg-[#16255A] rounded-2xl px-5 py-5 overflow-hidden">
         <p className="text-[11px] font-bold text-white/50 uppercase tracking-widest mb-1">Current Pot</p>
-        <p className="text-[34px] font-black text-white leading-none tracking-tight">{fmtCur(pot_size)}</p>
+        <p className="text-[34px] font-black text-white leading-none tracking-tight" style={{ fontVariantNumeric: "tabular-nums", overflowWrap: "break-word" }}>{fmtCur(pot_size)}</p>
         {currentTurn && (
           <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between gap-3">
             <div className="min-w-0">

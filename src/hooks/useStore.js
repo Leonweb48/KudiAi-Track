@@ -96,6 +96,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
       asoQ = asoQ.eq("branch_id", branchId);
     }
 
+    try {
     const [txRes, crRes, asoRes, profRes, staffRes, sessRes, dpRes] = await Promise.all([
       txQ.order("created_at",  { ascending: false }),
       crQ.order("created_at",  { ascending: false }),
@@ -192,7 +193,11 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
       setPendingSync(count);
     } catch { /**/ }
 
-    setLoading(false);
+    } catch (loadErr) {
+      setDbError(loadErr?.message || "Could not load your data. Check your connection and refresh.");
+    } finally {
+      setLoading(false);
+    }
   }, [userId, staffId, branchId]);
 
   useEffect(() => { loadData(); }, [loadData]);

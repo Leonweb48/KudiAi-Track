@@ -71,7 +71,7 @@ function getTxStyle(tx) {
 }
 
 /* ── Recent transaction row — colored circle icons ────────────────── */
-function TxRow({ tx, onClick }) {
+function TxRow({ tx, onClick, balanceHidden }) {
   const isIn  = tx.type === "in";
   const style = getTxStyle(tx);
   return (
@@ -85,7 +85,7 @@ function TxRow({ tx, onClick }) {
       </div>
       <div className="text-right flex-shrink-0">
         <p className={`text-sm font-extrabold tabular ${isIn ? "text-green-600" : "text-red-500"}`}>
-          {isIn ? "+" : "−"}{fmt(tx.amount)}
+          {balanceHidden ? "••••" : `${isIn ? "+" : "−"}${fmt(tx.amount)}`}
         </p>
         <p className="text-[10px] text-slate-300 dark:text-slate-600 mt-0.5">{tx.transaction_date}</p>
       </div>
@@ -94,7 +94,7 @@ function TxRow({ tx, onClick }) {
 }
 
 /* ── Sales forecast card ─────────────────────────────────────────── */
-function SalesForecastCard({ prediction, t }) {
+function SalesForecastCard({ prediction, t, balanceHidden }) {
   const { projectedWeek, projectedMonth, thisWeekActual, thisMonthActual, trend, trendPct } = prediction;
   const trendColor = trend === "up" ? "text-green-500" : trend === "down" ? "text-red-400" : "text-slate-400 dark:text-slate-500";
   const trendIcon  = trend === "up" ? "↑" : trend === "down" ? "↓" : "→";
@@ -113,15 +113,19 @@ function SalesForecastCard({ prediction, t }) {
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-card border border-slate-100 dark:border-slate-700/50">
           <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1">{t("pred.thisWeek")}</p>
-          <AmountDisplay amount={projectedWeek} size="stat" align="left" style={{ marginBottom: 2 }} />
+          {balanceHidden
+            ? <p className="text-lg font-extrabold text-slate-800 dark:text-slate-100" style={{ fontVariantNumeric: "tabular-nums", marginBottom: 2 }}>••••••</p>
+            : <AmountDisplay amount={projectedWeek} size="stat" align="left" style={{ marginBottom: 2 }} />}
           <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{t("pred.projected")}</p>
-          <p className="text-[11px] text-brand-600 dark:text-brand-400 font-semibold mt-1 truncate" style={{ minWidth: 0 }}>{fmt(thisWeekActual)} {t("pred.actualSoFar")}</p>
+          <p className="text-[11px] text-brand-600 dark:text-brand-400 font-semibold mt-1 truncate" style={{ minWidth: 0 }}>{balanceHidden ? "••••" : fmt(thisWeekActual)} {t("pred.actualSoFar")}</p>
         </div>
         <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-card border border-slate-100 dark:border-slate-700/50">
           <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1">{t("pred.thisMonth")}</p>
-          <AmountDisplay amount={projectedMonth} size="stat" align="left" style={{ marginBottom: 2 }} />
+          {balanceHidden
+            ? <p className="text-lg font-extrabold text-slate-800 dark:text-slate-100" style={{ fontVariantNumeric: "tabular-nums", marginBottom: 2 }}>••••••</p>
+            : <AmountDisplay amount={projectedMonth} size="stat" align="left" style={{ marginBottom: 2 }} />}
           <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{t("pred.projected")}</p>
-          <p className="text-[11px] text-brand-600 dark:text-brand-400 font-semibold mt-1 truncate" style={{ minWidth: 0 }}>{fmt(thisMonthActual)} {t("pred.actualSoFar")}</p>
+          <p className="text-[11px] text-brand-600 dark:text-brand-400 font-semibold mt-1 truncate" style={{ minWidth: 0 }}>{balanceHidden ? "••••" : fmt(thisMonthActual)} {t("pred.actualSoFar")}</p>
         </div>
       </div>
     </div>
@@ -279,7 +283,7 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
               <span className="opacity-40">·</span>
               <span>{todayTx.length} transaction{todayTx.length !== 1 ? "s" : ""}</span>
               <span className="opacity-40">·</span>
-              <span>{profit >= 0 ? "+" : "−"}{fmt(Math.abs(profit))} net</span>
+              <span>{balanceHidden ? "•••• net" : `${profit >= 0 ? "+" : "−"}${fmt(Math.abs(profit))} net`}</span>
             </div>
           )}
           {/* Ajo collections are client savings — not included in profit above */}
@@ -287,7 +291,7 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
             <div className="inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-[11px] font-bold border bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-400 border-violet-100 dark:border-violet-800/40">
               <span>Ajo</span>
               <span className="opacity-40">·</span>
-              <span>{fmt(todayAjo)} collected today</span>
+              <span>{balanceHidden ? "•••• collected today" : `${fmt(todayAjo)} collected today`}</span>
             </div>
           )}
         </div>
@@ -352,7 +356,7 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
             <div>
               <p className="text-[9px] font-bold text-green-600 dark:text-green-400 uppercase tracking-wider whitespace-nowrap">{t("home.cashIn")}</p>
               <p className="text-sm font-extrabold text-green-700 dark:text-green-300 tabular leading-tight">
-                {loading ? "—" : fmt(cashIn)}
+                {loading ? "—" : balanceHidden ? "••••" : fmt(cashIn)}
               </p>
             </div>
           </button>
@@ -365,7 +369,7 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
             <div>
               <p className="text-[9px] font-bold text-red-500 dark:text-red-400 uppercase tracking-wider whitespace-nowrap">{t("home.cashOut")}</p>
               <p className="text-sm font-extrabold text-red-600 dark:text-red-300 tabular leading-tight">
-                {loading ? "—" : fmt(cashOut)}
+                {loading ? "—" : balanceHidden ? "••••" : fmt(cashOut)}
               </p>
             </div>
           </button>
@@ -381,7 +385,7 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
                 {overdueCount > 0 && <span className="text-red-500 text-[9px]">⚠</span>}
               </div>
               <p className="text-sm font-extrabold text-amber-700 dark:text-amber-300 tabular leading-tight">
-                {loading ? "—" : fmt(totalCredit)}
+                {loading ? "—" : balanceHidden ? "••••" : fmt(totalCredit)}
               </p>
             </div>
           </button>
@@ -394,7 +398,7 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
             <div>
               <p className="text-[9px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider whitespace-nowrap">{t("home.ajoBalance")}</p>
               <p className="text-sm font-extrabold text-blue-700 dark:text-blue-300 tabular leading-tight">
-                {loading ? "—" : fmt(totalAso)}
+                {loading ? "—" : balanceHidden ? "••••" : fmt(totalAso)}
               </p>
             </div>
           </button>
@@ -411,7 +415,7 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
       )}
 
       {/* ── Sales Forecast ───────────────────────────────────────── */}
-      {!loading && forecast && <SalesForecastCard prediction={forecast} t={t} />}
+      {!loading && forecast && <SalesForecastCard prediction={forecast} t={t} balanceHidden={balanceHidden} />}
 
       {/* ── Upsell inline slot ───────────────────────────────────── */}
       <UpsellInlineSlot campaigns={upsells} loading={camLoading} recordEvent={recordEvent} />
@@ -475,7 +479,7 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
               <p className="text-slate-300 dark:text-slate-600 text-xs mt-1">Try a different search term</p>
             </div>
           ) : (
-            <div className="space-y-2">{results.map(tx => <TxRow key={tx.id} tx={tx} onClick={() => setReceipt(buildTransactionReceipt(tx, profile))} />)}</div>
+            <div className="space-y-2">{results.map(tx => <TxRow key={tx.id} tx={tx} onClick={() => setReceipt(buildTransactionReceipt(tx, profile))} balanceHidden={balanceHidden} />)}</div>
           );
         })() : transactions.length === 0 ? (
           <div className="text-center py-12 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700/50">
@@ -495,7 +499,7 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
           const recent = transactions.slice(0, 5);
           const rows = [];
           recent.forEach((tx, i) => {
-            rows.push(<TxRow key={tx.id} tx={tx} onClick={() => setReceipt(buildTransactionReceipt(tx, profile))} />);
+            rows.push(<TxRow key={tx.id} tx={tx} onClick={() => setReceipt(buildTransactionReceipt(tx, profile))} balanceHidden={balanceHidden} />);
             if (i === 2 && feedCampaign) {
               rows.push(<FeedCardSlot key={`fc-${feedCampaign.id}`} campaign={feedCampaign} recordEvent={recordEvent} />);
             }

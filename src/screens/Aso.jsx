@@ -251,8 +251,8 @@ function AsoClientHistoryModal({ client, contributions, cycle, businessName, sta
       <div className="bg-white dark:bg-slate-900 flex flex-col h-full max-w-lg w-full mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between px-4 pb-3 border-b border-slate-100 dark:border-slate-800" style={{ paddingTop: "max(16px, env(safe-area-inset-top, 16px))" }}>
-          <div>
-            <h2 className="text-base font-black text-slate-800 dark:text-white">{client.full_name}</h2>
+          <div className="min-w-0 flex-1 mr-2">
+            <h2 className="text-base font-black text-slate-800 dark:text-white truncate">{client.full_name}</h2>
             <p className="text-xs text-slate-400 mt-0.5">{tab === "card" ? "Contribution Card" : "Ajo Transaction History"}</p>
           </div>
           <div className="flex items-center gap-2">
