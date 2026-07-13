@@ -320,87 +320,6 @@ function PinSetupModal({ onDone, onClose }) {
   );
 }
 
-// ── Support ticket modal ───────────────────────────────────────────────────
-function SupportModal({ onClose, clientName, clientEmail }) {
-  const t = useT();
-  const TICKET_TYPES = makeTicketTypes(t);
-
-  const [form, setForm]      = useState({ subject: "", description: "", type: "general", priority: "medium", user_name: clientName || "", user_email: clientEmail || "" });
-  const [submitting, setSub] = useState(false);
-  const [done, setDone]      = useState(null);
-  const [err, setErr]        = useState("");
-
-  const submit = async (e) => {
-    e.preventDefault();
-    if (!form.subject.trim() || !form.user_email.trim()) { setErr("Subject and email are required."); return; }
-    setSub(true); setErr("");
-    try {
-      const res = await fetch(`${ADMIN_URL}/api/public/support`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, source: "ajo_client", submitter_type: "ajo_client" }),
-      });
-      const d = await res.json();
-      if (!res.ok) { setErr(d.error || "Failed to submit ticket"); return; }
-      setDone(d.ticket_no);
-    } catch { setErr("Network error. Please try again."); }
-    finally { setSub(false); }
-  };
-
-  return (
-    <Modal title="Help & Support" onClose={onClose}>
-      {done ? (
-        <div className="flex flex-col items-center gap-4 py-4 text-center">
-          <div className="w-14 h-14 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
-            <Svg d={P.check} size={24} color="#10b981" sw={2.5} />
-          </div>
-          <div>
-            <p className="text-base font-bold text-slate-800 dark:text-slate-100">Ticket Submitted!</p>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Your ticket number is <span className="font-bold text-brand-500 dark:text-brand-400">#{done}</span></p>
-            <p className="text-xs text-slate-400 mt-2">Our team will respond to {form.user_email} shortly.</p>
-          </div>
-          <button onClick={onClose} className="mt-2 w-full py-3 bg-brand-500 text-white rounded-xl font-bold text-sm transition">Close</button>
-        </div>
-      ) : (
-        <form onSubmit={submit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            {[["Your Name","user_name","text","Your name"],["Email *","user_email","email","your@email.com"]].map(([l, k, t, ph]) => (
-              <div key={k}>
-                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">{l}</label>
-                <input type={t} placeholder={ph} value={form[k]} onChange={e => setForm(f => ({...f, [k]: e.target.value}))}
-                  className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30" />
-              </div>
-            ))}
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">Category</label>
-            <select value={form.type} onChange={e => setForm(f => ({...f, type: e.target.value}))}
-              className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 focus:outline-none">
-              {TICKET_TYPES.map(tt => <option key={tt.value} value={tt.value}>{tt.label}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">Subject *</label>
-            <input placeholder="Brief summary of your issue" value={form.subject} onChange={e => setForm(f => ({...f, subject: e.target.value}))} required
-              className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30" />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">Description</label>
-            <textarea placeholder="Describe the problem in detail…" value={form.description} onChange={e => setForm(f => ({...f, description: e.target.value}))} rows={3}
-              className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 resize-none" />
-          </div>
-          {err && <p className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 px-3 py-2 rounded-xl">⚠ {err}</p>}
-          <button type="submit" disabled={submitting}
-            className="w-full py-3 bg-brand-500 disabled:opacity-50 text-white rounded-xl font-bold text-sm transition flex items-center justify-center gap-2">
-            {submitting && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-            {submitting ? "Submitting…" : "Submit Ticket"}
-          </button>
-        </form>
-      )}
-    </Modal>
-  );
-}
-
 // ── FAQ ────────────────────────────────────────────────────────────────────
 const FAQS = [
   { q: "How do I pay my contribution?",
@@ -2354,7 +2273,6 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
   const [photoPreview, setPhotoPreview] = useState(null);
   const [saving,       setSaving]      = useState(false);
   const [saveMsg,      setSaveMsg]     = useState("");
-  const [showSupport,  setShowSupport] = useState(false);
   const [lockBusy,     setLockBusy]    = useState(false);
   const [showPinSetup, setShowPinSetup] = useState(false);
   const [isDark,       setIsDark]      = useState(() => localStorage.getItem("kuditrack_dark") === "1");
