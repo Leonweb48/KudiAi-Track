@@ -1711,39 +1711,115 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
   );
 }
 
+// ── Pending info sheet (AMP-07) ───────────────────────────────────────────
+function PendingInfoSheet({ item, onClose }) {
+  const isPendingManual = item.payment_method === "manual_transfer";
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/60 flex items-end justify-center" onClick={onClose}>
+      <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-t-3xl px-5 py-6 shadow-2xl max-h-[85dvh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="w-10 h-1 bg-slate-300 dark:bg-slate-600 rounded-full mx-auto mb-5" />
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 bg-amber-100 dark:bg-amber-900/30 rounded-2xl flex items-center justify-center flex-shrink-0">
+            <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-amber-500" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+              <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+            </svg>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-extrabold text-slate-800 dark:text-white">Pending Confirmation</p>
+            <p className="text-[11px] text-slate-400">{fmtDateTime(item.created_at || item.date)}</p>
+          </div>
+        </div>
+        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl px-4 py-3 mb-4">
+          <p className="text-xs font-bold text-amber-700 dark:text-amber-300 mb-1">
+            {isPendingManual ? "Awaiting bank transfer verification" : "Awaiting approval"}
+          </p>
+          <p className="text-xs text-amber-600 dark:text-amber-400 leading-relaxed">
+            {isPendingManual
+              ? "Your savings agent will verify the bank transfer you submitted. This usually takes a few hours during business days."
+              : "Your savings agent will review and confirm this entry. You'll be notified by email once it's approved."}
+          </p>
+        </div>
+        <div className="space-y-2 mb-5">
+          {[
+            { label: "Amount", value: fmt(item.amount) },
+            { label: "Type",   value: ledgerTypeLabel(item.type) },
+            item.payment_method && { label: "Method", value: item.payment_method.replace(/_/g, " ") },
+            (item.claim_notes || item.notes) && { label: "Note", value: item.claim_notes || item.notes },
+          ].filter(Boolean).map(row => (
+            <div key={row.label} className="flex justify-between text-xs">
+              <span className="text-slate-500 dark:text-slate-400">{row.label}</span>
+              <span className="font-bold text-slate-700 dark:text-slate-200 text-right max-w-[60%] truncate capitalize">{row.value}</span>
+            </div>
+          ))}
+        </div>
+        <button onClick={onClose} className="w-full py-3.5 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-2xl font-bold text-sm active:scale-[0.99] transition">
+          Close
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── History tab ───────────────────────────────────────────────────────────
 function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo }) {
   const [typeFilter,     setTypeFilter]     = useState("all");
   const [receipt,        setReceipt]        = useState(null);
+  const [pendingSheet,   setPendingSheet]   = useState(null);
   const [disputeFor,     setDisputeFor]     = useState(null);
   const [disputeDesc,    setDisputeDesc]    = useState("");
   const [disputeLoading, setDisputeLoading] = useState(false);
+  const [disputeError,   setDisputeError]   = useState("");
+  const [disputeToast,   setDisputeToast]   = useState(false);
   const [disputedIds,    setDisputedIds]    = useState(() => new Set());
 
   const withdrawItems = withdrawRequests.map(r => ({
     _type: "withdrawal_request",
-    id: r.id,
-    amount: r.amount,
-    net_amount: r.net_amount,
-    fee_amount: r.fee_amount,
-    fee_type: r.fee_type,
-    status: r.status,
-    date: r.requested_at,
+    id: r.id, amount: r.amount, net_amount: r.net_amount,
+    fee_amount: r.fee_amount, fee_type: r.fee_type,
+    status: r.status, date: r.requested_at,
   }));
   const contribItems = contributions.map(c => ({ _type: "contribution", ...c, date: c.created_at }));
   const allItems = [...withdrawItems, ...contribItems].sort((a, b) => new Date(b.date) - new Date(a.date));
 
+  // Build set of IDs that were reversed (reversal entries point back via reversal_of / source_id)
+  const reversedIdSet = new Set(
+    contributions
+      .filter(c => c.type?.startsWith("reversal_"))
+      .map(c => c.reversal_of || c.reversal_of_id || c.source_id || c.linked_id)
+      .filter(Boolean)
+  );
+
+  const FILTERS = [
+    { id: "all",         label: "All" },
+    { id: "deposits",    label: "Deposits" },
+    { id: "withdrawals", label: "Withdrawals" },
+    { id: "fees",        label: "Fees" },
+  ];
+
   const filtered = allItems.filter(item => {
-    if (typeFilter === "contributions") return item._type === "contribution" && item.type === "contribution";
-    if (typeFilter === "withdrawals")   return item._type === "withdrawal_request" || item.type === "withdrawal";
+    if (typeFilter === "deposits")    return item._type === "contribution" && (item.type === "contribution" || item.type === "esusu_payout");
+    if (typeFilter === "withdrawals") return item._type === "withdrawal_request" || item.type === "withdrawal";
+    if (typeFilter === "fees")        return item._type === "contribution" && (item.type === "withdrawal_fee" || item.type === "registration_fee" || item.type === "commission");
     return true;
   });
 
-  const FILTERS = [
-    { id: "all", label: "All" },
-    { id: "contributions", label: "Contributions" },
-    { id: "withdrawals", label: "Withdrawals" },
-  ];
+  // Group filtered list by calendar month, preserving desc order within each month
+  const months = [];
+  const monthMap = {};
+  filtered.forEach(item => {
+    const d   = new Date(item.date);
+    const key = isNaN(d) ? "Unknown" : d.toLocaleDateString("en-NG", { month: "long", year: "numeric" });
+    if (!monthMap[key]) { monthMap[key] = []; months.push(key); }
+    monthMap[key].push(item);
+  });
+
+  const statusCls = (s) => {
+    if (s === "completed" || s === "approved") return "bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400";
+    if (s === "rejected")                      return "bg-red-50 dark:bg-red-900/20 text-red-500";
+    return "bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400";
+  };
+
+  const bizName = ownerInfo?.owner?.business_name || ownerInfo?.business_name || ownerInfo?.full_name || "My Business";
 
   if (!allItems.length) {
     return (
@@ -1759,23 +1835,15 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
     );
   }
 
-  const statusCls = (s) => {
-    if (s === "completed" || s === "approved") return "bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400";
-    if (s === "rejected") return "bg-red-50 dark:bg-red-900/20 text-red-500";
-    return "bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400";
-  };
-
-  const bizName = ownerInfo?.business_name || ownerInfo?.full_name || "My Business";
-
   const handleExportPdf = async () => {
     const sorted = [...allItems].sort((a, b) => new Date(a.date || a.created_at || 0) - new Date(b.date || b.created_at || 0));
     let runBal = 0;
     const rows = sorted.map(item => {
-      const amt      = parseFloat(item.amount) || 0;
-      const isWdReq  = item._type === "withdrawal_request";
-      const isFee    = item.type === "withdrawal_fee" || item.type === "registration_fee";
-      const isWd     = !isWdReq && (item.type === "withdrawal" || isFee || item.type === "commission" || (item.type || "").startsWith("reversal_"));
-      const desc     = isWdReq ? "Withdrawal Request (Pending)" : ledgerTypeLabel(item.type);
+      const amt     = parseFloat(item.amount) || 0;
+      const isWdReq = item._type === "withdrawal_request";
+      const isFee   = item.type === "withdrawal_fee" || item.type === "registration_fee";
+      const isWd    = !isWdReq && (item.type === "withdrawal" || isFee || item.type === "commission" || (item.type || "").startsWith("reversal_"));
+      const desc    = isWdReq ? "Withdrawal Request (Pending)" : ledgerTypeLabel(item.type);
       if (!isWdReq) { if (isWd) runBal -= amt; else runBal += amt; }
       return {
         date:        pdfFmtDate(item.created_at || item.date),
@@ -1793,8 +1861,8 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
       period: client?.full_name || "Member",
       headerRight: [
         { value: bizName },
-        client?.full_name                ? { value: client.full_name,          sub: true } : null,
-        ownerInfo?.staff?.phone          ? { value: ownerInfo.staff.phone,      sub: true } : null,
+        client?.full_name       ? { value: client.full_name,     sub: true } : null,
+        ownerInfo?.staff?.phone ? { value: ownerInfo.staff.phone, sub: true } : null,
       ].filter(Boolean),
       entityDetails: [
         { label: "Member",          value: client?.full_name || "—" },
@@ -1804,8 +1872,8 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
       ],
     });
     pdf.addStats([
-      { label: "Total Contributed", value: pdfFmt(totC),                        color: "#3DA829" },
-      { label: "Total Withdrawn",   value: pdfFmt(totD),                        color: "#ef4444" },
+      { label: "Total Contributed", value: pdfFmt(totC), color: "#3DA829" },
+      { label: "Total Withdrawn",   value: pdfFmt(totD), color: "#ef4444" },
       { label: "Current Balance",   value: pdfFmt(client?.current_balance || 0) },
       { label: "Records",           value: String(allItems.length) },
     ]);
@@ -1813,8 +1881,106 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
     await pdf.save(`Ajo_Savings_${(client?.full_name || "Statement").replace(/\s+/g, "_")}.pdf`);
   };
 
+  const renderItem = (item) => {
+    const isWdReq    = item._type === "withdrawal_request";
+    const isPending  = item.status === "pending";
+    const isReversal = item.type?.startsWith("reversal_");
+    const isReversed = reversedIdSet.has(item.id);
+    const isManual   = item.payment_method === "manual_transfer";
+    const isRejected = item.status === "rejected";
+    // Credits: contribution, esusu_payout, reversal_withdrawal*
+    const isCredit   = !isWdReq && (
+      item.type === "contribution" || item.type === "esusu_payout" ||
+      item.type === "reversal_withdrawal" || item.type === "reversal_withdrawal_fee" || item.type === "reversal_registration_fee"
+    );
+    const sign = isCredit ? "+" : "−";
+
+    const cardCls = isPending
+      ? "bg-amber-50/70 dark:bg-amber-900/10 border-amber-200/70 dark:border-amber-800/40"
+      : isRejected && isManual
+        ? "bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800/60"
+        : "bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700";
+
+    const amtCls = isReversed  ? "line-through text-slate-400 dark:text-slate-500"
+      : isReversal             ? "text-amber-600 dark:text-amber-400"
+      : isPending              ? "text-amber-500 dark:text-amber-400"
+      : isCredit               ? "text-green-600 dark:text-green-400"
+      : "text-red-500 dark:text-red-400";
+
+    const iconBg  = isReversal || isPending ? "bg-amber-100 dark:bg-amber-900/30"
+      : isCredit ? "bg-green-50 dark:bg-green-900/20"
+      : "bg-red-50 dark:bg-red-900/20";
+    const iconCls = isReversal || isPending ? "text-amber-500 dark:text-amber-400"
+      : isCredit ? "text-green-600 dark:text-green-400"
+      : "text-red-500 dark:text-red-400";
+
+    const handleTap = () => {
+      if (isPending && !isWdReq) { setPendingSheet(item); return; }
+      setReceipt(isWdReq ? { ...item, type: "withdrawal" } : item);
+    };
+
+    return (
+      <button key={`${item._type}-${item.id}`} onClick={handleTap}
+        className={`w-full text-left rounded-2xl px-4 py-3 border active:scale-[0.98] transition-transform ${cardCls}`}>
+        <div className="flex items-start gap-3">
+          <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${iconBg}`}>
+            {isReversal ? (
+              <svg viewBox="0 0 24 24" fill="none" className={`w-4 h-4 ${iconCls}`} stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                <path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 010 11H11"/>
+              </svg>
+            ) : isCredit ? (
+              <svg viewBox="0 0 24 24" fill="none" className={`w-4 h-4 ${iconCls}`} stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                <path d="M12 5v14M5 12l7-7 7 7"/>
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" fill="none" className={`w-4 h-4 ${iconCls}`} stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                <path d="M12 19V5M5 12l7 7 7-7"/>
+              </svg>
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between gap-2">
+              <p className={`text-xs font-semibold min-w-0 truncate ${isReversed ? "line-through text-slate-400 dark:text-slate-500" : "text-slate-700 dark:text-slate-200"}`}>
+                {isWdReq ? "Withdrawal Request" : ledgerTypeLabel(item.type)}
+              </p>
+              <span className={`text-sm font-extrabold tabular flex-shrink-0 ${amtCls}`}>
+                {sign}{fmt(item.amount)}
+              </span>
+            </div>
+            {/* Status / badge row */}
+            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+              {isPending && <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 px-1.5 py-0.5 rounded-full">Pending · tap for info</span>}
+              {isReversed && <span className="text-[10px] font-bold text-red-500 bg-red-50 dark:bg-red-900/20 px-1.5 py-0.5 rounded-full">Reversed</span>}
+              {!isPending && !isReversed && <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full capitalize ${statusCls(item.status)}`}>{item.status || "—"}</span>}
+              {isWdReq && item.net_amount != null && <span className="text-[10px] text-slate-400 dark:text-slate-500">Net: {fmt(item.net_amount)}</span>}
+            </div>
+            <p className="text-[10px] text-slate-400 mt-0.5">
+              {isManual ? "Bank transfer" : (item.payment_method || (isWdReq ? "withdrawal" : "cash"))}
+              {item.paystack_ref && ` · Ref: ${item.paystack_ref.slice(-8)}`}
+            </p>
+            <p className="text-[10px] text-slate-400">{fmtDateTime(item.created_at || item.date)}</p>
+            {(item.claim_notes || item.notes) && <p className="text-[10px] text-slate-400 italic mt-0.5">"{item.claim_notes || item.notes}"</p>}
+            {isRejected && isManual && item.rejected_reason && (
+              <p className="text-[10px] text-red-500 dark:text-red-400 mt-1 font-semibold">Reason: {item.rejected_reason}</p>
+            )}
+            {(item.dispute_ticket_no || disputedIds.has(item.id)) ? (
+              <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1 font-semibold">
+                Dispute filed{item.dispute_ticket_no ? ` · ${item.dispute_ticket_no}` : ""}
+              </p>
+            ) : (!isPending && item._type === "contribution" && (
+              <button onClick={e => { e.stopPropagation(); setDisputeFor(item); setDisputeDesc(""); setDisputeError(""); }}
+                className="text-[10px] text-slate-400 hover:text-red-500 dark:hover:text-red-400 mt-1 underline text-left">
+                Report an issue
+              </button>
+            ))}
+          </div>
+        </div>
+      </button>
+    );
+  };
+
   return (
-    <div className="px-4 pt-5 pb-28">
+    <div className="px-4 pt-5 pb-36">
       {receipt && (
         <TransactionDetailModal
           data={
@@ -1826,16 +1992,27 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
         />
       )}
 
-      {/* Type filter chips + PDF export */}
+      {pendingSheet && (
+        <PendingInfoSheet item={pendingSheet} onClose={() => setPendingSheet(null)} />
+      )}
+
+      {/* Dispute success toast (AMP-21) */}
+      {disputeToast && (
+        <div className="fixed bottom-24 inset-x-4 z-[400] bg-green-600 text-white text-sm font-bold px-4 py-3 rounded-2xl shadow-xl flex items-center gap-2 animate-[fadeIn_0.2s_ease]">
+          <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 flex-shrink-0" stroke="currentColor" strokeWidth={3} strokeLinecap="round">
+            <path d="M20 6L9 17l-5-5"/>
+          </svg>
+          Dispute submitted — we'll review your case
+        </div>
+      )}
+
+      {/* Filter chips + PDF export */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex gap-2 overflow-x-auto no-scrollbar">
           {FILTERS.map(f => (
-            <button key={f.id}
-              onClick={() => setTypeFilter(f.id)}
-              className={`px-4 py-1.5 rounded-full text-xs font-bold flex-shrink-0 transition-colors
-                ${typeFilter === f.id
-                  ? "bg-brand-500 text-white shadow-sm"
-                  : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300"}`}>
+            <button key={f.id} onClick={() => setTypeFilter(f.id)}
+              className={`px-4 py-1.5 rounded-full text-xs font-bold flex-shrink-0 transition-colors ${
+                typeFilter === f.id ? "bg-brand-500 text-white shadow-sm" : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300"}`}>
               {f.label}
             </button>
           ))}
@@ -1851,121 +2028,29 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
         )}
       </div>
 
-      <div className="space-y-2">
-        {filtered.map(item => item._type === "withdrawal_request" ? (
-          <button key={`wr-${item.id}`} onClick={() => setReceipt({ ...item, type: "withdrawal" })}
-            className="w-full text-left bg-white dark:bg-slate-800 rounded-2xl px-4 py-3 border border-slate-100 dark:border-slate-700 active:scale-[0.98] transition-transform">
-            <div className="flex items-start gap-3">
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-brand-50 dark:bg-brand-900/20">
-                <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-brand-500" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-                  <path d="M12 19V5M5 12l7 7 7-7"/>
-                </svg>
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-extrabold tabular text-brand-500 dark:text-brand-400">−{fmt(item.amount)}</span>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize flex-shrink-0 ${statusCls(item.status)}`}>{item.status}</span>
-                </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Withdrawal request · Net: {fmt(item.net_amount)}
-                  {item.fee_amount > 0 && ` · Fee: ${fmt(item.fee_amount)}`}
-                </p>
-                <p className="text-[10px] text-slate-400 mt-0.5">
-                  {fmtDateTime(item.date)}
-                </p>
-              </div>
+      {/* Month-grouped rows */}
+      {filtered.length === 0 ? (
+        <div className="text-center py-10">
+          <p className="text-sm text-slate-400 dark:text-slate-500">No {typeFilter === "all" ? "transactions" : typeFilter} to show</p>
+        </div>
+      ) : (
+        months.map(month => (
+          <div key={month} className="mb-5">
+            <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2.5 px-1">{month}</p>
+            <div className="space-y-2">
+              {monthMap[month].map(item => renderItem(item))}
             </div>
-          </button>
-        ) : (() => {
-          const isPending         = item.type === "contribution" && item.status === "pending";
-          const isPendingManual   = isPending && item.payment_method === "manual_transfer";
-          const isPendingRecorded = isPending && item.payment_method !== "manual_transfer";
-          const isRejectedManual  = item.payment_method === "manual_transfer" && item.status === "rejected";
-          const isManual          = item.payment_method === "manual_transfer";
-          const isContrib         = item.type === "contribution";
-          const cardCls = isPending
-            ? "bg-brand-50 dark:bg-brand-900/20 border-brand-200 dark:border-brand-800/60"
-            : isRejectedManual
-              ? "bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800/60"
-              : "bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700";
+          </div>
+        ))
+      )}
 
-          const pendingLabel = isPendingManual   ? "Awaiting bank transfer confirmation"
-                             : isPendingRecorded ? "Pending approval"
-                             : null;
-
-          const Row = isPending ? "div" : "button";
-          const rowProps = isPending
-            ? { key: `c-${item.id}`, className: `w-full text-left rounded-2xl px-4 py-3 border ${cardCls}` }
-            : { key: `c-${item.id}`, onClick: () => setReceipt(item), className: `w-full text-left rounded-2xl px-4 py-3 border active:scale-[0.98] transition-transform ${cardCls}` };
-
-          return (
-            <Row {...rowProps}>
-              <div className="flex items-start gap-3">
-                <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                  isPending        ? "bg-brand-100 dark:bg-brand-900/40" :
-                  isRejectedManual ? "bg-red-100 dark:bg-red-900/30" :
-                  isContrib        ? "bg-green-50 dark:bg-green-900/20" : "bg-red-50 dark:bg-red-900/20"
-                }`}>
-                  <svg viewBox="0 0 24 24" fill="none" className={`w-4 h-4 ${
-                    isPending        ? "text-brand-500 dark:text-brand-400" :
-                    isRejectedManual ? "text-red-500" :
-                    isContrib        ? "text-green-600 dark:text-green-400" : "text-red-500"
-                  }`} stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-                    {isContrib ? <path d="M12 5v14M5 12l7-7 7 7" /> : <path d="M12 19V5M5 12l7 7 7-7" />}
-                  </svg>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className={`text-sm font-extrabold tabular ${
-                      isPending        ? "text-brand-500 dark:text-brand-400" :
-                      isRejectedManual ? "text-red-500 dark:text-red-400" :
-                      isContrib        ? "text-green-600 dark:text-green-400" : "text-red-500"
-                    }`}>
-                      {isContrib ? "+" : "−"}{fmt(item.amount)}
-                    </span>
-                    {!isPending && (
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize flex-shrink-0 ${statusCls(item.status)}`}>
-                        {item.status}
-                      </span>
-                    )}
-                  </div>
-                  {isPending && pendingLabel && (
-                    <p className="text-[10px] font-bold text-brand-500 dark:text-brand-400 mt-0.5">{pendingLabel}</p>
-                  )}
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    {ledgerTypeLabel(item.type)}{isManual ? " · Bank transfer" : ` · ${item.payment_method || "cash"}`}
-                    {item.paystack_ref && ` · Ref: ${item.paystack_ref.slice(-8)}`}
-                  </p>
-                  <p className="text-[10px] text-slate-400 mt-0.5">
-                    {fmtDateTime(item.created_at)}
-                  </p>
-                  {item.claim_notes && <p className="text-[10px] text-slate-400 italic mt-0.5">"{item.claim_notes}"</p>}
-                  {!item.claim_notes && item.notes && <p className="text-[10px] text-slate-400 italic mt-0.5">"{item.notes}"</p>}
-                  {isRejectedManual && item.rejected_reason && (
-                    <p className="text-[10px] text-red-500 dark:text-red-400 mt-1 font-semibold">Reason: {item.rejected_reason}</p>
-                  )}
-                  {(item.dispute_ticket_no || disputedIds.has(item.id)) ? (
-                    <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1 font-semibold">
-                      Dispute filed{item.dispute_ticket_no ? ` · ${item.dispute_ticket_no}` : ""}
-                    </p>
-                  ) : !isPending && isContrib && (
-                    <button onClick={e => { e.stopPropagation(); setDisputeFor(item); setDisputeDesc(""); }}
-                      className="text-[10px] text-slate-400 hover:text-red-500 dark:hover:text-red-400 mt-1 underline text-left">
-                      Report an issue
-                    </button>
-                  )}
-                </div>
-              </div>
-            </Row>
-          );
-        })())}
-      </div>
+      {/* Dispute modal */}
       {disputeFor && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 px-4 pb-6">
           <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-2xl p-5 shadow-xl">
             <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-1">Report an Issue</h3>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-3">
-              {fmtDate(disputeFor.created_at)} &middot; {disputeFor.type === "contribution" ? "+" : "−"}{fmt(disputeFor.amount)}
+              {fmtDate(disputeFor.created_at)} · {disputeFor.type === "contribution" ? "+" : "−"}{fmt(disputeFor.amount)}
             </p>
             <textarea
               value={disputeDesc}
@@ -1974,25 +2059,36 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
               rows={3}
               className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none mb-3"
             />
+            {disputeError && (
+              <p className="text-xs text-red-500 dark:text-red-400 mb-3">{disputeError}</p>
+            )}
             <div className="flex gap-2">
-              <button onClick={() => setDisputeFor(null)}
+              <button onClick={() => { setDisputeFor(null); setDisputeError(""); }}
                 className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 text-sm font-semibold text-slate-500 dark:text-slate-400">
                 Cancel
               </button>
-              <button onClick={async () => {
-                setDisputeLoading(true);
-                try {
-                  await ajoFn("submit-dispute", {
-                    client_id:       client.id,
-                    owner_id:        client.user_id,
-                    contribution_id: disputeFor.id,
-                    description:     disputeDesc,
-                  });
-                  setDisputedIds(prev => new Set([...prev, disputeFor.id]));
-                } catch {}
-                setDisputeLoading(false);
-                setDisputeFor(null);
-              }} disabled={disputeLoading}
+              <button
+                onClick={async () => {
+                  setDisputeLoading(true);
+                  setDisputeError("");
+                  try {
+                    await ajoFn("submit-dispute", {
+                      client_id:       client.id,
+                      owner_id:        client.user_id,
+                      contribution_id: disputeFor.id,
+                      description:     disputeDesc,
+                    });
+                    setDisputedIds(prev => new Set([...prev, disputeFor.id]));
+                    setDisputeFor(null);
+                    setDisputeToast(true);
+                    setTimeout(() => setDisputeToast(false), 3500);
+                  } catch (err) {
+                    setDisputeError(err?.message || "Failed to submit. Please try again.");
+                  } finally {
+                    setDisputeLoading(false);
+                  }
+                }}
+                disabled={disputeLoading}
                 className="flex-1 py-2.5 rounded-xl bg-brand-500 text-white text-sm font-bold disabled:opacity-50">
                 {disputeLoading ? "Submitting…" : "Submit Report"}
               </button>
