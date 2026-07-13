@@ -3156,13 +3156,12 @@ function AjoMemberMe({ client, session, clientId, lock, onChangePwdClick, onProf
       {/* ── App Lock PIN flows (z-[300]) ────────────────────────────────── */}
       {secView === "app-pin" && secStep === 1 && (
         <AjoPinPad
-          length={6} minLength={4}
+          length={6}
           title="Enter current PIN"
-          subtitle="Enter your current app unlock PIN to continue"
+          subtitle="Enter your 6-digit app unlock PIN"
           onComplete={handleAppPinStep}
           onCancel={resetSecView}
           error={secErr} shaking={secShake} loading={secBusy}
-          hint="Type 4–6 digits and tap Continue, or enter all 6 for auto-submit"
         />
       )}
       {secView === "app-pin" && secStep === 2 && (
@@ -3433,17 +3432,18 @@ export default function AjoMemberPortal({ session, ajoClient }) {
     return v !== null ? parseInt(v, 10) : null; // null = not configured
   });
   const lastHiddenRef = useRef(null);
-  const autoLockSecsRef = useRef(autoLockSecs);
-  useEffect(() => { autoLockSecsRef.current = autoLockSecs; }, [autoLockSecs]);
 
   useEffect(() => {
     if (!lock.hasPIN) return;
     const onHide = () => { lastHiddenRef.current = Date.now(); localStorage.setItem(LS_LAST_HIDDEN, String(Date.now())); };
     const onShow = () => {
-      const secs = autoLockSecsRef.current;
-      if (secs === null || secs === 0) return; // not configured or explicitly Never
-      const elapsed = Date.now() - (lastHiddenRef.current ?? parseInt(localStorage.getItem(LS_LAST_HIDDEN) || "0", 10));
-      if (elapsed >= secs * 1000) setIsLocked(true);
+      // Read directly from localStorage — immune to the async ref-update race condition
+      const stored = localStorage.getItem(LS_AUTO_LOCK_SECS);
+      const secs = stored !== null ? parseInt(stored, 10) : null;
+      if (!secs || secs <= 0) return; // null (not configured), NaN, or 0 (Never) → skip
+      const hiddenAt = lastHiddenRef.current ?? parseInt(localStorage.getItem(LS_LAST_HIDDEN) || "0", 10);
+      if (!hiddenAt) return; // never hidden this session and no stored timestamp → skip
+      if (Date.now() - hiddenAt >= secs * 1000) setIsLocked(true);
     };
     const onVis = () => { if (document.visibilityState === "hidden") onHide(); else onShow(); };
     document.addEventListener("visibilitychange", onVis);
