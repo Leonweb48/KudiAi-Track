@@ -2594,7 +2594,8 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
       };
       if (confirmedEmail) payload.email = confirmedEmail;
       if (confirmedPhone) payload.phone = confirmedPhone;
-      await supabase.from("aso_clients").update(payload).eq("id", clientId);
+      // Route through edge function so service role bypasses RLS (direct client update is blocked)
+      await ajoFn("update-profile", { client_id: clientId, fields: payload });
       const changedFields = Object.keys(payload).filter(k => k !== "profile_image_url");
       ajoFn("log-profile-update", { client_id: clientId, fields_changed: changedFields }).catch(() => {});
       onProfileUpdate?.(payload);
@@ -3615,14 +3616,16 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
           <div className="flex items-center gap-2 flex-none min-w-0">
             {ownerInfo?.owner?.business_name ? (
               <>
-                <div className="w-8 h-8 rounded-xl flex-shrink-0 overflow-hidden bg-navy relative flex items-center justify-center">
-                  <span className="text-white font-black text-sm leading-none select-none">
-                    {ownerInfo.owner.business_name[0].toUpperCase()}
-                  </span>
-                  {(ownerInfo.owner.logo_url || ownerInfo.owner.profile_image_url) && (
-                    <img src={ownerInfo.owner.logo_url || ownerInfo.owner.profile_image_url} alt="" className="absolute inset-0 w-full h-full object-cover" onError={(e) => e.currentTarget.style.display = "none"} />
-                  )}
-                </div>
+                {ownerInfo.owner.logo_url ? (
+                  <div className="w-8 h-8 rounded-xl flex-shrink-0 overflow-hidden bg-navy relative flex items-center justify-center">
+                    <span className="text-white font-black text-sm leading-none select-none">
+                      {ownerInfo.owner.business_name[0].toUpperCase()}
+                    </span>
+                    <img src={ownerInfo.owner.logo_url} alt="" className="absolute inset-0 w-full h-full object-cover" onError={(e) => e.currentTarget.style.display = "none"} />
+                  </div>
+                ) : (
+                  <AppLogo className="h-8 w-8 flex-none" />
+                )}
                 <p className="text-[15px] font-black text-slate-800 dark:text-white leading-tight truncate" style={{ maxWidth: 160 }}>
                   {ownerInfo.owner.business_name}
                 </p>

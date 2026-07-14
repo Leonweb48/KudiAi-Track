@@ -691,6 +691,28 @@ serve(async (req) => {
       return json({ success: true });
     }
 
+    // ── Profile update (service-role so client RLS doesn't block) ────────────
+    if (action === "update-profile") {
+      const { client_id, fields } = body as { client_id: string; fields: Record<string, unknown> };
+      if (!client_id || !fields) return json({ error: "client_id and fields required" }, 400);
+
+      // Allowlist — clients may never touch balance, owner, PIN, or status fields
+      const ALLOWED = new Set([
+        "full_name", "phone", "address", "state", "lga", "ward", "nin",
+        "next_of_kin_name", "next_of_kin_phone", "next_of_kin_email",
+        "next_of_kin_address", "profile_image_url", "email",
+      ]);
+      const safePayload: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(fields)) {
+        if (ALLOWED.has(k)) safePayload[k] = v;
+      }
+      if (Object.keys(safePayload).length === 0) return json({ error: "No valid fields to update" }, 400);
+
+      const { error: upErr } = await sb.from("aso_clients").update(safePayload).eq("id", client_id);
+      if (upErr) return json({ error: "Couldn't save your profile — please try again" }, 500);
+      return json({ ok: true });
+    }
+
     // ── Profile audit log ──────────────────────────────────────────────────
     if (action === "log-profile-update") {
       const { client_id, fields_changed } = body as { client_id: string; fields_changed?: string[] };
