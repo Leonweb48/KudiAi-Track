@@ -48,6 +48,7 @@ import { useConsent }       from "./hooks/useConsent";
 import ConsentModal         from "./components/ConsentModal";
 import AjoClientOtpVerify   from "./screens/AjoClientOtpVerify";
 import OrgOtpVerify         from "./screens/OrgOtpVerify";
+import OfflineScreen        from "./screens/OfflineScreen";
 import AdminDashboard        from "./screens/AdminDashboard";
 import Help                  from "./screens/Help";
 import Profile               from "./screens/Profile";
@@ -113,7 +114,7 @@ export default function App() {
   const [branchReport, setBranchReport] = useState(null);
 
   // eslint-disable-next-line no-unused-vars
-  const { status, session, plan, setReady, refetch, upgradeAvailable, plansVersion, staff, ajoClient, orgMember, adminUser, marketer, org } = useAuth();
+  const { status, session, plan, setReady, refetch, retryAuth, upgradeAvailable, plansVersion, staff, ajoClient, orgMember, adminUser, marketer, org } = useAuth();
   const userId = session?.user?.id;
 
   // Consent gate — checks once per userId whether the user has accepted legal docs
@@ -348,6 +349,7 @@ export default function App() {
   // Ajo client — OTP first, then password setup
   if (status === "ajo_client_otp")   return <AjoClientOtpVerify ajoClient={ajoClient} />;
   if (status === "ajo_client_setup") return <AjoMemberPortal session={session} ajoClient={ajoClient} pinLock={pinLock} />;
+  if (status === "offline")          return <OfflineScreen onRetry={retryAuth} />;
   if (status === "unauthenticated")  return <Auth />;
   if (status === "onboarding")       return <Onboarding session={session} onComplete={refetch} />;
   if (status === "subscribing")      return <SubscriptionPlan session={session} onComplete={setReady} />;

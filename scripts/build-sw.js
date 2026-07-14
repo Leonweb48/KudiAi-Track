@@ -19,7 +19,7 @@ generateSW({
       options: {
         cacheName: "supabase-api",
         expiration: { maxEntries: 50, maxAgeSeconds: 300 },
-        networkTimeoutSeconds: 10,
+        networkTimeoutSeconds: 4,
       },
     },
   ],

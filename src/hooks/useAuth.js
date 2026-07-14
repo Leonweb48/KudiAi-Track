@@ -10,6 +10,25 @@ const CACHE_KEY = "kuditrack_plan";
 const SESSION_LOGGED_KEY = "kuditrack_sess_logged";
 const WELCOME_EMAIL_KEY = "kuditrack_welcome_sent";
 
+// Per-portal row caches — written on every successful resolve, read when the
+// matching DB query fails with a network error (offline / flaky connection).
+// Cleared on explicit sign-out so they never bleed into a different account.
+const AJO_CLIENT_CACHE_KEY = "kuditrack_ajo_client";
+const ORG_MEMBER_CACHE_KEY = "kuditrack_org_member";
+const STAFF_CACHE_KEY      = "kuditrack_staff";
+const MARKETER_CACHE_KEY   = "kuditrack_marketer";
+const ORG_CACHE_KEY        = "kuditrack_org";
+
+// Network error classifier — shared across all early-routing branches.
+// "data: null, error: FetchError" from Supabase means the fetch never completed,
+// NOT that the row was absent. Must not treat this as "account not found".
+const isNetErr = (e) => !!e && (
+  (e.message || "").includes("Load failed") ||
+  (e.message || "").includes("Failed to fetch") ||
+  (e.message || "").includes("NetworkError") ||
+  (e.message || "").includes("network")
+);
+
 function fireWelcomeEmail(event, data) {
   const sentKey = `${WELCOME_EMAIL_KEY}_${data.email || data.name}`;
   if (sessionStorage.getItem(sentKey)) return;
@@ -82,6 +101,12 @@ export function useAuth() {
       profileRetryRef.current = 0;
       // Do NOT clear CACHE_KEY here — if the next login's DB query has a transient
       // failure the cached plan prevents a false "subscribing" redirect.
+      // Portal row caches ARE cleared on sign-out so they never bleed into another account.
+      localStorage.removeItem(AJO_CLIENT_CACHE_KEY);
+      localStorage.removeItem(ORG_MEMBER_CACHE_KEY);
+      localStorage.removeItem(STAFF_CACHE_KEY);
+      localStorage.removeItem(MARKETER_CACHE_KEY);
+      localStorage.removeItem(ORG_CACHE_KEY);
       return;
     }
 
@@ -120,8 +145,9 @@ export function useAuth() {
       // Old members (must_change_password: false) skip directly to org_member.
       const memberOtpVerified = sess.user.user_metadata?.member_otp_verified === true;
 
-      const { data: orgMemberRow } = await supabase.rpc("get_my_membership");
+      const { data: orgMemberRow, error: orgMemberErr } = await supabase.rpc("get_my_membership");
       if (orgMemberRow) {
+        localStorage.setItem(ORG_MEMBER_CACHE_KEY, JSON.stringify(orgMemberRow));
         setOrgMember({ ...orgMemberRow, org: orgMemberRow.organizations });
         subVerified.current = true;
         logPlatformSession(supabase, uid, "org_member", orgMemberRow.full_name, email);
@@ -135,7 +161,22 @@ export function useAuth() {
         }
         return;
       }
-      // No active membership found — sign out rather than drop into business onboarding
+      // Network error: route by cached row so the member isn't signed out offline.
+      if (isNetErr(orgMemberErr)) {
+        const raw = localStorage.getItem(ORG_MEMBER_CACHE_KEY);
+        if (raw) {
+          try {
+            const cached = JSON.parse(raw);
+            setOrgMember({ ...cached, org: cached.organizations });
+            subVerified.current = true;
+            setStatus("org_member");
+            return;
+          } catch { /* corrupted cache — fall through to offline screen */ }
+        }
+        setStatus("offline");
+        return;
+      }
+      // Row genuinely absent — sign out
       await supabase.auth.signOut();
       setStatus("unauthenticated");
       return;
@@ -143,12 +184,13 @@ export function useAuth() {
 
     // ── Ajo Client early routing ──────────────────────────────────────
     if (accountType === "ajo_client") {
-      const { data: ajoClientRow } = await supabase
+      const { data: ajoClientRow, error: ajoClientErr } = await supabase
         .from("aso_clients")
         .select("id, full_name, user_id, client_user_id, profile_image_url, membership_number, email, current_balance, total_saved, total_withdrawn, next_contribution_date, contribution_amount, contribution_frequency, status, registration_charge, withdrawal_fee_percent, ajo_group_id")
         .eq("client_user_id", uid)
         .maybeSingle();
       if (ajoClientRow) {
+        localStorage.setItem(AJO_CLIENT_CACHE_KEY, JSON.stringify(ajoClientRow));
         setAjoClient({ ...ajoClientRow, owner_id: ajoClientRow.user_id });
         subVerified.current = true;
         logPlatformSession(supabase, uid, "ajo_client", ajoClientRow.full_name, email);
@@ -164,6 +206,25 @@ export function useAuth() {
         }
         return;
       }
+      // Network error: serve the cached row so the client isn't signed out while offline.
+      // The portal's own isStale banner will surface the offline state.
+      if (isNetErr(ajoClientErr)) {
+        const raw = localStorage.getItem(AJO_CLIENT_CACHE_KEY);
+        if (raw) {
+          try {
+            const cached = JSON.parse(raw);
+            setAjoClient({ ...cached, owner_id: cached.user_id });
+            subVerified.current = true;
+            setStatus("ajo_client");
+            return;
+          } catch { /* corrupted cache — fall through to offline screen */ }
+        }
+        // No usable cache: show a dedicated offline screen. Session is preserved
+        // so the next successful network attempt routes correctly without re-login.
+        setStatus("offline");
+        return;
+      }
+      // Row genuinely absent (not a network error) — sign out
       await supabase.auth.signOut();
       setStatus("unauthenticated");
       return;
@@ -171,13 +232,14 @@ export function useAuth() {
 
     // ── Marketer early routing ────────────────────────────────────────
     if (accountType === "marketer") {
-      const { data: marketerRow } = await supabase
+      const { data: marketerRow, error: marketerErr } = await supabase
         .from("brm_marketers")
         .select("id, owner_id, username, full_name, email, phone, territory, commission_rate, status, profile_image_url, total_clients, total_commission_earned")
         .eq("owner_id", uid)
         .eq("status", "active")
         .maybeSingle();
       if (marketerRow) {
+        localStorage.setItem(MARKETER_CACHE_KEY, JSON.stringify(marketerRow));
         setMarketer(marketerRow);
         subVerified.current = true;
         logPlatformSession(supabase, uid, "marketer", marketerRow.full_name || marketerRow.username, email);
@@ -192,6 +254,20 @@ export function useAuth() {
         }
         return;
       }
+      if (isNetErr(marketerErr)) {
+        const raw = localStorage.getItem(MARKETER_CACHE_KEY);
+        if (raw) {
+          try {
+            const cached = JSON.parse(raw);
+            setMarketer(cached);
+            subVerified.current = true;
+            setStatus("marketer");
+            return;
+          } catch { /* corrupted cache */ }
+        }
+        setStatus("offline");
+        return;
+      }
       await supabase.auth.signOut();
       setStatus("unauthenticated");
       return;
@@ -202,11 +278,28 @@ export function useAuth() {
     // with a profiles row (via DB trigger on auth user creation) is still
     // routed to their staff portal, not to business onboarding.
     if (accountType === "staff") {
-      let { data: staffRow } = await supabase
+      let { data: staffRow, error: staffErr } = await supabase
         .from("staff")
         .select("*, staff_permissions(*)")
         .eq("user_id", uid)
         .maybeSingle();
+
+      // Network error on the first query: skip the legacy email fallback
+      // (it would also fail) and go straight to cache/offline handling.
+      if (!staffRow && isNetErr(staffErr)) {
+        const raw = localStorage.getItem(STAFF_CACHE_KEY);
+        if (raw) {
+          try {
+            const cached = JSON.parse(raw);
+            setStaff({ ...cached, user_id: uid });
+            subVerified.current = true;
+            setStatus(cached.role === "manager" && cached.branch_id ? "branch_manager" : "staff");
+            return;
+          } catch { /* corrupted cache */ }
+        }
+        setStatus("offline");
+        return;
+      }
 
       if (!staffRow) {
         const { data: legacyStaff } = await supabase
@@ -221,6 +314,7 @@ export function useAuth() {
         if (!staffRow.user_id) {
           await supabase.from("staff").update({ user_id: uid }).eq("id", staffRow.id);
         }
+        localStorage.setItem(STAFF_CACHE_KEY, JSON.stringify({ ...staffRow, user_id: uid }));
         setStaff({ ...staffRow, user_id: uid });
         subVerified.current = true;
         logPlatformSession(supabase, uid, "staff", staffRow.full_name, email);
@@ -246,13 +340,6 @@ export function useAuth() {
 
     // ── Organisation portal routing ───────────────────────────────────
     if (accountType === "organisation") {
-      const isNetErr = (e) => e && (
-        e.message.includes("Load failed") ||
-        e.message.includes("Failed to fetch") ||
-        e.message.includes("NetworkError") ||
-        e.message.includes("network")
-      );
-
       let { data: orgRow, error: orgErr } = await supabase.rpc("get_my_org");
 
       // Retry once on transient network errors before giving up
@@ -270,6 +357,7 @@ export function useAuth() {
           setStatus("unauthenticated");
           return;
         }
+        localStorage.setItem(ORG_CACHE_KEY, JSON.stringify(orgRow));
         setOrg(orgRow);
         subVerified.current = true;
         logPlatformSession(supabase, uid, "organisation", orgRow.name, email);
@@ -286,12 +374,22 @@ export function useAuth() {
         return;
       }
 
-      // Network error even after retry: keep session alive so user can reload and retry
+      // Network error even after retry: try cached row, then show offline screen.
+      // Session is preserved so the next successful network attempt routes correctly.
       if (isNetErr(orgErr)) {
-        const msg = "Connection error. Please check your internet connection and try again.";
-        sessionStorage.setItem("auth_block_reason", msg);
-        window.dispatchEvent(new CustomEvent("kuditrack_auth_error", { detail: msg }));
-        setStatus("unauthenticated");
+        const raw = localStorage.getItem(ORG_CACHE_KEY);
+        if (raw) {
+          try {
+            const cached = JSON.parse(raw);
+            if (cached.status === "active") {
+              setOrg(cached);
+              subVerified.current = true;
+              setStatus("organisation");
+              return;
+            }
+          } catch { /* corrupted cache */ }
+        }
+        setStatus("offline");
         return;
       }
 
@@ -599,13 +697,8 @@ export function useAuth() {
     setStatus("subscribing");
     } catch (err) {
       console.error("[useAuth] resolve error:", err?.message || err);
-      const isNetErr = err && (
-        err.message?.includes("Failed to fetch") ||
-        err.message?.includes("Load failed") ||
-        err.message?.includes("NetworkError") ||
-        err.message?.includes("network")
-      );
-      if (isNetErr) {
+      const isNetError = isNetErr(err);
+      if (isNetError) {
         // Retry once after 2 s before giving up
         await new Promise(r => setTimeout(r, 2000));
         try {
@@ -614,11 +707,13 @@ export function useAuth() {
         } catch { /* fall through */ }
       }
       window.dispatchEvent(new CustomEvent("kuditrack_auth_error", {
-        detail: isNetErr
+        detail: isNetError
           ? "Network error. Check your connection and try signing in again."
           : `Sign-in error: ${err?.message || "unknown"}`,
       }));
-      setStatus("unauthenticated");
+      // Network errors don't destroy the session — show offline screen so the
+      // user can retry without losing their signed-in state.
+      setStatus(isNetError ? "offline" : "unauthenticated");
     }
   }, []);
 
@@ -704,6 +799,13 @@ export function useAuth() {
     supabase.auth.getSession().then(({ data }) => resolve(data.session));
   }, [resolve]);
 
+  // Lightweight retry used by the offline screen — does NOT clear portal caches
+  // so that a still-offline retry can still serve from the cached row.
+  const retryAuth = useCallback(() => {
+    setStatus("loading");
+    supabase.auth.getSession().then(({ data }) => resolve(data.session));
+  }, [resolve]);
+
   // Realtime: when admin changes subscription_plans in DB, invalidate the
   // module cache, re-fetch, then bump plansVersion so App.jsx re-renders and
   // every canDo() call runs again against the fresh cache.
@@ -742,5 +844,5 @@ export function useAuth() {
     return () => { supabase.removeChannel(channel); };
   }, [session?.user?.id]);
 
-  return { status, session, plan, setReady, refetch, upgradeAvailable, plansVersion, staff, ajoClient, orgMember, adminUser, marketer, org, ownerId: staff?.owner_id ?? null };
+  return { status, session, plan, setReady, refetch, retryAuth, upgradeAvailable, plansVersion, staff, ajoClient, orgMember, adminUser, marketer, org, ownerId: staff?.owner_id ?? null };
 }
