@@ -3479,6 +3479,8 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
 
   const retryLoad = useCallback(() => {
     setPortalLoadError(false);
+    setIsStale(false);
+    setLoadingData(true);
     setReloadKey(k => k + 1);
   }, []);
 
