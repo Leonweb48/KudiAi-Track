@@ -53,6 +53,8 @@ import AdminDashboard        from "./screens/AdminDashboard";
 import Help                  from "./screens/Help";
 import Profile               from "./screens/Profile";
 import { useInventory }      from "./hooks/useInventory";
+import { usePullToRefresh }  from "./hooks/usePullToRefresh";
+import PullIndicator         from "./components/PullIndicator";
 import { useInvoices }      from "./hooks/useInvoices";
 import { usePinLock }        from "./hooks/usePinLock";
 import { useLoyalty }        from "./hooks/useLoyalty";
@@ -152,6 +154,9 @@ export default function App() {
 
   // Branch management (premium only)
   const branchesHook = useBranches(userId);
+
+  // Pull-to-refresh — triggers a full store data reload without a route change
+  const ptr = usePullToRefresh(store.reloadData);
 
   // Request camera, mic, location, and notification permissions on native (also sets push=true in notif settings)
   usePermissions(notif.requestPush);
@@ -512,7 +517,8 @@ export default function App() {
             </div>
           )}
 
-          <main className="flex-1 overflow-y-auto overscroll-contain">
+          <main ref={ptr.scrollRef} className="flex-1 overflow-y-auto overscroll-contain">
+            <PullIndicator pullY={ptr.pullY} refreshing={ptr.refreshing} dragging={ptr.dragging} />
             <Routes>
               <Route path="/"             element={SCREENS.home}         />
               <Route path="/transactions" element={SCREENS.transactions}  />

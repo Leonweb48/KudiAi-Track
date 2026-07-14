@@ -10,6 +10,8 @@ import { AmountDisplay } from "../components/shared/AmountDisplay";
 import Icon from "../components/Icon";
 import Modal from "../components/shared/Modal";
 import { useNotifications } from "../hooks/useNotifications";
+import { usePullToRefresh } from "../hooks/usePullToRefresh";
+import PullIndicator from "../components/PullIndicator";
 import { useCampaigns } from "../hooks/useCampaigns";
 import { usePartnerOffers } from "../hooks/usePartnerOffers";
 import AnnouncementBarSlot from "../components/slots/AnnouncementBarSlot";
@@ -3607,6 +3609,9 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
     return () => clearInterval(id);
   }, [ajoClient?.id]);
 
+  // Pull-to-refresh — calls fetchPortalData(false) so spinner + error state show normally
+  const ptr = usePullToRefresh(useCallback(() => fetchPortalData(false), [fetchPortalData]));
+
   // ── Realtime: sync balance/contributions from business side ────────────
   useEffect(() => {
     if (!ajoClient?.id) return;
@@ -3714,7 +3719,8 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
         </header>
 
         {/* Content */}
-        <main className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+        <main ref={ptr.scrollRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+          <PullIndicator pullY={ptr.pullY} refreshing={ptr.refreshing} dragging={ptr.dragging} />
           <AnnouncementBarSlot campaigns={annBars} loading={camLoading} recordEvent={recordCamEvent} />
           {tab === "home" && client && (
             <OverviewTab

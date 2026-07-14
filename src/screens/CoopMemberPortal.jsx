@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { usePullToRefresh } from "../hooks/usePullToRefresh";
+import PullIndicator from "../components/PullIndicator";
 import { buildCallbackUrl, openPaystackCheckout } from "../utils/paystackCheckout";
 import { supabase } from "../utils/supabase";
 import { useTheme } from "../hooks/useTheme";
@@ -1728,6 +1730,7 @@ export default function CoopMemberPortal({ member: initialMember }) {
 
   const { isDark, toggle: toggleDark } = useTheme();
   const [member,        setMember]        = useState(initialMember);
+  const [coopReloadKey, setCoopReloadKey] = useState(0);
   const [tab,           setTab]           = useState(() => {
     const p = new URLSearchParams(window.location.search);
     const ref = p.get("bill_ref") || p.get("trxref") || p.get("reference");
@@ -1894,7 +1897,9 @@ export default function CoopMemberPortal({ member: initialMember }) {
       setPolls(pollR.polls || []);
       setEvents(evtR.events || []);
     }).catch(console.error);
-  }, [member?.id, org?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [member?.id, org?.id, coopReloadKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const ptr = usePullToRefresh(useCallback(() => { setCoopReloadKey(k => k + 1); }, []));
 
   const navigateTo = useCallback((tabId) => {
     setTab(tabId);
@@ -1954,7 +1959,8 @@ export default function CoopMemberPortal({ member: initialMember }) {
         </header>
 
         {/* ── Main Content ── */}
-        <main className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+        <main ref={ptr.scrollRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+          <PullIndicator pullY={ptr.pullY} refreshing={ptr.refreshing} dragging={ptr.dragging} />
           <AnnouncementBarSlot campaigns={annBars} loading={camLoading} recordEvent={recordCamEvent} />
           {tabContent[tab]}
           {tab === "home" && (
