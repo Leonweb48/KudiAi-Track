@@ -719,6 +719,7 @@ serve(async (req) => {
         "full_name", "phone", "address", "state", "lga", "ward", "nin",
         "next_of_kin_name", "next_of_kin_phone", "next_of_kin_email",
         "next_of_kin_address", "profile_image_url", "email",
+        "bank_code", "bank_name", "account_number", "account_name",
       ]);
       const safePayload: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(fields)) {

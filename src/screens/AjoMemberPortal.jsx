@@ -1376,11 +1376,50 @@ function ManualDepositModal({ client, clientGroup, ownerInfo, onClose, onSuccess
 
 // ── Withdrawal request modal ──────────────────────────────────────────────
 function WithdrawRequestModal({ client, onClose, onSuccess }) {
-  const [amount,  setAmount]  = useState("");
-  const [saving,  setSaving]  = useState(false);
-  const [error,   setError]   = useState("");
-  const [done,    setDone]    = useState(false);
-  const [txnPin,  setTxnPin]  = useState(null);
+  const [amount,       setAmount]       = useState("");
+  const [saving,       setSaving]       = useState(false);
+  const [error,        setError]        = useState("");
+  const [done,         setDone]         = useState(false);
+  const [txnPin,       setTxnPin]       = useState(null);
+
+  // Bank account state
+  const [banks,        setBanks]        = useState([]);
+  const hasAccount = !!(client.account_number && client.account_name);
+  const [acctForm,     setAcctForm]     = useState({
+    bank_code:      client.bank_code      || "",
+    account_number: client.account_number || "",
+    account_name:   client.account_name   || "",
+    bank_name:      client.bank_name      || "",
+  });
+  const [acctVerified,  setAcctVerified]  = useState(false);
+  const [acctVerifying, setAcctVerifying] = useState(false);
+  const [acctError,     setAcctError]     = useState("");
+  const [editingAcct,   setEditingAcct]   = useState(!hasAccount);
+
+  useEffect(() => {
+    supabase.functions.invoke("paystack", { body: { action: "list-banks" } })
+      .then(({ data }) => setBanks(data?.data || []))
+      .catch(() => {});
+  }, []);
+
+  const resolveAcct = async () => {
+    if (!acctForm.bank_code || acctForm.account_number.length !== 10) {
+      setAcctError("Select a bank and enter a 10-digit account number"); return;
+    }
+    setAcctVerifying(true); setAcctError(""); setAcctVerified(false);
+    try {
+      const { data } = await supabase.functions.invoke("paystack", {
+        body: { action: "resolve-account", account_number: acctForm.account_number, bank_code: acctForm.bank_code },
+      });
+      if (!data?.status || !data?.data?.account_name) {
+        setAcctError(data?.message || "Could not verify account. Check the details and retry."); return;
+      }
+      const bankName = banks.find(b => b.code === acctForm.bank_code)?.name || acctForm.bank_name;
+      setAcctForm(p => ({ ...p, account_name: data.data.account_name, bank_name: bankName }));
+      setAcctVerified(true);
+    } catch { setAcctError("Verification failed. Try again."); }
+    finally { setAcctVerifying(false); }
+  };
 
   const isFirst  = (client.total_withdrawn || 0) === 0;
   const regFee   = client.registration_charge || 0;
@@ -1390,11 +1429,28 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
   const netAmt   = amtNum - feeAmt;
 
   const handleSubmit = async () => {
-    if (!amtNum || amtNum <= 0)                   { setError("Enter a valid amount"); return; }
-    if (amtNum > (client.current_balance || 0))   { setError("Amount exceeds your balance"); return; }
-    if (netAmt <= 0)                              { setError("Amount too small after fee deduction"); return; }
+    if (!amtNum || amtNum <= 0)                 { setError("Enter a valid amount"); return; }
+    if (amtNum > (client.current_balance || 0)) { setError("Amount exceeds your balance"); return; }
+    if (netAmt <= 0)                            { setError("Amount too small after fee deduction"); return; }
+    if (!acctForm.account_name || !acctForm.account_number || !acctForm.bank_code) {
+      setError("Add and verify your bank account before requesting a withdrawal"); return;
+    }
     setSaving(true); setError("");
     try {
+      // Save bank details to profile if changed or newly added
+      const bankChanged = acctForm.account_number !== (client.account_number || "") ||
+                          acctForm.bank_code !== (client.bank_code || "");
+      if (bankChanged && acctVerified) {
+        await ajoFn("update-profile", {
+          client_id: client.id,
+          fields: {
+            bank_code:      acctForm.bank_code,
+            bank_name:      acctForm.bank_name,
+            account_number: acctForm.account_number,
+            account_name:   acctForm.account_name,
+          },
+        });
+      }
       await ajoFn("request-withdrawal", {
         client_id: client.id,
         owner_id:  client.user_id,
@@ -1484,6 +1540,52 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
               </div>
             </div>
 
+            {/* Payout account */}
+            <div className="bg-slate-50 dark:bg-slate-700/40 border border-slate-200 dark:border-slate-600 rounded-2xl px-4 py-3 mb-3">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Payout Account</p>
+                {!editingAcct && acctForm.account_name && (
+                  <button type="button" onClick={() => { setEditingAcct(true); setAcctVerified(false); }}
+                    className="text-[11px] font-bold text-brand-500 dark:text-brand-400">Change</button>
+                )}
+              </div>
+              {!editingAcct && acctForm.account_name ? (
+                <div>
+                  <p className="text-sm font-extrabold text-slate-700 dark:text-slate-200">{acctForm.account_name}</p>
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{acctForm.bank_name} · ****{acctForm.account_number.slice(-4)}</p>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  <select value={acctForm.bank_code} onChange={e => {
+                    const sel = banks.find(b => b.code === e.target.value);
+                    setAcctForm(p => ({ ...p, bank_code: e.target.value, bank_name: sel?.name || "", account_name: "" }));
+                    setAcctVerified(false);
+                  }} className="w-full h-10 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 text-sm font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/30">
+                    <option value="">Select bank…</option>
+                    {banks.map(b => <option key={b.code} value={b.code}>{b.name}</option>)}
+                  </select>
+                  <div className="flex gap-2">
+                    <input type="text" inputMode="numeric" maxLength={10} placeholder="10-digit account number"
+                      value={acctForm.account_number}
+                      onChange={e => { setAcctForm(p => ({ ...p, account_number: e.target.value.replace(/\D/g, "").slice(0, 10), account_name: "" })); setAcctVerified(false); }}
+                      className="flex-1 h-10 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 text-sm font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/30" />
+                    <button type="button" onClick={resolveAcct}
+                      disabled={acctVerifying || !acctForm.bank_code || acctForm.account_number.length !== 10}
+                      className="h-10 px-3.5 rounded-xl bg-brand-500 text-white text-xs font-bold disabled:opacity-40 flex-shrink-0 active:scale-95 transition">
+                      {acctVerifying ? "…" : "Verify"}
+                    </button>
+                  </div>
+                  {acctVerified && acctForm.account_name && (
+                    <div className="flex items-center gap-2 px-3 py-2 bg-green-50 dark:bg-green-900/20 rounded-xl">
+                      <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-green-600 flex-shrink-0" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                      <p className="text-[12px] font-bold text-green-700 dark:text-green-400">{acctForm.account_name}</p>
+                    </div>
+                  )}
+                  {acctError && <p className="text-xs text-red-500">{acctError}</p>}
+                </div>
+              )}
+            </div>
+
             {error && <p className="text-xs text-red-500 mb-3">{error}</p>}
 
             <button
@@ -1491,6 +1593,9 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
                 if (!amtNum || amtNum <= 0) { setError("Enter a valid amount"); return; }
                 if (amtNum > (client.current_balance || 0)) { setError("Amount exceeds your balance"); return; }
                 if (netAmt <= 0) { setError("Amount too small after fee deduction"); return; }
+                if (!acctForm.account_name || !acctForm.account_number || !acctForm.bank_code) {
+                  setError("Add and verify your bank account before requesting a withdrawal"); return;
+                }
                 setTxnPin({
                   title: "Request Withdrawal",
                   amount: Math.round(netAmt * 100),
@@ -2399,18 +2504,22 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
 function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onProfileUpdate, contributions = [] }) {
   const [view,           setView]           = useState("menu");
   const [editForm,       setEditForm]       = useState({
-    full_name: client?.full_name || "",
-    phone:     client?.phone     || "",
-    email:     client?.email     || session?.user?.email || "",
-    address:   client?.address   || "",
-    state:     client?.state     || "",
-    lga:       client?.lga       || "",
-    ward:      client?.ward      || "",
-    nin:       client?.nin       || "",
-    nok_name:  client?.next_of_kin_name    || "",
-    nok_phone: client?.next_of_kin_phone   || "",
-    nok_email: client?.next_of_kin_email   || "",
-    nok_addr:  client?.next_of_kin_address || "",
+    full_name:      client?.full_name || "",
+    phone:          client?.phone     || "",
+    email:          client?.email     || session?.user?.email || "",
+    address:        client?.address   || "",
+    state:          client?.state     || "",
+    lga:            client?.lga       || "",
+    ward:           client?.ward      || "",
+    nin:            client?.nin       || "",
+    nok_name:       client?.next_of_kin_name    || "",
+    nok_phone:      client?.next_of_kin_phone   || "",
+    nok_email:      client?.next_of_kin_email   || "",
+    nok_addr:       client?.next_of_kin_address || "",
+    bank_code:      client?.bank_code      || "",
+    account_number: client?.account_number || "",
+    account_name:   client?.account_name   || "",
+    bank_name:      client?.bank_name      || "",
   });
   // Keep editForm in sync when client data loads after initial mount
   const prevClientRef = useRef(client);
@@ -2418,18 +2527,22 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
     if (client && client !== prevClientRef.current) {
       prevClientRef.current = client;
       setEditForm(f => ({
-        full_name: f.full_name || client.full_name || "",
-        phone:     f.phone     || client.phone     || "",
-        email:     f.email     || client.email     || session?.user?.email || "",
-        address:   f.address   || client.address   || "",
-        state:     f.state     || client.state     || "",
-        lga:       f.lga       || client.lga       || "",
-        ward:      f.ward      || client.ward      || "",
-        nin:       f.nin       || client.nin       || "",
-        nok_name:  f.nok_name  || client.next_of_kin_name    || "",
-        nok_phone: f.nok_phone || client.next_of_kin_phone   || "",
-        nok_email: f.nok_email || client.next_of_kin_email   || "",
-        nok_addr:  f.nok_addr  || client.next_of_kin_address || "",
+        full_name:      f.full_name      || client.full_name || "",
+        phone:          f.phone          || client.phone     || "",
+        email:          f.email          || client.email     || session?.user?.email || "",
+        address:        f.address        || client.address   || "",
+        state:          f.state          || client.state     || "",
+        lga:            f.lga            || client.lga       || "",
+        ward:           f.ward           || client.ward      || "",
+        nin:            f.nin            || client.nin       || "",
+        nok_name:       f.nok_name       || client.next_of_kin_name    || "",
+        nok_phone:      f.nok_phone      || client.next_of_kin_phone   || "",
+        nok_email:      f.nok_email      || client.next_of_kin_email   || "",
+        nok_addr:       f.nok_addr       || client.next_of_kin_address || "",
+        bank_code:      f.bank_code      || client.bank_code      || "",
+        account_number: f.account_number || client.account_number || "",
+        account_name:   f.account_name   || client.account_name   || "",
+        bank_name:      f.bank_name      || client.bank_name      || "",
       }));
     }
   }, [client, session?.user?.email]);
@@ -2477,6 +2590,12 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
   const [neverCaution, setNeverCaution] = useState(false);
   const [legalView,     setLegalView]     = useState(null); // null | "terms" | "privacy"
   const [consentRecord, setConsentRecord] = useState(null); // { tnc_version, privacy_version, consented_at }
+
+  // Bank account state for profile edit
+  const [banks,         setBanks]         = useState([]);
+  const [bankVerifying, setBankVerifying] = useState(false);
+  const [bankVerified,  setBankVerified]  = useState(false);
+  const [bankError,     setBankError]     = useState("");
 
   const autoLabel = pinLock.autoLockTimeout === 0 ? "Never" : (AUTO_LOCK_OPTIONS.find(o => o.secs === pinLock.autoLockTimeout)?.label || `${pinLock.autoLockTimeout}s`);
 
@@ -2627,6 +2746,13 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
       };
       if (confirmedEmail) payload.email = confirmedEmail;
       if (confirmedPhone) payload.phone = confirmedPhone;
+      // Include bank details only if account_name is set (either from DB or freshly verified)
+      if (editForm.account_name && editForm.account_number && editForm.bank_code) {
+        payload.bank_code      = editForm.bank_code;
+        payload.bank_name      = editForm.bank_name;
+        payload.account_number = editForm.account_number;
+        payload.account_name   = editForm.account_name;
+      }
       // Route through edge function so service role bypasses RLS (direct client update is blocked)
       await ajoFn("update-profile", { client_id: clientId, fields: payload });
       const changedFields = Object.keys(payload).filter(k => k !== "profile_image_url");
@@ -2687,6 +2813,38 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
       setPhoneOtpError(friendlyError(err));
       setPhoneOtpSending(false);
     }
+  };
+
+  // Load bank list when entering edit view
+  useEffect(() => {
+    if (view !== "edit") return;
+    if (banks.length > 0) return;
+    supabase.functions.invoke("paystack", { body: { action: "list-banks" } })
+      .then(({ data }) => setBanks(data?.data || []))
+      .catch(() => {});
+  }, [view]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const resolveBank = async () => {
+    if (!editForm.bank_code || editForm.account_number.length !== 10) {
+      setBankError("Select a bank and enter a 10-digit account number"); return;
+    }
+    setBankVerifying(true); setBankError(""); setBankVerified(false);
+    try {
+      const { data } = await supabase.functions.invoke("paystack", {
+        body: { action: "resolve-account", account_number: editForm.account_number, bank_code: editForm.bank_code },
+      });
+      if (!data?.status || !data?.data?.account_name) {
+        setBankError(data?.message || "Could not verify account. Check the details and retry."); return;
+      }
+      const selectedBank = banks.find(b => b.code === editForm.bank_code);
+      setEditForm(p => ({
+        ...p,
+        account_name: data.data.account_name,
+        bank_name: selectedBank?.name || p.bank_name,
+      }));
+      setBankVerified(true);
+    } catch { setBankError("Verification failed. Try again."); }
+    finally { setBankVerifying(false); }
   };
 
   const saveProfile = async () => {
@@ -2779,6 +2937,19 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
               <InfoRow label="Phone"      value={client?.next_of_kin_phone} />
               <InfoRow label="Email"      value={client?.next_of_kin_email} />
               <InfoRow label="Address"    value={client?.next_of_kin_address} />
+            </InfoCard>
+            <InfoCard title="Bank Account">
+              {client?.account_name ? (
+                <>
+                  <InfoRow label="Account Name"   value={client.account_name} />
+                  <InfoRow label="Account No."    value={client.account_number ? `****${client.account_number.slice(-4)}` : "—"} />
+                  <InfoRow label="Bank"           value={client.bank_name} />
+                </>
+              ) : (
+                <div className="py-3">
+                  <p className="text-[13px] text-slate-400 dark:text-slate-500 italic">No bank account added yet — tap Edit to add one.</p>
+                </div>
+              )}
             </InfoCard>
             <InfoCard title="Membership">
               <InfoRow label="Member No."  value={client?.membership_number} />
@@ -2959,6 +3130,51 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
                   className="w-full h-12 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/30" />
               </div>
             ))}
+          </div>
+
+          {/* Bank Account */}
+          <div className="space-y-3">
+            <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Bank Account (Payout)</p>
+            <div>
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Bank</p>
+              <select value={editForm.bank_code} onChange={e => {
+                const sel = banks.find(b => b.code === e.target.value);
+                setEditForm(p => ({ ...p, bank_code: e.target.value, bank_name: sel?.name || "", account_name: "" }));
+                setBankVerified(false); setBankError("");
+              }} className="w-full h-12 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/30">
+                <option value="">Select bank…</option>
+                {banks.map(b => <option key={b.code} value={b.code}>{b.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Account Number</p>
+              <div className="flex gap-2">
+                <input type="text" inputMode="numeric" maxLength={10} value={editForm.account_number} placeholder="10-digit number"
+                  onChange={e => {
+                    setEditForm(p => ({ ...p, account_number: e.target.value.replace(/\D/g, "").slice(0, 10), account_name: "" }));
+                    setBankVerified(false); setBankError("");
+                  }}
+                  className="flex-1 h-12 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/30" />
+                <button type="button" onClick={resolveBank}
+                  disabled={bankVerifying || !editForm.bank_code || editForm.account_number.length !== 10}
+                  className="h-12 px-4 rounded-xl bg-brand-500 text-white text-sm font-bold disabled:opacity-40 active:scale-95 transition flex-shrink-0">
+                  {bankVerifying ? "…" : "Verify"}
+                </button>
+              </div>
+            </div>
+            {bankVerified && editForm.account_name && (
+              <div className="flex items-center gap-2 px-4 py-3 bg-green-50 dark:bg-green-900/20 rounded-xl">
+                <Svg d={P.check} size={16} color="#16a34a" />
+                <p className="text-sm font-bold text-green-700 dark:text-green-400">{editForm.account_name}</p>
+              </div>
+            )}
+            {!bankVerified && editForm.account_name && (
+              <div className="px-4 py-3 bg-slate-100 dark:bg-slate-700/50 rounded-xl">
+                <p className="text-[12px] font-semibold text-slate-500 dark:text-slate-400">{editForm.account_name} · {editForm.bank_name || "—"}</p>
+                <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">Saved account — re-verify to change</p>
+              </div>
+            )}
+            {bankError && <p className="text-xs text-red-500 px-1">{bankError}</p>}
           </div>
 
           {/* Membership — read-only */}
