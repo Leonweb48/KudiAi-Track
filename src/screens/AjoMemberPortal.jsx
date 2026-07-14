@@ -2400,6 +2400,27 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
     nok_email: client?.next_of_kin_email   || "",
     nok_addr:  client?.next_of_kin_address || "",
   });
+  // Keep editForm in sync when client data loads after initial mount
+  const prevClientRef = useRef(client);
+  useEffect(() => {
+    if (client && client !== prevClientRef.current) {
+      prevClientRef.current = client;
+      setEditForm(f => ({
+        full_name: f.full_name || client.full_name || "",
+        phone:     f.phone     || client.phone     || "",
+        email:     f.email     || client.email     || session?.user?.email || "",
+        address:   f.address   || client.address   || "",
+        state:     f.state     || client.state     || "",
+        lga:       f.lga       || client.lga       || "",
+        ward:      f.ward      || client.ward      || "",
+        nin:       f.nin       || client.nin       || "",
+        nok_name:  f.nok_name  || client.next_of_kin_name    || "",
+        nok_phone: f.nok_phone || client.next_of_kin_phone   || "",
+        nok_email: f.nok_email || client.next_of_kin_email   || "",
+        nok_addr:  f.nok_addr  || client.next_of_kin_address || "",
+      }));
+    }
+  }, [client, session?.user?.email]);
   const [photoFile,      setPhotoFile]      = useState(null);
   const [photoPreview,   setPhotoPreview]   = useState(null);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -2601,7 +2622,10 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
       onProfileUpdate?.(payload);
       setSaveMsg("Profile saved!");
       setTimeout(() => { setSaveMsg(""); setView("profile"); }, 1500);
-    } catch { setSaveMsg("Save failed. Please try again."); }
+    } catch (err) {
+      console.error("[profile-save]", err);
+      setSaveMsg(friendlyError(err) || "Save failed. Please try again.");
+    }
     setSaving(false);
   };
 
