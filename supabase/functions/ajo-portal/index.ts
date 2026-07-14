@@ -913,11 +913,12 @@ serve(async (req) => {
         return json({ error: "A reactivation request is already pending", status: existing.status }, 409);
       }
 
+      const ownerId = (clientRow as Record<string, unknown>).user_id as string;
       const { data: inserted, error: insertErr } = await sb
         .from("ajo_reactivation_requests")
         .insert({
           client_id,
-          owner_id:    (clientRow as Record<string, unknown>).user_id,
+          owner_id:    ownerId,
           client_name: (clientRow as Record<string, unknown>).full_name,
           reason:      reason?.trim() || null,
         })
@@ -925,6 +926,28 @@ serve(async (req) => {
         .single();
 
       if (insertErr) return json({ error: insertErr.message }, 500);
+
+      // Notify the business owner by email
+      const { data: ownerProfile } = await sb
+        .from("profiles")
+        .select("email, business_name")
+        .eq("id", ownerId)
+        .maybeSingle();
+      if (ownerProfile?.email) {
+        fetch("https://admin.kudiai.app/api/public/email-trigger", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-trigger-secret": Deno.env.get("EMAIL_TRIGGER_SECRET") ?? "" },
+          body: JSON.stringify({
+            event:         "ajo_client_reactivation_request",
+            owner_email:   ownerProfile.email,
+            business_name: ownerProfile.business_name || "",
+            client_name:   (clientRow as Record<string, unknown>).full_name || "",
+            reason:        reason?.trim() || "",
+            date:          new Date().toISOString(),
+          }),
+        }).catch(() => null);
+      }
+
       return json({ ok: true, request: inserted });
     }
 
