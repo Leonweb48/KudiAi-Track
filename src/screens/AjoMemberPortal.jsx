@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { friendlyError, moneyError } from "../utils/errorMessages";
 import { openPaystackPopup } from "../utils/paystackCheckout";
 import { supabase } from "../utils/supabase";
 import BillPayments from "./BillPayments";
@@ -685,7 +686,7 @@ function PayContributionModal({ client, clientGroup, onClose, onSuccess }) {
       onSuccess?.(ref, confirmation?.client);
     } catch (e) {
       setStatus("awaiting");
-      setMessage(e.message || "Payment not confirmed yet. Tap below to retry.");
+      setMessage(friendlyError(e));
     }
   }, [client.id, onSuccess]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -711,7 +712,7 @@ function PayContributionModal({ client, clientGroup, onClose, onSuccess }) {
       });
     } catch (e) {
       setStatus("error");
-      setMessage(e.message || "Payment failed. Please try again.");
+      setMessage(moneyError(e));
     }
   };
 
@@ -987,7 +988,7 @@ function AjoMemberFirstLogin({ ajoClient }) {
     if (password !== confirm) { setError("Passwords do not match"); return; }
     setSaving(true); setError("");
     const { error: err } = await supabase.auth.updateUser({ password, data: { must_change_password: false } });
-    if (err) { setError(err.message); setSaving(false); return; }
+    if (err) { setError(friendlyError(err)); setSaving(false); return; }
     setSuccess(true);
   };
 
@@ -1075,7 +1076,7 @@ function ChangePasswordModal({ onClose }) {
     if (pwd !== confirm) { setError("Passwords do not match"); return; }
     setSaving(true);
     const { error: err } = await supabase.auth.updateUser({ password: pwd, data: { must_change_password: false } });
-    if (err) { setError(err.message); setSaving(false); return; }
+    if (err) { setError(friendlyError(err)); setSaving(false); return; }
     setSuccess(true);
     setTimeout(onClose, 2000);
   };
@@ -1175,7 +1176,7 @@ function ManualDepositModal({ client, clientGroup, ownerInfo, onClose, onSuccess
       onSuccess?.();
     } catch (e) {
       setUploading(false);
-      setError(e.message || "Failed to submit claim");
+      setError(moneyError(e));
     } finally {
       setSaving(false);
     }
@@ -1390,7 +1391,7 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
       setDone(true);
       onSuccess();
     } catch (e) {
-      setError(e.message || "Failed to submit request");
+      setError(moneyError(e));
     } finally {
       setSaving(false);
     }
@@ -2362,7 +2363,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
                     setDisputeToast(true);
                     setTimeout(() => setDisputeToast(false), 3500);
                   } catch (err) {
-                    setDisputeError(err?.message || "Failed to submit. Please try again.");
+                    setDisputeError(friendlyError(err));
                   } finally {
                     setDisputeLoading(false);
                   }
@@ -2521,7 +2522,7 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
         setTxnResetAt(new Date().toISOString());
         resetSecView();
       }
-    } catch (err) { setSecErr(err.message || "Verification failed — try again"); }
+    } catch (err) { setSecErr(friendlyError(err)); }
     setSecBusy(false);
   }, [secStep, secNewPin, oldTxnPin, clientId, triggerSecShake, resetSecView]);
 
@@ -2606,7 +2607,7 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
       await ajoFn("send-profile-otp", { client_id: clientId, field: "email", new_value: editForm.email });
       setPendingEmail(editForm.email);
     } catch (err) {
-      setOtpError(err.message || "Couldn't send OTP — try again");
+      setOtpError(friendlyError(err));
     } finally { setOtpSending(false); }
   };
 
@@ -2619,7 +2620,7 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
       setEmailOtp("");
       await doSave(confirmed);
     } catch (err) {
-      setOtpError(err.message || "Invalid code — check and try again");
+      setOtpError(friendlyError(err));
       setOtpSending(false);
     }
   };
@@ -2630,7 +2631,7 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
       await ajoFn("send-profile-otp", { client_id: clientId, field: "phone", new_value: editForm.phone });
       setPendingPhone(editForm.phone);
     } catch (err) {
-      setPhoneOtpError(err.message || "Couldn't send OTP — try again");
+      setPhoneOtpError(friendlyError(err));
     } finally { setPhoneOtpSending(false); }
   };
 
@@ -2643,7 +2644,7 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
       setPhoneOtp("");
       await doSave(null, confirmed);
     } catch (err) {
-      setPhoneOtpError(err.message || "Invalid code — check and try again");
+      setPhoneOtpError(friendlyError(err));
       setPhoneOtpSending(false);
     }
   };

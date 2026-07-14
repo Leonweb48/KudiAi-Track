@@ -186,7 +186,7 @@ serve(async (req) => {
         status:     withdrawalStatus,
       }).select().single();
 
-      if (reqErr) return json({ error: reqErr.message }, 500);
+      if (reqErr) return json({ error: "Couldn't process your request — please try again" }, 500);
 
       const { data: owner } = await sb.from("profiles")
         .select("email, business_name").eq("id", resolvedOwnerId).maybeSingle();
@@ -281,7 +281,7 @@ serve(async (req) => {
         client_id: string; amount?: number; contribution_context?: string;
       };
       if (!client_id) return json({ error: "client_id required" }, 400);
-      if (!PAYSTACK_SECRET) return json({ error: "Paystack not configured" }, 503);
+      if (!PAYSTACK_SECRET) return json({ error: "Payments are temporarily unavailable — please try again later" }, 503);
 
       const { data: cl, error: clErr } = await sb
         .from("aso_clients")
@@ -289,14 +289,14 @@ serve(async (req) => {
         .eq("id", client_id)
         .maybeSingle();
 
-      if (clErr) return json({ error: `DB error fetching client: ${clErr.message}` }, 500);
+      if (clErr) return json({ error: "Something went wrong — please try again" }, 500);
       if (!cl) return json({ error: "Client not found" }, 404);
       if (!cl.email) {
         return json({ error: "Your account has no email address. Ask your savings agent to add one." }, 422);
       }
 
       const ownerId = cl.user_id;
-      if (!ownerId) return json({ error: "Could not resolve business owner. Contact support." }, 422);
+      if (!ownerId) return json({ error: "We couldn't start your payment — please contact your savings agent" }, 422);
 
       const amount = (requestedAmount && requestedAmount > 0)
         ? Number(requestedAmount)
@@ -342,7 +342,7 @@ serve(async (req) => {
 
       const psData = await psRes.json();
       if (!psData.status || !psData.data?.access_code) {
-        return json({ error: psData.message || "Failed to initialize payment" }, 422);
+        return json({ error: "Payment couldn't be started — please try again" }, 422);
       }
 
       const { error: insErr } = await sb.from("ajo_contributions").insert({
@@ -359,7 +359,7 @@ serve(async (req) => {
         contribution_context,
         notes:                `Self-pay (${contribution_context}) initiated by client · ref: ${ref}`,
       });
-      if (insErr) return json({ error: `DB error: ${insErr.message}` }, 500);
+      if (insErr) return json({ error: "Something went wrong — please try again" }, 500);
 
       return json({
         access_code:          psData.data.access_code,
@@ -376,7 +376,7 @@ serve(async (req) => {
     if (action === "confirm-payment") {
       const { client_id, reference } = body as { client_id: string; reference: string };
       if (!client_id || !reference) return json({ error: "client_id and reference required" }, 400);
-      if (!PAYSTACK_SECRET) return json({ error: "Paystack not configured" }, 503);
+      if (!PAYSTACK_SECRET) return json({ error: "Payments are temporarily unavailable — please try again later" }, 503);
 
       // Verify the payment actually succeeded on Paystack's end
       const verRes = await fetch(
@@ -467,7 +467,7 @@ serve(async (req) => {
         privacy_show_amounts: privacy_show_amounts === true,
       }).select().single();
 
-      if (grpErr) return json({ error: grpErr.message }, 500);
+      if (grpErr) return json({ error: "Couldn't create the group — please try again" }, 500);
       return json({ group: grp });
     }
 
@@ -620,7 +620,7 @@ serve(async (req) => {
         })
         .select("ticket_no")
         .single();
-      if (ticketErr) return json({ error: ticketErr.message }, 500);
+      if (ticketErr) return json({ error: "Couldn't submit your dispute — please try again" }, 500);
 
       await sb.from("ajo_contributions")
         .update({ dispute_ticket_no: ticket.ticket_no })
@@ -653,7 +653,7 @@ serve(async (req) => {
         { aso_client_id: client_id, target_amount: Number(target_amount), label: (label as string | undefined) ?? null, updated_at: new Date().toISOString() },
         { onConflict: "aso_client_id" },
       );
-      if (error) return json({ error: error.message }, 500);
+      if (error) return json({ error: "Couldn't update your goal — please try again" }, 500);
       return json({ ok: true });
     }
 
@@ -839,7 +839,7 @@ serve(async (req) => {
 
     return json({ error: `Unknown action: ${action}` }, 400);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return json({ error: msg }, 500);
+    console.error("[ajo-portal]", err);
+    return json({ error: "Something went wrong — please try again" }, 500);
   }
 });
