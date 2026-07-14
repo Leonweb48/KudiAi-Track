@@ -349,11 +349,9 @@ function MembersTab({ org, members, onRefresh }) {
 
   // Archive / reactivation state
   const [showArchived,           setShowArchived]           = useState(false);
-  const [txnPin,                 setTxnPin]                 = useState(null);
   const [pendingArchiveMember,   setPendingArchiveMember]   = useState(null); // member to archive after PIN
   const [archiveBusy,            setArchiveBusy]            = useState(false);
   const [reactivationRequests,   setReactivationRequests]   = useState([]);
-  const [reactivationLoading,    setReactivationLoading]    = useState(false);
   const [reactivationBusy,       setReactivationBusy]       = useState(null); // request_id being actioned
   const [reactivationMsg,        setReactivationMsg]        = useState({ id: null, text: "", ok: false });
   const [rejectingReactivation,  setRejectingReactivation]  = useState(null); // request_id
@@ -363,14 +361,12 @@ function MembersTab({ org, members, onRefresh }) {
 
   const loadReactivationRequests = useCallback(async () => {
     if (!org?.id) return;
-    setReactivationLoading(true);
     try {
       const { data } = await supabase.functions.invoke("coop-portal", {
         body: { action: "get-member-reactivation-requests", org_id: org.id },
       });
       setReactivationRequests(data?.requests || []);
     } catch { /* ignore */ }
-    finally { setReactivationLoading(false); }
   }, [org?.id]);
 
   useEffect(() => { loadReactivationRequests(); }, [loadReactivationRequests]);
@@ -524,7 +520,6 @@ function MembersTab({ org, members, onRefresh }) {
                     <div className="flex gap-2">
                       <button disabled={isBusy} onClick={() => {
                         setPendingArchiveMember({ __reactivationApprove: true, request_id: req.id, member_name: req.member_name });
-                        setTxnPin(null);
                       }} className="flex-1 py-1.5 text-xs font-bold rounded-lg bg-green-600 text-white disabled:opacity-50">Approve</button>
                       <button disabled={isBusy} onClick={() => { setRejectingReactivation(req.id); setRejectNote(""); }}
                         className="flex-1 py-1.5 text-xs font-bold rounded-lg bg-red-50 text-red-600 border border-red-200">Decline</button>
@@ -745,7 +740,6 @@ function MembersTab({ org, members, onRefresh }) {
               <button disabled={archiveBusy} onClick={() => {
                 if (window.confirm(`Archive ${selected.full_name}? They will lose portal access and can request reactivation.`)) {
                   setPendingArchiveMember(selected);
-                  setTxnPin(null);
                 }
               }} className="w-full py-2.5 bg-slate-50 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 rounded-xl font-bold text-sm">
                 Archive Member
@@ -817,7 +811,7 @@ function MembersTab({ org, members, onRefresh }) {
           description={pendingArchiveMember.__reactivationApprove
             ? `Approve reactivation for ${pendingArchiveMember.member_name}`
             : `Archive ${pendingArchiveMember.full_name}`}
-          onCancel={() => { setPendingArchiveMember(null); setTxnPin(null); }}
+          onCancel={() => { setPendingArchiveMember(null); }}
           onApprove={async (pin) => {
             setArchiveBusy(true);
             try {
@@ -852,7 +846,6 @@ function MembersTab({ org, members, onRefresh }) {
             } finally {
               setArchiveBusy(false);
               setPendingArchiveMember(null);
-              setTxnPin(null);
             }
           }}
         />
