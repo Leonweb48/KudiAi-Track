@@ -228,13 +228,13 @@ export function buildAjoContributionReceipt(contribution, clientName, businessNa
                  : ledgerTypeLabel(t);
   const isOut    = t === 'withdrawal' || t === 'withdrawal_fee' || t === 'registration_fee'
                  || t === 'commission' || t.startsWith('reversal_');
-  const statusMap = { completed: 'success', confirmed: 'success', pending: 'pending' };
+  const statusMap = { completed: 'success', confirmed: 'success', pending: 'pending', rejected: 'failed', declined: 'failed' };
   const { ref, image, pdf } = receiptFilenames(contribution.id, contribution.created_at || contribution.date);
 
   return {
     title:     label,
     direction: isOut ? 'out' : 'in',
-    status:    statusMap[contribution.status] || 'success',
+    status:    statusMap[contribution.status] || 'pending',
     amount:    contribution.amount,
     datetime:  formatReceiptDateTime(contribution.created_at || contribution.date),
     fields: [
