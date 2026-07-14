@@ -3605,7 +3605,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
   useEffect(() => { fetchPortalDataRef.current = fetchPortalData; }, [fetchPortalData]);
   useEffect(() => {
     if (!ajoClient?.id) return;
-    const id = setInterval(() => fetchPortalDataRef.current(true), 15000);
+    const id = setInterval(() => fetchPortalDataRef.current(true), 3000);
     return () => clearInterval(id);
   }, [ajoClient?.id]);
 
