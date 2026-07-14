@@ -3638,6 +3638,8 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
             notif.addNotification("aso", "Payment Processed", `${amt} paid out to you`);
           } else if (payload.new.type === "reversal") {
             notif.addNotification("aso", "Transaction Reversed", `${amt} reversal applied to your account`);
+          } else if (payload.new.type === "esusu_payout") {
+            notif.addNotification("aso", "Esusu Payout Received", `${amt} has been credited to your wallet`);
           } else if (payload.new.status !== "pending") {
             notif.addNotification("aso", "Contribution Recorded", `${amt} saved successfully`);
           }
