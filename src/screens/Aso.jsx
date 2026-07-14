@@ -1594,29 +1594,30 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                     </div>
                   ) : (
                     <div className="flex gap-2">
-                      <TransactionPinModal
-                        trigger={
-                          <button
-                            disabled={isBusy}
-                            className="flex-1 py-1.5 text-xs font-bold rounded-lg bg-green-600 text-white disabled:opacity-50"
-                          >
-                            {isBusy ? "…" : "Approve & Send to Admin"}
-                          </button>
-                        }
-                        onConfirm={async (pin) => {
-                          setReactivationBusy(req.id);
-                          const { data } = await supabase.functions.invoke("ajo-write", {
-                            body: { action: "approve_reactivation", reactivation_request_id: req.id, pin },
-                          });
-                          setReactivationBusy(null);
-                          if (data?.ok) {
-                            setReactivationMsg({ id: req.id, text: "Approved — admin will finalise the reactivation.", ok: true });
-                            setReactivationRequests(p => p.filter(r => r.id !== req.id));
-                          } else {
-                            setReactivationMsg({ id: req.id, text: data?.error || "Failed to approve", ok: false });
-                          }
-                        }}
-                      />
+                      <button
+                        disabled={isBusy}
+                        className="flex-1 py-1.5 text-xs font-bold rounded-lg bg-green-600 text-white disabled:opacity-50"
+                        onClick={() => setTxnPin({
+                          title: "Approve Reactivation",
+                          description: `Approve reactivation for ${req.client_name || "client"}`,
+                          onApprove: async (pin) => {
+                            setTxnPin(null);
+                            setReactivationBusy(req.id);
+                            const { data } = await supabase.functions.invoke("ajo-write", {
+                              body: { action: "approve_reactivation", reactivation_request_id: req.id, pin },
+                            });
+                            setReactivationBusy(null);
+                            if (data?.ok) {
+                              setReactivationMsg({ id: req.id, text: "Approved — admin will finalise the reactivation.", ok: true });
+                              setReactivationRequests(p => p.filter(r => r.id !== req.id));
+                            } else {
+                              setReactivationMsg({ id: req.id, text: data?.error || "Failed to approve", ok: false });
+                            }
+                          },
+                        })}
+                      >
+                        {isBusy ? "…" : "Approve & Send to Admin"}
+                      </button>
                       <button
                         disabled={isBusy}
                         onClick={() => { setRejectingReactivation(req.id); setRejectReactivationNote(""); }}
