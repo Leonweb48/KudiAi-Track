@@ -24,6 +24,7 @@ jobs:
           supabase functions deploy clubkonnect         --no-verify-jwt --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
           supabase functions deploy paystack-webhook    --no-verify-jwt --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
           supabase functions deploy ajo-portal                          --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
+          supabase functions deploy ajo-write                           --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
           supabase functions deploy coop-portal                         --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
           supabase functions deploy manage-staff-account                --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
           supabase functions deploy manage-ajo-client-account           --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
