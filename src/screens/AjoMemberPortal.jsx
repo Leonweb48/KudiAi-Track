@@ -3543,58 +3543,69 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
     }
   }, [ajoClient?.id, ajoClient?.owner_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
+  const fetchPortalData = useCallback(async (silent = false) => {
     if (mustChange || !ajoClient?.id) return;
-    setLoadingData(true);
-    setPortalLoadError(false);
-    Promise.allSettled([
-      ajoFn("get-client",             { client_id: ajoClient.id, owner_id: ajoClient.owner_id }),
-      ajoFn("get-contributions",      { client_id: ajoClient.id }),
-      ajoFn("get-owner-info",         { owner_id: ajoClient.user_id,  client_id: ajoClient.id }),
-      ajoFn("get-withdrawal-requests",{ client_id: ajoClient.id }),
-      ajoFn("get-active-cycle",       { client_id: ajoClient.id }),
-    ])
-      .then(([clientRes, contribRes, ownerRes, reqRes, cycleRes]) => {
-        let resolvedClient = null;
-        if (clientRes.status === "fulfilled" && clientRes.value?.client) {
-          resolvedClient = {
-            ...clientRes.value.client,
-            user_id: clientRes.value.client.user_id || ajoClient?.user_id,
-          };
-          setClient(resolvedClient);
-        }
-        if (contribRes.status === "fulfilled" && contribRes.value?.contributions)
-          setContributions(contribRes.value.contributions);
-        if (ownerRes.status === "fulfilled" && ownerRes.value)
-          setOwnerInfo(ownerRes.value);
-        if (reqRes.status === "fulfilled" && reqRes.value?.requests)
-          setWithdrawRequests(reqRes.value.requests);
-        if (cycleRes.status === "fulfilled" && cycleRes.value?.cycle)
-          setCycle(cycleRes.value.cycle);
-
-        // Show error banner only when every call failed and we have no fallback balance
+    if (!silent) { setLoadingData(true); setPortalLoadError(false); }
+    try {
+      const [clientRes, contribRes, ownerRes, reqRes, cycleRes] = await Promise.allSettled([
+        ajoFn("get-client",             { client_id: ajoClient.id, owner_id: ajoClient.owner_id }),
+        ajoFn("get-contributions",      { client_id: ajoClient.id }),
+        ajoFn("get-owner-info",         { owner_id: ajoClient.user_id,  client_id: ajoClient.id }),
+        ajoFn("get-withdrawal-requests",{ client_id: ajoClient.id }),
+        ajoFn("get-active-cycle",       { client_id: ajoClient.id }),
+      ]);
+      let resolvedClient = null;
+      if (clientRes.status === "fulfilled" && clientRes.value?.client) {
+        resolvedClient = {
+          ...clientRes.value.client,
+          user_id: clientRes.value.client.user_id || ajoClient?.user_id,
+        };
+        setClient(resolvedClient);
+      }
+      if (contribRes.status === "fulfilled" && contribRes.value?.contributions)
+        setContributions(contribRes.value.contributions);
+      if (ownerRes.status === "fulfilled" && ownerRes.value)
+        setOwnerInfo(ownerRes.value);
+      if (reqRes.status === "fulfilled" && reqRes.value?.requests)
+        setWithdrawRequests(reqRes.value.requests);
+      if (cycleRes.status === "fulfilled" && cycleRes.value?.cycle)
+        setCycle(cycleRes.value.cycle);
+      if (!silent) {
         const allRejected = [clientRes, contribRes, ownerRes, reqRes, cycleRes]
           .every(r => r.status === "rejected");
-        if (allRejected && ajoClient?.current_balance == null) {
-          setPortalLoadError(true);
-        }
+        if (allRejected && ajoClient?.current_balance == null) setPortalLoadError(true);
+      }
+      const groupId = (resolvedClient || ajoClient)?.ajo_group_id;
+      if (groupId) {
+        if (!silent) setRotationLoading(true);
+        ajoFn("get-rotation", { group_id: groupId, client_id: ajoClient.id })
+          .then(rd => {
+            if (rd?.group) setRotationData(rd);
+            else console.warn("[rotation] response missing group:", rd);
+          })
+          .catch(e => console.error("[rotation] fetch failed:", e?.message))
+          .finally(() => { if (!silent) setRotationLoading(false); });
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      if (!silent) setLoadingData(false);
+    }
+  }, [mustChange, ajoClient?.id, ajoClient?.owner_id, ajoClient?.user_id, ajoClient?.current_balance, ajoClient?.ajo_group_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-        // Fetch rotation data if the client belongs to a rotating group
-        const groupId = (resolvedClient || ajoClient)?.ajo_group_id;
-        if (groupId) {
-          setRotationLoading(true);
-          ajoFn("get-rotation", { group_id: groupId, client_id: ajoClient.id })
-            .then(rd => {
-              if (rd?.group) setRotationData(rd);
-              else console.warn("[rotation] response missing group:", rd);
-            })
-            .catch(e => console.error("[rotation] fetch failed:", e?.message))
-            .finally(() => setRotationLoading(false));
-        }
-      })
-      .catch(console.error)
-      .finally(() => setLoadingData(false));
-  }, [mustChange, ajoClient?.id, ajoClient?.owner_id, reloadKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Thin trigger: runs on initial load, ajoClient change, and manual reloadKey increments
+  useEffect(() => {
+    fetchPortalData(false);
+  }, [fetchPortalData, reloadKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Silent background refresh every 15 s — always uses latest fetchPortalData via ref
+  const fetchPortalDataRef = useRef(fetchPortalData);
+  useEffect(() => { fetchPortalDataRef.current = fetchPortalData; }, [fetchPortalData]);
+  useEffect(() => {
+    if (!ajoClient?.id) return;
+    const id = setInterval(() => fetchPortalDataRef.current(true), 15000);
+    return () => clearInterval(id);
+  }, [ajoClient?.id]);
 
   // ── Realtime: sync balance/contributions from business side ────────────
   useEffect(() => {
