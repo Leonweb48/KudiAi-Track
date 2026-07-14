@@ -42,10 +42,9 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
   const authEmailRef = useRef("");
 
   // ── Load all data ──────────────────────────────────────────────
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (silent = false) => {
     if (!userId) return;
-    setLoading(true);
-    setLoadError(null);
+    if (!silent) { setLoading(true); setLoadError(null); }
 
     // ── Offline: serve from local cache ───────────────────────
     if (!navigator.onLine) {
@@ -216,7 +215,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
         setLoadError("Couldn't load your data — check your connection");
       }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [userId, staffId, branchId]);
 
@@ -231,6 +230,35 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
           if (payload.new) {
             setAsoClients(prev => prev.map(c => c.id === payload.new.id ? { ...c, ...payload.new } : c));
           }
+        })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [userId]);
+
+  // ── Realtime: live sync for transactions (staff adds, other devices) ──
+  useEffect(() => {
+    if (!userId) return;
+    const channel = supabase.channel(`transactions_rt_${userId}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "transactions", filter: `user_id=eq.${userId}` },
+        (payload) => {
+          if (!payload.new) return;
+          setTransactions(prev => prev.some(t => t.id === payload.new.id) ? prev : [payload.new, ...prev]);
+          window.dispatchEvent(new CustomEvent("kt-new-transaction", { detail: payload.new }));
+        })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "transactions", filter: `user_id=eq.${userId}` },
+        (payload) => {
+          if (!payload.new) return;
+          setTransactions(prev => prev.map(t => t.id === payload.new.id ? { ...t, ...payload.new } : t));
+        })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "credits", filter: `user_id=eq.${userId}` },
+        (payload) => {
+          if (!payload.new) return;
+          setCredits(prev => prev.some(c => c.id === payload.new.id) ? prev : [payload.new, ...prev]);
+        })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "credits", filter: `user_id=eq.${userId}` },
+        (payload) => {
+          if (!payload.new) return;
+          setCredits(prev => prev.map(c => c.id === payload.new.id ? { ...c, ...payload.new } : c));
         })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
@@ -758,7 +786,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
     transactions, credits, asoClients, profile, staffMap,
     setProfile, isOnline, loading, pendingSync, isSyncing, runSync,
     dbError, clearDbError: () => setDbError(null),
-    loadError, clearLoadError: () => setLoadError(null), reloadData: loadData,
+    loadError, clearLoadError: () => setLoadError(null), reloadData: loadData, silentRefresh: () => loadData(true),
     addTransaction,
     patchTransactionNote,
     // Staff cannot delete transactions — only business owners (no staffId) can

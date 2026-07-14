@@ -158,6 +158,31 @@ export default function App() {
   // Pull-to-refresh — triggers a full store data reload without a route change
   const ptr = usePullToRefresh(store.reloadData);
 
+  // Silent 3-second background refresh — business portal only, invisible to user
+  const storeRefreshRef = useRef(null);
+  useEffect(() => { storeRefreshRef.current = store.silentRefresh; }, [store.silentRefresh]);
+  useEffect(() => {
+    if (!userId || status !== "ready") return;
+    const id = setInterval(() => storeRefreshRef.current?.(), 3000);
+    return () => clearInterval(id);
+  }, [userId, status]);
+
+  // Toast alert when a new transaction arrives via Realtime (from staff or another device)
+  useEffect(() => {
+    const handler = (e) => {
+      const tx = e.detail;
+      if (!tx) return;
+      const amt = `₦${Number(tx.amount || 0).toLocaleString("en-NG")}`;
+      const label = tx.type === "income" ? "Sale Recorded"
+        : tx.type === "expense" ? "Expense Recorded"
+        : tx.type === "credit" ? "Credit Issued"
+        : "New Transaction";
+      notif.addNotification("system", label, `${amt}${tx.description ? ` — ${tx.description}` : ""}`);
+    };
+    window.addEventListener("kt-new-transaction", handler);
+    return () => window.removeEventListener("kt-new-transaction", handler);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Request camera, mic, location, and notification permissions on native (also sets push=true in notif settings)
   usePermissions(notif.requestPush);
 

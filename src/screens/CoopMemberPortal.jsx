@@ -1901,6 +1901,13 @@ export default function CoopMemberPortal({ member: initialMember }) {
 
   const ptr = usePullToRefresh(useCallback(() => { setCoopReloadKey(k => k + 1); }, []));
 
+  // Silent 3-second background refresh — increments key to re-trigger data-load useEffect
+  useEffect(() => {
+    if (!member?.id) return;
+    const id = setInterval(() => setCoopReloadKey(k => k + 1), 3000);
+    return () => clearInterval(id);
+  }, [member?.id]);
+
   const navigateTo = useCallback((tabId) => {
     setTab(tabId);
     setShowMore(false);
