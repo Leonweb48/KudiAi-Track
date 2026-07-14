@@ -22,7 +22,8 @@ const MEMBER_SELECT = `id, org_id, membership_id, full_name, email, phone, role,
   profile_image_url, address, occupation, gender, date_of_birth, joined_date,
   next_of_kin, next_of_kin_phone, user_id,
   privacy_balance, privacy_contributions, privacy_activities,
-  suspended_at, suspension_reason, savings_balance, created_at`;
+  suspended_at, suspension_reason, savings_balance, created_at,
+  portal_active, archived_at`;
 
 function genTempPassword(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
@@ -2717,6 +2718,344 @@ serve(async (req) => {
         p_type: "org_archive",
       });
       if (cancelErr) return json({ ok: false, error: cancelErr.message }, 400);
+
+      return json({ ok: true });
+    }
+
+    // ── Archive a member (org portal, PIN-gated) ─────────────────────────────
+    if (action === "archive-member") {
+      const { org_id, member_id, pin } = body as Record<string, string>;
+      if (!org_id || !member_id || !pin) return json({ ok: false, error: "org_id, member_id, and pin required" }, 400);
+
+      const { data: mem } = await sb.from("org_members")
+        .select("id, org_id, full_name, email, portal_active, status")
+        .eq("id", member_id).eq("org_id", org_id).maybeSingle();
+      if (!mem) return json({ ok: false, error: "Member not found" }, 404);
+      if ((mem as Record<string, unknown>).portal_active === false) return json({ ok: false, error: "Member is already archived" }, 409);
+
+      const jwt = req.headers.get("Authorization")?.replace("Bearer ", "") ?? "";
+      const sbUser = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_ANON_KEY")!,
+        { auth: { persistSession: false }, global: { headers: { Authorization: `Bearer ${jwt}` } } }
+      );
+      const { data: pinOk, error: pinErr } = await sbUser.rpc("verify_txn_pin", { pin: String(pin) });
+      if (pinErr || !pinOk) return json({ ok: false, error: "Incorrect PIN" }, 403);
+
+      const { error: archiveErr } = await sb.from("org_members")
+        .update({ portal_active: false, archived_at: new Date().toISOString() })
+        .eq("id", member_id);
+      if (archiveErr) return json({ ok: false, error: archiveErr.message }, 500);
+
+      const { data: orgInfo } = await sb.from("organizations").select("name").eq("id", org_id).maybeSingle();
+      if ((mem as Record<string, unknown>).email) {
+        fetch("https://admin.kudiai.app/api/public/email-trigger", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
+          body: JSON.stringify({
+            event: "org_member_archived",
+            data: {
+              member_name:  (mem as Record<string, unknown>).full_name ?? "",
+              member_email: (mem as Record<string, unknown>).email ?? "",
+              org_name:     (orgInfo as Record<string, unknown> | null)?.name ?? "",
+            },
+          }),
+        }).catch(() => null);
+      }
+
+      return json({ ok: true });
+    }
+
+    // ── Member submits a reactivation request ────────────────────────────────
+    if (action === "submit-member-reactivation") {
+      const authHeader = req.headers.get("Authorization");
+      const jwt        = authHeader?.replace("Bearer ", "") || "";
+      const { data: { user }, error: jwtErr } = await sb.auth.getUser(jwt);
+      if (!user || jwtErr) return json({ ok: false, error: "Not authenticated" }, 401);
+
+      const { org_id, reason } = body as { org_id: string; reason: string };
+      if (!org_id || !reason?.trim()) return json({ ok: false, error: "org_id and reason required" }, 400);
+
+      const { data: mem } = await sb.from("org_members")
+        .select("id, org_id, full_name, email, portal_active, status")
+        .eq("user_id", user.id).eq("org_id", org_id).maybeSingle();
+      if (!mem) return json({ ok: false, error: "Member record not found" }, 404);
+      if ((mem as Record<string, unknown>).portal_active !== false) return json({ ok: false, error: "Your account is not archived" }, 409);
+
+      const { data: existingReq } = await sb.from("org_member_reactivation_requests")
+        .select("id, status")
+        .eq("member_id", (mem as Record<string, unknown>).id as string)
+        .in("status", ["pending", "owner_approved"])
+        .maybeSingle();
+      if (existingReq) {
+        return json({ ok: false, error: "You already have a pending reactivation request", request_status: (existingReq as Record<string, unknown>).status });
+      }
+
+      const { data: inserted, error: insertErr } = await sb.from("org_member_reactivation_requests").insert({
+        org_id,
+        member_id:   (mem as Record<string, unknown>).id,
+        member_name: (mem as Record<string, unknown>).full_name ?? "",
+        reason:      reason.trim(),
+        status:      "pending",
+      }).select("id, status").single();
+      if (insertErr) return json({ ok: false, error: insertErr.message }, 500);
+
+      const { data: orgInfo } = await sb.from("organizations").select("name, email").eq("id", org_id).maybeSingle();
+      if ((orgInfo as Record<string, unknown> | null)?.email) {
+        fetch("https://admin.kudiai.app/api/public/email-trigger", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
+          body: JSON.stringify({
+            event: "org_member_reactivation_request",
+            data: {
+              org_name:     (orgInfo as Record<string, unknown>).name ?? "",
+              org_email:    (orgInfo as Record<string, unknown>).email ?? "",
+              member_name:  (mem as Record<string, unknown>).full_name ?? "",
+              member_email: (mem as Record<string, unknown>).email ?? "",
+              reason:       reason.trim(),
+            },
+          }),
+        }).catch(() => null);
+      }
+
+      return json({ ok: true, request: inserted });
+    }
+
+    // ── Org portal fetches pending member reactivation requests ─────────────
+    if (action === "get-member-reactivation-requests") {
+      const { org_id } = body as { org_id: string };
+      if (!org_id) return json({ ok: false, error: "org_id required" }, 400);
+      const { data: requests } = await sb.from("org_member_reactivation_requests")
+        .select("id, org_id, member_id, member_name, reason, status, created_at")
+        .eq("org_id", org_id)
+        .in("status", ["pending", "owner_approved"])
+        .order("created_at", { ascending: false });
+      return json({ requests: requests || [] });
+    }
+
+    // ── Org portal approves a member reactivation request (PIN-gated) ────────
+    if (action === "approve-member-reactivation") {
+      const { request_id, pin } = body as { request_id: string; pin: string };
+      if (!request_id || !pin) return json({ ok: false, error: "request_id and pin required" }, 400);
+
+      const { data: rr } = await sb.from("org_member_reactivation_requests")
+        .select("id, org_id, member_id, member_name, reason, status")
+        .eq("id", request_id).maybeSingle();
+      if (!rr) return json({ ok: false, error: "Request not found" }, 404);
+      if ((rr as Record<string, unknown>).status !== "pending") {
+        return json({ ok: false, error: `Request is already ${(rr as Record<string, unknown>).status}` }, 409);
+      }
+
+      const jwt = req.headers.get("Authorization")?.replace("Bearer ", "") ?? "";
+      const sbUser = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_ANON_KEY")!,
+        { auth: { persistSession: false }, global: { headers: { Authorization: `Bearer ${jwt}` } } }
+      );
+      const { data: pinOk, error: pinErr } = await sbUser.rpc("verify_txn_pin", { pin: String(pin) });
+      if (pinErr || !pinOk) return json({ ok: false, error: "Incorrect PIN" }, 403);
+
+      await sb.from("org_member_reactivation_requests")
+        .update({ status: "owner_approved" })
+        .eq("id", request_id);
+
+      const orgId    = (rr as Record<string, unknown>).org_id    as string;
+      const memberId = (rr as Record<string, unknown>).member_id as string;
+
+      const [{ data: orgInfo }, { data: memberInfo }] = await Promise.all([
+        sb.from("organizations").select("name, owner_id").eq("id", orgId).maybeSingle(),
+        sb.from("org_members").select("email, full_name").eq("id", memberId).maybeSingle(),
+      ]);
+
+      const { error: adminInsertErr } = await sb.from("admin_approval_requests").insert({
+        request_type: "org_member_reactivation",
+        requester:    (orgInfo as Record<string, unknown> | null)?.owner_id ?? null,
+        business:     (orgInfo as Record<string, unknown> | null)?.name ?? "",
+        target_id:    memberId,
+        payload: {
+          org_id:                  orgId,
+          member_name:             (rr as Record<string, unknown>).member_name ?? "",
+          member_reason:           (rr as Record<string, unknown>).reason ?? "",
+          reactivation_request_id: request_id,
+        },
+        reason: `Org portal approved reactivation for ${(rr as Record<string, unknown>).member_name ?? "member"}`,
+      });
+      if (adminInsertErr) {
+        console.error("[coop-portal approve-member-reactivation] admin insert error:", adminInsertErr.message);
+      }
+
+      fetch("https://admin.kudiai.app/api/public/email-trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
+        body: JSON.stringify({
+          event: "org_member_reactivation_owner_approved",
+          data: {
+            member_email: (memberInfo as Record<string, unknown> | null)?.email ?? "",
+            member_name:  (memberInfo as Record<string, unknown> | null)?.full_name ?? (rr as Record<string, unknown>).member_name ?? "",
+            org_name:     (orgInfo as Record<string, unknown> | null)?.name ?? "",
+          },
+        }),
+      }).catch(() => null);
+
+      return json({ ok: true });
+    }
+
+    // ── Org portal rejects a member reactivation request ─────────────────────
+    if (action === "reject-member-reactivation") {
+      const { request_id, reject_reason } = body as { request_id: string; reject_reason?: string };
+      if (!request_id) return json({ ok: false, error: "request_id required" }, 400);
+
+      const { data: rr } = await sb.from("org_member_reactivation_requests")
+        .select("id, org_id, member_id, member_name, status")
+        .eq("id", request_id).maybeSingle();
+      if (!rr) return json({ ok: false, error: "Request not found" }, 404);
+      if ((rr as Record<string, unknown>).status !== "pending") {
+        return json({ ok: false, error: `Request is already ${(rr as Record<string, unknown>).status}` }, 409);
+      }
+
+      await sb.from("org_member_reactivation_requests")
+        .update({ status: "owner_rejected", resolved_at: new Date().toISOString() })
+        .eq("id", request_id);
+
+      const [{ data: orgInfo }, { data: memberInfo }] = await Promise.all([
+        sb.from("organizations").select("name").eq("id", (rr as Record<string, unknown>).org_id as string).maybeSingle(),
+        sb.from("org_members").select("email, full_name").eq("id", (rr as Record<string, unknown>).member_id as string).maybeSingle(),
+      ]);
+
+      if ((memberInfo as Record<string, unknown> | null)?.email) {
+        fetch("https://admin.kudiai.app/api/public/email-trigger", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
+          body: JSON.stringify({
+            event: "org_member_reactivation_owner_rejected",
+            data: {
+              member_email:   (memberInfo as Record<string, unknown>).email ?? "",
+              member_name:    (memberInfo as Record<string, unknown>).full_name ?? (rr as Record<string, unknown>).member_name ?? "",
+              org_name:       (orgInfo as Record<string, unknown> | null)?.name ?? "",
+              rejection_note: reject_reason ?? "",
+            },
+          }),
+        }).catch(() => null);
+      }
+
+      return json({ ok: true });
+    }
+
+    // ── Recovery: re-send an owner-approved member reactivation to admin ─────
+    if (action === "resend-member-reactivation") {
+      const { request_id } = body as { request_id: string };
+      if (!request_id) return json({ ok: false, error: "request_id required" }, 400);
+
+      const { data: rr } = await sb.from("org_member_reactivation_requests")
+        .select("id, org_id, member_id, member_name, reason, status")
+        .eq("id", request_id).maybeSingle();
+      if (!rr) return json({ ok: false, error: "Request not found" }, 404);
+      if ((rr as Record<string, unknown>).status !== "owner_approved") {
+        return json({ ok: false, error: "Only owner-approved requests can be resent" }, 409);
+      }
+
+      const memberId = (rr as Record<string, unknown>).member_id as string;
+      const orgId    = (rr as Record<string, unknown>).org_id    as string;
+
+      const { data: existingAdminRow } = await sb.from("admin_approval_requests")
+        .select("id")
+        .eq("request_type", "org_member_reactivation")
+        .eq("target_id", memberId)
+        .eq("status", "pending")
+        .maybeSingle();
+      if (existingAdminRow) {
+        return json({ ok: true, note: "Already in the admin queue — check the Approvals page." });
+      }
+
+      const [{ data: orgInfo }, { data: memberInfo }] = await Promise.all([
+        sb.from("organizations").select("name, owner_id").eq("id", orgId).maybeSingle(),
+        sb.from("org_members").select("email, full_name").eq("id", memberId).maybeSingle(),
+      ]);
+
+      const { error: insertErr } = await sb.from("admin_approval_requests").insert({
+        request_type: "org_member_reactivation",
+        requester:    (orgInfo as Record<string, unknown> | null)?.owner_id ?? null,
+        business:     (orgInfo as Record<string, unknown> | null)?.name ?? "",
+        target_id:    memberId,
+        payload: {
+          org_id:                  orgId,
+          member_name:             (rr as Record<string, unknown>).member_name ?? "",
+          member_reason:           (rr as Record<string, unknown>).reason ?? "",
+          reactivation_request_id: request_id,
+        },
+        reason: `Org portal approved reactivation for ${(rr as Record<string, unknown>).member_name ?? "member"}`,
+      });
+      if (insertErr) return json({ ok: false, error: insertErr.message }, 500);
+
+      fetch("https://admin.kudiai.app/api/public/email-trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
+        body: JSON.stringify({
+          event: "org_member_reactivation_owner_approved",
+          data: {
+            member_email: (memberInfo as Record<string, unknown> | null)?.email ?? "",
+            member_name:  (memberInfo as Record<string, unknown> | null)?.full_name ?? (rr as Record<string, unknown>).member_name ?? "",
+            org_name:     (orgInfo as Record<string, unknown> | null)?.name ?? "",
+          },
+        }),
+      }).catch(() => null);
+
+      return json({ ok: true, note: "Request sent to admin. They will review it shortly." });
+    }
+
+    // ── Business owner requests org reactivation ─────────────────────────────
+    if (action === "request-org-reactivation") {
+      const authHeader = req.headers.get("Authorization");
+      const jwt        = authHeader?.replace("Bearer ", "") || "";
+      const { data: { user }, error: jwtErr } = await sb.auth.getUser(jwt);
+      if (!user || jwtErr) return json({ ok: false, error: "Not authenticated" }, 401);
+
+      const { org_id, reason } = body as { org_id: string; reason: string };
+      if (!org_id || !reason?.trim()) return json({ ok: false, error: "org_id and reason required" }, 400);
+
+      const { data: orgRow } = await sb.from("organizations")
+        .select("id, name, email, owner_id, status")
+        .eq("id", org_id).maybeSingle();
+      if (!orgRow) return json({ ok: false, error: "Organisation not found" }, 404);
+      if ((orgRow as Record<string, unknown>).owner_id !== user.id) return json({ ok: false, error: "Unauthorized" }, 403);
+      if ((orgRow as Record<string, unknown>).status !== "archived") return json({ ok: false, error: "Organisation is not archived" }, 409);
+
+      const { data: existingRR } = await sb.from("org_reactivation_requests")
+        .select("id, status").eq("org_id", org_id).eq("status", "pending").maybeSingle();
+      if (existingRR) return json({ ok: false, error: "A reactivation request is already pending for this organisation" }, 409);
+
+      const { error: rrInsertErr } = await sb.from("org_reactivation_requests").insert({
+        org_id,
+        org_name: (orgRow as Record<string, unknown>).name ?? "",
+        owner_id: user.id,
+        reason:   reason.trim(),
+        status:   "pending",
+      });
+      if (rrInsertErr) return json({ ok: false, error: rrInsertErr.message }, 500);
+
+      const { data: ownerProfile } = await sb.from("profiles").select("business_name").eq("id", user.id).maybeSingle();
+      const { error: adminInsertErr } = await sb.from("admin_approval_requests").insert({
+        request_type: "org_reactivation",
+        requester:    user.id,
+        business:     (ownerProfile as Record<string, unknown> | null)?.business_name ?? (orgRow as Record<string, unknown>).name ?? "",
+        target_id:    org_id,
+        payload: { org_name: (orgRow as Record<string, unknown>).name ?? "" },
+        reason:       reason.trim(),
+      });
+      if (adminInsertErr) return json({ ok: false, error: adminInsertErr.message }, 500);
+
+      fetch("https://admin.kudiai.app/api/public/email-trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
+        body: JSON.stringify({
+          event: "org_reactivation_request",
+          data: {
+            org_name:    (orgRow as Record<string, unknown>).name ?? "",
+            owner_email: user.email ?? "",
+            reason:      reason.trim(),
+          },
+        }),
+      }).catch(() => null);
 
       return json({ ok: true });
     }

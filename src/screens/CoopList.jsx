@@ -223,10 +223,15 @@ function RegisterModal({ onClose, onCreated, userId }) {
 
 // ── Main CoopList ──────────────────────────────────────────────────────────────
 export default function CoopList({ userId, onOpen, onClose, embedded }) {
-  const [orgs,         setOrgs]         = useState([]);
-  const [loading,      setLoading]      = useState(true);
-  const [showCreate,   setShowCreate]   = useState(false);
-  const [showArchived, setShowArchived] = useState(false);
+  const [orgs,              setOrgs]              = useState([]);
+  const [loading,           setLoading]           = useState(true);
+  const [showCreate,        setShowCreate]        = useState(false);
+  const [showArchived,      setShowArchived]      = useState(false);
+  const [reactivatingOrg,   setReactivatingOrg]   = useState(null); // org being reactivated
+  const [reactivationReason, setReactivationReason] = useState("");
+  const [reactivationBusy,  setReactivationBusy]  = useState(false);
+  const [reactivationDone,  setReactivationDone]  = useState(null); // org_id
+  const [reactivationError, setReactivationError] = useState("");
 
   const load = useCallback(() => {
     if (!userId) return;
@@ -238,6 +243,27 @@ export default function CoopList({ userId, onOpen, onClose, embedded }) {
   }, [userId]);
 
   useEffect(() => { load(); }, [load]);
+
+  const handleRequestReactivation = async () => {
+    if (!reactivatingOrg || !reactivationReason.trim()) {
+      setReactivationError("Please provide a reason for reactivation.");
+      return;
+    }
+    setReactivationBusy(true); setReactivationError("");
+    try {
+      const { data } = await supabase.functions.invoke("coop-portal", {
+        body: { action: "request-org-reactivation", org_id: reactivatingOrg.id, reason: reactivationReason.trim() },
+      });
+      if (data?.ok) {
+        setReactivationDone(reactivatingOrg.id);
+        setReactivatingOrg(null);
+        setReactivationReason("");
+      } else {
+        setReactivationError(data?.error || "Failed to submit request.");
+      }
+    } catch (e) { setReactivationError(e.message || "Failed"); }
+    finally { setReactivationBusy(false); }
+  };
 
   return (
     <div className={embedded ? "flex flex-col" : "fixed inset-0 z-[60] bg-white dark:bg-[#0f1117] flex justify-center"}>
@@ -339,6 +365,23 @@ export default function CoopList({ userId, onOpen, onClose, embedded }) {
                   </button>
                 );
               })}
+              {/* Per-org reactivation CTA for archived orgs */}
+              {showArchived && orgs.filter(o => o.status === "archived").map(org => (
+                <div key={`rct-${org.id}`} className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 bg-red-50/50 dark:bg-red-950/10">
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-1.5">
+                    <span className="font-semibold text-slate-700 dark:text-slate-300">{org.name}</span> is archived.
+                    {reactivationDone === org.id
+                      ? " Reactivation request submitted — the admin will review it."
+                      : " Submit a request to the platform admin to restore it."}
+                  </p>
+                  {reactivationDone !== org.id && (
+                    <button onClick={() => { setReactivatingOrg(org); setReactivationReason(""); setReactivationError(""); }}
+                      className="text-[11px] font-bold text-white bg-green-600 px-3 py-1.5 rounded-lg">
+                      Request Reactivation
+                    </button>
+                  )}
+                </div>
+              ))}
               {/* Archived toggle */}
               {orgs.some(o => o.status === "archived") && (
                 <button onClick={() => setShowArchived(v => !v)}
@@ -373,6 +416,30 @@ export default function CoopList({ userId, onOpen, onClose, embedded }) {
           onClose={() => setShowCreate(false)}
           onCreated={org => { setShowCreate(false); setOrgs(p => [org, ...p]); onOpen(org); }}
         />
+      )}
+
+      {/* ── Org reactivation request modal ── */}
+      {reactivatingOrg && (
+        <div className="fixed inset-0 z-[75] bg-black/60 flex items-end justify-center" onClick={() => setReactivatingOrg(null)}>
+          <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-t-3xl px-5 py-6" onClick={e => e.stopPropagation()}>
+            <div className="w-10 h-1 bg-slate-200 dark:bg-slate-600 rounded-full mx-auto mb-5" />
+            <p className="text-base font-extrabold text-slate-800 dark:text-white mb-1">Request Reactivation</p>
+            <p className="text-xs text-slate-400 mb-4">Submit a request to the platform admin to restore <strong>{reactivatingOrg.name}</strong>.</p>
+            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Reason</label>
+            <textarea value={reactivationReason} onChange={e => setReactivationReason(e.target.value)} rows={3}
+              placeholder="Explain why this organisation should be restored…"
+              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-green-400 mb-3 resize-none" />
+            {reactivationError && <p className="text-red-500 text-xs mb-3">{reactivationError}</p>}
+            <div className="flex gap-2">
+              <button onClick={() => setReactivatingOrg(null)}
+                className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Cancel</button>
+              <button onClick={handleRequestReactivation} disabled={reactivationBusy}
+                className="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">
+                {reactivationBusy ? "Submitting…" : "Submit Request"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

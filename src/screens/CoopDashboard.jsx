@@ -58,6 +58,7 @@ const ROLE_LABELS = {
 const ALL_ROLES = ["member","officer","secretary","treasurer","president","chairman","vice_chairman","welfare_officer","auditor","patron","admin"];
 const STATUS_COL = {
   active: "text-green-600", suspended: "text-amber-500", removed: "text-red-500",
+  archived: "text-slate-400",
   pending: "text-amber-500", approved: "text-blue-600", disbursed: "text-green-600",
   repaid: "text-green-600", rejected: "text-red-500", defaulted: "text-red-700",
   scheduled: "text-blue-600", ongoing: "text-green-600", completed: "text-slate-500", cancelled: "text-red-500",
@@ -346,13 +347,43 @@ function MembersTab({ org, members, onRefresh }) {
   const [saving,   setSaving]   = useState(false);
   const [error,    setError]    = useState("");
 
+  // Archive / reactivation state
+  const [showArchived,           setShowArchived]           = useState(false);
+  const [txnPin,                 setTxnPin]                 = useState(null);
+  const [pendingArchiveMember,   setPendingArchiveMember]   = useState(null); // member to archive after PIN
+  const [archiveBusy,            setArchiveBusy]            = useState(false);
+  const [reactivationRequests,   setReactivationRequests]   = useState([]);
+  const [reactivationLoading,    setReactivationLoading]    = useState(false);
+  const [reactivationBusy,       setReactivationBusy]       = useState(null); // request_id being actioned
+  const [reactivationMsg,        setReactivationMsg]        = useState({ id: null, text: "", ok: false });
+  const [rejectingReactivation,  setRejectingReactivation]  = useState(null); // request_id
+  const [rejectNote,             setRejectNote]             = useState("");
+
   const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
 
-  const filtered = members.filter(m =>
-    m.full_name?.toLowerCase().includes(search.toLowerCase()) ||
-    m.membership_id?.toLowerCase().includes(search.toLowerCase()) ||
-    m.phone?.includes(search)
-  );
+  const loadReactivationRequests = useCallback(async () => {
+    if (!org?.id) return;
+    setReactivationLoading(true);
+    try {
+      const { data } = await supabase.functions.invoke("coop-portal", {
+        body: { action: "get-member-reactivation-requests", org_id: org.id },
+      });
+      setReactivationRequests(data?.requests || []);
+    } catch { /* ignore */ }
+    finally { setReactivationLoading(false); }
+  }, [org?.id]);
+
+  useEffect(() => { loadReactivationRequests(); }, [loadReactivationRequests]);
+
+  const filtered = members.filter(m => {
+    if (m.status === "removed") return false;
+    if (!showArchived && m.portal_active === false) return false;
+    return (
+      m.full_name?.toLowerCase().includes(search.toLowerCase()) ||
+      m.membership_id?.toLowerCase().includes(search.toLowerCase()) ||
+      m.phone?.includes(search)
+    );
+  });
 
   const EMPTY_FORM = { full_name: "", email: "", phone: "", role: "member", gender: "", date_of_birth: "", joined_date: "", address: "", occupation: "", next_of_kin: "", next_of_kin_phone: "" };
 
@@ -431,30 +462,119 @@ function MembersTab({ org, members, onRefresh }) {
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 pb-24">
+
+        {/* ── Reactivation requests section ── */}
+        {reactivationRequests.length > 0 && (
+          <div className="mt-3 mb-3">
+            <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Reactivation Requests</p>
+            {reactivationRequests.map(req => {
+              const isOwnerApproved = req.status === "owner_approved";
+              const isBusy = reactivationBusy === req.id;
+              return (
+                <div key={req.id} className={`rounded-xl p-3 border mb-2 ${isOwnerApproved ? "bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800" : "bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800"}`}>
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-xs font-bold text-slate-800 dark:text-white">{req.member_name}</p>
+                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${isOwnerApproved ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700"}`}>
+                      {isOwnerApproved ? "Forwarded to Admin" : "Pending"}
+                    </span>
+                  </div>
+                  {req.reason && <p className="text-[10px] text-slate-500 dark:text-slate-400 mb-2 italic">&ldquo;{req.reason}&rdquo;</p>}
+                  {reactivationMsg.id === req.id && (
+                    <p className={`text-[10px] mb-2 font-medium ${reactivationMsg.ok ? "text-green-600" : "text-red-500"}`}>{reactivationMsg.text}</p>
+                  )}
+                  {isOwnerApproved ? (
+                    <>
+                      <p className="text-[10px] text-blue-600 dark:text-blue-400 font-medium mb-2">Awaiting admin review. If it hasn&apos;t appeared in the admin portal, tap Resend.</p>
+                      <button disabled={isBusy} onClick={async () => {
+                        setReactivationBusy(req.id);
+                        const { data } = await supabase.functions.invoke("coop-portal", {
+                          body: { action: "resend-member-reactivation", request_id: req.id },
+                        });
+                        setReactivationBusy(null);
+                        if (data?.ok) setReactivationMsg({ id: req.id, text: data.note || "Sent to admin.", ok: true });
+                        else setReactivationMsg({ id: req.id, text: data?.error || "Failed to resend", ok: false });
+                      }} className="w-full py-1.5 text-xs font-bold rounded-lg bg-blue-600 text-white disabled:opacity-50">
+                        {isBusy ? "…" : "Resend to Admin"}
+                      </button>
+                    </>
+                  ) : rejectingReactivation === req.id ? (
+                    <div>
+                      <textarea value={rejectNote} onChange={e => setRejectNote(e.target.value)} rows={2}
+                        placeholder="Reason for rejection…"
+                        className="w-full px-2 py-1.5 text-xs bg-white dark:bg-slate-700 border border-amber-200 dark:border-amber-700 rounded-lg mb-2 text-slate-800 dark:text-white focus:outline-none" />
+                      <div className="flex gap-2">
+                        <button disabled={isBusy} onClick={async () => {
+                          setReactivationBusy(req.id);
+                          const { data } = await supabase.functions.invoke("coop-portal", {
+                            body: { action: "reject-member-reactivation", request_id: req.id, reject_reason: rejectNote },
+                          });
+                          setReactivationBusy(null);
+                          if (data?.ok) {
+                            setReactivationRequests(prev => prev.filter(r => r.id !== req.id));
+                          } else {
+                            setReactivationMsg({ id: req.id, text: data?.error || "Failed", ok: false });
+                          }
+                          setRejectingReactivation(null); setRejectNote("");
+                        }} className="flex-1 py-1.5 text-xs font-bold rounded-lg bg-red-600 text-white disabled:opacity-50">{isBusy ? "…" : "Confirm Reject"}</button>
+                        <button onClick={() => { setRejectingReactivation(null); setRejectNote(""); }}
+                          className="flex-1 py-1.5 text-xs font-bold rounded-lg border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300">Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <button disabled={isBusy} onClick={() => {
+                        setPendingArchiveMember({ __reactivationApprove: true, request_id: req.id, member_name: req.member_name });
+                        setTxnPin(null);
+                      }} className="flex-1 py-1.5 text-xs font-bold rounded-lg bg-green-600 text-white disabled:opacity-50">Approve</button>
+                      <button disabled={isBusy} onClick={() => { setRejectingReactivation(req.id); setRejectNote(""); }}
+                        className="flex-1 py-1.5 text-xs font-bold rounded-lg bg-red-50 text-red-600 border border-red-200">Decline</button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         {filtered.length === 0 ? (
           <div className="text-center py-12 text-slate-400 text-sm">No members found</div>
         ) : (
           <div className="flex flex-col gap-2 mt-2">
-            {filtered.map(m => (
-              <button key={m.id} onClick={() => setSelected(m)}
-                className="bg-white dark:bg-slate-800 rounded-xl p-3 border border-slate-100 dark:border-slate-700 flex items-center gap-3 text-left w-full">
-                <div className="w-10 h-10 rounded-xl bg-green-100 dark:bg-green-900/30 flex items-center justify-center text-sm font-extrabold text-green-600 flex-shrink-0">
-                  {m.full_name?.charAt(0).toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-slate-800 dark:text-white truncate">{m.full_name}</p>
-                  <p className="text-[10px] text-slate-400 font-mono">{m.membership_id}</p>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${ROLE_COLORS[m.role] || ROLE_COLORS.member}`}>{ROLE_LABELS[m.role] || m.role}</span>
-                    <span className={`text-[9px] font-bold capitalize ${STATUS_COL[m.status]}`}>● {m.status}</span>
+            {filtered.map(m => {
+              const isArchived = m.portal_active === false;
+              return (
+                <button key={m.id} onClick={() => setSelected(m)}
+                  className="bg-white dark:bg-slate-800 rounded-xl p-3 border border-slate-100 dark:border-slate-700 flex items-center gap-3 text-left w-full">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-extrabold flex-shrink-0 ${isArchived ? "bg-slate-100 dark:bg-slate-700 text-slate-400" : "bg-green-100 dark:bg-green-900/30 text-green-600"}`}>
+                    {m.full_name?.charAt(0).toUpperCase()}
                   </div>
-                </div>
-                <div className="text-right flex-shrink-0">
-                  <p className="text-xs font-extrabold text-green-600">{fmt(m.savings_balance)}</p>
-                  <p className="text-[9px] text-slate-400">savings</p>
-                </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-slate-800 dark:text-white truncate">{m.full_name}</p>
+                    <p className="text-[10px] text-slate-400 font-mono">{m.membership_id}</p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${ROLE_COLORS[m.role] || ROLE_COLORS.member}`}>{ROLE_LABELS[m.role] || m.role}</span>
+                      {isArchived
+                        ? <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500">Archived</span>
+                        : <span className={`text-[9px] font-bold capitalize ${STATUS_COL[m.status]}`}>● {m.status}</span>
+                      }
+                    </div>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className={`text-xs font-extrabold ${isArchived ? "text-slate-400" : "text-green-600"}`}>{fmt(m.savings_balance)}</p>
+                    <p className="text-[9px] text-slate-400">savings</p>
+                  </div>
+                </button>
+              );
+            })}
+            {members.some(m => m.portal_active === false && m.status !== "removed") && (
+              <button onClick={() => setShowArchived(v => !v)}
+                className="w-full py-2.5 text-[11px] font-semibold text-slate-400 dark:text-slate-500 border-t border-slate-100 dark:border-slate-800 mt-1">
+                {showArchived
+                  ? "Hide archived members"
+                  : `Show ${members.filter(m => m.portal_active === false && m.status !== "removed").length} archived member${members.filter(m => m.portal_active === false && m.status !== "removed").length !== 1 ? "s" : ""}`
+                }
               </button>
-            ))}
+            )}
           </div>
         )}
       </div>
@@ -606,18 +726,32 @@ function MembersTab({ org, members, onRefresh }) {
             ))}
           </div>
           <div className="flex flex-col gap-2">
-            <button onClick={() => openEdit(selected)} className="w-full py-2.5 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl font-bold text-sm">Edit Member</button>
-            <button onClick={() => { if (window.confirm(`Reset password for ${selected.full_name}?`)) handleResetPassword(selected); }}
-              disabled={saving} className="w-full py-2.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-xl font-bold text-sm">Reset Password</button>
-            {selected.status !== "suspended" && selected.status !== "removed" && (
+            {selected.portal_active !== false && (
+              <button onClick={() => openEdit(selected)} className="w-full py-2.5 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl font-bold text-sm">Edit Member</button>
+            )}
+            {selected.portal_active !== false && (
+              <button onClick={() => { if (window.confirm(`Reset password for ${selected.full_name}?`)) handleResetPassword(selected); }}
+                disabled={saving} className="w-full py-2.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-xl font-bold text-sm">Reset Password</button>
+            )}
+            {selected.portal_active !== false && selected.status !== "suspended" && selected.status !== "removed" && (
               <button onClick={() => { const r = prompt("Reason for suspension?"); if (r !== null) handleStatus(selected, "suspended", r); }}
                 disabled={saving} className="w-full py-2.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-xl font-bold text-sm">Suspend</button>
             )}
-            {selected.status === "suspended" && (
+            {selected.portal_active !== false && selected.status === "suspended" && (
               <button onClick={() => handleStatus(selected, "active")} disabled={saving}
-                className="w-full py-2.5 bg-green-50 text-green-700 border border-green-200 rounded-xl font-bold text-sm">Reactivate</button>
+                className="w-full py-2.5 bg-green-50 text-green-700 border border-green-200 rounded-xl font-bold text-sm">Reactivate Suspension</button>
             )}
-            {selected.status !== "removed" && (
+            {selected.portal_active !== false && selected.status !== "removed" && (
+              <button disabled={archiveBusy} onClick={() => {
+                if (window.confirm(`Archive ${selected.full_name}? They will lose portal access and can request reactivation.`)) {
+                  setPendingArchiveMember(selected);
+                  setTxnPin(null);
+                }
+              }} className="w-full py-2.5 bg-slate-50 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 rounded-xl font-bold text-sm">
+                Archive Member
+              </button>
+            )}
+            {selected.portal_active !== false && selected.status !== "removed" && (
               <button onClick={() => { if (window.confirm("Remove this member permanently?")) handleStatus(selected, "removed"); }}
                 disabled={saving} className="w-full py-2.5 bg-red-50 text-red-600 border border-red-200 rounded-xl font-bold text-sm">Remove Member</button>
             )}
@@ -674,6 +808,54 @@ function MembersTab({ org, members, onRefresh }) {
             <button onClick={handleEdit} disabled={saving} className="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">{saving ? "Saving…" : "Save Changes"}</button>
           </div>
         </ModalWrap>
+      )}
+
+      {/* ── PIN modal — archive member or approve reactivation ── */}
+      {pendingArchiveMember && (
+        <TransactionPinModal
+          title={pendingArchiveMember.__reactivationApprove ? "Confirm Approval" : "Confirm Archive"}
+          description={pendingArchiveMember.__reactivationApprove
+            ? `Approve reactivation for ${pendingArchiveMember.member_name}`
+            : `Archive ${pendingArchiveMember.full_name}`}
+          onCancel={() => { setPendingArchiveMember(null); setTxnPin(null); }}
+          onApprove={async (pin) => {
+            setArchiveBusy(true);
+            try {
+              if (pendingArchiveMember.__reactivationApprove) {
+                // Approve a reactivation request
+                const { data } = await supabase.functions.invoke("coop-portal", {
+                  body: { action: "approve-member-reactivation", request_id: pendingArchiveMember.request_id, pin },
+                });
+                if (data?.ok) {
+                  setReactivationRequests(prev => prev.map(r =>
+                    r.id === pendingArchiveMember.request_id ? { ...r, status: "owner_approved" } : r
+                  ));
+                  setReactivationMsg({ id: pendingArchiveMember.request_id, text: "Approved. Forwarded to admin.", ok: true });
+                } else {
+                  alert(data?.error || "Failed to approve");
+                }
+              } else {
+                // Archive the member
+                const { data } = await supabase.functions.invoke("coop-portal", {
+                  body: { action: "archive-member", org_id: org.id, member_id: pendingArchiveMember.id, pin },
+                });
+                if (data?.ok) {
+                  setSelected(null);
+                  onRefresh();
+                  loadReactivationRequests();
+                } else {
+                  alert(data?.error || "Failed to archive member");
+                }
+              }
+            } catch (e) {
+              alert(e.message || "Failed");
+            } finally {
+              setArchiveBusy(false);
+              setPendingArchiveMember(null);
+              setTxnPin(null);
+            }
+          }}
+        />
       )}
     </div>
   );

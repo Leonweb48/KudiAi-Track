@@ -32,7 +32,7 @@ import ManagerDashboard from "./screens/ManagerDashboard";
 import AjoMemberPortal       from "./screens/AjoMemberPortal";
 import CoopList              from "./screens/CoopList";
 import CoopDashboard         from "./screens/CoopDashboard";
-import CoopMemberPortal, { CoopMemberFirstLogin } from "./screens/CoopMemberPortal";
+import CoopMemberPortal, { CoopMemberFirstLogin, OrgMemberArchivedScreen } from "./screens/CoopMemberPortal";
 import PaymentReturn         from "./screens/PaymentReturn";
 import { Browser }           from "@capacitor/browser";
 import { StatusBar, Style }  from "@capacitor/status-bar";
@@ -401,7 +401,8 @@ export default function App() {
   // Ajo client — OTP first, then password setup
   if (status === "ajo_client_otp")      return <AjoClientOtpVerify ajoClient={ajoClient} />;
   if (status === "ajo_client_setup")    return <AjoMemberPortal session={session} ajoClient={ajoClient} pinLock={pinLock} />;
-  if (status === "ajo_client_archived") return <AjoClientArchivedScreen ajoClient={ajoClient} />;
+  if (status === "ajo_client_archived")  return <AjoClientArchivedScreen ajoClient={ajoClient} />;
+  if (status === "org_member_archived") return <OrgMemberArchivedScreen member={orgMember} />;
   if (status === "offline")             return <OfflineScreen onRetry={retryAuth} />;
   if (status === "unauthenticated")  return <Auth />;
   if (status === "onboarding")       return <Onboarding session={session} onComplete={refetch} />;

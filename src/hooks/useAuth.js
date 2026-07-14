@@ -151,6 +151,10 @@ export function useAuth() {
         setOrgMember({ ...orgMemberRow, org: orgMemberRow.organizations });
         subVerified.current = true;
         logPlatformSession(supabase, uid, "org_member", orgMemberRow.full_name, email);
+        if (orgMemberRow.portal_active === false) {
+          setStatus("org_member_archived");
+          return;
+        }
         if (mustChange && !memberOtpVerified) {
           // New member — must verify email OTP before changing password
           setStatus("org_member_otp");
@@ -169,6 +173,10 @@ export function useAuth() {
             const cached = JSON.parse(raw);
             setOrgMember({ ...cached, org: cached.organizations });
             subVerified.current = true;
+            if (cached.portal_active === false) {
+              setStatus("org_member_archived");
+              return;
+            }
             setStatus("org_member");
             return;
           } catch { /* corrupted cache — fall through to offline screen */ }
