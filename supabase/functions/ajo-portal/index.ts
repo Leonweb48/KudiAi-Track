@@ -29,6 +29,7 @@ const CLIENT_SELECT = `
   address, state, lga, ward, notes,
   registration_charge, withdrawal_fee_percent,
   nin, next_of_kin_name, next_of_kin_phone, next_of_kin_email, next_of_kin_address,
+  bank_code, bank_name, account_number, account_name,
   portal_pin_changed_at, created_at,
   ajo_groups(name)
 `;
@@ -121,7 +122,7 @@ serve(async (req) => {
 
       const [ownerRes, clientRes, invoiceRes] = await Promise.all([
         sb.from("profiles").select("business_name, full_name, phone, email, profile_image_url, bank_name, bank_account_number, bank_account_name").eq("id", owner_id).maybeSingle(),
-        sb.from("aso_clients").select("staff_id, account_number, account_name, bank_name").eq("id", client_id).maybeSingle(),
+        sb.from("aso_clients").select("staff_id, bank_code, account_number, account_name, bank_name").eq("id", client_id).maybeSingle(),
         sb.from("invoice_settings").select("logo_url").eq("user_id", owner_id).maybeSingle(),
       ]);
 
@@ -137,7 +138,7 @@ serve(async (req) => {
 
       const cd = clientRes.data;
       const clientBank = cd?.account_number
-        ? { account_number: cd.account_number, account_name: cd.account_name, bank_name: cd.bank_name }
+        ? { bank_code: cd.bank_code, account_number: cd.account_number, account_name: cd.account_name, bank_name: cd.bank_name }
         : null;
 
       const ownerData = ownerRes.data
