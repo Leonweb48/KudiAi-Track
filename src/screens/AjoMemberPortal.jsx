@@ -81,8 +81,8 @@ async function uploadAjoAvatar(file, clientId) {
   const ext  = file.name.split(".").pop();
   const path = `ajo/${clientId}/avatar.${ext}`;
   await supabase.storage.from("avatars").upload(path, file, { upsert: true, contentType: file.type });
-  const base = supabase.storage.from("avatars").getPublicUrl(path).data.publicUrl;
-  return `${base}?v=${Date.now()}`;
+  // Use direct Supabase URL — getPublicUrl bakes in a proxy alias that breaks in native/PWA contexts
+  return `${process.env.REACT_APP_SUPABASE_URL}/storage/v1/object/public/avatars/${path}?v=${Date.now()}`;
 }
 
 async function uploadAjoProof(file, clientId) {
@@ -3615,10 +3615,13 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
           <div className="flex items-center gap-2 flex-none min-w-0">
             {ownerInfo?.owner?.business_name ? (
               <>
-                <div className="w-8 h-8 rounded-xl flex-shrink-0 overflow-hidden bg-navy flex items-center justify-center">
+                <div className="w-8 h-8 rounded-xl flex-shrink-0 overflow-hidden bg-navy relative flex items-center justify-center">
                   <span className="text-white font-black text-sm leading-none select-none">
                     {ownerInfo.owner.business_name[0].toUpperCase()}
                   </span>
+                  {ownerInfo.owner.profile_image_url && (
+                    <img src={ownerInfo.owner.profile_image_url} alt="" className="absolute inset-0 w-full h-full object-cover" onError={(e) => e.currentTarget.style.display = "none"} />
+                  )}
                 </div>
                 <p className="text-[15px] font-black text-slate-800 dark:text-white leading-tight truncate" style={{ maxWidth: 160 }}>
                   {ownerInfo.owner.business_name}
