@@ -37,9 +37,11 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
   const [pendingSync, setPendingSync] = useState(0);
   const [isSyncing,   setIsSyncing]   = useState(false);
 
-  const syncRunning = useRef(false);
-  const hasMounted  = useRef(false);
+  const syncRunning  = useRef(false);
+  const hasMounted   = useRef(false);
   const authEmailRef = useRef("");
+  const onNotifyRef  = useRef(onNotify);
+  useEffect(() => { onNotifyRef.current = onNotify; }, [onNotify]);
 
   // ── Load all data ──────────────────────────────────────────────
   const loadData = useCallback(async (silent = false) => {
@@ -250,11 +252,11 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
             const label = t.item_name || t.category || "Transaction";
             const fmt = (n) => `₦${(+n || 0).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
             if (t.payment_type === "bill_payment") {
-              onNotify?.("bills", "Bill Payment", `${fmt(t.amount)} · ${label}`);
+              onNotifyRef.current?.("bills", "Bill Payment", `${fmt(t.amount)} · ${label}`);
             } else if (t.type === "in") {
-              onNotify?.("sales", "Sale Recorded", `${fmt(t.amount)} · ${label}`);
+              onNotifyRef.current?.("sales", "Sale Recorded", `${fmt(t.amount)} · ${label}`);
             } else {
-              onNotify?.("sales", "Expense Recorded", `${fmt(t.amount)} · ${label}`);
+              onNotifyRef.current?.("sales", "Expense Recorded", `${fmt(t.amount)} · ${label}`);
             }
             return [t, ...prev];
           });
@@ -272,7 +274,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
             if (prev.some(c => c.id === payload.new.id)) return prev;
             const c = payload.new;
             const fmt = (n) => `₦${(+n || 0).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
-            onNotify?.("credits", "Credit Added", `${fmt(c.total_amount || 0)} · ${c.customer_name || ""}`);
+            onNotifyRef.current?.("credits", "Credit Added", `${fmt(c.total_amount || 0)} · ${c.customer_name || ""}`);
             return [c, ...prev];
           });
         })
