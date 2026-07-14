@@ -3619,8 +3619,8 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
                   <span className="text-white font-black text-sm leading-none select-none">
                     {ownerInfo.owner.business_name[0].toUpperCase()}
                   </span>
-                  {ownerInfo.owner.profile_image_url && (
-                    <img src={ownerInfo.owner.profile_image_url} alt="" className="absolute inset-0 w-full h-full object-cover" onError={(e) => e.currentTarget.style.display = "none"} />
+                  {(ownerInfo.owner.logo_url || ownerInfo.owner.profile_image_url) && (
+                    <img src={ownerInfo.owner.logo_url || ownerInfo.owner.profile_image_url} alt="" className="absolute inset-0 w-full h-full object-cover" onError={(e) => e.currentTarget.style.display = "none"} />
                   )}
                 </div>
                 <p className="text-[15px] font-black text-slate-800 dark:text-white leading-tight truncate" style={{ maxWidth: 160 }}>
