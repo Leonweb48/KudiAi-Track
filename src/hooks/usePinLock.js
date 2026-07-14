@@ -103,8 +103,9 @@ export function usePinLock(userId, session) {
       } catch {}
       if (!data?.appPinSet) {
         setLocked(false); // No PIN set yet — show setup, not lock screen
-      } else if (data?.autoLockTimeout === 0 && !data?.requiresReauth) {
-        setLocked(false); // "Never" — skip lock screen on app open / return from background
+      } else if (data?.autoLockTimeout === 0) {
+        // "Never": only lock for new-device reauth, never for inactivity
+        setLocked(!!data?.requiresReauth);
       }
       setLoading(false);
     } catch {

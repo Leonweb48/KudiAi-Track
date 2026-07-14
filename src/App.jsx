@@ -373,8 +373,8 @@ export default function App() {
   if (!pinLock.loading && (!pinLock.appPinSet || !pinLock.txnPinSet)) {
     return <PinSetupFlow pinLock={pinLock} userId={userId} session={session} />;
   }
-  // Lock screen (inactivity or new device)
-  if (pinLock.locked) {
+  // Lock screen (inactivity or new device) — wait for pinLock load to avoid false flashes
+  if (!pinLock.loading && pinLock.locked) {
     const isAjoCli = status === "ajo_client" || status === "ajo_client_setup";
     return <LockScreen
       pinLock={pinLock}
