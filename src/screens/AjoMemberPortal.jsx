@@ -7,7 +7,6 @@ import { fmt, fmtDate, fmtDateTime, ledgerTypeLabel } from "../utils/helpers";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
 import Icon from "../components/Icon";
 import Modal from "../components/shared/Modal";
-// useBiometricLock removed — locking is handled by usePinLock in App.jsx via pinLock prop
 import { useNotifications } from "../hooks/useNotifications";
 import { useCampaigns } from "../hooks/useCampaigns";
 import { usePartnerOffers } from "../hooks/usePartnerOffers";
@@ -1522,8 +1521,8 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
 
   useEffect(() => {
     if (!client?.id) return;
-    ajoFn("get-goal", { client_id: client.id }).then(({ data }) => {
-      if (data?.goal) setGoal(data.goal);
+    ajoFn("get-goal", { client_id: client.id }).then(res => {
+      if (res?.goal) setGoal(res.goal);
     }).catch(() => null);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client?.id]);
@@ -2381,7 +2380,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
 }
 
 // ── Me tab (Staff Portal structure) ───────────────────────────────────────
-function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onProfileUpdate, contributions = [], withdrawRequests = [] }) {
+function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onProfileUpdate, contributions = [] }) {
   const [view,           setView]           = useState("menu");
   const [editForm,       setEditForm]       = useState({
     full_name: client?.full_name || "",
@@ -3384,7 +3383,7 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
 }
 
 // ── Bills wrapper — mirrors same store shape as CoopMemberPortal ──────────
-function AjoMemberBillsWrapper({ client, ownerInfo, session, autoService, onAutoOpened }) {
+function AjoMemberBillsWrapper({ client, ownerInfo, session }) {
   const [bills, setBills] = useState([]);
 
   const addTransaction = useCallback(async (payload) => {
@@ -3427,8 +3426,6 @@ function AjoMemberBillsWrapper({ client, ownerInfo, session, autoService, onAuto
       staffEmail={client?.email || session?.user?.email || null}
       businessName={ownerInfo?.business_name || ""}
       excludeCats={["print-airtime", "print-data"]}
-      autoService={autoService}
-      onAutoOpened={onAutoOpened}
     />
   );
 }
@@ -3717,7 +3714,6 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
               onChangePwdClick={() => setShowPwdModal(true)}
               onProfileUpdate={updates => setClient(prev => ({ ...prev, ...updates }))}
               contributions={contributions}
-              withdrawRequests={withdrawRequests}
             />
           )}
           {!client && tab === "home" && <SkeletonHome />}
