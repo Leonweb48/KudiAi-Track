@@ -426,7 +426,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [dueBefore,       setDueBefore]       = useState("");
   const [showCollection,  setShowCollection]  = useState(false);
 
-  const { asoClients, addAsoClient, asoContribute, asoCollectionRecord, asoWithdraw, asoReverseContribution, updateAsoClient, deleteAsoClient, requestAsoClientArchive, profile, staffMap = {} } = store;
+  const { asoClients, addAsoClient, asoContribute, asoCollectionRecord, asoWithdraw, asoReverseContribution, updateAsoClient, requestAsoClientArchive, profile, staffMap = {} } = store;
   const staffOptions = Object.entries(staffMap).map(([id, name]) => ({ id, name }));
 
   const [withdrawalRequests,  setWithdrawalRequests]  = useState([]);
