@@ -81,12 +81,20 @@ function fmtLocaleDate(lang) {
 }
 
 async function uploadAjoAvatar(file, clientId) {
-  const ext  = file.name.split(".").pop() || "jpg";
-  const path = `ajo/${clientId}/avatar.${ext}`;
-  const { error } = await supabase.storage.from("avatars").upload(path, file, { upsert: true, contentType: file.type });
+  const ext = file.name.split(".").pop() || "jpg";
+  // Convert to base64 and upload via edge function (service role bypasses storage RLS)
+  const arrayBuffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(arrayBuffer);
+  let binary = "";
+  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+  const base64 = btoa(binary);
+  const { data, error } = await supabase.functions.invoke("ajo-portal", {
+    body: { action: "upload-avatar", client_id: clientId, ext, base64, mime: file.type },
+  });
   if (error) throw new Error(`Photo upload failed: ${error.message}`);
-  // Use direct Supabase URL — getPublicUrl bakes in a proxy alias that breaks in native/PWA contexts
-  return `${process.env.REACT_APP_SUPABASE_URL}/storage/v1/object/public/avatars/${path}?v=${Date.now()}`;
+  if (data?.error) throw new Error(`Photo upload failed: ${data.error}`);
+  if (!data?.url) throw new Error("Photo upload failed: no URL returned");
+  return data.url;
 }
 
 async function uploadAjoProof(file, clientId) {

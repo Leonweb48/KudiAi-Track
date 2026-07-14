@@ -691,6 +691,24 @@ serve(async (req) => {
       return json({ success: true });
     }
 
+    // ── Avatar upload (service-role bypasses storage RLS) ────────────────────
+    if (action === "upload-avatar") {
+      const { client_id, ext, base64, mime } = body as { client_id: string; ext: string; base64: string; mime: string };
+      if (!client_id || !base64) return json({ error: "client_id and base64 required" }, 400);
+      const ALLOWED_MIME = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/jpg"];
+      if (!ALLOWED_MIME.includes(mime)) return json({ error: "Invalid image type — use JPEG, PNG, or WebP" }, 400);
+      const safeExt = (ext || "jpg").replace(/[^a-zA-Z0-9]/g, "").slice(0, 5);
+      const path = `ajo/${client_id}/avatar.${safeExt}`;
+      const binary = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+      const { error: storageErr } = await sb.storage.from("avatars").upload(path, binary, { contentType: mime, upsert: true });
+      if (storageErr) {
+        console.error("[upload-avatar] storage error:", storageErr.message);
+        return json({ error: storageErr.message }, 500);
+      }
+      const url = `${Deno.env.get("SUPABASE_URL")}/storage/v1/object/public/avatars/${path}?v=${Date.now()}`;
+      return json({ url });
+    }
+
     // ── Profile update (service-role so client RLS doesn't block) ────────────
     if (action === "update-profile") {
       const { client_id, fields } = body as { client_id: string; fields: Record<string, unknown> };
