@@ -15,7 +15,8 @@ const ORG_SELECT = `id, owner_id, portal_user_id, name, type, reg_number, descri
   address, state_name, lga, phone, email, website, logo_url,
   social_instagram, social_facebook, social_twitter, date_established, registration_fee,
   wallet_balance, total_savings, total_loans_out, interest_earned, member_count, status, created_at,
-  bank_code, account_number, account_name, paystack_subaccount_code, paystack_subaccount_id, percentage_charge`;
+  bank_code, account_number, account_name, paystack_subaccount_code, paystack_subaccount_id, percentage_charge,
+  pending_archive, archived_at, archived_by`;
 
 const MEMBER_SELECT = `id, org_id, membership_id, full_name, email, phone, role, status,
   profile_image_url, address, occupation, gender, date_of_birth, joined_date,
@@ -322,6 +323,10 @@ serve(async (req) => {
     if (action === "add-member") {
       const b = body as Record<string, string>;
       if (!b.org_id || !b.full_name || !b.email) return json({ error: "org_id, full_name and email required" }, 400);
+      // Guard: block write operations while archive is pending or org is already archived
+      const { data: _orgGrdAM } = await sb.from("organizations").select("pending_archive, status").eq("id", b.org_id).maybeSingle();
+      if (_orgGrdAM?.status === "archived") return json({ error: "This organisation has been archived." }, 409);
+      if (_orgGrdAM?.pending_archive) return json({ error: "This organisation has a pending archive request — no new members can be added while under review." }, 409);
       // Count ALL members (including removed) so removed IDs are never reused
       const { count } = await sb.from("org_members").select("id", { count: "exact", head: true })
         .eq("org_id", b.org_id);
@@ -752,6 +757,9 @@ serve(async (req) => {
         body as Record<string, unknown>;
       const amt = parseFloat(String(amount));
       if (!org_id || !member_id || !amt) return json({ error: "org_id, member_id, amount required" }, 400);
+      const { data: _orgGrdRS } = await sb.from("organizations").select("pending_archive, status").eq("id", String(org_id)).maybeSingle();
+      if (_orgGrdRS?.status === "archived") return json({ error: "This organisation has been archived." }, 409);
+      if (_orgGrdRS?.pending_archive) return json({ error: "This organisation has a pending archive request — savings entries are not allowed while under review." }, 409);
       const { data: mem } = await sb.from("org_members").select("savings_balance").eq("id", member_id).single();
       const current = (mem?.savings_balance || 0) as number;
       const isWithdrawal = type === "withdrawal";
@@ -852,6 +860,9 @@ serve(async (req) => {
               per_member_amount, individual_items } =
         body as Record<string, unknown>;
       if (!org_id || !purpose) return json({ error: "org_id and purpose required" }, 400);
+      const { data: _orgGrdCW } = await sb.from("organizations").select("pending_archive, status").eq("id", String(org_id)).maybeSingle();
+      if (_orgGrdCW?.status === "archived") return json({ error: "This organisation has been archived." }, 409);
+      if (_orgGrdCW?.pending_archive) return json({ error: "This organisation has a pending archive request — withdrawals are not allowed while under review." }, 409);
 
       let affectedMembers: Array<{ id: string; full_name: string; savings_balance: number; amount: number }> = [];
 
@@ -977,6 +988,9 @@ serve(async (req) => {
       const { org_id, member_id, amount_requested, interest_rate, loan_purpose, repayment_months, notes, applied_by } =
         body as Record<string, unknown>;
       if (!org_id || !member_id || !amount_requested) return json({ error: "Required fields missing" }, 400);
+      const { data: _orgGrdAL } = await sb.from("organizations").select("pending_archive, status").eq("id", String(org_id)).maybeSingle();
+      if (_orgGrdAL?.status === "archived") return json({ error: "This organisation has been archived." }, 409);
+      if (_orgGrdAL?.pending_archive) return json({ error: "This organisation has a pending archive request — new loans are not allowed while under review." }, 409);
       const principal = parseFloat(String(amount_requested));
       const rate      = parseFloat(String(interest_rate || 0));
       const months    = parseInt(String(repayment_months || 1));
@@ -2596,6 +2610,89 @@ serve(async (req) => {
         return new Date(dateB).getTime() - new Date(dateA).getTime();
       });
       return json({ broadcasts: all });
+    }
+
+    // ══════════════════════════════════════════════════
+    //  ORG ARCHIVE WORKFLOW
+    // ══════════════════════════════════════════════════
+
+    if (action === "get_org_archive_blockers") {
+      const { org_id } = body as { org_id: string };
+      if (!org_id) return json({ error: "org_id required" }, 400);
+      const [loansRes, membersRes, wdRes] = await Promise.all([
+        sb.from("org_loans").select("id, outstanding_balance")
+          .eq("org_id", org_id).in("status", ["approved", "disbursed"]).gt("outstanding_balance", 0),
+        sb.from("org_members").select("id, savings_balance")
+          .eq("org_id", org_id).eq("status", "active").gt("savings_balance", 0),
+        sb.from("org_member_withdrawal_requests").select("id")
+          .eq("org_id", org_id).eq("status", "pending"),
+      ]);
+      const blockers: { type: string; label: string; count: number; total?: number }[] = [];
+      if ((loansRes.data?.length ?? 0) > 0) {
+        const total = (loansRes.data ?? []).reduce((s: number, l: Record<string, unknown>) => s + Number(l.outstanding_balance ?? 0), 0);
+        blockers.push({ type: "loans", label: "Outstanding loan balances", count: loansRes.data!.length, total });
+      }
+      if ((membersRes.data?.length ?? 0) > 0) {
+        const total = (membersRes.data ?? []).reduce((s: number, m: Record<string, unknown>) => s + Number(m.savings_balance ?? 0), 0);
+        blockers.push({ type: "savings", label: "Members with savings balance", count: membersRes.data!.length, total });
+      }
+      if ((wdRes.data?.length ?? 0) > 0) {
+        blockers.push({ type: "withdrawals", label: "Pending withdrawal requests", count: wdRes.data!.length });
+      }
+      return json({ blockers });
+    }
+
+    if (action === "request_org_archive") {
+      const { org_id, owner_id, pin, reason } = body as Record<string, string>;
+      if (!org_id || !owner_id || !pin || !reason?.trim()) {
+        return json({ ok: false, error: "org_id, owner_id, pin, and reason required" }, 400);
+      }
+
+      const { data: orgA } = await sb.from("organizations")
+        .select("id, owner_id, name, member_count, pending_archive, status")
+        .eq("id", org_id).maybeSingle();
+      if (!orgA) return json({ ok: false, error: "Organisation not found" }, 404);
+      if (orgA.owner_id !== owner_id) return json({ ok: false, error: "Unauthorized" }, 403);
+      if (orgA.status === "archived") return json({ ok: false, error: "Organisation is already archived" }, 409);
+      if (orgA.pending_archive) return json({ ok: false, error: "An archive request is already pending for this organisation" }, 409);
+
+      // Verify owner PIN via user-scoped client
+      const jwt = req.headers.get("Authorization")?.replace("Bearer ", "") ?? "";
+      const sbUser = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_ANON_KEY")!,
+        { auth: { persistSession: false }, global: { headers: { Authorization: `Bearer ${jwt}` } } }
+      );
+      const { data: pinOk, error: pinErr } = await sbUser.rpc("verify_txn_pin", { pin: String(pin) });
+      if (pinErr || !pinOk) return json({ ok: false, error: "Incorrect PIN" }, 403);
+
+      // Safety gates re-check (server-side authoritative)
+      const [loansGrd, membersGrd, wdGrd] = await Promise.all([
+        sb.from("org_loans").select("id", { count: "exact", head: true })
+          .eq("org_id", org_id).in("status", ["approved", "disbursed"]).gt("outstanding_balance", 0),
+        sb.from("org_members").select("id", { count: "exact", head: true })
+          .eq("org_id", org_id).eq("status", "active").gt("savings_balance", 0),
+        sb.from("org_member_withdrawal_requests").select("id", { count: "exact", head: true })
+          .eq("org_id", org_id).eq("status", "pending"),
+      ]);
+      if ((loansGrd.count ?? 0) > 0) return json({ ok: false, error: "Organisation still has outstanding loan balances — settle all loans before submitting." }, 422);
+      if ((membersGrd.count ?? 0) > 0) return json({ ok: false, error: "Members still hold savings balances — disburse all savings before submitting." }, 422);
+      if ((wdGrd.count ?? 0) > 0) return json({ ok: false, error: "Organisation still has pending withdrawal requests — resolve them before submitting." }, 422);
+
+      // Submit approval request as the owner (auth.uid() must be the owner)
+      const { data: requestId, error: reqErr } = await sbUser.rpc("submit_approval_request", {
+        p_type: "org_archive",
+        p_target_id: org_id,
+        p_payload: { org_name: orgA.name, member_count: orgA.member_count },
+        p_reason: reason.trim(),
+      });
+      if (reqErr || !requestId) {
+        return json({ ok: false, error: reqErr?.message || "Failed to submit request" }, 500);
+      }
+
+      await sb.from("organizations").update({ pending_archive: true }).eq("id", org_id);
+
+      return json({ ok: true, request_id: requestId });
     }
 
     return json({ error: `Unknown action: ${action}` }, 400);

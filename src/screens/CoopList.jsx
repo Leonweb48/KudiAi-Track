@@ -223,9 +223,10 @@ function RegisterModal({ onClose, onCreated, userId }) {
 
 // ── Main CoopList ──────────────────────────────────────────────────────────────
 export default function CoopList({ userId, onOpen, onClose, embedded }) {
-  const [orgs,       setOrgs]       = useState([]);
-  const [loading,    setLoading]    = useState(true);
-  const [showCreate, setShowCreate] = useState(false);
+  const [orgs,         setOrgs]         = useState([]);
+  const [loading,      setLoading]      = useState(true);
+  const [showCreate,   setShowCreate]   = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
 
   const load = useCallback(() => {
     if (!userId) return;
@@ -292,11 +293,12 @@ export default function CoopList({ userId, onOpen, onClose, embedded }) {
             </div>
           ) : (
             <div>
-              {orgs.map((org, idx) => {
+              {(showArchived ? orgs : orgs.filter(o => o.status !== "archived")).map((org, idx) => {
+                const displayOrgs = showArchived ? orgs : orgs.filter(o => o.status !== "archived");
                 const typeInfo = ORG_TYPES.find(t => t.value === org.type);
                 return (
                   <button key={org.id} onClick={() => onOpen(org)}
-                    className={`w-full flex items-start gap-3 px-4 py-4 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 active:bg-slate-100 dark:active:bg-slate-800 transition-colors ${idx < orgs.length - 1 ? "border-b border-slate-100 dark:border-slate-800" : ""}`}>
+                    className={`w-full flex items-start gap-3 px-4 py-4 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 active:bg-slate-100 dark:active:bg-slate-800 transition-colors ${idx < displayOrgs.length - 1 ? "border-b border-slate-100 dark:border-slate-800" : ""}`}>
 
                     {/* Avatar */}
                     <div className="w-11 h-11 rounded-full flex items-center justify-center text-2xl flex-shrink-0 shadow-sm"
@@ -308,7 +310,12 @@ export default function CoopList({ userId, onOpen, onClose, embedded }) {
                     <div className="flex-1 min-w-0 pt-0.5">
                       <div className="flex items-center gap-1.5 mb-0.5">
                         <p className="text-sm font-black text-slate-900 dark:text-white truncate leading-tight">{org.name}</p>
-                        {org.status !== "active" && (
+                        {org.pending_archive && (
+                          <span className="text-[9px] bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 font-bold px-1.5 py-0.5 rounded-full flex-shrink-0">
+                            Archive pending
+                          </span>
+                        )}
+                        {!org.pending_archive && org.status !== "active" && (
                           <span className="text-[9px] bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-bold px-1.5 py-0.5 rounded-full capitalize flex-shrink-0">
                             {org.status}
                           </span>
@@ -332,6 +339,15 @@ export default function CoopList({ userId, onOpen, onClose, embedded }) {
                   </button>
                 );
               })}
+              {/* Archived toggle */}
+              {orgs.some(o => o.status === "archived") && (
+                <button onClick={() => setShowArchived(v => !v)}
+                  className="w-full py-3 text-[11px] font-semibold text-slate-400 dark:text-slate-500 border-t border-slate-100 dark:border-slate-800">
+                  {showArchived
+                    ? "Hide archived organisations"
+                    : `Show ${orgs.filter(o => o.status === "archived").length} archived organisation${orgs.filter(o => o.status === "archived").length !== 1 ? "s" : ""}`}
+                </button>
+              )}
               {/* Bottom padding */}
               <div className="pb-24" />
             </div>
