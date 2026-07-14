@@ -2628,8 +2628,7 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
       setTimeout(() => { setSaveMsg(""); setView("profile"); }, 1500);
     } catch (err) {
       console.error("[profile-save]", err);
-      // Show raw error so the exact DB message is visible for diagnosis
-      setSaveMsg(err?.message || "Save failed. Please try again.");
+      setSaveMsg(friendlyError(err) || "Save failed. Please try again.");
     }
     setSaving(false);
   };
