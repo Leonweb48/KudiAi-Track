@@ -3787,6 +3787,11 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
           ...clientRes.value.client,
           user_id: clientRes.value.client.user_id || ajoClient?.user_id,
         };
+        if (resolvedClient.portal_active === false) {
+          await supabase.auth.signOut();
+          window.location.reload();
+          return;
+        }
         setClient(resolvedClient);
       }
       if (contribRes.status === "fulfilled" && contribRes.value?.contributions)
@@ -3844,7 +3849,15 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
 
     const channel = supabase.channel(`ajo_client_sync_${ajoClient.id}`)
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "aso_clients", filter: `id=eq.${ajoClient.id}` },
-        (payload) => { if (payload.new) setClient(prev => ({ ...prev, ...payload.new })); })
+        async (payload) => {
+          if (!payload.new) return;
+          if (payload.new.portal_active === false) {
+            await supabase.auth.signOut();
+            window.location.reload();
+            return;
+          }
+          setClient(prev => ({ ...prev, ...payload.new }));
+        })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "ajo_contributions", filter: `aso_client_id=eq.${ajoClient.id}` },
         (payload) => {
           if (!payload.new) return;

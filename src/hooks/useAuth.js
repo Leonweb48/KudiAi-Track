@@ -220,7 +220,7 @@ export function useAuth() {
             const cached = JSON.parse(raw);
             setAjoClient({ ...cached, owner_id: cached.user_id });
             subVerified.current = true;
-            setStatus("ajo_client");
+            setStatus(cached.portal_active === false ? "ajo_client_archived" : "ajo_client");
             return;
           } catch { /* corrupted cache — fall through to offline screen */ }
         }

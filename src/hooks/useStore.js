@@ -88,7 +88,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
     // ── Online: fetch from Supabase ───────────────────────────
     let txQ  = supabase.from("transactions").select("*").eq("user_id", userId);
     let crQ  = supabase.from("credits").select("*").eq("user_id", userId);
-    let asoQ = supabase.from("aso_clients").select("*").eq("user_id", userId);
+    let asoQ = supabase.from("aso_clients").select("*").eq("user_id", userId).eq("portal_active", true);
     let dpQ  = supabase.from("debt_payments").select("*").eq("owner_id", userId);
     if (staffId) {
       txQ  = txQ.eq("staff_id",  staffId);
@@ -230,7 +230,11 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "aso_clients", filter: `user_id=eq.${userId}` },
         (payload) => {
           if (payload.new) {
-            setAsoClients(prev => prev.map(c => c.id === payload.new.id ? { ...c, ...payload.new } : c));
+            if (payload.new.portal_active === false) {
+              setAsoClients(prev => prev.filter(c => c.id !== payload.new.id));
+            } else {
+              setAsoClients(prev => prev.map(c => c.id === payload.new.id ? { ...c, ...payload.new } : c));
+            }
           }
         })
       .subscribe();
