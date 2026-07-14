@@ -47,6 +47,7 @@ import StaffFirstLogin      from "./screens/StaffFirstLogin";
 import { useConsent }       from "./hooks/useConsent";
 import ConsentModal         from "./components/ConsentModal";
 import AjoClientOtpVerify   from "./screens/AjoClientOtpVerify";
+import AjoClientArchivedScreen from "./screens/AjoClientArchivedScreen";
 import OrgOtpVerify         from "./screens/OrgOtpVerify";
 import OfflineScreen        from "./screens/OfflineScreen";
 import AdminDashboard        from "./screens/AdminDashboard";
@@ -398,9 +399,10 @@ export default function App() {
   if (status === "staff_setup") return <StaffFirstLogin staff={staff} />;
 
   // Ajo client — OTP first, then password setup
-  if (status === "ajo_client_otp")   return <AjoClientOtpVerify ajoClient={ajoClient} />;
-  if (status === "ajo_client_setup") return <AjoMemberPortal session={session} ajoClient={ajoClient} pinLock={pinLock} />;
-  if (status === "offline")          return <OfflineScreen onRetry={retryAuth} />;
+  if (status === "ajo_client_otp")      return <AjoClientOtpVerify ajoClient={ajoClient} />;
+  if (status === "ajo_client_setup")    return <AjoMemberPortal session={session} ajoClient={ajoClient} pinLock={pinLock} />;
+  if (status === "ajo_client_archived") return <AjoClientArchivedScreen ajoClient={ajoClient} />;
+  if (status === "offline")             return <OfflineScreen onRetry={retryAuth} />;
   if (status === "unauthenticated")  return <Auth />;
   if (status === "onboarding")       return <Onboarding session={session} onComplete={refetch} />;
   if (status === "subscribing")      return <SubscriptionPlan session={session} onComplete={setReady} />;

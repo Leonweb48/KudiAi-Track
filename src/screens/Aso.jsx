@@ -490,6 +490,13 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [clientResolvedName,  setClientResolvedName]  = useState("");
   const [clientBankErr,       setClientBankErr]       = useState("");
 
+  // Reactivation requests — pending client account reactivation from archived state
+  const [reactivationRequests, setReactivationRequests] = useState([]);
+  const [reactivationBusy,     setReactivationBusy]     = useState(null); // request id being processed
+  const [reactivationMsg,      setReactivationMsg]      = useState({ id: null, text: "", ok: false });
+  const [rejectingReactivation, setRejectingReactivation] = useState(null); // request id
+  const [rejectReactivationNote, setRejectReactivationNote] = useState("");
+
   const [f, setF] = useState(BLANK);
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
 
@@ -589,6 +596,21 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       setGroupApprovals(data || []);
     } catch (e) {
       console.error("loadGroupApprovals:", e);
+    }
+  };
+
+  const loadReactivationRequests = async () => {
+    if (!profile?.id) return;
+    try {
+      const { data } = await supabase
+        .from("ajo_reactivation_requests")
+        .select("id, client_id, client_name, reason, status, created_at")
+        .eq("owner_id", profile.id)
+        .eq("status", "pending")
+        .order("created_at", { ascending: false });
+      setReactivationRequests(data || []);
+    } catch (e) {
+      console.error("loadReactivationRequests:", e);
     }
   };
 
@@ -899,6 +921,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     reloadPendingDeposits();
     loadGroups();
     loadGroupApprovals();
+    loadReactivationRequests();
   }, [plan, profile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load granular ajo permissions when rendering in a staff context
@@ -1502,6 +1525,114 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           {depositFeedback.msg}
         </div>
       )}
+      {/* Reactivation requests — archived clients requesting account restoration */}
+      {reactivationRequests.length > 0 && !staffId && (
+        <div className="mb-4">
+          <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2">
+            Reactivation Requests
+            <span className="ml-2 bg-amber-500 text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded-full">{reactivationRequests.length}</span>
+          </p>
+          <div className="space-y-3">
+            {reactivationRequests.map(req => {
+              const isBusy = reactivationBusy === req.id;
+              const msg    = reactivationMsg.id === req.id ? reactivationMsg : null;
+              return (
+                <div key={req.id} className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-xl p-3">
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <div>
+                      <p className="text-sm font-bold text-slate-800 dark:text-white">{req.client_name || "Client"}</p>
+                      <p className="text-[10px] text-amber-700 dark:text-amber-400 font-semibold">Account Reactivation Request</p>
+                    </div>
+                    <p className="text-[10px] text-slate-400 whitespace-nowrap">{new Date(req.created_at).toLocaleDateString("en-NG", { day: "numeric", month: "short" })}</p>
+                  </div>
+                  {req.reason && (
+                    <p className="text-xs text-slate-600 dark:text-slate-300 mb-2 bg-white/50 dark:bg-white/5 rounded-lg px-2 py-1">
+                      &ldquo;{req.reason}&rdquo;
+                    </p>
+                  )}
+                  {msg && (
+                    <p className={`text-xs mb-2 font-medium ${msg.ok ? "text-green-600 dark:text-green-400" : "text-red-500"}`}>{msg.text}</p>
+                  )}
+                  {rejectingReactivation === req.id ? (
+                    <div className="space-y-2">
+                      <input
+                        autoFocus
+                        value={rejectReactivationNote}
+                        onChange={e => setRejectReactivationNote(e.target.value)}
+                        placeholder="Reason for rejection (required)"
+                        className="w-full text-xs bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg px-2 py-1.5"
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          disabled={isBusy || !rejectReactivationNote.trim()}
+                          onClick={async () => {
+                            setReactivationBusy(req.id);
+                            const { data } = await supabase.functions.invoke("ajo-write", {
+                              body: { action: "reject_reactivation", reactivation_request_id: req.id, note: rejectReactivationNote.trim() },
+                            });
+                            setReactivationBusy(null);
+                            if (data?.ok) {
+                              setReactivationMsg({ id: req.id, text: "Request rejected.", ok: true });
+                              setRejectingReactivation(null);
+                              setRejectReactivationNote("");
+                              setReactivationRequests(p => p.filter(r => r.id !== req.id));
+                            } else {
+                              setReactivationMsg({ id: req.id, text: data?.error || "Failed", ok: false });
+                            }
+                          }}
+                          className="flex-1 py-1.5 text-xs font-bold rounded-lg bg-red-500 text-white disabled:opacity-50"
+                        >
+                          {isBusy ? "…" : "Confirm Reject"}
+                        </button>
+                        <button
+                          onClick={() => { setRejectingReactivation(null); setRejectReactivationNote(""); }}
+                          className="flex-1 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <TransactionPinModal
+                        trigger={
+                          <button
+                            disabled={isBusy}
+                            className="flex-1 py-1.5 text-xs font-bold rounded-lg bg-green-600 text-white disabled:opacity-50"
+                          >
+                            {isBusy ? "…" : "Approve & Send to Admin"}
+                          </button>
+                        }
+                        onConfirm={async (pin) => {
+                          setReactivationBusy(req.id);
+                          const { data } = await supabase.functions.invoke("ajo-write", {
+                            body: { action: "approve_reactivation", reactivation_request_id: req.id, pin },
+                          });
+                          setReactivationBusy(null);
+                          if (data?.ok) {
+                            setReactivationMsg({ id: req.id, text: "Approved — admin will finalise the reactivation.", ok: true });
+                            setReactivationRequests(p => p.filter(r => r.id !== req.id));
+                          } else {
+                            setReactivationMsg({ id: req.id, text: data?.error || "Failed to approve", ok: false });
+                          }
+                        }}
+                      />
+                      <button
+                        disabled={isBusy}
+                        onClick={() => { setRejectingReactivation(req.id); setRejectReactivationNote(""); }}
+                        className="flex-1 py-1.5 text-xs font-bold rounded-lg border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 disabled:opacity-50"
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {pendingDeposits.length > 0 && (
         <div className="mb-4">
           <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2">

@@ -66,7 +66,7 @@ function json(body: unknown, status = 200): Response {
 }
 
 // ── PIN-requiring actions ─────────────────────────────────────────────────────
-const PIN_GATED = new Set(["record_withdrawal", "reverse_contribution", "archive_client", "request_client_archive", "confirm_manual_deposit", "approve_contribution", "collection_record", "execute_commission", "execute_payout", "skip_turn", "reorder_turns"]);
+const PIN_GATED = new Set(["record_withdrawal", "reverse_contribution", "archive_client", "request_client_archive", "confirm_manual_deposit", "approve_contribution", "collection_record", "execute_commission", "execute_payout", "skip_turn", "reorder_turns", "approve_reactivation"]);
 
 // ── Resolve the true owner UUID for a client from the DB ─────────────────────
 async function resolveClientOwner(
@@ -1188,6 +1188,86 @@ serve(async (req: Request) => {
     });
     if (crErr) return json({ ok: false, error: crErr.message });
     return json(crData);
+  }
+
+  // ── Owner approves a client reactivation request (PIN-gated) ────────────────
+  if (action === "approve_reactivation") {
+    const { reactivation_request_id } = params as { reactivation_request_id: string };
+    if (!reactivation_request_id) return json({ ok: false, error: "reactivation_request_id required" }, 400);
+
+    const { data: rr } = await sb
+      .from("ajo_reactivation_requests")
+      .select("id, client_id, owner_id, status, reason, client_name")
+      .eq("id", reactivation_request_id)
+      .maybeSingle();
+
+    if (!rr) return json({ ok: false, error: "Reactivation request not found" }, 404);
+    if ((rr as Record<string, unknown>).owner_id !== user.id) return json({ ok: false, error: "Unauthorized" }, 403);
+    if ((rr as Record<string, unknown>).status !== "pending") {
+      return json({ ok: false, error: `Request is already ${(rr as Record<string, unknown>).status}` }, 409);
+    }
+
+    // Fetch client financial snapshot for admin context
+    const { data: clientSnap } = await sb
+      .from("aso_clients")
+      .select("full_name, membership_number, total_saved, total_withdrawn, current_balance")
+      .eq("id", (rr as Record<string, unknown>).client_id as string)
+      .maybeSingle();
+
+    const { data: ownerProfile } = await sb
+      .from("profiles")
+      .select("business_name")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    // Mark reactivation request as owner_approved
+    await sb.from("ajo_reactivation_requests")
+      .update({ status: "owner_approved" })
+      .eq("id", reactivation_request_id);
+
+    // Submit admin approval request
+    const { error: aarErr } = await sb.from("admin_approval_requests").insert({
+      request_type: "client_reactivation",
+      requester:    user.id,
+      business:     (ownerProfile as Record<string, string> | null)?.business_name ?? "",
+      target_id:    (rr as Record<string, unknown>).client_id as string,
+      payload: {
+        full_name:               (clientSnap as Record<string, unknown> | null)?.full_name ?? (rr as Record<string, unknown>).client_name ?? "",
+        membership_number:       (clientSnap as Record<string, unknown> | null)?.membership_number ?? "",
+        total_saved:             Number((clientSnap as Record<string, unknown> | null)?.total_saved) || 0,
+        total_withdrawn:         Number((clientSnap as Record<string, unknown> | null)?.total_withdrawn) || 0,
+        reactivation_request_id: reactivation_request_id,
+        client_reason:           (rr as Record<string, unknown>).reason ?? "",
+      },
+      reason: `Owner approved reactivation for ${(clientSnap as Record<string, unknown> | null)?.full_name ?? "client"}. Client reason: ${(rr as Record<string, unknown>).reason ?? "none provided"}`,
+    });
+
+    if (aarErr) return json({ ok: false, error: aarErr.message }, 500);
+    return json({ ok: true });
+  }
+
+  // ── Owner rejects a client reactivation request (no PIN needed) ──────────────
+  if (action === "reject_reactivation") {
+    const { reactivation_request_id, note } = params as { reactivation_request_id: string; note?: string };
+    if (!reactivation_request_id) return json({ ok: false, error: "reactivation_request_id required" }, 400);
+
+    const { data: rr } = await sb
+      .from("ajo_reactivation_requests")
+      .select("id, owner_id, status")
+      .eq("id", reactivation_request_id)
+      .maybeSingle();
+
+    if (!rr) return json({ ok: false, error: "Reactivation request not found" }, 404);
+    if ((rr as Record<string, unknown>).owner_id !== user.id) return json({ ok: false, error: "Unauthorized" }, 403);
+    if ((rr as Record<string, unknown>).status !== "pending") {
+      return json({ ok: false, error: `Request is already ${(rr as Record<string, unknown>).status}` }, 409);
+    }
+
+    await sb.from("ajo_reactivation_requests")
+      .update({ status: "owner_rejected", resolved_at: new Date().toISOString() })
+      .eq("id", reactivation_request_id);
+
+    return json({ ok: true });
   }
 
   return json({ ok: false, error: `Unknown action: ${action}` }, 400);

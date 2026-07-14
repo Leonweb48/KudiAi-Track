@@ -186,7 +186,7 @@ export function useAuth() {
     if (accountType === "ajo_client") {
       const { data: ajoClientRow, error: ajoClientErr } = await supabase
         .from("aso_clients")
-        .select("id, full_name, user_id, client_user_id, profile_image_url, membership_number, email, current_balance, total_saved, total_withdrawn, next_contribution_date, contribution_amount, contribution_frequency, status, registration_charge, withdrawal_fee_percent, ajo_group_id")
+        .select("id, full_name, user_id, client_user_id, profile_image_url, membership_number, email, current_balance, total_saved, total_withdrawn, next_contribution_date, contribution_amount, contribution_frequency, status, registration_charge, withdrawal_fee_percent, ajo_group_id, portal_active, archived_at")
         .eq("client_user_id", uid)
         .maybeSingle();
       if (ajoClientRow) {
@@ -194,6 +194,11 @@ export function useAuth() {
         setAjoClient({ ...ajoClientRow, owner_id: ajoClientRow.user_id });
         subVerified.current = true;
         logPlatformSession(supabase, uid, "ajo_client", ajoClientRow.full_name, email);
+        // Archived clients see a reactivation screen — skip PIN/consent gates
+        if (ajoClientRow.portal_active === false) {
+          setStatus("ajo_client_archived");
+          return;
+        }
         // Use custom flag — Supabase overwrites email_verified when email_confirm:true is set at creation
         const ajoOtpVerified = sess.user.user_metadata?.ajo_client_otp_verified === true;
         if (mustChange && !ajoOtpVerified) {

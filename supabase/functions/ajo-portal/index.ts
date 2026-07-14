@@ -887,6 +887,63 @@ serve(async (req) => {
       return json({ ok: true });
     }
 
+    // ── Client reactivation request (archived clients only) ───────────
+    if (action === "request-reactivation") {
+      const { client_id, reason } = body as { client_id: string; reason?: string };
+      if (!client_id) return json({ error: "client_id required" }, 400);
+
+      const { data: clientRow } = await sb
+        .from("aso_clients")
+        .select("id, full_name, user_id, portal_active")
+        .eq("id", client_id)
+        .maybeSingle();
+
+      if (!clientRow) return json({ error: "Client not found" }, 404);
+      if (clientRow.portal_active !== false) return json({ error: "Account is not archived" }, 400);
+
+      // Block duplicate requests
+      const { data: existing } = await sb
+        .from("ajo_reactivation_requests")
+        .select("id, status")
+        .eq("client_id", client_id)
+        .in("status", ["pending", "owner_approved"])
+        .maybeSingle();
+
+      if (existing) {
+        return json({ error: "A reactivation request is already pending", status: existing.status }, 409);
+      }
+
+      const { data: inserted, error: insertErr } = await sb
+        .from("ajo_reactivation_requests")
+        .insert({
+          client_id,
+          owner_id:    (clientRow as Record<string, unknown>).user_id,
+          client_name: (clientRow as Record<string, unknown>).full_name,
+          reason:      reason?.trim() || null,
+        })
+        .select("id, status, created_at")
+        .single();
+
+      if (insertErr) return json({ error: insertErr.message }, 500);
+      return json({ ok: true, request: inserted });
+    }
+
+    // ── Check reactivation request status for an archived client ──────
+    if (action === "get-reactivation-status") {
+      const { client_id } = body as { client_id: string };
+      if (!client_id) return json({ error: "client_id required" }, 400);
+
+      const { data } = await sb
+        .from("ajo_reactivation_requests")
+        .select("id, status, created_at")
+        .eq("client_id", client_id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      return json({ request: data ?? null });
+    }
+
     return json({ error: `Unknown action: ${action}` }, 400);
   } catch (err) {
     console.error("[ajo-portal]", err);
