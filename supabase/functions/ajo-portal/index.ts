@@ -711,7 +711,7 @@ serve(async (req) => {
       const { error: upErr } = await sb.from("aso_clients").update(safePayload).eq("id", client_id);
       if (upErr) {
         console.error("[update-profile] DB error:", upErr.message, "code:", upErr.code, "details:", upErr.details, "hint:", upErr.hint);
-        return json({ error: "Couldn't save your profile — please try again" }, 500);
+        return json({ error: upErr.message }, 500);
       }
       return json({ ok: true });
     }
