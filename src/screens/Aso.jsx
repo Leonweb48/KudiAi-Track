@@ -606,7 +606,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         .from("ajo_reactivation_requests")
         .select("id, client_id, client_name, reason, status, created_at")
         .eq("owner_id", profile.id)
-        .eq("status", "pending")
+        .in("status", ["pending", "owner_approved"])
         .order("created_at", { ascending: false });
       setReactivationRequests(data || []);
     } catch (e) {
@@ -1534,14 +1534,17 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           </p>
           <div className="space-y-3">
             {reactivationRequests.map(req => {
-              const isBusy = reactivationBusy === req.id;
-              const msg    = reactivationMsg.id === req.id ? reactivationMsg : null;
+              const isBusy          = reactivationBusy === req.id;
+              const msg             = reactivationMsg.id === req.id ? reactivationMsg : null;
+              const isOwnerApproved = req.status === "owner_approved";
               return (
-                <div key={req.id} className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-xl p-3">
+                <div key={req.id} className={`border rounded-xl p-3 ${isOwnerApproved ? "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800/40" : "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800/40"}`}>
                   <div className="flex items-start justify-between gap-2 mb-1">
                     <div>
                       <p className="text-sm font-bold text-slate-800 dark:text-white">{req.client_name || "Client"}</p>
-                      <p className="text-[10px] text-amber-700 dark:text-amber-400 font-semibold">Account Reactivation Request</p>
+                      <p className={`text-[10px] font-semibold ${isOwnerApproved ? "text-blue-600 dark:text-blue-400" : "text-amber-700 dark:text-amber-400"}`}>
+                        {isOwnerApproved ? "Forwarded to Admin" : "Account Reactivation Request"}
+                      </p>
                     </div>
                     <p className="text-[10px] text-slate-400 whitespace-nowrap">{new Date(req.created_at).toLocaleDateString("en-NG", { day: "numeric", month: "short" })}</p>
                   </div>
@@ -1553,7 +1556,29 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                   {msg && (
                     <p className={`text-xs mb-2 font-medium ${msg.ok ? "text-green-600 dark:text-green-400" : "text-red-500"}`}>{msg.text}</p>
                   )}
-                  {rejectingReactivation === req.id ? (
+                  {isOwnerApproved ? (
+                    <div>
+                      <p className="text-[10px] text-blue-600 dark:text-blue-400 font-medium mb-2">Awaiting admin review. If it hasn&apos;t appeared in the admin portal, tap Resend.</p>
+                      <button
+                        disabled={isBusy}
+                        className="w-full py-1.5 text-xs font-bold rounded-lg bg-blue-600 text-white disabled:opacity-50"
+                        onClick={async () => {
+                          setReactivationBusy(req.id);
+                          const { data } = await supabase.functions.invoke("ajo-write", {
+                            body: { action: "resend_reactivation", reactivation_request_id: req.id },
+                          });
+                          setReactivationBusy(null);
+                          if (data?.ok) {
+                            setReactivationMsg({ id: req.id, text: data.note || "Sent to admin.", ok: true });
+                          } else {
+                            setReactivationMsg({ id: req.id, text: data?.error || "Failed to resend", ok: false });
+                          }
+                        }}
+                      >
+                        {isBusy ? "…" : "Resend to Admin"}
+                      </button>
+                    </div>
+                  ) : rejectingReactivation === req.id ? (
                     <div className="space-y-2">
                       <input
                         autoFocus
@@ -1609,7 +1634,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                             setReactivationBusy(null);
                             if (data?.ok) {
                               setReactivationMsg({ id: req.id, text: "Approved — admin will finalise the reactivation.", ok: true });
-                              setReactivationRequests(p => p.filter(r => r.id !== req.id));
+                              setReactivationRequests(p => p.map(r => r.id === req.id ? { ...r, status: "owner_approved" } : r));
                             } else {
                               setReactivationMsg({ id: req.id, text: data?.error || "Failed to approve", ok: false });
                             }

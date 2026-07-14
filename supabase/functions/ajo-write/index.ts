@@ -1254,6 +1254,74 @@ serve(async (req: Request) => {
     return json({ ok: true });
   }
 
+  // ── Owner resends stuck owner_approved reactivation to admin (no PIN needed) ──
+  // Recovery path: if the original approve_reactivation call succeeded in setting
+  // status=owner_approved but the admin_approval_requests INSERT failed (e.g. the
+  // CHECK constraint was missing before the 20260714000006 migration), this action
+  // idempotently re-creates the missing admin row without requiring a new PIN.
+  if (action === "resend_reactivation") {
+    const { reactivation_request_id: rraId } = params as { reactivation_request_id: string };
+    if (!rraId) return json({ ok: false, error: "reactivation_request_id required" }, 400);
+
+    const { data: rr } = await sb
+      .from("ajo_reactivation_requests")
+      .select("id, client_id, client_name, owner_id, status, reason")
+      .eq("id", rraId)
+      .maybeSingle();
+
+    if (!rr) return json({ ok: false, error: "Reactivation request not found" }, 404);
+    if ((rr as Record<string, unknown>).owner_id !== user.id) return json({ ok: false, error: "Unauthorized" }, 403);
+    if ((rr as Record<string, unknown>).status !== "owner_approved") {
+      return json({ ok: false, error: "Only owner-approved requests can be resent" }, 409);
+    }
+
+    const clientId = (rr as Record<string, unknown>).client_id as string;
+
+    // Check if an admin_approval_requests row already exists for this client reactivation
+    const { data: existingRow } = await sb
+      .from("admin_approval_requests")
+      .select("id")
+      .eq("request_type", "client_reactivation")
+      .eq("target_id", clientId)
+      .eq("status", "pending")
+      .maybeSingle();
+
+    if (existingRow) {
+      return json({ ok: true, note: "Already in the admin queue — check the Approvals page." });
+    }
+
+    const [{ data: clientSnap }, { data: ownerProfile }] = await Promise.all([
+      sb.from("aso_clients").select("full_name, email, membership_number, total_saved, total_withdrawn").eq("id", clientId).maybeSingle(),
+      sb.from("profiles").select("business_name").eq("id", user.id).maybeSingle(),
+    ]);
+
+    const { error: insertErr } = await sb.from("admin_approval_requests").insert({
+      request_type: "client_reactivation",
+      requester:    user.id,
+      business:     (ownerProfile as Record<string, string> | null)?.business_name ?? "",
+      target_id:    clientId,
+      payload: {
+        full_name:               (clientSnap as Record<string, unknown> | null)?.full_name ?? (rr as Record<string, unknown>).client_name ?? "",
+        membership_number:       (clientSnap as Record<string, unknown> | null)?.membership_number ?? "",
+        total_saved:             Number((clientSnap as Record<string, unknown> | null)?.total_saved) || 0,
+        total_withdrawn:         Number((clientSnap as Record<string, unknown> | null)?.total_withdrawn) || 0,
+        reactivation_request_id: rraId,
+        client_reason:           (rr as Record<string, unknown>).reason ?? "",
+      },
+      reason: `Owner approved reactivation for ${(clientSnap as Record<string, unknown> | null)?.full_name ?? "client"}. Client reason: ${(rr as Record<string, unknown>).reason ?? "none provided"}`,
+    });
+
+    if (insertErr) return json({ ok: false, error: insertErr.message }, 500);
+
+    fireAjoEmail("ajo_reactivation_owner_approved", {
+      client_email:  (clientSnap as Record<string, unknown> | null)?.email ?? "",
+      client_name:   (clientSnap as Record<string, unknown> | null)?.full_name ?? (rr as Record<string, unknown>).client_name ?? "",
+      business_name: (ownerProfile as Record<string, string> | null)?.business_name ?? "",
+    });
+
+    return json({ ok: true, note: "Request sent to admin. They will review it shortly." });
+  }
+
   // ── Owner rejects a client reactivation request (no PIN needed) ──────────────
   if (action === "reject_reactivation") {
     const { reactivation_request_id, note } = params as { reactivation_request_id: string; note?: string };
