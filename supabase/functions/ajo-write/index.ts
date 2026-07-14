@@ -1210,7 +1210,7 @@ serve(async (req: Request) => {
     // Fetch client financial snapshot for admin context
     const { data: clientSnap } = await sb
       .from("aso_clients")
-      .select("full_name, membership_number, total_saved, total_withdrawn, current_balance")
+      .select("full_name, email, membership_number, total_saved, total_withdrawn, current_balance")
       .eq("id", (rr as Record<string, unknown>).client_id as string)
       .maybeSingle();
 
@@ -1243,6 +1243,14 @@ serve(async (req: Request) => {
     });
 
     if (aarErr) return json({ ok: false, error: aarErr.message }, 500);
+
+    // Notify client: owner approved, waiting for admin
+    fireAjoEmail("ajo_reactivation_owner_approved", {
+      client_email:  (clientSnap as Record<string, unknown> | null)?.email ?? "",
+      client_name:   (clientSnap as Record<string, unknown> | null)?.full_name ?? (rr as Record<string, unknown>).client_name ?? "",
+      business_name: (ownerProfile as Record<string, string> | null)?.business_name ?? "",
+    });
+
     return json({ ok: true });
   }
 
@@ -1253,7 +1261,7 @@ serve(async (req: Request) => {
 
     const { data: rr } = await sb
       .from("ajo_reactivation_requests")
-      .select("id, owner_id, status")
+      .select("id, client_id, client_name, owner_id, status")
       .eq("id", reactivation_request_id)
       .maybeSingle();
 
@@ -1266,6 +1274,18 @@ serve(async (req: Request) => {
     await sb.from("ajo_reactivation_requests")
       .update({ status: "owner_rejected", resolved_at: new Date().toISOString() })
       .eq("id", reactivation_request_id);
+
+    // Notify client: owner rejected the request
+    const [{ data: clientForEmail }, { data: ownerForEmail }] = await Promise.all([
+      sb.from("aso_clients").select("email, full_name").eq("id", (rr as Record<string, unknown>).client_id as string).maybeSingle(),
+      sb.from("profiles").select("business_name").eq("id", user.id).maybeSingle(),
+    ]);
+    fireAjoEmail("ajo_reactivation_owner_rejected", {
+      client_email:   clientForEmail?.email ?? "",
+      client_name:    (rr as Record<string, unknown>).client_name as string || clientForEmail?.full_name || "",
+      business_name:  (ownerForEmail as Record<string, string> | null)?.business_name ?? "",
+      rejection_note: note ?? "",
+    });
 
     return json({ ok: true });
   }

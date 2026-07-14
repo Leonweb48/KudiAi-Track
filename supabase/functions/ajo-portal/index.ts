@@ -938,12 +938,14 @@ serve(async (req) => {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-trigger-secret": Deno.env.get("EMAIL_TRIGGER_SECRET") ?? "" },
           body: JSON.stringify({
-            event:         "ajo_client_reactivation_request",
-            owner_email:   ownerProfile.email,
-            business_name: ownerProfile.business_name || "",
-            client_name:   (clientRow as Record<string, unknown>).full_name || "",
-            reason:        reason?.trim() || "",
-            date:          new Date().toISOString(),
+            event: "ajo_client_reactivation_request",
+            data: {
+              owner_email:   ownerProfile.email,
+              business_name: ownerProfile.business_name || "",
+              client_name:   (clientRow as Record<string, unknown>).full_name || "",
+              reason:        reason?.trim() || "",
+              date:          new Date().toISOString(),
+            },
           }),
         }).catch(() => null);
       }
