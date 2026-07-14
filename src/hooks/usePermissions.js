@@ -3,7 +3,7 @@ import { Capacitor } from "@capacitor/core";
 import { Camera } from "@capacitor/camera";
 import { LocalNotifications } from "@capacitor/local-notifications";
 
-export function usePermissions() {
+export function usePermissions(requestPush) {
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
 
@@ -24,14 +24,16 @@ export function usePermissions() {
         await navigator.geolocation.getCurrentPosition(() => {}, () => {}, { timeout: 1 });
       } catch (_) {}
 
-      // Notifications
-      try {
-        await LocalNotifications.requestPermissions();
-      } catch (_) {}
+      // Notifications — requestPush also sets push=true in notif settings when granted
+      if (requestPush) {
+        requestPush().catch(() => {});
+      } else {
+        try { await LocalNotifications.requestPermissions(); } catch (_) {}
+      }
     }
 
     // Small delay so the app UI is visible before dialogs appear
     const t = setTimeout(requestAll, 1500);
     return () => clearTimeout(t);
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 }

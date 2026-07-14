@@ -74,6 +74,8 @@ function Spinner() {
 export default function App() {
   const navigate   = useNavigate();
   const location   = useLocation();
+  const [toastNotif, setToastNotif] = useState(null);
+  const toastTimer = useRef(null);
 
   // Listen for deep-link navigation from campaign CTAs
   useEffect(() => {
@@ -151,8 +153,27 @@ export default function App() {
   // Branch management (premium only)
   const branchesHook = useBranches(userId);
 
-  // Request camera, mic, location, and notification permissions on native
-  usePermissions();
+  // Request camera, mic, location, and notification permissions on native (also sets push=true in notif settings)
+  usePermissions(notif.requestPush);
+
+  // Auto-enable push in notif settings if browser permission was already granted
+  useEffect(() => {
+    if (notif.settings.push || Capacitor.isNativePlatform()) return;
+    if ("Notification" in window && Notification.permission === "granted") {
+      notif.updateSetting("push", true);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Show in-app toast banner when a new notification arrives while panel is closed
+  useEffect(() => {
+    if (!notif.lastNotif) return;
+    if (!notif.open) {
+      clearTimeout(toastTimer.current);
+      setToastNotif(notif.lastNotif);
+      toastTimer.current = setTimeout(() => setToastNotif(null), 4500);
+    }
+    notif.clearLastNotif();
+  }, [notif.lastNotif]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isDark = store.profile?.dark_mode;
   useEffect(() => {
@@ -572,6 +593,39 @@ export default function App() {
 
       {/* Notification panel — full-screen overlay, z-50 */}
       <NotificationCenter notif={notif} onNavigate={navigate} />
+
+      {/* In-app notification toast */}
+      {toastNotif && (
+        <div
+          className="fixed left-4 right-4 notif-toast"
+          style={{ top: "max(64px, calc(env(safe-area-inset-top, 0px) + 64px))", zIndex: "var(--z-toast)" }}
+        >
+          <div className="flex items-center gap-3 bg-slate-800 dark:bg-slate-700 rounded-2xl shadow-2xl px-4 py-3 max-w-md mx-auto">
+            <button
+              onClick={() => { setToastNotif(null); notif.setOpen(true); }}
+              className="flex items-center gap-3 flex-1 min-w-0 text-left"
+            >
+              <div className="w-8 h-8 rounded-xl bg-green-500 flex items-center justify-center flex-shrink-0">
+                <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.5} strokeLinecap="round">
+                  <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0" />
+                </svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-white leading-tight truncate">{toastNotif.title}</p>
+                <p className="text-xs text-slate-300 truncate">{toastNotif.message}</p>
+              </div>
+            </button>
+            <button
+              onClick={() => { clearTimeout(toastTimer.current); setToastNotif(null); }}
+              className="w-6 h-6 flex-shrink-0 flex items-center justify-center opacity-50 active:opacity-100"
+            >
+              <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={3} strokeLinecap="round">
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Report generator — full-screen overlay, z-60 */}
       {showReports && <Reports store={store} onClose={() => setShowReports(false)} />}

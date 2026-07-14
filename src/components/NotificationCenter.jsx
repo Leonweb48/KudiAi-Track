@@ -317,7 +317,7 @@ function NotifItem({ n, onRead, onNavigate }) {
 }
 
 /* ── Notification list view ──────────────────────────────────────── */
-function NotifList({ notifications, unreadCount, markRead, markAllRead, clearAll, onSettings, allowedTypeKeys, onNavigate }) {
+function NotifList({ notifications, unreadCount, markRead, markAllRead, clearAll, onSettings, allowedTypeKeys, onNavigate, pushEnabled }) {
   const [activeFilter, setActiveFilter] = useState("all");
 
   const filtered = activeFilter === "unread"
@@ -399,6 +399,15 @@ function NotifList({ notifications, unreadCount, markRead, markAllRead, clearAll
             <p className="text-slate-400 dark:text-slate-500 text-xs mt-1">
               {activeFilter === "unread" ? "You've read everything" : "Activity will appear here"}
             </p>
+            {activeFilter === "all" && !pushEnabled && (
+              <button onClick={onSettings}
+                className="mt-5 flex items-center gap-2 text-xs font-bold text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800/40 px-4 py-2.5 rounded-xl active:scale-95 transition-transform">
+                <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+                  <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0" />
+                </svg>
+                Enable Push Notifications
+              </button>
+            )}
           </div>
         ) : (
           <div>
@@ -489,6 +498,7 @@ export default function NotificationCenter({ notif, allowedTypeKeys, onNavigate 
               onSettings={() => setShowSettings(true)}
               allowedTypeKeys={allowedTypeKeys}
               onNavigate={handleNavigate}
+              pushEnabled={settings.push}
             />
           )}
         </div>

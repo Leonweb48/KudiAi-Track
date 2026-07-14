@@ -78,11 +78,13 @@ body {
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ── Fade / slide ─────────────────────────────────────────────────── */
-.fade-in  { animation: fadeIn  0.2s ease-out; }
-.slide-up { animation: slideUp 0.28s cubic-bezier(0.16, 1, 0.3, 1); }
+.fade-in    { animation: fadeIn    0.2s  ease-out; }
+.slide-up   { animation: slideUp  0.28s cubic-bezier(0.16, 1, 0.3, 1); }
+.notif-toast{ animation: toastDown 0.22s cubic-bezier(0.16, 1, 0.3, 1) both; }
 
-@keyframes fadeIn  { from { opacity: 0; }                           to { opacity: 1; }                 }
-@keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fadeIn    { from { opacity: 0; }                             to { opacity: 1; }                 }
+@keyframes slideUp   { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes toastDown { from { opacity: 0; transform: translateY(-10px);} to { opacity: 1; transform: translateY(0); } }
 
 /* ── Glass utility ────────────────────────────────────────────────── */
 .glass {

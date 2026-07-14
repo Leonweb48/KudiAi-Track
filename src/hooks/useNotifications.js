@@ -95,6 +95,7 @@ export function useNotifications(userId) {
   const [settings,      setS] = useState(DEFAULT_SETTINGS);
   const [open,       setOpen] = useState(false);
   const [showSt,   setShowSt] = useState(false);
+  const [lastNotif, setLastNotif] = useState(null);
   const ready  = useRef(false);
   const setRef = useRef(DEFAULT_SETTINGS);
   const listenerHandle = useRef(null);
@@ -192,6 +193,7 @@ export function useNotifications(userId) {
       read: false,
     };
     setN(p => [n, ...p].slice(0, MAX));
+    setLastNotif(n);
 
     if (s.push) {
       if (Capacitor.isNativePlatform()) {
@@ -205,6 +207,8 @@ export function useNotifications(userId) {
     }
     if (s.voice) speak(`${title}. ${message}`);
   }, [pushNative, pushBrowser, speak]);
+
+  const clearLastNotif = useCallback(() => setLastNotif(null), []);
 
   const markRead    = useCallback((id) => setN(p => p.map(n => n.id === id ? { ...n, read: true } : n)), []);
   const markAllRead = useCallback(() => setN(p => p.map(n => ({ ...n, read: true }))), []);
@@ -240,5 +244,6 @@ export function useNotifications(userId) {
     showSettings: showSt, setShowSettings: setShowSt,
     addNotification, markRead, markAllRead, clearAll,
     updateSetting, requestPush, speak,
+    lastNotif, clearLastNotif,
   };
 }
