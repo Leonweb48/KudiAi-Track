@@ -785,7 +785,7 @@ function PayContributionModal({ client, clientGroup, onClose, onSuccess }) {
 
   return (
     <div className="fixed inset-0 z-[100] bg-black/50 flex items-end justify-center">
-      <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-t-3xl p-6 shadow-2xl">
+      <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-t-3xl p-6 shadow-2xl max-h-[88dvh] overflow-y-auto">
         <div className="flex items-center gap-3 mb-5">
           <div className="w-10 h-10 bg-green-100 dark:bg-green-900/40 rounded-2xl flex items-center justify-center flex-shrink-0">
             <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-green-600 dark:text-green-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
@@ -1083,7 +1083,7 @@ function ChangePasswordModal({ onClose }) {
 
   return (
     <div className="fixed inset-0 z-[60] bg-black/60 flex items-end justify-center" onClick={onClose}>
-      <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-t-3xl px-5 py-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+      <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-t-3xl px-5 py-6 shadow-2xl max-h-[85dvh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="w-10 h-1 bg-slate-300 dark:bg-slate-600 rounded-full mx-auto mb-5" />
         <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-4">Change Password</h3>
         {success ? (
@@ -1573,8 +1573,13 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
         ? { type: "star", text: `Your savings health score is ${healthScore}/100 — excellent!` }
         : { type: "tip",  text: `${fmt(client.total_saved || 0)} saved so far. Keep it up!` };
 
+  const _now = new Date();
+  const _todayStr = `${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,"0")}-${String(_now.getDate()).padStart(2,"0")}`;
   const daysUntilDue = client.next_contribution_date
-    ? Math.ceil((new Date(client.next_contribution_date) - new Date()) / 86400000)
+    ? Math.round(
+        (new Date(client.next_contribution_date.slice(0,10) + "T00:00:00") -
+         new Date(_todayStr + "T00:00:00")) / 86400000
+      )
     : null;
 
   const recent = contributions.slice(0, 5);
@@ -1764,11 +1769,9 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
       {/* Assigned savings officer */}
       {ownerInfo?.staff && (
         <div className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3 border border-slate-100 dark:border-slate-700 flex items-center gap-3 shadow-sm">
-          <div className="w-11 h-11 rounded-xl bg-brand-100 dark:bg-brand-900/40 flex items-center justify-center flex-shrink-0 overflow-hidden border border-brand-100 dark:border-brand-800">
-            {ownerInfo.staff.profile_image_url
-              ? <img src={ownerInfo.staff.profile_image_url} alt="" className="w-full h-full object-cover" />
-              : <span className="text-brand-500 dark:text-brand-400 font-black text-lg">{(ownerInfo.staff.full_name || "?")[0].toUpperCase()}</span>
-            }
+          <div className="w-11 h-11 rounded-xl bg-brand-100 dark:bg-brand-900/40 relative flex items-center justify-center flex-shrink-0 overflow-hidden border border-brand-100 dark:border-brand-800">
+            <span className="text-brand-500 dark:text-brand-400 font-black text-lg">{(ownerInfo.staff.full_name || "?")[0].toUpperCase()}</span>
+            {ownerInfo.staff.profile_image_url && <img src={ownerInfo.staff.profile_image_url} alt="" className="absolute inset-0 w-full h-full object-cover" onError={(e) => e.currentTarget.style.display = "none"} />}
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider leading-none mb-0.5">Your Savings Officer</p>
@@ -2327,7 +2330,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
       {/* Dispute modal */}
       {disputeFor && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 px-4 pb-6">
-          <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-2xl p-5 shadow-xl">
+          <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-2xl p-5 shadow-xl max-h-[80dvh] overflow-y-auto">
             <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-1">Report an Issue</h3>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-3">
               {fmtDate(disputeFor.created_at)} · {disputeFor.type === "contribution" ? "+" : "−"}{fmt(disputeFor.amount)}
@@ -2706,10 +2709,9 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
             <button
               onClick={() => { setLightboxOpen(true); setLbZoom(1); }}
               className="relative active:scale-95 transition">
-              <div className="w-24 h-24 rounded-full bg-brand-500 flex items-center justify-center shadow-lg overflow-hidden ring-2 ring-brand-200 dark:ring-brand-800">
-                {avatarSrc
-                  ? <img src={avatarSrc} alt="" className="w-full h-full object-cover" />
-                  : <span className="text-2xl font-black text-white">{initials}</span>}
+              <div className="w-24 h-24 rounded-full bg-brand-500 relative flex items-center justify-center shadow-lg overflow-hidden ring-2 ring-brand-200 dark:ring-brand-800">
+                <span className="text-2xl font-black text-white">{initials}</span>
+                {avatarSrc && <img src={avatarSrc} alt="" className="absolute inset-0 w-full h-full object-cover" onError={(e) => e.currentTarget.style.display = "none"} />}
               </div>
             </button>
             <p className="text-base font-extrabold text-slate-800 dark:text-slate-100 mt-3">{client?.full_name || "Member"}</p>
@@ -2843,10 +2845,9 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
           {/* Avatar */}
           <div className="flex flex-col items-center gap-2">
             <div className="relative">
-              <div className="w-24 h-24 rounded-full bg-brand-500 flex items-center justify-center shadow-lg overflow-hidden ring-2 ring-brand-200 dark:ring-brand-800">
-                {avatarSrcEdit
-                  ? <img src={avatarSrcEdit} alt="" className="w-full h-full object-cover" />
-                  : <span className="text-2xl font-black text-white">{initials}</span>}
+              <div className="w-24 h-24 rounded-full bg-brand-500 relative flex items-center justify-center shadow-lg overflow-hidden ring-2 ring-brand-200 dark:ring-brand-800">
+                <span className="text-2xl font-black text-white">{initials}</span>
+                {avatarSrcEdit && <img src={avatarSrcEdit} alt="" className="absolute inset-0 w-full h-full object-cover" onError={(e) => e.currentTarget.style.display = "none"} />}
               </div>
               <button onClick={() => fileRef.current?.click()}
                 className="absolute -bottom-1 -right-1 w-9 h-9 rounded-full bg-brand-500 border-2 border-white dark:border-slate-900 flex items-center justify-center shadow-md active:scale-90 transition">
@@ -2976,10 +2977,9 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
           {/* Profile summary row — full row taps to open profile preview */}
           <button onClick={() => setView("profile")}
             className="w-full flex items-center gap-4 px-4 py-4 text-left active:bg-slate-50 dark:active:bg-slate-700/40 transition-colors">
-            <div className="w-12 h-12 rounded-full bg-brand-500 flex-shrink-0 overflow-hidden shadow-sm ring-2 ring-brand-100 dark:ring-brand-900/40">
-              {(photoPreview || client?.profile_image_url)
-                ? <img src={photoPreview || client.profile_image_url} alt="" className="w-full h-full object-cover" />
-                : <span className="w-full h-full flex items-center justify-center text-base font-black text-white">{initials}</span>}
+            <div className="w-12 h-12 rounded-full bg-brand-500 relative flex items-center justify-center flex-shrink-0 overflow-hidden shadow-sm ring-2 ring-brand-100 dark:ring-brand-900/40">
+              <span className="text-base font-black text-white">{initials}</span>
+              {(photoPreview || client?.profile_image_url) && <img src={photoPreview || client.profile_image_url} alt="" className="absolute inset-0 w-full h-full object-cover" onError={(e) => e.currentTarget.style.display = "none"} />}
             </div>
             <div className="flex-1 min-w-0">
               <p className="font-extrabold text-[15px] leading-snug text-slate-800 dark:text-slate-100 truncate">{client?.full_name || "Member"}</p>
@@ -3338,7 +3338,7 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
           </button>
           <div
             style={{ transform: `scale(${lbZoom})`, touchAction: "none", transition: lbPinchDist ? "none" : "transform 0.2s" }}
-            className="w-72 h-72 rounded-full overflow-hidden flex-shrink-0"
+            className="w-72 h-72 rounded-full overflow-hidden flex-shrink-0 relative"
             onTouchStart={e => {
               if (e.touches.length === 2) {
                 const dx = e.touches[0].clientX - e.touches[1].clientX;
@@ -3358,12 +3358,14 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
             }}
             onTouchEnd={() => setLbPinchDist(null)}
             onDoubleClick={() => setLbZoom(z => z > 1.1 ? 1 : 2.5)}>
-            {(photoPreview || client?.profile_image_url)
-              ? <img src={photoPreview || client.profile_image_url} alt={client?.full_name || "Avatar"}
-                  className="w-full h-full object-cover" draggable={false} />
-              : <div className="w-full h-full bg-brand-500 flex items-center justify-center">
-                  <span className="text-7xl font-black text-white">{initials}</span>
-                </div>}
+            <div className="w-full h-full bg-brand-500 flex items-center justify-center">
+              <span className="text-7xl font-black text-white">{initials}</span>
+            </div>
+            {(photoPreview || client?.profile_image_url) && (
+              <img src={photoPreview || client.profile_image_url} alt={client?.full_name || "Avatar"}
+                className="absolute inset-0 w-full h-full object-cover" draggable={false}
+                onError={(e) => e.currentTarget.style.display = "none"} />
+            )}
           </div>
           <p className="absolute bottom-8 text-white/30 text-[11px]">Pinch to zoom · Double-tap to toggle</p>
         </div>
@@ -3558,6 +3560,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
   // ── Realtime: sync balance/contributions from business side ────────────
   useEffect(() => {
     if (!ajoClient?.id) return;
+    let rtReady = false; // true after first SUBSCRIBED; subsequent fires = reconnect
 
     const channel = supabase.channel(`ajo_client_sync_${ajoClient.id}`)
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "aso_clients", filter: `id=eq.${ajoClient.id}` },
@@ -3598,7 +3601,12 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
             notif.addNotification("aso", "Withdrawal Declined", `Your ${amt} withdrawal request was declined`);
           }
         })
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          if (rtReady) setReloadKey(k => k + 1); // reconnect after offline — catch up missed changes
+          else rtReady = true;
+        }
+      });
 
     return () => { supabase.removeChannel(channel); };
   }, [ajoClient?.id, ajoClient?.owner_id, ajoClient?.user_id, refreshWithdrawRequests]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -3643,10 +3651,9 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
             {loadingData && <div className="w-3.5 h-3.5 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />}
             <NotificationBell unreadCount={notif.unreadCount} onClick={() => notif.setOpen(true)} />
             <button onClick={() => setTab("me")}
-              className="w-9 h-9 rounded-full bg-gradient-to-br from-brand-500 to-brand-600 flex items-center justify-center border-2 border-slate-100 dark:border-slate-700 shadow-sm active:scale-90 transition-transform overflow-hidden">
-              {client?.profile_image_url
-                ? <img src={client.profile_image_url} alt="" className="w-9 h-9 object-cover" />
-                : <span className="text-sm font-black text-white">{avatarInitial}</span>}
+              className="w-9 h-9 rounded-full bg-gradient-to-br from-brand-500 to-brand-600 relative flex items-center justify-center border-2 border-slate-100 dark:border-slate-700 shadow-sm active:scale-90 transition-transform overflow-hidden">
+              <span className="text-sm font-black text-white">{avatarInitial}</span>
+              {client?.profile_image_url && <img src={client.profile_image_url} alt="" className="absolute inset-0 w-full h-full object-cover" onError={(e) => e.currentTarget.style.display = "none"} />}
             </button>
           </div>
         </header>
