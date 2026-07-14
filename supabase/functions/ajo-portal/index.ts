@@ -709,7 +709,10 @@ serve(async (req) => {
       if (Object.keys(safePayload).length === 0) return json({ error: "No valid fields to update" }, 400);
 
       const { error: upErr } = await sb.from("aso_clients").update(safePayload).eq("id", client_id);
-      if (upErr) return json({ error: "Couldn't save your profile — please try again" }, 500);
+      if (upErr) {
+        console.error("[update-profile] DB error:", upErr.message, "code:", upErr.code, "details:", upErr.details, "hint:", upErr.hint);
+        return json({ error: upErr.message }, 500);
+      }
       return json({ ok: true });
     }
 

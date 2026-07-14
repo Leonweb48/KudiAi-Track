@@ -81,9 +81,10 @@ function fmtLocaleDate(lang) {
 }
 
 async function uploadAjoAvatar(file, clientId) {
-  const ext  = file.name.split(".").pop();
+  const ext  = file.name.split(".").pop() || "jpg";
   const path = `ajo/${clientId}/avatar.${ext}`;
-  await supabase.storage.from("avatars").upload(path, file, { upsert: true, contentType: file.type });
+  const { error } = await supabase.storage.from("avatars").upload(path, file, { upsert: true, contentType: file.type });
+  if (error) throw new Error(`Photo upload failed: ${error.message}`);
   // Use direct Supabase URL — getPublicUrl bakes in a proxy alias that breaks in native/PWA contexts
   return `${process.env.REACT_APP_SUPABASE_URL}/storage/v1/object/public/avatars/${path}?v=${Date.now()}`;
 }
@@ -2627,7 +2628,8 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
       setTimeout(() => { setSaveMsg(""); setView("profile"); }, 1500);
     } catch (err) {
       console.error("[profile-save]", err);
-      setSaveMsg(friendlyError(err) || "Save failed. Please try again.");
+      // Show raw error so the exact DB message is visible for diagnosis
+      setSaveMsg(err?.message || "Save failed. Please try again.");
     }
     setSaving(false);
   };
