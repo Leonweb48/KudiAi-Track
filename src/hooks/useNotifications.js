@@ -7,6 +7,24 @@ import { ensureTxnChannel, TXN_CHANNEL } from "../utils/tts";
 const MAX = 100;
 let _nativeNotifId = 1;
 
+// Two-tone chime played in-app (web only — native uses OS sound via pushNative)
+function playBeep() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const gain = ctx.createGain();
+    gain.connect(ctx.destination);
+    gain.gain.setValueAtTime(0.28, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.55);
+    const o1 = ctx.createOscillator();
+    o1.type = "sine"; o1.frequency.value = 880;
+    o1.connect(gain); o1.start(ctx.currentTime); o1.stop(ctx.currentTime + 0.15);
+    const o2 = ctx.createOscillator();
+    o2.type = "sine"; o2.frequency.value = 1320;
+    o2.connect(gain); o2.start(ctx.currentTime + 0.18); o2.stop(ctx.currentTime + 0.4);
+    o2.onended = () => { try { ctx.close(); } catch {} };
+  } catch {}
+}
+
 const DEFAULT_SETTINGS = {
   push: false, voice: false,
   sales: true, credits: true, payments: true,
@@ -100,14 +118,32 @@ export function useNotifications(userId) {
   const setRef = useRef(DEFAULT_SETTINGS);
   const listenerHandle = useRef(null);
 
-  // Load from localStorage once userId is ready
+  // Load from localStorage once userId is ready, then auto-sync push with OS permission
   useEffect(() => {
     if (!userId || ready.current) return;
     ready.current = true;
     setN(loadLS(`kt_notifs_${userId}`, []));
     const s = loadLS(`kt_notif_settings_${userId}`, DEFAULT_SETTINGS);
-    setS(s);
-    setRef.current = s;
+
+    const maybeEnablePush = async () => {
+      // If push is already enabled in settings, apply as-is
+      if (s.push) { setS(s); setRef.current = s; return; }
+      // Otherwise, check actual OS permission so returning users with granted
+      // permission don't lose push silently (avoids the push=false default)
+      let granted = false;
+      if (Capacitor.isNativePlatform()) {
+        try {
+          const { display } = await LocalNotifications.checkPermissions();
+          granted = display === "granted";
+        } catch {}
+      } else if ("Notification" in window) {
+        granted = Notification.permission === "granted";
+      }
+      const finalS = granted ? { ...s, push: true } : s;
+      setS(finalS);
+      setRef.current = finalS;
+    };
+    maybeEnablePush();
   }, [userId]);
 
   // Keep ref in sync with state
@@ -194,6 +230,12 @@ export function useNotifications(userId) {
     };
     setN(p => [n, ...p].slice(0, MAX));
     setLastNotif(n);
+
+    // In-app beep: plays when the app is in the foreground so the user hears
+    // feedback even if the OS suppresses the notification (common when foregrounded)
+    if (!Capacitor.isNativePlatform() && document.visibilityState === "visible") {
+      playBeep();
+    }
 
     if (s.push) {
       if (Capacitor.isNativePlatform()) {

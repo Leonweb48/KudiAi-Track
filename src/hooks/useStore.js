@@ -242,7 +242,22 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "transactions", filter: `user_id=eq.${userId}` },
         (payload) => {
           if (!payload.new) return;
-          setTransactions(prev => prev.some(t => t.id === payload.new.id) ? prev : [payload.new, ...prev]);
+          setTransactions(prev => {
+            if (prev.some(t => t.id === payload.new.id)) return prev;
+            // Only notify for transactions recorded by another device/staff;
+            // own local mutations already call onNotify at the mutation site.
+            const t = payload.new;
+            const label = t.item_name || t.category || "Transaction";
+            const fmt = (n) => `₦${(+n || 0).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
+            if (t.payment_type === "bill_payment") {
+              onNotify?.("bills", "Bill Payment", `${fmt(t.amount)} · ${label}`);
+            } else if (t.type === "in") {
+              onNotify?.("sales", "Sale Recorded", `${fmt(t.amount)} · ${label}`);
+            } else {
+              onNotify?.("sales", "Expense Recorded", `${fmt(t.amount)} · ${label}`);
+            }
+            return [t, ...prev];
+          });
           window.dispatchEvent(new CustomEvent("kt-new-transaction", { detail: payload.new }));
         })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "transactions", filter: `user_id=eq.${userId}` },
@@ -253,7 +268,13 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "credits", filter: `user_id=eq.${userId}` },
         (payload) => {
           if (!payload.new) return;
-          setCredits(prev => prev.some(c => c.id === payload.new.id) ? prev : [payload.new, ...prev]);
+          setCredits(prev => {
+            if (prev.some(c => c.id === payload.new.id)) return prev;
+            const c = payload.new;
+            const fmt = (n) => `₦${(+n || 0).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
+            onNotify?.("credits", "Credit Added", `${fmt(c.total_amount || 0)} · ${c.customer_name || ""}`);
+            return [c, ...prev];
+          });
         })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "credits", filter: `user_id=eq.${userId}` },
         (payload) => {

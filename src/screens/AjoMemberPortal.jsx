@@ -3878,8 +3878,10 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "ajo_withdrawal_requests", filter: `aso_client_id=eq.${ajoClient.id}` },
         (payload) => {
           refreshWithdrawRequests();
-          if (payload.new?.status === "rejected") {
-            const amt = `₦${Number(payload.new.amount || 0).toLocaleString("en-NG")}`;
+          const amt = `₦${Number(payload.new?.amount || 0).toLocaleString("en-NG")}`;
+          if (payload.new?.status === "approved" || payload.new?.status === "completed") {
+            notif.addNotification("aso", "Withdrawal Approved", `Your ${amt} withdrawal has been approved`);
+          } else if (payload.new?.status === "rejected") {
             notif.addNotification("aso", "Withdrawal Declined", `Your ${amt} withdrawal request was declined`);
           }
         })
