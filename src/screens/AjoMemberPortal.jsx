@@ -3446,7 +3446,6 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
   const [rotationLoading,  setRotationLoading]  = useState(false);
   const [ownerInfo,        setOwnerInfo]        = useState(null);
   const [loadingData,      setLoadingData]      = useState(false);
-  const [isStale,          setIsStale]          = useState(false);
   const [portalLoadError,  setPortalLoadError]  = useState(false);
   const [reloadKey,        setReloadKey]        = useState(0);
   const [tab,              setTab]              = useState(() => {
@@ -3479,7 +3478,6 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
 
   const retryLoad = useCallback(() => {
     setPortalLoadError(false);
-    setIsStale(false);
     setLoadingData(true);
     setReloadKey(k => k + 1);
   }, []);
@@ -3523,21 +3521,11 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
         if (cycleRes.status === "fulfilled" && cycleRes.value?.cycle)
           setCycle(cycleRes.value.cycle);
 
-        // Determine error / stale state based on what succeeded
+        // Show error banner only when every call failed and we have no fallback balance
         const allRejected = [clientRes, contribRes, ownerRes, reqRes, cycleRes]
           .every(r => r.status === "rejected");
-        if (clientRes.status === "fulfilled") {
-          setIsStale(false);
-        } else if (allRejected) {
-          if (ajoClient?.current_balance != null) {
-            setIsStale(true);
-          } else {
-            setIsStale(false);
-            setPortalLoadError(true);
-          }
-        } else {
-          // clientRes rejected but some calls succeeded — balance is auth-token fallback
-          setIsStale(true);
+        if (allRejected && ajoClient?.current_balance == null) {
+          setPortalLoadError(true);
         }
 
         // Fetch rotation data if the client belongs to a rotating group
@@ -3657,25 +3645,6 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
             </button>
           </div>
         </header>
-
-        {/* Stale-data indicator — shown when balance comes from auth-token fallback */}
-        {isStale && (
-          <div className="flex-none flex items-center justify-between px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800/30">
-            <p className="text-xs text-amber-700 dark:text-amber-400 leading-snug">
-              {loadingData ? "Checking balance…" : "Showing last known balance — reconnect to refresh"}
-            </p>
-            {loadingData ? (
-              <svg className="animate-spin h-4 w-4 text-amber-600 dark:text-amber-400 ml-3 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
-              </svg>
-            ) : (
-              <button onClick={retryLoad} className="text-xs font-bold text-amber-700 dark:text-amber-400 ml-3 flex-shrink-0 active:opacity-60">
-                Refresh
-              </button>
-            )}
-          </div>
-        )}
 
         {/* Content */}
         <main className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
