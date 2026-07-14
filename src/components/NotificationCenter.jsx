@@ -77,9 +77,10 @@ function Toggle({ checked, onChange, disabled }) {
 }
 
 /* ── Settings Panel ──────────────────────────────────────────────── */
-function SettingsView({ settings, updateSetting, requestPush, speak, onBack, allowedTypeKeys }) {
+function SettingsView({ settings, updateSetting, requestPush, speak, addNotification, onBack, allowedTypeKeys }) {
   const [pushStatus,  setPushStatus]  = useState(null);
   const [systemPerm,  setSystemPerm]  = useState(null); // null = still checking
+  const [testSent,    setTestSent]    = useState(false);
 
   // Check actual OS permission state on mount so the toggle reflects reality immediately
   useEffect(() => {
@@ -222,6 +223,24 @@ function SettingsView({ settings, updateSetting, requestPush, speak, onBack, all
             ))}
           </div>
         </div>
+
+        {/* Test notification */}
+        <div className="px-4 pb-6">
+          <button
+            onClick={() => {
+              if (addNotification) addNotification("system", "Test Notification", "Notifications are working correctly on this device.");
+              setTestSent(true);
+              setTimeout(() => setTestSent(false), 3000);
+            }}
+            className="w-full flex items-center justify-center gap-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl py-3 text-sm font-bold text-slate-600 dark:text-slate-300 active:scale-95 transition-all"
+          >
+            <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+              <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0" />
+            </svg>
+            {testSent ? "✓ Notification sent — check the bell" : "Send Test Notification"}
+          </button>
+        </div>
+
       </div>
     </div>
   );
@@ -454,7 +473,7 @@ export default function NotificationCenter({ notif, allowedTypeKeys, onNavigate 
     notifications, settings, unreadCount,
     open, setOpen, showSettings, setShowSettings,
     markRead, markAllRead, clearAll,
-    updateSetting, requestPush, speak,
+    updateSetting, requestPush, speak, addNotification,
   } = notif;
 
   // Wrap onNavigate to close the panel first
@@ -485,6 +504,7 @@ export default function NotificationCenter({ notif, allowedTypeKeys, onNavigate 
               updateSetting={updateSetting}
               requestPush={requestPush}
               speak={speak}
+              addNotification={addNotification}
               onBack={() => setShowSettings(false)}
               allowedTypeKeys={allowedTypeKeys}
             />
