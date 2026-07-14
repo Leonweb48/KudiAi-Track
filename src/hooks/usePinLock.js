@@ -110,11 +110,12 @@ export function usePinLock(userId, session) {
       setLoading(false);
     } catch {
       setLocked(false);
-      if (retryCount < 2) {
-        // Network blip — retry up to twice (after 3s and 6s) before giving up.
-        // Avoids falsely triggering PinSetupFlow when the user already has PINs.
-        setTimeout(() => refetch(retryCount + 1), 3000 * (retryCount + 1));
+      if (retryCount < 4) {
+        // Network blip — retry up to 4 times before giving up (covers APK edge-function cold starts).
+        // Delays: 2s, 4s, 8s, 16s.
+        setTimeout(() => refetch(retryCount + 1), 2000 * Math.pow(2, retryCount));
       } else {
+        // All retries exhausted — keep status=null so App.jsx PIN gate doesn't fire falsely.
         setLoading(false);
       }
     }

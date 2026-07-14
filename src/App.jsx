@@ -396,7 +396,8 @@ export default function App() {
 
   // ── PIN setup gate — blocks all portals until both PINs are configured ──
   // Covers: organisation, org_member, ajo_client, staff, branch_manager, marketer, main app.
-  if (!pinLock.loading && (!pinLock.appPinSet || !pinLock.txnPinSet)) {
+  // status !== null guards against triggering setup when check_status failed (network error / edge-function cold start).
+  if (!pinLock.loading && pinLock.status !== null && (!pinLock.appPinSet || !pinLock.txnPinSet)) {
     return <PinSetupFlow pinLock={pinLock} userId={userId} session={session} />;
   }
   // Lock screen (inactivity or new device) — wait for pinLock load to avoid false flashes
