@@ -426,11 +426,12 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [dueBefore,       setDueBefore]       = useState("");
   const [showCollection,  setShowCollection]  = useState(false);
 
-  const { asoClients, addAsoClient, asoContribute, asoCollectionRecord, asoWithdraw, asoReverseContribution, updateAsoClient, requestAsoClientArchive, profile, staffMap = {} } = store;
+  const { asoClients, addAsoClient, asoContribute, asoCollectionRecord, asoWithdraw, asoReverseContribution, updateAsoClient, requestAsoClientArchive, cancelAsoClientArchive, profile, staffMap = {} } = store;
   const staffOptions = Object.entries(staffMap).map(([id, name]) => ({ id, name }));
 
   const [withdrawalRequests,  setWithdrawalRequests]  = useState([]);
   const [processingId,        setProcessingId]        = useState(null);
+  const [cancellingArchiveId, setCancellingArchiveId] = useState(null);
   const [approveError,        setApproveError]        = useState({ id: null, text: "" });
   const [txnPin,              setTxnPin]              = useState(null);
   const [contribSuccess,      setContribSuccess]      = useState(null); // { client, amount, showShare }
@@ -1737,11 +1738,23 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
                 {/* Pending archive banner */}
                 {c.pending_archive && (
-                  <div className="flex items-center gap-2 mb-3 px-2.5 py-1.5 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-700/40">
-                    <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-                      <circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>
-                    </svg>
-                    <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400">Archive pending admin approval</p>
+                  <div className="flex items-center justify-between mb-3 px-2.5 py-1.5 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-700/40">
+                    <div className="flex items-center gap-2">
+                      <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                        <circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>
+                      </svg>
+                      <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400">Archive pending admin approval</p>
+                    </div>
+                    <button
+                      disabled={cancellingArchiveId === c.id}
+                      onClick={async () => {
+                        setCancellingArchiveId(c.id);
+                        await cancelAsoClientArchive(c.id);
+                        setCancellingArchiveId(null);
+                      }}
+                      className="text-[10px] font-bold text-amber-700 dark:text-amber-400 underline underline-offset-2 flex-shrink-0 ml-2 disabled:opacity-40">
+                      {cancellingArchiveId === c.id ? "…" : "Cancel"}
+                    </button>
                   </div>
                 )}
 

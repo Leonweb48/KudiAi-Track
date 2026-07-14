@@ -705,6 +705,16 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
     return { error: null };
   };
 
+  const cancelAsoClientArchive = async (id) => {
+    const { error } = await supabase.rpc("cancel_approval_request", {
+      p_target_id: id,
+      p_type: "client_archive",
+    });
+    if (error) return { error: error.message };
+    setAsoClients(p => p.map(c => c.id === id ? { ...c, pending_archive: false } : c));
+    return { error: null };
+  };
+
   // ── Profile ────────────────────────────────────────────────────
   const setProfile = async (updater) => {
     const prev = profile;
@@ -754,7 +764,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
     // Staff cannot delete transactions — only business owners (no staffId) can
     deleteTransaction: staffId ? null : deleteTransaction,
     addCredit, repayCredit, updateCredit, debtPayments,
-    addAsoClient, asoContribute, asoCollectionRecord, asoWithdraw, updateAsoClient, deleteAsoClient, requestAsoClientArchive,
+    addAsoClient, asoContribute, asoCollectionRecord, asoWithdraw, updateAsoClient, deleteAsoClient, requestAsoClientArchive, cancelAsoClientArchive,
     asoReverseContribution,
   };
 }

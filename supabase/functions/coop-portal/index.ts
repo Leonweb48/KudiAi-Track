@@ -2695,6 +2695,32 @@ serve(async (req) => {
       return json({ ok: true, request_id: requestId });
     }
 
+    if (action === "cancel_org_archive") {
+      const { org_id, owner_id } = body as { org_id: string; owner_id: string };
+      if (!org_id || !owner_id) return json({ ok: false, error: "org_id and owner_id required" }, 400);
+
+      const { data: orgC } = await sb.from("organizations")
+        .select("owner_id, pending_archive")
+        .eq("id", org_id).maybeSingle();
+      if (!orgC) return json({ ok: false, error: "Organisation not found" }, 404);
+      if (orgC.owner_id !== owner_id) return json({ ok: false, error: "Unauthorized" }, 403);
+      if (!orgC.pending_archive) return json({ ok: false, error: "No pending archive request for this organisation" }, 409);
+
+      const jwt = req.headers.get("Authorization")?.replace("Bearer ", "") ?? "";
+      const sbUser = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_ANON_KEY")!,
+        { auth: { persistSession: false }, global: { headers: { Authorization: `Bearer ${jwt}` } } }
+      );
+      const { error: cancelErr } = await sbUser.rpc("cancel_approval_request", {
+        p_target_id: org_id,
+        p_type: "org_archive",
+      });
+      if (cancelErr) return json({ ok: false, error: cancelErr.message }, 400);
+
+      return json({ ok: true });
+    }
+
     return json({ error: `Unknown action: ${action}` }, 400);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

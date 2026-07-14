@@ -1996,6 +1996,35 @@ function BroadcastTab({ org, members }) {
 
 
 // ═══════════════════════════════════════════════════
+//  CANCEL ORG ARCHIVE (Danger Zone)
+// ═══════════════════════════════════════════════════
+function CancelOrgArchiveButton({ org, onCancelled }) {
+  const [cancelling, setCancelling] = useState(false);
+  const [error,      setError]      = useState("");
+
+  const doCancel = async () => {
+    setCancelling(true); setError("");
+    try {
+      await coopFn("cancel_org_archive", { org_id: org.id, owner_id: org.owner_id });
+      onCancelled();
+    } catch (e) {
+      setError(e.message || "Cancel failed");
+      setCancelling(false);
+    }
+  };
+
+  return (
+    <div className="mt-2">
+      {error && <p className="text-[11px] text-red-500 mb-2">{error}</p>}
+      <button onClick={doCancel} disabled={cancelling}
+        className="w-full py-2 rounded-xl border border-amber-200 dark:border-amber-700/40 text-xs font-bold text-amber-700 dark:text-amber-400 disabled:opacity-50 active:bg-amber-50 dark:active:bg-amber-900/20 transition-colors">
+        {cancelling ? "Cancelling…" : "Cancel request"}
+      </button>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════
 //  REQUEST ORG ARCHIVE (Danger Zone)
 // ═══════════════════════════════════════════════════
 function RequestOrgArchiveSection({ org, onRequested }) {
@@ -2674,11 +2703,14 @@ function SettingsTab({ org, onRefresh, onOrgUpdate, onBack, isOrgPortal = false,
         {org.status === "archived" ? (
           <p className="text-xs text-slate-400 dark:text-slate-500">This organisation has been archived.</p>
         ) : org.pending_archive ? (
-          <div className="flex items-center gap-2 px-3 py-2.5 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-700/40">
-            <svg className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
-            </svg>
-            <p className="text-xs font-bold text-amber-700 dark:text-amber-400">Archive request pending admin approval</p>
+          <div>
+            <div className="flex items-center gap-2 px-3 py-2.5 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-700/40">
+              <svg className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+              </svg>
+              <p className="text-xs font-bold text-amber-700 dark:text-amber-400">Archive request pending admin approval</p>
+            </div>
+            <CancelOrgArchiveButton org={org} onCancelled={() => { onOrgUpdate(p => ({ ...p, pending_archive: false })); }} />
           </div>
         ) : (
           <>
