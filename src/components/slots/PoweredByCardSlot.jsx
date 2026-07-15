@@ -44,13 +44,12 @@ export default function PoweredByCardSlot({ portalType = "ajo_client", businessI
         className="w-full rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-800 active:scale-[0.98] transition-transform shadow-sm"
       >
         {/* Thin brand stripe */}
-        <div className="h-0.5 w-full" style={{ background: "linear-gradient(90deg,#16255A,#3DA829)" }} />
+        <div className="h-0.5 w-full bg-[linear-gradient(90deg,#16255A,#3DA829)]" />
 
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-2.5">
             {/* KudiAI logo mark */}
-            <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                 style={{ background: "linear-gradient(135deg,#16255A,#3DA829)" }}>
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 bg-[linear-gradient(135deg,#16255A,#3DA829)]">
               <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
               </svg>
@@ -65,8 +64,7 @@ export default function PoweredByCardSlot({ portalType = "ajo_client", businessI
             </div>
           </div>
           <div className="flex-shrink-0 ml-2">
-            <span className="text-[10px] font-bold text-white px-2.5 py-1.5 rounded-lg whitespace-nowrap"
-                  style={{ background: "linear-gradient(135deg,#3DA829,#16255A)" }}>
+            <span className="text-[10px] font-bold text-white px-2.5 py-1.5 rounded-lg whitespace-nowrap bg-[linear-gradient(135deg,#3DA829,#16255A)]">
               Get Started →
             </span>
           </div>

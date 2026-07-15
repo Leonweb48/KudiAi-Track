@@ -130,8 +130,7 @@ export default function SupportTicketModal({
             </div>
             <button
               onClick={onClose}
-              className="px-10 py-3 rounded-2xl text-white font-bold text-sm active:scale-[0.98] transition-transform shadow-lg"
-              style={{ background: "linear-gradient(135deg,#16a34a,#059669)" }}
+              className="px-10 py-3 rounded-2xl text-white font-bold text-sm active:scale-[0.98] transition-transform shadow-lg bg-[linear-gradient(135deg,#16a34a,#059669)]"
             >
               Done
             </button>
@@ -191,8 +190,8 @@ export default function SupportTicketModal({
               <button
                 onClick={submit}
                 disabled={saving}
-                className="w-full py-3.5 rounded-2xl text-white font-bold text-sm active:scale-[0.98] transition-transform disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg"
-                style={{ background: "linear-gradient(135deg,#1d4ed8,#2563eb)", paddingBottom: "calc(14px + env(safe-area-inset-bottom, 0px))" }}
+                className="w-full py-3.5 rounded-2xl text-white font-bold text-sm active:scale-[0.98] transition-transform disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg bg-[linear-gradient(135deg,#1d4ed8,#2563eb)]"
+                style={{ paddingBottom: "calc(14px + env(safe-area-inset-bottom, 0px))" }}
               >
                 {saving
                   ? <><div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Submitting…</>

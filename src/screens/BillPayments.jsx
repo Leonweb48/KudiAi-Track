@@ -615,11 +615,11 @@ function Overview({ bills }) {
       <div className="grid grid-cols-2 divide-x divide-slate-100 dark:divide-slate-700/60">
         <div className="px-5 py-4">
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Today</p>
-          <AmountDisplay amount={todayTotal} size="stat" align="left" style={{ marginTop: 2 }} />
+          <AmountDisplay amount={todayTotal} size="stat" align="left" className="mt-0.5" />
         </div>
         <div className="px-5 py-4">
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Last 7 Days</p>
-          <AmountDisplay amount={weekTotal} size="stat" align="left" style={{ marginTop: 2 }} />
+          <AmountDisplay amount={weekTotal} size="stat" align="left" className="mt-0.5" />
         </div>
       </div>
     </div>
@@ -887,17 +887,16 @@ function ConfirmPaymentSheet({ data, onConfirm, onCancel }) {
   const [logoErr, setLogoErr] = useState(false);
 
   return (
-    <div className="fixed inset-0 z-[70] flex flex-col justify-end" style={{ background: "rgba(0,0,0,0.55)" }}>
+    <div className="fixed inset-0 z-[70] flex flex-col justify-end bg-black/55">
       <div className="bg-white rounded-t-3xl shadow-2xl" style={{ maxHeight: "88dvh", overflowY: "auto" }}>
         {/* Drag handle */}
         <div className="flex justify-center pt-3 pb-1">
-          <div className="w-10 h-1 rounded-full" style={{ background: "#e2e8f0" }} />
+          <div className="w-10 h-1 rounded-full bg-slate-200 dark:bg-slate-700" />
         </div>
         {/* Header */}
         <div className="flex items-center justify-between px-5 pt-3 pb-4">
           <p className="text-lg font-black text-slate-900">Confirm Payment</p>
-          <button onClick={onCancel} className="w-8 h-8 rounded-full flex items-center justify-center"
-            style={{ background: "#f1f5f9" }}>
+          <button onClick={onCancel} className="w-8 h-8 rounded-full flex items-center justify-center bg-slate-100 dark:bg-slate-800">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2.5" strokeLinecap="round">
               <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
             </svg>
@@ -905,8 +904,7 @@ function ConfirmPaymentSheet({ data, onConfirm, onCancel }) {
         </div>
 
         {/* Provider + amount hero */}
-        <div className="mx-5 mb-4 rounded-2xl p-4 flex items-center gap-4"
-          style={{ background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+        <div className="mx-5 mb-4 rounded-2xl p-4 flex items-center gap-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
           <div className="w-14 h-14 rounded-xl overflow-hidden flex-shrink-0 flex items-center justify-center shadow-sm"
             style={{ background: netCfg?.bg || "#0F1D42" }}>
             {netCfg?.logo && !logoErr ? (
@@ -920,13 +918,13 @@ function ConfirmPaymentSheet({ data, onConfirm, onCancel }) {
             )}
           </div>
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider mb-0.5" style={{ color: "#94a3b8" }}>{catLabel}</p>
+            <p className="text-xs font-semibold uppercase tracking-wider mb-0.5 text-slate-400">{catLabel}</p>
             {isFree
-              ? <p className="text-3xl font-black leading-none" style={{ color: "#16a34a", letterSpacing: "-0.02em" }}>FREE</p>
+              ? <p className="text-3xl font-black leading-none text-green-600" style={{ letterSpacing: "-0.02em" }}>FREE</p>
               : <AmountDisplay amount={finalAmt} size="hero" align="left" style={{ letterSpacing: '-0.02em' }} />
             }
             {hasDiscount && !isFree && (
-              <p className="text-xs font-semibold mt-1" style={{ color: "#16a34a" }}>
+              <p className="text-xs font-semibold mt-1 text-green-600 dark:text-green-400">
                 Originally {fmt(baseAmt)} · discounts applied
               </p>
             )}
@@ -934,71 +932,68 @@ function ConfirmPaymentSheet({ data, onConfirm, onCancel }) {
         </div>
 
         {/* Details card */}
-        <div className="mx-5 rounded-2xl overflow-hidden shadow-sm mb-4" style={{ border: "1px solid #e2e8f0" }}>
+        <div className="mx-5 rounded-2xl overflow-hidden shadow-sm mb-4 border border-slate-200 dark:border-slate-700">
           {phone && (
             <div className="px-4 py-3 flex justify-between items-center border-b border-slate-50">
-              <span className="text-[10px] font-black uppercase tracking-wider" style={{ color: "#94a3b8" }}>Recipient</span>
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Recipient</span>
               <span className="text-sm font-bold text-slate-800">{phone}</span>
             </div>
           )}
           {network && (
             <div className="px-4 py-3 flex justify-between items-center border-b border-slate-50">
-              <span className="text-[10px] font-black uppercase tracking-wider" style={{ color: "#94a3b8" }}>Network</span>
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Network</span>
               <span className="text-sm font-bold text-slate-800">{network}</span>
             </div>
           )}
           {planName && (
             <div className="px-4 py-3 flex justify-between items-center border-b border-slate-50">
-              <span className="text-[10px] font-black uppercase tracking-wider" style={{ color: "#94a3b8" }}>Plan / Value</span>
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Plan / Value</span>
               <span className="text-sm font-bold text-slate-800">{planName}</span>
             </div>
           )}
           {ptsSavings > 0 && (
             <div className="px-4 py-3 flex justify-between items-center border-b border-slate-50">
-              <span className="text-[10px] font-black uppercase tracking-wider" style={{ color: "#94a3b8" }}>Points Discount</span>
-              <span className="text-sm font-bold" style={{ color: "#16a34a" }}>−{fmt(ptsSavings)}</span>
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Points Discount</span>
+              <span className="text-sm font-bold text-green-600 dark:text-green-400">−{fmt(ptsSavings)}</span>
             </div>
           )}
           {cbSavings > 0 && (
             <div className="px-4 py-3 flex justify-between items-center border-b border-slate-50">
-              <span className="text-[10px] font-black uppercase tracking-wider" style={{ color: "#94a3b8" }}>Cashback Applied</span>
-              <span className="text-sm font-bold" style={{ color: "#16a34a" }}>−{fmt(cbSavings)}</span>
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Cashback Applied</span>
+              <span className="text-sm font-bold text-green-600 dark:text-green-400">−{fmt(cbSavings)}</span>
             </div>
           )}
           {couponSavings > 0 && (
             <div className="px-4 py-3 flex justify-between items-center border-b border-slate-50">
-              <span className="text-[10px] font-black uppercase tracking-wider" style={{ color: "#94a3b8" }}>Coupon Discount</span>
-              <span className="text-sm font-bold" style={{ color: "#16a34a" }}>−{fmt(couponSavings)}</span>
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Coupon Discount</span>
+              <span className="text-sm font-bold text-green-600 dark:text-green-400">−{fmt(couponSavings)}</span>
             </div>
           )}
-          <div className="px-4 py-3 flex justify-between items-center" style={{ background: "#f0fdf4" }}>
+          <div className="px-4 py-3 flex justify-between items-center bg-green-50 dark:bg-green-900/20">
             <span className="text-[11px] font-black uppercase tracking-wider text-slate-700">Total to Pay</span>
             {isFree
-              ? <span className="text-lg font-black" style={{ color: "#16a34a" }}>₦0.00</span>
-              : <AmountDisplay amount={finalAmt} size="stat" align="right" style={{ color: '#16a34a', minWidth: 0, flex: '0 0 auto', maxWidth: '55%' }} />
+              ? <span className="text-lg font-black text-green-600 dark:text-green-400">₦0.00</span>
+              : <AmountDisplay amount={finalAmt} size="stat" align="right" className="text-green-600 dark:text-green-400" style={{ minWidth: 0, flex: '0 0 auto', maxWidth: '55%' }} />
             }
           </div>
         </div>
 
         {/* Security badge */}
-        <div className="mx-5 mb-5 flex items-center gap-2 px-4 py-2.5 rounded-xl"
-          style={{ background: "#f0fdf4", border: "1px solid #bbf7d0" }}>
+        <div className="mx-5 mb-5 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" strokeLinecap="round">
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
           </svg>
-          <p className="text-[10px] font-semibold" style={{ color: "#15803d" }}>Secured by Paystack · 256-bit SSL Encryption</p>
+          <p className="text-[10px] font-semibold text-green-700 dark:text-green-400">Secured by Paystack · 256-bit SSL Encryption</p>
         </div>
 
         {/* Actions */}
         <div className="px-5 pb-8 space-y-3">
           <button onClick={onConfirm}
-            className="w-full py-4 rounded-2xl text-white font-black text-base active:scale-[0.98] transition-transform shadow-lg"
-            style={{ background: "linear-gradient(135deg,#16a34a,#059669)" }}>
+            className="w-full py-4 rounded-2xl text-white font-black text-base active:scale-[0.98] transition-transform shadow-lg bg-[linear-gradient(135deg,#16a34a,#059669)]">
             {isFree ? "Activate Free Service" : "Confirm & Pay"}
           </button>
           <button onClick={onCancel}
-            className="w-full text-center text-sm font-semibold py-2"
-            style={{ color: "#94a3b8" }}>
+            className="w-full text-center text-sm font-semibold py-2 text-slate-400">
             Cancel
           </button>
         </div>
@@ -1124,8 +1119,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
   /* Shared header — logo left, service right, green stripe below (hidden on success) */
   const Header = () => (
     <div className="flex-shrink-0">
-      <div className="px-5 pt-6 pb-5 flex items-center justify-between"
-        style={{ background: "linear-gradient(135deg,#0F1D42 0%,#1B2A5E 60%,#1e3a6e 100%)" }}>
+      <div className="px-5 pt-6 pb-5 flex items-center justify-between bg-[linear-gradient(135deg,#0F1D42_0%,#1B2A5E_60%,#1e3a6e_100%)]">
         {/* Brand left */}
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-xl overflow-hidden bg-white/10 flex items-center justify-center shadow-inner">
@@ -1134,23 +1128,23 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
               onError={e => { e.target.style.display = "none"; }} />
           </div>
           <div>
-            <p className="text-[11px] font-black tracking-widest uppercase" style={{ color: "#22c55e" }}>KudiAI Track</p>
-            <p className="text-[9px] font-medium" style={{ color: "rgba(255,255,255,0.45)" }}>Bill Payment Services</p>
+            <p className="text-[11px] font-black tracking-widest uppercase text-green-500">KudiAI Track</p>
+            <p className="text-[9px] font-medium text-white/45">Bill Payment Services</p>
           </div>
         </div>
         {/* Service label right */}
         <div className="text-right">
-          <p className="text-[9px] font-semibold uppercase tracking-wider" style={{ color: "rgba(255,255,255,0.4)" }}>Service</p>
+          <p className="text-[9px] font-semibold uppercase tracking-wider text-white/40">Service</p>
           <p className="text-[13px] font-black text-white leading-tight">{catLabel}</p>
         </div>
       </div>
       {/* Green accent stripe */}
-      <div style={{ height: 3, background: "linear-gradient(90deg,#16a34a,#22c55e)" }} />
+      <div className="bg-[linear-gradient(90deg,#16a34a,#22c55e)]" style={{ height: 3 }} />
       {/* Ref bar — only when a payment ref exists */}
       {fulfillResult?.psRef ? (
-        <div className="px-5 py-1.5 flex items-center justify-between" style={{ background: "#f0fdf4" }}>
+        <div className="px-5 py-1.5 flex items-center justify-between bg-green-50 dark:bg-green-900/20">
           <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Payment Ref</span>
-          <span className="text-[10px] font-mono font-black" style={{ color: "#16a34a" }}>{fulfillResult.psRef.slice(0, 22)}</span>
+          <span className="text-[10px] font-mono font-black text-green-600 dark:text-green-400">{fulfillResult.psRef.slice(0, 22)}</span>
         </div>
       ) : null}
     </div>
@@ -1158,32 +1152,30 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
 
   /* Shared footer */
   const Footer = () => (
-    <div className="flex-shrink-0 px-5 py-3 flex items-center justify-between"
-      style={{ background: "linear-gradient(135deg,#0F1D42,#1B2A5E)" }}>
+    <div className="flex-shrink-0 px-5 py-3 flex items-center justify-between bg-[linear-gradient(135deg,#0F1D42,#1B2A5E)]">
       <div>
-        <p className="text-[10px] font-black" style={{ color: "#22c55e" }}>AMAYA &amp; Co. Technologies</p>
-        <p className="text-[8.5px]" style={{ color: "rgba(255,255,255,0.35)" }}>All rights reserved · Copyright © 2026</p>
+        <p className="text-[10px] font-black text-green-500">AMAYA &amp; Co. Technologies</p>
+        <p className="text-[8.5px] text-white/35">All rights reserved · Copyright © 2026</p>
       </div>
       {/* Decorative barcode */}
       <div className="flex gap-[2px] items-end" style={{ opacity: 0.18 }}>
         {[10, 6, 14, 4, 12, 8, 16, 5, 10, 4, 14].map((h, i) => (
-          <div key={i} style={{ height: h, width: 2.5, background: "white", borderRadius: 1 }} />
+          <div key={i} className="bg-white" style={{ height: h, width: 2.5, borderRadius: 1 }} />
         ))}
       </div>
     </div>
   );
 
   return (
-    <div className="fixed inset-0 z-[60] flex flex-col" style={{ background: "#f1f5f9" }}>
+    <div className="fixed inset-0 z-[60] flex flex-col bg-slate-100 dark:bg-slate-900">
       {!isSuccess && <Header />}
 
       {/* ── Processing ── */}
       {saving && !fulfillResult && (
         <div className="flex-1 flex flex-col items-center justify-center gap-7 px-8">
           <div className="relative">
-            <div className="absolute inset-0 rounded-full animate-ping" style={{ background: "rgba(22,163,74,0.18)" }} />
-            <div className="relative w-24 h-24 rounded-full shadow-2xl flex items-center justify-center"
-              style={{ background: "linear-gradient(135deg,#0F1D42,#1B2A5E)" }}>
+            <div className="absolute inset-0 rounded-full animate-ping bg-green-600/[0.18]" />
+            <div className="relative w-24 h-24 rounded-full shadow-2xl flex items-center justify-center bg-[linear-gradient(135deg,#0F1D42,#1B2A5E)]">
               <img src="/logo.png" alt="" className="w-14 h-14 object-contain"
                 onError={e => { e.target.style.display = "none"; }} />
             </div>
@@ -1206,9 +1198,8 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
         <div className="flex-1 overflow-y-auto px-5 py-6 flex flex-col gap-4">
           <div className="flex flex-col items-center gap-3 pt-2">
             <div className="relative">
-              <div className="absolute inset-0 rounded-full blur-xl" style={{ background: "rgba(245,158,11,0.3)", transform: "scale(1.4)" }} />
-              <div className="relative w-20 h-20 rounded-full shadow-xl flex items-center justify-center"
-                style={{ background: "linear-gradient(135deg,#fef3c7,#fde68a)" }}>
+              <div className="absolute inset-0 rounded-full blur-xl bg-amber-500/30" style={{ transform: "scale(1.4)" }} />
+              <div className="relative w-20 h-20 rounded-full shadow-xl flex items-center justify-center bg-[linear-gradient(135deg,#fef3c7,#fde68a)] dark:bg-amber-900/20">
                 <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2.5" strokeLinecap="round">
                   <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
                 </svg>
@@ -1219,9 +1210,9 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
               <p className="text-xs text-slate-400 mt-1 leading-relaxed">Payment received · Token may already be dispensed</p>
             </div>
           </div>
-          <div className="rounded-2xl overflow-hidden shadow-sm" style={{ border: "1.5px solid #fde68a" }}>
-            <div className="px-4 py-2.5" style={{ background: "#fef3c7" }}>
-              <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: "#92400e" }}>What Happened</p>
+          <div className="rounded-2xl overflow-hidden shadow-sm border-[1.5px] border-amber-200 dark:border-amber-700">
+            <div className="px-4 py-2.5 bg-amber-100 dark:bg-amber-900/20">
+              <p className="text-[9px] font-black uppercase tracking-widest text-amber-800 dark:text-amber-200">What Happened</p>
             </div>
             <div className="bg-white px-4 py-3 space-y-2">
               <p className="text-sm text-slate-700 leading-relaxed">
@@ -1229,20 +1220,19 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
               </p>
             </div>
           </div>
-          <div className="rounded-2xl overflow-hidden shadow-sm" style={{ border: "1px solid #bbf7d0" }}>
-            <div className="px-4 py-2.5" style={{ background: "#f0fdf4" }}>
-              <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: "#15803d" }}>Payment Reference · Keep This</p>
+          <div className="rounded-2xl overflow-hidden shadow-sm border border-green-200 dark:border-green-800">
+            <div className="px-4 py-2.5 bg-green-50 dark:bg-green-900/20">
+              <p className="text-[9px] font-black uppercase tracking-widest text-green-700 dark:text-green-400">Payment Reference · Keep This</p>
             </div>
             <div className="bg-white px-4 py-3 space-y-1">
-              <p className="font-mono text-sm font-black break-all" style={{ color: "#15803d" }}>{fulfillResult.psRef}</p>
+              <p className="font-mono text-sm font-black break-all text-green-700 dark:text-green-400">{fulfillResult.psRef}</p>
               <p className="text-xs text-slate-400 leading-relaxed">
                 If the token is not on your meter within 30 minutes, contact support with this reference.
               </p>
             </div>
           </div>
           <button onClick={onDone}
-            className="w-full py-4 font-black rounded-xl text-sm text-white shadow-lg active:scale-[0.98] transition-transform"
-            style={{ background: "linear-gradient(135deg,#1B2A5E,#2d4a8a)" }}>
+            className="w-full py-4 font-black rounded-xl text-sm text-white shadow-lg active:scale-[0.98] transition-transform bg-[linear-gradient(135deg,#1B2A5E,#2d4a8a)]">
             Done
           </button>
         </div>
@@ -1254,8 +1244,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
           {/* Slim title bar */}
           <div className="flex-shrink-0 flex items-center justify-between px-5 py-3 bg-white border-b border-slate-100">
             <p className="text-sm font-bold text-slate-800 truncate">{catLabel} Receipt</p>
-            <button onClick={onDone} className="text-xs font-semibold px-3 py-1 rounded-lg active:scale-95 transition-transform"
-              style={{ color: "#64748b", background: "#f1f5f9" }}>Done</button>
+            <button onClick={onDone} className="text-xs font-semibold px-3 py-1 rounded-lg active:scale-95 transition-transform text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800">Done</button>
           </div>
 
           {/* Scrollable content */}
@@ -1263,30 +1252,29 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
 
             {/* ── Electricity Token (above receipt — highest priority info) ── */}
             {(fulfillResult.elecToken || fulfillResult.elecOrderId) && fulfillResult.cat === "electricity" && (
-              <div className="mx-4 mt-4 rounded-2xl overflow-hidden shadow-sm" style={{ border: "2px solid #fbbf24" }}>
-                <div className="px-4 py-3 flex items-center gap-2" style={{ background: "linear-gradient(135deg,#fef3c7,#fde68a)" }}>
+              <div className="mx-4 mt-4 rounded-2xl overflow-hidden shadow-sm border-2 border-amber-400 dark:border-amber-600">
+                <div className="px-4 py-3 flex items-center gap-2 bg-[linear-gradient(135deg,#fef3c7,#fde68a)] dark:bg-amber-900/20">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2.5" strokeLinecap="round">
                     <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
                   </svg>
-                  <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: "#92400e" }}>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-amber-800 dark:text-amber-300">
                     {fulfillResult.elecToken ? "Electricity Token — Save This!" : "Getting Your Token..."}
                   </p>
                 </div>
                 {fulfillResult.elecToken ? (
                   <div className="bg-white px-4 py-4 flex flex-col items-center gap-3">
-                    <p className="font-mono text-2xl font-black tracking-widest text-center break-all" style={{ color: "#1e293b" }}>
+                    <p className="font-mono text-2xl font-black tracking-widest text-center break-all text-slate-800 dark:text-white">
                       {fulfillResult.elecToken}
                     </p>
                     {fulfillResult.elecUnits && (
-                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full" style={{ background: "#f0fdf4", border: "1px solid #bbf7d0" }}>
+                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" strokeLinecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-                        <span className="text-xs font-black" style={{ color: "#15803d" }}>{fulfillResult.elecUnits} loaded</span>
+                        <span className="text-xs font-black text-green-700 dark:text-green-400">{fulfillResult.elecUnits} loaded</span>
                       </div>
                     )}
                     <button
                       onClick={() => { try { navigator.clipboard.writeText(fulfillResult.elecToken); } catch (_) {} }}
-                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black active:scale-95 transition-transform"
-                      style={{ background: "#fef3c7", color: "#92400e", border: "1.5px solid #fde68a" }}>
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black active:scale-95 transition-transform bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 border-[1.5px] border-amber-200 dark:border-amber-700">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                         <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
                       </svg>
@@ -1309,15 +1297,15 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
 
             {/* ── PINs / Vouchers ── */}
             {fulfillResult.pinsArr?.length > 0 && (
-              <div className="mx-4 mt-4 rounded-2xl overflow-hidden shadow-sm" style={{ border: "1px solid #e2e8f0" }}>
-                <div className="px-4 py-2.5 flex items-center gap-2" style={{ background: "#f0fdf4" }}>
-                  <div className="w-5 h-5 rounded-full flex items-center justify-center" style={{ background: "#16a34a" }}>
+              <div className="mx-4 mt-4 rounded-2xl overflow-hidden shadow-sm border border-slate-200 dark:border-slate-700">
+                <div className="px-4 py-2.5 flex items-center gap-2 bg-green-50 dark:bg-green-900/20">
+                  <div className="w-5 h-5 rounded-full flex items-center justify-center bg-green-600">
                     <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
                       <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
                     </svg>
                   </div>
                   <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest">PIN(s) / Voucher(s)</p>
-                  <span className="ml-auto text-[9px] font-black text-white px-2 py-0.5 rounded-full" style={{ background: "#16a34a" }}>
+                  <span className="ml-auto text-[9px] font-black text-white px-2 py-0.5 rounded-full bg-green-600">
                     {fulfillResult.pinsArr.length}
                   </span>
                 </div>
@@ -1327,7 +1315,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
                     const code   = pin.EPIN ?? pin.pin ?? pin.code ?? JSON.stringify(pin);
                     const netCfg = pin.network ? NET_CONFIG[pin.network] : null;
                     return (
-                      <div key={i} className="rounded-xl px-4 py-3 border" style={{ background: "#f0fdf4", borderColor: "#bbf7d0" }}>
+                      <div key={i} className="rounded-xl px-4 py-3 border bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800">
                         <div className="flex items-center justify-between mb-1">
                           <div className="flex items-center gap-1.5">
                             <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">PIN {i + 1}</span>
@@ -1337,7 +1325,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
                           </div>
                           {serial ? <span className="text-[9px] text-slate-400 font-mono">S/N: {serial}</span> : null}
                         </div>
-                        <p className="font-mono font-black tracking-widest text-sm break-all" style={{ color: "#16a34a" }}>{code}</p>
+                        <p className="font-mono font-black tracking-widest text-sm break-all text-green-600 dark:text-green-400">{code}</p>
                       </div>
                     );
                   })}
@@ -1347,9 +1335,9 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
 
             {/* ── Card details (WAEC / JAMB) ── */}
             {fulfillResult.cardDetails && (
-              <div className="mx-4 mt-4 rounded-2xl overflow-hidden shadow-sm" style={{ border: "1px solid #e2e8f0" }}>
-                <div className="px-4 py-2.5" style={{ background: "#eff6ff" }}>
-                  <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: "#1d4ed8" }}>Card / Scratch Details</p>
+              <div className="mx-4 mt-4 rounded-2xl overflow-hidden shadow-sm border border-slate-200 dark:border-slate-700">
+                <div className="px-4 py-2.5 bg-blue-50 dark:bg-blue-900/20">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-blue-700 dark:text-blue-300">Card / Scratch Details</p>
                 </div>
                 <div className="bg-white px-4 py-3">
                   <p className="font-mono text-sm font-bold text-slate-800 break-all">{fulfillResult.cardDetails}</p>
@@ -1365,8 +1353,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
             {/* Points earned */}
             {fulfillResult.earnedPts > 0 && (
               <div className="flex justify-center pb-4">
-                <div className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-black"
-                  style={{ background: "#fffbeb", color: "#b45309", border: "1.5px solid #fde68a" }}>
+                <div className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-black bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 border-[1.5px] border-amber-200 dark:border-amber-700">
                   ⭐ +{fulfillResult.earnedPts} pts earned
                 </div>
               </div>
@@ -1377,8 +1364,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
           <div className="flex-shrink-0 px-4 pt-3 pb-3 bg-white border-t border-slate-100 space-y-2"
             style={{ paddingBottom: 'calc(12px + env(safe-area-inset-bottom, 0px))' }}>
             <button onClick={() => setShareSheet(true)}
-              className="w-full py-3.5 rounded-2xl text-white font-black text-base flex items-center justify-center gap-2.5 active:scale-[0.98] transition-transform shadow-lg"
-              style={{ background: "linear-gradient(135deg,#16a34a,#059669)" }}>
+              className="w-full py-3.5 rounded-2xl text-white font-black text-base flex items-center justify-center gap-2.5 active:scale-[0.98] transition-transform shadow-lg bg-[linear-gradient(135deg,#16a34a,#059669)]">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13"/>
               </svg>
@@ -1400,8 +1386,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
                   const msg = `✅ *Payment Confirmed!*\n\n*${fr.label || catLabel}*\n━━━━━━━━━━━━━━\n${detailLines}\n• Amount: *${amtStr}*\n• Date: ${dateStr}${tokenLine}${cardsLine}${refLine}${pinsBlock}\n━━━━━━━━━━━━━━\n_Paid via KudiAI Track_`;
                   window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank", "noopener");
                 }}
-                className="flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform"
-                style={{ background: "#f0fdf4", color: "#15803d", border: "1.5px solid #86efac" }}>
+                className="flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-[1.5px] border-green-300 dark:border-green-700">
                 <svg viewBox="0 0 24 24" fill="currentColor" width="15" height="15">
                   <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
                 </svg>
@@ -1410,8 +1395,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
               {fulfillResult.pinsArr?.length > 0 && (
                 <button
                   onClick={() => generateTokenPDF({ fulfillResult, profile, businessName })}
-                  className="flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform"
-                  style={{ border: "1.5px solid #7c3aed", color: "#7c3aed", background: "transparent" }}>
+                  className="flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform bg-transparent text-violet-700 dark:text-violet-400 border-[1.5px] border-violet-700 dark:border-violet-500">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z"/>
                   </svg>
@@ -1420,7 +1404,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
               )}
             </div>
             <div className="flex items-center justify-center gap-6 pt-0.5">
-              <button onClick={onReportIssue} className="text-xs font-semibold py-1" style={{ color: "#94a3b8" }}>Report Issue</button>
+              <button onClick={onReportIssue} className="text-xs font-semibold py-1 text-slate-400">Report Issue</button>
             </div>
           </div>
         </>
@@ -1431,9 +1415,8 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
         <div className="flex-1 flex flex-col items-center justify-center px-6 py-8 gap-5">
           {/* Amber glow icon */}
           <div className="relative">
-            <div className="absolute inset-0 rounded-full blur-xl" style={{ background: "rgba(245,158,11,0.3)", transform: "scale(1.4)" }} />
-            <div className="relative w-24 h-24 rounded-full shadow-xl flex items-center justify-center"
-              style={{ background: "linear-gradient(135deg,#fef3c7,#fde68a)" }}>
+            <div className="absolute inset-0 rounded-full blur-xl bg-amber-500/30" style={{ transform: "scale(1.4)" }} />
+            <div className="relative w-24 h-24 rounded-full shadow-xl flex items-center justify-center bg-[linear-gradient(135deg,#fef3c7,#fde68a)] dark:bg-amber-900/20">
               <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2.5" strokeLinecap="round">
                 <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
                 <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
@@ -1442,8 +1425,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
           </div>
           <div className="text-center space-y-2">
             <p className="text-2xl font-black text-slate-800">Payment Disrupted</p>
-            <div className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-black"
-              style={{ background: "#f0fdf4", color: "#15803d", border: "1.5px solid #bbf7d0" }}>
+            <div className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-black bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-[1.5px] border-green-200 dark:border-green-800">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
               NOT CHARGED
             </div>
@@ -1452,13 +1434,12 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
             </p>
           </div>
           {/* Info box */}
-          <div className="w-full rounded-2xl px-5 py-4 text-center" style={{ background: "#fffbeb", border: "1.5px solid #fde68a" }}>
-            <p className="text-sm font-bold" style={{ color: "#92400e" }}>Your account has not been debited.</p>
-            <p className="text-xs mt-1" style={{ color: "#b45309" }}>You may safely try your payment again.</p>
+          <div className="w-full rounded-2xl px-5 py-4 text-center bg-amber-50 dark:bg-amber-900/20 border-[1.5px] border-amber-200 dark:border-amber-700">
+            <p className="text-sm font-bold text-amber-800 dark:text-amber-200">Your account has not been debited.</p>
+            <p className="text-xs mt-1 text-amber-700 dark:text-amber-300">You may safely try your payment again.</p>
           </div>
           <button onClick={onDone}
-            className="w-full py-4 font-black rounded-xl text-sm text-white shadow-lg active:scale-[0.98] transition-transform"
-            style={{ background: "linear-gradient(135deg,#1B2A5E,#2d4a8a)" }}>
+            className="w-full py-4 font-black rounded-xl text-sm text-white shadow-lg active:scale-[0.98] transition-transform bg-[linear-gradient(135deg,#1B2A5E,#2d4a8a)]">
             Try Again
           </button>
         </div>
@@ -1470,10 +1451,9 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
           {/* Amber "working on it" icon */}
           <div className="flex flex-col items-center gap-3 pt-4">
             <div className="relative" style={{ width: 90, height: 90 }}>
-              <div className="absolute rounded-full" style={{ inset: -18, background: "rgba(245,158,11,0.08)" }} />
-              <div className="absolute rounded-full" style={{ inset: -8, background: "rgba(245,158,11,0.14)" }} />
-              <div className="relative w-full h-full rounded-full shadow-xl flex items-center justify-center"
-                style={{ background: "linear-gradient(135deg,#fffbeb,#fef3c7)" }}>
+              <div className="absolute rounded-full bg-amber-500/[0.08]" style={{ inset: -18 }} />
+              <div className="absolute rounded-full bg-amber-500/[0.14]" style={{ inset: -8 }} />
+              <div className="relative w-full h-full rounded-full shadow-xl flex items-center justify-center bg-[linear-gradient(135deg,#fffbeb,#fef3c7)] dark:bg-amber-900/30">
                 <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round">
                   <circle cx="12" cy="12" r="10"/>
                   <polyline points="12 6 12 12 16 14"/>
@@ -1487,9 +1467,9 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
           </div>
 
           {/* Friendly explanation */}
-          <div className="rounded-2xl overflow-hidden shadow-sm" style={{ border: "1px solid #fde68a" }}>
-            <div className="px-4 py-2.5" style={{ background: "#fffbeb" }}>
-              <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: "#92400e" }}>What&apos;s Happening</p>
+          <div className="rounded-2xl overflow-hidden shadow-sm border border-amber-200 dark:border-amber-700">
+            <div className="px-4 py-2.5 bg-amber-50 dark:bg-amber-900/20">
+              <p className="text-[9px] font-black uppercase tracking-widest text-amber-800 dark:text-amber-200">What&apos;s Happening</p>
             </div>
             <div className="bg-white px-4 py-3">
               <p className="text-sm text-slate-700 leading-relaxed">
@@ -1499,36 +1479,34 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
           </div>
 
           {/* Ref — preserve this */}
-          <div className="rounded-2xl overflow-hidden shadow-sm" style={{ border: "1px solid #bbf7d0" }}>
-            <div className="px-4 py-2.5 flex items-center gap-1.5" style={{ background: "#f0fdf4" }}>
+          <div className="rounded-2xl overflow-hidden shadow-sm border border-green-200 dark:border-green-800">
+            <div className="px-4 py-2.5 flex items-center gap-1.5 bg-green-50 dark:bg-green-900/20">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" strokeLinecap="round">
                 <polyline points="20 6 9 17 4 12"/>
               </svg>
-              <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: "#15803d" }}>Payment Confirmed · Save This Reference</p>
+              <p className="text-[9px] font-black uppercase tracking-widest text-green-700 dark:text-green-400">Payment Confirmed · Save This Reference</p>
             </div>
             <div className="bg-white px-4 py-3">
-              <p className="font-mono text-sm font-black break-all" style={{ color: "#15803d" }}>{fulfillResult.psRef}</p>
+              <p className="font-mono text-sm font-black break-all text-green-700 dark:text-green-400">{fulfillResult.psRef}</p>
             </div>
           </div>
 
           {/* Actions */}
           <div className="space-y-3 mt-2">
             <button onClick={onShareReceipt}
-              className="w-full py-3.5 rounded-2xl text-white font-black text-sm flex items-center justify-center gap-2 active:scale-[0.98] transition-transform shadow-lg"
-              style={{ background: "linear-gradient(135deg,#16a34a,#059669)" }}>
+              className="w-full py-3.5 rounded-2xl text-white font-black text-sm flex items-center justify-center gap-2 active:scale-[0.98] transition-transform shadow-lg bg-[linear-gradient(135deg,#16a34a,#059669)]">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13"/>
               </svg>
               Share Receipt
             </button>
             <button onClick={onDone}
-              className="w-full py-3.5 font-bold rounded-2xl text-sm active:scale-[0.98] transition-transform"
-              style={{ color: "#94a3b8" }}>
+              className="w-full py-3.5 font-bold rounded-2xl text-sm active:scale-[0.98] transition-transform text-slate-400">
               Done
             </button>
             <button onClick={onReportIssue}
               className="w-full text-center py-1">
-              <span className="text-xs font-semibold" style={{ color: "#cbd5e1" }}>Report an Issue</span>
+              <span className="text-xs font-semibold text-slate-300 dark:text-slate-500">Report an Issue</span>
             </button>
           </div>
         </div>
@@ -1539,8 +1517,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
       {/* ── Share sheet overlay ── */}
       {shareSheet && (
         <div
-          className="fixed inset-0 z-[70] flex items-end justify-center"
-          style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}
+          className="fixed inset-0 z-[70] flex items-end justify-center bg-black/45"
           onClick={() => setShareSheet(false)}
         >
           <div
@@ -1554,7 +1531,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
               onClick={() => handleShareOption('image')}
               className="w-full flex items-center gap-4 px-6 py-4 border-t border-slate-100"
             >
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: '#dcfce7' }}>
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-green-100 dark:bg-green-900/30">
                 <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="#16a34a" strokeWidth={2} strokeLinecap="round">
                   <rect x="3" y="3" width="18" height="18" rx="2" />
                   <circle cx="8.5" cy="8.5" r="1.5" />
@@ -1572,7 +1549,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
               className="w-full flex items-center gap-4 px-6 py-4 border-t border-slate-100"
               style={{ paddingBottom: 'calc(16px + env(safe-area-inset-bottom, 0px))' }}
             >
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: '#e0e7ff' }}>
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-indigo-100 dark:bg-indigo-900/30">
                 <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="#1d4ed8" strokeWidth={2} strokeLinecap="round">
                   <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
                   <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
@@ -1589,7 +1566,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
 
       {/* ── Capture loading overlay ── */}
       {shareLoading && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50">
           <div className="bg-white rounded-2xl px-8 py-6 flex flex-col items-center gap-3 shadow-xl">
             <div className="w-8 h-8 border-2 border-slate-200 border-t-green-500 rounded-full animate-spin" />
             <p className="text-sm font-semibold text-slate-600">
@@ -2834,7 +2811,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         <div className="bg-gradient-to-br from-green-600 to-emerald-700 rounded-2xl px-5 py-4 text-white flex items-center justify-between shadow-md">
           <div>
             <p className="text-[10px] font-bold text-green-100 uppercase tracking-widest">Total Spent</p>
-            <AmountDisplay amount={bills.filter(b => b.bill_status !== "failed").reduce((s, b) => s + b.amount, 0)} size="hero" align="left" style={{ color: '#fff', marginTop: 2 }} />
+            <AmountDisplay amount={bills.filter(b => b.bill_status !== "failed").reduce((s, b) => s + b.amount, 0)} size="hero" align="left" className="text-white mt-0.5" />
           </div>
           <div className="text-right">
             <p className="text-[10px] font-bold text-green-100 uppercase tracking-widest">Transactions</p>
@@ -3031,8 +3008,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                 <Ico d="M15 18l-6-6 6-6" size={16} c={netTheme ? netTheme.fg : "#64748b"} />
               </button>
               {netTheme ? (
-                <div className="w-14 h-10 flex items-center justify-center rounded-xl overflow-hidden flex-shrink-0"
-                  style={{ background: "rgba(255,255,255,0.25)" }}>
+                <div className="w-14 h-10 flex items-center justify-center rounded-xl overflow-hidden flex-shrink-0 bg-white/25">
                   <img src={netTheme.logo} alt={form.network} className="h-8 w-12 object-contain" draggable={false} />
                 </div>
               ) : (
@@ -3323,7 +3299,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
               {selectedCat === "airtime-bundle" && <>
                 {/* Network breakdown card */}
                 <div className="rounded-2xl overflow-hidden border border-violet-200 dark:border-violet-800">
-                  <div className="px-4 py-3" style={{ background: "linear-gradient(135deg,#7c3aed,#5b21b6)" }}>
+                  <div className="px-4 py-3 bg-[linear-gradient(135deg,#7c3aed,#5b21b6)]">
                     <p className="text-xs font-black text-white">All-Network Bundle Set</p>
                     <p className="text-[10px] text-violet-200 mt-0.5">₦1,000 per network · MTN, Airtel, 9mobile & Glo</p>
                   </div>
@@ -3490,8 +3466,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                     isFree: finalAmt <= 0,
                   });
                 }} disabled={saving}
-                  className="w-full text-white font-bold rounded-xl py-3.5 text-sm transition-all disabled:opacity-60"
-                  style={{ background: "linear-gradient(135deg,#16a34a,#15803d)" }}>
+                  className="w-full text-white font-bold rounded-xl py-3.5 text-sm transition-all disabled:opacity-60 bg-[linear-gradient(135deg,#16a34a,#15803d)]">
                   {saving ? (billAppliedCoupon && uiChargeAmt - ptsSavings - cbSavings - billCouponSavings <= 0 ? "Processing free bill…" : "Redirecting to Paystack…") : (
                     selectedCat === "print-airtime"   ? `Pay with Paystack · ${form.quantity || 1} × ₦${form.value}` :
                     selectedCat === "print-data"      ? `Pay with Paystack · ${form.quantity || 1} Plan${parseInt(form.quantity||"1")>1?"s":""}` :

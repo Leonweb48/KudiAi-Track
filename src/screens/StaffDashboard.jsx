@@ -204,8 +204,7 @@ If asked about business-wide figures (total business revenue, all staff performa
           <div className="flex items-center gap-2">
             <NotificationBell unreadCount={notif.unreadCount} onClick={() => notif.setOpen(true)} />
             <button onClick={() => goTo("me")}
-              className="w-9 h-9 rounded-full flex items-center justify-center border-2 border-slate-100 dark:border-slate-700 shadow-sm active:scale-90 transition-transform overflow-hidden"
-              style={{ background: "linear-gradient(135deg,#059669,#047857)" }}>
+              className="w-9 h-9 rounded-full flex items-center justify-center border-2 border-slate-100 dark:border-slate-700 shadow-sm active:scale-90 transition-transform overflow-hidden bg-[linear-gradient(135deg,#059669,#047857)]">
               {staff?.profile_image_url
                 ? <img src={staff.profile_image_url} alt="" className="w-9 h-9 object-cover" />
                 : <span className="text-sm font-black text-white">{avatarInitial}</span>}

@@ -51,8 +51,7 @@ function FinanceOverviewCard({ credits, ajoClients, hasCreditAccess, onCreditCli
   const ajoActive    = ajoClients.filter(c => c.status === "active").length;
 
   return (
-    <div className="rounded-2xl p-4 text-white shadow-md relative overflow-hidden"
-      style={{ background: "linear-gradient(135deg, #1B2A5E 0%, #2d4a8a 100%)" }}>
+    <div className="rounded-2xl p-4 text-white shadow-md relative overflow-hidden bg-gradient-to-br from-[#1B2A5E] to-[#2d4a8a]">
       <div className="absolute -top-8 -right-8 w-28 h-28 rounded-full bg-white/5 pointer-events-none" />
       <div className="absolute -bottom-10 -left-6 w-32 h-32 rounded-full bg-white/5 pointer-events-none" />
       <p className="text-[10px] font-bold uppercase tracking-widest opacity-60 mb-3 relative">Financial Overview</p>
@@ -63,7 +62,7 @@ function FinanceOverviewCard({ credits, ajoClients, hasCreditAccess, onCreditCli
             {hasCreditAccess ? "Credit Outstanding" : "🔒 Credit"}
           </p>
           {hasCreditAccess
-            ? <AmountDisplay amount={totalOut} size="stat" align="left" style={{ color: '#fff' }} />
+            ? <AmountDisplay amount={totalOut} size="stat" align="left" className="text-white" />
             : <span className="text-xl font-black leading-tight">Upgrade</span>
           }
           {hasCreditAccess && (
@@ -75,7 +74,7 @@ function FinanceOverviewCard({ credits, ajoClients, hasCreditAccess, onCreditCli
         <button onClick={onAjoClick}
           className="bg-white/10 rounded-2xl p-3 text-left active:bg-white/20 transition">
           <p className="text-[9px] font-bold opacity-60 uppercase tracking-wider mb-1.5">Ajo Savings</p>
-          <AmountDisplay amount={ajoBalance} size="stat" align="left" style={{ color: '#fff' }} />
+          <AmountDisplay amount={ajoBalance} size="stat" align="left" className="text-white" />
           <p className="text-[10px] opacity-60 mt-1.5">
             {ajoActive} active client{ajoActive !== 1 ? "s" : ""}
           </p>
@@ -263,7 +262,7 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
   if (!isEnterprise) {
     return (
       <div className="px-4 pt-6 pb-28">
-        <div className="rounded-3xl overflow-hidden mb-5" style={{ background: "linear-gradient(135deg,#065f46,#047857)" }}>
+        <div className="rounded-3xl overflow-hidden mb-5 bg-gradient-to-br from-[#065f46] to-[#047857]">
           <div className="px-5 py-6 text-white">
             <p className="text-[10px] font-bold uppercase tracking-[3px] opacity-60 mb-2">Business Loan</p>
             <p className="text-4xl font-black mb-1">₦5,000,000+</p>
@@ -283,8 +282,7 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
           ))}
         </div>
         <button onClick={onUpgrade}
-          className="w-full py-4 rounded-2xl font-bold text-sm text-white shadow-md active:scale-95 transition"
-          style={{ background: "linear-gradient(135deg,#065f46,#047857)" }}>
+          className="w-full py-4 rounded-2xl font-bold text-sm text-white shadow-md active:scale-95 transition bg-gradient-to-br from-[#065f46] to-[#047857]">
           Upgrade to {getLowestPlanWithFeature("loanAccess")?.name ?? "Enterprise"} — Unlock Loans
         </button>
       </div>
@@ -304,8 +302,7 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
         </div>
         <div className="px-5 py-4 border-t border-slate-100 dark:border-slate-800 flex-shrink-0" style={{ paddingBottom: "calc(1rem + env(safe-area-inset-bottom, 0px))" }}>
           <button onClick={acceptTC}
-            className="w-full py-4 rounded-2xl font-bold text-sm text-white mb-2 active:scale-95 transition"
-            style={{ background: "linear-gradient(135deg,#065f46,#16a34a)" }}>
+            className="w-full py-4 rounded-2xl font-bold text-sm text-white mb-2 active:scale-95 transition bg-gradient-to-br from-[#065f46] to-[#16a34a]">
             I Accept & Continue to Apply
           </button>
           <button onClick={() => setShowTC(false)}
@@ -324,10 +321,10 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
         {showTC && <TCModal />}
 
         {/* Hero countdown card */}
-        <div className="rounded-3xl overflow-hidden mb-5 shadow-lg" style={{ background: "linear-gradient(135deg,#1e293b,#0f172a)" }}>
+        <div className="rounded-3xl overflow-hidden mb-5 shadow-lg bg-gradient-to-br from-[#1e293b] to-[#0f172a]">
           <div className="px-5 pt-5 pb-1 text-white">
             <p className="text-[10px] font-bold uppercase tracking-[3px] opacity-50 mb-1">Loan Access Unlocks In</p>
-            <p className="text-4xl font-black mb-1" style={{ color: "#4ade80" }}>₦5,000,000+</p>
+            <p className="text-4xl font-black mb-1 text-green-400">₦5,000,000+</p>
             <p className="text-xs opacity-50 mb-4">Available once you reach 120 days of active use</p>
           </div>
           {/* Countdown blocks */}
@@ -447,7 +444,7 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
       {showTC && <TCModal />}
 
       {/* Hero */}
-      <div className="rounded-3xl overflow-hidden mb-5 shadow-xl" style={{ background: "linear-gradient(135deg,#064e3b,#065f46,#047857)" }}>
+      <div className="rounded-3xl overflow-hidden mb-5 shadow-xl bg-[linear-gradient(135deg,#064e3b,#065f46,#047857)]">
         <div className="px-5 pt-6 pb-4 text-white">
           <div className="flex items-center gap-2 mb-2">
             <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center">
@@ -530,8 +527,7 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
 
       <button
         onClick={() => tcAccepted ? onApply() : setShowTC(true)}
-        className="w-full py-4 rounded-2xl font-bold text-sm text-white active:scale-95 transition shadow-lg"
-        style={{ background: "linear-gradient(135deg,#064e3b,#16a34a)" }}>
+        className="w-full py-4 rounded-2xl font-bold text-sm text-white active:scale-95 transition shadow-lg bg-gradient-to-br from-[#064e3b] to-[#16a34a]">
         {tcAccepted ? "Apply for Business Loan →" : "View Terms & Apply →"}
       </button>
       <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center mt-2">

@@ -148,23 +148,22 @@ function OverviewTab({ org, wallet, programs, announcements, members = [], loans
       <AnnouncementBarSlot campaigns={annBars} loading={camLoading} recordEvent={recordCamEvent} />
 
       {/* ── Hero Balance Card ── */}
-      <div className="mx-4 mt-5 rounded-3xl px-6 py-6 text-white relative overflow-hidden shadow-hero"
-        style={{ background: "linear-gradient(145deg,#3DA829 0%,#2E8020 55%,#1E5514 100%)" }}>
+      <div className="mx-4 mt-5 rounded-3xl px-6 py-6 text-white relative overflow-hidden shadow-hero bg-[linear-gradient(145deg,#3DA829_0%,#2E8020_55%,#1E5514_100%)]">
         <div className="absolute -top-12 -right-12 w-40 h-40 rounded-full bg-white/5 pointer-events-none" />
         <div className="absolute -bottom-14 -left-10 w-48 h-48 rounded-full bg-white/5 pointer-events-none" />
         <div className="absolute top-6 right-24 w-14 h-14 rounded-full bg-white/5 pointer-events-none" />
         <div className="relative">
           <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest">Organisation Wallet</p>
-          <AmountDisplay amount={org.wallet_balance} size="hero" align="left" style={{ color: '#fff', marginTop: 6, marginBottom: 20 }} />
+          <AmountDisplay amount={org.wallet_balance} size="hero" align="left" className="text-white mt-1.5 mb-5" />
           <div className="flex gap-4 flex-wrap">
             <div className="min-w-0">
               <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">Total Savings</p>
-              <AmountDisplay amount={org.total_savings} size="row" align="left" style={{ color: '#fff', fontWeight: 700 }} />
+              <AmountDisplay amount={org.total_savings} size="row" align="left" className="text-white font-bold" />
             </div>
             <div className="w-px bg-white/20 self-stretch" />
             <div className="min-w-0">
               <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">Loans Out</p>
-              <AmountDisplay amount={org.total_loans_out} size="row" align="left" style={{ color: '#fff', fontWeight: 700 }} />
+              <AmountDisplay amount={org.total_loans_out} size="row" align="left" className="text-white font-bold" />
             </div>
             <div className="w-px bg-white/20 self-stretch" />
             <div className="min-w-0">
@@ -176,7 +175,7 @@ function OverviewTab({ org, wallet, programs, announcements, members = [], loans
                 <div className="w-px bg-white/20 self-stretch" />
                 <div className="min-w-0">
                   <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">Interest Earned</p>
-                  <AmountDisplay amount={org.interest_earned} size="row" align="left" style={{ color: '#fcd34d', fontWeight: 700 }} />
+                  <AmountDisplay amount={org.interest_earned} size="row" align="left" className="text-amber-300 font-bold" />
                 </div>
               </>
             )}
@@ -1887,15 +1886,15 @@ function BroadcastTab({ org, members }) {
       {/* Header */}
       <div className="px-4 pt-4 pb-2 flex justify-between items-center">
         <p className="text-xs font-bold text-slate-500 dark:text-slate-400">{visible.length} item{visible.length !== 1 ? "s" : ""}</p>
-        <button onClick={() => setShowTypePicker(true)} className="px-4 py-2.5 rounded-xl text-xs font-bold text-white" style={{ background: "#3DA829" }}>+ Broadcast</button>
+        <button onClick={() => setShowTypePicker(true)} className="px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-[#3DA829]">+ Broadcast</button>
       </div>
 
       {/* Filter tabs */}
       <div className="px-4 pb-2 flex gap-2 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
         {FILTER_TABS.map(f => (
           <button key={f.id} onClick={() => setFilter(f.id)}
-            className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-bold transition ${filter === f.id ? "text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"}`}
-            style={filter === f.id ? { background: "#0D2040" } : {}}>{f.label}</button>
+            className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-bold transition ${filter === f.id ? "bg-[#0D2040] text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"}`}
+            >{f.label}</button>
         ))}
       </div>
 
@@ -1952,12 +1951,12 @@ function BroadcastTab({ org, members }) {
                   {item._type === "meeting" && (
                     <div className="mt-2.5 flex gap-2">
                       <button onClick={() => openAttendance(item)}
-                        className="flex-1 py-1.5 rounded-xl text-[10px] font-bold text-white" style={{ background: "#0D2040" }}>
+                        className="flex-1 py-1.5 rounded-xl text-[10px] font-bold text-white bg-[#0D2040]">
                         Mark Attendance
                       </button>
                       {item.meeting_link && (
                         <a href={item.meeting_link} target="_blank" rel="noreferrer"
-                          className="px-3 py-1.5 rounded-xl text-[10px] font-bold text-white" style={{ background: "#3DA829" }}>Join</a>
+                          className="px-3 py-1.5 rounded-xl text-[10px] font-bold text-white bg-[#3DA829]">Join</a>
                       )}
                     </div>
                   )}
@@ -2126,7 +2125,7 @@ function BroadcastTab({ org, members }) {
           </div>
           <div className="flex gap-2 mt-4">
             <button onClick={() => { setCreateType(null); setError(""); }} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Cancel</button>
-            <button onClick={handleCreate} disabled={saving} className="flex-1 py-3 text-white rounded-xl font-bold text-sm disabled:opacity-50" style={{ background: "#3DA829" }}>
+            <button onClick={handleCreate} disabled={saving} className="flex-1 py-3 text-white rounded-xl font-bold text-sm disabled:opacity-50 bg-[#3DA829]">
               {saving ? "Publishing…" : "Publish"}
             </button>
           </div>
@@ -2157,7 +2156,7 @@ function BroadcastTab({ org, members }) {
               <p className="text-xs text-slate-500">{present.size} present / {activeMembers.length - present.size} absent</p>
               <div className="flex gap-2">
                 <button onClick={() => setAttendanceTarget(null)} className="px-4 py-2.5 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Cancel</button>
-                <button onClick={submitAttendance} disabled={savingAttendance} className="px-4 py-2.5 text-white rounded-xl font-bold text-sm disabled:opacity-50" style={{ background: "#0D2040" }}>
+                <button onClick={submitAttendance} disabled={savingAttendance} className="px-4 py-2.5 text-white rounded-xl font-bold text-sm disabled:opacity-50 bg-[#0D2040]">
                   {savingAttendance ? "Saving…" : "Submit"}
                 </button>
               </div>
@@ -2463,7 +2462,7 @@ function OrgSupportSection({ org }) {
     <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 overflow-hidden">
       {/* Header */}
       <div className="px-4 pt-4 pb-3 flex items-center gap-3 border-b border-slate-100 dark:border-slate-700">
-        <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: "#f0fdf4" }}>
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-green-50">
           <svg viewBox="0 0 24 24" fill="none" stroke="#3DA829" strokeWidth={2} strokeLinecap="round" className="w-4.5 h-4.5">
             <path d="M18 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V4a2 2 0 00-2-2zM9 9h6M9 13h6M9 17h4"/>
           </svg>
@@ -2482,7 +2481,7 @@ function OrgSupportSection({ org }) {
         <div className="flex divide-x divide-slate-100 dark:divide-slate-700">
           <button onClick={() => setView("ticket")}
             className="flex-1 flex flex-col items-center gap-2 py-5 active:bg-slate-50 dark:active:bg-slate-700/50 transition-colors">
-            <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: "#dcfce7" }}>
+            <div className="w-10 h-10 rounded-full flex items-center justify-center bg-green-100">
               <svg viewBox="0 0 24 24" fill="none" stroke="#3DA829" strokeWidth={2} strokeLinecap="round" className="w-5 h-5">
                 <path d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/>
               </svg>
@@ -2491,7 +2490,7 @@ function OrgSupportSection({ org }) {
           </button>
           <button onClick={() => setView("faq")}
             className="flex-1 flex flex-col items-center gap-2 py-5 active:bg-slate-50 dark:active:bg-slate-700/50 transition-colors">
-            <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: "#dbeafe" }}>
+            <div className="w-10 h-10 rounded-full flex items-center justify-center bg-blue-100">
               <svg viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth={2} strokeLinecap="round" className="w-5 h-5">
                 <circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3M12 17h.01"/>
               </svg>
@@ -2536,7 +2535,7 @@ function OrgSupportSection({ org }) {
       {/* Success */}
       {view === "done" && (
         <div className="p-6 flex flex-col items-center text-center gap-3">
-          <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ background: "#dcfce7" }}>
+          <div className="w-14 h-14 rounded-full flex items-center justify-center bg-green-100">
             <svg viewBox="0 0 24 24" fill="none" stroke="#3DA829" strokeWidth={2.5} strokeLinecap="round" className="w-7 h-7"><path d="M5 13l4 4L19 7"/></svg>
           </div>
           <p className="text-base font-extrabold text-slate-800 dark:text-white">Ticket Submitted!</p>
@@ -2651,8 +2650,7 @@ function SettingsTab({ org, onRefresh, onOrgUpdate, onBack, isOrgPortal = false,
       <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-100 dark:border-slate-700 flex items-center gap-3">
         {(form.logo_url || org.logo_url)
           ? <img src={form.logo_url || org.logo_url} alt="" className="w-12 h-12 rounded-xl object-cover ring-2 ring-green-200 flex-shrink-0" />
-          : <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl flex-shrink-0"
-              style={{ background: "linear-gradient(145deg,#3DA829,#0D2040)" }}>
+          : <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl flex-shrink-0 bg-[linear-gradient(145deg,#3DA829,#0D2040)]">
               <span>{org.type === "cooperative" ? "🤝" : "🏢"}</span>
             </div>
         }
@@ -2671,8 +2669,7 @@ function SettingsTab({ org, onRefresh, onOrgUpdate, onBack, isOrgPortal = false,
       {/* Theme toggle */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 border border-slate-100 dark:border-slate-700 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-            style={{ background: isDark ? "#0D2040" : "#f0fdf4" }}>
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-green-50 dark:bg-[#0D2040]">
             <svg viewBox="0 0 24 24" fill="none" className="w-4.5 h-4.5" stroke={isDark ? "#3DA829" : "#0D2040"} strokeWidth={2} strokeLinecap="round">
               {isDark
                 ? <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
@@ -2686,8 +2683,7 @@ function SettingsTab({ org, onRefresh, onOrgUpdate, onBack, isOrgPortal = false,
           </div>
         </div>
         <button onClick={onToggleDark}
-          className="w-12 h-6 rounded-full transition-all relative flex-shrink-0"
-          style={{ background: isDark ? "#3DA829" : "#e2e8f0" }}>
+          className="w-12 h-6 rounded-full transition-all relative flex-shrink-0 bg-slate-200 dark:bg-[#3DA829]">
           <div className={`w-5 h-5 rounded-full bg-white shadow-md transition-transform absolute top-0.5 ${isDark ? "translate-x-[26px]" : "translate-x-0.5"}`} />
         </button>
       </div>
@@ -3050,8 +3046,7 @@ function OrgProfileTab({ org, onRefresh, onOrgUpdate }) {
       <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-100 dark:border-slate-700 flex items-center gap-3">
         {(form.logo_url || org.logo_url)
           ? <img src={form.logo_url || org.logo_url} alt="" className="w-12 h-12 rounded-xl object-cover ring-2 ring-green-200 flex-shrink-0" />
-          : <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl flex-shrink-0"
-              style={{ background: "linear-gradient(145deg,#3DA829,#0D2040)" }}>
+          : <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl flex-shrink-0 bg-[linear-gradient(145deg,#3DA829,#0D2040)]">
               <span>{org.type === "cooperative" ? "🤝" : "🏢"}</span>
             </div>
         }
@@ -3377,8 +3372,7 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
                 className="active:scale-90 transition-transform">
                 {org.logo_url
                   ? <img src={org.logo_url} alt="" className="w-9 h-9 rounded-full object-cover border-2 border-slate-100 dark:border-slate-700 shadow-sm" />
-                  : <div className="w-9 h-9 rounded-full flex items-center justify-center text-base border-2 border-slate-100 dark:border-slate-700 shadow-sm"
-                      style={{ background: "linear-gradient(145deg,#3DA829,#0D2040)" }}>
+                  : <div className="w-9 h-9 rounded-full flex items-center justify-center text-base border-2 border-slate-100 dark:border-slate-700 shadow-sm bg-[linear-gradient(145deg,#3DA829,#0D2040)]">
                       <span>{ORG_TYPE_ICONS[org.type] || "🏢"}</span>
                     </div>
                 }
@@ -3459,15 +3453,13 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
                 {/* ── Twitter-style profile header ── */}
                 {/* Banner */}
                 <div className="relative flex-shrink-0" style={{ height: 88 }}>
-                  <div className="absolute inset-0"
-                    style={{ background: "linear-gradient(135deg,#3DA829 0%,#065f46 55%,#0D2040 100%)" }} />
+                  <div className="absolute inset-0 bg-[linear-gradient(135deg,#3DA829_0%,#065f46_55%,#0D2040_100%)]" />
                   {/* Avatar overlapping banner */}
                   <div className="absolute left-4" style={{ bottom: -22 }}>
                     {org.logo_url
                       ? <img src={org.logo_url} alt=""
                           className="w-14 h-14 rounded-full object-cover border-4 border-white dark:border-[#0f1117]" />
-                      : <div className="w-14 h-14 rounded-full flex items-center justify-center text-2xl border-4 border-white dark:border-[#0f1117]"
-                          style={{ background: "linear-gradient(145deg,#3DA829,#0D2040)" }}>
+                      : <div className="w-14 h-14 rounded-full flex items-center justify-center text-2xl border-4 border-white dark:border-[#0f1117] bg-[linear-gradient(145deg,#3DA829,#0D2040)]">
                           <span>{ORG_TYPE_ICONS[org.type] || "🏢"}</span>
                         </div>
                     }
@@ -3533,8 +3525,7 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
                     Sign Out
                   </button>
                   <button onClick={toggleDark}
-                    className="w-10 h-[22px] rounded-full relative flex-shrink-0 transition-colors"
-                    style={{ background: isDark ? "#3DA829" : "#e2e8f0" }}>
+                    className="w-10 h-[22px] rounded-full relative flex-shrink-0 transition-colors bg-slate-200 dark:bg-[#3DA829]">
                     <div className={`w-[16px] h-[16px] rounded-full bg-white shadow transition-transform absolute top-[3px] ${isDark ? "translate-x-[19px]" : "translate-x-[3px]"}`} />
                   </button>
                 </div>
@@ -3571,8 +3562,7 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
         {/* ── Twitter-style profile header ── */}
         {/* Banner */}
         <div className="relative flex-shrink-0" style={{ height: 80 }}>
-          <div className="absolute inset-0"
-            style={{ background: "linear-gradient(135deg,#3DA829 0%,#065f46 55%,#0D2040 100%)" }} />
+          <div className="absolute inset-0 bg-[linear-gradient(135deg,#3DA829_0%,#065f46_55%,#0D2040_100%)]" />
           {/* Back button */}
           <button onClick={onBack}
             className="absolute left-3 top-3 w-8 h-8 flex items-center justify-center rounded-full bg-black/30 text-white active:bg-black/50 transition">
@@ -3585,8 +3575,8 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
           )}
           {/* Avatar overlapping banner */}
           <div className="absolute left-4" style={{ bottom: -20 }}>
-            <div className="w-12 h-12 rounded-full flex items-center justify-center text-xl border-3 border-white dark:border-[#0f1117]"
-              style={{ background: "linear-gradient(145deg,#3DA829,#0D2040)", borderWidth: 3 }}>
+            <div className="w-12 h-12 rounded-full flex items-center justify-center text-xl border-3 border-white dark:border-[#0f1117] bg-[linear-gradient(145deg,#3DA829,#0D2040)]"
+              style={{ borderWidth: 3 }}>
               <span>{ORG_TYPE_ICONS[org.type] || "🏢"}</span>
             </div>
           </div>

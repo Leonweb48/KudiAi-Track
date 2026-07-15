@@ -114,8 +114,8 @@ export default function OrgOtpVerify({ org }) {
 
   return (
     <div
-      className="fixed inset-0 flex flex-col items-center justify-center p-5"
-      style={{ background: "linear-gradient(135deg, #060a08 0%, #0a110d 50%, #060a08 100%)", paddingTop: "env(safe-area-inset-top, 0px)" }}
+      className="fixed inset-0 flex flex-col items-center justify-center p-5 bg-white dark:bg-[#060a08]"
+      style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
     >
       <div className="w-full" style={{ maxWidth: 360 }}>
 
@@ -126,65 +126,55 @@ export default function OrgOtpVerify({ org }) {
               <AppLogo className="h-10 w-auto" />
             </div>
           </div>
-          <div
-            className="inline-flex items-center justify-center w-10 h-10 rounded-2xl mb-3"
-            style={{
-              background: "linear-gradient(135deg, rgba(0,166,81,0.2), rgba(5,150,105,0.2))",
-              border: "1px solid rgba(0,166,81,0.3)",
-            }}
-          >
+          <div className="inline-flex items-center justify-center w-10 h-10 rounded-2xl mb-3 bg-green-500/20 border border-green-500/30">
             <svg width="18" height="18" fill="none" stroke="rgb(52,211,153)" strokeWidth="2" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round"
                 d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
             </svg>
           </div>
-          <h1 className="text-2xl font-extrabold" style={{ color: "#fff" }}>
+          <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white">
             Verify Your Email
           </h1>
-          <p className="text-sm mt-2 leading-relaxed" style={{ color: "#6b7a99" }}>
+          <p className="text-sm mt-2 leading-relaxed text-slate-500">
             {otpSending
               ? "Sending a verification code…"
               : <>
                   A 6-digit code was sent to<br />
-                  <span className="font-semibold" style={{ color: "#6ee7b7" }}>{email}</span>
+                  <span className="font-semibold text-emerald-500 dark:text-emerald-300">{email}</span>
                 </>
             }
           </p>
           {org?.name && (
-            <p className="text-xs mt-1.5 font-bold" style={{ color: "#4b6e5a" }}>{org.name}</p>
+            <p className="text-xs mt-1.5 font-bold text-slate-400 dark:text-emerald-900/80">{org.name}</p>
           )}
         </div>
 
         {/* Card */}
         <div
-          className="rounded-2xl p-6"
-          style={{ background: "#0b120e", border: "1px solid #162218", boxShadow: "0 25px 50px rgba(0,0,0,0.5)" }}
+          className="rounded-2xl p-6 bg-white dark:bg-[#0b120e] border border-slate-200 dark:border-[#162218] shadow-2xl dark:shadow-[0_25px_50px_rgba(0,0,0,0.5)]"
         >
           {/* Temp password reminder */}
           {tempPwd && (
             <div
-              className="rounded-xl px-4 py-3 mb-5"
-              style={{ background: "#101a13", border: "1px solid #162218" }}
+              className="rounded-xl px-4 py-3 mb-5 bg-slate-100 dark:bg-[#101a13] border border-slate-200 dark:border-[#162218]"
             >
-              <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: "#3a5040" }}>
+              <p className="text-[10px] font-bold uppercase tracking-wider mb-2 text-slate-400">
                 Your Temp Password
               </p>
               <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-extrabold font-mono" style={{ color: showTempPwd ? "#6ee7b7" : "#3a5040" }}>
+                <span className="text-sm font-extrabold font-mono text-slate-400" style={{ color: showTempPwd ? "#6ee7b7" : undefined }}>
                   {showTempPwd ? tempPwd : "••••••••••"}
                 </span>
                 <div className="flex gap-1.5 flex-shrink-0">
                   <button
                     onClick={() => setShowTempPwd(v => !v)}
-                    className="text-[10px] font-bold rounded-lg px-2 py-1 transition"
-                    style={{ background: "#162218", border: "1px solid #1e3024", color: "#5a8a6a" }}
+                    className="text-[10px] font-bold rounded-lg px-2 py-1 transition bg-slate-200 dark:bg-[#162218] border border-slate-300 dark:border-[#1e3024] text-slate-500"
                   >
                     {showTempPwd ? "Hide" : "Show"}
                   </button>
                   <button
                     onClick={() => navigator.clipboard?.writeText(tempPwd)}
-                    className="text-[10px] font-bold rounded-lg px-2 py-1 transition"
-                    style={{ background: "rgba(0,166,81,0.15)", border: "1px solid rgba(0,166,81,0.3)", color: "#34d399" }}
+                    className="text-[10px] font-bold rounded-lg px-2 py-1 transition bg-green-500/15 border border-green-500/30 text-emerald-400"
                   >
                     Copy
                   </button>
@@ -205,19 +195,11 @@ export default function OrgOtpVerify({ org }) {
                 value={d}
                 onChange={e => handleDigit(i, e.target.value)}
                 onKeyDown={e => handleKeyDown(i, e)}
+                className="w-11 h-14 text-center text-[22px] font-bold rounded-xl outline-none transition-[border-color,box-shadow] duration-150 caret-transparent text-slate-800 dark:text-white border border-slate-300 dark:border-[#162218] bg-slate-100 dark:bg-[#101a13]"
                 style={{
-                  width: 44, height: 56,
-                  textAlign: "center",
-                  fontSize: 22,
-                  fontWeight: 700,
-                  borderRadius: 12,
-                  border: `1px solid ${d ? "rgba(0,166,81,0.6)" : "#162218"}`,
-                  background: "#101a13",
-                  color: d ? "rgb(52,211,153)" : "#fff",
-                  outline: "none",
-                  transition: "border-color 0.15s, box-shadow 0.15s",
+                  border: d ? "1px solid rgba(0,166,81,0.6)" : undefined,
+                  color: d ? "rgb(52,211,153)" : undefined,
                   boxShadow: d ? "0 0 0 3px rgba(0,166,81,0.15)" : "none",
-                  caretColor: "transparent",
                 }}
               />
             ))}
@@ -226,8 +208,7 @@ export default function OrgOtpVerify({ org }) {
           {/* Error */}
           {error && (
             <div
-              className="flex items-center gap-2 rounded-xl px-4 py-3 mb-4 text-xs"
-              style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", color: "#f87171" }}
+              className="flex items-center gap-2 rounded-xl px-4 py-3 mb-4 text-xs bg-red-500/10 border border-red-500/20 text-red-400"
             >
               ⚠ {error}
             </div>
@@ -236,8 +217,7 @@ export default function OrgOtpVerify({ org }) {
           {/* Resent confirmation */}
           {resent && !error && (
             <div
-              className="rounded-xl px-4 py-3 mb-4 text-center text-xs"
-              style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.2)", color: "#34d399" }}
+              className="rounded-xl px-4 py-3 mb-4 text-center text-xs bg-emerald-500/10 border border-emerald-500/20 text-emerald-400"
             >
               ✓ New code sent — check your inbox.
             </div>
@@ -247,13 +227,7 @@ export default function OrgOtpVerify({ org }) {
           <button
             onClick={verify}
             disabled={loading || otp.length < 6}
-            className="w-full py-3 rounded-xl text-white font-bold text-sm transition-all"
-            style={{
-              background: loading || otp.length < 6 ? "rgba(0,166,81,0.4)" : "#3DA829",
-              border: "none",
-              cursor: otp.length < 6 || loading ? "not-allowed" : "pointer",
-              boxShadow: otp.length === 6 && !loading ? "0 4px 15px rgba(0,166,81,0.3)" : "none",
-            }}
+            className="w-full py-3 rounded-xl text-white font-bold text-sm transition-all bg-[#3DA829] border-0 cursor-pointer shadow-[0_4px_15px_rgba(0,166,81,0.3)] disabled:bg-[#3DA829]/40 disabled:cursor-not-allowed disabled:shadow-none"
           >
             {loading
               ? <span className="inline-flex items-center justify-center gap-2">
@@ -266,14 +240,13 @@ export default function OrgOtpVerify({ org }) {
           {/* Resend / countdown */}
           <div className="mt-4 text-center">
             {countdown > 0 ? (
-              <p className="text-xs" style={{ color: "#3a5040" }}>
+              <p className="text-xs text-slate-500">
                 Resend code in {countdown}s
               </p>
             ) : (
               <button
                 onClick={resend}
-                className="text-xs inline-flex items-center gap-1.5 transition-colors"
-                style={{ background: "none", border: "none", cursor: "pointer", color: "#34d399" }}
+                className="text-xs inline-flex items-center gap-1.5 transition-colors text-emerald-400 bg-transparent border-0 cursor-pointer"
               >
                 <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round"
@@ -286,15 +259,14 @@ export default function OrgOtpVerify({ org }) {
         </div>
 
         {/* Tip */}
-        <p className="text-center text-xs mt-4" style={{ color: "#3a5040" }}>
+        <p className="text-center text-xs mt-4 text-slate-500">
           Check your spam folder if you don't see the email.
         </p>
 
         {/* Sign out */}
         <button
           onClick={() => supabase.auth.signOut()}
-          className="w-full text-center text-xs mt-3 transition-colors"
-          style={{ background: "none", border: "none", cursor: "pointer", color: "#2a3a30" }}
+          className="w-full text-center text-xs mt-3 transition-colors text-slate-500 dark:text-slate-400 bg-transparent border-0 cursor-pointer"
         >
           Sign out
         </button>

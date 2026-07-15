@@ -115,8 +115,7 @@ export function CoopMemberFirstLogin({ member }) {
             <AppLogo className="h-9 w-auto" />
           </div>
         </div>
-        <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4"
-          style={{ background: "linear-gradient(135deg,#3DA829,#065f46)" }}>
+        <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4 bg-[linear-gradient(135deg,#3DA829,#065f46)]">
           <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6 text-white" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
             <rect x="3" y="11" width="18" height="11" rx="2" />
             <path d="M7 11V7a5 5 0 0110 0v4" />
@@ -232,8 +231,7 @@ function HomeTab({ member, org, announcements, polls = [], events = [], loans = 
     <div className="pb-8 space-y-6">
 
       {/* ── Hero Balance Card ── */}
-      <div className="mx-4 mt-5 rounded-3xl px-6 py-6 text-white relative overflow-hidden shadow-hero"
-        style={{ background: "linear-gradient(145deg,#3DA829 0%,#2E8020 55%,#1E5514 100%)" }}>
+      <div className="mx-4 mt-5 rounded-3xl px-6 py-6 text-white relative overflow-hidden shadow-hero bg-[linear-gradient(145deg,#3DA829_0%,#2E8020_55%,#1E5514_100%)]">
         <div className="absolute -top-12 -right-12 w-40 h-40 rounded-full bg-white/5 pointer-events-none" />
         <div className="absolute -bottom-14 -left-10 w-48 h-48 rounded-full bg-white/5 pointer-events-none" />
         <div className="absolute top-6 right-24 w-14 h-14 rounded-full bg-white/5 pointer-events-none" />
@@ -249,7 +247,7 @@ function HomeTab({ member, org, announcements, polls = [], events = [], loans = 
             <span className="flex-shrink-0 text-[10px] font-bold text-white/70 bg-white/10 px-2 py-0.5 rounded-full capitalize">{member.role}</span>
           </div>
           <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest">Savings Balance</p>
-          <AmountDisplay amount={member.savings_balance} size="hero" align="left" style={{ color: '#fff', marginTop: 6, marginBottom: 20 }} />
+          <AmountDisplay amount={member.savings_balance} size="hero" align="left" className="text-white mt-1.5 mb-5" />
           <div className="flex gap-4 flex-wrap">
             <div>
               <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">Member Since</p>
@@ -728,11 +726,11 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
     <div className="p-4 pb-28 flex flex-col gap-4">
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-white dark:bg-slate-800 rounded-2xl p-3 border border-slate-100 dark:border-slate-700 text-center">
-          <AmountDisplay amount={member.savings_balance} size="stat" align="center" style={{ color: '#3DA829' }} />
+          <AmountDisplay amount={member.savings_balance} size="stat" align="center" className="text-[#3DA829]" />
           <p className="text-[10px] text-slate-400 mt-0.5">Current Balance</p>
         </div>
         <div className="bg-white dark:bg-slate-800 rounded-2xl p-3 border border-slate-100 dark:border-slate-700 text-center">
-          <AmountDisplay amount={totalContributed} size="stat" align="center" style={{ color: '#3DA829' }} />
+          <AmountDisplay amount={totalContributed} size="stat" align="center" className="text-[#3DA829]" />
           <p className="text-[10px] text-slate-400 mt-0.5">Total Contributions</p>
         </div>
       </div>
@@ -1354,7 +1352,7 @@ function MemberBroadcastTab({ member, org }) {
                   {item.closes_at && item.is_active ? ` · Closes ${fmtDT(item.closes_at)}` : ""}
                 </p>
                 {item.my_vote == null && item.is_active && (
-                  <p className="text-[10px] font-bold mt-1" style={{ color: "#3DA829" }}>Tap an option to vote</p>
+                  <p className="text-[10px] font-bold mt-1 text-[#3DA829]">Tap an option to vote</p>
                 )}
               </>)}
             </div>
@@ -1453,7 +1451,7 @@ function SupportTab({ member, org }) {
         {view === "ticket" ? (
           done ? (
             <div className="flex flex-col items-center justify-center py-16 gap-4 text-center">
-              <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: "linear-gradient(135deg,#3DA829,#2E8020)" }}>
+              <div className="w-16 h-16 rounded-full flex items-center justify-center bg-[linear-gradient(135deg,#3DA829,#2E8020)]">
                 <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8">
                   <polyline points="20 6 9 17 4 12" />
                 </svg>
@@ -1511,8 +1509,7 @@ function SupportTab({ member, org }) {
               </div>
 
               <button onClick={submit} disabled={sending || !subject.trim() || !message.trim()}
-                className="w-full py-3.5 rounded-2xl font-bold text-sm text-white flex items-center justify-center gap-2 disabled:opacity-50 active:opacity-80 transition-opacity"
-                style={{ background: "linear-gradient(135deg,#3DA829,#2E8020)" }}>
+                className="w-full py-3.5 rounded-2xl font-bold text-sm text-white flex items-center justify-center gap-2 disabled:opacity-50 active:opacity-80 transition-opacity bg-[linear-gradient(135deg,#3DA829,#2E8020)]">
                 {sending
                   ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Sending…</>
                   : <><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>Submit Ticket</>}
@@ -1682,8 +1679,7 @@ function ProfileSheet({ member, onClose, onSave }) {
             <button onClick={() => fileRef.current?.click()} className="relative group active:scale-95 transition-transform">
               {preview
                 ? <img src={preview} alt="" className="w-24 h-24 rounded-full object-cover ring-4 ring-green-100 shadow-xl" />
-                : <div className="w-24 h-24 rounded-full flex items-center justify-center text-3xl font-black text-white shadow-xl ring-4 ring-green-100"
-                    style={{ background: "linear-gradient(145deg,#3DA829,#0D2040)" }}>
+                : <div className="w-24 h-24 rounded-full flex items-center justify-center text-3xl font-black text-white shadow-xl ring-4 ring-green-100 bg-[linear-gradient(145deg,#3DA829,#0D2040)]">
                     {member.full_name?.charAt(0).toUpperCase()}
                   </div>
               }
@@ -1964,8 +1960,7 @@ export default function CoopMemberPortal({ member: initialMember }) {
             <button onClick={() => setShowProfile(true)} className="active:scale-90 transition-transform">
               {member.avatar_url
                 ? <img src={member.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover border-2 border-slate-100 dark:border-slate-700 shadow-sm" />
-                : <div className="w-9 h-9 rounded-full flex items-center justify-center text-base font-extrabold text-white border-2 border-slate-100 dark:border-slate-700 shadow-sm"
-                    style={{ background: "linear-gradient(145deg,#3DA829,#0D2040)" }}>
+                : <div className="w-9 h-9 rounded-full flex items-center justify-center text-base font-extrabold text-white border-2 border-slate-100 dark:border-slate-700 shadow-sm bg-[linear-gradient(145deg,#3DA829,#0D2040)]">
                     {member.full_name?.charAt(0).toUpperCase()}
                   </div>
               }
@@ -2077,8 +2072,7 @@ export default function CoopMemberPortal({ member: initialMember }) {
                 <button onClick={() => { setShowProfile(true); setShowMore(false); }} className="mb-3 active:opacity-75 transition-opacity">
                   {member.avatar_url
                     ? <img src={member.avatar_url} alt="" className="w-12 h-12 rounded-2xl object-cover ring-2 ring-green-200" />
-                    : <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl font-black text-white"
-                        style={{ background: "linear-gradient(145deg,#3DA829,#0D2040)" }}>
+                    : <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl font-black text-white bg-[linear-gradient(145deg,#3DA829,#0D2040)]">
                         {member.full_name?.charAt(0).toUpperCase()}
                       </div>
                   }
@@ -2214,7 +2208,7 @@ export default function CoopMemberPortal({ member: initialMember }) {
                   </svg>
                 </div>
                 <p className="text-xl font-extrabold text-slate-800 dark:text-white mb-1">Payment Confirmed!</p>
-                <AmountDisplay amount={paymentResult.amount} size="hero" align="center" style={{ color: '#3DA829', marginTop: 12, marginBottom: 4 }} />
+                <AmountDisplay amount={paymentResult.amount} size="hero" align="center" className="text-[#3DA829] mt-3 mb-1" />
                 <p className="text-xs text-slate-400 mb-8">added to your savings balance</p>
                 <button onClick={() => setPaymentResult(null)}
                   className="w-full py-4 bg-green-600 text-white font-bold rounded-2xl text-sm">

@@ -122,8 +122,7 @@ function PartnerOfferCard({ offer, onEvent, ctaUrl }) {
       {/* Content */}
       <div className="px-4 pt-3 pb-4">
         {offer.user_benefit && (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold mb-2"
-                style={{ background: "#3DA82915", color: "#3DA829" }}>
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold mb-2 bg-[#3DA82915] text-[#3DA829]">
             {offer.user_benefit}
           </span>
         )}
@@ -135,8 +134,7 @@ function PartnerOfferCard({ offer, onEvent, ctaUrl }) {
         <div className="flex items-center gap-2">
           <button
             onClick={handleCTA}
-            className="flex-1 py-2.5 rounded-xl text-xs font-bold text-white active:scale-[0.98] transition-transform"
-            style={{ background: "linear-gradient(135deg,#3DA829,#16255A)" }}>
+            className="flex-1 py-2.5 rounded-xl text-xs font-bold text-white active:scale-[0.98] transition-transform bg-[linear-gradient(135deg,#3DA829,#16255A)]">
             {offer.cta_label || "Learn More"}
           </button>
           <button

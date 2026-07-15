@@ -260,21 +260,20 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
       </div>
 
       {/* Hero */}
-      <div className="rounded-3xl px-5 py-5 mb-4 text-white relative overflow-hidden shadow-hero"
-        style={{ background: "linear-gradient(135deg,#f59e0b 0%,#d97706 55%,#b45309 100%)" }}>
+      <div className="rounded-3xl px-5 py-5 mb-4 text-white relative overflow-hidden shadow-hero bg-[linear-gradient(135deg,#f59e0b_0%,#d97706_55%,#b45309_100%)]">
         <div className="absolute -top-10 -right-10 w-36 h-36 rounded-full bg-white/5 pointer-events-none" />
         <div className="absolute -bottom-12 -left-8 w-44 h-44 rounded-full bg-white/5 pointer-events-none" />
         <div className="relative">
           <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-0.5">Outstanding Balance</p>
-          <AmountDisplay amount={totalOut} size="hero" align="left" style={{ color: '#fff', marginBottom: 16 }} />
+          <AmountDisplay amount={totalOut} size="hero" align="left" className="text-white mb-4" />
           <div className="grid grid-cols-3 divide-x divide-white/20">
             <div className="pr-3 min-w-0">
               <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">Total Debt</p>
-              <AmountDisplay amount={totalDebt} size="small" align="left" style={{ color: '#fff' }} />
+              <AmountDisplay amount={totalDebt} size="small" align="left" className="text-white" />
             </div>
             <div className="px-3 min-w-0">
               <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">Recovered</p>
-              <AmountDisplay amount={totalRecov} size="small" align="left" style={{ color: '#bbf7d0' }} />
+              <AmountDisplay amount={totalRecov} size="small" align="left" className="text-green-200" />
             </div>
             <div className="pl-3 min-w-0">
               <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">Debtors</p>
@@ -734,7 +733,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
           onClose={() => { setRepaying(null); setRepayAmt(""); setRepayMethod("cash"); setRepayNote(""); }}>
           <div className="bg-red-50 dark:bg-red-900/20 rounded-xl px-4 py-3 mb-4 border border-red-100 dark:border-red-800/60">
             <p className="text-xs text-slate-500 dark:text-slate-400">Outstanding balance</p>
-            <AmountDisplay amount={repaying.outstanding} size="stat" align="left" style={{ color: '#ef4444' }} />
+            <AmountDisplay amount={repaying.outstanding} size="stat" align="left" className="text-red-500 dark:text-red-400" />
           </div>
           <Field label="Payment Amount (₦)" type="number" inputMode="decimal" value={repayAmt}
             onChange={e => setRepayAmt(e.target.value)} placeholder="Enter amount paid" />

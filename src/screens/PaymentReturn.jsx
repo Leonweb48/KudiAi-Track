@@ -65,7 +65,7 @@ export default function PaymentReturn() {
         margin: "0 0 8px",
       }}>
         Tap the button below to return to{" "}
-        <strong style={{ color: "#1B2A5E" }}>KudiAI Track</strong>.
+        <strong className="text-[#1B2A5E] dark:text-blue-300">KudiAI Track</strong>.
         Your payment will be verified and your service delivered instantly.
       </p>
 

@@ -122,20 +122,19 @@ function OverviewTab({ transactions, credits }) {
   return (
     <div className="px-4 pt-4 pb-6 space-y-4">
       {/* Today hero */}
-      <div className="rounded-3xl px-5 py-5 text-white relative overflow-hidden shadow-lg"
-        style={{ background: "linear-gradient(145deg,#7c3aed 0%,#6d28d9 55%,#4c1d95 100%)" }}>
+      <div className="rounded-3xl px-5 py-5 text-white relative overflow-hidden shadow-lg bg-[linear-gradient(145deg,#7c3aed_0%,#6d28d9_55%,#4c1d95_100%)]">
         <div className="absolute -top-8 -right-8 w-28 h-28 rounded-full bg-white/5 pointer-events-none" />
         <div className="relative">
           <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-0.5">{t("branch.todayProfit")}</p>
-          <AmountDisplay amount={Math.abs(profit)} size="hero" align="left" style={{ color: profit < 0 ? '#fca5a5' : '#fff', marginBottom: 12 }} />
+          <AmountDisplay amount={Math.abs(profit)} size="hero" align="left" className="mb-3" style={{ color: profit < 0 ? '#fca5a5' : '#fff' }} />
           <div className="grid grid-cols-2 divide-x divide-white/20">
             <div className="pr-3 min-w-0">
               <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider">{t("branch.cashIn")}</p>
-              <AmountDisplay amount={cashIn} size="small" align="left" style={{ color: '#bbf7d0' }} />
+              <AmountDisplay amount={cashIn} size="small" align="left" className="text-green-200" />
             </div>
             <div className="pl-3 min-w-0">
               <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider">{t("branch.cashOut")}</p>
-              <AmountDisplay amount={cashOut} size="small" align="left" style={{ color: '#fecaca' }} />
+              <AmountDisplay amount={cashOut} size="small" align="left" className="text-red-200" />
             </div>
           </div>
         </div>
@@ -328,16 +327,15 @@ function AjoTab({ asoClients }) {
   return (
     <div className="px-4 pt-4 pb-6 space-y-4">
       {/* Summary */}
-      <div className="rounded-3xl px-5 py-5 text-white relative overflow-hidden shadow-lg"
-        style={{ background: "linear-gradient(145deg,#7c3aed 0%,#6d28d9 55%,#4c1d95 100%)" }}>
+      <div className="rounded-3xl px-5 py-5 text-white relative overflow-hidden shadow-lg bg-[linear-gradient(145deg,#7c3aed_0%,#6d28d9_55%,#4c1d95_100%)]">
         <div className="absolute -top-8 -right-8 w-28 h-28 rounded-full bg-white/5 pointer-events-none" />
         <div className="relative">
           <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-0.5">Total Balance</p>
-          <AmountDisplay amount={total} size="hero" align="left" style={{ color: '#fff', marginBottom: 12 }} />
+          <AmountDisplay amount={total} size="hero" align="left" className="text-white mb-3" />
           <div className="grid grid-cols-3 divide-x divide-white/20">
             <div className="pr-3 min-w-0">
               <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider">Total Saved</p>
-              <AmountDisplay amount={totalSaved} size="small" align="left" style={{ color: '#bbf7d0' }} />
+              <AmountDisplay amount={totalSaved} size="small" align="left" className="text-green-200" />
             </div>
             <div className="px-3">
               <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider">Clients</p>
@@ -705,12 +703,11 @@ export default function Branches({ store, onClose, userId, inventory = {}, onRep
 
       <div className="flex-1 overflow-y-auto px-4 pt-4 pb-6 space-y-4">
         {/* Summary hero */}
-        <div className="rounded-3xl px-5 py-5 text-white relative overflow-hidden shadow-lg"
-          style={{ background: "linear-gradient(145deg,#7c3aed 0%,#6d28d9 55%,#4c1d95 100%)" }}>
+        <div className="rounded-3xl px-5 py-5 text-white relative overflow-hidden shadow-lg bg-[linear-gradient(145deg,#7c3aed_0%,#6d28d9_55%,#4c1d95_100%)]">
           <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full bg-white/5 pointer-events-none" />
           <div className="relative">
             <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-0.5">All Branches · This Month</p>
-            <AmountDisplay amount={totalSalesMonth} size="hero" align="left" style={{ color: '#fff', marginBottom: 12 }} />
+            <AmountDisplay amount={totalSalesMonth} size="hero" align="left" className="text-white mb-3" />
             <div className="grid grid-cols-3 divide-x divide-white/20">
               <div className="pr-3 min-w-0">
                 <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider">Active</p>
@@ -722,7 +719,7 @@ export default function Branches({ store, onClose, userId, inventory = {}, onRep
               </div>
               <div className="pl-3 min-w-0">
                 <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider">Ajo Balance</p>
-                <AmountDisplay amount={asoClients.reduce((s, c) => s + (c.current_balance || 0), 0)} size="small" align="left" style={{ color: '#bbf7d0' }} />
+                <AmountDisplay amount={asoClients.reduce((s, c) => s + (c.current_balance || 0), 0)} size="small" align="left" className="text-green-200" />
               </div>
             </div>
           </div>

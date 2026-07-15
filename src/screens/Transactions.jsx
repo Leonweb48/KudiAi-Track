@@ -417,11 +417,11 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
       <div className="grid grid-cols-2 gap-3 mb-4">
         <div className="bg-green-50 dark:bg-green-900/20 rounded-2xl p-3.5 border border-green-100 dark:border-green-800/60">
           <p className="text-[10px] text-green-600 dark:text-green-400 font-bold uppercase tracking-wide">Total In</p>
-          <AmountDisplay amount={totIn} size="stat" align="left" style={{ color: '#15803d', marginTop: 2 }} />
+          <AmountDisplay amount={totIn} size="stat" align="left" className="text-green-700 dark:text-green-400 mt-0.5" />
         </div>
         <div className="bg-red-50 dark:bg-red-900/20 rounded-2xl p-3.5 border border-red-100 dark:border-red-800/60">
           <p className="text-[10px] text-red-500 dark:text-red-400 font-bold uppercase tracking-wide">Total Out</p>
-          <AmountDisplay amount={totOut} size="stat" align="left" style={{ color: '#dc2626', marginTop: 2 }} />
+          <AmountDisplay amount={totOut} size="stat" align="left" className="text-red-600 dark:text-red-400 mt-0.5" />
         </div>
       </div>
 

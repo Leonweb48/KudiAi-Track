@@ -131,8 +131,7 @@ export default function ReferralCard() {
       {/* Share button */}
       <button
         onClick={handleShare}
-        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-sm text-white active:scale-95 transition-transform"
-        style={{ background: "linear-gradient(135deg,#16a34a,#059669)" }}>
+        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-sm text-white active:scale-95 transition-transform bg-[linear-gradient(135deg,#16a34a,#059669)]">
         <ShareIcon />
         Share Your Code
       </button>

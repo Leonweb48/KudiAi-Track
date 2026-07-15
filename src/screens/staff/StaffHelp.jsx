@@ -613,7 +613,7 @@ export default function StaffHelp({ session, staff, onBack }) {
           )}
 
           {/* Still need help banner */}
-          <div className="mt-6 rounded-3xl px-5 py-5 text-white" style={{ background: "linear-gradient(135deg,#059669,#065f46)" }}>
+          <div className="mt-6 rounded-3xl px-5 py-5 text-white bg-[linear-gradient(135deg,#059669,#065f46)]">
             <p className="font-extrabold text-base mb-1">Still need help?</p>
             <p className="text-sm text-white/75 mb-4 leading-relaxed">
               Our support team is ready. Create a ticket and we'll get back to you within 24 hours.

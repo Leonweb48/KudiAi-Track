@@ -289,7 +289,7 @@ export function ChatToast({ toast, orgName, onNavigate, onDismiss }) {
         style={{ animation: "coopSlideDown 0.28s cubic-bezier(.22,.68,0,1.2) both", boxShadow: "0 8px 40px rgba(0,0,0,.18)" }}
       >
         {/* WhatsApp-style green header */}
-        <div className="flex items-center gap-2 px-3 py-1.5" style={{ backgroundColor: "#128c7e" }}>
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-[#128c7e]">
           <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 flex-shrink-0" stroke="white" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
           </svg>

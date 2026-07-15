@@ -92,8 +92,7 @@ export default function InvoiceSettingsModal({ settings, onSave, onClose, userId
                   <button
                     onClick={() => fileRef.current?.click()}
                     disabled={uploading}
-                    className="text-xs font-bold px-3 py-1.5 rounded-lg text-white active:scale-95 transition"
-                    style={{ background: "linear-gradient(135deg,#1B2A5E,#2563eb)" }}>
+                    className="text-xs font-bold px-3 py-1.5 rounded-lg text-white active:scale-95 transition bg-[linear-gradient(135deg,#1B2A5E,#2563eb)]">
                     {uploading ? "Uploading…" : "Change"}
                   </button>
                   <button

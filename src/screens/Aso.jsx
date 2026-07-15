@@ -1366,17 +1366,16 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       </div>
 
       {/* Hero */}
-      <div className="rounded-3xl px-5 py-5 mb-4 text-white relative overflow-hidden shadow-hero"
-        style={{ background: "linear-gradient(135deg,#7c3aed 0%,#5b21b6 55%,#4c1d95 100%)" }}>
+      <div className="rounded-3xl px-5 py-5 mb-4 text-white relative overflow-hidden shadow-hero bg-[linear-gradient(135deg,#7c3aed_0%,#5b21b6_55%,#4c1d95_100%)]">
         <div className="absolute -top-10 -right-10 w-36 h-36 rounded-full bg-white/5 pointer-events-none" />
         <div className="absolute -bottom-12 -left-8 w-44 h-44 rounded-full bg-white/5 pointer-events-none" />
         <div className="relative">
           <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-0.5">Total Balance</p>
-          <AmountDisplay amount={totalBal} size="hero" align="left" style={{ color: '#fff', marginBottom: 16 }} />
+          <AmountDisplay amount={totalBal} size="hero" align="left" className="text-white mb-4" />
           <div className="grid grid-cols-3 divide-x divide-white/20">
             <div className="pr-3 min-w-0">
               <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">Total Saved</p>
-              <AmountDisplay amount={totalSaved} size="small" align="left" style={{ color: '#bbf7d0' }} />
+              <AmountDisplay amount={totalSaved} size="small" align="left" className="text-green-200" />
             </div>
             <div className="px-3">
               <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">Clients</p>
@@ -2378,7 +2377,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
           <div className="bg-violet-50 dark:bg-violet-900/20 rounded-xl px-4 py-3 mb-3 border border-violet-100 dark:border-violet-800/60">
             <p className="text-xs text-slate-500 dark:text-slate-400">Current balance</p>
-            <AmountDisplay amount={selected.current_balance} size="stat" align="left" style={{ color: '#6d28d9' }} />
+            <AmountDisplay amount={selected.current_balance} size="stat" align="left" className="text-violet-700 dark:text-violet-400" />
           </div>
 
           {/* Contribution stats in modal */}
@@ -2598,7 +2597,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         }
         return (
           <div className="fixed inset-0 z-[60] bg-white dark:bg-slate-900 flex flex-col">
-            <div className="h-1 w-full" style={{ background: "linear-gradient(90deg,#7c3aed,#10b981)" }} />
+            <div className="h-1 w-full bg-[linear-gradient(90deg,#7c3aed,#10b981)]" />
             <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
               <div className="w-20 h-20 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mb-5 shadow-md">
                 <svg viewBox="0 0 24 24" fill="none" className="w-10 h-10 text-green-500" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">

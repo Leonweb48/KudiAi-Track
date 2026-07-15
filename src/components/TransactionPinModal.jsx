@@ -104,9 +104,8 @@ export default function TransactionPinModal({
       />
 
       {/* Bottom sheet — z-pin-sheet (301) from token scale */}
-      <div style={{
+      <div className="bg-white dark:bg-slate-900" style={{
         position: "fixed", left: 0, right: 0, bottom: 0, zIndex: "var(--z-pin-sheet)",
-        background: "white",
         borderRadius: "24px 24px 0 0",
         paddingBottom: "env(safe-area-inset-bottom, 16px)",
         boxShadow: "0 -8px 40px rgba(0,0,0,0.18)",
@@ -116,37 +115,36 @@ export default function TransactionPinModal({
 
         {/* Handle bar */}
         <div style={{ display: "flex", justifyContent: "center", paddingTop: 12, paddingBottom: 8 }}>
-          <div style={{ width: 40, height: 4, borderRadius: 2, background: "#e2e8f0" }} />
+          <div className="bg-slate-200 dark:bg-slate-700" style={{ width: 40, height: 4, borderRadius: 2 }} />
         </div>
 
         {/* Title */}
-        <p style={{ textAlign: "center", fontWeight: 700, fontSize: 17, color: "#0f172a", padding: "0 24px", marginBottom: 16 }}>
+        <p className="text-slate-900 dark:text-slate-100" style={{ textAlign: "center", fontWeight: 700, fontSize: 17, padding: "0 24px", marginBottom: 16 }}>
           {title}
         </p>
 
         {/* Transaction summary */}
         {(amount != null || recipient || description) && (
-          <div style={{
+          <div className="bg-slate-50 dark:bg-slate-800" style={{
             margin: "0 16px 20px",
-            background: "#f8fafc",
             borderRadius: 16,
             padding: "16px",
           }}>
             {amount != null && (
-              <p style={{ textAlign: "center", fontSize: 28, fontWeight: 800, color: "#3DA829", marginBottom: 8 }}>
+              <p className="text-[#3DA829]" style={{ textAlign: "center", fontSize: 28, fontWeight: 800, marginBottom: 8 }}>
                 ₦{(amount / 100).toLocaleString("en-NG", { minimumFractionDigits: 2 })}
               </p>
             )}
             {recipient && (
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                <span style={{ fontSize: 12, color: "#94a3b8" }}>To</span>
-                <span style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}>{recipient}</span>
+                <span className="text-slate-400" style={{ fontSize: 12 }}>To</span>
+                <span className="text-slate-800 dark:text-slate-200" style={{ fontSize: 13, fontWeight: 600 }}>{recipient}</span>
               </div>
             )}
             {description && (
               <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ fontSize: 12, color: "#94a3b8" }}>Note</span>
-                <span style={{ fontSize: 13, color: "#475569", maxWidth: 200, textAlign: "right" }}>{description}</span>
+                <span className="text-slate-400" style={{ fontSize: 12 }}>Note</span>
+                <span className="text-slate-600 dark:text-slate-400" style={{ fontSize: 13, maxWidth: 200, textAlign: "right" }}>{description}</span>
               </div>
             )}
           </div>
@@ -154,7 +152,7 @@ export default function TransactionPinModal({
 
         {/* PIN entry area */}
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, padding: "0 24px" }}>
-          <p style={{ fontSize: 13, color: "#64748b", textAlign: "center" }}>
+          <p className="text-slate-500" style={{ fontSize: 13, textAlign: "center" }}>
             Enter your transaction PIN to confirm
           </p>
 
@@ -178,7 +176,7 @@ export default function TransactionPinModal({
           {/* Error */}
           <div style={{ height: 16, marginTop: -8 }}>
             {error && (
-              <p style={{ color: "#ef4444", fontSize: 12, fontWeight: 600, textAlign: "center" }}>
+              <p className="text-red-500 dark:text-red-400" style={{ fontSize: 12, fontWeight: 600, textAlign: "center" }}>
                 {error}
               </p>
             )}
@@ -188,12 +186,7 @@ export default function TransactionPinModal({
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, width: "100%", maxWidth: 280 }}>
             {PAD.map(n => (
               <button key={n} onClick={() => handleDigit(String(n))}
-                style={{
-                  height: 56, borderRadius: 14,
-                  background: "#f1f5f9", border: "none",
-                  color: "#0f172a", fontSize: 19, fontWeight: 700,
-                  cursor: "pointer", transition: "transform 0.1s, background 0.1s",
-                }}
+                className="h-14 rounded-[14px] bg-slate-100 dark:bg-slate-800 border-0 text-slate-900 dark:text-slate-100 text-[19px] font-bold cursor-pointer transition-[transform,background] duration-100"
                 onMouseDown={e => e.currentTarget.style.transform = "scale(0.95)"}
                 onMouseUp={e => e.currentTarget.style.transform = "scale(1)"}
                 onTouchStart={e => e.currentTarget.style.background = "#e2e8f0"}
@@ -207,12 +200,7 @@ export default function TransactionPinModal({
             <div />
 
             <button onClick={() => handleDigit("0")}
-              style={{
-                height: 56, borderRadius: 14,
-                background: "#f1f5f9", border: "none",
-                color: "#0f172a", fontSize: 19, fontWeight: 700,
-                cursor: "pointer", transition: "transform 0.1s",
-              }}
+              className="h-14 rounded-[14px] bg-slate-100 dark:bg-slate-800 border-0 text-slate-900 dark:text-slate-100 text-[19px] font-bold cursor-pointer transition-transform duration-100"
               onMouseDown={e => e.currentTarget.style.transform = "scale(0.95)"}
               onMouseUp={e => e.currentTarget.style.transform = "scale(1)"}
             >
@@ -220,13 +208,7 @@ export default function TransactionPinModal({
             </button>
 
             <button onClick={handleDelete}
-              style={{
-                height: 56, borderRadius: 14,
-                background: "#f1f5f9", border: "none",
-                color: "#475569", cursor: "pointer",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                transition: "transform 0.1s",
-              }}
+              className="h-14 rounded-[14px] bg-slate-100 dark:bg-slate-800 border-0 text-slate-600 dark:text-slate-400 cursor-pointer flex items-center justify-center transition-transform duration-100"
               onMouseDown={e => e.currentTarget.style.transform = "scale(0.95)"}
               onMouseUp={e => e.currentTarget.style.transform = "scale(1)"}
             >
@@ -236,11 +218,7 @@ export default function TransactionPinModal({
 
           {/* Cancel */}
           <button onClick={onCancel}
-            style={{
-              background: "none", border: "none",
-              color: "#94a3b8", fontSize: 14, cursor: "pointer",
-              padding: "8px 24px", marginBottom: 4,
-            }}>
+            className="bg-transparent border-0 text-slate-400 text-sm cursor-pointer px-6 py-2 mb-1">
             Cancel
           </button>
         </div>

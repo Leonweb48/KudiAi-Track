@@ -362,8 +362,7 @@ Use real figures from my data. Each point: 1-2 sentences max. Complete every sec
           <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 pb-1">
             {AI_QUICK.map(({ label, q }) => (
               <button key={label} onClick={() => onAIOpen(q)}
-                className="flex-shrink-0 flex items-center gap-1.5 text-[11px] font-bold px-3.5 py-2.5 rounded-2xl whitespace-nowrap transition-all active:scale-95 shadow-sm"
-                style={{ background: "linear-gradient(135deg,#1e293b,#0f172a)", color: "white" }}>
+                className="flex-shrink-0 flex items-center gap-1.5 text-[11px] font-bold px-3.5 py-2.5 rounded-2xl whitespace-nowrap transition-all active:scale-95 shadow-sm bg-[linear-gradient(135deg,#1e293b,#0f172a)] text-white">
                 <span className="opacity-60">✦</span>
                 {label}
               </button>
@@ -422,8 +421,7 @@ Use real figures from my data. Each point: 1-2 sentences max. Complete every sec
               {aiInsight && (
                 <div className="mb-5 rounded-3xl overflow-hidden border border-slate-200 dark:border-slate-700 shadow-card">
                   {/* Card header */}
-                  <div className="flex items-center justify-between px-4 py-3"
-                    style={{ background: "linear-gradient(135deg,#1e293b 0%,#0f172a 100%)" }}>
+                  <div className="flex items-center justify-between px-4 py-3 bg-[linear-gradient(135deg,#1e293b_0%,#0f172a_100%)]">
                     <div className="flex items-center gap-2">
                       <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center flex-shrink-0">
                         <span className="text-xs leading-none">✨</span>

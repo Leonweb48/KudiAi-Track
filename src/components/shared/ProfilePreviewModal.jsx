@@ -98,8 +98,7 @@ export default function ProfilePreviewModal({ profile, plan, onClose }) {
           </button>
           <button
             onClick={goEdit}
-            className="flex-1 py-3.5 rounded-2xl text-sm font-bold text-white active:scale-95 transition"
-            style={{ background: "linear-gradient(135deg,#059669,#047857)" }}
+            className="flex-1 py-3.5 rounded-2xl text-sm font-bold text-white active:scale-95 transition bg-[linear-gradient(135deg,#059669,#047857)]"
           >
             Edit Profile
           </button>

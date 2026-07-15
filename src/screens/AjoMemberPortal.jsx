@@ -752,7 +752,7 @@ function PayContributionModal({ client, clientGroup, onClose, onSuccess }) {
     return (
       <div className="fixed inset-0 z-[100] bg-white dark:bg-slate-900 flex flex-col">
         {/* Top accent */}
-        <div className="h-1.5 w-full" style={{ background: "linear-gradient(90deg,#16255A,#3DA829)" }} />
+        <div className="h-1.5 w-full bg-[linear-gradient(90deg,#16255A,#3DA829)]" />
 
         <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
           {/* Checkmark */}
@@ -1740,8 +1740,7 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
       </div>
 
       {/* Hero savings card — AMP-01 eye-toggle, AMP-11 FitText via AmountDisplay */}
-      <div className="rounded-3xl px-5 py-5 text-white relative overflow-hidden shadow-lg"
-        style={{ background: "linear-gradient(145deg,#16255A 0%,#1D3070 55%,#0F1A42 100%)" }}>
+      <div className="rounded-3xl px-5 py-5 text-white relative overflow-hidden shadow-lg bg-[linear-gradient(145deg,#16255A_0%,#1D3070_55%,#0F1A42_100%)]">
         <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full bg-white/5 pointer-events-none" />
         <div className="absolute -bottom-10 -left-6 w-40 h-40 rounded-full bg-white/5 pointer-events-none" />
         {/* Eye toggle — AMP-01 */}
@@ -1762,7 +1761,7 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
           <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-0.5">Current Balance</p>
           {balanceHidden
             ? <p className="text-3xl font-black text-white/50 tracking-widest mb-3 leading-none select-none">₦ • • •</p>
-            : <AmountDisplay amount={client.current_balance || 0} size="hero" align="left" style={{ color: '#fff', marginBottom: 12 }} />
+            : <AmountDisplay amount={client.current_balance || 0} size="hero" align="left" className="text-white mb-3" />
           }
           <div className="flex items-center gap-2 mb-4">
             {streak > 0 && (
@@ -1779,21 +1778,21 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
               <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">Total Saved</p>
               {balanceHidden
                 ? <p className="text-sm font-black text-white/40 tracking-widest select-none">• • •</p>
-                : <AmountDisplay amount={client.total_saved || 0} size="small" align="left" style={{ color: '#bbf7d0' }} />
+                : <AmountDisplay amount={client.total_saved || 0} size="small" align="left" className="text-green-200" />
               }
             </div>
             <div className="px-3 min-w-0">
               <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">Withdrawn</p>
               {balanceHidden
                 ? <p className="text-sm font-black text-white/40 tracking-widest select-none">• • •</p>
-                : <AmountDisplay amount={client.total_withdrawn || 0} size="small" align="left" style={{ color: '#fecaca' }} />
+                : <AmountDisplay amount={client.total_withdrawn || 0} size="small" align="left" className="text-red-200" />
               }
             </div>
             <div className="pl-3 min-w-0">
               <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">This Month</p>
               {balanceHidden
                 ? <p className="text-sm font-black text-white/40 tracking-widest select-none">• • •</p>
-                : <AmountDisplay amount={totalThisMonth} size="small" align="left" style={{ color: '#bfdbfe' }} />
+                : <AmountDisplay amount={totalThisMonth} size="small" align="left" className="text-blue-200" />
               }
             </div>
           </div>

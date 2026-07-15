@@ -44,7 +44,7 @@ export default function CashbackCard({ userEmail }) {
               <p className="text-[10px] font-bold text-green-100 uppercase tracking-widest leading-none">Cashback Balance</p>
               {loading
                 ? <div className="h-6 w-24 bg-white/20 rounded animate-pulse mt-1" />
-                : <AmountDisplay amount={balance} size="stat" align="left" style={{ color: '#fff', marginTop: 2 }} />
+                : <AmountDisplay amount={balance} size="stat" align="left" className="text-white mt-0.5" />
               }
             </div>
           </div>

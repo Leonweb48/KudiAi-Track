@@ -103,8 +103,7 @@ function RegisterModal({ onClose, onCreated, userId }) {
                 ))}
               </div>
               <button onClick={() => { if (!type) { setError("Please select a type"); return; } setError(""); setStep(2); }}
-                className="w-full py-3.5 rounded-full font-extrabold text-sm text-white transition"
-                style={{ background: "#3DA829" }}>
+                className="w-full py-3.5 rounded-full font-extrabold text-sm text-white transition bg-[#3DA829]">
                 Continue →
               </button>
             </>
@@ -156,8 +155,7 @@ function RegisterModal({ onClose, onCreated, userId }) {
                   ← Back
                 </button>
                 <button onClick={() => { if (!form.name.trim()) { setError("Organisation name is required"); return; } setError(""); setStep(3); }}
-                  className="flex-1 py-3.5 text-white rounded-full font-extrabold text-sm"
-                  style={{ background: "#3DA829" }}>
+                  className="flex-1 py-3.5 text-white rounded-full font-extrabold text-sm bg-[#3DA829]">
                   Continue →
                 </button>
               </div>
@@ -207,8 +205,7 @@ function RegisterModal({ onClose, onCreated, userId }) {
                   ← Back
                 </button>
                 <button onClick={handleCreate} disabled={loading}
-                  className="flex-1 py-3.5 text-white rounded-full font-extrabold text-sm disabled:opacity-50 transition"
-                  style={{ background: "#3DA829" }}>
+                  className="flex-1 py-3.5 text-white rounded-full font-extrabold text-sm disabled:opacity-50 transition bg-[#3DA829]">
                   {loading ? "Creating…" : "Create"}
                 </button>
               </div>
@@ -286,8 +283,7 @@ export default function CoopList({ userId, onOpen, onClose, embedded }) {
             </p>
           </div>
           <button onClick={() => setShowCreate(true)}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-full font-extrabold text-xs text-white transition active:scale-95"
-            style={{ background: "#3DA829" }}>
+            className="flex items-center gap-1.5 px-4 py-2 rounded-full font-extrabold text-xs text-white transition active:scale-95 bg-[#3DA829]">
             <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
               <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
             </svg>
@@ -303,8 +299,7 @@ export default function CoopList({ userId, onOpen, onClose, embedded }) {
             </div>
           ) : orgs.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-24 px-8 text-center">
-              <div className="w-20 h-20 rounded-full flex items-center justify-center text-4xl mb-5"
-                style={{ background: "linear-gradient(145deg,#3DA829,#065f46)" }}>
+              <div className="w-20 h-20 rounded-full flex items-center justify-center text-4xl mb-5 bg-[linear-gradient(145deg,#3DA829,#065f46)]">
                 🤝
               </div>
               <h3 className="text-xl font-black text-slate-900 dark:text-white mb-2">No organisations yet</h3>
@@ -312,8 +307,7 @@ export default function CoopList({ userId, onOpen, onClose, embedded }) {
                 Register a cooperative, church, market association, NGO, savings group or any organisation to get started.
               </p>
               <button onClick={() => setShowCreate(true)}
-                className="px-8 py-3.5 rounded-full font-extrabold text-sm text-white active:scale-95 transition"
-                style={{ background: "#3DA829" }}>
+                className="px-8 py-3.5 rounded-full font-extrabold text-sm text-white active:scale-95 transition bg-[#3DA829]">
                 Register Organisation
               </button>
             </div>
@@ -327,8 +321,7 @@ export default function CoopList({ userId, onOpen, onClose, embedded }) {
                     className={`w-full flex items-start gap-3 px-4 py-4 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 active:bg-slate-100 dark:active:bg-slate-800 transition-colors ${idx < displayOrgs.length - 1 ? "border-b border-slate-100 dark:border-slate-800" : ""}`}>
 
                     {/* Avatar */}
-                    <div className="w-11 h-11 rounded-full flex items-center justify-center text-2xl flex-shrink-0 shadow-sm"
-                      style={{ background: "linear-gradient(145deg,#3DA829,#065f46)" }}>
+                    <div className="w-11 h-11 rounded-full flex items-center justify-center text-2xl flex-shrink-0 shadow-sm bg-[linear-gradient(145deg,#3DA829,#065f46)]">
                       {typeInfo?.icon || "🏢"}
                     </div>
 
@@ -348,8 +341,7 @@ export default function CoopList({ userId, onOpen, onClose, embedded }) {
                         )}
                       </div>
                       <p className="text-[11px] text-slate-400 dark:text-slate-500 mb-1.5">{org.reg_number}</p>
-                      <span className="text-[10px] font-bold px-2.5 py-1 rounded-full border"
-                        style={{ color: "#3DA829", borderColor: "#3DA829", background: "#3DA82910" }}>
+                      <span className="text-[10px] font-bold px-2.5 py-1 rounded-full border text-[#3DA829] border-[#3DA829] bg-[#3DA82910]">
                         {typeInfo?.label || org.type}
                       </span>
                     </div>
@@ -401,8 +393,7 @@ export default function CoopList({ userId, onOpen, onClose, embedded }) {
         {orgs.length > 0 && (
           <button
             onClick={() => setShowCreate(true)}
-            className="fixed right-5 bottom-24 w-14 h-14 rounded-full shadow-xl flex items-center justify-center active:scale-95 transition z-20"
-            style={{ background: "#3DA829" }}>
+            className="fixed right-5 bottom-24 w-14 h-14 rounded-full shadow-xl flex items-center justify-center active:scale-95 transition z-20 bg-[#3DA829]">
             <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6" stroke="white" strokeWidth={2.5} strokeLinecap="round">
               <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
             </svg>

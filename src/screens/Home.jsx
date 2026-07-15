@@ -216,8 +216,7 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
       <AnnouncementBarSlot campaigns={annBars} loading={camLoading} recordEvent={recordEvent} />
 
       {/* ── Hero card — greeting + profit + eye toggle ────────────── */}
-      <div className="rounded-3xl px-5 pt-5 pb-6 text-white relative overflow-hidden shadow-hero"
-        style={{ background: "linear-gradient(145deg,#059669 0%,#047857 55%,#065f46 100%)" }}>
+      <div className="rounded-3xl px-5 pt-5 pb-6 text-white relative overflow-hidden shadow-hero bg-[linear-gradient(145deg,#059669_0%,#047857_55%,#065f46_100%)]">
         <div className="absolute -top-10 -right-10 w-36 h-36 rounded-full bg-white/5 pointer-events-none" />
         <div className="absolute -bottom-12 -left-8  w-44 h-44 rounded-full bg-white/5 pointer-events-none" />
         <div className="absolute top-4   right-20   w-12 h-12 rounded-full bg-white/5 pointer-events-none" />
@@ -243,7 +242,7 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
           ) : balanceHidden ? (
             <p className="text-[38px] font-black tracking-tight mt-1.5 mb-5 tabular leading-none text-white">₦ ••••••</p>
           ) : (
-            <AmountDisplay amount={Math.abs(profit)} size="hero" align="left" style={{ color: profit < 0 ? '#fca5a5' : '#fff', marginTop: 6, marginBottom: 20 }} />
+            <AmountDisplay amount={Math.abs(profit)} size="hero" align="left" className="mt-1.5 mb-5" style={{ color: profit < 0 ? '#fca5a5' : '#fff' }} />
           )}
 
           {/* Sub-stats row */}
@@ -252,7 +251,7 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
               <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">{t("home.cashIn")}</p>
               {loading || balanceHidden
                 ? <p className="text-base font-bold tabular">{loading ? "—" : "••••"}</p>
-                : <AmountDisplay amount={cashIn} size="row" align="left" style={{ color: '#fff', fontWeight: 700 }} />
+                : <AmountDisplay amount={cashIn} size="row" align="left" className="text-white font-bold" />
               }
             </div>
             <div className="w-px bg-white/20 self-stretch" />
@@ -260,7 +259,7 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
               <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">{t("home.cashOut")}</p>
               {loading || balanceHidden
                 ? <p className="text-base font-bold tabular">{loading ? "—" : "••••"}</p>
-                : <AmountDisplay amount={cashOut} size="row" align="left" style={{ color: '#fff', fontWeight: 700 }} />
+                : <AmountDisplay amount={cashOut} size="row" align="left" className="text-white font-bold" />
               }
             </div>
             <div className="w-px bg-white/20 self-stretch" />
@@ -368,8 +367,7 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
         )}
         <button
           onClick={() => { localStorage.setItem("kt_ai_intro_seen", "1"); setShowAITip(false); onAIOpen?.(); }}
-          className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-3xl shadow-card border border-slate-100 dark:border-slate-700/50 active:scale-[0.98] transition-transform duration-150"
-          style={{ background: "linear-gradient(135deg,#16a34a,#059669)" }}
+          className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-3xl shadow-card border border-slate-100 dark:border-slate-700/50 active:scale-[0.98] transition-transform duration-150 bg-[linear-gradient(135deg,#16a34a,#059669)]"
         >
           <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center flex-shrink-0">
             <span className="text-xl leading-none">✨</span>
@@ -530,8 +528,7 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
             <p className="text-slate-400 dark:text-slate-500 text-xs mt-1">{t("home.startRecord")}</p>
             <button
               onClick={() => onQuickAction?.("transactions", "in")}
-              className="mt-4 px-5 py-2.5 rounded-xl text-xs font-bold text-white active:scale-95 transition"
-              style={{ background: "linear-gradient(135deg,#16a34a,#059669)" }}>
+              className="mt-4 px-5 py-2.5 rounded-xl text-xs font-bold text-white active:scale-95 transition bg-[linear-gradient(135deg,#16a34a,#059669)]">
               Record First Sale
             </button>
           </div>

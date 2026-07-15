@@ -23,7 +23,7 @@ function ProfileAvatar({ avatarUrl, name }) {
       {avatarUrl ? (
         <img src={avatarUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
       ) : (
-        <span style={{ color: "#3DA829", fontSize: 30, fontWeight: 800, lineHeight: 1 }}>{initial}</span>
+        <span className="text-[#3DA829] text-[30px] font-extrabold leading-none">{initial}</span>
       )}
     </div>
   );
@@ -158,14 +158,14 @@ export default function LockScreen({ pinLock, businessName, avatarUrl }) {
         alignItems: "center", justifyContent: "center",
         padding: "24px",
       }}>
-        <div style={{
-          background: "#1e293b", borderRadius: 24, padding: "32px 24px",
+        <div className="bg-[#1e293b]" style={{
+          borderRadius: 24, padding: "32px 24px",
           maxWidth: 320, width: "100%", textAlign: "center",
         }}>
-          <p style={{ color: "#f87171", fontSize: 20, fontWeight: 700, marginBottom: 12 }}>
+          <p className="text-red-400 text-[20px] font-bold mb-3">
             Account Locked
           </p>
-          <p style={{ color: "rgba(255,255,255,0.65)", fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
+          <p className="text-white/65" style={{ fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
             Too many failed attempts. Please sign out and sign in again to continue.
           </p>
           <button
@@ -186,9 +186,8 @@ export default function LockScreen({ pinLock, businessName, avatarUrl }) {
 
   // ── Normal lock screen ─────────────────────────────────────────────
   return (
-    <div style={{
+    <div className="bg-[#0f1c45]" style={{
       position: "fixed", inset: 0, zIndex: 100,
-      background: "#0f1c45",
       display: "flex", flexDirection: "column",
       alignItems: "center", justifyContent: "space-between",
       paddingTop: "env(safe-area-inset-top, 0px)",
@@ -204,7 +203,7 @@ export default function LockScreen({ pinLock, businessName, avatarUrl }) {
           <p style={{ color: "white", fontSize: 20, fontWeight: 700, lineHeight: 1.3 }}>
             {`Welcome back${businessName ? ", " + businessName : ""}`}
           </p>
-          <p style={{ color: "rgba(255,255,255,0.6)", fontSize: 13, marginTop: 6 }}>
+          <p className="text-white/60" style={{ fontSize: 13, marginTop: 6 }}>
             Enter your app lock PIN to continue
           </p>
         </div>
@@ -233,7 +232,7 @@ export default function LockScreen({ pinLock, businessName, avatarUrl }) {
         {/* Error */}
         <div style={{ height: 18, marginTop: -20 }}>
           {error && (
-            <p style={{ color: "rgba(248,113,113,0.9)", fontSize: 12, fontWeight: 600, textAlign: "center" }}>
+            <p className="text-red-400/90" style={{ fontSize: 12, fontWeight: 600, textAlign: "center" }}>
               {error}
             </p>
           )}
@@ -310,12 +309,12 @@ export default function LockScreen({ pinLock, businessName, avatarUrl }) {
       {/* Bottom: biometric tip + forgot PIN */}
       <div style={{ paddingBottom: 32, display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
         {showBio && (
-          <p style={{ color: "rgba(255,255,255,0.3)", fontSize: 11, textAlign: "center", padding: "0 24px" }}>
+          <p className="text-white/30" style={{ fontSize: 11, textAlign: "center", padding: "0 24px" }}>
             Tap the fingerprint icon above to use face or fingerprint unlock
           </p>
         )}
         <button onClick={handleForgotPin}
-          style={{ background: "none", border: "none", color: "rgba(255,255,255,0.4)", fontSize: 13, cursor: "pointer" }}>
+          className="text-white/40" style={{ background: "none", border: "none", fontSize: 13, cursor: "pointer" }}>
           Forgot PIN?
         </button>
       </div>

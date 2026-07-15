@@ -130,8 +130,7 @@ export default function StaffHome({ staff, store, inventory, plan, onGoTo, onVoi
       )}
 
       {/* Hero card — green gradient (matches business portal) */}
-      <div className="rounded-3xl px-5 pt-5 pb-6 text-white relative overflow-hidden shadow-hero"
-        style={{ background: "linear-gradient(145deg,#059669 0%,#047857 55%,#065f46 100%)" }}>
+      <div className="rounded-3xl px-5 pt-5 pb-6 text-white relative overflow-hidden shadow-hero bg-[linear-gradient(145deg,#059669_0%,#047857_55%,#065f46_100%)]">
         <div className="absolute -top-10 -right-10 w-36 h-36 rounded-full bg-white/5 pointer-events-none" />
         <div className="absolute -bottom-14 -left-10 w-48 h-48 rounded-full bg-white/5 pointer-events-none" />
         <div className="relative">
@@ -144,18 +143,18 @@ export default function StaffHome({ staff, store, inventory, plan, onGoTo, onVoi
           <p className="text-[11px] text-white/40 mb-1">{fmtDate(lang)}</p>
           {loading
             ? <div className="h-12 w-44 bg-white/20 rounded-xl animate-pulse mt-2 mb-5" />
-            : <AmountDisplay amount={Math.abs(profit)} size="hero" align="left" style={{ color: profit < 0 ? '#fca5a5' : '#fff', marginTop: 4, marginBottom: 20 }} />
+            : <AmountDisplay amount={Math.abs(profit)} size="hero" align="left" className="mt-1 mb-5" style={{ color: profit < 0 ? '#fca5a5' : '#fff' }} />
           }
           <div className="h-px bg-white/10 mb-4" />
           <div className="flex gap-4 flex-wrap">
             <div className="min-w-0">
               <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-0.5">Cash In</p>
-              {loading ? <p className="text-base font-bold tabular text-white">—</p> : <AmountDisplay amount={cashIn} size="row" align="left" style={{ color: '#fff', fontWeight: 700 }} />}
+              {loading ? <p className="text-base font-bold tabular text-white">—</p> : <AmountDisplay amount={cashIn} size="row" align="left" className="text-white font-bold" />}
             </div>
             <div className="w-px bg-white/15 self-stretch" />
             <div className="min-w-0">
               <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-0.5">Cash Out</p>
-              {loading ? <p className="text-base font-bold tabular text-red-300">—</p> : <AmountDisplay amount={cashOut} size="row" align="left" style={{ color: '#fca5a5', fontWeight: 700 }} />}
+              {loading ? <p className="text-base font-bold tabular text-red-300">—</p> : <AmountDisplay amount={cashOut} size="row" align="left" className="text-red-300 font-bold" />}
             </div>
             <div className="w-px bg-white/15 self-stretch" />
             <div className="min-w-0">
@@ -167,7 +166,7 @@ export default function StaffHome({ staff, store, inventory, plan, onGoTo, onVoi
                 <div className="w-px bg-white/15 self-stretch" />
                 <div className="min-w-0">
                   <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-0.5">Commission</p>
-                  {loading ? <p className="text-base font-bold tabular text-white">—</p> : <AmountDisplay amount={commEarned} size="row" align="left" style={{ color: '#fff', fontWeight: 700 }} />}
+                  {loading ? <p className="text-base font-bold tabular text-white">—</p> : <AmountDisplay amount={commEarned} size="row" align="left" className="text-white font-bold" />}
                 </div>
               </>
             )}

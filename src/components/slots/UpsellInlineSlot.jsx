@@ -60,12 +60,11 @@ export default function UpsellInlineSlot({ campaigns = [], loading, recordEvent 
       <button
         onClick={onCTA}
         onPointerEnter={() => recordEvent(c.id, "impression")}
-        className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl border active:scale-[0.99] transition-transform overflow-hidden"
-        style={{ background: "linear-gradient(135deg,#16255A10,#3DA82910)", borderColor: "#3DA82940" }}
+        className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl border active:scale-[0.99] transition-transform overflow-hidden bg-[linear-gradient(135deg,#16255A10,#3DA82910)]"
+        style={{ borderColor: "#3DA82940" }}
       >
         {/* Icon — fixed, never remounts */}
-        <div className="w-9 h-9 rounded-xl flex-shrink-0 flex items-center justify-center"
-             style={{ background: "linear-gradient(135deg,#3DA829,#16255A)" }}>
+        <div className="w-9 h-9 rounded-xl flex-shrink-0 flex items-center justify-center bg-[linear-gradient(135deg,#3DA829,#16255A)]">
           <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
           </svg>
@@ -89,8 +88,7 @@ export default function UpsellInlineSlot({ campaigns = [], loading, recordEvent 
 
         {/* CTA badge */}
         {c.cta_label && (
-          <span className="flex-shrink-0 text-[11px] font-bold px-3 py-1.5 rounded-xl text-white"
-                style={{ background: "linear-gradient(135deg,#3DA829,#16255A)" }}>
+          <span className="flex-shrink-0 text-[11px] font-bold px-3 py-1.5 rounded-xl text-white bg-[linear-gradient(135deg,#3DA829,#16255A)]">
             {c.cta_label}
           </span>
         )}

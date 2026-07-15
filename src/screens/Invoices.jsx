@@ -649,7 +649,7 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
               <div key={c.label} className="flex-1 min-w-0 rounded-2xl px-4 py-3.5 text-white shadow overflow-hidden"
                 style={{ background: `linear-gradient(135deg,${c.g1},${c.g2})` }}>
                 <p className="text-[10px] font-bold uppercase tracking-widest opacity-70 mb-1">{c.label}</p>
-                <AmountDisplay amount={c.kobo} fromKobo size="stat" align="left" style={{ color: '#fff' }} />
+                <AmountDisplay amount={c.kobo} fromKobo size="stat" align="left" className="text-white" />
               </div>
             ))}
           </div>

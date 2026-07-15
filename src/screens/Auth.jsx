@@ -171,8 +171,7 @@ function OtpScreen({ email, onBack, onVerified, otpType = "signup" }) {
   };
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center p-4"
-      style={{ background: "linear-gradient(135deg, #080a0f 0%, #0d0f1a 50%, #080a0f 100%)" }}>
+    <div className="fixed inset-0 flex items-center justify-center p-4 bg-slate-50 dark:bg-slate-950">
       <div className="w-full" style={{ maxWidth: 360 }}>
 
         {/* Header */}
@@ -182,24 +181,23 @@ function OtpScreen({ email, onBack, onVerified, otpType = "signup" }) {
               <AppLogo className="h-10 w-auto" />
             </div>
           </div>
-          <div className="inline-flex items-center justify-center w-10 h-10 rounded-2xl mb-3"
-            style={{ background: "linear-gradient(135deg, rgba(99,102,241,0.2), rgba(124,58,237,0.2))", border: "1px solid rgba(99,102,241,0.3)" }}>
+          <div className="inline-flex items-center justify-center w-10 h-10 rounded-2xl mb-3 bg-indigo-500/20 border border-indigo-500/30">
             <svg width="18" height="18" fill="none" stroke="rgb(129,140,248)" strokeWidth="2" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round"
                 d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
             </svg>
           </div>
-          <h1 className="text-2xl font-extrabold" style={{ color: "#fff", margin: 0 }}>
+          <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white m-0">
             {t("auth.checkEmail")}
           </h1>
-          <p className="text-sm mt-2 leading-relaxed" style={{ color: "#6b7a99" }}>
+          <p className="text-sm mt-2 leading-relaxed text-slate-500">
             We sent a 6-digit code to<br />
-            <span className="font-semibold" style={{ color: "#a5b4fc" }}>{email}</span>
+            <span className="font-semibold text-indigo-400 dark:text-indigo-300">{email}</span>
           </p>
         </div>
 
         {/* Card */}
-        <div className="rounded-2xl p-6" style={{ background: "#0e1117", border: "1px solid #1e2433", boxShadow: "0 25px 50px rgba(0,0,0,0.5)" }}>
+        <div className="rounded-2xl p-6 bg-white dark:bg-[#0e1117] border border-slate-200 dark:border-[#1e2433] shadow-2xl dark:shadow-[0_25px_50px_rgba(0,0,0,0.5)]">
 
           {/* Digit boxes */}
           <div className="flex gap-2 justify-center mb-6" onPaste={handlePaste}>
@@ -213,17 +211,10 @@ function OtpScreen({ email, onBack, onVerified, otpType = "signup" }) {
                 value={d}
                 onChange={e => handleDigit(i, e.target.value)}
                 onKeyDown={e => handleKeyDown(i, e)}
+                className="w-11 h-14 text-center text-[22px] font-bold rounded-xl outline-none transition-[border-color,box-shadow] duration-150 caret-transparent text-slate-800 dark:text-white border border-slate-300 dark:border-[#1e2433] bg-slate-100 dark:bg-[#141820]"
                 style={{
-                  width: 44, height: 56,
-                  textAlign: "center",
-                  fontSize: 22,
-                  fontWeight: 700,
-                  borderRadius: 12,
-                  border: `1px solid ${d ? "rgba(99,102,241,0.6)" : "#1e2433"}`,
-                  background: "#141820",
-                  color: d ? "rgb(165,180,252)" : "#fff",
-                  outline: "none",
-                  transition: "border-color 0.15s, box-shadow 0.15s",
+                  border: d ? "1px solid rgba(99,102,241,0.6)" : undefined,
+                  color: d ? "rgb(165,180,252)" : undefined,
                   boxShadow: d ? "0 0 0 3px rgba(99,102,241,0.15)" : "none",
                 }}
               />
@@ -232,16 +223,14 @@ function OtpScreen({ email, onBack, onVerified, otpType = "signup" }) {
 
           {/* Error */}
           {error && (
-            <div className="flex items-center gap-2 rounded-xl px-4 py-3 mb-4 text-xs"
-              style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", color: "#f87171" }}>
+            <div className="flex items-center gap-2 rounded-xl px-4 py-3 mb-4 text-xs bg-red-500/10 border border-red-500/20 text-red-400">
               ⚠ {error}
             </div>
           )}
 
           {/* Code resent confirmation */}
           {resent && !error && (
-            <div className="rounded-xl px-4 py-3 mb-4 text-center text-xs"
-              style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.2)", color: "#34d399" }}>
+            <div className="rounded-xl px-4 py-3 mb-4 text-center text-xs bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
               ✓ {t("auth.codeResent")}
             </div>
           )}
@@ -250,13 +239,7 @@ function OtpScreen({ email, onBack, onVerified, otpType = "signup" }) {
           <button
             onClick={handleVerify}
             disabled={loading || otp.length < 6}
-            className="w-full py-3 rounded-xl text-white font-bold text-sm transition-all"
-            style={{
-              background: loading || otp.length < 6 ? "rgba(79,70,229,0.5)" : "#4f46e5",
-              border: "none",
-              cursor: otp.length < 6 || loading ? "not-allowed" : "pointer",
-              boxShadow: otp.length === 6 && !loading ? "0 4px 15px rgba(79,70,229,0.35)" : "none",
-            }}
+            className="w-full py-3 rounded-xl text-white font-bold text-sm transition-all bg-indigo-600 border-0 cursor-pointer shadow-[0_4px_15px_rgba(79,70,229,0.35)] disabled:bg-indigo-600/50 disabled:cursor-not-allowed disabled:shadow-none"
           >
             {loading
               ? <span className="inline-flex items-center justify-center gap-2">
@@ -269,12 +252,11 @@ function OtpScreen({ email, onBack, onVerified, otpType = "signup" }) {
           {/* Resend / countdown */}
           <div className="mt-4 text-center">
             {countdown > 0 ? (
-              <p className="text-xs" style={{ color: "#4a5568" }}>Resend code in {countdown}s</p>
+              <p className="text-xs text-slate-500">Resend code in {countdown}s</p>
             ) : (
               <button
                 onClick={handleResend}
-                className="text-xs inline-flex items-center gap-1.5 transition-colors"
-                style={{ background: "none", border: "none", cursor: "pointer", color: "#818cf8" }}
+                className="text-xs inline-flex items-center gap-1.5 transition-colors text-indigo-400 bg-transparent border-0 cursor-pointer"
               >
                 <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5M4 9a8 8 0 0114.93-2M20 15a8 8 0 01-14.93 2" />
@@ -288,13 +270,12 @@ function OtpScreen({ email, onBack, onVerified, otpType = "signup" }) {
         {/* Back link */}
         <button
           onClick={onBack}
-          className="w-full text-center text-xs mt-4 transition-colors"
-          style={{ background: "none", border: "none", cursor: "pointer", color: "#4a5568" }}
+          className="w-full text-center text-xs mt-4 transition-colors text-slate-500 dark:text-slate-400 bg-transparent border-0 cursor-pointer"
         >
           ← {t("auth.back")}
         </button>
 
-        <p className="text-center text-xs mt-4" style={{ color: "#2a3347" }}>
+        <p className="text-center text-xs mt-4 text-slate-400 dark:text-slate-600">
           © Amaya &amp; Co. Technologies. All Rights Reserved.
         </p>
       </div>

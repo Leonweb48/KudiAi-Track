@@ -95,8 +95,7 @@ export default function PopupSlot({ campaigns = [], loading, recordEvent }) {
               {promo.cta_label && (
                 <button
                   onClick={onCTA}
-                  className="flex-1 py-3 rounded-2xl font-bold text-sm text-white active:scale-95 transition-transform shadow-sm"
-                  style={{ background: "linear-gradient(135deg,#3DA829,#16255A)" }}
+                  className="flex-1 py-3 rounded-2xl font-bold text-sm text-white active:scale-95 transition-transform shadow-sm bg-[linear-gradient(135deg,#3DA829,#16255A)]"
                 >
                   {promo.cta_label}
                 </button>

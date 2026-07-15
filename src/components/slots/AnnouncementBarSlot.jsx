@@ -59,8 +59,8 @@ export default function AnnouncementBarSlot({ campaigns = [], loading, recordEve
 
   return (
     <div
-      className="mx-3 my-1.5 rounded-2xl overflow-hidden flex items-center shrink-0"
-      style={{ background: "linear-gradient(90deg,#16255A 0%,#3DA829 100%)", height: 34 }}
+      className="mx-3 my-1.5 rounded-2xl overflow-hidden flex items-center shrink-0 bg-[linear-gradient(90deg,#16255A_0%,#3DA829_100%)]"
+      style={{ height: 34 }}
       onPointerEnter={() => recordEvent(c.id, "impression")}
     >
       {/* Megaphone icon */}
@@ -79,8 +79,7 @@ export default function AnnouncementBarSlot({ campaigns = [], loading, recordEve
       >
         {/* Left edge fade */}
         <div
-          className="absolute left-0 top-0 bottom-0 w-5 z-10 pointer-events-none"
-          style={{ background: "linear-gradient(to right, #16255A, transparent)" }}
+          className="absolute left-0 top-0 bottom-0 w-5 z-10 pointer-events-none bg-[linear-gradient(to_right,#16255A,transparent)]"
         />
 
         {/* Scrolling track — content duplicated for seamless loop */}
@@ -91,8 +90,7 @@ export default function AnnouncementBarSlot({ campaigns = [], loading, recordEve
 
         {/* Right edge fade */}
         <div
-          className="absolute right-0 top-0 bottom-0 w-5 z-10 pointer-events-none"
-          style={{ background: "linear-gradient(to left, #2e7a1e, transparent)" }}
+          className="absolute right-0 top-0 bottom-0 w-5 z-10 pointer-events-none bg-[linear-gradient(to_left,#2e7a1e,transparent)]"
         />
       </div>
 

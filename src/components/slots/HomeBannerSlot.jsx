@@ -69,8 +69,7 @@ export default function HomeBannerSlot({ campaigns = [], loading, recordEvent })
               {/* Fallback background when no image */}
               {!c.creative_url && (
                 <div
-                  className="absolute inset-0"
-                  style={{ background: "linear-gradient(135deg,#16255A,#3DA829)" }}
+                  className="absolute inset-0 bg-[linear-gradient(135deg,#16255A,#3DA829)]"
                 />
               )}
 
@@ -92,8 +91,7 @@ export default function HomeBannerSlot({ campaigns = [], loading, recordEvent })
                 {c.cta_label && (
                   <button
                     onClick={() => onCTA(c)}
-                    className="mt-2 px-4 py-1.5 rounded-xl text-xs font-bold text-white active:scale-95 transition-transform shadow"
-                    style={{ background: "linear-gradient(135deg,#3DA829,#16255A)" }}
+                    className="mt-2 px-4 py-1.5 rounded-xl text-xs font-bold text-white active:scale-95 transition-transform shadow bg-[linear-gradient(135deg,#3DA829,#16255A)]"
                   >
                     {c.cta_label}
                   </button>

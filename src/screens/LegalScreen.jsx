@@ -551,8 +551,7 @@ export default function LegalScreen({ type, onBack }) {
 
       {/* Sticky header — navy background */}
       <div
-        className="flex items-center gap-3 px-4 py-3 flex-shrink-0"
-        style={{ backgroundColor: "#16255A" }}
+        className="flex items-center gap-3 px-4 py-3 flex-shrink-0 bg-[#16255A]"
       >
         <button
           onClick={onBack}

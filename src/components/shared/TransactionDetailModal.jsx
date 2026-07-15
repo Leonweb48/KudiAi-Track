@@ -132,7 +132,7 @@ function ShareSheet({ onOption, onClose }) {
           onClick={() => onOption('image')}
           className="w-full flex items-center gap-4 px-6 py-4 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors border-t border-slate-100 dark:border-slate-700"
         >
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: '#dcfce7' }}>
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-green-100 dark:bg-green-900/20">
             <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="#16a34a" strokeWidth={2} strokeLinecap="round">
               <rect x="3" y="3" width="18" height="18" rx="2" />
               <circle cx="8.5" cy="8.5" r="1.5" />
@@ -149,7 +149,7 @@ function ShareSheet({ onOption, onClose }) {
           onClick={() => onOption('pdf')}
           className="w-full flex items-center gap-4 px-6 py-4 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors border-t border-slate-100 dark:border-slate-700 mb-2"
         >
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: '#e0e7ff' }}>
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-indigo-100 dark:bg-indigo-900/20">
             <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="#0f1c45" strokeWidth={2} strokeLinecap="round">
               <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
               <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
