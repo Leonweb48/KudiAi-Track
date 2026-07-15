@@ -317,7 +317,7 @@ export function ReceiptCard({ data, innerRef }) {
               • borderRadius:20px (pixel, not %) — percentage radii are
                 mis-rendered by html2canvas v1. */}
           <div style={{ marginTop: 8, display: 'flex', justifyContent: 'center' }}>
-            <div style={{
+            <div data-receipt-pill="true" style={{
               display:        'flex',
               alignItems:     'center',
               height:         28,

@@ -295,7 +295,7 @@ function buildReceiptHTML(data) {
           </p>
           <!-- Status pill: explicit height:28 + flex + alignItems:center (capture-safe construction) -->
           <div style="margin-top:8px;display:flex;justify-content:center;">
-            <div class="receipt-pill" style="display:flex;align-items:center;height:28px;padding-left:18px;padding-right:18px;background:${st.bg};border-radius:20px;font-size:11px;font-weight:700;color:${st.color};line-height:28px;white-space:nowrap;"
+            <div class="receipt-pill" data-receipt-pill="true" style="display:flex;align-items:center;height:28px;padding-left:18px;padding-right:18px;background:${st.bg};border-radius:20px;font-size:11px;font-weight:700;color:${st.color};line-height:28px;white-space:nowrap;"
                  data-expected-bg="${st.bg}" data-status="${status}">
               ${st.label}
             </div>
@@ -333,6 +333,13 @@ function buildReceiptHTML(data) {
 /* ── Capture pipeline (mirrors captureReceipt.js exactly) ───────── */
 async function captureReceiptCanvas(el) {
   const cardWidth = el.offsetWidth;
+
+  // Measure pill widths from live DOM before html2canvas runs its own layout.
+  // html2canvas v1 paints flex-child backgrounds at containing-block width;
+  // we override with explicit measured widths in onclone to kill the blob.
+  const pillWidths = Array.from(el.querySelectorAll('[data-receipt-pill]'))
+    .map(p => Math.ceil(p.getBoundingClientRect().width));
+
   const clone = el.cloneNode(true);
   const wrap  = document.createElement('div');
   Object.assign(wrap.style, { position: 'absolute', top: '0', left: '-9999px', width: `${cardWidth}px` });
@@ -349,6 +356,15 @@ async function captureReceiptCanvas(el) {
       scale: 3, useCORS: true, allowTaint: true, logging: false,
       imageTimeout: 15000, width: cardWidth, height: clone.scrollHeight,
       backgroundColor: '#f1f5f9',
+      onclone: (_doc, clonedRoot) => {
+        [...clonedRoot.querySelectorAll('[data-receipt-pill]')].forEach((pill, i) => {
+          const w = pillWidths[i];
+          if (!w) return;
+          const wrapper = pill.parentElement;
+          if (wrapper) { wrapper.style.display = 'block'; wrapper.style.textAlign = ''; }
+          Object.assign(pill.style, { display: 'block', width: w + 'px', margin: '0 auto', boxSizing: 'border-box', textAlign: 'center' });
+        });
+      },
     });
   } finally {
     document.body.removeChild(wrap);
