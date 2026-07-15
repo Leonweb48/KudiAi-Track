@@ -3320,7 +3320,15 @@ serve(async (req) => {
       const parsedAmount = parseFloat(String(amount ?? "0"));
       if (!parsedAmount || parsedAmount <= 0) return json({ error: "Invalid amount" }, 400);
 
-      const { data: disb, error: disbErr } = await sb
+      // Fresh service-role client — avoids auth-context pollution from sb.auth.getUser()
+      // which can cause supabase-js to send the user JWT instead of the service-role key.
+      const sbSvc = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+        { auth: { persistSession: false, autoRefreshToken: false } },
+      );
+
+      const { data: disb, error: disbErr } = await sbSvc
         .from("staff_disbursements")
         .insert({
           owner_id:   callerId!,
