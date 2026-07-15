@@ -115,6 +115,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
   // D6: Disbursement
   const [disburseTarget,    setDisburseTarget]    = useState(null);
   const [disburseForm,      setDisburseForm]      = useState({ type: "salary", amount: "", notes: "" });
+  const [disbursePin,       setDisbursePin]       = useState("");
   const [disburseSaving,    setDisburseSaving]    = useState(false);
   const [disburseMsg,       setDisburseMsg]       = useState("");
 
@@ -182,21 +183,28 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
 
   const submitDisbursement = async () => {
     if (!disburseTarget || !disburseForm.amount) return;
+    if (!disbursePin || disbursePin.length !== 4) {
+      setDisburseMsg("Enter your 4-digit transaction PIN to confirm.");
+      return;
+    }
     setDisburseSaving(true);
     setDisburseMsg("");
-    const { error } = await supabase.from("staff_disbursements").insert({
-      owner_id:   userId,
-      staff_id:   disburseTarget.id,
-      type:       disburseForm.type,
-      amount:     Number(disburseForm.amount),
-      notes:      disburseForm.notes || null,
-      created_by: userId,
+    const { data, error } = await supabase.functions.invoke("coop-portal", {
+      body: {
+        action:   "disburse-staff",
+        staff_id: disburseTarget.id,
+        type:     disburseForm.type,
+        amount:   Number(disburseForm.amount),
+        notes:    disburseForm.notes || null,
+        pin:      disbursePin,
+      },
     });
-    if (error) {
-      setDisburseMsg("Failed: " + error.message);
+    if (error || data?.error) {
+      setDisburseMsg(data?.error || error?.message || "Failed to record payment.");
     } else {
       setDisburseMsg("Payment recorded successfully!");
       setDisburseForm({ type: "salary", amount: "", notes: "" });
+      setDisbursePin("");
       setTimeout(() => { setDisburseTarget(null); setDisburseMsg(""); }, 1500);
     }
     setDisburseSaving(false);
@@ -1164,7 +1172,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
                   {saving ? "Saving…" : "Save Changes"}
                 </button>
                 {/* D6: Disburse payment */}
-                <button onClick={() => { setDisburseTarget(selected); setDisburseForm({ type: "salary", amount: "", notes: "" }); setDisburseMsg(""); }}
+                <button onClick={() => { setDisburseTarget(selected); setDisburseForm({ type: "salary", amount: "", notes: "" }); setDisburseMsg(""); setDisbursePin(""); }}
                   className="w-full border-2 border-green-200 dark:border-green-800 text-green-700 dark:text-green-300 font-semibold rounded-xl py-3 text-sm hover:bg-green-50 dark:hover:bg-green-950/20 transition-colors">
                   Disburse Payment
                 </button>
@@ -1268,7 +1276,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
               <h3 className="text-base font-bold text-slate-800 dark:text-white">
                 Pay {disburseTarget.full_name}
               </h3>
-              <button onClick={() => setDisburseTarget(null)} className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+              <button onClick={() => { setDisburseTarget(null); setDisbursePin(""); }} className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
                 <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-500" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
                   <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
                 </svg>
@@ -1299,12 +1307,24 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
                 onChange={e => setDisburseForm(f => ({ ...f, notes: e.target.value }))}
                 className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500" />
             </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1.5">Transaction PIN</label>
+              <input
+                type="password"
+                inputMode="numeric"
+                maxLength={4}
+                placeholder="••••"
+                value={disbursePin}
+                onChange={e => setDisbursePin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500 tracking-[0.5em] text-center"
+              />
+            </div>
             {disburseMsg && (
               <p className={`text-xs px-3 py-2 rounded-xl border ${disburseMsg.includes("success") ? "bg-green-50 border-green-200 text-green-700" : "bg-red-50 border-red-200 text-red-600"}`}>
                 {disburseMsg}
               </p>
             )}
-            <button onClick={submitDisbursement} disabled={disburseSaving || !disburseForm.amount}
+            <button onClick={submitDisbursement} disabled={disburseSaving || !disburseForm.amount || disbursePin.length !== 4}
               className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white font-bold rounded-xl py-3.5 text-sm transition-colors">
               {disburseSaving ? "Recording…" : "Record Payment"}
             </button>

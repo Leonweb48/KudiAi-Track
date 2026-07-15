@@ -7,6 +7,22 @@ const CORS = {
 };
 
 const EMAIL_TRIGGER_SECRET = Deno.env.get("EMAIL_TRIGGER_SECRET") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+
+// PBKDF2-SHA256 PIN verification — identical scheme to pin-manager/index.ts and ajo-write/index.ts.
+async function verifyPinHash(pin: string, stored: string): Promise<boolean> {
+  const parts = stored.split("$");
+  if (parts.length !== 3 || parts[0] !== "pbkdf2") return false;
+  const salt          = Uint8Array.from(atob(parts[1]), (c) => c.charCodeAt(0));
+  const expectedBytes = Uint8Array.from(atob(parts[2]), (c) => c.charCodeAt(0));
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(pin), "PBKDF2", false, ["deriveBits"]);
+  const derived = await crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations: 100_000, hash: "SHA-256" }, key, 256);
+  const actualBytes = new Uint8Array(derived);
+  if (actualBytes.length !== expectedBytes.length) return false;
+  let diff = 0;
+  for (let i = 0; i < actualBytes.length; i++) diff |= actualBytes[i] ^ expectedBytes[i];
+  return diff === 0;
+}
+
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { ...CORS, "Content-Type": "application/json" } });
 }
@@ -153,6 +169,37 @@ serve(async (req) => {
     if (bySession.member_session_expires_at && new Date(bySession.member_session_expires_at as string) < new Date()) {
       return json({ error: "Session expired — please sign in again" }, 401);
     }
+    return null;
+  }
+
+  // Verify the caller's transaction PIN against their profile hash.
+  // Returns a Response to send back on failure; null means PIN is correct.
+  async function checkTxnPin(pin: string | undefined): Promise<Response | null> {
+    if (!pin || typeof pin !== "string") return json({ error: "PIN required" }, 400);
+    const { data: prof } = await sb
+      .from("profiles")
+      .select("txn_pin_hash, txn_pin_attempts, txn_pin_locked_until, txn_pin_lockout_count")
+      .eq("id", callerId!).maybeSingle();
+    if (!prof?.txn_pin_hash) return json({ error: "Transaction PIN not configured" }, 403);
+    if (prof.txn_pin_locked_until && new Date(prof.txn_pin_locked_until as string) > new Date()) {
+      return json({ error: "PIN locked — try again later", locked: true }, 429);
+    }
+    const correct = await verifyPinHash(pin, prof.txn_pin_hash as string);
+    if (!correct) {
+      const attempts = ((prof.txn_pin_attempts as number) || 0) + 1;
+      if (attempts >= 5) {
+        const lockedUntil = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+        await sb.from("profiles").update({
+          txn_pin_attempts: 0,
+          txn_pin_locked_until: lockedUntil,
+          txn_pin_lockout_count: ((prof.txn_pin_lockout_count as number) || 0) + 1,
+        }).eq("id", callerId!);
+        return json({ error: "Invalid PIN — account locked", locked: true }, 403);
+      }
+      await sb.from("profiles").update({ txn_pin_attempts: attempts }).eq("id", callerId!);
+      return json({ error: "Invalid PIN", attempts_left: 5 - attempts }, 403);
+    }
+    await sb.from("profiles").update({ txn_pin_attempts: 0, txn_pin_locked_until: null }).eq("id", callerId!);
     return null;
   }
 
@@ -3248,6 +3295,46 @@ serve(async (req) => {
       }).catch(() => null);
 
       return json({ ok: true });
+    }
+
+    // ── Staff disbursement (PIN-gated) ─────────────────────────────────────────
+    // Caller must be the staff member's owner. No org_id required — it's a
+    // direct owner-to-staff payment unrelated to any cooperative.
+    if (action === "disburse-staff") {
+      const { staff_id, type, amount, notes, pin } =
+        body as { staff_id?: string; type?: string; amount?: unknown; notes?: string; pin?: string };
+      if (!staff_id) return json({ error: "staff_id required" }, 400);
+
+      const pinDenied = await checkTxnPin(pin);
+      if (pinDenied) return pinDenied;
+
+      const { data: staffRow } = await sb
+        .from("staff")
+        .select("id, full_name")
+        .eq("id", staff_id)
+        .eq("owner_id", callerId!)
+        .eq("status", "active")
+        .maybeSingle();
+      if (!staffRow) return json({ error: "Staff member not found or not active" }, 404);
+
+      const parsedAmount = parseFloat(String(amount ?? "0"));
+      if (!parsedAmount || parsedAmount <= 0) return json({ error: "Invalid amount" }, 400);
+
+      const { data: disb, error: disbErr } = await sb
+        .from("staff_disbursements")
+        .insert({
+          owner_id:   callerId!,
+          staff_id,
+          type:       type || "salary",
+          amount:     parsedAmount,
+          notes:      notes || null,
+          created_by: callerId!,
+        })
+        .select("*")
+        .single();
+      if (disbErr) return json({ error: disbErr.message }, 400);
+
+      return json({ ok: true, disbursement: disb });
     }
 
     return json({ error: `Unknown action: ${action}` }, 400);

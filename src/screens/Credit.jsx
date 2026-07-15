@@ -758,9 +758,9 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                 amount: Math.round(parseFloat(repayAmt) * 100),
                 recipient: repaying.customer_name || undefined,
                 description: `Credit repayment · ${repayMethod}`,
-                onApprove: () => {
+                onApprove: (verifiedPin) => {
                   setTxnPin(null);
-                  repayCredit(repaying.id, parseFloat(repayAmt), repayMethod, repayNote);
+                  repayCredit(repaying.id, parseFloat(repayAmt), repayMethod, repayNote, verifiedPin);
                   speakConfirmation("creditSaved", getLang());
                   setRepaying(null); setRepayAmt(""); setRepayMethod("cash"); setRepayNote("");
                 },

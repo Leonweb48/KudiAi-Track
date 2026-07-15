@@ -66,7 +66,7 @@ function json(body: unknown, status = 200): Response {
 }
 
 // ── PIN-requiring actions ─────────────────────────────────────────────────────
-const PIN_GATED = new Set(["record_withdrawal", "reverse_contribution", "archive_client", "request_client_archive", "confirm_manual_deposit", "approve_contribution", "collection_record", "execute_commission", "execute_payout", "skip_turn", "reorder_turns", "approve_reactivation"]);
+const PIN_GATED = new Set(["record_withdrawal", "reverse_contribution", "archive_client", "request_client_archive", "confirm_manual_deposit", "approve_contribution", "collection_record", "execute_commission", "execute_payout", "skip_turn", "reorder_turns", "approve_reactivation", "record_credit_repayment"]);
 
 // ── Resolve the true owner UUID for a client from the DB ─────────────────────
 async function resolveClientOwner(
@@ -1356,6 +1356,56 @@ serve(async (req: Request) => {
     });
 
     return json({ ok: true });
+  }
+
+  // ── record_credit_repayment ────────────────────────────────────────────────
+  if (action === "record_credit_repayment") {
+    const { credit_id, amount, payment_method, notes } = params as {
+      credit_id?: string; amount?: unknown;
+      payment_method?: string; notes?: string;
+    };
+
+    if (!credit_id) return json({ ok: false, error: "credit_id required" }, 400);
+    const parsedAmount = parseFloat(String(amount ?? "0"));
+    if (!parsedAmount || parsedAmount <= 0) return json({ ok: false, error: "Invalid amount" }, 400);
+
+    // Fetch credit — verify owner
+    const { data: credit, error: creditFetchErr } = await sb
+      .from("credits")
+      .select("id, user_id, amount_paid, total_amount, outstanding, status, customer_name, email, phone")
+      .eq("id", credit_id)
+      .maybeSingle();
+
+    if (creditFetchErr || !credit) return json({ ok: false, error: "Credit not found" }, 404);
+    if (credit.user_id !== user.id) return json({ ok: false, error: "Unauthorized" }, 403);
+    if (credit.status === "paid") return json({ ok: false, error: "Credit is already fully paid" }, 409);
+
+    const newAmountPaid  = (credit.amount_paid || 0) + parsedAmount;
+    const newOutstanding = Math.max(0, (credit.total_amount || 0) - newAmountPaid);
+    const newStatus      = newOutstanding === 0 ? "paid" : newAmountPaid > 0 ? "partially_paid" : "active";
+
+    const { error: updateErr } = await sb
+      .from("credits")
+      .update({ amount_paid: newAmountPaid, outstanding: newOutstanding, status: newStatus })
+      .eq("id", credit_id);
+    if (updateErr) return json({ ok: false, error: updateErr.message }, 500);
+
+    const { data: payment, error: payErr } = await sb
+      .from("debt_payments")
+      .insert({
+        credit_id,
+        owner_id:       user.id,
+        amount:         parsedAmount,
+        payment_method: payment_method || "cash",
+        payment_date:   new Date().toISOString().slice(0, 10),
+        notes:          notes || null,
+        recorded_by:    user.id,
+      })
+      .select("*")
+      .single();
+    if (payErr) return json({ ok: false, error: payErr.message }, 500);
+
+    return json({ ok: true, payment, outstanding: newOutstanding, status: newStatus });
   }
 
   return json({ ok: false, error: `Unknown action: ${action}` }, 400);

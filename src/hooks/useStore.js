@@ -528,35 +528,31 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
     }
   };
 
-  const repayCredit = async (id, amount, paymentMethod = "cash", notes = "") => {
+  const repayCredit = async (id, amount, paymentMethod = "cash", notes = "", pin = "") => {
+    const { data, error } = await supabase.functions.invoke("ajo-write", {
+      body: {
+        action:         "record_credit_repayment",
+        credit_id:      id,
+        amount,
+        payment_method: paymentMethod,
+        notes:          notes || null,
+        pin,
+      },
+    });
+    if (error || data?.error) {
+      console.error("repayCredit:", data?.error || error?.message);
+      loadData();
+      return;
+    }
+    const { payment: dp, outstanding: newOutstanding, status: newStatus } = data;
     let updated;
     setCredits(p => p.map(c => {
       if (c.id !== id) return c;
-      const paid = c.amount_paid + amount;
-      const out  = Math.max(0, c.total_amount - paid);
-      updated = { ...c, amount_paid: paid, outstanding: out,
-        status: out === 0 ? "paid" : paid > 0 ? "partially_paid" : "active" };
+      updated = { ...c, amount_paid: c.amount_paid + amount, outstanding: newOutstanding, status: newStatus };
       return updated;
     }));
+    if (dp) setDebtPayments(prev => [dp, ...prev]);
     if (updated) {
-      const { error } = await supabase.from("credits")
-        .update({ amount_paid: updated.amount_paid, outstanding: updated.outstanding, status: updated.status })
-        .eq("id", id);
-      if (error) { console.error("repayCredit:", error); loadData(); }
-      else {
-        // Record individual payment
-        const paymentPayload = {
-          credit_id:      id,
-          owner_id:       userId,
-          staff_id:       staffId  || null,
-          amount,
-          payment_method: paymentMethod,
-          payment_date:   today(),
-          notes:          notes    || null,
-          recorded_by:    staffId  || null,
-        };
-        const { data: dp } = await supabase.from("debt_payments").insert(paymentPayload).select().single();
-        if (dp) setDebtPayments(prev => [dp, ...prev]);
 
         onNotify?.("payments", "Payment Received", `${fmt(amount)} from ${updated.customer_name}`);
         fireEmailTrigger("credit_repayment", {
@@ -592,7 +588,6 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
             staff_name:     staffName || "",
           });
         }
-      }
     }
   };
 
