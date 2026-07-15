@@ -871,7 +871,11 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         if (sData?.subaccount_code) {
           newGroup.paystack_subaccount_code = sData.subaccount_code;
         } else {
-          const msg = sData?.error || subErr?.message || "Unknown error";
+          let msg = sData?.error || "";
+          if (!msg && subErr) {
+            try { const b = await subErr.context?.json?.(); msg = b?.error || b?.message || ""; } catch {}
+            if (!msg) msg = "Failed to link bank account";
+          }
           console.error("Subaccount creation failed (group saved):", msg);
           setSubAcctMsg(`Group saved. Bank account link failed: ${msg} — use 'Create Subaccount' to retry.`);
         }
@@ -1123,7 +1127,11 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           },
         }).catch(e => ({ data: null, error: e }));
         if (!sData?.subaccount_code) {
-          const msg = sData?.error || subErr?.message || "Unknown error";
+          let msg = sData?.error || "";
+          if (!msg && subErr) {
+            try { const b = await subErr.context?.json?.(); msg = b?.error || b?.message || ""; } catch {}
+            if (!msg) msg = "Failed to link bank account";
+          }
           console.error("Subaccount creation failed (client saved):", msg);
           setClientSubAcctErr(`Client saved. Bank account link failed: ${msg} — edit the client profile to retry.`);
         }

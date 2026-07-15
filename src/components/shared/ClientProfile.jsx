@@ -238,7 +238,11 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
           .invoke("paystack", { body: paystackBody })
           .catch(e => ({ data: null, error: e }));
         if (subErr || sData?.error) {
-          const msg = sData?.error || subErr?.message || "Unknown error";
+          let msg = sData?.error || "";
+          if (!msg && subErr) {
+            try { const b = await subErr.context?.json?.(); msg = b?.error || b?.message || ""; } catch {}
+            if (!msg) msg = "Failed to link bank account";
+          }
           console.error("Paystack subaccount sync failed:", msg);
           setSubAcctWarn(`Profile saved. Bank account link failed: ${msg} — save again to retry.`);
         }
