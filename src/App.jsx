@@ -105,6 +105,9 @@ export default function App() {
 
   const MORE_TABS = new Set(["finance", "insights", "settings"]);
 
+  // Close MoreSheet on any navigation (covers notification deep links)
+  useEffect(() => { setMoreSheetOpen(false); }, [location.pathname]);
+
   const setTab = (t) => {
     if (t === "more") { setMoreSheetOpen(true); return; }
     setMoreSheetOpen(false);
