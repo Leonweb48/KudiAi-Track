@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+﻿import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { supabase } from "../utils/supabase";
 import { useTheme } from "../hooks/useTheme";
 import { useT } from "../contexts/LanguageContext";
@@ -119,7 +119,7 @@ function OverviewTab({ org, wallet, programs, announcements, members = [], loans
       iconBg:"bg-purple-100 dark:bg-purple-900/40", iconColor:"#7c3aed", tab:"members",
       icon:"M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" },
     { label:"Active Programs",  value: activePrograms.length, sub:`${programs.length} total`,
-      iconBg:"bg-green-100 dark:bg-green-900/40", iconColor:"#00A651", tab:"programs",
+      iconBg:"bg-green-100 dark:bg-green-900/40", iconColor:"#3DA829", tab:"programs",
       icon:"M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" },
     { label:"Contributions",    value: fmt(org.total_savings), sub:"total collected",
       iconBg:"bg-cyan-100 dark:bg-cyan-900/40", iconColor:"#0891b2", tab:"finance",
@@ -135,7 +135,7 @@ function OverviewTab({ org, wallet, programs, announcements, members = [], loans
       iconBg:"bg-orange-100 dark:bg-orange-900/40", iconColor:"#ea580c", tab:"loans",
       icon:"M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" },
     { label:"Messages",         value: announcements.length, sub:`${announcements.filter(a=>a.is_pinned).length} pinned`,
-      iconBg:"bg-green-100 dark:bg-green-900/40", iconColor:"#00A651", tab:"messages",
+      iconBg:"bg-green-100 dark:bg-green-900/40", iconColor:"#3DA829", tab:"messages",
       icon:"M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" },
     { label:"Broadcast",        value: "—",                  sub:"meetings, events & more",
       iconBg:"bg-teal-100 dark:bg-teal-900/40", iconColor:"#0f766e", tab:"broadcast",
@@ -149,7 +149,7 @@ function OverviewTab({ org, wallet, programs, announcements, members = [], loans
 
       {/* ── Hero Balance Card ── */}
       <div className="mx-4 mt-5 rounded-3xl px-6 py-6 text-white relative overflow-hidden shadow-hero"
-        style={{ background: "linear-gradient(145deg,#00A651 0%,#007A3C 55%,#005228 100%)" }}>
+        style={{ background: "linear-gradient(145deg,#3DA829 0%,#2E8020 55%,#1E5514 100%)" }}>
         <div className="absolute -top-12 -right-12 w-40 h-40 rounded-full bg-white/5 pointer-events-none" />
         <div className="absolute -bottom-14 -left-10 w-48 h-48 rounded-full bg-white/5 pointer-events-none" />
         <div className="absolute top-6 right-24 w-14 h-14 rounded-full bg-white/5 pointer-events-none" />
@@ -266,7 +266,7 @@ function OverviewTab({ org, wallet, programs, announcements, members = [], loans
               return (
                 <div key={t.id} className={`flex items-center gap-3 px-4 py-3 ${i < recentTxns.length-1 ? "border-b border-slate-50 dark:border-slate-700/40" : ""}`}>
                   <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${isOut ? "bg-red-50 dark:bg-red-900/20" : "bg-green-50 dark:bg-green-900/20"}`}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" strokeWidth="2.5" strokeLinecap="round" stroke={isOut ? "#ef4444" : "#00A651"}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" strokeWidth="2.5" strokeLinecap="round" stroke={isOut ? "#ef4444" : "#3DA829"}>
                       <path d={isOut ? "M12 5v14M19 12l-7 7-7-7" : "M12 19V5M5 12l7-7 7 7"} />
                     </svg>
                   </div>
@@ -1107,7 +1107,7 @@ function FinanceTab({ org, members, programs, onRefresh }) {
       ],
     });
     pdf.addStats([
-      { label: "Total Deposited", value: pdfFmt(totC), color: "#00A651" },
+      { label: "Total Deposited", value: pdfFmt(totC), color: "#3DA829" },
       { label: "Total Withdrawn", value: pdfFmt(totD), color: "#ef4444" },
       { label: "Net",             value: pdfFmt(totC - totD) },
       { label: "Records",         value: String(savings.length) },
@@ -1830,7 +1830,7 @@ function BroadcastTab({ org, members }) {
   const TYPE_COLORS = {
     meeting:      { bg: "bg-[#0D2040]", text: "text-white", label: "Meeting"      },
     announcement: { bg: "bg-amber-500",  text: "text-white", label: "Announcement" },
-    event:        { bg: "bg-[#00A651]",  text: "text-white", label: "Event"        },
+    event:        { bg: "bg-[#3DA829]",  text: "text-white", label: "Event"        },
     poll:         { bg: "bg-purple-600", text: "text-white", label: "Poll"         },
   };
 
@@ -1887,7 +1887,7 @@ function BroadcastTab({ org, members }) {
       {/* Header */}
       <div className="px-4 pt-4 pb-2 flex justify-between items-center">
         <p className="text-xs font-bold text-slate-500 dark:text-slate-400">{visible.length} item{visible.length !== 1 ? "s" : ""}</p>
-        <button onClick={() => setShowTypePicker(true)} className="px-4 py-2.5 rounded-xl text-xs font-bold text-white" style={{ background: "#00A651" }}>+ Broadcast</button>
+        <button onClick={() => setShowTypePicker(true)} className="px-4 py-2.5 rounded-xl text-xs font-bold text-white" style={{ background: "#3DA829" }}>+ Broadcast</button>
       </div>
 
       {/* Filter tabs */}
@@ -1902,7 +1902,7 @@ function BroadcastTab({ org, members }) {
       {/* List */}
       <div className="flex-1 overflow-y-auto px-4 pb-24">
         {loading ? (
-          <div className="flex justify-center py-10"><div className="w-6 h-6 border-[3px] border-t-transparent rounded-full animate-spin" style={{ borderColor: "#00A651", borderTopColor: "transparent" }} /></div>
+          <div className="flex justify-center py-10"><div className="w-6 h-6 border-[3px] border-t-transparent rounded-full animate-spin" style={{ borderColor: "#3DA829", borderTopColor: "transparent" }} /></div>
         ) : visible.length === 0 ? (
           <div className="flex flex-col items-center py-20 text-center">
             <span className="text-5xl mb-4">📡</span>
@@ -1937,7 +1937,7 @@ function BroadcastTab({ org, members }) {
                         const pct   = total > 0 ? Math.round(votes / total * 100) : 0;
                         return (
                           <div key={i} className="relative bg-slate-100 dark:bg-slate-700 rounded-lg overflow-hidden">
-                            <div className="absolute inset-0 rounded-lg" style={{ width: `${pct}%`, background: "#00A65125" }} />
+                            <div className="absolute inset-0 rounded-lg" style={{ width: `${pct}%`, background: "#3DA82925" }} />
                             <div className="relative px-2.5 py-1.5 flex justify-between">
                               <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">{opt}</span>
                               <span className="text-[10px] text-slate-400">{pct}% ({votes})</span>
@@ -1957,7 +1957,7 @@ function BroadcastTab({ org, members }) {
                       </button>
                       {item.meeting_link && (
                         <a href={item.meeting_link} target="_blank" rel="noreferrer"
-                          className="px-3 py-1.5 rounded-xl text-[10px] font-bold text-white" style={{ background: "#00A651" }}>Join</a>
+                          className="px-3 py-1.5 rounded-xl text-[10px] font-bold text-white" style={{ background: "#3DA829" }}>Join</a>
                       )}
                     </div>
                   )}
@@ -2126,7 +2126,7 @@ function BroadcastTab({ org, members }) {
           </div>
           <div className="flex gap-2 mt-4">
             <button onClick={() => { setCreateType(null); setError(""); }} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Cancel</button>
-            <button onClick={handleCreate} disabled={saving} className="flex-1 py-3 text-white rounded-xl font-bold text-sm disabled:opacity-50" style={{ background: "#00A651" }}>
+            <button onClick={handleCreate} disabled={saving} className="flex-1 py-3 text-white rounded-xl font-bold text-sm disabled:opacity-50" style={{ background: "#3DA829" }}>
               {saving ? "Publishing…" : "Publish"}
             </button>
           </div>
@@ -2464,7 +2464,7 @@ function OrgSupportSection({ org }) {
       {/* Header */}
       <div className="px-4 pt-4 pb-3 flex items-center gap-3 border-b border-slate-100 dark:border-slate-700">
         <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: "#f0fdf4" }}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="#00A651" strokeWidth={2} strokeLinecap="round" className="w-4.5 h-4.5">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#3DA829" strokeWidth={2} strokeLinecap="round" className="w-4.5 h-4.5">
             <path d="M18 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V4a2 2 0 00-2-2zM9 9h6M9 13h6M9 17h4"/>
           </svg>
         </div>
@@ -2473,7 +2473,7 @@ function OrgSupportSection({ org }) {
           <p className="text-[11px] text-slate-400">Get help or raise a ticket</p>
         </div>
         {view !== "menu" && (
-          <button onClick={reset} className="text-[12px] font-bold text-[#00A651] active:opacity-70">Back</button>
+          <button onClick={reset} className="text-[12px] font-bold text-[#3DA829] active:opacity-70">Back</button>
         )}
       </div>
 
@@ -2483,7 +2483,7 @@ function OrgSupportSection({ org }) {
           <button onClick={() => setView("ticket")}
             className="flex-1 flex flex-col items-center gap-2 py-5 active:bg-slate-50 dark:active:bg-slate-700/50 transition-colors">
             <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: "#dcfce7" }}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="#00A651" strokeWidth={2} strokeLinecap="round" className="w-5 h-5">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#3DA829" strokeWidth={2} strokeLinecap="round" className="w-5 h-5">
                 <path d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/>
               </svg>
             </div>
@@ -2510,7 +2510,7 @@ function OrgSupportSection({ org }) {
             <div className="flex flex-wrap gap-2">
               {CATEGORIES.map(c => (
                 <button key={c} onClick={() => setCategory(c)}
-                  className={`px-3 py-1.5 rounded-full text-[11px] font-bold border transition-colors ${category === c ? "bg-[#00A651] text-white border-[#00A651]" : "bg-slate-50 dark:bg-slate-700 text-slate-500 dark:text-slate-300 border-slate-200 dark:border-slate-600"}`}>
+                  className={`px-3 py-1.5 rounded-full text-[11px] font-bold border transition-colors ${category === c ? "bg-[#3DA829] text-white border-[#3DA829]" : "bg-slate-50 dark:bg-slate-700 text-slate-500 dark:text-slate-300 border-slate-200 dark:border-slate-600"}`}>
                   {c}
                 </button>
               ))}
@@ -2519,15 +2519,15 @@ function OrgSupportSection({ org }) {
           <div>
             <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">Subject</label>
             <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Brief description of your issue"
-              className="w-full bg-slate-50 dark:bg-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 dark:text-white outline-none border border-slate-200 dark:border-slate-600 focus:border-[#00A651]" />
+              className="w-full bg-slate-50 dark:bg-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 dark:text-white outline-none border border-slate-200 dark:border-slate-600 focus:border-[#3DA829]" />
           </div>
           <div>
             <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">Message</label>
             <textarea value={message} onChange={e => setMessage(e.target.value)} rows={4} placeholder="Describe your issue in detail…"
-              className="w-full bg-slate-50 dark:bg-slate-700 rounded-xl px-3.5 py-3 text-sm text-slate-800 dark:text-white outline-none resize-none border border-slate-200 dark:border-slate-600 focus:border-[#00A651]" />
+              className="w-full bg-slate-50 dark:bg-slate-700 rounded-xl px-3.5 py-3 text-sm text-slate-800 dark:text-white outline-none resize-none border border-slate-200 dark:border-slate-600 focus:border-[#3DA829]" />
           </div>
           <button onClick={submit} disabled={saving || !subject.trim() || !message.trim()}
-            className="w-full py-3 bg-[#00A651] text-white rounded-xl font-bold text-sm disabled:opacity-50 active:opacity-80">
+            className="w-full py-3 bg-[#3DA829] text-white rounded-xl font-bold text-sm disabled:opacity-50 active:opacity-80">
             {saving ? "Submitting…" : "Submit Ticket"}
           </button>
         </div>
@@ -2537,15 +2537,15 @@ function OrgSupportSection({ org }) {
       {view === "done" && (
         <div className="p-6 flex flex-col items-center text-center gap-3">
           <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ background: "#dcfce7" }}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="#00A651" strokeWidth={2.5} strokeLinecap="round" className="w-7 h-7"><path d="M5 13l4 4L19 7"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="#3DA829" strokeWidth={2.5} strokeLinecap="round" className="w-7 h-7"><path d="M5 13l4 4L19 7"/></svg>
           </div>
           <p className="text-base font-extrabold text-slate-800 dark:text-white">Ticket Submitted!</p>
           <div className="bg-slate-50 dark:bg-slate-700 rounded-xl px-4 py-2.5">
             <p className="text-[10px] text-slate-400 uppercase tracking-wider font-bold">Reference</p>
-            <p className="text-lg font-extrabold text-[#00A651] tracking-widest">{ticketRef}</p>
+            <p className="text-lg font-extrabold text-[#3DA829] tracking-widest">{ticketRef}</p>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">A confirmation has been sent to your email. Our support team will get back to you shortly.</p>
-          <button onClick={reset} className="mt-1 px-5 py-2.5 bg-[#00A651] text-white rounded-xl font-bold text-sm active:opacity-80">Done</button>
+          <button onClick={reset} className="mt-1 px-5 py-2.5 bg-[#3DA829] text-white rounded-xl font-bold text-sm active:opacity-80">Done</button>
         </div>
       )}
 
@@ -2652,7 +2652,7 @@ function SettingsTab({ org, onRefresh, onOrgUpdate, onBack, isOrgPortal = false,
         {(form.logo_url || org.logo_url)
           ? <img src={form.logo_url || org.logo_url} alt="" className="w-12 h-12 rounded-xl object-cover ring-2 ring-green-200 flex-shrink-0" />
           : <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl flex-shrink-0"
-              style={{ background: "linear-gradient(145deg,#00A651,#0D2040)" }}>
+              style={{ background: "linear-gradient(145deg,#3DA829,#0D2040)" }}>
               <span>{org.type === "cooperative" ? "🤝" : "🏢"}</span>
             </div>
         }
@@ -2673,7 +2673,7 @@ function SettingsTab({ org, onRefresh, onOrgUpdate, onBack, isOrgPortal = false,
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
             style={{ background: isDark ? "#0D2040" : "#f0fdf4" }}>
-            <svg viewBox="0 0 24 24" fill="none" className="w-4.5 h-4.5" stroke={isDark ? "#00A651" : "#0D2040"} strokeWidth={2} strokeLinecap="round">
+            <svg viewBox="0 0 24 24" fill="none" className="w-4.5 h-4.5" stroke={isDark ? "#3DA829" : "#0D2040"} strokeWidth={2} strokeLinecap="round">
               {isDark
                 ? <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
                 : <><circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /></>
@@ -2687,7 +2687,7 @@ function SettingsTab({ org, onRefresh, onOrgUpdate, onBack, isOrgPortal = false,
         </div>
         <button onClick={onToggleDark}
           className="w-12 h-6 rounded-full transition-all relative flex-shrink-0"
-          style={{ background: isDark ? "#00A651" : "#e2e8f0" }}>
+          style={{ background: isDark ? "#3DA829" : "#e2e8f0" }}>
           <div className={`w-5 h-5 rounded-full bg-white shadow-md transition-transform absolute top-0.5 ${isDark ? "translate-x-[26px]" : "translate-x-0.5"}`} />
         </button>
       </div>
@@ -3051,7 +3051,7 @@ function OrgProfileTab({ org, onRefresh, onOrgUpdate }) {
         {(form.logo_url || org.logo_url)
           ? <img src={form.logo_url || org.logo_url} alt="" className="w-12 h-12 rounded-xl object-cover ring-2 ring-green-200 flex-shrink-0" />
           : <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl flex-shrink-0"
-              style={{ background: "linear-gradient(145deg,#00A651,#0D2040)" }}>
+              style={{ background: "linear-gradient(145deg,#3DA829,#0D2040)" }}>
               <span>{org.type === "cooperative" ? "🤝" : "🏢"}</span>
             </div>
         }
@@ -3237,9 +3237,9 @@ function makeMainTabs(t) {
 
 function makeMoreTabs(t) {
   return [
-    { id: "programs",  label: t("coop.programs"),  icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2",          color: "#00A651" },
+    { id: "programs",  label: t("coop.programs"),  icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2",          color: "#3DA829" },
     { id: "broadcast", label: t("coop.broadcast"), icon: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z",                                                   color: "#0f766e" },
-    { id: "bills",     label: t("coop.bills"),     icon: "M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z",                                                   color: "#00A651", orgOnly: true },
+    { id: "bills",     label: t("coop.bills"),     icon: "M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z",                                                   color: "#3DA829", orgOnly: true },
     { id: "profile",   label: t("coop.profile"),   icon: "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4", color: "#0ea5e9" },
     { id: "support",   label: t("coop.support"),   icon: "M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z", color: "#7c3aed" },
   ];
@@ -3364,7 +3364,7 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
             <div className="flex items-baseline gap-0.5 select-none">
               <span className="text-[17px] font-black tracking-tight text-slate-800 dark:text-white leading-none">Kudi</span>
               <span className="text-[17px] font-black tracking-tight leading-none"
-                style={{ background: "linear-gradient(135deg,#00A651,#007A3C)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>AI</span>
+                style={{ background: "linear-gradient(135deg,#3DA829,#2E8020)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>AI</span>
               <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 tracking-widest uppercase leading-none ml-1">Track</span>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
@@ -3378,7 +3378,7 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
                 {org.logo_url
                   ? <img src={org.logo_url} alt="" className="w-9 h-9 rounded-full object-cover border-2 border-slate-100 dark:border-slate-700 shadow-sm" />
                   : <div className="w-9 h-9 rounded-full flex items-center justify-center text-base border-2 border-slate-100 dark:border-slate-700 shadow-sm"
-                      style={{ background: "linear-gradient(145deg,#00A651,#0D2040)" }}>
+                      style={{ background: "linear-gradient(145deg,#3DA829,#0D2040)" }}>
                       <span>{ORG_TYPE_ICONS[org.type] || "🏢"}</span>
                     </div>
                 }
@@ -3401,14 +3401,14 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
                     className="flex-1 flex items-center justify-center relative focus-visible:outline-none">
                     <div className="relative">
                       <svg viewBox="0 0 24 24" className="w-6 h-6 transition-all duration-150"
-                        fill={active ? "#00A651" : "none"}
-                        stroke={active ? "#00A651" : "#94a3b8"}
+                        fill={active ? "#3DA829" : "none"}
+                        stroke={active ? "#3DA829" : "#94a3b8"}
                         strokeWidth={active ? 2 : 1.75}
                         strokeLinecap="round" strokeLinejoin="round">
                         <path d={t.icon} />
                       </svg>
                       {t.id === "messages" && chatUnread > 0 && !active && (
-                        <span className="absolute -top-1 -right-2 min-w-[15px] h-[15px] bg-[#00A651] text-white text-[8px] font-extrabold rounded-full flex items-center justify-center px-0.5">
+                        <span className="absolute -top-1 -right-2 min-w-[15px] h-[15px] bg-[#3DA829] text-white text-[8px] font-extrabold rounded-full flex items-center justify-center px-0.5">
                           {chatUnread > 99 ? "99+" : chatUnread}
                         </span>
                       )}
@@ -3421,11 +3421,11 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
                 className="flex-1 flex items-center justify-center relative focus-visible:outline-none">
                 <svg viewBox="0 0 24 24" className="w-6 h-6 transition-all duration-150"
                   fill="none"
-                  stroke={isMoreTab || showMore ? "#00A651" : "#94a3b8"}
+                  stroke={isMoreTab || showMore ? "#3DA829" : "#94a3b8"}
                   strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="5" cy="12" r="1.5" fill={isMoreTab || showMore ? "#00A651" : "#94a3b8"} stroke="none" />
-                  <circle cx="12" cy="12" r="1.5" fill={isMoreTab || showMore ? "#00A651" : "#94a3b8"} stroke="none" />
-                  <circle cx="19" cy="12" r="1.5" fill={isMoreTab || showMore ? "#00A651" : "#94a3b8"} stroke="none" />
+                  <circle cx="5" cy="12" r="1.5" fill={isMoreTab || showMore ? "#3DA829" : "#94a3b8"} stroke="none" />
+                  <circle cx="12" cy="12" r="1.5" fill={isMoreTab || showMore ? "#3DA829" : "#94a3b8"} stroke="none" />
+                  <circle cx="19" cy="12" r="1.5" fill={isMoreTab || showMore ? "#3DA829" : "#94a3b8"} stroke="none" />
                 </svg>
               </button>
             </div>
@@ -3460,14 +3460,14 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
                 {/* Banner */}
                 <div className="relative flex-shrink-0" style={{ height: 88 }}>
                   <div className="absolute inset-0"
-                    style={{ background: "linear-gradient(135deg,#00A651 0%,#065f46 55%,#0D2040 100%)" }} />
+                    style={{ background: "linear-gradient(135deg,#3DA829 0%,#065f46 55%,#0D2040 100%)" }} />
                   {/* Avatar overlapping banner */}
                   <div className="absolute left-4" style={{ bottom: -22 }}>
                     {org.logo_url
                       ? <img src={org.logo_url} alt=""
                           className="w-14 h-14 rounded-full object-cover border-4 border-white dark:border-[#0f1117]" />
                       : <div className="w-14 h-14 rounded-full flex items-center justify-center text-2xl border-4 border-white dark:border-[#0f1117]"
-                          style={{ background: "linear-gradient(145deg,#00A651,#0D2040)" }}>
+                          style={{ background: "linear-gradient(145deg,#3DA829,#0D2040)" }}>
                           <span>{ORG_TYPE_ICONS[org.type] || "🏢"}</span>
                         </div>
                     }
@@ -3498,7 +3498,7 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
                     const active = tab === t.id;
                     return (
                       <button key={t.id} onClick={() => navigateTo(t.id)}
-                        className={`w-full flex items-center gap-4 px-5 py-3.5 transition-colors active:bg-slate-50 dark:active:bg-slate-800/50 ${active ? "text-[#00A651]" : "text-slate-800 dark:text-slate-100"}`}>
+                        className={`w-full flex items-center gap-4 px-5 py-3.5 transition-colors active:bg-slate-50 dark:active:bg-slate-800/50 ${active ? "text-[#3DA829]" : "text-slate-800 dark:text-slate-100"}`}>
                         <svg viewBox="0 0 24 24" fill="none" className="w-[22px] h-[22px] flex-shrink-0"
                           stroke="currentColor" strokeWidth={active ? 2.5 : 2} strokeLinecap="round" strokeLinejoin="round">
                           <path d={t.icon} />
@@ -3512,7 +3512,7 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
                     const active = tab === t.id;
                     return (
                       <button key={t.id} onClick={() => navigateTo(t.id)}
-                        className={`w-full flex items-center gap-4 px-5 py-3.5 transition-colors active:bg-slate-50 dark:active:bg-slate-800/50 ${active ? "text-[#00A651]" : "text-slate-800 dark:text-slate-100"}`}>
+                        className={`w-full flex items-center gap-4 px-5 py-3.5 transition-colors active:bg-slate-50 dark:active:bg-slate-800/50 ${active ? "text-[#3DA829]" : "text-slate-800 dark:text-slate-100"}`}>
                         <svg viewBox="0 0 24 24" fill="none" className="w-[22px] h-[22px] flex-shrink-0"
                           stroke="currentColor" strokeWidth={active ? 2.5 : 2} strokeLinecap="round" strokeLinejoin="round">
                           {t.icon.split("|").map((p, i) => <path key={i} d={p} />)}
@@ -3534,7 +3534,7 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
                   </button>
                   <button onClick={toggleDark}
                     className="w-10 h-[22px] rounded-full relative flex-shrink-0 transition-colors"
-                    style={{ background: isDark ? "#00A651" : "#e2e8f0" }}>
+                    style={{ background: isDark ? "#3DA829" : "#e2e8f0" }}>
                     <div className={`w-[16px] h-[16px] rounded-full bg-white shadow transition-transform absolute top-[3px] ${isDark ? "translate-x-[19px]" : "translate-x-[3px]"}`} />
                   </button>
                 </div>
@@ -3572,7 +3572,7 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
         {/* Banner */}
         <div className="relative flex-shrink-0" style={{ height: 80 }}>
           <div className="absolute inset-0"
-            style={{ background: "linear-gradient(135deg,#00A651 0%,#065f46 55%,#0D2040 100%)" }} />
+            style={{ background: "linear-gradient(135deg,#3DA829 0%,#065f46 55%,#0D2040 100%)" }} />
           {/* Back button */}
           <button onClick={onBack}
             className="absolute left-3 top-3 w-8 h-8 flex items-center justify-center rounded-full bg-black/30 text-white active:bg-black/50 transition">
@@ -3586,7 +3586,7 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
           {/* Avatar overlapping banner */}
           <div className="absolute left-4" style={{ bottom: -20 }}>
             <div className="w-12 h-12 rounded-full flex items-center justify-center text-xl border-3 border-white dark:border-[#0f1117]"
-              style={{ background: "linear-gradient(145deg,#00A651,#0D2040)", borderWidth: 3 }}>
+              style={{ background: "linear-gradient(145deg,#3DA829,#0D2040)", borderWidth: 3 }}>
               <span>{ORG_TYPE_ICONS[org.type] || "🏢"}</span>
             </div>
           </div>
@@ -3614,7 +3614,7 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
               <button key={t.id} onClick={() => setTab(t.id)}
                 className={`px-4 py-3.5 border-b-2 transition-colors whitespace-nowrap text-sm leading-none ${
                   tab === t.id
-                    ? "border-[#00A651] text-slate-900 dark:text-white font-black"
+                    ? "border-[#3DA829] text-slate-900 dark:text-white font-black"
                     : "border-transparent text-slate-400 dark:text-slate-500 font-semibold"
                 }`}>
                 {t.label}

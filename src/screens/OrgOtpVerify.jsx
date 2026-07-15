@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+﻿import { useState, useEffect, useRef } from "react";
 import { supabase } from "../utils/supabase";
 import AppLogo from "../components/AppLogo";
 
@@ -249,7 +249,7 @@ export default function OrgOtpVerify({ org }) {
             disabled={loading || otp.length < 6}
             className="w-full py-3 rounded-xl text-white font-bold text-sm transition-all"
             style={{
-              background: loading || otp.length < 6 ? "rgba(0,166,81,0.4)" : "#00A651",
+              background: loading || otp.length < 6 ? "rgba(0,166,81,0.4)" : "#3DA829",
               border: "none",
               cursor: otp.length < 6 || loading ? "not-allowed" : "pointer",
               boxShadow: otp.length === 6 && !loading ? "0 4px 15px rgba(0,166,81,0.3)" : "none",

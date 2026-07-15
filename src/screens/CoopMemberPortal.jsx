@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+﻿import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { friendlyError } from "../utils/errorMessage";
 import { usePullToRefresh } from "../hooks/usePullToRefresh";
 import PullIndicator from "../components/PullIndicator";
@@ -116,7 +116,7 @@ export function CoopMemberFirstLogin({ member }) {
           </div>
         </div>
         <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4"
-          style={{ background: "linear-gradient(135deg,#00A651,#065f46)" }}>
+          style={{ background: "linear-gradient(135deg,#3DA829,#065f46)" }}>
           <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6 text-white" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
             <rect x="3" y="11" width="18" height="11" rx="2" />
             <path d="M7 11V7a5 5 0 0110 0v4" />
@@ -165,11 +165,11 @@ export function CoopMemberFirstLogin({ member }) {
           ].map(({ rule, pass }) => (
             <div key={rule} className="flex items-center gap-2">
               <div className={`w-3.5 h-3.5 rounded-full flex items-center justify-center flex-shrink-0 ${pass ? "" : "bg-slate-200 dark:bg-slate-700"}`}
-                style={pass ? { background: "#00A651" } : {}}>
+                style={pass ? { background: "#3DA829" } : {}}>
                 {pass && <svg viewBox="0 0 24 24" fill="none" className="w-2.5 h-2.5" stroke="white" strokeWidth={3} strokeLinecap="round"><path d="M20 6L9 17l-5-5" /></svg>}
               </div>
               <p className={`text-[11px] font-medium ${pass ? "" : "text-slate-400 dark:text-slate-500"}`}
-                style={pass ? { color: "#00A651" } : {}}>
+                style={pass ? { color: "#3DA829" } : {}}>
                 {rule}
               </p>
             </div>
@@ -212,7 +212,7 @@ function HomeTab({ member, org, announcements, polls = [], events = [], loans = 
 
   const STATS = [
     { label:"Savings Balance",  value: fmt(member.savings_balance),
-      sub: "current balance", bg:"#00A651", tab:"contributions",
+      sub: "current balance", bg:"#3DA829", tab:"contributions",
       icon:"M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" },
     { label:"Active Loans",     value: activeLoans.length,
       sub: activeLoans.length > 0 ? fmt(activeLoans.reduce((s,l)=>s+(l.outstanding_balance||0),0))+" owed" : "none active",
@@ -224,7 +224,7 @@ function HomeTab({ member, org, announcements, polls = [], events = [], loans = 
       icon:"M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" },
     { label:"Messages",         value: announcements.length,
       sub: pinnedAnns.length > 0 ? `${pinnedAnns.length} pinned` : "from organisation",
-      bg:"#00A651", tab:"messages",
+      bg:"#3DA829", tab:"messages",
       icon:"M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" },
   ];
 
@@ -233,7 +233,7 @@ function HomeTab({ member, org, announcements, polls = [], events = [], loans = 
 
       {/* ── Hero Balance Card ── */}
       <div className="mx-4 mt-5 rounded-3xl px-6 py-6 text-white relative overflow-hidden shadow-hero"
-        style={{ background: "linear-gradient(145deg,#00A651 0%,#007A3C 55%,#005228 100%)" }}>
+        style={{ background: "linear-gradient(145deg,#3DA829 0%,#2E8020 55%,#1E5514 100%)" }}>
         <div className="absolute -top-12 -right-12 w-40 h-40 rounded-full bg-white/5 pointer-events-none" />
         <div className="absolute -bottom-14 -left-10 w-48 h-48 rounded-full bg-white/5 pointer-events-none" />
         <div className="absolute top-6 right-24 w-14 h-14 rounded-full bg-white/5 pointer-events-none" />
@@ -329,7 +329,7 @@ function HomeTab({ member, org, announcements, polls = [], events = [], loans = 
             </div>
           </div>
           {[
-            ["Total Funds", fmt(org.total_savings || 0), "#00A651"],
+            ["Total Funds", fmt(org.total_savings || 0), "#3DA829"],
             ["Loans Out",   fmt(org.total_loans_out || 0), "#dc2626"],
           ].map(([k, v, c]) => (
             <div key={k} className="flex justify-between items-center px-4 py-3 border-b border-slate-50 dark:border-slate-700/30 last:border-0">
@@ -493,7 +493,7 @@ function PayOrgModal({ member, org, preProgram, history, onClose }) {
             </div>
             <div className="h-2.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden mb-2">
               <div className="h-full rounded-full transition-all"
-                style={{ width: `${Math.min(100, (paidThisMonth / required) * 100)}%`, background: metTarget ? "#00A651" : "#f59e0b" }} />
+                style={{ width: `${Math.min(100, (paidThisMonth / required) * 100)}%`, background: metTarget ? "#3DA829" : "#f59e0b" }} />
             </div>
             <div className="flex justify-between text-[10px] font-semibold mb-1">
               <span className="text-slate-500 dark:text-slate-400">{fmt(paidThisMonth)} paid</span>
@@ -707,7 +707,7 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
       ],
     });
     pdf.addStats([
-      { label: "Total Deposited", value: pdfFmt(totC),                 color: "#00A651" },
+      { label: "Total Deposited", value: pdfFmt(totC),                 color: "#3DA829" },
       { label: "Total Withdrawn", value: pdfFmt(totD),                 color: "#ef4444" },
       { label: "Net Savings",     value: pdfFmt(member.savings_balance || lastBal) },
       { label: "Records",         value: String(history.length) },
@@ -728,11 +728,11 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
     <div className="p-4 pb-28 flex flex-col gap-4">
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-white dark:bg-slate-800 rounded-2xl p-3 border border-slate-100 dark:border-slate-700 text-center">
-          <AmountDisplay amount={member.savings_balance} size="stat" align="center" style={{ color: '#00A651' }} />
+          <AmountDisplay amount={member.savings_balance} size="stat" align="center" style={{ color: '#3DA829' }} />
           <p className="text-[10px] text-slate-400 mt-0.5">Current Balance</p>
         </div>
         <div className="bg-white dark:bg-slate-800 rounded-2xl p-3 border border-slate-100 dark:border-slate-700 text-center">
-          <AmountDisplay amount={totalContributed} size="stat" align="center" style={{ color: '#00A651' }} />
+          <AmountDisplay amount={totalContributed} size="stat" align="center" style={{ color: '#3DA829' }} />
           <p className="text-[10px] text-slate-400 mt-0.5">Total Contributions</p>
         </div>
       </div>
@@ -794,7 +794,7 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
                   <div>
                     <div className="h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden mb-1">
                       <div className="h-full rounded-full transition-all"
-                        style={{ width: `${pct}%`, background: metTarget ? "#00A651" : "#f59e0b" }} />
+                        style={{ width: `${pct}%`, background: metTarget ? "#3DA829" : "#f59e0b" }} />
                     </div>
                     <div className="flex justify-between text-[9px] font-semibold text-slate-400">
                       <span>{fmt(paid)} paid this month</span>
@@ -1220,7 +1220,7 @@ function MemberBroadcastTab({ member, org }) {
   const TYPE_COLORS = {
     meeting:      { bg: "bg-[#0D2040]", text: "text-white", label: "Meeting"      },
     announcement: { bg: "bg-amber-500",  text: "text-white", label: "Announcement" },
-    event:        { bg: "bg-[#00A651]",  text: "text-white", label: "Event"        },
+    event:        { bg: "bg-[#3DA829]",  text: "text-white", label: "Event"        },
     poll:         { bg: "bg-purple-600", text: "text-white", label: "Poll"         },
   };
 
@@ -1228,7 +1228,7 @@ function MemberBroadcastTab({ member, org }) {
 
   if (loading) return (
     <div className="flex justify-center py-16">
-      <div className="w-8 h-8 border-[3px] border-t-transparent rounded-full animate-spin" style={{ borderColor: "#00A651", borderTopColor: "transparent" }} />
+      <div className="w-8 h-8 border-[3px] border-t-transparent rounded-full animate-spin" style={{ borderColor: "#3DA829", borderTopColor: "transparent" }} />
     </div>
   );
 
@@ -1338,7 +1338,7 @@ function MemberBroadcastTab({ member, org }) {
                         onClick={() => !hasVoted && item.is_active && handleVote(item.id, i)}
                         disabled={hasVoted || !item.is_active || voting === item.id}
                         className={`relative rounded-xl overflow-hidden text-left border-2 transition ${isMyVote ? "border-green-400" : "border-slate-200 dark:border-slate-600"}`}>
-                        <div className="absolute inset-0" style={{ width: `${pct}%`, background: isMyVote ? "#00A65120" : "#00000008" }} />
+                        <div className="absolute inset-0" style={{ width: `${pct}%`, background: isMyVote ? "#3DA82920" : "#00000008" }} />
                         <div className="relative px-3 py-2 flex justify-between items-center">
                           <span className={`text-[11px] font-semibold ${isMyVote ? "text-green-700 dark:text-green-300" : "text-slate-700 dark:text-slate-200"}`}>
                             {isMyVote && "✓ "}{opt}
@@ -1354,7 +1354,7 @@ function MemberBroadcastTab({ member, org }) {
                   {item.closes_at && item.is_active ? ` · Closes ${fmtDT(item.closes_at)}` : ""}
                 </p>
                 {item.my_vote == null && item.is_active && (
-                  <p className="text-[10px] font-bold mt-1" style={{ color: "#00A651" }}>Tap an option to vote</p>
+                  <p className="text-[10px] font-bold mt-1" style={{ color: "#3DA829" }}>Tap an option to vote</p>
                 )}
               </>)}
             </div>
@@ -1440,7 +1440,7 @@ function SupportTab({ member, org }) {
         ].map(t => (
           <button key={t.id} onClick={() => setView(t.id)}
             className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-[12px] font-bold border-b-2 transition-colors
-              ${view === t.id ? "border-[#00A651] text-[#00A651]" : "border-transparent text-slate-400 dark:text-slate-500"}`}>
+              ${view === t.id ? "border-[#3DA829] text-[#3DA829]" : "border-transparent text-slate-400 dark:text-slate-500"}`}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
               <path d={t.icon} />
             </svg>
@@ -1453,25 +1453,25 @@ function SupportTab({ member, org }) {
         {view === "ticket" ? (
           done ? (
             <div className="flex flex-col items-center justify-center py-16 gap-4 text-center">
-              <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: "linear-gradient(135deg,#00A651,#007A3C)" }}>
+              <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: "linear-gradient(135deg,#3DA829,#2E8020)" }}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8">
                   <polyline points="20 6 9 17 4 12" />
                 </svg>
               </div>
               <div>
                 <p className="text-base font-extrabold text-slate-800 dark:text-white">Ticket Submitted!</p>
-                <p className="text-[12px] text-slate-400 mt-1">Reference: <span className="font-bold text-[#00A651]">{done}</span></p>
+                <p className="text-[12px] text-slate-400 mt-1">Reference: <span className="font-bold text-[#3DA829]">{done}</span></p>
                 <p className="text-[12px] text-slate-400 mt-2 leading-relaxed">You'll receive a confirmation email shortly. Your organisation admin has been notified.</p>
               </div>
               <button onClick={() => setDone(null)}
-                className="mt-2 px-6 py-2.5 bg-[#00A651] text-white text-sm font-bold rounded-xl active:opacity-80">
+                className="mt-2 px-6 py-2.5 bg-[#3DA829] text-white text-sm font-bold rounded-xl active:opacity-80">
                 Raise Another Ticket
               </button>
             </div>
           ) : (
             <div className="flex flex-col gap-4">
-              <div className="bg-[#00A651]/8 dark:bg-[#00A651]/10 rounded-2xl p-4 border border-[#00A651]/20">
-                <p className="text-[12px] font-bold text-[#00A651]">How it works</p>
+              <div className="bg-[#3DA829]/8 dark:bg-[#3DA829]/10 rounded-2xl p-4 border border-[#3DA829]/20">
+                <p className="text-[12px] font-bold text-[#3DA829]">How it works</p>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">Your ticket is sent to your organisation admin. You'll get a confirmation email and the admin will follow up with you directly.</p>
               </div>
 
@@ -1488,7 +1488,7 @@ function SupportTab({ member, org }) {
                   {["General", "Savings", "Loans", "Technical"].map(c => (
                     <button key={c} onClick={() => setCategory(c)}
                       className={`py-2.5 rounded-xl text-[12px] font-bold border-2 transition-all active:scale-[0.97]
-                        ${category === c ? "border-[#00A651] bg-[#00A651]/8 text-[#00A651]" : "border-slate-100 dark:border-slate-700 text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-800"}`}>
+                        ${category === c ? "border-[#3DA829] bg-[#3DA829]/8 text-[#3DA829]" : "border-slate-100 dark:border-slate-700 text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-800"}`}>
                       {c}
                     </button>
                   ))}
@@ -1499,7 +1499,7 @@ function SupportTab({ member, org }) {
               <div>
                 <label className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">Subject *</label>
                 <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Brief description of your issue…"
-                  className="w-full bg-slate-100 dark:bg-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-[#00A651]" />
+                  className="w-full bg-slate-100 dark:bg-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-[#3DA829]" />
               </div>
 
               {/* Message */}
@@ -1507,12 +1507,12 @@ function SupportTab({ member, org }) {
                 <label className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">Message *</label>
                 <textarea value={message} onChange={e => setMessage(e.target.value)} rows={5}
                   placeholder="Describe your issue in detail…"
-                  className="w-full bg-slate-100 dark:bg-slate-800 rounded-xl px-3.5 py-3 text-sm text-slate-800 dark:text-white outline-none resize-none focus:ring-2 focus:ring-[#00A651]" />
+                  className="w-full bg-slate-100 dark:bg-slate-800 rounded-xl px-3.5 py-3 text-sm text-slate-800 dark:text-white outline-none resize-none focus:ring-2 focus:ring-[#3DA829]" />
               </div>
 
               <button onClick={submit} disabled={sending || !subject.trim() || !message.trim()}
                 className="w-full py-3.5 rounded-2xl font-bold text-sm text-white flex items-center justify-center gap-2 disabled:opacity-50 active:opacity-80 transition-opacity"
-                style={{ background: "linear-gradient(135deg,#00A651,#007A3C)" }}>
+                style={{ background: "linear-gradient(135deg,#3DA829,#2E8020)" }}>
                 {sending
                   ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Sending…</>
                   : <><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>Submit Ticket</>}
@@ -1540,9 +1540,9 @@ function SupportTab({ member, org }) {
                 )}
               </div>
             ))}
-            <div className="mt-4 bg-[#00A651]/8 dark:bg-[#00A651]/10 rounded-2xl p-4 border border-[#00A651]/20 text-center">
+            <div className="mt-4 bg-[#3DA829]/8 dark:bg-[#3DA829]/10 rounded-2xl p-4 border border-[#3DA829]/20 text-center">
               <p className="text-[12px] text-slate-500 dark:text-slate-400">Can't find your answer?</p>
-              <button onClick={() => setView("ticket")} className="mt-1.5 text-[12px] font-bold text-[#00A651] active:opacity-70">Raise a support ticket →</button>
+              <button onClick={() => setView("ticket")} className="mt-1.5 text-[12px] font-bold text-[#3DA829] active:opacity-70">Raise a support ticket →</button>
             </div>
           </div>
         )}
@@ -1614,7 +1614,7 @@ function makeMoreTabsMember(t) {
   return [
     { id: "bills",     label: t("coop.bills"),     color:"#7c3aed", icon:"M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" },
     { id: "broadcast", label: t("coop.broadcast"), color:"#0f766e", icon:"M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" },
-    { id: "support",   label: t("coop.support"),   color:"#00A651", icon:"M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" },
+    { id: "support",   label: t("coop.support"),   color:"#3DA829", icon:"M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" },
   ];
 }
 
@@ -1683,7 +1683,7 @@ function ProfileSheet({ member, onClose, onSave }) {
               {preview
                 ? <img src={preview} alt="" className="w-24 h-24 rounded-full object-cover ring-4 ring-green-100 shadow-xl" />
                 : <div className="w-24 h-24 rounded-full flex items-center justify-center text-3xl font-black text-white shadow-xl ring-4 ring-green-100"
-                    style={{ background: "linear-gradient(145deg,#00A651,#0D2040)" }}>
+                    style={{ background: "linear-gradient(145deg,#3DA829,#0D2040)" }}>
                     {member.full_name?.charAt(0).toUpperCase()}
                   </div>
               }
@@ -1956,7 +1956,7 @@ export default function CoopMemberPortal({ member: initialMember }) {
           <div className="flex items-baseline gap-0.5 select-none">
             <span className="text-[17px] font-black tracking-tight text-slate-800 dark:text-white leading-none">Kudi</span>
             <span className="text-[17px] font-black tracking-tight leading-none"
-              style={{ background: "linear-gradient(135deg,#00A651,#007A3C)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>AI</span>
+              style={{ background: "linear-gradient(135deg,#3DA829,#2E8020)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>AI</span>
             <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 tracking-widest uppercase leading-none ml-1">Track</span>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
@@ -1965,7 +1965,7 @@ export default function CoopMemberPortal({ member: initialMember }) {
               {member.avatar_url
                 ? <img src={member.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover border-2 border-slate-100 dark:border-slate-700 shadow-sm" />
                 : <div className="w-9 h-9 rounded-full flex items-center justify-center text-base font-extrabold text-white border-2 border-slate-100 dark:border-slate-700 shadow-sm"
-                    style={{ background: "linear-gradient(145deg,#00A651,#0D2040)" }}>
+                    style={{ background: "linear-gradient(145deg,#3DA829,#0D2040)" }}>
                     {member.full_name?.charAt(0).toUpperCase()}
                   </div>
               }
@@ -2009,10 +2009,10 @@ export default function CoopMemberPortal({ member: initialMember }) {
               return (
                 <button key={t.id} onClick={() => { setTab(t.id); setShowMore(false); }}
                   className="flex-1 flex flex-col items-center justify-center gap-0.5 relative focus-visible:outline-none">
-                  {active && <span className="absolute top-0 left-1/2 -translate-x-1/2 w-5 h-0.5 rounded-full bg-[#00A651] dark:bg-green-400" />}
+                  {active && <span className="absolute top-0 left-1/2 -translate-x-1/2 w-5 h-0.5 rounded-full bg-[#3DA829] dark:bg-green-400" />}
                   <div className={`relative transition-all duration-200 ${active ? "scale-110" : "scale-100"}`}>
                     <svg viewBox="0 0 24 24" fill="none" className="w-[21px] h-[21px]"
-                      stroke={active ? "#00A651" : "#94a3b8"} strokeWidth={active ? 2.5 : 2} strokeLinecap="round" strokeLinejoin="round">
+                      stroke={active ? "#3DA829" : "#94a3b8"} strokeWidth={active ? 2.5 : 2} strokeLinecap="round" strokeLinejoin="round">
                       <path d={t.icon} />
                     </svg>
                     {t.id === "messages" && chatUnread > 0 && !active && (
@@ -2021,7 +2021,7 @@ export default function CoopMemberPortal({ member: initialMember }) {
                       </span>
                     )}
                   </div>
-                  <span className={`text-[8px] font-bold uppercase tracking-wide leading-none ${active ? "text-[#00A651] dark:text-green-400" : "text-slate-400 dark:text-slate-500"}`}>
+                  <span className={`text-[8px] font-bold uppercase tracking-wide leading-none ${active ? "text-[#3DA829] dark:text-green-400" : "text-slate-400 dark:text-slate-500"}`}>
                     {t.label}
                   </span>
                 </button>
@@ -2030,17 +2030,17 @@ export default function CoopMemberPortal({ member: initialMember }) {
             {/* Hamburger / Menu */}
             <button onClick={() => setShowMore(p => !p)}
               className="flex-1 flex flex-col items-center justify-center gap-0.5 relative focus-visible:outline-none">
-              {isMoreTab && <span className="absolute top-0 left-1/2 -translate-x-1/2 w-5 h-0.5 rounded-full bg-[#00A651] dark:bg-green-400" />}
+              {isMoreTab && <span className="absolute top-0 left-1/2 -translate-x-1/2 w-5 h-0.5 rounded-full bg-[#3DA829] dark:bg-green-400" />}
               <div className={`relative transition-all duration-200 ${showMore ? "scale-110" : "scale-100"}`}>
                 <svg viewBox="0 0 24 24" fill="none" className="w-[21px] h-[21px]"
-                  stroke={isMoreTab || showMore ? "#00A651" : "#94a3b8"} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  stroke={isMoreTab || showMore ? "#3DA829" : "#94a3b8"} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                   <path d="M4 6h16M4 12h16M4 18h16" />
                 </svg>
                 {emergencyCount > 0 && !showMore && (
                   <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full" />
                 )}
               </div>
-              <span className={`text-[8px] font-bold uppercase tracking-wide leading-none ${isMoreTab || showMore ? "text-[#00A651] dark:text-green-400" : "text-slate-400 dark:text-slate-500"}`}>
+              <span className={`text-[8px] font-bold uppercase tracking-wide leading-none ${isMoreTab || showMore ? "text-[#3DA829] dark:text-green-400" : "text-slate-400 dark:text-slate-500"}`}>
                 Menu
               </span>
             </button>
@@ -2078,7 +2078,7 @@ export default function CoopMemberPortal({ member: initialMember }) {
                   {member.avatar_url
                     ? <img src={member.avatar_url} alt="" className="w-12 h-12 rounded-2xl object-cover ring-2 ring-green-200" />
                     : <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl font-black text-white"
-                        style={{ background: "linear-gradient(145deg,#00A651,#0D2040)" }}>
+                        style={{ background: "linear-gradient(145deg,#3DA829,#0D2040)" }}>
                         {member.full_name?.charAt(0).toUpperCase()}
                       </div>
                   }
@@ -2094,13 +2094,13 @@ export default function CoopMemberPortal({ member: initialMember }) {
                   const active = tab === t.id;
                   return (
                     <button key={t.id} onClick={() => navigateTo(t.id)}
-                      className={`w-full flex items-center gap-4 px-5 py-3.5 transition-colors ${active ? "text-[#00A651]" : "text-slate-700 dark:text-slate-200"}`}>
+                      className={`w-full flex items-center gap-4 px-5 py-3.5 transition-colors ${active ? "text-[#3DA829]" : "text-slate-700 dark:text-slate-200"}`}>
                       <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 flex-shrink-0"
-                        stroke={active ? "#00A651" : "currentColor"} strokeWidth={active ? 2.5 : 2} strokeLinecap="round" strokeLinejoin="round">
+                        stroke={active ? "#3DA829" : "currentColor"} strokeWidth={active ? 2.5 : 2} strokeLinecap="round" strokeLinejoin="round">
                         <path d={t.icon} />
                       </svg>
                       <span className={`text-sm ${active ? "font-extrabold" : "font-semibold"}`}>{t.label}</span>
-                      {active && <div className="ml-auto w-1 h-5 bg-[#00A651] rounded-full" />}
+                      {active && <div className="ml-auto w-1 h-5 bg-[#3DA829] rounded-full" />}
                     </button>
                   );
                 })}
@@ -2109,16 +2109,16 @@ export default function CoopMemberPortal({ member: initialMember }) {
                   const active = tab === t.id;
                   return (
                     <button key={t.id} onClick={() => navigateTo(t.id)}
-                      className={`w-full flex items-center gap-4 px-5 py-3.5 transition-colors ${active ? "text-[#00A651]" : "text-slate-700 dark:text-slate-200"}`}>
+                      className={`w-full flex items-center gap-4 px-5 py-3.5 transition-colors ${active ? "text-[#3DA829]" : "text-slate-700 dark:text-slate-200"}`}>
                       <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
                         style={{ background: (t.color || "#64748b") + "18" }}>
                         <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                          style={{ stroke: active ? "#00A651" : (t.color || "#64748b") }}>
+                          style={{ stroke: active ? "#3DA829" : (t.color || "#64748b") }}>
                           {t.icon.split("|").map((p, i) => <path key={i} d={p} />)}
                         </svg>
                       </div>
                       <span className={`text-sm ${active ? "font-extrabold" : "font-semibold"}`}>{t.label}</span>
-                      {active && <div className="ml-auto w-1 h-5 bg-[#00A651] rounded-full" />}
+                      {active && <div className="ml-auto w-1 h-5 bg-[#3DA829] rounded-full" />}
                       {t.id === "broadcast" && emergencyCount > 0 && !active && (
                         <span className="ml-auto w-2 h-2 bg-red-500 rounded-full" />
                       )}
@@ -2214,7 +2214,7 @@ export default function CoopMemberPortal({ member: initialMember }) {
                   </svg>
                 </div>
                 <p className="text-xl font-extrabold text-slate-800 dark:text-white mb-1">Payment Confirmed!</p>
-                <AmountDisplay amount={paymentResult.amount} size="hero" align="center" style={{ color: '#00A651', marginTop: 12, marginBottom: 4 }} />
+                <AmountDisplay amount={paymentResult.amount} size="hero" align="center" style={{ color: '#3DA829', marginTop: 12, marginBottom: 4 }} />
                 <p className="text-xs text-slate-400 mb-8">added to your savings balance</p>
                 <button onClick={() => setPaymentResult(null)}
                   className="w-full py-4 bg-green-600 text-white font-bold rounded-2xl text-sm">

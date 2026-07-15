@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import Icon   from "../components/Icon";
 import Modal  from "../components/shared/Modal";
 import Field  from "../components/shared/Field";
@@ -159,7 +159,7 @@ function AsoClientHistoryModal({ client, contributions, cycle, businessName, sta
       ],
     });
     pdf.addStats([
-      { label: "Total Contributed", value: pdfFmt(totContrib), color: "#00A651" },
+      { label: "Total Contributed", value: pdfFmt(totContrib), color: "#3DA829" },
       { label: "Total Withdrawn",   value: pdfFmt(totWd),      color: "#ef4444" },
       { label: "Current Balance",   value: pdfFmt(client.current_balance || 0) },
       { label: "Records",           value: String(contributions.length) },
