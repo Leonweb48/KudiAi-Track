@@ -242,6 +242,7 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
   const [search,       setSearch]       = useState("");
   const [receipt,      setReceipt]      = useState(null);
   const [ajoContribs,  setAjoContribs]  = useState(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const { transactions, addTransaction, deleteTransaction, profile, staffMap = {}, asoClients = [] } = store;
 
   const asoClientMap = useMemo(() => {
@@ -386,7 +387,7 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
         <div className="flex gap-2">
           {pdfAllowed && filtered.length > 0 && (
             <button onClick={handleExportPdf}
-              className="w-9 h-9 bg-slate-100 dark:bg-slate-700 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform">
+              className="w-11 h-11 bg-slate-100 dark:bg-slate-700 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform">
               <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 15V3m0 12l-4-4m4 4l4-4"/><path d="M2 17l.621 2.485A2 2 0 004.561 21h14.878a2 2 0 001.94-1.515L22 17"/>
               </svg>
@@ -394,7 +395,7 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
           )}
           {filtered.length > 0 && (
             <button onClick={handleExportCsv} title="Export CSV"
-              className="w-9 h-9 bg-slate-100 dark:bg-slate-700 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform">
+              className="w-11 h-11 bg-slate-100 dark:bg-slate-700 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform">
               <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                 <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
               </svg>
@@ -402,12 +403,12 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
           )}
           {onVoiceOpen && !txLimitReached && (
             <button onClick={onVoiceOpen}
-              className="w-9 h-9 bg-slate-800 dark:bg-slate-700 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform">
+              className="w-11 h-11 bg-slate-800 dark:bg-slate-700 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform">
               <Icon name="mic" size={16} className="text-white" />
             </button>
           )}
           <button onClick={txLimitReached ? onUpgrade : () => openAdd("in")}
-            className={`w-9 h-9 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform ${txLimitReached ? "bg-amber-400" : "bg-green-600"}`}>
+            className={`w-11 h-11 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform ${txLimitReached ? "bg-amber-400" : "bg-green-600"}`}>
             <Icon name={txLimitReached ? "lock" : "plus"} size={18} className="text-white" />
           </button>
         </div>
@@ -442,11 +443,11 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
       {/* Quick add */}
       <div className="flex gap-2 mb-4">
         <button onClick={() => openAdd("in")}
-          className="flex-1 py-2.5 bg-green-600 text-white rounded-xl font-bold text-xs active:scale-95 transition-transform shadow-sm">
+          className="flex-1 py-3.5 bg-green-600 text-white rounded-xl font-bold text-xs active:scale-95 transition-transform shadow-sm">
           + {t("txn.cashIn")}
         </button>
         <button onClick={() => openAdd("out")}
-          className="flex-1 py-2.5 bg-red-500 text-white rounded-xl font-bold text-xs active:scale-95 transition-transform shadow-sm">
+          className="flex-1 py-3.5 bg-red-500 text-white rounded-xl font-bold text-xs active:scale-95 transition-transform shadow-sm">
           + {t("txn.cashOut")}
         </button>
       </div>
@@ -462,7 +463,7 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
           { id: "ajo",    label: "Ajo" },
         ].map(opt => (
           <button key={opt.id} onClick={() => setFilter(opt.id)}
-            className={`flex-shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold transition-colors ${
+            className={`flex-shrink-0 px-3.5 py-3 rounded-full text-xs font-bold transition-colors min-h-[44px] inline-flex items-center ${
               filter === opt.id
                 ? opt.id === "ajo"
                   ? "bg-violet-600 text-white"
@@ -589,7 +590,7 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
                 <div className="flex items-center gap-3 mt-2.5 pt-2.5 border-t border-slate-50 dark:border-slate-700/60">
                   <button
                     onClick={() => setReceipt(buildTransactionReceipt(t, profile))}
-                    className="flex items-center gap-1.5 text-[11px] font-bold text-brand-600 dark:text-brand-400 hover:text-brand-700 transition"
+                    className="flex items-center gap-1.5 min-h-[44px] px-2 text-[11px] font-bold text-brand-600 dark:text-brand-400 hover:text-brand-700 transition"
                   >
                     <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                       <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
@@ -606,8 +607,8 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
                   )}
 
                   {deleteTransaction && (
-                    <button onClick={() => deleteTransaction(t.id)}
-                      className="ml-auto text-[11px] text-red-400 hover:text-red-600 dark:text-red-500 dark:hover:text-red-400 font-semibold transition">
+                    <button onClick={() => setConfirmDeleteId(t.id)}
+                      className="ml-auto min-h-[44px] px-2 flex items-center text-[11px] text-red-400 hover:text-red-600 dark:text-red-500 dark:hover:text-red-400 font-semibold transition">
                       Delete
                     </button>
                   )}
@@ -627,6 +628,28 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
           data={receipt}
           onClose={() => setReceipt(null)}
         />
+      )}
+
+      {confirmDeleteId && (
+        <div className="fixed inset-0 z-[50] flex items-end" onClick={() => setConfirmDeleteId(null)}>
+          <div className="w-full bg-white dark:bg-slate-900 rounded-t-2xl p-6 shadow-2xl" onClick={e => e.stopPropagation()}
+            style={{ paddingBottom: "max(24px, env(safe-area-inset-bottom, 24px))" }}>
+            <p className="text-base font-bold text-slate-900 dark:text-white">Delete this transaction?</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">This action cannot be undone.</p>
+            <div className="flex gap-3 mt-5">
+              <button
+                onClick={() => setConfirmDeleteId(null)}
+                className="flex-1 h-11 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-semibold text-sm active:scale-95 transition">
+                Cancel
+              </button>
+              <button
+                onClick={() => { deleteTransaction(confirmDeleteId); setConfirmDeleteId(null); }}
+                className="flex-1 h-11 rounded-xl bg-red-500 hover:bg-red-600 text-white font-semibold text-sm active:scale-95 transition">
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

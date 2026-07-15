@@ -974,7 +974,7 @@ export default function Reports({ store, onClose }) {
         {/* Preview header */}
         <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 px-4 pb-3 flex items-center gap-3 flex-shrink-0" style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
           <button onClick={() => setPreview(false)}
-            className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center active:scale-95 transition-transform">
+            className="w-11 h-11 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center active:scale-95 transition-transform">
             <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
               <path d="M19 12H5M12 5l-7 7 7 7"/>
             </svg>
@@ -1041,7 +1041,7 @@ export default function Reports({ store, onClose }) {
       {/* Header */}
       <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 px-4 pb-3 flex items-center gap-3 flex-shrink-0" style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
         <button onClick={onClose}
-          className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center active:scale-95 transition-transform">
+          className="w-11 h-11 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center active:scale-95 transition-transform">
           <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
             <path d="M19 12H5M12 5l-7 7 7 7"/>
           </svg>
@@ -1078,7 +1078,7 @@ export default function Reports({ store, onClose }) {
         <div className="flex gap-1.5 flex-wrap mb-3">
           {PERIODS.map(p => (
             <button key={p.id} onClick={() => setPeriod(p.id)}
-              className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all active:scale-95 ${
+              className={`px-3 py-3 rounded-full text-xs font-bold transition-all active:scale-95 min-h-[44px] inline-flex items-center ${
                 period === p.id
                   ? "bg-slate-800 dark:bg-white text-white dark:text-slate-900 shadow-sm"
                   : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"

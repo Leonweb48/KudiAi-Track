@@ -314,7 +314,7 @@ export default function LockScreen({ pinLock, businessName, avatarUrl }) {
           </p>
         )}
         <button onClick={handleForgotPin}
-          className="text-white/40" style={{ background: "none", border: "none", fontSize: 13, cursor: "pointer" }}>
+          className="text-white/40" style={{ background: "none", border: "none", fontSize: 13, cursor: "pointer", padding: "12px 20px" }}>
           Forgot PIN?
         </button>
       </div>

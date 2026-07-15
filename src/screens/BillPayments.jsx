@@ -664,7 +664,7 @@ function PinModal({ pins, title, onClose }) {
       <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl">
         <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-800">
           <h3 className="text-base font-bold text-slate-800 dark:text-white">{title}</h3>
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
+          <button onClick={onClose} className="w-11 h-11 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
             <Ico d="M18 6L6 18|M6 6l12 12" size={14} c="#64748b" />
           </button>
         </div>
@@ -678,7 +678,7 @@ function PinModal({ pins, title, onClose }) {
           ))}
         </div>
         <div className="px-5 pb-5">
-          <button onClick={onClose} className="w-full bg-slate-800 dark:bg-slate-700 text-white rounded-xl py-3 text-sm font-bold">Done</button>
+          <button onClick={onClose} className="w-full bg-slate-800 dark:bg-slate-700 text-white rounded-xl py-3.5 text-sm font-bold">Done</button>
         </div>
       </div>
     </div>
@@ -833,7 +833,7 @@ function BillStatementModal({ bills, profile, onClose }) {
             <h3 className="text-base font-bold text-slate-800 dark:text-white">Generate Statement</h3>
             <p className="text-xs text-slate-400 mt-0.5">Download PDF for any service or period</p>
           </div>
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
+          <button onClick={onClose} className="w-11 h-11 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
             <Ico d="M18 6L6 18|M6 6l12 12" size={14} c="#64748b" />
           </button>
         </div>
@@ -896,7 +896,7 @@ function ConfirmPaymentSheet({ data, onConfirm, onCancel }) {
         {/* Header */}
         <div className="flex items-center justify-between px-5 pt-3 pb-4">
           <p className="text-lg font-black text-slate-900">Confirm Payment</p>
-          <button onClick={onCancel} className="w-8 h-8 rounded-full flex items-center justify-center bg-slate-100 dark:bg-slate-800">
+          <button onClick={onCancel} className="w-11 h-11 rounded-full flex items-center justify-center bg-slate-100 dark:bg-slate-800">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2.5" strokeLinecap="round">
               <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
             </svg>
@@ -1244,7 +1244,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
           {/* Slim title bar */}
           <div className="flex-shrink-0 flex items-center justify-between px-5 py-3 bg-white border-b border-slate-100">
             <p className="text-sm font-bold text-slate-800 truncate">{catLabel} Receipt</p>
-            <button onClick={onDone} className="text-xs font-semibold px-3 py-1 rounded-lg active:scale-95 transition-transform text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800">Done</button>
+            <button onClick={onDone} className="text-sm font-semibold px-4 py-2.5 min-h-[44px] inline-flex items-center rounded-lg active:scale-95 transition-transform text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800">Done</button>
           </div>
 
           {/* Scrollable content */}
@@ -3003,7 +3003,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
               style={netTheme
                 ? { background: `linear-gradient(135deg, ${netTheme.bg}, ${netTheme.bg}cc)`, borderBottom: `1.5px solid ${netTheme.bg}` }
                 : {}}>
-              <button onClick={closeSheet} className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full transition-colors active:scale-90"
+              <button onClick={closeSheet} className="w-11 h-11 flex-shrink-0 flex items-center justify-center rounded-full transition-colors active:scale-90"
                 style={netTheme ? { background: "rgba(255,255,255,0.22)" } : { background: "#f1f5f9" }}>
                 <Ico d="M15 18l-6-6 6-6" size={16} c={netTheme ? netTheme.fg : "#64748b"} />
               </button>

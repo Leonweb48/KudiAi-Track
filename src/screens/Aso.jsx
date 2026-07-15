@@ -264,7 +264,7 @@ function AsoClientHistoryModal({ client, contributions, cycle, businessName, sta
           <div className="flex items-center gap-2">
             {tab === "history" && contributions.length > 0 && (
               <button onClick={handleExportPdf}
-                className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center active:scale-90 transition">
+                className="w-11 h-11 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center active:scale-90 transition">
                 <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                   <path d="M12 15V3m0 12l-4-4m4 4l4-4"/><path d="M2 17l.621 2.485A2 2 0 004.561 21h14.878a2 2 0 001.94-1.515L22 17"/>
                 </svg>
@@ -272,14 +272,14 @@ function AsoClientHistoryModal({ client, contributions, cycle, businessName, sta
             )}
             {tab === "history" && contributions.length > 0 && (
               <button onClick={handleExportCsv} title="Export CSV"
-                className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center active:scale-90 transition">
+                className="w-11 h-11 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center active:scale-90 transition">
                 <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                   <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
                 </svg>
               </button>
             )}
             <button onClick={onClose}
-              className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center active:scale-90 transition">
+              className="w-11 h-11 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center active:scale-90 transition">
               <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
                 <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
               </svg>
@@ -1339,7 +1339,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           <button
             onClick={() => { if (!showCollection) loadGroups(); setShowCollection(v => !v); }}
             title="Today's Collection"
-            className={`w-9 h-9 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-all ${
+            className={`w-11 h-11 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-all ${
               showCollection
                 ? "bg-violet-600 text-white"
                 : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
@@ -1351,14 +1351,14 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           <button
             onClick={() => { loadGroups(); setShowGroups(true); }}
             title="Manage Ajo Groups & Paystack Subaccounts"
-            className="w-9 h-9 bg-slate-100 dark:bg-slate-700 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform">
+            className="w-11 h-11 bg-slate-100 dark:bg-slate-700 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform">
             <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
               <rect x="2" y="5" width="20" height="14" rx="2" /><line x1="2" y1="10" x2="22" y2="10" />
             </svg>
           </button>
           {canManageClients && (
             <button onClick={() => setShowAdd(true)}
-              className="w-9 h-9 bg-violet-600 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform">
+              className="w-11 h-11 bg-violet-600 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform">
               <Icon name="plus" size={18} className="text-white" />
             </button>
           )}
@@ -2177,7 +2177,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           <div className="bg-white dark:bg-slate-900 rounded-t-3xl max-h-[92dvh] flex flex-col">
             <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-800">
               <h2 className="text-base font-bold text-slate-800 dark:text-white">New Ajo Client</h2>
-              <button onClick={resetAdd} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
+              <button onClick={resetAdd} className="w-11 h-11 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
                 <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-500" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
                   <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
                 </svg>
@@ -2909,7 +2909,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-100 dark:border-slate-700/60 bg-white dark:bg-slate-900 flex-shrink-0">
             <button
               onClick={() => setShowCollection(false)}
-              className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-500 dark:text-slate-400 active:scale-95 transition-transform">
+              className="w-11 h-11 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-500 dark:text-slate-400 active:scale-95 transition-transform">
               <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
                 <path d="M19 12H5M12 5l-7 7 7 7" />
               </svg>

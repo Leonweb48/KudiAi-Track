@@ -230,7 +230,7 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
             </div>
             <button
               onClick={() => setBalanceHidden(h => !h)}
-              className="w-8 h-8 flex items-center justify-center rounded-xl bg-white/15 active:bg-white/25 active:scale-90 transition mt-0.5 flex-shrink-0 ml-3">
+              className="w-11 h-11 flex items-center justify-center rounded-xl bg-white/15 active:bg-white/25 active:scale-90 transition mt-0.5 flex-shrink-0 ml-3">
               <Svg d={balanceHidden ? P.eyeOff : P.eye} size={15} color="white" sw={2} />
             </button>
           </div>

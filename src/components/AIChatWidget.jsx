@@ -402,7 +402,7 @@ export default function AIChatWidget({
               <button
                 onClick={() => ask(input)}
                 disabled={!input.trim() || thinking}
-                className="w-8 h-8 rounded-xl bg-brand-500 disabled:bg-slate-200 dark:disabled:bg-slate-700 flex items-center justify-center transition-colors active:scale-95"
+                className="w-11 h-11 rounded-xl bg-brand-500 disabled:bg-slate-200 dark:disabled:bg-slate-700 flex items-center justify-center transition-colors active:scale-95"
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
                   <line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" fill="white" />

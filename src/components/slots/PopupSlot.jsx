@@ -69,7 +69,7 @@ export default function PopupSlot({ campaigns = [], loading, recordEvent }) {
           </div>
           <button
             onClick={dismiss}
-            className="absolute top-4 right-4 z-10 w-8 h-8 rounded-full bg-black/30 flex items-center justify-center"
+            className="absolute top-4 right-4 z-10 w-11 h-11 rounded-full bg-black/30 flex items-center justify-center"
           >
             <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />

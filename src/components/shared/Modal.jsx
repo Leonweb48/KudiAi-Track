@@ -12,7 +12,7 @@ export default function Modal({ title, onClose, children }) {
           <span className="font-bold text-slate-800 dark:text-white text-base">{title}</span>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition"
+            className="w-11 h-11 flex items-center justify-center rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition"
           >
             <Icon name="x" size={18} className="text-slate-500 dark:text-slate-400" />
           </button>

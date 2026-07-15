@@ -78,7 +78,7 @@ export default function LoanApplicationModal({ session, profile, onClose }) {
             <h2 className="text-base font-bold text-gray-900 dark:text-white">Business Loan Application</h2>
             <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">Our lending team reviews within 3–5 business days</p>
           </div>
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 dark:bg-slate-800 text-gray-500">
+          <button onClick={onClose} className="w-11 h-11 flex items-center justify-center rounded-full bg-gray-100 dark:bg-slate-800 text-gray-500">
             <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.5}>
               <path d="M18 6L6 18M6 6l12 12" strokeLinecap="round" />
             </svg>

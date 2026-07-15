@@ -188,7 +188,7 @@ export default function ForgotPinFlow({ pinLock, onCancel }) {
         </button>
 
         <button onClick={onCancel}
-          className="text-sm text-white/40 underline underline-offset-2">
+          className="py-3 px-4 text-sm text-white/40 underline underline-offset-2">
           Back to lock screen
         </button>
       </div>
@@ -278,12 +278,12 @@ export default function ForgotPinFlow({ pinLock, onCancel }) {
           <button
             onClick={async () => { setPin(""); await sendOtp(); }}
             disabled={loading}
-            className="text-xs text-white/40 underline underline-offset-2"
+            className="py-3 px-4 text-xs text-white/40 underline underline-offset-2"
           >
             Didn't receive it? Resend code
           </button>
         )}
-        <button onClick={onCancel} className="text-xs text-white/30 underline underline-offset-2">
+        <button onClick={onCancel} className="py-3 px-4 text-xs text-white/30 underline underline-offset-2">
           Cancel
         </button>
       </div>
