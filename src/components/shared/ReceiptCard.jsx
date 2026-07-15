@@ -1,7 +1,18 @@
 /**
  * Shareable KudiAI receipt — OPay-style ticket card.
- * Uses inline styles throughout so html2canvas captures pixel-for-pixel.
- * Supports an optional provider logo/badge (for bill receipts).
+ *
+ * Capture-safety rules applied throughout:
+ *  - All inline styles; no external CSS classes (html2canvas won't see them).
+ *  - No display:table / table-cell (partial html2canvas support).
+ *  - No borderRadius percentages — pixel values only.
+ *  - No borderTop:dashed — SVG strokeDasharray instead.
+ *  - No inset shorthand — explicit top/right/bottom/left.
+ *  - No inline-block + background — flex centering only.
+ *  - Transforms only on block/flex elements (not on <span>/<a>).
+ *  - Pill uses explicit height + display:flex + alignItems:center
+ *    (not padding-derived height) so background clips to the fixed box.
+ *  - Amount formatted with locale-independent regex (toLocaleString('en-NG')
+ *    is unavailable in some Android WebViews and falls back to period separators).
  */
 import { getProviderLogo, getProviderBadge } from '../../utils/logoMap';
 
@@ -10,28 +21,30 @@ const GREEN      = '#3da829';
 const OUTER_BG   = '#f1f5f9';
 const FONT_STACK = '-apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif';
 
+// Locale-independent: always produces ₦15,000.00 regardless of WebView locale.
 function fmtAmt(n) {
-  return '₦' + Number(n || 0).toLocaleString('en-NG', {
-    minimumFractionDigits: 2, maximumFractionDigits: 2,
-  });
+  const [int, dec] = Number(n || 0).toFixed(2).split('.');
+  return '₦' + int.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '.' + dec;
 }
 
 function statusProps(status) {
-  if (status === 'success')                    return { label: 'Successful', color: '#0f7b3e', bg: '#dcfce7' };
-  if (status === 'pending' || status === 'processing') return { label: 'Pending',     color: '#92400e', bg: '#fef3c7' };
-  if (status === 'failed')                     return { label: 'Failed',      color: '#991b1b', bg: '#fee2e2' };
-  if (status === 'reversed')                   return { label: 'Reversed',    color: '#374151', bg: '#f3f4f6' };
+  if (status === 'success')                         return { label: 'Successful', color: '#0f7b3e', bg: '#dcfce7' };
+  if (status === 'pending' || status === 'processing') return { label: 'Pending',    color: '#92400e', bg: '#fef3c7' };
+  if (status === 'failed')                          return { label: 'Failed',     color: '#991b1b', bg: '#fee2e2' };
+  if (status === 'reversed')                        return { label: 'Reversed',   color: '#374151', bg: '#f3f4f6' };
   if (status) console.warn('[ReceiptCard] Unknown status:', status);
   return { label: 'Pending', color: '#92400e', bg: '#fef3c7' };
 }
 
 // ── Diagonal "KudiAI" watermark ───────────────────────────────────────────────
+// Uses <div> not <span>: html2canvas applies CSS transforms reliably to
+// block-level elements. inset shorthand replaced with explicit sides.
 function Watermark() {
   const items = [];
   for (let row = -1; row < 12; row++) {
     for (let col = -1; col < 5; col++) {
       items.push(
-        <span key={`${row}-${col}`} style={{
+        <div key={`${row}-${col}`} style={{
           position:      'absolute',
           top:           `${row * 38 + 8}px`,
           left:          `${col * 70 - 8}px`,
@@ -45,12 +58,21 @@ function Watermark() {
           userSelect:    'none',
           pointerEvents: 'none',
           letterSpacing: '0.08em',
-        }}>KudiAI</span>
+        }}>KudiAI</div>
       );
     }
   }
   return (
-    <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none', zIndex: 1 }}>
+    <div style={{
+      position:      'absolute',
+      top:           0,
+      right:         0,
+      bottom:        0,
+      left:          0,
+      overflow:      'hidden',
+      pointerEvents: 'none',
+      zIndex:        1,
+    }}>
       {items}
     </div>
   );
@@ -78,12 +100,31 @@ function ScallopEdge({ flip }) {
 }
 
 // ── Ticket-style dashed divider with notch circles ────────────────────────────
+// SVG strokeDasharray replaces borderTop:dashed (html2canvas renders dashed
+// borders as solid). borderRadius pixel value replaces '50%' (percentage
+// radii render inconsistently in html2canvas v1).
 function DashedDivider() {
   return (
     <div style={{ position: 'relative', margin: '12px -20px', display: 'flex', alignItems: 'center' }}>
-      <div style={{ width: 14, height: 14, borderRadius: '50%', backgroundColor: OUTER_BG, flexShrink: 0 }} />
-      <div style={{ flex: 1, borderTop: '1.5px dashed #e2e8f0' }} />
-      <div style={{ width: 14, height: 14, borderRadius: '50%', backgroundColor: OUTER_BG, flexShrink: 0 }} />
+      <div style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: OUTER_BG, flexShrink: 0 }} />
+      <div style={{ flex: 1, height: 2 }}>
+        <svg
+          viewBox="0 0 100 2"
+          width="100%"
+          height="2"
+          preserveAspectRatio="none"
+          style={{ display: 'block' }}
+        >
+          <line
+            x1="0" y1="1" x2="100" y2="1"
+            stroke="#e2e8f0"
+            strokeWidth="2"
+            strokeDasharray="6 4"
+            strokeLinecap="butt"
+          />
+        </svg>
+      </div>
+      <div style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: OUTER_BG, flexShrink: 0 }} />
     </div>
   );
 }
@@ -150,7 +191,6 @@ function ReceiptTypeIcon({ iconType, direction, status }) {
       </svg>
     );
   } else {
-    // generic direction fallback
     icon = (
       <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={fg} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
         {direction === 'in'
@@ -218,7 +258,6 @@ export function ReceiptCard({ data, innerRef }) {
   const amtColor     = status === 'success' ? '#0f7b3e' :
                        status === 'failed'  ? '#dc2626' : NAVY;
 
-  // retrievable fields (electricity token) are shown in TransactionDetailModal, not the card
   const printFields = fields.filter(f => !f.retrievable);
 
   return (
@@ -231,24 +270,21 @@ export function ReceiptCard({ data, innerRef }) {
       <div style={{ background: 'white', position: 'relative', overflow: 'hidden', padding: '16px 20px 0' }}>
         <Watermark />
 
-        {/* Header: logo stacked above "KudiAI Track" (left) · receipt type label (right)
-            Block stacking is the most html2canvas-compatible vertical layout. */}
-        <div style={{ display: 'table', width: '100%', position: 'relative', zIndex: 2 }}>
-          {/* Left cell: logo then text stacked below it, center-aligned */}
-          <span style={{ display: 'table-cell', verticalAlign: 'middle' }}>
-            <div style={{ textAlign: 'center', display: 'inline-block' }}>
-              <img
-                src="/logo.png" alt=""
-                style={{ width: 20, height: 20, borderRadius: 4, display: 'block', margin: '0 auto' }}
-                onError={e => { e.currentTarget.style.display = 'none'; }}
-              />
-              <span style={{ display: 'block', fontSize: 9, fontWeight: 700, color: GREEN, letterSpacing: '-0.01em', lineHeight: '13px', whiteSpace: 'nowrap', marginTop: 2 }}>
-                KudiAI Track
-              </span>
-            </div>
-          </span>
-          {/* Right cell: receipt type label */}
-          <span style={{ display: 'table-cell', verticalAlign: 'middle', textAlign: 'right', fontSize: 9, fontWeight: 700, color: '#94a3b8', letterSpacing: '0.07em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+        {/* Header: flex row replaces display:table / table-cell (html2canvas
+            partial support). Left group stacks logo + label via flex column. */}
+        <div style={{ display: 'flex', alignItems: 'center', width: '100%', position: 'relative', zIndex: 2 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <img
+              src="/logo.png" alt=""
+              style={{ width: 20, height: 20, borderRadius: 4, display: 'block' }}
+              onError={e => { e.currentTarget.style.display = 'none'; }}
+            />
+            <span style={{ display: 'block', fontSize: 9, fontWeight: 700, color: GREEN, letterSpacing: '-0.01em', lineHeight: '13px', whiteSpace: 'nowrap', marginTop: 2 }}>
+              KudiAI Track
+            </span>
+          </div>
+          <div style={{ flex: 1 }} />
+          <span style={{ fontSize: 9, fontWeight: 700, color: '#94a3b8', letterSpacing: '0.07em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
             {category ? 'Bill' : 'Transaction'} Receipt
           </span>
         </div>
@@ -273,21 +309,27 @@ export function ReceiptCard({ data, innerRef }) {
             {fmtAmt(amount)}
           </p>
 
-          {/* Status pill — flex centering avoids the html2canvas v1 bug where
-              inline-block + background paints at full containing-block width.
-              A block <div> inside a flex container shrinks to content width and
-              html2canvas clips its background correctly. borderRadius:20 (not 99)
-              stays because large radii still render inconsistently in v1. */}
-          <div style={{ marginTop: 8, display: 'flex', justifyContent: 'center', lineHeight: 1 }}>
+          {/* Status pill — capture-safe construction:
+              • Outer flex centers without inline-block + background (the v1 blob bug).
+              • Explicit height:28 + display:flex + alignItems:center — size is
+                determined by the fixed box, not by asymmetric padding, so
+                html2canvas clips background to the exact pixel box.
+              • borderRadius:20px (pixel, not %) — percentage radii are
+                mis-rendered by html2canvas v1. */}
+          <div style={{ marginTop: 8, display: 'flex', justifyContent: 'center' }}>
             <div style={{
-              background:   st.bg,
-              borderRadius: 20,
-              padding:      '5px 18px',
-              fontSize:     11,
-              fontWeight:   700,
-              color:        st.color,
-              lineHeight:   '18px',
-              whiteSpace:   'nowrap',
+              display:        'flex',
+              alignItems:     'center',
+              height:         28,
+              paddingLeft:    18,
+              paddingRight:   18,
+              background:     st.bg,
+              borderRadius:   20,
+              fontSize:       11,
+              fontWeight:     700,
+              color:          st.color,
+              lineHeight:     '28px',
+              whiteSpace:     'nowrap',
             }}>
               {st.label}
             </div>
@@ -340,14 +382,13 @@ export function ReceiptCard({ data, innerRef }) {
           )}
         </div>
 
-        {/* Footer strip — light green so text is fully legible */}
+        {/* Footer strip */}
         <div style={{
           margin: '0 -20px',
           background: '#dcfce7',
           padding: '10px 20px 8px',
           textAlign: 'center',
         }}>
-          {/* Logo stacked above "KudiAI Track", centered */}
           <div style={{ marginBottom: 4, textAlign: 'center' }}>
             <img
               src="/logo.png" alt=""
@@ -369,7 +410,7 @@ export function ReceiptCard({ data, innerRef }) {
           </p>
         </div>
 
-        {/* Ref bar — slightly deeper green, readable monospace reference */}
+        {/* Ref bar */}
         <div style={{ margin: '0 -20px', background: '#bbf7d0', padding: '4px 20px', textAlign: 'center' }}>
           <span style={{ fontSize: 7.5, color: '#15803d', letterSpacing: '0.22em', fontWeight: 600, fontFamily: 'monospace' }}>
             {receiptRef || '—'}

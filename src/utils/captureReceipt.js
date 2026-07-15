@@ -7,6 +7,8 @@
  *    or html2canvas renders a completely blank canvas.
  *  - position:absolute left:-9999px keeps it off-screen without hiding it.
  *  - Waits for every <img> to fully load so logos and icons appear.
+ *  - Awaits document.fonts.ready before capture so web fonts are guaranteed to
+ *    be available (without this, fallback glyphs may render in the PNG/PDF).
  *  - Does NOT override windowWidth/windowHeight — those shift the layout.
  *  - allowTaint:true + useCORS:true covers same-origin assets (logo.png,
  *    network icons) without needing explicit CORS headers.
@@ -39,8 +41,12 @@ export async function captureReceiptCanvas(el) {
     )
   );
 
-  // Extra frame for fonts and layout to settle.
-  await new Promise(r => setTimeout(r, 250));
+  // Await font load before capture so no glyph substitution occurs in PNG/PDF.
+  // Resolves immediately for system fonts; waits for any declared web fonts.
+  await document.fonts.ready;
+
+  // Extra frame for layout paint to settle after font metrics are resolved.
+  await new Promise(r => setTimeout(r, 120));
 
   try {
     return await html2canvas(clone, {
