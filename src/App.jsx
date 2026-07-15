@@ -28,6 +28,7 @@ import PinSetupFlow          from "./components/PinSetupFlow";
 import AIChatWidget         from "./components/AIChatWidget";
 import Loyalty               from "./screens/Loyalty";
 import Branches              from "./screens/Branches";
+import MoreSheet             from "./components/MoreSheet";
 import ManagerDashboard from "./screens/ManagerDashboard";
 import AjoMemberPortal       from "./screens/AjoMemberPortal";
 import CoopList              from "./screens/CoopList";
@@ -101,14 +102,20 @@ export default function App() {
   // Derive active tab from URL path — maps legacy credit/aso routes to finance
   const rawTab = location.pathname === "/" ? "home" : location.pathname.slice(1).split("/")[0];
   const tab    = (rawTab === "credit" || rawTab === "aso") ? "finance" : rawTab;
+
+  const MORE_TABS = new Set(["finance", "insights", "settings"]);
+
   const setTab = (t) => {
+    if (t === "more") { setMoreSheetOpen(true); return; }
+    setMoreSheetOpen(false);
     const target = (t === "credit" || t === "aso") ? "finance" : t;
     navigate(target === "home" ? "/" : `/${target}`);
   };
 
-  const [autoAdd,     setAutoAdd]     = useState(null);
-  const [voiceOpen,   setVoiceOpen]   = useState(false);
-  const [showUpgrade,  setShowUpgrade]  = useState(false);
+  const [autoAdd,       setAutoAdd]       = useState(null);
+  const [voiceOpen,     setVoiceOpen]     = useState(false);
+  const [moreSheetOpen, setMoreSheetOpen] = useState(false);
+  const [showUpgrade,   setShowUpgrade]   = useState(false);
   const [showReports,  setShowReports]  = useState(false);
   const [showAI,       setShowAI]       = useState(false);
   const [showBranches, setShowBranches] = useState(false);
@@ -467,6 +474,7 @@ export default function App() {
                     setTab={setTab}
                     onQuickAction={triggerQuickAction}
                     onVoiceOpen={() => setVoiceOpen(true)}
+                    onAIOpen={() => setShowAI(true)}
                     notif={notif} />,
     transactions: <Transactions
                     store={{ ...store, addTransaction: addTransactionWithLoyalty }}
@@ -567,7 +575,13 @@ export default function App() {
             </Routes>
           </main>
 
-          <BottomNav active={tab} onNavigate={setTab} />
+          <BottomNav active={MORE_TABS.has(tab) ? "more" : tab} onNavigate={setTab} />
+
+          <MoreSheet
+            open={moreSheetOpen}
+            onClose={() => setMoreSheetOpen(false)}
+            onNavigate={setTab}
+          />
 
           {voiceOpen && (
             <VoiceModal

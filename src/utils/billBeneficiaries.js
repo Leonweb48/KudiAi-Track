@@ -92,3 +92,8 @@ export function getBeneficiaries(cat) {
 export function deleteBeneficiary(id) {
   persist(load().filter(b => b.id !== id));
 }
+
+// Most-recent beneficiaries across all categories — for "Buy again" row
+export function getRecentBeneficiaries(limit = 5) {
+  return load().slice(0, limit);
+}

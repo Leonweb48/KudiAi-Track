@@ -2,12 +2,11 @@ import Icon from "./Icon";
 import { useT } from "../contexts/LanguageContext";
 
 const NAV_IDS = [
-  { id: "home",         icon: "home",      tkey: "nav.home"    },
-  { id: "transactions", icon: "txn",       tkey: "nav.sales"   },
-  { id: "inventory",    icon: "inventory", tkey: "nav.stock"   },
-  { id: "finance",      icon: "finance",   tkey: "nav.finance" },
-  { id: "insights",     icon: "insights",  tkey: "nav.reports" },
-  { id: "settings",     icon: "settings",  tkey: "nav.more"    },
+  { id: "home",         icon: "home",      tkey: "nav.home"  },
+  { id: "transactions", icon: "txn",       tkey: "nav.sales" },
+  { id: "bills",        icon: "bills",     tkey: "nav.bills" },
+  { id: "inventory",    icon: "inventory", tkey: "nav.stock" },
+  { id: "more",         icon: "settings",  tkey: "nav.more"  },
 ];
 
 export default function BottomNav({ active, onNavigate }) {

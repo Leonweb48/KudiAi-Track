@@ -12,6 +12,7 @@ import { fmt, today } from "../utils/helpers";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
 import { canDo, planLimits } from "../utils/plans";
 import { createReportPdf, fmtCurrency, fmtDate } from "../utils/generateReportPdf";
+import { buildTransactionsCSV, transactionsCSVFilename, shareCSV } from "../utils/exportCSV";
 import { useT } from "../contexts/LanguageContext";
 import { getLang, speakConfirmation } from "../utils/i18n";
 import { speakEvent } from "../utils/tts";
@@ -307,6 +308,12 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
     setShowAdd(true);
   };
 
+  const handleExportCsv = async () => {
+    const csv = buildTransactionsCSV(filtered);
+    const filename = transactionsCSVFilename(filter, null, null);
+    await shareCSV(csv, filename);
+  };
+
   const handleExportPdf = async () => {
     const biz    = store.profile?.business_name || store.profile?.owner_name || "My Business";
     const labels = { all: "All Transactions", in: "Income", out: "Expenses", bills: "Bill Payments", credit: "Credit" };
@@ -382,6 +389,14 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
               className="w-9 h-9 bg-slate-100 dark:bg-slate-700 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform">
               <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 15V3m0 12l-4-4m4 4l4-4"/><path d="M2 17l.621 2.485A2 2 0 004.561 21h14.878a2 2 0 001.94-1.515L22 17"/>
+              </svg>
+            </button>
+          )}
+          {filtered.length > 0 && (
+            <button onClick={handleExportCsv} title="Export CSV"
+              className="w-9 h-9 bg-slate-100 dark:bg-slate-700 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform">
+              <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
               </svg>
             </button>
           )}

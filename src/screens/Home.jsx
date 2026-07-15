@@ -133,7 +133,7 @@ function SalesForecastCard({ prediction, t, balanceHidden }) {
 }
 
 /* ── Main ────────────────────────────────────────────────────────── */
-export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, notif }) {
+export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, onAIOpen, notif }) {
   const { transactions, credits, asoClients, profile, loading } = store;
   const t = useT();
   const [balanceHidden,      setBalanceHidden]      = useState(false);
@@ -141,6 +141,7 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
   const [receipt,            setReceipt]            = useState(null);
   const [showProfilePreview, setShowProfilePreview] = useState(false);
   const [todayAjo,           setTodayAjo]           = useState(0);
+  const [showAITip,          setShowAITip]          = useState(() => !localStorage.getItem("kt_ai_intro_seen"));
 
   useEffect(() => {
     if (!asoClients.length) return;
@@ -343,6 +344,44 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
             ))}
           </div>
         </div>
+      </div>
+
+      {/* ── KudiAI Assistant entry ───────────────────────────────── */}
+      <div className="relative">
+        {showAITip && (
+          <div className="bg-brand-50 dark:bg-brand-900/30 border border-brand-200 dark:border-brand-700/60 rounded-2xl px-4 py-3 mb-2 flex items-start gap-3 relative">
+            <span className="text-xl leading-none mt-0.5">✨</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-brand-800 dark:text-brand-200">Ask me anything about your business</p>
+              <p className="text-xs text-brand-600 dark:text-brand-400 mt-0.5">I speak English, Pidgin, Hausa, Igbo &amp; Yoruba</p>
+            </div>
+            <button
+              onClick={() => { localStorage.setItem("kt_ai_intro_seen", "1"); setShowAITip(false); }}
+              aria-label="Dismiss"
+              className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full text-brand-400 dark:text-brand-500 hover:bg-brand-100 dark:hover:bg-brand-800/40 active:scale-90 transition-transform mt-0.5"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        )}
+        <button
+          onClick={() => { localStorage.setItem("kt_ai_intro_seen", "1"); setShowAITip(false); onAIOpen?.(); }}
+          className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-3xl shadow-card border border-slate-100 dark:border-slate-700/50 active:scale-[0.98] transition-transform duration-150"
+          style={{ background: "linear-gradient(135deg,#16a34a,#059669)" }}
+        >
+          <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center flex-shrink-0">
+            <span className="text-xl leading-none">✨</span>
+          </div>
+          <div className="flex-1 min-w-0 text-left">
+            <p className="text-[15px] font-black text-white leading-tight">KudiAI Assistant</p>
+            <p className="text-[11px] text-green-100 mt-0.5">Ask anything · sales, credit, stock, ajo</p>
+          </div>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" className="opacity-70 flex-shrink-0">
+            <path d="M9 18l6-6-6-6" />
+          </svg>
+        </button>
       </div>
 
       {/* ── Scrollable stat chips ─────────────────────────────────── */}

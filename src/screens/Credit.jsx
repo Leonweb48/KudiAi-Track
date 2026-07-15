@@ -13,6 +13,7 @@ import { supabase } from "../utils/supabase";
 import { fmt } from "../utils/helpers";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
 import { createReportPdf, fmtCurrency as pdfFmt, fmtDate as pdfFmtDate } from "../utils/generateReportPdf";
+import { buildCreditPaymentsCSV, creditCSVFilename, shareCSV } from "../utils/exportCSV";
 import { getLang, speakConfirmation } from "../utils/i18n";
 import { useT } from "../contexts/LanguageContext";
 
@@ -920,6 +921,15 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                       className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center active:scale-90 transition">
                       <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                         <path d="M12 15V3m0 12l-4-4m4 4l4-4"/><path d="M2 17l.621 2.485A2 2 0 004.561 21h14.878a2 2 0 001.94-1.515L22 17"/>
+                      </svg>
+                    </button>
+                  )}
+                  {payments.length > 0 && (
+                    <button onClick={async () => { const csv = buildCreditPaymentsCSV(payments, historyFor); await shareCSV(csv, creditCSVFilename(historyFor.customer_name)); }}
+                      title="Export CSV"
+                      className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center active:scale-90 transition">
+                      <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
                       </svg>
                     </button>
                   )}

@@ -6,7 +6,7 @@ import AnnouncementBarSlot from "../components/slots/AnnouncementBarSlot";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
 import { useT } from "../contexts/LanguageContext";
 import { calcPointsDiscount, calcCashbackDiscount, calcCouponDiscount, calcBillAmounts } from "../utils/billCalc";
-import { saveBeneficiary, getBeneficiaries, benDisplayName, benSubLabel, BEN_CATS } from "../utils/billBeneficiaries";
+import { saveBeneficiary, getBeneficiaries, getRecentBeneficiaries, benDisplayName, benSubLabel, BEN_CATS } from "../utils/billBeneficiaries";
 import { clubkonnect } from "../utils/clubkonnect";
 import { canDo, getLowestPlanWithFeature } from "../utils/plans";
 import TransactionDetailModal from "../components/shared/TransactionDetailModal";
@@ -2872,6 +2872,38 @@ export default function BillPayments({ store, plan, session = null, staffName = 
             </div>
           </div>
         )}
+
+        {/* Buy again row */}
+        {(() => {
+          const recent = getRecentBeneficiaries(5);
+          if (!recent.length) return null;
+          return (
+            <div className="mb-4">
+              <h2 className="text-[13px] font-bold text-slate-700 dark:text-slate-300 mb-2.5 tracking-wide">Buy again</h2>
+              <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+                {recent.map(ben => {
+                  const name = benDisplayName(ben);
+                  const sub  = benSubLabel(ben);
+                  return (
+                    <button
+                      key={ben.id}
+                      onClick={() => { openSheet(ben.cat); applyBeneficiary(ben); }}
+                      className="flex-shrink-0 flex flex-col items-center gap-1.5 px-3 py-2.5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 shadow-sm active:scale-95 transition-transform min-w-[80px] max-w-[96px]"
+                    >
+                      <div className="w-8 h-8 rounded-xl bg-brand-50 dark:bg-brand-900/30 flex items-center justify-center flex-shrink-0">
+                        <span className="text-[15px] leading-none">
+                          {ben.cat === "airtime" ? "📱" : ben.cat === "data" ? "🌐" : ben.cat === "electricity" ? "⚡" : ben.cat === "cable" ? "📺" : ben.cat === "betting" ? "🎯" : "📡"}
+                        </span>
+                      </div>
+                      <p className="text-[11px] font-bold text-slate-700 dark:text-slate-200 text-center leading-tight truncate w-full">{name}</p>
+                      <p className="text-[9px] font-semibold text-slate-400 dark:text-slate-500 text-center leading-tight truncate w-full">{sub}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Service grid */}
         <div>
