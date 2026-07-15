@@ -114,7 +114,6 @@ function AsoClientHistoryModal({ client, contributions, cycle, businessName, sta
   const [reverseReason, setReverseReason] = useState("");
   const [reverseStep,   setReverseStep]   = useState("reason"); // "reason" | "pin"
   const [reverseError,  setReverseError]  = useState("");
-  const fmtCurrency = (n) => `₦${Number(n || 0).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
 
   const filtered = typeFilter === "all"
     ? contributions
@@ -160,7 +159,7 @@ function AsoClientHistoryModal({ client, contributions, cycle, businessName, sta
       ],
     });
     pdf.addStats([
-      { label: "Total Contributed", value: pdfFmt(totContrib), color: "#22c55e" },
+      { label: "Total Contributed", value: pdfFmt(totContrib), color: "#00A651" },
       { label: "Total Withdrawn",   value: pdfFmt(totWd),      color: "#ef4444" },
       { label: "Current Balance",   value: pdfFmt(client.current_balance || 0) },
       { label: "Records",           value: String(contributions.length) },
@@ -346,7 +345,7 @@ function AsoClientHistoryModal({ client, contributions, cycle, businessName, sta
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
                       <span className={`text-sm font-extrabold tabular ${isWithdraw ? "text-red-500" : "text-green-600 dark:text-green-400"}`}>
-                        {isWithdraw ? "−" : "+"}{fmtCurrency(tx.amount)}
+                        {isWithdraw ? "−" : "+"}{fmt(tx.amount)}
                       </span>
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize flex-shrink-0 ${statusCls(tx.status)}`}>{tx.status || "completed"}</span>
                     </div>

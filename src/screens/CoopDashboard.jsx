@@ -119,7 +119,7 @@ function OverviewTab({ org, wallet, programs, announcements, members = [], loans
       iconBg:"bg-purple-100 dark:bg-purple-900/40", iconColor:"#7c3aed", tab:"members",
       icon:"M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" },
     { label:"Active Programs",  value: activePrograms.length, sub:`${programs.length} total`,
-      iconBg:"bg-green-100 dark:bg-green-900/40", iconColor:"#059669", tab:"programs",
+      iconBg:"bg-green-100 dark:bg-green-900/40", iconColor:"#00A651", tab:"programs",
       icon:"M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" },
     { label:"Contributions",    value: fmt(org.total_savings), sub:"total collected",
       iconBg:"bg-cyan-100 dark:bg-cyan-900/40", iconColor:"#0891b2", tab:"finance",
@@ -149,7 +149,7 @@ function OverviewTab({ org, wallet, programs, announcements, members = [], loans
 
       {/* ── Hero Balance Card ── */}
       <div className="mx-4 mt-5 rounded-3xl px-6 py-6 text-white relative overflow-hidden shadow-hero"
-        style={{ background: "linear-gradient(145deg,#059669 0%,#047857 55%,#065f46 100%)" }}>
+        style={{ background: "linear-gradient(145deg,#00A651 0%,#007A3C 55%,#005228 100%)" }}>
         <div className="absolute -top-12 -right-12 w-40 h-40 rounded-full bg-white/5 pointer-events-none" />
         <div className="absolute -bottom-14 -left-10 w-48 h-48 rounded-full bg-white/5 pointer-events-none" />
         <div className="absolute top-6 right-24 w-14 h-14 rounded-full bg-white/5 pointer-events-none" />
@@ -266,7 +266,7 @@ function OverviewTab({ org, wallet, programs, announcements, members = [], loans
               return (
                 <div key={t.id} className={`flex items-center gap-3 px-4 py-3 ${i < recentTxns.length-1 ? "border-b border-slate-50 dark:border-slate-700/40" : ""}`}>
                   <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${isOut ? "bg-red-50 dark:bg-red-900/20" : "bg-green-50 dark:bg-green-900/20"}`}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" strokeWidth="2.5" strokeLinecap="round" stroke={isOut ? "#ef4444" : "#16a34a"}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" strokeWidth="2.5" strokeLinecap="round" stroke={isOut ? "#ef4444" : "#00A651"}>
                       <path d={isOut ? "M12 5v14M19 12l-7 7-7-7" : "M12 19V5M5 12l7-7 7 7"} />
                     </svg>
                   </div>
@@ -1107,7 +1107,7 @@ function FinanceTab({ org, members, programs, onRefresh }) {
       ],
     });
     pdf.addStats([
-      { label: "Total Deposited", value: pdfFmt(totC), color: "#22c55e" },
+      { label: "Total Deposited", value: pdfFmt(totC), color: "#00A651" },
       { label: "Total Withdrawn", value: pdfFmt(totD), color: "#ef4444" },
       { label: "Net",             value: pdfFmt(totC - totD) },
       { label: "Records",         value: String(savings.length) },
@@ -3237,7 +3237,7 @@ function makeMainTabs(t) {
 
 function makeMoreTabs(t) {
   return [
-    { id: "programs",  label: t("coop.programs"),  icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2",          color: "#059669" },
+    { id: "programs",  label: t("coop.programs"),  icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2",          color: "#00A651" },
     { id: "broadcast", label: t("coop.broadcast"), icon: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z",                                                   color: "#0f766e" },
     { id: "bills",     label: t("coop.bills"),     icon: "M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z",                                                   color: "#00A651", orgOnly: true },
     { id: "profile",   label: t("coop.profile"),   icon: "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4", color: "#0ea5e9" },
@@ -3364,7 +3364,7 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
             <div className="flex items-baseline gap-0.5 select-none">
               <span className="text-[17px] font-black tracking-tight text-slate-800 dark:text-white leading-none">Kudi</span>
               <span className="text-[17px] font-black tracking-tight leading-none"
-                style={{ background: "linear-gradient(135deg,#00A651,#059669)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>AI</span>
+                style={{ background: "linear-gradient(135deg,#00A651,#007A3C)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>AI</span>
               <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 tracking-widest uppercase leading-none ml-1">Track</span>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">

@@ -89,10 +89,9 @@ function Overview({ session }) {
         <h3 className="text-sm font-semibold text-slate-700 mb-4">Subscription Breakdown</h3>
         <div className="space-y-3">
           {[
-            { label: "Starter", plan: "starter", price: 0,     color: "bg-slate-400" },
-            { label: "Basic",   plan: "basic",   price: 2000,  color: "bg-blue-500"  },
-            { label: "Pro",     plan: "professional", price: 5000, color: "bg-purple-500" },
-            { label: "Enterprise", plan: "enterprise", price: 15000, color: "bg-amber-500" },
+            { label: "Kobo (Free)", plan: "kobo",  price: 0,     color: "bg-slate-400" },
+            { label: "Naira",       plan: "naira", price: 7000,  color: "bg-blue-500"  },
+            { label: "Oga",         plan: "oga",   price: 15000, color: "bg-amber-500" },
           ].map(({ label, plan, price, color }) => {
             const count = plans[plan] || 0;
             const pct   = stats.activeSubs > 0 ? Math.round((count / stats.activeSubs) * 100) : 0;
@@ -263,7 +262,7 @@ function Finance({ session }) {
   }, [session]);
 
   const filtered = filter === "all" ? subs : subs.filter(s => s.plan === filter);
-  const revenue  = subs.filter(s => s.status === "active").reduce((t, s) => t + (({ starter: 0, basic: 2000, professional: 5000, enterprise: 15000 })[s.plan] || 0), 0);
+  const revenue  = subs.filter(s => s.status === "active").reduce((t, s) => t + (({ kobo: 0, naira: 7000, oga: 15000 })[s.plan] || 0), 0);
 
   return (
     <div className="space-y-4">
@@ -273,7 +272,7 @@ function Finance({ session }) {
       </div>
 
       <div className="flex gap-2 overflow-x-auto pb-1">
-        {["all", "starter", "basic", "professional", "enterprise"].map(p => (
+        {["all", "kobo", "naira", "oga"].map(p => (
           <button
             key={p}
             onClick={() => setFilter(p)}

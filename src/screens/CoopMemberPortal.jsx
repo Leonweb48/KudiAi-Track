@@ -212,7 +212,7 @@ function HomeTab({ member, org, announcements, polls = [], events = [], loans = 
 
   const STATS = [
     { label:"Savings Balance",  value: fmt(member.savings_balance),
-      sub: "current balance", bg:"#059669", tab:"contributions",
+      sub: "current balance", bg:"#00A651", tab:"contributions",
       icon:"M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" },
     { label:"Active Loans",     value: activeLoans.length,
       sub: activeLoans.length > 0 ? fmt(activeLoans.reduce((s,l)=>s+(l.outstanding_balance||0),0))+" owed" : "none active",
@@ -233,7 +233,7 @@ function HomeTab({ member, org, announcements, polls = [], events = [], loans = 
 
       {/* ── Hero Balance Card ── */}
       <div className="mx-4 mt-5 rounded-3xl px-6 py-6 text-white relative overflow-hidden shadow-hero"
-        style={{ background: "linear-gradient(145deg,#059669 0%,#047857 55%,#065f46 100%)" }}>
+        style={{ background: "linear-gradient(145deg,#00A651 0%,#007A3C 55%,#005228 100%)" }}>
         <div className="absolute -top-12 -right-12 w-40 h-40 rounded-full bg-white/5 pointer-events-none" />
         <div className="absolute -bottom-14 -left-10 w-48 h-48 rounded-full bg-white/5 pointer-events-none" />
         <div className="absolute top-6 right-24 w-14 h-14 rounded-full bg-white/5 pointer-events-none" />
@@ -329,7 +329,7 @@ function HomeTab({ member, org, announcements, polls = [], events = [], loans = 
             </div>
           </div>
           {[
-            ["Total Funds", fmt(org.total_savings || 0), "#059669"],
+            ["Total Funds", fmt(org.total_savings || 0), "#00A651"],
             ["Loans Out",   fmt(org.total_loans_out || 0), "#dc2626"],
           ].map(([k, v, c]) => (
             <div key={k} className="flex justify-between items-center px-4 py-3 border-b border-slate-50 dark:border-slate-700/30 last:border-0">
@@ -493,7 +493,7 @@ function PayOrgModal({ member, org, preProgram, history, onClose }) {
             </div>
             <div className="h-2.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden mb-2">
               <div className="h-full rounded-full transition-all"
-                style={{ width: `${Math.min(100, (paidThisMonth / required) * 100)}%`, background: metTarget ? "#16a34a" : "#f59e0b" }} />
+                style={{ width: `${Math.min(100, (paidThisMonth / required) * 100)}%`, background: metTarget ? "#00A651" : "#f59e0b" }} />
             </div>
             <div className="flex justify-between text-[10px] font-semibold mb-1">
               <span className="text-slate-500 dark:text-slate-400">{fmt(paidThisMonth)} paid</span>
@@ -707,7 +707,7 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
       ],
     });
     pdf.addStats([
-      { label: "Total Deposited", value: pdfFmt(totC),                 color: "#22c55e" },
+      { label: "Total Deposited", value: pdfFmt(totC),                 color: "#00A651" },
       { label: "Total Withdrawn", value: pdfFmt(totD),                 color: "#ef4444" },
       { label: "Net Savings",     value: pdfFmt(member.savings_balance || lastBal) },
       { label: "Records",         value: String(history.length) },
@@ -728,11 +728,11 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
     <div className="p-4 pb-28 flex flex-col gap-4">
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-white dark:bg-slate-800 rounded-2xl p-3 border border-slate-100 dark:border-slate-700 text-center">
-          <AmountDisplay amount={member.savings_balance} size="stat" align="center" style={{ color: '#16a34a' }} />
+          <AmountDisplay amount={member.savings_balance} size="stat" align="center" style={{ color: '#00A651' }} />
           <p className="text-[10px] text-slate-400 mt-0.5">Current Balance</p>
         </div>
         <div className="bg-white dark:bg-slate-800 rounded-2xl p-3 border border-slate-100 dark:border-slate-700 text-center">
-          <AmountDisplay amount={totalContributed} size="stat" align="center" style={{ color: '#16a34a' }} />
+          <AmountDisplay amount={totalContributed} size="stat" align="center" style={{ color: '#00A651' }} />
           <p className="text-[10px] text-slate-400 mt-0.5">Total Contributions</p>
         </div>
       </div>
@@ -794,7 +794,7 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
                   <div>
                     <div className="h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden mb-1">
                       <div className="h-full rounded-full transition-all"
-                        style={{ width: `${pct}%`, background: metTarget ? "#16a34a" : "#f59e0b" }} />
+                        style={{ width: `${pct}%`, background: metTarget ? "#00A651" : "#f59e0b" }} />
                     </div>
                     <div className="flex justify-between text-[9px] font-semibold text-slate-400">
                       <span>{fmt(paid)} paid this month</span>
@@ -1453,7 +1453,7 @@ function SupportTab({ member, org }) {
         {view === "ticket" ? (
           done ? (
             <div className="flex flex-col items-center justify-center py-16 gap-4 text-center">
-              <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: "linear-gradient(135deg,#00A651,#059669)" }}>
+              <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: "linear-gradient(135deg,#00A651,#007A3C)" }}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8">
                   <polyline points="20 6 9 17 4 12" />
                 </svg>
@@ -1512,7 +1512,7 @@ function SupportTab({ member, org }) {
 
               <button onClick={submit} disabled={sending || !subject.trim() || !message.trim()}
                 className="w-full py-3.5 rounded-2xl font-bold text-sm text-white flex items-center justify-center gap-2 disabled:opacity-50 active:opacity-80 transition-opacity"
-                style={{ background: "linear-gradient(135deg,#00A651,#059669)" }}>
+                style={{ background: "linear-gradient(135deg,#00A651,#007A3C)" }}>
                 {sending
                   ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Sending…</>
                   : <><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>Submit Ticket</>}
@@ -1956,7 +1956,7 @@ export default function CoopMemberPortal({ member: initialMember }) {
           <div className="flex items-baseline gap-0.5 select-none">
             <span className="text-[17px] font-black tracking-tight text-slate-800 dark:text-white leading-none">Kudi</span>
             <span className="text-[17px] font-black tracking-tight leading-none"
-              style={{ background: "linear-gradient(135deg,#00A651,#059669)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>AI</span>
+              style={{ background: "linear-gradient(135deg,#00A651,#007A3C)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>AI</span>
             <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 tracking-widest uppercase leading-none ml-1">Track</span>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
@@ -2214,7 +2214,7 @@ export default function CoopMemberPortal({ member: initialMember }) {
                   </svg>
                 </div>
                 <p className="text-xl font-extrabold text-slate-800 dark:text-white mb-1">Payment Confirmed!</p>
-                <AmountDisplay amount={paymentResult.amount} size="hero" align="center" style={{ color: '#16a34a', marginTop: 12, marginBottom: 4 }} />
+                <AmountDisplay amount={paymentResult.amount} size="hero" align="center" style={{ color: '#00A651', marginTop: 12, marginBottom: 4 }} />
                 <p className="text-xs text-slate-400 mb-8">added to your savings balance</p>
                 <button onClick={() => setPaymentResult(null)}
                   className="w-full py-4 bg-green-600 text-white font-bold rounded-2xl text-sm">
