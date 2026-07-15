@@ -1,4 +1,4 @@
-mport { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../utils/supabase";
 
 const coopFn = async (action, body = {}) => {

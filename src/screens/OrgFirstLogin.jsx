@@ -1,4 +1,4 @@
-mport { useState } from "react";
+import { useState } from "react";
 import { friendlyError } from "../utils/errorMessage";
 import { supabase } from "../utils/supabase";
 import AppLogo from "../components/AppLogo";
