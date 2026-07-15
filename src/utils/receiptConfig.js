@@ -31,10 +31,10 @@ export function receiptFilenames(id, createdAt) {
   return { ref, image: `receipt_${ref}.png`, pdf: `receipt_${ref}.pdf` };
 }
 
+// Locale-independent: always produces ₦15,000.00 regardless of WebView locale.
 function fmtAmt(n) {
-  return '₦' + Number(n || 0).toLocaleString('en-NG', {
-    minimumFractionDigits: 2, maximumFractionDigits: 2,
-  });
+  const [int, dec] = Number(n || 0).toFixed(2).split('.');
+  return '₦' + int.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '.' + dec;
 }
 
 function humanize(s) {
