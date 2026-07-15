@@ -1,5 +1,7 @@
-export const fmt = (n) =>
-  `₦${Number(n || 0).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
+export const fmt = (n) => {
+  const [int, dec] = Number(n || 0).toFixed(2).split('.');
+  return '₦' + int.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '.' + dec;
+};
 
 export const LEDGER_LABELS = {
   contribution:              "Contribution",

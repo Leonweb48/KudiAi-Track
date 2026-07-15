@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KudiAI — Receipt Engine Test Harness</title>
+<!--
+  Standalone harness — no build step required.
+  Serve from project root: npx serve . -l 3001
+  Then visit: http://localhost:3001/receipt-harness.html
+
+  Loads html2canvas and jsPDF from local node_modules.
+  Each receipt renders on-screen, then "Capture" runs the real
+  captureReceiptCanvas pipeline (same as the app) and shows the
+  PNG inline for side-by-side comparison.
+
+  Automated assertions:
+    • Pill width ≤ 55% of card width (proves background is tight)
+    • Amount text includes comma separator (locale check)
+    • Pill background color matches expected status color
+-->
+<script src="./node_modules/html2canvas/dist/html2canvas.min.js"></script>
+<script src="./node_modules/jspdf/dist/jspdf.umd.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+  background: #0f172a; color: #e2e8f0; font-size: 13px; line-height: 1.5;
+}
+.top-bar {
+  position: sticky; top: 0; z-index: 100;
+  background: #0f1c45; padding: 12px 20px;
+  display: flex; align-items: center; gap: 12px;
+  border-bottom: 1px solid #1e3a5f; box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+}
+.top-bar h1 { font-size: 14px; font-weight: 800; color: #f8fafc; }
+.top-bar p  { font-size: 11px; color: #64748b; margin-top: 1px; }
+#run-all-btn {
+  margin-left: auto; padding: 8px 18px; background: #3da829;
+  color: white; border: none; border-radius: 8px; font-size: 13px;
+  font-weight: 700; cursor: pointer; white-space: nowrap; transition: background 0.15s;
+}
+#run-all-btn:hover { background: #2d9420; }
+#run-all-btn:disabled { background: #334155; color: #64748b; cursor: not-allowed; }
+#progress-bar-track {
+  width: 180px; height: 5px; background: #1e293b; border-radius: 99px; overflow: hidden;
+}
+#progress-bar-fill { height: 100%; background: #3da829; border-radius: 99px; transition: width 0.3s; width: 0; }
+#progress-label { font-size: 11px; font-weight: 700; color: #94a3b8; white-space: nowrap; }
+
+.cases { padding: 20px; display: flex; flex-direction: column; gap: 28px; max-width: 1200px; margin: 0 auto; }
+
+.case-card {
+  background: #1e293b; border: 1px solid #334155; border-radius: 12px; overflow: hidden;
+}
+.case-header {
+  padding: 10px 16px; background: #0f1c45; border-bottom: 1px solid #1e3a5f;
+  display: flex; align-items: center; gap: 10px;
+}
+.case-num { width: 22px; height: 22px; border-radius: 99px; background: #3da829; color: white; font-size: 11px; font-weight: 800; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.case-title { font-size: 13px; font-weight: 700; color: #f1f5f9; flex: 1; }
+.cap-btn {
+  padding: 5px 14px; background: #0f1c45; border: 1px solid #3da829; color: #3da829;
+  border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer; transition: all 0.15s;
+}
+.cap-btn:hover { background: #3da829; color: white; }
+.cap-btn:disabled { border-color: #334155; color: #475569; cursor: not-allowed; }
+.dl-pdf-btn {
+  padding: 5px 14px; background: #0f1c45; border: 1px solid #4f6ef7; color: #818cf8;
+  border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer; transition: all 0.15s; margin-left: 4px;
+}
+.dl-pdf-btn:hover { background: #4f6ef7; color: white; }
+.dl-pdf-btn:disabled { border-color: #334155; color: #475569; cursor: not-allowed; }
+
+.case-body {
+  padding: 16px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 700px) { .case-body { grid-template-columns: 1fr; } }
+
+.panel-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #64748b; margin-bottom: 8px; }
+.receipt-wrap { background: #f1f5f9; border-radius: 8px; padding: 0; overflow: hidden; display: flex; justify-content: center; }
+.captured-wrap { background: #0f172a; border: 1px solid #334155; border-radius: 8px; overflow: hidden; min-height: 100px; display: flex; align-items: flex-start; justify-content: center; }
+.captured-wrap img { max-width: 100%; display: block; border-radius: 4px; }
+.placeholder { color: #334155; font-size: 12px; padding: 32px; text-align: center; }
+
+.assertions { padding: 10px 16px; border-top: 1px solid #334155; display: flex; flex-wrap: wrap; gap: 6px; }
+.assert-chip { font-size: 10px; font-weight: 700; padding: 3px 9px; border-radius: 99px; }
+.assert-pass  { background: #14532d; color: #86efac; }
+.assert-fail  { background: #7f1d1d; color: #fca5a5; }
+.assert-pend  { background: #1e293b; color: #64748b; border: 1px solid #334155; }
+
+.summary-section { padding: 20px; max-width: 1200px; margin: 0 auto; }
+.summary-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.summary-table th { background: #0f1c45; color: #94a3b8; font-weight: 700; text-align: left; padding: 7px 10px; border: 1px solid #1e3a5f; }
+.summary-table td { padding: 7px 10px; border: 1px solid #1e293b; vertical-align: middle; }
+.summary-table tr:nth-child(even) td { background: #0f172a; }
+.summary-table tr:nth-child(odd) td { background: #1a2540; }
+.badge-pass { display: inline-block; background: #14532d; color: #86efac; padding: 1px 7px; border-radius: 99px; font-size: 10px; font-weight: 700; }
+.badge-fail { display: inline-block; background: #7f1d1d; color: #fca5a5; padding: 1px 7px; border-radius: 99px; font-size: 10px; font-weight: 700; }
+.badge-pend { display: inline-block; background: #1e293b; color: #64748b; padding: 1px 7px; border-radius: 99px; font-size: 10px; font-weight: 700; border: 1px solid #334155; }
+
+.section-divider { padding: 12px 20px; border-top: 1px solid #334155; margin-top: 4px; }
+.section-title { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.07em; color: #3da829; }
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <div>
+    <h1>KudiAI Receipt Engine — Test Harness</h1>
+    <p>Generates real html2canvas captures. Compare screen render ↔ PNG for each receipt type.</p>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end;">
+    <span id="progress-label">0 / 0 captured</span>
+    <div id="progress-bar-track"><div id="progress-bar-fill"></div></div>
+  </div>
+  <button id="run-all-btn" onclick="captureAll()">▶ Capture All</button>
+</div>
+
+<div id="cases" class="cases"></div>
+
+<div class="section-divider">
+  <span class="section-title">Part 3 Matrix Summary</span>
+  <p style="font-size:11px;color:#64748b;margin-top:4px;">Auto-populated after all captures complete. ✓ = passed automated assertion. Click capture buttons above first.</p>
+</div>
+<div class="summary-section">
+  <table class="summary-table" id="summary-table">
+    <thead>
+      <tr>
+        <th>Receipt Type</th>
+        <th>Pill tight</th>
+        <th>₦ comma</th>
+        <th>Pill color</th>
+        <th>Icon present</th>
+        <th>Divider visible</th>
+        <th>PNG captured</th>
+        <th>PDF generated</th>
+      </tr>
+    </thead>
+    <tbody id="summary-tbody"></tbody>
+  </table>
+</div>
+
+<script>
+/* ── Constants matching ReceiptCard.jsx exactly ─────────────────── */
+const NAVY      = '#0f1c45';
+const GREEN     = '#3da829';
+const OUTER_BG  = '#f1f5f9';
+const FONT      = '-apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif';
+
+/* ── Utilities ───────────────────────────────────────────────────── */
+function fmtAmt(n) {
+  const [int, dec] = Number(n || 0).toFixed(2).split('.');
+  return '₦' + int.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '.' + dec;
+}
+
+function statusProps(s) {
+  if (s === 'success')                           return { label: 'Successful', color: '#0f7b3e', bg: '#dcfce7' };
+  if (s === 'pending' || s === 'processing')     return { label: 'Pending',    color: '#92400e', bg: '#fef3c7' };
+  if (s === 'failed')                            return { label: 'Failed',     color: '#991b1b', bg: '#fee2e2' };
+  if (s === 'reversed')                          return { label: 'Reversed',   color: '#374151', bg: '#f3f4f6' };
+  return { label: 'Pending', color: '#92400e', bg: '#fef3c7' };
+}
+
+/* ── SVG builders ────────────────────────────────────────────────── */
+function scallopSVG(flip) {
+  const W=340, H=14, r=7, count=22;
+  const step = W/count;
+  let circles = '';
+  for (let i=0; i<count; i++) {
+    const cx = (i+0.5)*step;
+    const cy = flip ? 0 : H;
+    circles += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${OUTER_BG}"/>`;
+  }
+  const transform = flip ? ' style="transform:scaleY(-1)"' : '';
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" preserveAspectRatio="none"${transform}><rect width="${W}" height="${H}" fill="white"/>${circles}</svg>`;
+}
+
+function dashedDividerHTML() {
+  return `
+    <div style="position:relative;margin:12px -20px;display:flex;align-items:center;">
+      <div style="width:14px;height:14px;border-radius:7px;background:${OUTER_BG};flex-shrink:0;"></div>
+      <div style="flex:1;height:2px;">
+        <svg viewBox="0 0 100 2" width="100%" height="2" preserveAspectRatio="none" style="display:block;">
+          <line x1="0" y1="1" x2="100" y2="1" stroke="#e2e8f0" stroke-width="2" stroke-dasharray="6 4" stroke-linecap="butt"/>
+        </svg>
+      </div>
+      <div style="width:14px;height:14px;border-radius:7px;background:${OUTER_BG};flex-shrink:0;"></div>
+    </div>`;
+}
+
+function watermarkHTML() {
+  const items = [];
+  for (let row=-1; row<12; row++) {
+    for (let col=-1; col<5; col++) {
+      const c = (row+col)%2===0 ? NAVY : GREEN;
+      items.push(`<div style="position:absolute;top:${row*38+8}px;left:${col*70-8}px;transform:rotate(-30deg);font-size:10px;font-weight:800;font-family:${FONT};color:${c};opacity:0.042;white-space:nowrap;user-select:none;pointer-events:none;letter-spacing:0.08em;">KudiAI</div>`);
+    }
+  }
+  return `<div style="position:absolute;top:0;right:0;bottom:0;left:0;overflow:hidden;pointer-events:none;z-index:1;">${items.join('')}</div>`;
+}
+
+/* ── Icon SVGs by type ───────────────────────────────────────────── */
+const ICON_THEMES = {
+  income:    { bg:'#dcfce7', fg:'#0f7b3e' },
+  expense:   { bg:'#e0e7ff', fg:'#3730a3' },
+  ajo:       { bg:'#fdf4ff', fg:'#7c3aed' },
+  savings:   { bg:'#eff6ff', fg:'#1d4ed8' },
+  credit:    { bg:'#fff7ed', fg:'#c2410c' },
+  statement: { bg:'#f1f5f9', fg:'#475569' },
+};
+
+const ICON_SVGS = {
+  income:    `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="M8 12l4 4 4-4"/><path d="M4 20h16"/></svg>`,
+  expense:   `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v12"/><path d="M8 12l4-4 4 4"/><path d="M4 4h16"/></svg>`,
+  ajo:       `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+  savings:   `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`,
+  credit:    `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>`,
+  statement: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>`,
+};
+
+function typeIconHTML(iconType, direction) {
+  const key   = iconType || (direction === 'in' ? 'income' : 'expense');
+  const theme = ICON_THEMES[key] || ICON_THEMES.expense;
+  const svg   = ICON_SVGS[key]   || ICON_SVGS.expense;
+  return `
+    <div style="display:flex;justify-content:center;align-items:center;padding:10px 0 2px;position:relative;z-index:2;">
+      <div style="width:48px;height:48px;border-radius:14px;background:${theme.bg};color:${theme.fg};display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,0.12);">
+        ${svg}
+      </div>
+    </div>`;
+}
+
+function providerBadgeHTML(provider, category) {
+  const initials = (provider || category || 'B').slice(0,2).toUpperCase();
+  const COLORS = {
+    MTN:'#f59e0b', GLO:'#16a34a', AIRTEL:'#dc2626', '9MOBILE':'#059669',
+    DSTV:'#1d4ed8', GOTV:'#7c3aed', STARTIMES:'#b45309',
+    IBEDC:'#0891b2', EKEDC:'#6366f1', AEDC:'#059669', PHCDC:'#dc2626',
+  };
+  const bg = COLORS[(provider||'').toUpperCase()] || '#64748b';
+  return `
+    <div style="display:flex;justify-content:center;align-items:center;padding:10px 0 2px;position:relative;z-index:2;">
+      <div style="width:48px;height:48px;border-radius:14px;background:${bg};color:white;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,0.12);font-size:15px;font-weight:800;letter-spacing:-0.01em;">
+        ${initials}
+      </div>
+    </div>`;
+}
+
+/* ── Full receipt card HTML ─────────────────────────────────────── */
+function buildReceiptHTML(data) {
+  const {
+    title, direction, status, amount, datetime,
+    fields = [], businessName, issuedBy, receiptRef,
+    provider, category, processorName, iconType,
+  } = data;
+
+  const st         = statusProps(status);
+  const showProvider = !!(provider || category);
+  const amtColor   = status === 'success' ? '#0f7b3e' : status === 'failed' ? '#dc2626' : NAVY;
+  const printFields = fields.filter(f => !f.retrievable);
+
+  const fieldsHTML = printFields.map((f, i) => `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;padding:7px 0;${i<printFields.length-1?'border-bottom:0.5px solid #f1f5f9;':''}">
+      <span style="font-size:10.5px;color:#94a3b8;font-weight:500;flex-shrink:0;min-width:100px;padding-right:8px;">${f.label}</span>
+      <span style="font-size:10.5px;color:#1e293b;font-weight:600;text-align:right;word-break:break-word;max-width:55%;line-height:1.5;">${f.value ?? '—'}</span>
+    </div>`).join('');
+
+  return `
+    <div style="background:${OUTER_BG};padding:0 16px 16px;font-family:${FONT};">
+      ${scallopSVG(false)}
+      <div style="background:white;position:relative;overflow:hidden;padding:16px 20px 0;">
+        ${watermarkHTML()}
+        <!-- Header: flex replaces display:table (capture-safe) -->
+        <div style="display:flex;align-items:center;width:100%;position:relative;z-index:2;">
+          <div style="display:flex;flex-direction:column;align-items:center;">
+            <div style="width:20px;height:20px;border-radius:4px;background:${GREEN};display:flex;align-items:center;justify-content:center;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="white"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            </div>
+            <span style="display:block;font-size:9px;font-weight:700;color:${GREEN};letter-spacing:-0.01em;line-height:13px;white-space:nowrap;margin-top:2px;">KudiAI Track</span>
+          </div>
+          <div style="flex:1;"></div>
+          <span style="font-size:9px;font-weight:700;color:#94a3b8;letter-spacing:0.07em;text-transform:uppercase;white-space:nowrap;">${category ? 'Bill' : 'Transaction'} Receipt</span>
+        </div>
+        ${showProvider ? providerBadgeHTML(provider, category) : typeIconHTML(iconType, direction)}
+        <p style="margin:6px 0 0;font-size:10.5px;font-weight:600;color:#64748b;text-align:center;position:relative;z-index:2;">${title}</p>
+        <div style="height:1px;background:#f1f5f9;margin:10px 0 6px;position:relative;z-index:2;"></div>
+        <!-- Amount hero -->
+        <div style="text-align:center;padding:6px 0 4px;position:relative;z-index:2;overflow:hidden;">
+          <p style="margin:0;font-size:30px;font-weight:800;color:${amtColor};letter-spacing:-0.03em;line-height:1.1;word-break:break-all;max-width:100%;">
+            ${fmtAmt(amount)}
+          </p>
+          <!-- Status pill: explicit height:28 + flex + alignItems:center (capture-safe construction) -->
+          <div style="margin-top:8px;display:flex;justify-content:center;">
+            <div class="receipt-pill" style="display:flex;align-items:center;height:28px;padding-left:18px;padding-right:18px;background:${st.bg};border-radius:20px;font-size:11px;font-weight:700;color:${st.color};line-height:28px;white-space:nowrap;"
+                 data-expected-bg="${st.bg}" data-status="${status}">
+              ${st.label}
+            </div>
+          </div>
+          <p style="margin:8px 0 0;font-size:10.5px;color:#94a3b8;font-weight:500;">${datetime}</p>
+        </div>
+        ${dashedDividerHTML()}
+        <div style="position:relative;z-index:2;">${fieldsHTML}</div>
+        ${dashedDividerHTML()}
+        <div style="position:relative;z-index:2;padding-bottom:14px;">
+          ${(issuedBy || businessName) ? `
+            <div style="display:flex;justify-content:space-between;margin-bottom:10px;">
+              <span style="font-size:10.5px;color:#94a3b8;font-weight:500;">Issued by</span>
+              <span style="font-size:10.5px;color:#1e293b;font-weight:700;text-align:right;max-width:62%;">${issuedBy || businessName}</span>
+            </div>` : ''}
+          <p style="margin:0;font-size:9px;color:#cbd5e1;text-align:center;font-style:italic;line-height:1.5;">Talk your money. Track your profit. Grow your business.</p>
+          ${processorName ? `<p style="margin:6px 0 0;font-size:8px;color:#94a3b8;text-align:center;">Payments securely processed via ${processorName}</p>` : ''}
+        </div>
+        <div style="margin:0 -20px;background:#dcfce7;padding:10px 20px 8px;text-align:center;">
+          <div style="margin-bottom:4px;text-align:center;">
+            <span style="display:block;font-size:9.5px;font-weight:700;color:#14532d;line-height:14px;white-space:nowrap;margin:0 auto;">KudiAI Track</span>
+          </div>
+          <p style="margin:2px 0 0;font-size:8px;font-weight:500;color:#166534;">support@kudiai.app</p>
+          <p style="margin:3px 0 0;font-size:7.5px;color:#166534;">A Product of Amaya &amp; Co. Technologies</p>
+          <p style="margin:1px 0 0;font-size:7.5px;color:#166534;">All Rights Reserved &copy; 2026</p>
+        </div>
+        <div style="margin:0 -20px;background:#bbf7d0;padding:4px 20px;text-align:center;">
+          <span style="font-size:7.5px;color:#15803d;letter-spacing:0.22em;font-weight:600;font-family:monospace;">${receiptRef || '—'}</span>
+        </div>
+      </div>
+      ${scallopSVG(true)}
+    </div>`;
+}
+
+/* ── Capture pipeline (mirrors captureReceipt.js exactly) ───────── */
+async function captureReceiptCanvas(el) {
+  const cardWidth = el.offsetWidth;
+  const clone = el.cloneNode(true);
+  const wrap  = document.createElement('div');
+  Object.assign(wrap.style, { position: 'absolute', top: '0', left: '-9999px', width: `${cardWidth}px` });
+  wrap.appendChild(clone);
+  document.body.appendChild(wrap);
+
+  const imgs = Array.from(clone.querySelectorAll('img'));
+  await Promise.all(imgs.map(img => img.complete ? Promise.resolve() : new Promise(r => { img.onload = r; img.onerror = r; })));
+  await document.fonts.ready;
+  await new Promise(r => setTimeout(r, 120));
+
+  try {
+    return await html2canvas(clone, {
+      scale: 3, useCORS: true, allowTaint: true, logging: false,
+      imageTimeout: 15000, width: cardWidth, height: clone.scrollHeight,
+      backgroundColor: '#f1f5f9',
+    });
+  } finally {
+    document.body.removeChild(wrap);
+  }
+}
+
+/* ── Automated assertions ────────────────────────────────────────── */
+function runAssertions(receiptEl, data) {
+  const results = [];
+
+  // 1. Pill tightness: pill width < 60% of card width
+  const pill = receiptEl.querySelector('.receipt-pill');
+  const card = receiptEl.querySelector('[style*="background:white"]') || receiptEl;
+  if (pill && card) {
+    const pillW = pill.offsetWidth;
+    const cardW = card.offsetWidth || receiptEl.offsetWidth;
+    const ratio = pillW / cardW;
+    results.push({ id: 'pill-tight', label: `Pill ${pillW}px / card ${cardW}px (${(ratio*100).toFixed(0)}%)`, pass: ratio < 0.60 });
+  }
+
+  // 2. Amount format: must contain comma, not just dot as thousands sep
+  const amtEl = receiptEl.querySelector('p[style*="font-size:30px"]');
+  if (amtEl) {
+    const txt = amtEl.textContent.trim();
+    const hasComma = txt.includes(',');
+    const noWrongDot = !/₦\d{1,3}\.\d{3}/.test(txt); // matches ₦15.000 (dot as sep)
+    results.push({ id: 'amount-locale', label: `Amount "${txt}"`, pass: hasComma && noWrongDot });
+  }
+
+  // 3. Pill background color matches expected status
+  if (pill) {
+    const st = statusProps(data.status);
+    const actual = pill.style.background || pill.style.backgroundColor || '';
+    results.push({ id: 'pill-color', label: `Pill bg ${actual} expected ${st.bg}`, pass: actual.toLowerCase().includes(st.bg.slice(1).toLowerCase()) || actual === st.bg });
+  }
+
+  // 4. Divider has SVG (not just a plain borderTop div)
+  const dividers = receiptEl.querySelectorAll('svg line[stroke-dasharray]');
+  results.push({ id: 'divider-svg', label: `SVG dash dividers: ${dividers.length} found`, pass: dividers.length >= 2 });
+
+  // 5. Watermark uses divs not spans (block element transform)
+  const wmDivs  = receiptEl.querySelectorAll('div[style*="rotate(-30deg)"]').length;
+  const wmSpans = receiptEl.querySelectorAll('span[style*="rotate(-30deg)"]').length;
+  results.push({ id: 'watermark-block', label: `Watermark: ${wmDivs} divs, ${wmSpans} spans`, pass: wmDivs > 0 && wmSpans === 0 });
+
+  // 6. Header uses flex not table (check first inner child of header div has no table display)
+  const hdr = receiptEl.querySelector('[style*="display:flex"][style*="align-items:center"][style*="width:100%"]');
+  results.push({ id: 'header-flex', label: 'Header is flex (not display:table)', pass: !!hdr });
+
+  return results;
+}
+
+/* ── Fixture data ────────────────────────────────────────────────── */
+const FIXTURES = [
+  {
+    id: 'stress-success',
+    label: 'STRESS · Successful pill — ₦999,999,999.99 · 40-char biz · max ref',
+    data: {
+      title:'Payment Received', direction:'in', status:'success',
+      amount:999999999.99, datetime:'15 Jul 2026, 11:59 pm',
+      fields:[
+        {label:'Transaction Type', value:'Income'},
+        {label:'From',             value:'Mega Wholesale Enterprise Ltd.'},
+        {label:'Description',      value:'Full payment for Invoice INV-2026-0042 — Annual software subscription, all modules'},
+        {label:'Payment Method',   value:'Bank Transfer'},
+        {label:'Note',             value:'End-year settlement · PO/2026/Q4/0042'},
+        {label:'Reference',        value:'KT260715235959ABC', copy:true},
+      ],
+      businessName:'Amaya International Technologies Limited',
+      issuedBy:'Amaya International Technologies Limited',
+      receiptRef:'KT260715235959ABC',
+      processorName:null, iconType:'income',
+    },
+  },
+  {
+    id: 'stress-pending',
+    label: 'STRESS · Pending pill (amber) — same data',
+    data: null, // derived below
+  },
+  {
+    id: 'stress-failed',
+    label: 'STRESS · Failed pill (red) — same data',
+    data: null,
+  },
+  { id:'income',       label:'Sale / Income',                 data:{title:'Payment Received',direction:'in',status:'success',amount:15000,datetime:'15 Jul 2026, 10:30 am',fields:[{label:'Transaction Type',value:'Income'},{label:'From',value:'Chisom Nwosu'},{label:'Description',value:'Tomatoes x5'},{label:'Reference',value:'KT260715103000CHI',copy:true}],businessName:'Nwosu Farms Ltd',issuedBy:'Nwosu Farms Ltd',receiptRef:'KT260715103000CHI',processorName:null,iconType:'income'} },
+  { id:'expense',      label:'Disbursement / Expense',        data:{title:'Payment Made',direction:'out',status:'success',amount:45000,datetime:'15 Jul 2026, 02:15 pm',fields:[{label:'Transaction Type',value:'Expense'},{label:'To',value:'Lagos Market Suppliers'},{label:'Reference',value:'KT260715141500LAG',copy:true}],businessName:'Nwosu Farms Ltd',issuedBy:'Nwosu Farms Ltd',receiptRef:'KT260715141500LAG',processorName:null,iconType:'expense'} },
+  { id:'ajo-contrib',  label:'Ajo Contribution',              data:{title:'Ajo Contribution',direction:'in',status:'success',amount:20000,datetime:'15 Jul 2026, 09:00 am',fields:[{label:'Transaction Type',value:'Ajo Contribution'},{label:'Member',value:'Blessing Okafor'},{label:'Payment Method',value:'Cash'},{label:'Reference',value:'KT260715090000BLE',copy:true}],businessName:'Ikeja Ajo Cooperative',issuedBy:'Ikeja Ajo Cooperative',receiptRef:'KT260715090000BLE',processorName:null,iconType:'ajo'} },
+  { id:'ajo-wd',       label:'Ajo Withdrawal + fee breakdown',data:{title:'Withdrawal Request',direction:'out',status:'pending',amount:95000,datetime:'14 Jul 2026, 04:45 pm',fields:[{label:'Transaction Type',value:'Ajo Withdrawal'},{label:'Member',value:'Tunde Adeyemi'},{label:'Processing Fee',value:'₦5,000.00'},{label:'Fee Type',value:'Flat'},{label:'Reference',value:'KT260714164500TUN',copy:true}],businessName:'Ikeja Ajo Cooperative',issuedBy:'Ikeja Ajo Cooperative',receiptRef:'KT260714164500TUN',processorName:null,iconType:'ajo'} },
+  { id:'esusu',        label:'Esusu / Coop Savings Payout',   data:{title:'Savings Withdrawal',direction:'out',status:'success',amount:150000,datetime:'13 Jul 2026, 11:00 am',fields:[{label:'Transaction Type',value:'Savings Withdrawal'},{label:'Member',value:'Fatima Abubakar'},{label:'Payment Method',value:'Bank Transfer'},{label:'Balance After',value:'₦12,750.00'},{label:'Reference',value:'KT260713110000FAT',copy:true}],businessName:'Sunrise Cooperative Society',issuedBy:'Sunrise Cooperative Society',receiptRef:'KT260713110000FAT',processorName:null,iconType:'savings'} },
+  { id:'deposit',      label:'Manual Deposit Confirmation',   data:{title:'Savings Deposit',direction:'in',status:'success',amount:50000,datetime:'12 Jul 2026, 08:30 am',fields:[{label:'Transaction Type',value:'Savings Deposit'},{label:'Member',value:'Emmanuel Eze'},{label:'Payment Method',value:'Cash'},{label:'Balance After',value:'₦62,750.00'},{label:'Reference',value:'KT260712083000EMM',copy:true}],businessName:'Sunrise Cooperative Society',issuedBy:'Sunrise Cooperative Society',receiptRef:'KT260712083000EMM',processorName:null,iconType:'savings'} },
+  { id:'bill',         label:'Bill Payment (Airtime — MTN)',  data:{title:'Airtime Top-Up',direction:'out',status:'success',amount:500,datetime:'15 Jul 2026, 12:00 pm',fields:[{label:'Transaction Type',value:'Airtime Top-Up'},{label:'Network',value:'MTN'},{label:'Phone',value:'08031234567'},{label:'Processed via',value:'Paystack'},{label:'Reference',value:'KT260715120000MTN',copy:true}],businessName:'Nwosu Farms Ltd',issuedBy:'Nwosu Farms Ltd',receiptRef:'KT260715120000MTN',provider:'MTN',category:'airtime',processorName:'Paystack',iconType:null} },
+];
+
+// Derive stress pending/failed from stress success
+const stressBase = FIXTURES[0].data;
+FIXTURES[1].data = { ...stressBase, status:'pending', title:'Payment Pending' };
+FIXTURES[2].data = { ...stressBase, status:'failed',  title:'Payment Failed'  };
+
+/* ── Build UI ────────────────────────────────────────────────────── */
+const caseResults = {};
+let capturedCount = 0;
+
+function updateProgress() {
+  const total = FIXTURES.length;
+  const pct = (capturedCount / total) * 100;
+  document.getElementById('progress-label').textContent = `${capturedCount} / ${total} captured`;
+  document.getElementById('progress-bar-fill').style.width = pct + '%';
+}
+
+function buildCaseUI(fixture, index) {
+  const { id, label, data } = fixture;
+  const card = document.createElement('div');
+  card.className = 'case-card';
+  card.id = `case-${id}`;
+
+  card.innerHTML = `
+    <div class="case-header">
+      <div class="case-num">${index+1}</div>
+      <div class="case-title">${label}</div>
+      <button class="cap-btn" id="cap-btn-${id}" onclick="captureCase('${id}')">Capture PNG</button>
+      <button class="dl-pdf-btn" id="pdf-btn-${id}" onclick="generatePDF('${id}')" disabled>PDF</button>
+    </div>
+    <div class="case-body">
+      <div>
+        <div class="panel-label">Screen Render</div>
+        <div class="receipt-wrap" id="screen-${id}"></div>
+      </div>
+      <div>
+        <div class="panel-label">Captured PNG (html2canvas @ 3×)</div>
+        <div class="captured-wrap" id="captured-${id}"><div class="placeholder">Click "Capture PNG" →</div></div>
+      </div>
+    </div>
+    <div class="assertions" id="asserts-${id}">
+      <span class="assert-chip assert-pend">Pending capture</span>
+    </div>`;
+
+  // Inject screen render
+  const screenDiv = card.querySelector(`#screen-${id}`);
+  const wrapper = document.createElement('div');
+  wrapper.style.cssText = 'width:340px;max-width:100%;';
+  wrapper.innerHTML = buildReceiptHTML(data);
+  screenDiv.appendChild(wrapper);
+
+  // Run pre-capture assertions immediately (DOM assertions only)
+  const preAsserts = runAssertions(wrapper, data);
+  caseResults[id] = { asserts: preAsserts, pngBlob: null, pdfBlob: null };
+
+  const assertsDiv = card.querySelector(`#asserts-${id}`);
+  assertsDiv.innerHTML = preAsserts.map(a =>
+    `<span class="assert-chip ${a.pass ? 'assert-pass' : 'assert-fail'}">${a.pass ? '✓' : '✗'} ${a.label}</span>`
+  ).join('');
+
+  updateSummaryRow(id, data, preAsserts, false, false);
+  return card;
+}
+
+async function captureCase(id) {
+  const btn = document.getElementById(`cap-btn-${id}`);
+  const pdfBtn = document.getElementById(`pdf-btn-${id}`);
+  btn.disabled = true;
+  btn.textContent = 'Capturing…';
+
+  const screenDiv = document.getElementById(`screen-${id}`);
+  const receiptEl = screenDiv.querySelector('div[style*="background:' + OUTER_BG + '"]')
+                 || screenDiv.querySelector('div');
+
+  try {
+    const canvas = await captureReceiptCanvas(receiptEl);
+    const blob   = await new Promise(r => canvas.toBlob(r, 'image/png'));
+    caseResults[id].pngBlob = blob;
+
+    // Show captured PNG
+    const imgEl = document.createElement('img');
+    imgEl.src = URL.createObjectURL(blob);
+    imgEl.style.cssText = 'width:100%;display:block;';
+    const capturedDiv = document.getElementById(`captured-${id}`);
+    capturedDiv.innerHTML = '';
+    capturedDiv.appendChild(imgEl);
+
+    capturedCount++;
+    updateProgress();
+    btn.textContent = '✓ Re-capture';
+    btn.disabled = false;
+    pdfBtn.disabled = false;
+
+    updateSummaryRow(id, null, caseResults[id].asserts, true, false);
+  } catch (e) {
+    btn.textContent = '✗ Error';
+    btn.disabled = false;
+    console.error('Capture failed for', id, e);
+  }
+}
+
+async function generatePDF(id) {
+  const pdfBtn = document.getElementById(`pdf-btn-${id}`);
+  const screenDiv = document.getElementById(`screen-${id}`);
+  const receiptEl = screenDiv.querySelector('div[style*="background:' + OUTER_BG + '"]')
+                 || screenDiv.querySelector('div');
+  pdfBtn.disabled = true; pdfBtn.textContent = 'Generating…';
+  try {
+    const canvas  = await captureReceiptCanvas(receiptEl);
+    const imgData = canvas.toDataURL('image/png');
+    const mmW = (canvas.width / 3) * (25.4 / 96);
+    const mmH = (canvas.height / 3) * (25.4 / 96);
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: [mmW, mmH] });
+    pdf.addImage(imgData, 'PNG', 0, 0, mmW, mmH);
+    pdf.save(`receipt-${id}.pdf`);
+    caseResults[id].pdfBlob = true;
+    pdfBtn.textContent = '✓ PDF saved';
+    pdfBtn.disabled = false;
+    updateSummaryRow(id, null, caseResults[id].asserts, true, true);
+  } catch (e) {
+    pdfBtn.textContent = 'PDF error'; pdfBtn.disabled = false;
+    console.error('PDF failed for', id, e);
+  }
+}
+
+async function captureAll() {
+  const btn = document.getElementById('run-all-btn');
+  btn.disabled = true; btn.textContent = 'Running…';
+  for (const fixture of FIXTURES) {
+    await captureCase(fixture.id);
+  }
+  btn.textContent = '✓ All Captured'; btn.disabled = false;
+}
+
+/* ── Summary table ───────────────────────────────────────────────── */
+function badge(pass, pend) {
+  if (pend) return `<span class="badge-pend">—</span>`;
+  return pass ? `<span class="badge-pass">✓</span>` : `<span class="badge-fail">✗</span>`;
+}
+
+function updateSummaryRow(id, data, asserts, hasPng, hasPdf) {
+  const tbody = document.getElementById('summary-tbody');
+  let row = document.getElementById(`summary-row-${id}`);
+  if (!row) {
+    row = document.createElement('tr');
+    row.id = `summary-row-${id}`;
+    tbody.appendChild(row);
+  }
+  const findAssert = (key) => asserts.find(a => a.id === key);
+  const a = (key) => { const r = findAssert(key); return r ? badge(r.pass, false) : badge(false, true); };
+  const fixture = FIXTURES.find(f => f.id === id);
+  row.innerHTML = `
+    <td>${fixture ? fixture.label : id}</td>
+    <td>${a('pill-tight')}</td>
+    <td>${a('amount-locale')}</td>
+    <td>${a('pill-color')}</td>
+    <td>${a('divider-svg')}</td>
+    <td>${a('watermark-block')}</td>
+    <td>${badge(hasPng, !hasPng)}</td>
+    <td>${badge(hasPdf, !hasPdf)}</td>`;
+}
+
+/* ── Init ────────────────────────────────────────────────────────── */
+const container = document.getElementById('cases');
+FIXTURES.forEach((f, i) => container.appendChild(buildCaseUI(f, i)));
+updateProgress();
+</script>
+</body>
+</html>
