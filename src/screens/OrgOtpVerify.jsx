@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../utils/supabase";
 import AppLogo from "../components/AppLogo";
+import { AuthShell, AuthCard } from "../components/AuthShell";
 
 const coopFn = async (action, body = {}) => {
   const r = await supabase.functions.invoke("coop-portal", { body: { action, ...body } });
@@ -113,11 +114,7 @@ export default function OrgOtpVerify({ org }) {
   const email = org?.email || "";
 
   return (
-    <div
-      className="fixed inset-0 flex flex-col items-center justify-center p-5 bg-white dark:bg-[#060a08]"
-      style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
-    >
-      <div className="w-full" style={{ maxWidth: 360 }}>
+    <AuthShell variant="card">
 
         {/* Header */}
         <div className="text-center mb-7">
@@ -150,9 +147,7 @@ export default function OrgOtpVerify({ org }) {
         </div>
 
         {/* Card */}
-        <div
-          className="rounded-2xl p-6 bg-white dark:bg-[#0b120e] border border-slate-200 dark:border-[#162218] shadow-2xl dark:shadow-[0_25px_50px_rgba(0,0,0,0.5)]"
-        >
+        <AuthCard accent="green">
           {/* Temp password reminder */}
           {tempPwd && (
             <div
@@ -256,7 +251,7 @@ export default function OrgOtpVerify({ org }) {
               </button>
             )}
           </div>
-        </div>
+        </AuthCard>
 
         {/* Tip */}
         <p className="text-center text-xs mt-4 text-slate-500">
@@ -270,7 +265,6 @@ export default function OrgOtpVerify({ org }) {
         >
           Sign out
         </button>
-      </div>
-    </div>
+    </AuthShell>
   );
 }

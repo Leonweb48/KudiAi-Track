@@ -2,6 +2,8 @@ import { useState } from "react";
 import { friendlyError } from "../utils/errorMessage";
 import { supabase } from "../utils/supabase";
 import { useTheme } from "../hooks/useTheme";
+import { AuthShell, AuthPageHeader } from "../components/AuthShell";
+import PasswordInput from "../components/PasswordInput";
 
 /* ── Sun / Moon icons ────────────────────────────────── */
 function SunIcon() {
@@ -61,7 +63,6 @@ export default function MarketerFirstLogin({ marketer }) {
   const { isDark, toggle }      = useTheme();
   const [password, setPassword] = useState("");
   const [confirm,  setConfirm]  = useState("");
-  const [showPwd,  setShowPwd]  = useState(false);
   const [saving,   setSaving]   = useState(false);
   const [error,    setError]    = useState("");
   const [success,  setSuccess]  = useState(false);
@@ -98,9 +99,9 @@ export default function MarketerFirstLogin({ marketer }) {
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col">
+    <AuthShell variant="page">
       {/* Header with KudiAI Track branding */}
-      <div className="bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 px-5 pb-5" style={{ paddingTop: "max(56px, env(safe-area-inset-top, 56px))" }}>
+      <AuthPageHeader accent="indigo">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <KudiLogoIcon size={40} />
@@ -121,33 +122,29 @@ export default function MarketerFirstLogin({ marketer }) {
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
           Choose a secure password for your marketer account
         </p>
-      </div>
+      </AuthPageHeader>
 
       <div className="flex-1 px-5 pt-8 pb-10 space-y-5">
         <div>
           <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">New Password *</label>
-          <div className="relative">
-            <input type={showPwd ? "text" : "password"} value={password}
-              onChange={e => { setPassword(e.target.value); setError(""); }}
-              placeholder="Minimum 8 characters"
-              className="w-full border border-slate-200 dark:border-slate-700 rounded-xl pl-4 pr-14 py-3 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-            <button type="button" onClick={() => setShowPwd(v => !v)}
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-indigo-600 dark:text-indigo-400">
-              {showPwd ? "Hide" : "Show"}
-            </button>
-          </div>
+          <PasswordInput
+            value={password}
+            onChange={e => { setPassword(e.target.value); setError(""); }}
+            placeholder="Minimum 8 characters"
+            borderClass="border-slate-200 dark:border-slate-700"
+            className="bg-white dark:bg-slate-800 text-slate-800 dark:text-white"
+          />
           <StrengthBar password={password} />
         </div>
 
         <div>
           <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Confirm Password *</label>
-          <input type={showPwd ? "text" : "password"} value={confirm}
+          <PasswordInput
+            value={confirm}
             onChange={e => { setConfirm(e.target.value); setError(""); }}
             placeholder="Repeat your password"
-            className={`w-full border rounded-xl px-4 py-3 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors ${
-              confirm && confirm !== password ? "border-red-400 dark:border-red-600" : "border-slate-200 dark:border-slate-700"
-            }`}
+            borderClass={confirm && confirm !== password ? "border-red-400 dark:border-red-600" : "border-slate-200 dark:border-slate-700"}
+            className="bg-white dark:bg-slate-800 text-slate-800 dark:text-white"
           />
         </div>
 
@@ -187,6 +184,6 @@ export default function MarketerFirstLogin({ marketer }) {
           </div>
         )}
       </div>
-    </div>
+    </AuthShell>
   );
 }

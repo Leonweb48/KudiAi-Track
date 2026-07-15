@@ -2,6 +2,8 @@ import { useState } from "react";
 import { friendlyError } from "../utils/errorMessage";
 import { supabase } from "../utils/supabase";
 import AppLogo from "../components/AppLogo";
+import { AuthShell, AuthPageHeader } from "../components/AuthShell";
+import PasswordInput from "../components/PasswordInput";
 
 const ORG_TYPE_LABELS = {
   cooperative: "Cooperative Society", market_association: "Market Association",
@@ -26,7 +28,6 @@ function StrengthBar({ password }) {
 export default function OrgFirstLogin({ org }) {
   const [password, setPassword] = useState("");
   const [confirm,  setConfirm]  = useState("");
-  const [showPwd,  setShowPwd]  = useState(false);
   const [saving,   setSaving]   = useState(false);
   const [error,    setError]    = useState("");
   const [success,  setSuccess]  = useState(false);
@@ -63,10 +64,10 @@ export default function OrgFirstLogin({ org }) {
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-[#060a08] flex flex-col">
+    <AuthShell variant="page">
 
       {/* Header */}
-      <div className="bg-white dark:bg-[#0b120e] border-b border-slate-100 dark:border-[#162218] px-5 pb-6" style={{ paddingTop: "max(56px, env(safe-area-inset-top, 56px))" }}>
+      <AuthPageHeader accent="green">
         <div className="flex justify-center mb-5">
           <div className="bg-white/90 dark:bg-white/10 rounded-2xl p-2 shadow">
             <AppLogo className="h-9 w-auto" />
@@ -87,7 +88,7 @@ export default function OrgFirstLogin({ org }) {
             {ORG_TYPE_LABELS[org.type] || org.type}
           </span>
         )}
-      </div>
+      </AuthPageHeader>
 
       {/* Form */}
       <div className="flex-1 px-5 pt-8 pb-10 space-y-5">
@@ -95,19 +96,14 @@ export default function OrgFirstLogin({ org }) {
           <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1 uppercase tracking-wide">
             New Password *
           </label>
-          <div className="relative">
-            <input
-              type={showPwd ? "text" : "password"}
-              value={password}
-              onChange={e => { setPassword(e.target.value); setError(""); }}
-              placeholder="Minimum 8 characters"
-              className="w-full border border-slate-200 dark:border-[#1e3024] rounded-xl pl-4 pr-14 py-3 text-sm bg-white dark:bg-[#101a13] text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-400/40 transition"
-            />
-            <button type="button" onClick={() => setShowPwd(v => !v)}
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-[#3DA829]">
-              {showPwd ? "Hide" : "Show"}
-            </button>
-          </div>
+          <PasswordInput
+            value={password}
+            onChange={e => { setPassword(e.target.value); setError(""); }}
+            placeholder="Minimum 8 characters"
+            accentClass="focus:ring-green-400/40"
+            borderClass="border-slate-200 dark:border-[#1e3024]"
+            className="bg-white dark:bg-[#101a13] text-slate-800 dark:text-white"
+          />
           <StrengthBar password={password} />
         </div>
 
@@ -115,16 +111,13 @@ export default function OrgFirstLogin({ org }) {
           <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1 uppercase tracking-wide">
             Confirm Password *
           </label>
-          <input
-            type={showPwd ? "text" : "password"}
+          <PasswordInput
             value={confirm}
             onChange={e => { setConfirm(e.target.value); setError(""); }}
             placeholder="Repeat your password"
-            className={`w-full border rounded-xl px-4 py-3 text-sm bg-white dark:bg-[#101a13] text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-400/40 transition ${
-              confirm && confirm !== password
-                ? "border-red-400 dark:border-red-600"
-                : "border-slate-200 dark:border-[#1e3024]"
-            }`}
+            accentClass="focus:ring-green-400/40"
+            borderClass={confirm && confirm !== password ? "border-red-400 dark:border-red-600" : "border-slate-200 dark:border-[#1e3024]"}
+            className="bg-white dark:bg-[#101a13] text-slate-800 dark:text-white"
           />
           {confirm && confirm !== password && (
             <p className="text-[10px] text-red-500 mt-1 font-medium">Passwords don't match</p>
@@ -169,6 +162,6 @@ export default function OrgFirstLogin({ org }) {
           Sign out
         </button>
       </div>
-    </div>
+    </AuthShell>
   );
 }

@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { friendlyError } from "../utils/errorMessage";
 import { supabase } from "../utils/supabase";
+import { AuthShell, AuthPageHeader } from "../components/AuthShell";
+import PasswordInput from "../components/PasswordInput";
 
 function StrengthBar({ password }) {
   const score = [/.{8,}/, /[A-Z]/, /[0-9]/, /[^A-Za-z0-9]/].filter(r => r.test(password)).length;
@@ -18,7 +20,6 @@ function StrengthBar({ password }) {
 export default function StaffFirstLogin({ staff }) {
   const [password, setPassword] = useState("");
   const [confirm,  setConfirm]  = useState("");
-  const [showPwd,  setShowPwd]  = useState(false);
   const [saving,   setSaving]   = useState(false);
   const [error,    setError]    = useState("");
   const [success,  setSuccess]  = useState(false);
@@ -58,8 +59,8 @@ export default function StaffFirstLogin({ staff }) {
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col">
-      <div className="bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 px-5 pb-6" style={{ paddingTop: "max(56px, env(safe-area-inset-top, 56px))" }}>
+    <AuthShell variant="page">
+      <AuthPageHeader accent="indigo">
         <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center mb-4">
           <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6 text-white" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
             <rect x="3" y="11" width="18" height="11" rx="2" />
@@ -80,26 +81,20 @@ export default function StaffFirstLogin({ staff }) {
             </span>
           </div>
         )}
-      </div>
+      </AuthPageHeader>
 
       <div className="flex-1 px-5 pt-8 pb-10 space-y-5">
         <div>
           <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1 uppercase tracking-wide">
             New Password *
           </label>
-          <div className="relative">
-            <input
-              type={showPwd ? "text" : "password"}
-              value={password}
-              onChange={e => { setPassword(e.target.value); setError(""); }}
-              placeholder="Minimum 8 characters"
-              className="w-full border border-slate-200 dark:border-slate-700 rounded-xl pl-4 pr-14 py-3 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition"
-            />
-            <button type="button" onClick={() => setShowPwd(v => !v)}
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-indigo-600 dark:text-indigo-400">
-              {showPwd ? "Hide" : "Show"}
-            </button>
-          </div>
+          <PasswordInput
+            value={password}
+            onChange={e => { setPassword(e.target.value); setError(""); }}
+            placeholder="Minimum 8 characters"
+            borderClass="border-slate-200 dark:border-slate-700"
+            className="bg-white dark:bg-slate-800 text-slate-800 dark:text-white"
+          />
           <StrengthBar password={password} />
         </div>
 
@@ -107,16 +102,12 @@ export default function StaffFirstLogin({ staff }) {
           <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1 uppercase tracking-wide">
             Confirm Password *
           </label>
-          <input
-            type={showPwd ? "text" : "password"}
+          <PasswordInput
             value={confirm}
             onChange={e => { setConfirm(e.target.value); setError(""); }}
             placeholder="Repeat your password"
-            className={`w-full border rounded-xl px-4 py-3 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition ${
-              confirm && confirm !== password
-                ? "border-red-400 dark:border-red-600"
-                : "border-slate-200 dark:border-slate-700"
-            }`}
+            borderClass={confirm && confirm !== password ? "border-red-400 dark:border-red-600" : "border-slate-200 dark:border-slate-700"}
+            className="bg-white dark:bg-slate-800 text-slate-800 dark:text-white"
           />
           {confirm && confirm !== password && (
             <p className="text-[10px] text-red-500 mt-1 font-medium">Passwords don't match</p>
@@ -158,6 +149,6 @@ export default function StaffFirstLogin({ staff }) {
           Sign out
         </button>
       </div>
-    </div>
+    </AuthShell>
   );
 }

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { supabase } from "../utils/supabase";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
+import { AuthShell } from "../components/AuthShell";
 import AppLogo from "../components/AppLogo";
 import { sendEmailTrigger } from "../utils/emailTrigger";
 import { maxDobDate, isAtLeast18, AGE_ERROR } from "../utils/ageValidation";
@@ -89,17 +90,17 @@ const actual = (sel, other) => (sel === "Other" ? (other.trim() || "Other") : se
 function Field({ label, required: req, hint, children, ...props }) {
   return (
     <div>
-      <label className="block text-xs font-semibold text-gray-600 mb-1">
+      <label className="block text-xs font-semibold text-gray-600 dark:text-slate-300 mb-1">
         {label}{req && <span className="text-red-500 ml-0.5">*</span>}
       </label>
       {children || (
         <input
-          className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm
-            focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+          className="w-full border border-gray-300 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm
+            focus:outline-none focus:ring-2 focus:ring-green-500 bg-white dark:bg-slate-900 dark:text-white"
           {...props}
         />
       )}
-      {hint && <p className="text-[10px] text-gray-400 mt-0.5">{hint}</p>}
+      {hint && <p className="text-[10px] text-gray-400 dark:text-slate-500 mt-0.5">{hint}</p>}
     </div>
   );
 }
@@ -107,14 +108,14 @@ function Field({ label, required: req, hint, children, ...props }) {
 function Select({ label, required: req, value, onChange, disabled, placeholder, options }) {
   return (
     <div>
-      <label className="block text-xs font-semibold text-gray-600 mb-1">
+      <label className="block text-xs font-semibold text-gray-600 dark:text-slate-300 mb-1">
         {label}{req && <span className="text-red-500 ml-0.5">*</span>}
       </label>
       <select
         required={req} value={value} onChange={onChange} disabled={disabled}
-        className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm
-          focus:outline-none focus:ring-2 focus:ring-green-500 bg-white
-          disabled:bg-gray-50 disabled:text-gray-400"
+        className="w-full border border-gray-300 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm
+          focus:outline-none focus:ring-2 focus:ring-green-500 bg-white dark:bg-slate-900 dark:text-white
+          disabled:bg-gray-50 dark:disabled:bg-slate-800 disabled:text-gray-400 dark:disabled:text-slate-500"
       >
         <option value="">{placeholder}</option>
         {options.map((o) => <option key={o} value={o}>{o}</option>)}
@@ -127,14 +128,14 @@ function Select({ label, required: req, value, onChange, disabled, placeholder, 
 function DrpOther({ label, required: req, value, onChange, otherValue, onOtherChange, options, placeholder }) {
   return (
     <div>
-      <label className="block text-xs font-semibold text-gray-600 mb-1">
+      <label className="block text-xs font-semibold text-gray-600 dark:text-slate-300 mb-1">
         {label}{req && <span className="text-red-500 ml-0.5">*</span>}
       </label>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm
-          focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+        className="w-full border border-gray-300 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm
+          focus:outline-none focus:ring-2 focus:ring-green-500 bg-white dark:bg-slate-900 dark:text-white"
       >
         <option value="">{placeholder || "Select…"}</option>
         {options.map(o => <option key={o} value={o}>{o}</option>)}
@@ -147,8 +148,8 @@ function DrpOther({ label, required: req, value, onChange, otherValue, onOtherCh
           placeholder="Please specify…"
           value={otherValue}
           onChange={(e) => onOtherChange(e.target.value)}
-          className="mt-2 w-full border border-green-400 rounded-xl px-3 py-2.5 text-sm
-            focus:outline-none focus:ring-2 focus:ring-green-500 bg-green-50 placeholder-green-400"
+          className="mt-2 w-full border border-green-400 dark:border-green-700 rounded-xl px-3 py-2.5 text-sm
+            focus:outline-none focus:ring-2 focus:ring-green-500 bg-green-50 dark:bg-green-950/30 placeholder-green-400 dark:text-white"
         />
       )}
     </div>
@@ -157,11 +158,11 @@ function DrpOther({ label, required: req, value, onChange, otherValue, onOtherCh
 
 function SectionHead({ emoji, title }) {
   return (
-    <div className="flex items-center gap-2.5 pt-3 pb-0.5 border-t-2 border-gray-100 mt-1">
-      <div className="w-7 h-7 rounded-lg bg-green-100 flex items-center justify-center text-base flex-shrink-0">
+    <div className="flex items-center gap-2.5 pt-3 pb-0.5 border-t-2 border-gray-100 dark:border-slate-800 mt-1">
+      <div className="w-7 h-7 rounded-lg bg-green-100 dark:bg-green-900/40 flex items-center justify-center text-base flex-shrink-0">
         {emoji}
       </div>
-      <p className="text-[11px] font-bold text-green-700 uppercase tracking-widest">{title}</p>
+      <p className="text-[11px] font-bold text-green-700 dark:text-green-400 uppercase tracking-widest">{title}</p>
     </div>
   );
 }
@@ -360,8 +361,8 @@ export default function Onboarding({ session, onComplete }) {
   const stepLabel = step === 1 ? "Personal & KYC Information" : "Business Registration";
 
   return (
-    <div className="min-h-screen bg-slate-50 flex justify-center">
-      <div className="w-full max-w-md flex flex-col min-h-screen">
+    <AuthShell variant="page">
+      <div className="w-full max-w-md flex flex-col min-h-screen mx-auto">
 
         {/* Header */}
         <div className="bg-green-600 px-5 pb-6 flex flex-col items-center" style={{ paddingTop: "max(40px, env(safe-area-inset-top, 40px))" }}>
@@ -378,7 +379,7 @@ export default function Onboarding({ session, onComplete }) {
 
         {/* ── Step 1 — Personal / KYC ──────────────────────── */}
         {step === 1 && (
-          <form onSubmit={handleStep1} className="flex-1 overflow-y-auto px-5 py-5 space-y-4 pb-10 bg-white">
+          <form onSubmit={handleStep1} className="flex-1 overflow-y-auto px-5 py-5 space-y-4 pb-10 bg-white dark:bg-slate-900">
 
             {/* Profile photo */}
             <div className="flex flex-col items-center pb-2">
@@ -386,10 +387,10 @@ export default function Onboarding({ session, onComplete }) {
                 <div className={`w-28 h-28 rounded-full overflow-hidden flex items-center justify-center transition-all
                   ${profilePreview
                     ? "border-2 border-green-500"
-                    : "bg-gray-50 border-2 border-dashed border-gray-300 group-hover:border-green-400"}`}>
+                    : "bg-gray-50 dark:bg-slate-800 border-2 border-dashed border-gray-300 dark:border-slate-600 group-hover:border-green-400"}`}>
                   {profilePreview
                     ? <img src={profilePreview} alt="profile" className="w-full h-full object-cover" />
-                    : <div className="flex flex-col items-center gap-1 text-gray-400">
+                    : <div className="flex flex-col items-center gap-1 text-gray-400 dark:text-slate-500">
                         <svg className="w-9 h-9" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
                             d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
@@ -406,15 +407,15 @@ export default function Onboarding({ session, onComplete }) {
                 </span>
                 <input type="file" accept="image/*" className="hidden" onChange={handlePhoto} />
               </label>
-              <p className="text-xs font-semibold text-gray-600 mt-2">
+              <p className="text-xs font-semibold text-gray-600 dark:text-slate-300 mt-2">
                 Profile Photo <span className="text-red-500">*</span>
               </p>
-              <p className="text-[10px] text-gray-400">Required — used as your account avatar</p>
+              <p className="text-[10px] text-gray-400 dark:text-slate-500">Required — used as your account avatar</p>
             </div>
 
             <Field label="Full Name">
               <input readOnly value={fullName || email.split("@")[0]}
-                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-gray-50 text-gray-400 cursor-not-allowed" />
+                className="w-full border border-gray-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-gray-50 dark:bg-slate-800 text-gray-400 dark:text-slate-500 cursor-not-allowed" />
             </Field>
 
             <Field label="Phone Number" required
@@ -423,7 +424,7 @@ export default function Onboarding({ session, onComplete }) {
 
             <Field label="Email Address">
               <input readOnly value={email}
-                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-gray-50 text-gray-400 cursor-not-allowed" />
+                className="w-full border border-gray-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-gray-50 dark:bg-slate-800 text-gray-400 dark:text-slate-500 cursor-not-allowed" />
             </Field>
 
             <Field label="Home Address"
@@ -462,7 +463,7 @@ export default function Onboarding({ session, onComplete }) {
               hint="Your NIN is kept private and secure" />
 
             {error && (
-              <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">{error}</div>
+              <div className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl px-3 py-2">{error}</div>
             )}
 
             <button type="submit"
@@ -474,10 +475,10 @@ export default function Onboarding({ session, onComplete }) {
 
         {/* ── Step 2 — Business Registration ───────────────── */}
         {step === 2 && (
-          <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-5 py-5 pb-12 bg-white space-y-4">
+          <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-5 py-5 pb-12 bg-white dark:bg-slate-900 space-y-4">
 
             <button type="button" onClick={() => { setStep(1); setError(""); }}
-              className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 -mt-1">
+              className="flex items-center gap-1 text-sm text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 -mt-1">
               ← Back
             </button>
 
@@ -566,12 +567,12 @@ export default function Onboarding({ session, onComplete }) {
             <SectionHead emoji="📍" title="Business Location" />
 
             <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">Country</label>
+              <label className="block text-xs font-semibold text-gray-600 dark:text-slate-300 mb-1">Country</label>
               <select
                 value={bizCountry}
                 onChange={(e) => { setBizCountry(e.target.value); setBizState(""); setBizLga(""); setBizWard(""); }}
-                className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm
-                  focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+                className="w-full border border-gray-300 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm
+                  focus:outline-none focus:ring-2 focus:ring-green-500 bg-white dark:bg-slate-900 dark:text-white"
               >
                 <option value="">Select country…</option>
                 {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
@@ -626,7 +627,7 @@ export default function Onboarding({ session, onComplete }) {
             {/* ── Section 5: Verification (Optional) ── */}
             <SectionHead emoji="📄" title="Verification (Optional)" />
 
-            <p className="text-[11px] text-gray-400 -mt-1">
+            <p className="text-[11px] text-gray-400 dark:text-slate-500 -mt-1">
               Upload a business registration document to verify your account. You can skip this and do it later in Settings.
             </p>
 
@@ -640,10 +641,10 @@ export default function Onboarding({ session, onComplete }) {
 
             {regDocType && regDocType !== "None" && actual(regDocType, regDocTypeOther) !== "None" && (
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Upload Document</label>
+                <label className="block text-xs font-semibold text-gray-600 dark:text-slate-300 mb-1">Upload Document</label>
                 <label className={`flex items-center gap-3 border-2 border-dashed rounded-xl px-4 py-3 cursor-pointer transition-colors
-                  ${regDocFile ? "border-green-400 bg-green-50" : "border-gray-300 hover:border-green-400 bg-gray-50"}`}>
-                  <svg className={`w-5 h-5 flex-shrink-0 ${regDocFile ? "text-green-600" : "text-gray-400"}`}
+                  ${regDocFile ? "border-green-400 bg-green-50 dark:bg-green-950/30" : "border-gray-300 dark:border-slate-600 hover:border-green-400 bg-gray-50 dark:bg-slate-800"}`}>
+                  <svg className={`w-5 h-5 flex-shrink-0 ${regDocFile ? "text-green-600" : "text-gray-400 dark:text-slate-500"}`}
                     fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                       d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -651,7 +652,7 @@ export default function Onboarding({ session, onComplete }) {
                   <div className="min-w-0">
                     {regDocFile
                       ? <p className="text-xs font-semibold text-green-700 truncate">{regDocName}</p>
-                      : <p className="text-xs text-gray-500">Tap to select a file <span className="text-gray-400">(PDF, JPG, PNG)</span></p>
+                      : <p className="text-xs text-gray-500 dark:text-slate-400">Tap to select a file <span className="text-gray-400 dark:text-slate-500">(PDF, JPG, PNG)</span></p>
                     }
                   </div>
                   <input
@@ -670,12 +671,12 @@ export default function Onboarding({ session, onComplete }) {
             )}
 
             {error && (
-              <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">{error}</div>
+              <div className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl px-3 py-2">{error}</div>
             )}
 
             {needsSignOut && (
               <button type="button" onClick={() => supabase.auth.signOut()}
-                className="w-full border-2 border-red-300 text-red-600 font-bold rounded-xl py-3 text-sm hover:bg-red-50 transition-colors">
+                className="w-full border-2 border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 font-bold rounded-xl py-3 text-sm hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors">
                 Sign Out &amp; Try Again
               </button>
             )}
@@ -696,6 +697,6 @@ export default function Onboarding({ session, onComplete }) {
         )}
 
       </div>
-    </div>
+    </AuthShell>
   );
 }

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { supabase, supabaseConfigured, SUPABASE_DIRECT_URL, SUPABASE_PROXY_URL } from "../utils/supabase";
 import { friendlyError } from "../utils/errorMessage";
 import AppLogo from "../components/AppLogo";
+import { AuthShell, AuthCard } from "../components/AuthShell";
 import { Capacitor } from "@capacitor/core";
 import { Browser } from "@capacitor/browser";
 import { useT } from "../contexts/LanguageContext";
@@ -78,7 +79,7 @@ function BgLayout({ children, center = false }) {
           </div>
 
           {/* Bottom sheet — fixed height cap, scrolls internally if form is long */}
-          <div className="relative z-10 flex-shrink-0 bg-white rounded-t-3xl shadow-2xl w-full max-w-md mx-auto overflow-y-auto"
+          <div className="relative z-10 flex-shrink-0 bg-white dark:bg-slate-900 rounded-t-3xl shadow-2xl w-full max-w-md mx-auto overflow-y-auto"
             style={{ maxHeight: "62dvh" }}>
             <div className="px-6 pt-5 pb-8">
               {children}
@@ -171,11 +172,10 @@ function OtpScreen({ email, onBack, onVerified, otpType = "signup" }) {
   };
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center p-4 bg-slate-50 dark:bg-slate-950">
-      <div className="w-full" style={{ maxWidth: 360 }}>
+    <AuthShell variant="card">
 
-        {/* Header */}
-        <div className="text-center mb-8">
+      {/* Header */}
+      <div className="text-center mb-8">
           <div className="flex justify-center mb-4">
             <div className="bg-white/90 rounded-2xl p-2 shadow-lg">
               <AppLogo className="h-10 w-auto" />
@@ -196,8 +196,8 @@ function OtpScreen({ email, onBack, onVerified, otpType = "signup" }) {
           </p>
         </div>
 
-        {/* Card */}
-        <div className="rounded-2xl p-6 bg-white dark:bg-[#0e1117] border border-slate-200 dark:border-[#1e2433] shadow-2xl dark:shadow-[0_25px_50px_rgba(0,0,0,0.5)]">
+      {/* Card */}
+      <AuthCard>
 
           {/* Digit boxes */}
           <div className="flex gap-2 justify-center mb-6" onPaste={handlePaste}>
@@ -265,21 +265,20 @@ function OtpScreen({ email, onBack, onVerified, otpType = "signup" }) {
               </button>
             )}
           </div>
-        </div>
+      </AuthCard>
 
-        {/* Back link */}
-        <button
-          onClick={onBack}
-          className="w-full text-center text-xs mt-4 transition-colors text-slate-500 dark:text-slate-400 bg-transparent border-0 cursor-pointer"
-        >
-          ← {t("auth.back")}
-        </button>
+      {/* Back link */}
+      <button
+        onClick={onBack}
+        className="w-full text-center text-xs mt-4 transition-colors text-slate-500 dark:text-slate-400 bg-transparent border-0 cursor-pointer"
+      >
+        ← {t("auth.back")}
+      </button>
 
-        <p className="text-center text-xs mt-4 text-slate-400 dark:text-slate-600">
-          © Amaya &amp; Co. Technologies. All Rights Reserved.
-        </p>
-      </div>
-    </div>
+      <p className="text-center text-xs mt-4 text-slate-400 dark:text-slate-600">
+        © Amaya &amp; Co. Technologies. All Rights Reserved.
+      </p>
+    </AuthShell>
   );
 }
 
@@ -541,13 +540,13 @@ export default function Auth() {
     <BgLayout>
       {/* Tab switcher — Sign In / Create Account */}
       {!isForgot && (
-        <div className="flex bg-gray-100 rounded-xl p-1 mb-5">
+        <div className="flex bg-gray-100 dark:bg-slate-800 rounded-xl p-1 mb-5">
           <button
             onClick={() => { setMode("login"); clearMessages(); }}
             className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${
               mode === "login"
-                ? "bg-white text-gray-800 shadow-sm"
-                : "text-gray-500 hover:text-gray-700"
+                ? "bg-white dark:bg-slate-700 text-gray-800 dark:text-white shadow-sm"
+                : "text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200"
             }`}
           >
             {t("auth.signIn")}
@@ -556,8 +555,8 @@ export default function Auth() {
             onClick={() => { setMode("register"); clearMessages(); }}
             className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${
               mode === "register"
-                ? "bg-white text-gray-800 shadow-sm"
-                : "text-gray-500 hover:text-gray-700"
+                ? "bg-white dark:bg-slate-700 text-gray-800 dark:text-white shadow-sm"
+                : "text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200"
             }`}
           >
             {t("auth.createAccount")}
@@ -582,12 +581,12 @@ export default function Auth() {
       )}
 
       {error && (
-        <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5">
+        <div className="mb-4 text-sm text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-xl px-3 py-2.5">
           {error}
         </div>
       )}
       {info && (
-        <div className="mb-4 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2.5">
+        <div className="mb-4 text-sm text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl px-3 py-2.5">
           {info}
         </div>
       )}
@@ -600,7 +599,7 @@ export default function Auth() {
               type="text" required value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Adaeze Okonkwo"
-              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+              className="w-full border border-gray-200 dark:border-slate-600 rounded-xl px-4 py-3 text-sm text-gray-900 dark:text-white bg-gray-50 dark:bg-slate-800 focus:bg-white dark:focus:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
             />
           </div>
         )}
@@ -611,7 +610,7 @@ export default function Auth() {
             type="email" required value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="you@example.com"
-            className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+            className="w-full border border-gray-200 dark:border-slate-600 rounded-xl px-4 py-3 text-sm text-gray-900 dark:text-white bg-gray-50 dark:bg-slate-800 focus:bg-white dark:focus:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
           />
         </div>
 
@@ -629,7 +628,7 @@ export default function Auth() {
               <button
                 type="button"
                 onClick={() => setShowPw(v => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors p-0.5"
+                className="absolute right-0 top-0 h-full w-11 flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
                 tabIndex={-1}
                 aria-label={showPw ? "Hide password" : "Show password"}
               >
@@ -670,18 +669,18 @@ export default function Auth() {
                 type={showConfirmPw ? "text" : "password"} required value={confirmPass}
                 onChange={(e) => setConfirmPass(e.target.value)}
                 placeholder="Re-enter your password"
-                className={`w-full border rounded-xl px-4 py-3 pr-11 text-sm text-gray-900 bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:border-transparent transition-all ${
+                className={`w-full border rounded-xl px-4 py-3 pr-11 text-sm text-gray-900 dark:text-white bg-gray-50 dark:bg-slate-800 focus:bg-white dark:focus:bg-slate-700 focus:outline-none focus:ring-2 focus:border-transparent transition-all ${
                   confirmPass.length > 0
                     ? confirmPass === password
                       ? "border-emerald-400 focus:ring-emerald-500"
                       : "border-red-300 focus:ring-red-400"
-                    : "border-gray-200 focus:ring-emerald-500"
+                    : "border-gray-200 dark:border-slate-600 focus:ring-emerald-500"
                 }`}
               />
               <button
                 type="button"
                 onClick={() => setShowConfirmPw(v => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors p-0.5"
+                className="absolute right-0 top-0 h-full w-11 flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
                 tabIndex={-1}
                 aria-label={showConfirmPw ? "Hide password" : "Show password"}
               >
@@ -720,13 +719,13 @@ export default function Auth() {
       {!isForgot && (
         <>
           <div className="flex items-center gap-3 my-4">
-            <div className="flex-1 h-px bg-gray-200" />
+            <div className="flex-1 h-px bg-gray-200 dark:bg-slate-700" />
             <span className="text-xs text-gray-400 font-medium">{t("auth.or")}</span>
-            <div className="flex-1 h-px bg-gray-200" />
+            <div className="flex-1 h-px bg-gray-200 dark:bg-slate-700" />
           </div>
 
           <button onClick={handleGoogle} disabled={loading}
-            className="w-full flex items-center justify-center gap-3 border border-gray-200 rounded-xl py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 active:bg-gray-100 disabled:opacity-60 transition-colors">
+            className="w-full flex items-center justify-center gap-3 border border-gray-200 dark:border-slate-600 rounded-xl py-3 text-sm font-semibold text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-800 active:bg-gray-100 dark:active:bg-slate-700 disabled:opacity-60 transition-colors">
             <svg viewBox="0 0 24 24" className="w-5 h-5 flex-shrink-0" xmlns="http://www.w3.org/2000/svg">
               <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
               <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
