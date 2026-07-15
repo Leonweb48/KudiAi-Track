@@ -106,6 +106,7 @@ serve(async (req) => {
   // Accepts new member_session_token OR legacy portal_token for PIN-auth portal callers.
   async function requireMemberAccess(member_id: string, session_token?: string): Promise<Response | null> {
     if (!member_id) return json({ error: "member_id required" }, 400);
+    if (!callerId && !session_token) return json({ error: "Unauthorised — please sign in to your member portal" }, 401);
     const { data: m } = await sb.from("org_members")
       .select("id, user_id, org_id, member_session_token, member_session_expires_at, portal_token")
       .eq("id", member_id).maybeSingle();
