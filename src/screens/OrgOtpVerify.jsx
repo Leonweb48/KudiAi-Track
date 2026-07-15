@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef } from "react";
+mport { useState, useEffect, useRef } from "react";
 import { supabase } from "../utils/supabase";
 import AppLogo from "../components/AppLogo";
 

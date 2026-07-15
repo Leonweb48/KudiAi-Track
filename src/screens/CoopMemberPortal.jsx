@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+mport { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { friendlyError } from "../utils/errorMessage";
 import { usePullToRefresh } from "../hooks/usePullToRefresh";
 import PullIndicator from "../components/PullIndicator";
