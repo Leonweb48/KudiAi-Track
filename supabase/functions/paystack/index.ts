@@ -171,16 +171,20 @@ serve(async (req) => {
       }
 
       // Persist subaccount code + bank details back to the correct record
-      const patch = {
-        paystack_subaccount_code: psData.data.subaccount_code,
-        paystack_subaccount_id:   String(psData.data.id),
-        account_name:             psData.data.account_name ?? null,
-        bank_name:                bank_name || null,
-      };
       if (client_id) {
-        await sb.from("aso_clients").update(patch).eq("id", client_id);
+        await sb.from("aso_clients").update({
+          paystack_subaccount_code: psData.data.subaccount_code,
+          paystack_subaccount_id:   String(psData.data.id),
+          account_name:             psData.data.account_name ?? null,
+          bank_name:                bank_name || null,
+        }).eq("id", client_id);
       } else {
-        await sb.from("ajo_groups").update(patch).eq("id", group_id!);
+        // ajo_groups has no bank_name column — omit it
+        await sb.from("ajo_groups").update({
+          paystack_subaccount_code: psData.data.subaccount_code,
+          paystack_subaccount_id:   String(psData.data.id),
+          account_name:             psData.data.account_name ?? null,
+        }).eq("id", group_id!);
       }
 
       return json({ subaccount_code: psData.data.subaccount_code, data: psData.data });
