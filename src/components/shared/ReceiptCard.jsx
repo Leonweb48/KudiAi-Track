@@ -273,13 +273,13 @@ export function ReceiptCard({ data, innerRef }) {
             {fmtAmt(amount)}
           </p>
 
-          {/* Status pill — Successful / Pending / Failed / Reversed
-              borderRadius:20 instead of 99 — large radius values render
-              inconsistently in html2canvas v1. inline-block + textAlign:center
-              is the most compatible centering technique. */}
-          <div style={{ marginTop: 8, textAlign: 'center', lineHeight: 1 }}>
-            <span style={{
-              display:      'inline-block',
+          {/* Status pill — flex centering avoids the html2canvas v1 bug where
+              inline-block + background paints at full containing-block width.
+              A block <div> inside a flex container shrinks to content width and
+              html2canvas clips its background correctly. borderRadius:20 (not 99)
+              stays because large radii still render inconsistently in v1. */}
+          <div style={{ marginTop: 8, display: 'flex', justifyContent: 'center', lineHeight: 1 }}>
+            <div style={{
               background:   st.bg,
               borderRadius: 20,
               padding:      '5px 18px',
@@ -290,7 +290,7 @@ export function ReceiptCard({ data, innerRef }) {
               whiteSpace:   'nowrap',
             }}>
               {st.label}
-            </span>
+            </div>
           </div>
 
           <p style={{ margin: '8px 0 0', fontSize: 10.5, color: '#94a3b8', fontWeight: 500 }}>

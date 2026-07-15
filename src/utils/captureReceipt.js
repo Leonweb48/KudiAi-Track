@@ -44,13 +44,14 @@ export async function captureReceiptCanvas(el) {
 
   try {
     return await html2canvas(clone, {
-      scale:        3,
-      useCORS:      true,
-      allowTaint:   true,
-      logging:      false,
-      imageTimeout: 15000,
-      width:        cardWidth,
-      height:       clone.scrollHeight,
+      scale:           3,
+      useCORS:         true,
+      allowTaint:      true,
+      logging:         false,
+      imageTimeout:    15000,
+      width:           cardWidth,
+      height:          clone.scrollHeight,
+      backgroundColor: '#f1f5f9',  // OUTER_BG — prevents transparent bleed if any pixel misses root bg
     });
   } finally {
     document.body.removeChild(wrap);
