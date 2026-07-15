@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import PinDots from "./PinDots";
 
 const BackspaceIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor"
@@ -176,17 +177,7 @@ export default function PinSetupFlow({ pinLock }) {
       {/* Middle: dots + pad */}
       <div className="flex flex-col items-center gap-8 w-full max-w-[280px] mx-auto">
         {/* PIN dots */}
-        <div className="flex gap-4 justify-center">
-          {Array.from({ length: maxLen }).map((_, i) => (
-            <div key={i} className={`rounded-full border-2 transition-all duration-150 ${
-              maxLen === 6 ? "w-3 h-3" : "w-4 h-4"
-            } ${
-              pin.length > i
-                ? "bg-brand-500 border-brand-500 scale-110"
-                : "border-slate-300 dark:border-slate-600 bg-transparent"
-            }`} />
-          ))}
-        </div>
+        <PinDots count={maxLen} filled={pin.length} />
 
         {/* Error */}
         <div className="h-5 -mt-4">

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import PinDots from "./PinDots";
 
 const BackspaceIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor"
@@ -8,6 +9,15 @@ const BackspaceIcon = () => (
     <line x1="13" y1="9" x2="18" y2="14" />
   </svg>
 );
+
+function isWeakPin(pin) {
+  const d = pin.split("").map(Number);
+  if (d.every(x => x === d[0])) return true;
+  if (d.every((x, i) => i === 0 || x === d[i - 1] + 1)) return true;
+  if (d.every((x, i) => i === 0 || x === d[i - 1] - 1)) return true;
+  const w4 = new Set(["1212", "1122", "1010", "2580", "0852"]);
+  return w4.has(pin);
+}
 
 export default function PinSetupModal({ lock }) {
   const [step,     setStep]     = useState("enter");   // "enter" | "confirm"
@@ -25,6 +35,11 @@ export default function PinSetupModal({ lock }) {
 
     if (next.length === 4) {
       if (step === "enter") {
+        if (isWeakPin(next)) {
+          setPin("");
+          setError("PIN is too easy to guess. Try a different one.");
+          return;
+        }
         setFirstPin(next);
         setPin("");
         setStep("confirm");
@@ -48,7 +63,7 @@ export default function PinSetupModal({ lock }) {
 
   return (
     <div
-      className="fixed inset-0 z-[200] bg-slate-900 flex flex-col items-center justify-between select-none"
+      className="fixed inset-0 z-[200] bg-white dark:bg-slate-900 flex flex-col items-center justify-between select-none"
       style={{ paddingTop: "env(safe-area-inset-top, 0px)", paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
     >
       {/* Top */}
@@ -62,8 +77,8 @@ export default function PinSetupModal({ lock }) {
         </div>
 
         <div className="text-center px-6">
-          <p className="text-xl font-extrabold text-white leading-tight">Secure Your Account</p>
-          <p className="text-sm text-slate-400 mt-1">
+          <p className="text-xl font-extrabold text-slate-900 dark:text-white leading-tight">Secure Your Account</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
             {step === "enter"
               ? "Create a 4-digit PIN to protect your data"
               : "Re-enter your PIN to confirm"}
@@ -74,8 +89,8 @@ export default function PinSetupModal({ lock }) {
             <div className={`flex items-center justify-center w-6 h-6 rounded-full text-[11px] font-bold transition-colors ${step === "enter" ? "bg-brand-600 text-white" : "bg-brand-600/30 text-brand-400"}`}>
               1
             </div>
-            <div className="w-10 h-0.5 bg-slate-700 rounded-full" />
-            <div className={`flex items-center justify-center w-6 h-6 rounded-full text-[11px] font-bold transition-colors ${step === "confirm" ? "bg-brand-600 text-white" : "bg-slate-700 text-slate-500"}`}>
+            <div className="w-10 h-0.5 bg-slate-200 dark:bg-slate-700 rounded-full" />
+            <div className={`flex items-center justify-center w-6 h-6 rounded-full text-[11px] font-bold transition-colors ${step === "confirm" ? "bg-brand-600 text-white" : "bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400"}`}>
               2
             </div>
           </div>
@@ -84,27 +99,18 @@ export default function PinSetupModal({ lock }) {
 
       {/* Middle: dots + pad */}
       <div className="flex flex-col items-center gap-8 w-full max-w-[280px] mx-auto">
-        {/* PIN dots */}
-        <div className="flex gap-5">
-          {[0, 1, 2, 3].map(i => (
-            <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all duration-150 ${
-              pin.length > i
-                ? "bg-brand-500 border-brand-500 scale-110"
-                : "border-slate-600 bg-transparent"
-            }`} />
-          ))}
-        </div>
+        <PinDots filled={pin.length} />
 
         {/* Error */}
         <div className="h-4 -mt-4">
-          {error && <p className="text-xs font-semibold text-red-400 text-center">{error}</p>}
+          {error && <p className="text-xs font-semibold text-red-500 dark:text-red-400 text-center">{error}</p>}
         </div>
 
         {/* Number pad */}
         <div className="grid grid-cols-3 gap-3 w-full">
           {PAD.map(n => (
             <button key={n} onClick={() => handleDigit(String(n))}
-              className="h-16 rounded-2xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-white text-xl font-bold transition-all active:scale-95 focus-visible:outline-none">
+              className="h-16 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 text-slate-900 dark:text-white text-xl font-bold transition-all focus-visible:outline-none">
               {n}
             </button>
           ))}
@@ -113,12 +119,12 @@ export default function PinSetupModal({ lock }) {
           <div className="h-16" />
 
           <button onClick={() => handleDigit("0")}
-            className="h-16 rounded-2xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-white text-xl font-bold transition-all active:scale-95 focus-visible:outline-none">
+            className="h-16 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 text-slate-900 dark:text-white text-xl font-bold transition-all focus-visible:outline-none">
             0
           </button>
 
           <button onClick={handleDelete}
-            className="h-16 rounded-2xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-white flex items-center justify-center transition-all active:scale-95 focus-visible:outline-none">
+            className="h-16 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 text-slate-600 dark:text-slate-300 flex items-center justify-center transition-all focus-visible:outline-none">
             <BackspaceIcon />
           </button>
         </div>
@@ -126,7 +132,7 @@ export default function PinSetupModal({ lock }) {
 
       {/* Bottom */}
       <div className="pb-8 text-center px-6">
-        <p className="text-[11px] text-slate-500 leading-relaxed">
+        <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed">
           Your PIN is stored securely on this device and is never sent to our servers.
           You'll need it each time you open the app.
         </p>

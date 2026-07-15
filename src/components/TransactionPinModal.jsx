@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { supabase } from "../utils/supabase";
+import PinDots from "./PinDots";
 
 const shakeCSS = `
 @keyframes shake {
@@ -131,7 +132,7 @@ export default function TransactionPinModal({
             padding: "16px",
           }}>
             {amount != null && (
-              <p className="text-[#3DA829]" style={{ textAlign: "center", fontSize: 28, fontWeight: 800, marginBottom: 8 }}>
+              <p className="text-brand-500" style={{ textAlign: "center", fontSize: 28, fontWeight: 800, marginBottom: 8 }}>
                 ₦{(amount / 100).toLocaleString("en-NG", { minimumFractionDigits: 2 })}
               </p>
             )}
@@ -157,21 +158,7 @@ export default function TransactionPinModal({
           </p>
 
           {/* Dots */}
-          <div
-            className={shake ? "txn-pin-shake" : ""}
-            style={{ display: "flex", gap: 16, justifyContent: "center" }}
-          >
-            {[0, 1, 2, 3].map(i => (
-              <div key={i} style={{
-                width: 16, height: 16, borderRadius: "50%",
-                border: "2px solid",
-                borderColor: pin.length > i ? "#3DA829" : "#cbd5e1",
-                background: pin.length > i ? "#3DA829" : "transparent",
-                transition: "all 0.15s",
-                transform: pin.length > i ? "scale(1.1)" : "scale(1)",
-              }} />
-            ))}
-          </div>
+          <PinDots filled={pin.length} className={shake ? "txn-pin-shake" : ""} />
 
           {/* Error */}
           <div style={{ height: 16, marginTop: -8 }}>
@@ -186,12 +173,7 @@ export default function TransactionPinModal({
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, width: "100%", maxWidth: 280 }}>
             {PAD.map(n => (
               <button key={n} onClick={() => handleDigit(String(n))}
-                className="h-14 rounded-[14px] bg-slate-100 dark:bg-slate-800 border-0 text-slate-900 dark:text-slate-100 text-[19px] font-bold cursor-pointer transition-[transform,background] duration-100"
-                onMouseDown={e => e.currentTarget.style.transform = "scale(0.95)"}
-                onMouseUp={e => e.currentTarget.style.transform = "scale(1)"}
-                onTouchStart={e => e.currentTarget.style.background = "#e2e8f0"}
-                onTouchEnd={e => e.currentTarget.style.background = "#f1f5f9"}
-              >
+                className="h-14 rounded-[14px] bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 text-slate-900 dark:text-slate-100 text-[19px] font-bold cursor-pointer transition-all duration-100">
                 {n}
               </button>
             ))}
@@ -200,18 +182,12 @@ export default function TransactionPinModal({
             <div />
 
             <button onClick={() => handleDigit("0")}
-              className="h-14 rounded-[14px] bg-slate-100 dark:bg-slate-800 border-0 text-slate-900 dark:text-slate-100 text-[19px] font-bold cursor-pointer transition-transform duration-100"
-              onMouseDown={e => e.currentTarget.style.transform = "scale(0.95)"}
-              onMouseUp={e => e.currentTarget.style.transform = "scale(1)"}
-            >
+              className="h-14 rounded-[14px] bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 text-slate-900 dark:text-slate-100 text-[19px] font-bold cursor-pointer transition-all duration-100">
               0
             </button>
 
             <button onClick={handleDelete}
-              className="h-14 rounded-[14px] bg-slate-100 dark:bg-slate-800 border-0 text-slate-600 dark:text-slate-400 cursor-pointer flex items-center justify-center transition-transform duration-100"
-              onMouseDown={e => e.currentTarget.style.transform = "scale(0.95)"}
-              onMouseUp={e => e.currentTarget.style.transform = "scale(1)"}
-            >
+              className="h-14 rounded-[14px] bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 text-slate-600 dark:text-slate-400 cursor-pointer flex items-center justify-center transition-all duration-100">
               <BackspaceIcon />
             </button>
           </div>

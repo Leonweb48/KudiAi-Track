@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { supabase } from "../utils/supabase";
+import PinDots from "./PinDots";
 
 const BackspaceIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor"
@@ -160,7 +161,7 @@ export default function ForgotPinFlow({ pinLock, onCancel }) {
 
         {/* Icon */}
         <div className="w-20 h-20 rounded-full bg-white/10 flex items-center justify-center">
-          <svg viewBox="0 0 24 24" fill="none" className="w-10 h-10 text-[#3DA829]"
+          <svg viewBox="0 0 24 24" fill="none" className="w-10 h-10 text-brand-500"
             stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
             <rect x="2" y="4" width="20" height="16" rx="2" />
             <path d="M22 7l-10 7L2 7" />
@@ -181,7 +182,7 @@ export default function ForgotPinFlow({ pinLock, onCancel }) {
         <button
           onClick={sendOtp}
           disabled={loading || !email}
-          className="w-full max-w-[280px] py-4 rounded-2xl bg-[#3DA829] hover:bg-[#34961f] active:scale-95 text-white font-bold text-base transition-all disabled:opacity-50"
+          className="w-full max-w-[280px] py-4 rounded-2xl bg-brand-500 hover:bg-brand-600 active:scale-95 text-white font-bold text-base transition-all disabled:opacity-50"
         >
           {loading ? "Sending…" : "Send Verification Code"}
         </button>
@@ -209,20 +210,7 @@ export default function ForgotPinFlow({ pinLock, onCancel }) {
       <div className="flex flex-col items-center gap-8 w-full max-w-[280px] mx-auto">
 
         {/* Dots */}
-        <div className="flex gap-4 justify-center">
-          {Array.from({ length: maxLen }).map((_, i) => (
-            <div key={i} style={{
-              width: maxLen === 6 ? 12 : 16,
-              height: maxLen === 6 ? 12 : 16,
-              borderRadius: "50%",
-              border: "2px solid",
-              borderColor: pin.length > i ? "#3DA829" : "rgba(255,255,255,0.2)",
-              background: pin.length > i ? "#3DA829" : "transparent",
-              transition: "all 0.15s",
-              transform: pin.length > i ? "scale(1.1)" : "scale(1)",
-            }} />
-          ))}
-        </div>
+        <PinDots filled={pin.length} count={maxLen} emptyClass="border-white/20" />
 
         <div style={{ height: 18, marginTop: -20 }}>
           {error && <p className="text-xs font-semibold text-red-400 text-center">{error}</p>}
@@ -231,7 +219,7 @@ export default function ForgotPinFlow({ pinLock, onCancel }) {
 
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center bg-[#0f1c45]/70 z-10">
-            <div className="w-8 h-8 border-[3px] border-[#3DA829] border-t-transparent rounded-full animate-spin" />
+            <div className="w-8 h-8 border-[3px] border-brand-500 border-t-transparent rounded-full animate-spin" />
           </div>
         )}
 
