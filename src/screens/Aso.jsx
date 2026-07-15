@@ -20,6 +20,7 @@ import { getLang, speakConfirmation } from "../utils/i18n";
 import TransactionPinModal from "../components/TransactionPinModal";
 import { Capacitor } from "@capacitor/core";
 import { InAppBrowser, ToolBarType } from "@capgo/capacitor-inappbrowser";
+import { friendlyError } from "../utils/errorMessage";
 
 const BLANK = {
   full_name: "", contribution_frequency: "daily", contribution_amount: "",
@@ -404,6 +405,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [contributeCtx, setContributeCtx] = useState("personal_savings");
   const [receipt,      setReceipt]      = useState(null);
   const [historyFor,   setHistoryFor]   = useState(null); // { client, contributions, cycle }
+  const [historyErr,   setHistoryErr]   = useState("");
   const [histLoading,  setHistLoading]  = useState(false);
   const [clientProf,   setClientProf]   = useState(null);
   const [photoFile,    setPhotoFile]    = useState(null);
@@ -2633,7 +2635,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             force,
           };
           const { data, error } = await supabase.functions.invoke("ajo-write", { body });
-          if (error) { alert(error.message || "Failed to open cycle"); return; }
+          if (error) { setHistoryErr(friendlyError(error, "Failed to open cycle.")); return; }
 
           // Conflict: first_period commission + reg fee
           if (!data?.ok && data?.conflict === "REG_FEE_AND_FIRST_PERIOD") {
@@ -2648,14 +2650,14 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
               const { data: d2, error: e2 } = await supabase.functions.invoke("ajo-write", {
                 body: { ...body, commission_model: "none", force: true },
               });
-              if (e2 || !d2?.ok) { alert(d2?.error || e2?.message || "Failed to open cycle"); return; }
+              if (e2 || !d2?.ok) { setHistoryErr(d2?.error || friendlyError(e2, "Failed to open cycle.")); return; }
               const { data: newCycle } = await supabase.from("ajo_cycles").select("*").eq("id", d2.cycle_id).maybeSingle();
               setHistoryFor(prev => ({ ...prev, cycle: newCycle || null }));
             }
             return;
           }
 
-          if (!data?.ok) { alert(data?.error || "Failed to open cycle"); return; }
+          if (!data?.ok) { setHistoryErr(data?.error || "Failed to open cycle. Please try again."); return; }
           const { data: newCycle } = await supabase.from("ajo_cycles").select("*").eq("id", data.cycle_id).maybeSingle();
           setHistoryFor(prev => ({ ...prev, cycle: newCycle || null }));
         };
@@ -2667,7 +2669,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             body: { action: "close_cycle", cycle_id: hcycle.id, status: "completed" },
           });
           if (error || !data?.ok) {
-            alert(data?.error || error?.message || "Failed to close cycle");
+            setHistoryErr(data?.error || friendlyError(error, "Failed to close cycle."));
             return;
           }
           // Reload cycle as completed (so commission execute button appears)
@@ -2681,7 +2683,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             body: { action: "execute_commission", cycle_id: hcycle.id, amount, pin },
           });
           if (error || !data?.ok) {
-            alert(data?.error || error?.message || "Commission execution failed");
+            setHistoryErr(data?.error || friendlyError(error, "Commission execution failed."));
             return;
           }
           // Refresh contributions so commission entry appears and button hides
@@ -2706,18 +2708,28 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         };
 
         return (
-          <AsoClientHistoryModal
-            client={hc}
-            contributions={hcons}
-            cycle={hcycle}
-            businessName={bizName}
-            staffMap={store.staffMap || {}}
-            onClose={() => setHistoryFor(null)}
-            onOpenCycle={handleOpenCycle}
-            onCloseCycle={handleCloseCycle}
-            onExecuteCommission={handleExecuteCommission}
-            onReverseContrib={handleReverseContrib}
-          />
+          <>
+            {historyErr && (
+              <div className="fixed inset-x-0 top-0 z-[70] flex justify-center pt-safe pointer-events-none">
+                <div className="pointer-events-auto bg-red-600 text-white text-xs font-semibold px-4 py-2 rounded-b-2xl shadow-lg flex items-center gap-2 max-w-xs">
+                  <span>{historyErr}</span>
+                  <button onClick={() => setHistoryErr("")} className="ml-auto font-bold">✕</button>
+                </div>
+              </div>
+            )}
+            <AsoClientHistoryModal
+              client={hc}
+              contributions={hcons}
+              cycle={hcycle}
+              businessName={bizName}
+              staffMap={store.staffMap || {}}
+              onClose={() => { setHistoryFor(null); setHistoryErr(""); }}
+              onOpenCycle={handleOpenCycle}
+              onCloseCycle={handleCloseCycle}
+              onExecuteCommission={handleExecuteCommission}
+              onReverseContrib={handleReverseContrib}
+            />
+          </>
         );
       })()}
 

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../utils/supabase";
+import { friendlyError } from "../utils/errorMessage";
 import { askGemini } from "../utils/gemini";
 
 // ── Icons ────────────────────────────────────────────────────────────────────
@@ -381,7 +382,7 @@ function CreateTicket({ userId, profile, session, onBack, onCreated }) {
       status:      "open",
     }).select().single();
 
-    if (err) { setError(err.message); setSaving(false); return; }
+    if (err) { setError(friendlyError(err)); setSaving(false); return; }
     onCreated(ticket);
   };
 

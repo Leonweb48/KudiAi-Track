@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { friendlyError } from "../utils/errorMessage";
 import { usePullToRefresh } from "../hooks/usePullToRefresh";
 import PullIndicator from "../components/PullIndicator";
 import { buildCallbackUrl, openPaystackCheckout } from "../utils/paystackCheckout";
@@ -81,7 +82,7 @@ export function CoopMemberFirstLogin({ member }) {
       password,
       data: { must_change_password: false, account_type: "org_member", email_verified: true },
     });
-    if (err) { setError(err.message); setSaving(false); return; }
+    if (err) { setError(friendlyError(err)); setSaving(false); return; }
     // Fire welcome email now — member has completed full setup and is about to land on portal
     const memberEmail = member?.email || (await supabase.auth.getUser()).data?.user?.email || "";
     sendEmailTrigger("org_member_first_login", {
@@ -1181,6 +1182,7 @@ function MemberBroadcastTab({ member, org }) {
   const [filter,     setFilter]     = useState("all");
   const [rsvping,    setRsvping]    = useState(null);
   const [voting,     setVoting]     = useState(null);
+  const [actionErr,  setActionErr]  = useState("");
 
   const load = useCallback(() => {
     coopFn("member-get-broadcasts", { member_id: member.id, org_id: org.id })
@@ -1190,16 +1192,16 @@ function MemberBroadcastTab({ member, org }) {
   useEffect(() => { load(); }, [load]);
 
   const handleRsvp = async (meetingId, status) => {
-    setRsvping(meetingId);
+    setRsvping(meetingId); setActionErr("");
     try { await coopFn("set-rsvp", { meeting_id: meetingId, member_id: member.id, org_id: org.id, status }); load(); }
-    catch (e) { alert(e.message); }
+    catch (e) { setActionErr(friendlyError(e)); }
     finally { setRsvping(null); }
   };
 
   const handleVote = async (pollId, optionIndex) => {
-    setVoting(pollId);
+    setVoting(pollId); setActionErr("");
     try { await coopFn("member-submit-poll-vote", { poll_id: pollId, member_id: member.id, option_index: optionIndex }); load(); }
-    catch (e) { alert(e.message); }
+    catch (e) { setActionErr(friendlyError(e)); }
     finally { setVoting(null); }
   };
 
@@ -1232,6 +1234,12 @@ function MemberBroadcastTab({ member, org }) {
 
   return (
     <div className="flex flex-col h-full">
+      {actionErr && (
+        <div className="mx-4 mt-3 text-xs text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-400 rounded-xl px-3 py-2 flex justify-between items-center">
+          <span>{actionErr}</span>
+          <button onClick={() => setActionErr("")} className="ml-2 font-bold">✕</button>
+        </div>
+      )}
       {/* Filter tabs */}
       <div className="px-4 pt-4 pb-2 flex gap-2 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
         {FILTER_TABS.map(f => (

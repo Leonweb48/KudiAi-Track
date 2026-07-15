@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase, supabaseConfigured, SUPABASE_DIRECT_URL, SUPABASE_PROXY_URL } from "../utils/supabase";
+import { friendlyError } from "../utils/errorMessage";
 import AppLogo from "../components/AppLogo";
 import { Capacitor } from "@capacitor/core";
 import { Browser } from "@capacitor/browser";
@@ -142,7 +143,7 @@ function OtpScreen({ email, onBack, onVerified, otpType = "signup" }) {
       if (error) throw error;
       onVerified();
     } catch (err) {
-      setError(err.message);
+      setError(friendlyError(err));
       setLoading(false);
     }
   };
@@ -160,7 +161,7 @@ function OtpScreen({ email, onBack, onVerified, otpType = "signup" }) {
       resendError = error;
     }
     if (resendError) {
-      setError(resendError.message);
+      setError(friendlyError(resendError));
     } else {
       setResent(true);
       setCountdown(60);
@@ -475,7 +476,7 @@ export default function Auth() {
         setInfo("Password reset link sent — check your email.");
       }
     } catch (err) {
-      setError(err.message);
+      setError(friendlyError(err));
     } finally {
       if (!keepLoading) setLoading(false);
     }
@@ -537,7 +538,7 @@ export default function Auth() {
         window.location.href = authUrl;
       }
     } catch (err) {
-      setError(err.message);
+      setError(friendlyError(err));
       setLoading(false);
     }
   };

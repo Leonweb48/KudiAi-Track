@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../utils/supabase";
+import { friendlyError } from "../utils/errorMessage";
 // ── Helpers ────────────────────────────────────────────────────────────────────
 const fmt = (n) =>
   new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN", maximumFractionDigits: 0 }).format(n || 0);
@@ -153,7 +154,7 @@ function Users({ session }) {
       setTimeout(() => setToast(""), 3000);
       load(page);
     } catch (e) {
-      alert(e.message);
+      setToast(friendlyError(e));
     } finally {
       setActing(null);
     }
@@ -349,10 +350,11 @@ function Organisations({ session }) {
 
 // ── Security Section ───────────────────────────────────────────────────────────
 function Security({ session }) {
-  const [events, setEvents]   = useState([]);
-  const [errors, setErrors]   = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [tab, setTab]         = useState("events");
+  const [events, setEvents]     = useState([]);
+  const [errors, setErrors]     = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const [tab, setTab]           = useState("events");
+  const [actionErr, setActionErr] = useState("");
 
   const load = useCallback(() => {
     setLoading(true);
@@ -368,11 +370,12 @@ function Security({ session }) {
   useEffect(() => { load(); }, [load]);
 
   const resolve = async (type, id) => {
+    setActionErr("");
     try {
       if (type === "event") await callPortal(session, "resolve-security", { event_id: id });
       else await callPortal(session, "resolve-error", { error_id: id });
       load();
-    } catch (e) { alert(e.message); }
+    } catch (e) { setActionErr(friendlyError(e)); }
   };
 
   const severityType = (s) => ({ critical: "danger", high: "danger", medium: "warn", low: "info", info: "neutral" }[s] || "neutral");
@@ -380,6 +383,7 @@ function Security({ session }) {
   return (
     <div className="space-y-4">
       <h2 className="text-xl font-bold text-slate-800">Security & Errors</h2>
+      {actionErr && <p className="text-sm text-red-600 bg-red-50 rounded-xl px-4 py-2">{actionErr}</p>}
 
       <div className="flex bg-white rounded-xl border border-slate-200 p-1 gap-1">
         {[["events", `Events (${events.filter(e => !e.resolved).length})`], ["errors", `Errors (${errors.filter(e => !e.resolved).length})`]].map(([k, label]) => (
@@ -491,6 +495,7 @@ function Broadcasts({ session }) {
   const [showForm, setShowForm]     = useState(false);
   const [form, setForm]             = useState({ title: "", message: "", segment: "all", channel: "in_app" });
   const [sending, setSending]       = useState(false);
+  const [sendErr, setSendErr]       = useState("");
 
   const load = () => {
     setLoading(true);
@@ -503,14 +508,14 @@ function Broadcasts({ session }) {
   useEffect(() => { load(); }, [session]); // eslint-disable-line
 
   const send = async () => {
-    if (!form.title || !form.message) return alert("Title and message required.");
-    setSending(true);
+    if (!form.title || !form.message) { setSendErr("Title and message are required."); return; }
+    setSendErr(""); setSending(true);
     try {
       await callPortal(session, "send-broadcast", form);
       setShowForm(false);
       setForm({ title: "", message: "", segment: "all", channel: "in_app" });
       load();
-    } catch (e) { alert(e.message); }
+    } catch (e) { setSendErr(friendlyError(e)); }
     finally { setSending(false); }
   };
 
@@ -564,6 +569,7 @@ function Broadcasts({ session }) {
             disabled={sending}
             className="w-full bg-blue-600 text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-blue-700 disabled:opacity-50"
           >{sending ? "Sending…" : "Send Broadcast"}</button>
+          {sendErr && <p className="text-sm text-red-600">{sendErr}</p>}
         </div>
       )}
 
@@ -596,11 +602,12 @@ function Broadcasts({ session }) {
 
 // ── Admin Users Section ────────────────────────────────────────────────────────
 function AdminUsers({ session, currentAdmin }) {
-  const [admins, setAdmins]   = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [admins, setAdmins]     = useState([]);
+  const [loading, setLoading]   = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm]       = useState({ username: "", email: "", password: "", role: "support_admin", can_create_admins: "false" });
-  const [saving, setSaving]   = useState(false);
+  const [form, setForm]         = useState({ username: "", email: "", password: "", role: "support_admin", can_create_admins: "false" });
+  const [saving, setSaving]     = useState(false);
+  const [adminErr, setAdminErr] = useState("");
 
   const load = () => {
     setLoading(true);
@@ -613,14 +620,14 @@ function AdminUsers({ session, currentAdmin }) {
   useEffect(() => { load(); }, [session]); // eslint-disable-line
 
   const create = async () => {
-    if (!form.username || !form.password) return alert("Username and password required.");
-    setSaving(true);
+    if (!form.username || !form.password) { setAdminErr("Username and password are required."); return; }
+    setAdminErr(""); setSaving(true);
     try {
       await callPortal(session, "create-admin", form);
       setShowForm(false);
       setForm({ username: "", email: "", password: "", role: "support_admin", can_create_admins: "false" });
       load();
-    } catch (e) { alert(e.message); }
+    } catch (e) { setAdminErr(friendlyError(e)); }
     finally { setSaving(false); }
   };
 
@@ -628,7 +635,7 @@ function AdminUsers({ session, currentAdmin }) {
     try {
       await callPortal(session, "toggle-admin", { target_admin_id: id, is_active: !current });
       load();
-    } catch (e) { alert(e.message); }
+    } catch (e) { setAdminErr(friendlyError(e)); }
   };
 
   const roleBadge = (r) => {
@@ -698,8 +705,11 @@ function AdminUsers({ session, currentAdmin }) {
             disabled={saving}
             className="w-full bg-blue-600 text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-blue-700 disabled:opacity-50"
           >{saving ? "Creating…" : "Create Admin Account"}</button>
+          {adminErr && <p className="text-sm text-red-600">{adminErr}</p>}
         </div>
       )}
+
+      {adminErr && !showForm && <p className="text-sm text-red-600 bg-red-50 rounded-xl px-4 py-2">{adminErr}</p>}
 
       {loading ? (
         <div className="flex justify-center py-12"><Spin /></div>
@@ -842,7 +852,7 @@ function PlansManager() {
       setEditing(null);
       load();
     } catch (e) {
-      setMsg("Error: " + (e.message || "Could not save"));
+      setMsg("Error: " + friendlyError(e, "Could not save"));
     } finally {
       setSaving(false);
     }

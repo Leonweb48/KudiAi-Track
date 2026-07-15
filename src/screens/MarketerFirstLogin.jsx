@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { friendlyError } from "../utils/errorMessage";
 import { supabase } from "../utils/supabase";
 import { useTheme } from "../hooks/useTheme";
 
@@ -75,7 +76,7 @@ export default function MarketerFirstLogin({ marketer }) {
       data: { must_change_password: false },
     });
 
-    if (err) { setError(err.message); setSaving(false); return; }
+    if (err) { setError(friendlyError(err)); setSaving(false); return; }
     setSuccess(true);
   };
 

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { friendlyError } from "../utils/errorMessage";
 import { supabase } from "../utils/supabase";
 
 function StrengthBar({ password }) {
@@ -32,7 +33,7 @@ export default function StaffFirstLogin({ staff }) {
       data: { must_change_password: false },
     });
 
-    if (err) { setError(err.message); setSaving(false); return; }
+    if (err) { setError(friendlyError(err)); setSaving(false); return; }
     setSuccess(true);
     // onAuthStateChange fires → must_change_password: false → status "staff" or "branch_manager"
   };

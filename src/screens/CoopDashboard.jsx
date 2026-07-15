@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { supabase } from "../utils/supabase";
 import { useTheme } from "../hooks/useTheme";
 import { useT } from "../contexts/LanguageContext";
+import { friendlyError } from "../utils/errorMessage";
 import BillPayments from "./BillPayments";
 import CashbackCard from "../components/CashbackCard";
 import GroupChat from "./GroupChat";
@@ -417,7 +418,7 @@ function MembersTab({ org, members, onRefresh }) {
     try {
       await coopFn("update-member", { member_id: member.id, org_id: org.id, status, suspension_reason: reason });
       setSelected(null); onRefresh();
-    } catch (e) { alert(e.message); }
+    } catch (e) { setError(friendlyError(e)); }
     finally { setSaving(false); }
   };
 
@@ -428,7 +429,7 @@ function MembersTab({ org, members, onRefresh }) {
       setSelected(null);
       setCreds({ email: result.email, temp_password: result.temp_password, name: member.full_name, isReset: true });
       onRefresh();
-    } catch (e) { alert(e.message); }
+    } catch (e) { setError(friendlyError(e)); }
     finally { setSaving(false); }
   };
 
@@ -826,7 +827,7 @@ function MembersTab({ org, members, onRefresh }) {
                   ));
                   setReactivationMsg({ id: pendingArchiveMember.request_id, text: "Approved. Forwarded to admin.", ok: true });
                 } else {
-                  alert(data?.error || "Failed to approve");
+                  setError(data?.error || "Failed to approve. Please try again.");
                 }
               } else {
                 // Archive the member
@@ -838,11 +839,11 @@ function MembersTab({ org, members, onRefresh }) {
                   onRefresh();
                   loadReactivationRequests();
                 } else {
-                  alert(data?.error || "Failed to archive member");
+                  setError(data?.error || "Failed to archive member. Please try again.");
                 }
               }
             } catch (e) {
-              alert(e.message || "Failed");
+              setError(friendlyError(e));
             } finally {
               setArchiveBusy(false);
               setPendingArchiveMember(null);
@@ -1066,7 +1067,7 @@ function FinanceTab({ org, members, programs, onRefresh }) {
     try {
       await coopFn("handle-withdrawal-request", { request_id: req.id, decision });
       load(); onRefresh();
-    } catch (e) { alert(e.message || "Failed"); }
+    } catch (e) { setError(friendlyError(e)); }
     finally { setHandlingReq(null); }
   };
 
@@ -1859,7 +1860,7 @@ function BroadcastTab({ org, members }) {
         await coopFn("create-poll", { org_id: org.id, question: form.question, options: opts, closes_at: form.closes_at || null });
       }
       setCreateType(null); load();
-    } catch (e) { setError(e.message); }
+    } catch (e) { setError(friendlyError(e)); }
     finally { setSaving(false); }
   };
 
@@ -1961,11 +1962,11 @@ function BroadcastTab({ org, members }) {
                     </div>
                   )}
                   {item._type === "event" && (
-                    <button onClick={async () => { try { await coopFn("delete-event", { org_id: org.id, event_id: item.id }); load(); } catch (e) { alert(e.message); } }}
+                    <button onClick={async () => { try { await coopFn("delete-event", { org_id: org.id, event_id: item.id }); load(); } catch (e) { setError(friendlyError(e)); } }}
                       className="mt-2 text-[10px] font-bold text-red-400">Delete event</button>
                   )}
                   {item._type === "poll" && (
-                    <button onClick={async () => { try { await coopFn("delete-poll", { org_id: org.id, poll_id: item.id }); load(); } catch (e) { alert(e.message); } }}
+                    <button onClick={async () => { try { await coopFn("delete-poll", { org_id: org.id, poll_id: item.id }); load(); } catch (e) { setError(friendlyError(e)); } }}
                       className="mt-2 text-[10px] font-bold text-red-400">Delete poll</button>
                   )}
                 </div>

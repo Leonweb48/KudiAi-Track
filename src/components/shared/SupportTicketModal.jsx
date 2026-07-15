@@ -13,6 +13,7 @@
  */
 import { useState, useEffect } from "react";
 import { supabase } from "../../utils/supabase";
+import { friendlyError } from "../../utils/errorMessage";
 
 const TICKET_TYPES = ["payment", "general", "account", "technical", "ajo", "subscription", "invoice", "other"];
 const PRIORITIES   = ["low", "medium", "high"];
@@ -75,7 +76,7 @@ export default function SupportTicketModal({
     });
 
     setSaving(false);
-    if (err) { setError(err.message); return; }
+    if (err) { setError(friendlyError(err)); return; }
     setDone(true);
   }
 

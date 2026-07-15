@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { friendlyError } from "../utils/errorMessage";
 import { supabase } from "../utils/supabase";
 import AppLogo from "../components/AppLogo";
 
@@ -40,7 +41,7 @@ export default function OrgFirstLogin({ org }) {
       data: { must_change_password: false, account_type: "organisation" },
     });
 
-    if (err) { setError(err.message); setSaving(false); return; }
+    if (err) { setError(friendlyError(err)); setSaving(false); return; }
     setSuccess(true);
   };
 

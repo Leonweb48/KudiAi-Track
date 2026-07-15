@@ -3,6 +3,7 @@
    and using view-state instead of react-router navigation.              */
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../../utils/supabase";
+import { friendlyError } from "../../utils/errorMessage";
 import { askGemini } from "../../utils/gemini";
 import { GK } from "./StaffShared";
 
@@ -387,7 +388,7 @@ function CreateTicket({ userId, staffName, staffEmail, onBack, onCreated }) {
       priority:    form.priority,
       status:      "open",
     }).select().single();
-    if (err) { setError(err.message); setSaving(false); return; }
+    if (err) { setError(friendlyError(err)); setSaving(false); return; }
     onCreated(ticket);
   };
 
