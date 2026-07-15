@@ -72,16 +72,20 @@ serve(async (req) => {
     "member-request-loan","member-get-meetings","member-get-announcements",
     "member-get-programs","member-get-directory","member-apply-loan",
     "member-submit-poll-vote","member-get-broadcasts",
-    "verify-member-registration-otp","resend-registration-otp","qr-check-in",
-    "submit-support-ticket",
+    "qr-check-in","submit-support-ticket",
   ]);
+  // Extract caller identity from JWT when present — even for NO_JWT_REQUIRED actions.
+  // This lets member-* handlers use JWT-based ownership checks for the main React app users
+  // (who have Supabase accounts), while PIN-auth portal users (no JWT) fall through to
+  // session_token verification inside each handler.
   let callerId: string | null = null;
-  if (!NO_JWT_REQUIRED.has(action as string)) {
-    const _jwt = (req.headers.get("Authorization") ?? "").replace("Bearer ", "").trim();
-    if (!_jwt) return json({ error: "Unauthorised" }, 401);
-    const { data: { user: _caller }, error: _authErr } = await sb.auth.getUser(_jwt);
-    if (_authErr || !_caller) return json({ error: "Unauthorised" }, 401);
-    callerId = _caller.id;
+  const _jwt = (req.headers.get("Authorization") ?? "").replace("Bearer ", "").trim();
+  if (_jwt) {
+    const { data: { user: _caller } } = await sb.auth.getUser(_jwt);
+    if (_caller) callerId = _caller.id;
+  }
+  if (!NO_JWT_REQUIRED.has(action as string) && !callerId) {
+    return json({ error: "Unauthorised" }, 401);
   }
 
   // Returns null if the caller is the org owner or their active staff; Response if denied
@@ -95,6 +99,60 @@ serve(async (req) => {
     const { data: st } = await sb.from("staff").select("id")
       .eq("user_id", callerId).eq("owner_id", o.owner_id).eq("status", "active").maybeSingle();
     return st ? null : json({ error: "Forbidden" }, 403);
+  }
+
+  // Verifies the caller is the specific member (by JWT user_id or session_token)
+  // or an active staff member of that member's org.
+  // Accepts new member_session_token OR legacy portal_token for PIN-auth portal callers.
+  async function requireMemberAccess(member_id: string, session_token?: string): Promise<Response | null> {
+    if (!member_id) return json({ error: "member_id required" }, 400);
+    const { data: m } = await sb.from("org_members")
+      .select("id, user_id, org_id, member_session_token, member_session_expires_at, portal_token")
+      .eq("id", member_id).maybeSingle();
+    if (!m) return json({ error: "Member not found" }, 404);
+    if (callerId) {
+      if (m.user_id === callerId) return null;
+      const { data: orgRow } = await sb.from("organizations").select("owner_id").eq("id", m.org_id).maybeSingle();
+      if (orgRow) {
+        const { data: st } = await sb.from("staff").select("id")
+          .eq("user_id", callerId).eq("owner_id", orgRow.owner_id).eq("status", "active").maybeSingle();
+        if (st) return null;
+      }
+      return json({ error: "Forbidden" }, 403);
+    }
+    if (!session_token) return json({ error: "Unauthorised — please sign in to your member portal" }, 401);
+    if (m.portal_token && session_token === m.portal_token) return null;
+    if (session_token === m.member_session_token) {
+      if (m.member_session_expires_at && new Date(m.member_session_expires_at as string) < new Date()) {
+        return json({ error: "Session expired — please sign in again" }, 401);
+      }
+      return null;
+    }
+    return json({ error: "Unauthorised" }, 401);
+  }
+
+  // Verifies the caller is an active member of this org (by JWT or session_token)
+  // or the org owner / active staff. Used for org-level reads without a member_id.
+  async function requireMemberOfOrg(org_id: string, session_token?: string): Promise<Response | null> {
+    if (!org_id) return json({ error: "org_id required" }, 400);
+    if (callerId) {
+      const { data: m } = await sb.from("org_members").select("id")
+        .eq("org_id", org_id).eq("user_id", callerId).eq("status", "active").maybeSingle();
+      if (m) return null;
+      return await requireOrgOwner(org_id);
+    }
+    if (!session_token) return json({ error: "Unauthorised — please sign in to your member portal" }, 401);
+    const { data: byPortal } = await sb.from("org_members").select("id")
+      .eq("org_id", org_id).eq("portal_token", session_token).eq("status", "active").maybeSingle();
+    if (byPortal) return null;
+    const { data: bySession } = await sb.from("org_members")
+      .select("id, member_session_expires_at")
+      .eq("org_id", org_id).eq("member_session_token", session_token).eq("status", "active").maybeSingle();
+    if (!bySession) return json({ error: "Unauthorised" }, 401);
+    if (bySession.member_session_expires_at && new Date(bySession.member_session_expires_at as string) < new Date()) {
+      return json({ error: "Session expired — please sign in again" }, 401);
+    }
+    return null;
   }
 
   // All actions that operate on a specific org and require org ownership
@@ -297,7 +355,7 @@ serve(async (req) => {
 
     if (action === "create-org") {
       const b = body as Record<string, string>;
-      if (!b.owner_id || !b.name || !b.type) return json({ error: "owner_id, name, type required" }, 400);
+      if (!b.name || !b.type) return json({ error: "name and type required" }, 400);
       const PREFIX: Record<string,string> = {
         cooperative:"COOP", market_association:"MKT", church:"CHU", ngo:"NGO",
         youth_group:"YTH", savings_group:"SAV", community_group:"COM",
@@ -305,7 +363,7 @@ serve(async (req) => {
       };
       const reg_number = `${PREFIX[b.type] || "ORG"}-${Date.now().toString(36).toUpperCase().slice(-6)}`;
       const { data: org, error } = await sb.from("organizations")
-        .insert({ owner_id: b.owner_id, name: b.name, type: b.type, reg_number,
+        .insert({ owner_id: callerId!, name: b.name, type: b.type, reg_number,
           description: b.description, purpose: b.purpose, vision: b.vision, mission: b.mission,
           address: b.address, state_name: b.state_name, lga: b.lga,
           phone: b.phone, email: b.email, website: b.website,
@@ -319,9 +377,8 @@ serve(async (req) => {
     }
 
     if (action === "get-orgs") {
-      const { owner_id } = body as { owner_id: string };
       const { data: orgs } = await sb.from("organizations")
-        .select(ORG_SELECT).eq("owner_id", owner_id).order("created_at", { ascending: false });
+        .select(ORG_SELECT).eq("owner_id", callerId!).order("created_at", { ascending: false });
       return json({ orgs: orgs || [] });
     }
 
@@ -516,15 +573,22 @@ serve(async (req) => {
     // Called by the admin during registration to verify the OTP sent to the member's email.
     // Sets email_verified: true on the member's auth account so they skip the OTP screen on login.
     if (action === "verify-member-registration-otp") {
+      if (!callerId) return json({ error: "Unauthorised" }, 401);
       const { member_id, otp_code } = body as { member_id: string; otp_code: string };
       if (!member_id || !otp_code) return json({ error: "member_id and otp_code required" }, 400);
 
       const { data: member } = await sb.from("org_members")
-        .select("id, user_id, otp_code, otp_expires_at")
+        .select("id, user_id, org_id, otp_code, otp_expires_at")
         .eq("id", member_id)
         .maybeSingle();
 
       if (!member) return json({ error: "Member not found" }, 404);
+      const _vOrgRow = await sb.from("organizations").select("owner_id").eq("id", member.org_id).maybeSingle();
+      const _vOrg = _vOrgRow.data;
+      if (_vOrg?.owner_id !== callerId) {
+        const _vSt = await sb.from("staff").select("id").eq("user_id", callerId).eq("owner_id", _vOrg?.owner_id ?? "").eq("status", "active").maybeSingle();
+        if (!_vSt.data) return json({ error: "Forbidden" }, 403);
+      }
       if (!member.otp_code || member.otp_code !== otp_code.trim()) {
         return json({ error: "Invalid verification code" }, 400);
       }
@@ -539,6 +603,7 @@ serve(async (req) => {
 
     // Called by the admin during registration to resend the OTP to the member's email.
     if (action === "resend-registration-otp") {
+      if (!callerId) return json({ error: "Unauthorised" }, 401);
       const { member_id } = body as { member_id: string };
       if (!member_id) return json({ error: "member_id required" }, 400);
 
@@ -547,6 +612,12 @@ serve(async (req) => {
         .eq("id", member_id)
         .maybeSingle();
       if (!member) return json({ error: "Member not found" }, 404);
+      const _rOrgRow = await sb.from("organizations").select("owner_id").eq("id", member.org_id).maybeSingle();
+      const _rOrg = _rOrgRow.data;
+      if (_rOrg?.owner_id !== callerId) {
+        const _rSt = await sb.from("staff").select("id").eq("user_id", callerId).eq("owner_id", _rOrg?.owner_id ?? "").eq("status", "active").maybeSingle();
+        if (!_rSt.data) return json({ error: "Forbidden" }, 403);
+      }
 
       const otp = String(Math.floor(100000 + Math.random() * 900000));
       const otpExpiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
@@ -1053,6 +1124,10 @@ serve(async (req) => {
       const { org_id, member_id, amount_requested, interest_rate, loan_purpose, repayment_months, notes, applied_by } =
         body as Record<string, unknown>;
       if (!org_id || !member_id || !amount_requested) return json({ error: "Required fields missing" }, 400);
+      if (action === "member-apply-loan") {
+        const _alDenied = await requireMemberAccess(String(member_id), (body as Record<string,string>).session_token);
+        if (_alDenied) return _alDenied;
+      }
       const { data: _orgGrdAL } = await sb.from("organizations").select("pending_archive, status").eq("id", String(org_id)).maybeSingle();
       if (_orgGrdAL?.status === "archived") return json({ error: "This organisation has been archived." }, 409);
       if (_orgGrdAL?.pending_archive) return json({ error: "This organisation has a pending archive request — new loans are not allowed while under review." }, 409);
@@ -1489,6 +1564,8 @@ serve(async (req) => {
 
     if (action === "qr-check-in") {
       const { qr_token, member_id } = body as { qr_token: string; member_id: string };
+      const _qrDenied = await requireMemberAccess(member_id, (body as Record<string,string>).session_token);
+      if (_qrDenied) return _qrDenied;
       const { data: meeting } = await sb.from("org_meetings").select("id,org_id,title,status")
         .eq("qr_token", qr_token).maybeSingle();
       if (!meeting) return json({ error: "Invalid QR code" }, 404);
@@ -1613,16 +1690,40 @@ serve(async (req) => {
     if (action === "member-auth") {
       const { membership_id, pin, org_id } = body as { membership_id: string; pin: string; org_id?: string };
       if (!membership_id || !pin) return json({ error: "Membership ID and PIN required" }, 400);
-      let q = sb.from("org_members")
-        .select(`${MEMBER_SELECT}, organizations(${ORG_SELECT})`)
-        .eq("membership_id", membership_id.toUpperCase().trim())
-        .eq("portal_pin", pin.trim());
-      if (org_id) q = q.eq("org_id", org_id);
-      const { data: member } = await q.maybeSingle();
-      if (!member) return json({ error: "Invalid membership ID or PIN" }, 401);
-      if (member.status === "suspended") return json({ error: "Your membership is suspended. Contact your organisation." }, 403);
-      if (member.status === "removed")   return json({ error: "This membership is no longer active." }, 403);
-      return json({ member, org: (member as Record<string,unknown>).organizations });
+      // Step 1: fetch auth state without revealing full member PII on failure
+      let authQ = sb.from("org_members")
+        .select("id, status, portal_pin, portal_pin_attempts, portal_pin_locked_until")
+        .eq("membership_id", membership_id.toUpperCase().trim());
+      if (org_id) authQ = authQ.eq("org_id", org_id);
+      const { data: authRow } = await authQ.maybeSingle();
+      if (!authRow) return json({ error: "Invalid membership ID or PIN" }, 401);
+      if (authRow.status === "suspended") return json({ error: "Your membership is suspended. Contact your organisation." }, 403);
+      if (authRow.status === "removed")   return json({ error: "This membership is no longer active." }, 403);
+      // Check lockout
+      if (authRow.portal_pin_locked_until && new Date(authRow.portal_pin_locked_until) > new Date()) {
+        const until = new Date(authRow.portal_pin_locked_until).toLocaleTimeString("en-NG");
+        return json({ error: `Too many incorrect PINs — try again after ${until}` }, 429);
+      }
+      // Verify PIN
+      if (authRow.portal_pin !== pin.trim()) {
+        const attempts = (authRow.portal_pin_attempts || 0) + 1;
+        const upd: Record<string, unknown> = { portal_pin_attempts: attempts };
+        if (attempts >= 5) upd.portal_pin_locked_until = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+        await sb.from("org_members").update(upd).eq("id", authRow.id);
+        return json({ error: "Invalid membership ID or PIN" }, 401);
+      }
+      // PIN correct — reset counter, issue 30-min session token
+      const sessionToken = crypto.randomUUID();
+      await sb.from("org_members").update({
+        portal_pin_attempts: 0,
+        portal_pin_locked_until: null,
+        member_session_token: sessionToken,
+        member_session_expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      }).eq("id", authRow.id);
+      // Fetch full member row for response
+      const { data: member } = await sb.from("org_members")
+        .select(`${MEMBER_SELECT}, organizations(${ORG_SELECT})`).eq("id", authRow.id).maybeSingle();
+      return json({ member, org: (member as Record<string,unknown>)?.organizations, session_token: sessionToken });
     }
 
     if (action === "member-by-token") {
@@ -1640,6 +1741,8 @@ serve(async (req) => {
       const { member_id, current_pin, new_pin } = body as { member_id: string; current_pin: string; new_pin: string };
       if (!member_id || !current_pin || !new_pin) return json({ error: "All fields required" }, 400);
       if (new_pin.length < 4) return json({ error: "PIN must be at least 4 digits" }, 400);
+      const _cpDenied = await requireMemberAccess(member_id, (body as Record<string,string>).session_token);
+      if (_cpDenied) return _cpDenied;
       const { data: m } = await sb.from("org_members").select("portal_pin").eq("id", member_id).single();
       if (!m || m.portal_pin !== current_pin.trim()) return json({ error: "Current PIN is incorrect" }, 401);
       await sb.from("org_members").update({ portal_pin: new_pin, must_change_pin: false }).eq("id", member_id);
@@ -1649,6 +1752,8 @@ serve(async (req) => {
     if (action === "member-update-privacy") {
       const { member_id, privacy_balance, privacy_contributions, privacy_activities } =
         body as Record<string, unknown>;
+      const _upDenied = await requireMemberAccess(String(member_id || ""), (body as Record<string,string>).session_token);
+      if (_upDenied) return _upDenied;
       await sb.from("org_members").update({
         privacy_balance: !!privacy_balance,
         privacy_contributions: !!privacy_contributions,
@@ -1659,6 +1764,8 @@ serve(async (req) => {
 
     if (action === "member-get-savings") {
       const { member_id, org_id } = body as { member_id: string; org_id?: string };
+      const _gsDenied = await requireMemberAccess(member_id, (body as Record<string,string>).session_token);
+      if (_gsDenied) return _gsDenied;
       let q = sb.from("org_savings")
         .select("*, org_contribution_programs(name,frequency,contribution_type)")
         .eq("member_id", member_id);
@@ -1669,6 +1776,8 @@ serve(async (req) => {
 
     if (action === "member-get-loans") {
       const { member_id, org_id } = body as { member_id: string; org_id?: string };
+      const _glDenied = await requireMemberAccess(member_id, (body as Record<string,string>).session_token);
+      if (_glDenied) return _glDenied;
       let q = sb.from("org_loans").select("*").eq("member_id", member_id);
       if (org_id) q = q.eq("org_id", org_id);
       const { data: loans } = await q.order("created_at", { ascending: false });
@@ -1679,6 +1788,8 @@ serve(async (req) => {
       const { org_id, member_id, amount_requested, loan_purpose, repayment_months } =
         body as Record<string, unknown>;
       if (!org_id || !member_id || !amount_requested) return json({ error: "Required fields missing" }, 400);
+      const _rlDenied = await requireMemberAccess(String(member_id), (body as Record<string,string>).session_token);
+      if (_rlDenied) return _rlDenied;
       const { data: loan, error } = await sb.from("org_loans").insert({
         org_id, member_id, amount_requested: parseFloat(String(amount_requested)),
         loan_purpose: loan_purpose || null, repayment_months: parseInt(String(repayment_months || 1)),
@@ -1689,6 +1800,8 @@ serve(async (req) => {
 
     if (action === "member-get-meetings") {
       const { org_id, member_id } = body as { org_id: string; member_id: string };
+      const _gmDenied = await requireMemberAccess(member_id, (body as Record<string,string>).session_token);
+      if (_gmDenied) return _gmDenied;
       const { data: meetings } = await sb.from("org_meetings").select("*")
         .eq("org_id", org_id).order("scheduled_at", { ascending: false }).limit(20);
       const [{ data: attendance }, { data: rsvps }] = await Promise.all([
@@ -1707,6 +1820,8 @@ serve(async (req) => {
 
     if (action === "member-get-announcements") {
       const { org_id } = body as { org_id: string };
+      const _gaDenied = await requireMemberOfOrg(org_id, (body as Record<string,string>).session_token);
+      if (_gaDenied) return _gaDenied;
       const { data: announcements } = await sb.from("org_announcements").select("*")
         .eq("org_id", org_id)
         .order("is_pinned", { ascending: false })
@@ -1716,6 +1831,8 @@ serve(async (req) => {
 
     if (action === "member-get-programs") {
       const { org_id } = body as { org_id: string };
+      const _gpDenied = await requireMemberOfOrg(org_id, (body as Record<string,string>).session_token);
+      if (_gpDenied) return _gpDenied;
       const { data: programs } = await sb.from("org_contribution_programs").select("*")
         .eq("org_id", org_id).eq("status", "active").order("created_at");
       return json({ programs: programs || [] });
@@ -1723,6 +1840,8 @@ serve(async (req) => {
 
     if (action === "member-get-directory") {
       const { org_id } = body as { org_id: string };
+      const _gdDenied = await requireMemberOfOrg(org_id, (body as Record<string,string>).session_token);
+      if (_gdDenied) return _gdDenied;
       const { data: members } = await sb.from("org_members")
         .select("id, membership_id, full_name, role, profile_image_url, phone, email, occupation, joined_date, privacy_balance, privacy_contributions, privacy_activities, savings_balance")
         .eq("org_id", org_id).eq("status", "active").order("full_name");
@@ -2117,6 +2236,8 @@ serve(async (req) => {
       };
       if (!member_id || !org_id || !subject?.trim() || !message?.trim())
         return json({ error: "member_id, org_id, subject, message required" }, 400);
+      const _stDenied = await requireMemberAccess(member_id, (body as Record<string,string>).session_token);
+      if (_stDenied) return _stDenied;
 
       const { data: mem } = await sb.from("org_members")
         .select("full_name, email").eq("id", member_id).maybeSingle();
@@ -2618,6 +2739,8 @@ serve(async (req) => {
     if (action === "member-submit-poll-vote") {
       const { poll_id, member_id, option_index } = body as { poll_id: string; member_id: string; option_index: number };
       if (!poll_id || !member_id || option_index === undefined) return json({ error: "poll_id, member_id, option_index required" }, 400);
+      const _pvDenied = await requireMemberAccess(member_id, (body as Record<string,string>).session_token);
+      if (_pvDenied) return _pvDenied;
       const { data: poll } = await sb.from("org_polls").select("is_active, closes_at").eq("id", poll_id).single();
       if (!poll?.is_active) return json({ error: "This poll is closed" }, 400);
       if (poll.closes_at && new Date(poll.closes_at) < new Date()) return json({ error: "This poll has expired" }, 400);
@@ -2630,6 +2753,8 @@ serve(async (req) => {
     if (action === "member-get-broadcasts") {
       const { member_id, org_id } = body as { member_id: string; org_id: string };
       if (!org_id || !member_id) return json({ error: "org_id and member_id required" }, 400);
+      const _gbDenied = await requireMemberAccess(member_id, (body as Record<string,string>).session_token);
+      if (_gbDenied) return _gbDenied;
       const [meetingsR, annR, eventsR, pollsR] = await Promise.all([
         sb.from("org_meetings").select("id,title,description,meeting_type,format,scheduled_at,location,meeting_link,agenda,status").eq("org_id", org_id).order("scheduled_at", { ascending: false }).limit(20),
         sb.from("org_announcements").select("id,type,title,body,is_pinned,created_at,author_name").eq("org_id", org_id).order("is_pinned", { ascending: false }).order("created_at", { ascending: false }).limit(30),
