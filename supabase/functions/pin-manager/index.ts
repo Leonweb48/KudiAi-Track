@@ -151,7 +151,8 @@ serve(async (req: Request) => {
     const PIN_SELECT =
       "app_pin_hash, app_pin_attempts, app_pin_locked_until, app_pin_lockout_count, " +
       "txn_pin_hash, txn_pin_attempts, txn_pin_locked_until, txn_pin_lockout_count, " +
-      "txn_pin_reset_at, biometric_enabled, auto_lock_timeout";
+      "txn_pin_reset_at, biometric_enabled, auto_lock_timeout, " +
+      "pin_reset_token, pin_reset_token_expires_at";
 
     let profile: Record<string, unknown> | null = null;
     {
@@ -386,8 +387,25 @@ serve(async (req: Request) => {
       return jsonResponse({ success: true });
     }
 
-    // ── reset_app_pin (identity already verified via OTP in the client) ──────
+    // ── authorize_pin_reset ───────────────────────────────────────────────────
+    // Called immediately after OTP verification succeeds on the client.
+    // Issues a short-lived server-side token that must accompany both reset calls.
+    if (action === "authorize_pin_reset") {
+      const token = crypto.randomUUID();
+      const expires = new Date(Date.now() + 15 * 60 * 1000).toISOString(); // 15 min
+      await updateProfile({ pin_reset_token: token, pin_reset_token_expires_at: expires });
+      return jsonResponse({ success: true, reset_token: token });
+    }
+
+    // ── reset_app_pin ─────────────────────────────────────────────────────────
     if (action === "reset_app_pin") {
+      const { reset_token } = params;
+      if (!reset_token || typeof reset_token !== "string") return errorResponse("reset_token required");
+      if (profile.pin_reset_token !== reset_token) return errorResponse("Invalid or expired reset token");
+      if (!profile.pin_reset_token_expires_at ||
+          new Date(profile.pin_reset_token_expires_at as string) < new Date()) {
+        return errorResponse("Reset token has expired — please start the forgot-PIN flow again");
+      }
       const err = validatePin(params.new_pin, 6);
       if (err) return errorResponse(err);
       const hash = await hashPin(params.new_pin as string);
@@ -396,12 +414,21 @@ serve(async (req: Request) => {
         app_pin_attempts: 0,
         app_pin_locked_until: null,
         app_pin_lockout_count: 0,
+        pin_reset_token: null,
+        pin_reset_token_expires_at: null,
       });
       return jsonResponse({ success: true });
     }
 
-    // ── reset_txn_pin (identity already verified via OTP in the client) ──────
+    // ── reset_txn_pin ─────────────────────────────────────────────────────────
     if (action === "reset_txn_pin") {
+      const { reset_token } = params;
+      if (!reset_token || typeof reset_token !== "string") return errorResponse("reset_token required");
+      if (profile.pin_reset_token !== reset_token) return errorResponse("Invalid or expired reset token");
+      if (!profile.pin_reset_token_expires_at ||
+          new Date(profile.pin_reset_token_expires_at as string) < new Date()) {
+        return errorResponse("Reset token has expired — please start the forgot-PIN flow again");
+      }
       const err = validatePin(params.new_pin, 4);
       if (err) return errorResponse(err);
       const hash = await hashPin(params.new_pin as string);
@@ -411,6 +438,8 @@ serve(async (req: Request) => {
         txn_pin_locked_until: null,
         txn_pin_lockout_count: 0,
         txn_pin_reset_at: new Date().toISOString(),
+        pin_reset_token: null,
+        pin_reset_token_expires_at: null,
       });
       return jsonResponse({ success: true });
     }

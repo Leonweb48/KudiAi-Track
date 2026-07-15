@@ -103,6 +103,10 @@ serve(async (req) => {
 
     // ── Resolve a bank account (verify account number + bank code) ─────────
     if (action === "resolve-account") {
+      const _raToken = authHeader.replace("Bearer ", "");
+      if (!_raToken) return json({ error: "Unauthorized" }, 401);
+      const { data: { user: _raUser } } = await sb.auth.getUser(_raToken);
+      if (!_raUser) return json({ error: "Unauthorized" }, 401);
       const { account_number, bank_code } = body as { account_number: string; bank_code: string };
       const res = await fetch(
         `https://api.paystack.co/bank/resolve?account_number=${account_number}&bank_code=${bank_code}`,
@@ -113,6 +117,10 @@ serve(async (req) => {
 
     // ── List Nigerian banks ────────────────────────────────────────────────
     if (action === "list-banks") {
+      const _lbToken = authHeader.replace("Bearer ", "");
+      if (!_lbToken) return json({ error: "Unauthorized" }, 401);
+      const { data: { user: _lbUser } } = await sb.auth.getUser(_lbToken);
+      if (!_lbUser) return json({ error: "Unauthorized" }, 401);
       const res = await fetch(
         "https://api.paystack.co/bank?country=nigeria&use_cursor=false&perPage=100",
         { headers: psHeaders },
@@ -212,20 +220,30 @@ serve(async (req) => {
 
     // ── Initialize an Ajo contribution payment (with subaccount routing) ───
     if (action === "initialize-contribution") {
+      const _icToken = authHeader.replace("Bearer ", "");
+      if (!_icToken) return json({ error: "Unauthorized" }, 401);
+      const { data: { user: _icUser } } = await sb.auth.getUser(_icToken);
+      if (!_icUser) return json({ error: "Unauthorized" }, 401);
+
       const { client_id, owner_id, amount, email, reference } = body as {
         client_id: string; owner_id: string; amount: number;
         email: string; reference: string;
       };
 
-      // Fetch the client's group subaccount
+      // Fetch the client's group subaccount — also used for caller ownership check
       const { data: cl } = await sb
         .from("aso_clients")
-        .select("id, ajo_group_id, contribution_amount")
+        .select("id, ajo_group_id, contribution_amount, user_id, client_user_id")
         .eq("id", client_id)
         .maybeSingle();
+      if (!cl) return json({ error: "Client not found" }, 404);
+      // Caller must be the business owner or the client themselves
+      if (cl.user_id !== _icUser.id && cl.client_user_id !== _icUser.id) {
+        return json({ error: "Forbidden" }, 403);
+      }
 
       let subaccountCode: string | undefined;
-      if (cl?.ajo_group_id) {
+      if (cl.ajo_group_id) {
         const { data: grp } = await sb
           .from("ajo_groups")
           .select("paystack_subaccount_code")

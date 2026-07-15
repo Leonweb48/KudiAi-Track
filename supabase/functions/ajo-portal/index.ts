@@ -67,7 +67,63 @@ serve(async (req) => {
 
   const { action } = body;
 
+  // ── Authenticate every request ────────────────────────────────────────────
+  const _jwt = (req.headers.get("Authorization") ?? "").replace("Bearer ", "").trim();
+  if (!_jwt) return json({ error: "Unauthorised" }, 401);
+  const { data: { user: _caller }, error: _authErr } = await sb.auth.getUser(_jwt);
+  if (_authErr || !_caller) return json({ error: "Unauthorised" }, 401);
+  const callerId = _caller.id;
+
+  // Returns null if allowed, Response if denied
+  async function requireClientAccess(client_id: string): Promise<Response | null> {
+    if (!client_id) return json({ error: "client_id required" }, 400);
+    const { data: cl } = await sb.from("aso_clients")
+      .select("id, client_user_id, user_id").eq("id", client_id).maybeSingle();
+    if (!cl) return json({ error: "Client not found" }, 404);
+    if (cl.client_user_id === callerId || cl.user_id === callerId) return null;
+    const { data: st } = await sb.from("staff").select("id")
+      .eq("user_id", callerId).eq("owner_id", cl.user_id).eq("status", "active").maybeSingle();
+    return st ? null : json({ error: "Forbidden" }, 403);
+  }
+
   try {
+    // ── Per-action ownership guard ────────────────────────────────────────
+    const _clientScoped = new Set([
+      "get-client","get-contributions","get-active-cycle","get-owner-info",
+      "request-withdrawal","get-withdrawal-requests","submit-manual-claim",
+      "initialize-payment","confirm-payment","submit-dispute",
+      "get-goal","set-goal","delete-goal","get-txn-pin-status","set-txn-pin",
+      "upload-avatar","update-profile","log-profile-update",
+      "send-profile-otp","verify-profile-otp",
+      "send-txn-pin-otp","verify-txn-pin-otp",
+      "request-reactivation","get-reactivation-status",
+    ]);
+    if (_clientScoped.has(action as string)) {
+      const { client_id } = body as { client_id: string };
+      const denied = await requireClientAccess(client_id);
+      if (denied) return denied;
+    }
+    if (action === "create-group") {
+      const { owner_id: _oid } = body as { owner_id: string };
+      if (!_oid || callerId !== _oid) return json({ error: "Forbidden" }, 403);
+    }
+    if (action === "get-rotation") {
+      const { group_id: _gid, client_id: _gcid } =
+        body as { group_id?: string; client_id?: string };
+      if (_gcid) {
+        const denied = await requireClientAccess(_gcid);
+        if (denied) return denied;
+      } else if (_gid) {
+        const { data: _g } = await sb.from("ajo_groups")
+          .select("owner_id").eq("id", _gid).maybeSingle();
+        if (!_g || _g.owner_id !== callerId) {
+          const { data: _st } = await sb.from("staff").select("id")
+            .eq("user_id", callerId).eq("owner_id", _g?.owner_id ?? "").eq("status", "active").maybeSingle();
+          if (!_st) return json({ error: "Forbidden" }, 403);
+        }
+      }
+    }
+
     // ── Refresh client data by ID (session already validated) ─────
     if (action === "get-client") {
       const { client_id } = body as { client_id: string };

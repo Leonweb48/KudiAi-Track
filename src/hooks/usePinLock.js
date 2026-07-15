@@ -249,12 +249,16 @@ export function usePinLock(userId, session) {
     return invoke("change_txn_pin", { current_pin: currentPin, new_pin: newPin });
   }, []);
 
-  const resetAppPin = useCallback(async (newPin) => {
-    return invoke("reset_app_pin", { new_pin: newPin });
+  const authorizeReset = useCallback(async () => {
+    return invoke("authorize_pin_reset");
   }, []);
 
-  const resetTxnPin = useCallback(async (newPin) => {
-    return invoke("reset_txn_pin", { new_pin: newPin });
+  const resetAppPin = useCallback(async (newPin, resetToken) => {
+    return invoke("reset_app_pin", { new_pin: newPin, reset_token: resetToken });
+  }, []);
+
+  const resetTxnPin = useCallback(async (newPin, resetToken) => {
+    return invoke("reset_txn_pin", { new_pin: newPin, reset_token: resetToken });
   }, []);
 
   const updateSettings = useCallback(async (obj) => {
@@ -321,6 +325,7 @@ export function usePinLock(userId, session) {
     setupTxnPin,
     changeAppPin,
     changeTxnPin,
+    authorizeReset,
     resetAppPin,
     resetTxnPin,
     updateSettings,

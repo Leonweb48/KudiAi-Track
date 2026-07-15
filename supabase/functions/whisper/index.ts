@@ -1,14 +1,44 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const CORS = {
   "Access-Control-Allow-Origin":  "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+function errJson(msg: string, status: number) {
+  return new Response(JSON.stringify({ error: msg }), {
+    status,
+    headers: { ...CORS, "Content-Type": "application/json" },
+  });
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
   try {
+    // ── Authenticate caller (business owner or active staff only) ───────────
+    const authHeader = req.headers.get("Authorization") ?? "";
+    if (!authHeader.startsWith("Bearer ")) return errJson("Unauthorised", 401);
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceKey  = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const sb = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
+
+    const { data: { user }, error: authErr } = await sb.auth.getUser(
+      authHeader.replace("Bearer ", ""),
+    );
+    if (authErr || !user) return errJson("Unauthorised", 401);
+
+    // Business owners have a profiles row with full_name set during registration.
+    // Active staff have a row in the staff table.
+    const [{ data: ownerRow }, { data: staffRow }] = await Promise.all([
+      sb.from("profiles").select("id").eq("id", user.id).not("full_name", "is", null).maybeSingle(),
+      sb.from("staff").select("id").eq("user_id", user.id).eq("status", "active").maybeSingle(),
+    ]);
+    if (!ownerRow && !staffRow) return errJson("Forbidden", 403);
+
+    // ── Transcribe ──────────────────────────────────────────────────────────
     const key = Deno.env.get("OPENAI_API_KEY");
     if (!key) throw new Error("OPENAI_API_KEY secret not set");
 
@@ -18,9 +48,8 @@ serve(async (req) => {
     const mime = mimeType || "audio/webm";
     const ext  = mime.includes("mp4") ? "mp4" : mime.includes("ogg") ? "ogg" : "webm";
 
-    // Decode base64 → binary
-    const binary    = atob(audioBase64);
-    const bytes     = new Uint8Array(binary.length);
+    const binary = atob(audioBase64);
+    const bytes  = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
 
     const form = new FormData();

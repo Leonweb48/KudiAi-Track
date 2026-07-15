@@ -31,13 +31,14 @@ const STEP_META = {
 const PAD = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 
 export default function ForgotPinFlow({ pinLock, onCancel }) {
-  const [email,     setEmail]     = useState("");
-  const [step,      setStep]      = useState("send");
-  const [pin,       setPin]       = useState("");
-  const [newAppPin, setNewAppPin] = useState("");
-  const [newTxnPin, setNewTxnPin] = useState("");
-  const [error,     setError]     = useState("");
-  const [loading,   setLoading]   = useState(false);
+  const [email,      setEmail]      = useState("");
+  const [step,       setStep]       = useState("send");
+  const [pin,        setPin]        = useState("");
+  const [newAppPin,  setNewAppPin]  = useState("");
+  const [newTxnPin,  setNewTxnPin]  = useState("");
+  const [resetToken, setResetToken] = useState(null);
+  const [error,      setError]      = useState("");
+  const [loading,    setLoading]    = useState(false);
 
   useEffect(() => {
     supabase?.auth.getSession().then(({ data: { session } }) => {
@@ -77,7 +78,7 @@ export default function ForgotPinFlow({ pinLock, onCancel }) {
     if (next.length < maxLen) return;
 
     setTimeout(async () => {
-      // Verify OTP
+      // Verify OTP then obtain a server-side reset token
       if (step === "verify") {
         setLoading(true);
         try {
@@ -87,6 +88,10 @@ export default function ForgotPinFlow({ pinLock, onCancel }) {
             type: "email",
           });
           if (vErr) throw vErr;
+          // Issue a short-lived server-side token that gates both reset calls
+          const { data: authData } = await pinLock.authorizeReset();
+          if (!authData?.reset_token) throw new Error("Could not authorise PIN reset — please try again.");
+          setResetToken(authData.reset_token);
           setPin("");
           setStep("new_app");
         } catch (err) {
@@ -110,7 +115,7 @@ export default function ForgotPinFlow({ pinLock, onCancel }) {
         }
         setLoading(true);
         try {
-          await pinLock.resetAppPin(newAppPin);
+          await pinLock.resetAppPin(newAppPin, resetToken);
         } catch (err) {
           setPin(""); setError(err.message || "Failed to save. Try again.");
           setStep("new_app"); setNewAppPin(""); setLoading(false); return;
@@ -131,7 +136,7 @@ export default function ForgotPinFlow({ pinLock, onCancel }) {
         }
         setLoading(true);
         try {
-          await pinLock.resetTxnPin(newTxnPin);
+          await pinLock.resetTxnPin(newTxnPin, resetToken);
           await pinLock.refetch();
           pinLock.unlock();
         } catch (err) {
@@ -140,7 +145,7 @@ export default function ForgotPinFlow({ pinLock, onCancel }) {
         }
       }
     }, 150);
-  }, [pin, maxLen, loading, step, email, newAppPin, newTxnPin, pinLock]);
+  }, [pin, maxLen, loading, step, email, newAppPin, newTxnPin, resetToken, pinLock]);
 
   const handleDelete = useCallback(() => {
     setPin(p => p.slice(0, -1));

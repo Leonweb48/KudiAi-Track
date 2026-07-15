@@ -63,7 +63,71 @@ serve(async (req) => {
     }).then(() => null).catch(() => null);
   };
 
+  // ── Global auth guard ─────────────────────────────────────────────────────
+  // Legacy member-* actions use a PIN-based token (not Supabase JWT).
+  // All other actions require a valid Supabase JWT.
+  const NO_JWT_REQUIRED = new Set([
+    "member-auth","member-by-token","change-member-pin",
+    "member-update-privacy","member-get-savings","member-get-loans",
+    "member-request-loan","member-get-meetings","member-get-announcements",
+    "member-get-programs","member-get-directory","member-apply-loan",
+    "member-submit-poll-vote","member-get-broadcasts",
+    "verify-member-registration-otp","resend-registration-otp","qr-check-in",
+    "submit-support-ticket",
+  ]);
+  let callerId: string | null = null;
+  if (!NO_JWT_REQUIRED.has(action as string)) {
+    const _jwt = (req.headers.get("Authorization") ?? "").replace("Bearer ", "").trim();
+    if (!_jwt) return json({ error: "Unauthorised" }, 401);
+    const { data: { user: _caller }, error: _authErr } = await sb.auth.getUser(_jwt);
+    if (_authErr || !_caller) return json({ error: "Unauthorised" }, 401);
+    callerId = _caller.id;
+  }
+
+  // Returns null if the caller is the org owner or their active staff; Response if denied
+  async function requireOrgOwner(org_id: string): Promise<Response | null> {
+    if (!org_id) return json({ error: "org_id required" }, 400);
+    if (!callerId) return json({ error: "Unauthorised" }, 401);
+    const { data: o } = await sb.from("organizations")
+      .select("id, owner_id").eq("id", org_id).maybeSingle();
+    if (!o) return json({ error: "Organisation not found" }, 404);
+    if (o.owner_id === callerId) return null;
+    const { data: st } = await sb.from("staff").select("id")
+      .eq("user_id", callerId).eq("owner_id", o.owner_id).eq("status", "active").maybeSingle();
+    return st ? null : json({ error: "Forbidden" }, 403);
+  }
+
+  // All actions that operate on a specific org and require org ownership
+  const ORG_OWNER_ACTIONS = new Set([
+    "setup-org-portal","delete-org","get-org","update-org",
+    "get-leaders","add-leader","update-leader","delete-leader",
+    "add-member","get-members","get-member","update-member",
+    "reset-member-pin","reset-member-password","delete-member","get-member-directory",
+    "get-programs","add-program","update-program","delete-program",
+    "record-saving","get-savings","create-withdrawal","get-withdrawals","get-withdrawal-items",
+    "apply-loan","update-loan","record-repayment","get-loans","get-repayments",
+    "update-loan-settings","check-overdue-loans",
+    "create-meeting","update-meeting","get-meetings","bulk-attendance","get-attendance",
+    "set-rsvp","get-rsvp","send-announcement","get-announcements","pin-announcement","delete-announcement",
+    "get-wallet","list-banks","resolve-bank-account","setup-org-bank",
+    "submit-org-support-ticket","get-member-bills","add-member-bill",
+    "get-org-bills","add-org-bill",
+    "create-event","get-events","delete-event",
+    "create-poll","get-polls","delete-poll",
+    "get_org_archive_blockers",
+    "get-member-reactivation-requests","reject-member-reactivation","resend-member-reactivation",
+    "get-withdrawal-requests-admin","handle-withdrawal-request",
+    "initialize-loan-payment","confirm-loan-payment",
+    "initialize-member-payment","confirm-member-payment",
+    "request-member-withdrawal","get-member-withdrawal-requests",
+  ]);
+
   try {
+    if (ORG_OWNER_ACTIONS.has(action as string)) {
+      const { org_id } = body as { org_id?: string };
+      const denied = await requireOrgOwner(org_id ?? "");
+      if (denied) return denied;
+    }
 
     // ══════════════════════════════════════════════════
     //  ORGANIZATION MANAGEMENT
