@@ -128,25 +128,31 @@ serve(async (req) => {
       return json(await res.json());
     }
 
-    // ── Create a Paystack subaccount for an individual Ajo client ────────
+    // ── Create a Paystack subaccount for an Ajo client or group ─────────
     if (action === "create-subaccount") {
-      const { client_id, business_name, bank_code, account_number, percentage_charge = 100, bank_name } = body as {
-        client_id: string; business_name: string;
+      const { client_id, group_id, business_name, bank_code, account_number, percentage_charge = 100, bank_name } = body as {
+        client_id?: string; group_id?: string; business_name: string;
         bank_code: string; account_number: string; percentage_charge?: number;
         bank_name?: string;
       };
-      if (!client_id || !business_name || !bank_code || !account_number) {
-        return json({ error: "client_id, business_name, bank_code and account_number are required" }, 400);
+      if ((!client_id && !group_id) || !business_name || !bank_code || !account_number) {
+        return json({ error: "business_name, bank_code and account_number are required, plus either client_id or group_id" }, 400);
       }
 
-      // Verify client belongs to the authenticated user
-      const { data: cl, error: clErr } = await sb
-        .from("aso_clients").select("id, user_id").eq("id", client_id).maybeSingle();
-      if (clErr || !cl) return json({ error: "Client not found" }, 404);
-
+      // Verify ownership
       const token = authHeader.replace("Bearer ", "");
       const { data: { user } } = await sb.auth.getUser(token);
-      if (!user || user.id !== cl.user_id) return json({ error: "Forbidden" }, 403);
+      if (!user) return json({ error: "Unauthorized" }, 401);
+
+      if (client_id) {
+        const { data: cl } = await sb.from("aso_clients").select("id, user_id").eq("id", client_id).maybeSingle();
+        if (!cl) return json({ error: "Client not found" }, 404);
+        if (user.id !== cl.user_id) return json({ error: "Forbidden" }, 403);
+      } else {
+        const { data: grp } = await sb.from("ajo_groups").select("id, owner_id").eq("id", group_id!).maybeSingle();
+        if (!grp) return json({ error: "Group not found" }, 404);
+        if (user.id !== grp.owner_id) return json({ error: "Forbidden" }, 403);
+      }
 
       // Create Paystack subaccount
       const psRes = await fetch("https://api.paystack.co/subaccount", {
@@ -164,13 +170,18 @@ serve(async (req) => {
         return json({ error: psData.message || "Failed to create subaccount" }, 422);
       }
 
-      // Persist subaccount code + bank name back to the client record
-      await sb.from("aso_clients").update({
+      // Persist subaccount code + bank details back to the correct record
+      const patch = {
         paystack_subaccount_code: psData.data.subaccount_code,
         paystack_subaccount_id:   String(psData.data.id),
         account_name:             psData.data.account_name ?? null,
         bank_name:                bank_name || null,
-      }).eq("id", client_id);
+      };
+      if (client_id) {
+        await sb.from("aso_clients").update(patch).eq("id", client_id);
+      } else {
+        await sb.from("ajo_groups").update(patch).eq("id", group_id!);
+      }
 
       return json({ subaccount_code: psData.data.subaccount_code, data: psData.data });
     }
