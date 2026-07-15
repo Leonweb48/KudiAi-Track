@@ -418,6 +418,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   // Registration — form state
   const [addError,        setAddError]        = useState("");
   const [addedClientEmail, setAddedClientEmail] = useState("");
+  const [clientSubAcctErr, setClientSubAcctErr] = useState("");
 
   // Filters
   const [search,         setSearch]         = useState("");
@@ -857,22 +858,22 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       const newGroup = data.group;
       // Auto-create Paystack subaccount if bank details provided
       if (gf.bank_code && gf.account_number && newGroup?.id) {
-        try {
-          const { data: sData } = await supabase.functions.invoke("paystack", {
-            body: {
-              action: "create-subaccount",
-              group_id: newGroup.id,
-              business_name: profile.business_name || gf.name,
-              bank_code: gf.bank_code,
-              account_number: gf.account_number,
-              percentage_charge: 100,
-            },
-          });
-          if (sData?.subaccount_code) {
-            newGroup.paystack_subaccount_code = sData.subaccount_code;
-          }
-        } catch (subErr) {
-          console.error("Subaccount creation failed (group saved):", subErr);
+        const { data: sData, error: subErr } = await supabase.functions.invoke("paystack", {
+          body: {
+            action: "create-subaccount",
+            group_id: newGroup.id,
+            business_name: profile.business_name || gf.name,
+            bank_code: gf.bank_code,
+            account_number: gf.account_number,
+            percentage_charge: 100,
+          },
+        }).catch(e => ({ data: null, error: e }));
+        if (sData?.subaccount_code) {
+          newGroup.paystack_subaccount_code = sData.subaccount_code;
+        } else {
+          const msg = sData?.error || subErr?.message || "Unknown error";
+          console.error("Subaccount creation failed (group saved):", msg);
+          setSubAcctMsg(`Group saved. Bank account link failed: ${msg} — use 'Create Subaccount' to retry.`);
         }
       }
       setGroups(prev => [...prev, newGroup]);
@@ -939,22 +940,34 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   // ── Realtime: new withdrawal requests from clients ─────────────────────
   useEffect(() => {
     if (!canDo(plan, "aso")) return;
+    let rtReady = false;
     const channel = supabase.channel("ajo_withdrawal_requests_rt")
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "ajo_withdrawal_requests" },
         () => reloadWithdrawalRequests())
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          if (rtReady) reloadWithdrawalRequests();
+          else rtReady = true;
+        }
+      });
     return () => { supabase.removeChannel(channel); };
   }, [plan]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Realtime: new manual deposit claims from clients ────────────────────
   useEffect(() => {
     if (!canDo(plan, "aso")) return;
+    let rtReady = false;
     const channel = supabase.channel("ajo_manual_claims_rt")
       .on("postgres_changes", {
         event: "INSERT", schema: "public", table: "ajo_contributions",
         filter: "payment_method=eq.manual_transfer",
       }, () => reloadPendingDeposits())
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          if (rtReady) reloadPendingDeposits();
+          else rtReady = true;
+        }
+      });
     return () => { supabase.removeChannel(channel); };
   }, [plan]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1098,20 +1111,21 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     if (!error && data) {
       // Auto-create Paystack subaccount if bank details were verified
       if (f.bank_code && f.account_number && f.account_name) {
-        try {
-          await supabase.functions.invoke("paystack", {
-            body: {
-              action: "create-subaccount",
-              client_id: data.id,
-              business_name: f.full_name,
-              bank_code: f.bank_code,
-              account_number: f.account_number,
-              percentage_charge: 100,
-              bank_name: f.bank_name || "",
-            },
-          });
-        } catch (subErr) {
-          console.error("Subaccount creation failed (client saved):", subErr);
+        const { data: sData, error: subErr } = await supabase.functions.invoke("paystack", {
+          body: {
+            action: "create-subaccount",
+            client_id: data.id,
+            business_name: f.full_name,
+            bank_code: f.bank_code,
+            account_number: f.account_number,
+            percentage_charge: 100,
+            bank_name: f.bank_name || "",
+          },
+        }).catch(e => ({ data: null, error: e }));
+        if (!sData?.subaccount_code) {
+          const msg = sData?.error || subErr?.message || "Unknown error";
+          console.error("Subaccount creation failed (client saved):", msg);
+          setClientSubAcctErr(`Client saved. Bank account link failed: ${msg} — edit the client profile to retry.`);
         }
       }
       try {
@@ -2735,8 +2749,16 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                 <span className="font-bold">{addedClientEmail}</span>. The client can log in at kudiai.app and will set a permanent password on first login.
               </p>
             </div>
+            {clientSubAcctErr && (
+              <div className="mb-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 rounded-2xl px-4 py-3 flex items-start gap-2">
+                <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+                  <path d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                </svg>
+                <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">{clientSubAcctErr}</p>
+              </div>
+            )}
             <button
-              onClick={() => setAddedClientEmail("")}
+              onClick={() => { setAddedClientEmail(""); setClientSubAcctErr(""); }}
               className="w-full bg-violet-600 hover:bg-violet-700 text-white font-bold rounded-2xl py-3.5 text-sm transition-colors">
               Done
             </button>

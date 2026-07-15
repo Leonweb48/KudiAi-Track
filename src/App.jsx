@@ -586,6 +586,24 @@ export default function App() {
             transactions={store.transactions}
           />
 
+          {store.fromCache && !store.loading && (
+            <div
+              className="fixed inset-x-0 top-0 z-[59] flex justify-center pointer-events-none"
+              style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
+            >
+              <div className="pointer-events-auto bg-amber-500 text-white text-xs font-semibold px-4 py-1.5 rounded-b-2xl shadow-md flex items-center gap-2">
+                <span>Offline — cached data</span>
+                <button
+                  onClick={() => store.reloadData()}
+                  disabled={store.loading}
+                  className="underline font-bold disabled:opacity-50"
+                >
+                  Refresh
+                </button>
+              </div>
+            </div>
+          )}
+
           {store.dbError && (
             <div className="fixed bottom-28 left-4 right-4 max-w-md mx-auto z-[58] bg-red-600 text-white rounded-2xl px-4 py-3 shadow-lg flex items-start gap-3 fade-in" role="alert">
               <div className="flex-1 min-w-0">

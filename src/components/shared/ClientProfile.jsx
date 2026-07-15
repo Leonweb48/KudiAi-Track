@@ -80,6 +80,7 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
   const [photoPreview, setPhotoPreview] = useState(null);
   const [saving,       setSaving]       = useState(false);
   const [saveErr,      setSaveErr]      = useState("");
+  const [subAcctWarn,  setSubAcctWarn]  = useState("");
   const [resetting,    setResetting]    = useState(false);
   const [resetErr,     setResetErr]     = useState("");
   const [confirmDel,   setConfirmDel]   = useState(false);
@@ -229,31 +230,18 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
     if (!isCredit && canEditBank) {
       const bankChanged = form.bank_code !== record.bank_code || form.account_number !== record.account_number;
       if (bankChanged && form.bank_code && form.account_number && form.account_name) {
-        try {
-          if (record.paystack_subaccount_code) {
-            await supabase.functions.invoke("paystack", {
-              body: {
-                action:          "update-subaccount",
-                client_id:       record.id,
-                settlement_bank: form.bank_code,
-                account_number:  form.account_number,
-                bank_name:       form.bank_name || "",
-              },
-            });
-          } else {
-            await supabase.functions.invoke("paystack", {
-              body: {
-                action:           "create-subaccount",
-                client_id:        record.id,
-                business_name:    form.full_name || businessName,
-                bank_code:        form.bank_code,
-                account_number:   form.account_number,
-                percentage_charge: 100,
-                bank_name:        form.bank_name || "",
-              },
-            });
-          }
-        } catch { /* subaccount sync is best-effort; profile already saved */ }
+        setSubAcctWarn("");
+        const paystackBody = record.paystack_subaccount_code
+          ? { action: "update-subaccount", client_id: record.id, settlement_bank: form.bank_code, account_number: form.account_number, bank_name: form.bank_name || "" }
+          : { action: "create-subaccount", client_id: record.id, business_name: form.full_name || businessName, bank_code: form.bank_code, account_number: form.account_number, percentage_charge: 100, bank_name: form.bank_name || "" };
+        const { data: sData, error: subErr } = await supabase.functions
+          .invoke("paystack", { body: paystackBody })
+          .catch(e => ({ data: null, error: e }));
+        if (subErr || sData?.error) {
+          const msg = sData?.error || subErr?.message || "Unknown error";
+          console.error("Paystack subaccount sync failed:", msg);
+          setSubAcctWarn(`Profile saved. Bank account link failed: ${msg} — save again to retry.`);
+        }
       }
     }
 
@@ -605,6 +593,18 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
           ) : (
             /* ===== VIEW MODE ===== */
             <>
+              {subAcctWarn && (
+                <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 rounded-2xl px-4 py-3 flex items-start gap-2">
+                  <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+                    <path d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                  </svg>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">{subAcctWarn}</p>
+                    <button onClick={() => setSubAcctWarn("")} className="text-[11px] text-amber-600 dark:text-amber-400 font-semibold underline mt-1">Dismiss</button>
+                  </div>
+                </div>
+              )}
+
               {/* Personal info */}
               {(record.phone || record.email || record.nin || record.address) && (
                 <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-100 dark:border-slate-700 shadow-card">

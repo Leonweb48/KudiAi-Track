@@ -34,6 +34,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
   const [isOnline,    setIsOnline]    = useState(navigator.onLine);
   const [dbError,     setDbError]     = useState(null);
   const [loadError,   setLoadError]   = useState(null);
+  const [fromCache,   setFromCache]   = useState(false);
   const [pendingSync, setPendingSync] = useState(0);
   const [isSyncing,   setIsSyncing]   = useState(false);
 
@@ -46,7 +47,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
   // ── Load all data ──────────────────────────────────────────────
   const loadData = useCallback(async (silent = false) => {
     if (!userId) return;
-    if (!silent) { setLoading(true); setLoadError(null); }
+    if (!silent) { setLoading(true); setLoadError(null); setFromCache(false); }
 
     // ── Offline: serve from local cache ───────────────────────
     if (!navigator.onLine) {
@@ -63,6 +64,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
             dark_mode: dk,
           }));
         }
+        setFromCache(true);
       } else {
         // Offline and no cache — nothing to show; surface the error banner
         setLoadError("Couldn't load your data — check your connection");
@@ -193,6 +195,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
         ? { business_name: profRes.data.business_name, dark_mode: profRes.data.dark_mode }
         : null,
     });
+    setFromCache(false);
 
     try {
       const count = await getPendingCount(userId);
@@ -213,6 +216,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
             dark_mode: dk,
           }));
         }
+        setFromCache(true);
       } else {
         setLoadError("Couldn't load your data — check your connection");
       }
@@ -226,6 +230,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
   // ── Realtime: live sync for aso_clients balance changes ───────────────
   useEffect(() => {
     if (!userId) return;
+    let rtReady = false;
     const channel = supabase.channel(`aso_clients_rt_${userId}`)
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "aso_clients", filter: `user_id=eq.${userId}` },
         (payload) => {
@@ -237,13 +242,19 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
             }
           }
         })
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          if (rtReady) loadData(true);
+          else rtReady = true;
+        }
+      });
     return () => { supabase.removeChannel(channel); };
-  }, [userId]);
+  }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Realtime: live sync for transactions (staff adds, other devices) ──
   useEffect(() => {
     if (!userId) return;
+    let rtReady = false;
     const channel = supabase.channel(`transactions_rt_${userId}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "transactions", filter: `user_id=eq.${userId}` },
         (payload) => {
@@ -287,9 +298,14 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
           if (!payload.new) return;
           setCredits(prev => prev.map(c => c.id === payload.new.id ? { ...c, ...payload.new } : c));
         })
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          if (rtReady) loadData(true);
+          else rtReady = true;
+        }
+      });
     return () => { supabase.removeChannel(channel); };
-  }, [userId]);
+  }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Online / offline detection ─────────────────────────────────
   useEffect(() => {
@@ -809,6 +825,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
     setProfile, isOnline, loading, pendingSync, isSyncing, runSync,
     dbError, clearDbError: () => setDbError(null),
     loadError, clearLoadError: () => setLoadError(null), reloadData: loadData, silentRefresh: () => loadData(true),
+    fromCache,
     addTransaction,
     patchTransactionNote,
     // Staff cannot delete transactions — only business owners (no staffId) can
