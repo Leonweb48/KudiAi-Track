@@ -888,14 +888,14 @@ function ConfirmPaymentSheet({ data, onConfirm, onCancel }) {
 
   return (
     <div className="fixed inset-0 z-[70] flex flex-col justify-end bg-black/55">
-      <div className="bg-white rounded-t-3xl shadow-2xl" style={{ maxHeight: "88dvh", overflowY: "auto" }}>
+      <div className="bg-white dark:bg-slate-900 rounded-t-3xl shadow-2xl" style={{ maxHeight: "88dvh", overflowY: "auto" }}>
         {/* Drag handle */}
         <div className="flex justify-center pt-3 pb-1">
           <div className="w-10 h-1 rounded-full bg-slate-200 dark:bg-slate-700" />
         </div>
         {/* Header */}
         <div className="flex items-center justify-between px-5 pt-3 pb-4">
-          <p className="text-lg font-black text-slate-900">Confirm Payment</p>
+          <p className="text-lg font-black text-slate-900 dark:text-white">Confirm Payment</p>
           <button onClick={onCancel} className="w-11 h-11 rounded-full flex items-center justify-center bg-slate-100 dark:bg-slate-800">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2.5" strokeLinecap="round">
               <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -934,43 +934,43 @@ function ConfirmPaymentSheet({ data, onConfirm, onCancel }) {
         {/* Details card */}
         <div className="mx-5 rounded-2xl overflow-hidden shadow-sm mb-4 border border-slate-200 dark:border-slate-700">
           {phone && (
-            <div className="px-4 py-3 flex justify-between items-center border-b border-slate-50">
+            <div className="px-4 py-3 flex justify-between items-center border-b border-slate-50 dark:border-slate-800">
               <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Recipient</span>
-              <span className="text-sm font-bold text-slate-800">{phone}</span>
+              <span className="text-sm font-bold text-slate-800 dark:text-white">{phone}</span>
             </div>
           )}
           {network && (
-            <div className="px-4 py-3 flex justify-between items-center border-b border-slate-50">
+            <div className="px-4 py-3 flex justify-between items-center border-b border-slate-50 dark:border-slate-800">
               <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Network</span>
-              <span className="text-sm font-bold text-slate-800">{network}</span>
+              <span className="text-sm font-bold text-slate-800 dark:text-white">{network}</span>
             </div>
           )}
           {planName && (
-            <div className="px-4 py-3 flex justify-between items-center border-b border-slate-50">
+            <div className="px-4 py-3 flex justify-between items-center border-b border-slate-50 dark:border-slate-800">
               <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Plan / Value</span>
-              <span className="text-sm font-bold text-slate-800">{planName}</span>
+              <span className="text-sm font-bold text-slate-800 dark:text-white">{planName}</span>
             </div>
           )}
           {ptsSavings > 0 && (
-            <div className="px-4 py-3 flex justify-between items-center border-b border-slate-50">
+            <div className="px-4 py-3 flex justify-between items-center border-b border-slate-50 dark:border-slate-800">
               <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Points Discount</span>
               <span className="text-sm font-bold text-green-600 dark:text-green-400">−{fmt(ptsSavings)}</span>
             </div>
           )}
           {cbSavings > 0 && (
-            <div className="px-4 py-3 flex justify-between items-center border-b border-slate-50">
+            <div className="px-4 py-3 flex justify-between items-center border-b border-slate-50 dark:border-slate-800">
               <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Cashback Applied</span>
               <span className="text-sm font-bold text-green-600 dark:text-green-400">−{fmt(cbSavings)}</span>
             </div>
           )}
           {couponSavings > 0 && (
-            <div className="px-4 py-3 flex justify-between items-center border-b border-slate-50">
+            <div className="px-4 py-3 flex justify-between items-center border-b border-slate-50 dark:border-slate-800">
               <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Coupon Discount</span>
               <span className="text-sm font-bold text-green-600 dark:text-green-400">−{fmt(couponSavings)}</span>
             </div>
           )}
           <div className="px-4 py-3 flex justify-between items-center bg-green-50 dark:bg-green-900/20">
-            <span className="text-[11px] font-black uppercase tracking-wider text-slate-700">Total to Pay</span>
+            <span className="text-[11px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-200">Total to Pay</span>
             {isFree
               ? <span className="text-lg font-black text-green-600 dark:text-green-400">₦0.00</span>
               : <AmountDisplay amount={finalAmt} size="stat" align="right" className="text-green-600 dark:text-green-400" style={{ minWidth: 0, flex: '0 0 auto', maxWidth: '55%' }} />
@@ -1181,8 +1181,8 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
             </div>
           </div>
           <div className="text-center space-y-2">
-            <p className="text-lg font-black text-slate-800">Payment Confirmed!</p>
-            <p className="text-sm text-slate-500 leading-relaxed">Delivering your service, please wait…</p>
+            <p className="text-lg font-black text-slate-800 dark:text-white">Payment Confirmed!</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">Delivering your service, please wait…</p>
             <div className="flex items-center justify-center gap-2 pt-2">
               {[0, 150, 300].map(d => (
                 <div key={d} className="w-2 h-2 rounded-full bg-green-500 animate-bounce"
@@ -1206,7 +1206,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
               </div>
             </div>
             <div className="text-center">
-              <p className="text-xl font-black text-slate-800">Check Your Meter</p>
+              <p className="text-xl font-black text-slate-800 dark:text-white">Check Your Meter</p>
               <p className="text-xs text-slate-400 mt-1 leading-relaxed">Payment received · Token may already be dispensed</p>
             </div>
           </div>
@@ -1214,8 +1214,8 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
             <div className="px-4 py-2.5 bg-amber-100 dark:bg-amber-900/20">
               <p className="text-[9px] font-black uppercase tracking-widest text-amber-800 dark:text-amber-200">What Happened</p>
             </div>
-            <div className="bg-white px-4 py-3 space-y-2">
-              <p className="text-sm text-slate-700 leading-relaxed">
+            <div className="bg-white dark:bg-slate-800 px-4 py-3 space-y-2">
+              <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
                 Your payment was successful. The electricity provider recorded this transaction but did not return a token number. <strong>The token may already be loaded on your meter</strong> — please check before retrying.
               </p>
             </div>
@@ -1224,7 +1224,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
             <div className="px-4 py-2.5 bg-green-50 dark:bg-green-900/20">
               <p className="text-[9px] font-black uppercase tracking-widest text-green-700 dark:text-green-400">Payment Reference · Keep This</p>
             </div>
-            <div className="bg-white px-4 py-3 space-y-1">
+            <div className="bg-white dark:bg-slate-800 px-4 py-3 space-y-1">
               <p className="font-mono text-sm font-black break-all text-green-700 dark:text-green-400">{fulfillResult.psRef}</p>
               <p className="text-xs text-slate-400 leading-relaxed">
                 If the token is not on your meter within 30 minutes, contact support with this reference.
@@ -1242,8 +1242,8 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
       {isSuccess && (
         <>
           {/* Slim title bar */}
-          <div className="flex-shrink-0 flex items-center justify-between px-5 py-3 bg-white border-b border-slate-100">
-            <p className="text-sm font-bold text-slate-800 truncate">{catLabel} Receipt</p>
+          <div className="flex-shrink-0 flex items-center justify-between px-5 py-3 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800">
+            <p className="text-sm font-bold text-slate-800 dark:text-white truncate">{catLabel} Receipt</p>
             <button onClick={onDone} className="text-sm font-semibold px-4 py-2.5 min-h-[44px] inline-flex items-center rounded-lg active:scale-95 transition-transform text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800">Done</button>
           </div>
 

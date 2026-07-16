@@ -575,8 +575,8 @@ export default function Auth() {
             </svg>
             {t("auth.backToSignIn")}
           </button>
-          <h2 className="text-lg font-bold text-gray-800 mt-2">{t("auth.resetPassword")}</h2>
-          <p className="text-xs text-gray-500">We'll send a reset link to your email.</p>
+          <h2 className="text-lg font-bold text-gray-800 dark:text-white mt-2">{t("auth.resetPassword")}</h2>
+          <p className="text-xs text-gray-500 dark:text-slate-400">We'll send a reset link to your email.</p>
         </div>
       )}
 
@@ -623,7 +623,7 @@ export default function Auth() {
                 onChange={(e) => setPass(e.target.value)}
                 placeholder={mode === "register" ? "Min. 8 characters" : "••••••••"}
                 minLength={mode === "register" ? 8 : undefined}
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 pr-11 text-sm text-gray-900 bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+                className="w-full border border-gray-200 dark:border-slate-600 rounded-xl px-4 py-3 pr-11 text-sm text-gray-900 dark:text-white bg-gray-50 dark:bg-slate-700 focus:bg-white dark:focus:bg-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:focus:ring-brand-500/40 focus:border-transparent transition-all"
               />
               <button
                 type="button"
@@ -734,7 +734,7 @@ export default function Auth() {
             </svg>
             {t("auth.continueGoogle")}
           </button>
-          <p className="text-center text-[11px] text-gray-400 mt-2 leading-snug">
+          <p className="text-center text-[11px] text-gray-400 dark:text-slate-500 mt-2 leading-snug">
             {t("auth.googleNote")}
           </p>
         </>
