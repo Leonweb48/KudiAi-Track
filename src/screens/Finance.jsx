@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import Credit               from "./Credit";
 import Aso                  from "./Aso";
 import { useCampaigns }     from "../hooks/useCampaigns";
@@ -10,31 +10,40 @@ import { canDo, getLowestPlanWithFeature } from "../utils/plans";
 import { fmt }              from "../utils/helpers";
 import { AmountDisplay }   from "../components/shared/AmountDisplay";
 
+/* ── Period config ───────────────────────────────────────────────────────────── */
+const PERIODS = [
+  { key: "today", label: "Today" },
+  { key: "week",  label: "Week"  },
+  { key: "month", label: "Month" },
+  { key: "year",  label: "Year"  },
+];
+
+/* ── Finance tool tiles (icons only — backgrounds via card language) ──────────── */
 const FINANCE_TILES = [
   {
     id: "credit", label: "Credit",
-    g1: "#e11d48", g2: "#9f1239",
     icon: "M2 8a2 2 0 012-2h16a2 2 0 012 2v9a2 2 0 01-2 2H4a2 2 0 01-2-2V8z|M2 11h20|M6 15h3",
+    bg: "bg-rose-100 dark:bg-rose-900/30", color: "#e11d48",
   },
   {
     id: "ajo", label: "Ajo Savings",
-    g1: "#7c3aed", g2: "#4c1d95",
     icon: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2|M9 11a4 4 0 100-8 4 4 0 000 8|M23 21v-2a4 4 0 00-3-3.87|M16 3.13a4 4 0 010 7.75",
+    bg: "bg-violet-100 dark:bg-violet-900/30", color: "#7c3aed",
   },
   {
     id: "loan", label: "Business Loan",
-    g1: "#059669", g2: "#065f46",
     icon: "M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6",
+    bg: "bg-emerald-100 dark:bg-emerald-900/30", color: "#059669",
   },
   {
     id: "org", label: "Organisation",
-    g1: "#f59e0b", g2: "#d97706",
     icon: "M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z|M9 22V12h6v10",
+    bg: "bg-amber-100 dark:bg-amber-900/30", color: "#d97706",
   },
   {
     id: "invoices", label: "Invoices",
-    g1: "#ec4899", g2: "#be185d",
     icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2|M9 5a2 2 0 002 2h2a2 2 0 002-2|M9 5a2 2 0 012-2h2a2 2 0 012 2|M9 13h6|M9 17h4",
+    bg: "bg-pink-100 dark:bg-pink-900/30", color: "#ec4899",
   },
 ];
 
@@ -43,91 +52,116 @@ const SECTION_LABELS = {
   org: "Organisation", invoices: "Invoices",
 };
 
-// ── Financial overview card — credit + ajo in one glanceable card ────────────
-function FinanceOverviewCard({ credits, ajoClients, hasCreditAccess, onCreditClick, onAjoClick }) {
-  const totalOut     = credits.reduce((s, c) => s + (c.outstanding || 0), 0);
-  const overdueCount = credits.filter(c => c.status === "overdue").length;
-  const ajoBalance   = ajoClients.reduce((s, c) => s + (c.current_balance || 0), 0);
-  const ajoActive    = ajoClients.filter(c => c.status === "active").length;
+/* ── Period boundary helpers (client-side, no RPC) ──────────────────────────── */
+function getPeriodStart(period) {
+  const now = new Date();
+  if (period === "today") return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (period === "week")  { const d = new Date(now); d.setDate(d.getDate() - 6); d.setHours(0, 0, 0, 0); return d; }
+  if (period === "month") return new Date(now.getFullYear(), now.getMonth(), 1);
+  return new Date(now.getFullYear(), 0, 1);
+}
 
+function parseTxDate(tx) {
+  return tx.transaction_date
+    ? new Date(tx.transaction_date + "T00:00:00")
+    : new Date(tx.created_at);
+}
+
+function filterByRange(txns, start, end) {
+  return txns.filter(t => { const d = parseTxDate(t); return d >= start && d < end; });
+}
+
+function buildSparkData(txns, days = 7) {
+  const now = new Date();
+  return Array.from({ length: days }, (_, i) => {
+    const d = new Date(now);
+    d.setDate(d.getDate() - (days - 1 - i));
+    const dateStr = d.toISOString().slice(0, 10);
+    const day = txns.filter(t => t.transaction_date === dateStr);
+    const inA  = day.filter(t => t.type === "in").reduce((s, t) => s + t.amount, 0);
+    const outA = day.filter(t => t.type === "out").reduce((s, t) => s + t.amount, 0);
+    return inA - outA;
+  });
+}
+
+/* ── Sparkline ───────────────────────────────────────────────────────────────── */
+function Sparkline({ data }) {
+  const W = 200, H = 36;
+  if (!data || data.length < 2) return null;
+  const nonZero = data.some(v => v !== 0);
+  if (!nonZero) return null;
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min || 1;
+  const pts = data.map((v, i) => {
+    const x = (i / (data.length - 1)) * W;
+    const y = H - 4 - ((v - min) / range) * (H - 8);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const lastVal  = data[data.length - 1];
+  const lineClr  = lastVal >= 0 ? "#4ABA34" : "#ef4444";
+  const areaPath = `0,${H} ${pts.join(" ")} ${W},${H}`;
   return (
-    <div className="rounded-2xl p-4 text-white shadow-md relative overflow-hidden bg-gradient-to-br from-[#16255A] to-[#1D3070]">
-      <div className="absolute -top-8 -right-8 w-28 h-28 rounded-full bg-white/5 pointer-events-none" />
-      <div className="absolute -bottom-10 -left-6 w-32 h-32 rounded-full bg-white/5 pointer-events-none" />
-      <p className="text-[10px] font-bold uppercase tracking-widest opacity-60 mb-3 relative">Financial Overview</p>
-      <div className="grid grid-cols-2 gap-3 relative">
-        <button onClick={onCreditClick}
-          className="bg-white/10 rounded-2xl p-3 text-left active:bg-white/20 transition">
-          <p className="text-[9px] font-bold opacity-60 uppercase tracking-wider mb-1.5">
-            {hasCreditAccess ? "Credit Outstanding" : "🔒 Credit"}
-          </p>
-          {hasCreditAccess
-            ? <AmountDisplay amount={totalOut} size="stat" align="left" className="text-white" />
-            : <span className="text-xl font-black leading-tight">Upgrade</span>
-          }
-          {hasCreditAccess && (
-            <p className="text-[10px] opacity-60 mt-1.5">
-              {overdueCount > 0 ? `⚠ ${overdueCount} overdue` : `${credits.length} record${credits.length !== 1 ? "s" : ""}`}
-            </p>
-          )}
-        </button>
-        <button onClick={onAjoClick}
-          className="bg-white/10 rounded-2xl p-3 text-left active:bg-white/20 transition">
-          <p className="text-[9px] font-bold opacity-60 uppercase tracking-wider mb-1.5">Ajo Savings</p>
-          <AmountDisplay amount={ajoBalance} size="stat" align="left" className="text-white" />
-          <p className="text-[10px] opacity-60 mt-1.5">
-            {ajoActive} active client{ajoActive !== 1 ? "s" : ""}
-          </p>
-        </button>
-      </div>
+    <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden="true">
+      <defs>
+        <linearGradient id="spkGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"   stopColor={lineClr} stopOpacity="0.25" />
+          <stop offset="100%" stopColor={lineClr} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <polygon points={areaPath} fill="url(#spkGrad)" />
+      <polyline points={pts.join(" ")} fill="none" stroke={lineClr}
+        strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      {/* Last point dot */}
+      <circle cx={W} cy={pts[pts.length - 1].split(",")[1]} r="3"
+        fill={lineClr} />
+    </svg>
+  );
+}
+
+/* ── Tiny SVG ────────────────────────────────────────────────────────────────── */
+function Svg({ d, size = 16, color = "currentColor", sw = 2 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke={color} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round">
+      {d.split("|").map((p, i) => <path key={i} d={p} />)}
+    </svg>
+  );
+}
+
+/* ── Circular progress ring (dark-mode aware) ────────────────────────────────── */
+function ProgressRing({ pct, size = 120, stroke = 10, color = "#3DA829", children }) {
+  const r    = (size - stroke) / 2;
+  const circ = 2 * Math.PI * r;
+  const dash = (pct / 100) * circ;
+  return (
+    <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
+      <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none"
+          className="stroke-slate-200 dark:stroke-slate-700" strokeWidth={stroke} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none"
+          stroke={color} strokeWidth={stroke}
+          strokeDasharray={`${dash} ${circ}`} strokeLinecap="round" />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">{children}</div>
     </div>
   );
 }
 
-// ── Finance Tools card — prominent tile grid ─────────────────────────────────
-function FinanceToolsCard({ tiles, onSelect }) {
-  return (
-    <div className="bg-white dark:bg-slate-800 rounded-3xl p-5 shadow-card border border-slate-100 dark:border-slate-700/50">
-      <p className="text-[12px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-5">
-        Finance Tools
-      </p>
-      <div className="grid grid-cols-5 gap-y-5">
-        {tiles.map(s => (
-          <button key={s.id} onClick={() => onSelect(s.id)}
-            className="flex flex-col items-center gap-2 active:scale-90 transition-transform duration-150">
-            <div className="w-[50px] h-[50px] rounded-[14px] flex items-center justify-center shadow-md"
-              style={{ background: `linear-gradient(135deg,${s.g1},${s.g2})` }}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
-                stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                {s.icon.split("|").map((d, i) => <path key={i} d={d} />)}
-              </svg>
-            </div>
-            <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400 text-center leading-tight max-w-[52px]">
-              {s.label}
-            </span>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ── Section header with back button ──────────────────────────────────────────
+/* ── Section header with back button ─────────────────────────────────────────── */
 function SectionHeader({ title, onBack }) {
   return (
-    <div className="sticky top-0 z-20 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 px-4 py-3 flex items-center gap-3">
+    <div className="sticky top-0 z-[30] bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 px-4 py-3 flex items-center gap-3">
       <button onClick={onBack}
         className="w-11 h-11 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center active:scale-90 transition">
-        <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-          <path d="M19 12H5M12 5l-7 7 7 7"/>
-        </svg>
+        <Svg d="M19 12H5|M12 5l-7 7 7 7" size={16} sw={2.5} />
       </button>
       <p className="font-bold text-slate-800 dark:text-white text-base">{title}</p>
     </div>
   );
 }
 
-// ── Loan Terms & Conditions text ─────────────────────────────────────────────
+/* ── Loan T&C text ───────────────────────────────────────────────────────────── */
 const LOAN_TERMS = `BUSINESS LOAN ACCESS — TERMS & CONDITIONS
 
 1. ELIGIBILITY
@@ -170,36 +204,18 @@ const ENCOURAGE_MSGS = [
   { emoji: "⚡", title: "Unlock up to ₦5,000,000!", body: "Hit 120 days of consistent activity and you'll be able to apply for up to ₦5,000,000 in business financing — with no collateral required." },
 ];
 
-// ── Circular progress ring ───────────────────────────────────────────────────
-function ProgressRing({ pct, size = 120, stroke = 10, color = "#16a34a", children }) {
-  const r = (size - stroke) / 2;
-  const circ = 2 * Math.PI * r;
-  const dash = (pct / 100) * circ;
-  return (
-    <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
-      <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#e2e8f0" strokeWidth={stroke} />
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color}
-          strokeWidth={stroke} strokeDasharray={`${dash} ${circ}`} strokeLinecap="round" />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">{children}</div>
-    </div>
-  );
-}
-
-// ── Loan sub-screen ───────────────────────────────────────────────────────────
+/* ── Loan sub-screen ─────────────────────────────────────────────────────────── */
 function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) {
-  const [showTC,    setShowTC]    = useState(false);
+  const [showTC,     setShowTC]    = useState(false);
   const [tcAccepted, setTcAccepted] = useState(() => localStorage.getItem(LOAN_TC_KEY) === "1");
-  const [msgIdx,    setMsgIdx]    = useState(0);
-  const [countdown, setCountdown] = useState({ days: 0, hours: 0, mins: 0, secs: 0 });
-  const timerRef = useRef(null);
+  const [msgIdx,     setMsgIdx]    = useState(0);
+  const [countdown,  setCountdown] = useState({ days: 0, hours: 0, mins: 0, secs: 0 });
+  const timerR = useRef(null);
 
-  const transactions  = store?.transactions || [];
-  const credits       = store?.credits      || [];
-  const asoClients    = store?.asoClients   || [];
+  const transactions = store?.transactions || [];
+  const credits      = store?.credits      || [];
+  const asoClients   = store?.asoClients   || [];
 
-  // Eligibility calculation
   const REQUIRED_DAYS = 120;
   const createdMs  = accountCreatedAt ? new Date(accountCreatedAt).getTime() : Date.now();
   const targetMs   = createdMs + REQUIRED_DAYS * 24 * 60 * 60 * 1000;
@@ -208,31 +224,25 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
   const eligible   = daysActive >= REQUIRED_DAYS;
   const progressPct = Math.min(100, Math.round((daysActive / REQUIRED_DAYS) * 100));
 
-  // Activity metrics
-  const totalTxns   = transactions.length;
-  const now30       = new Date(nowMs - 30 * 24 * 60 * 60 * 1000);
-  const recentTxns  = transactions.filter(t => new Date(t.transaction_date) >= now30).length;
+  const totalTxns    = transactions.length;
+  const now30        = new Date(nowMs - 30 * 24 * 60 * 60 * 1000);
+  const recentTxns   = transactions.filter(t => new Date(t.transaction_date) >= now30).length;
   const distinctDays = new Set(transactions.map(t => t.transaction_date?.slice(0, 10))).size;
-  const cashIn      = transactions.filter(t => t.type === "in").reduce((s, t) => s + t.amount, 0);
+  const cashIn       = transactions.filter(t => t.type === "in").reduce((s, t) => s + t.amount, 0);
   const activityScore = Math.min(100, Math.round(
     (Math.min(totalTxns, 100) / 100) * 40 +
     (Math.min(recentTxns, 30) / 30) * 30 +
     (Math.min(distinctDays, 60) / 60) * 30
   ));
-
-  // Estimated loan tier based on activity
   const loanTier = activityScore >= 80 ? "₦3,000,000 – ₦5,000,000+"
     : activityScore >= 50 ? "₦1,000,000 – ₦3,000,000"
     : activityScore >= 25 ? "₦250,000 – ₦1,000,000"
     : "₦100,000 – ₦250,000";
-
-  // Rotating encourage message
   useEffect(() => {
     const id = setInterval(() => setMsgIdx(i => (i + 1) % ENCOURAGE_MSGS.length), 6000);
     return () => clearInterval(id);
   }, []);
 
-  // Countdown timer
   useEffect(() => {
     if (eligible) return;
     const tick = () => {
@@ -245,8 +255,8 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
       });
     };
     tick();
-    timerRef.current = setInterval(tick, 1000);
-    return () => clearInterval(timerRef.current);
+    timerR.current = setInterval(tick, 1000);
+    return () => clearInterval(timerR.current);
   }, [eligible, targetMs]);
 
   const acceptTC = () => {
@@ -258,18 +268,18 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
 
   const msg = ENCOURAGE_MSGS[msgIdx];
 
-  // ── Not on enterprise plan ─────────────────────────────────────────────────
+  /* ── Not on enterprise plan ──────────────────────────────────────────────── */
   if (!isEnterprise) {
     return (
       <div className="px-4 pt-6 pb-28">
-        <div className="rounded-3xl overflow-hidden mb-5 bg-gradient-to-br from-[#065f46] to-[#047857]">
+        <div className="rounded-3xl overflow-hidden mb-5 bg-gradient-to-br from-emerald-900 to-emerald-700">
           <div className="px-5 py-6 text-white">
             <p className="text-[10px] font-bold uppercase tracking-[3px] opacity-60 mb-2">Business Loan</p>
             <p className="text-4xl font-black mb-1">₦5,000,000+</p>
             <p className="text-sm opacity-70">Quick financing — no collateral required</p>
           </div>
           <div className="bg-black/20 px-5 py-3 flex items-center gap-2">
-            <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.5} strokeLinecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+            <Svg d="M7 11V7a5 5 0 0110 0v4|M3 11h18v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" size={14} color="white" sw={2.5} />
             <p className="text-xs text-white/70 font-semibold">Enterprise Plan required to access loans</p>
           </div>
         </div>
@@ -277,32 +287,41 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
           {ENCOURAGE_MSGS.slice(0, 3).map(m => (
             <div key={m.title} className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 border border-slate-100 dark:border-slate-700/50 flex items-start gap-3">
               <span className="text-xl flex-shrink-0">{m.emoji}</span>
-              <div><p className="text-xs font-bold text-slate-700 dark:text-slate-200">{m.title}</p><p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5 leading-relaxed">{m.body}</p></div>
+              <div>
+                <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{m.title}</p>
+                <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5 leading-relaxed">{m.body}</p>
+              </div>
             </div>
           ))}
         </div>
         <button onClick={onUpgrade}
-          className="w-full py-4 rounded-2xl font-bold text-sm text-white shadow-md active:scale-95 transition bg-gradient-to-br from-[#065f46] to-[#047857]">
+          className="w-full py-4 rounded-2xl font-bold text-sm text-white shadow-md active:scale-95 transition bg-gradient-to-br from-emerald-900 to-emerald-700">
           Upgrade to {getLowestPlanWithFeature("loanAccess")?.name ?? "Enterprise"} — Unlock Loans
         </button>
       </div>
     );
   }
 
-  // ── T&C Modal ──────────────────────────────────────────────────────────────
+  /* ── T&C Modal ────────────────────────────────────────────────────────────── */
   const TCModal = () => (
-    <div className="fixed inset-0 z-[70] bg-black/70 flex flex-col items-center justify-end backdrop-blur-sm" onClick={() => setShowTC(false)}>
-      <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-t-3xl flex flex-col" style={{ maxHeight: "92dvh" }} onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[70] bg-black/70 flex flex-col items-center justify-end backdrop-blur-sm"
+      onClick={() => setShowTC(false)}>
+      <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-t-3xl flex flex-col"
+        style={{ maxHeight: "92dvh" }} onClick={e => e.stopPropagation()}>
         <div className="px-5 pt-5 pb-3 border-b border-slate-100 dark:border-slate-800 flex-shrink-0">
           <p className="text-base font-black text-slate-800 dark:text-white">Terms & Conditions</p>
           <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Read carefully before applying for a loan</p>
         </div>
-        <div className="flex-1 overflow-y-auto px-5 py-4" style={{ WebkitOverflowScrolling: "touch", overscrollBehavior: "contain" }}>
-          <pre className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed whitespace-pre-wrap font-sans">{LOAN_TERMS}</pre>
+        <div className="flex-1 overflow-y-auto px-5 py-4"
+          style={{ WebkitOverflowScrolling: "touch", overscrollBehavior: "contain" }}>
+          <pre className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed whitespace-pre-wrap font-sans">
+            {LOAN_TERMS}
+          </pre>
         </div>
-        <div className="px-5 py-4 border-t border-slate-100 dark:border-slate-800 flex-shrink-0" style={{ paddingBottom: "calc(1rem + env(safe-area-inset-bottom, 0px))" }}>
+        <div className="px-5 py-4 border-t border-slate-100 dark:border-slate-800 flex-shrink-0"
+          style={{ paddingBottom: "calc(1rem + env(safe-area-inset-bottom, 0px))" }}>
           <button onClick={acceptTC}
-            className="w-full py-4 rounded-2xl font-bold text-sm text-white mb-2 active:scale-95 transition bg-gradient-to-br from-[#065f46] to-[#16a34a]">
+            className="w-full py-4 rounded-2xl font-bold text-sm text-white mb-2 active:scale-95 transition bg-gradient-to-br from-emerald-900 to-green-600">
             I Accept & Continue to Apply
           </button>
           <button onClick={() => setShowTC(false)}
@@ -314,20 +333,18 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
     </div>
   );
 
-  // ── Countdown / building eligibility ───────────────────────────────────────
+  /* ── Not yet eligible — countdown ────────────────────────────────────────── */
   if (!eligible) {
     return (
       <div className="px-4 pt-5 pb-28">
         {showTC && <TCModal />}
 
-        {/* Hero countdown card */}
-        <div className="rounded-3xl overflow-hidden mb-5 shadow-lg bg-gradient-to-br from-[#1e293b] to-[#0f172a]">
+        <div className="rounded-3xl overflow-hidden mb-5 shadow-lg bg-gradient-to-br from-slate-800 to-slate-900">
           <div className="px-5 pt-5 pb-1 text-white">
             <p className="text-[10px] font-bold uppercase tracking-[3px] opacity-50 mb-1">Loan Access Unlocks In</p>
             <p className="text-4xl font-black mb-1 text-green-400">₦5,000,000+</p>
             <p className="text-xs opacity-50 mb-4">Available once you reach 120 days of active use</p>
           </div>
-          {/* Countdown blocks */}
           <div className="grid grid-cols-4 gap-2 px-5 pb-5">
             {[
               { val: countdown.days,  label: "Days"    },
@@ -343,11 +360,10 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
           </div>
         </div>
 
-        {/* Progress ring + activity score */}
         <div className="bg-white dark:bg-slate-800 rounded-3xl p-5 mb-4 border border-slate-100 dark:border-slate-700/50 shadow-card">
           <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4">Eligibility Progress</p>
           <div className="flex items-center gap-5">
-            <ProgressRing pct={progressPct} size={100} stroke={9} color="#16a34a">
+            <ProgressRing pct={progressPct} size={100} stroke={9} color="#3DA829">
               <p className="text-xl font-black text-slate-800 dark:text-white">{progressPct}%</p>
               <p className="text-[9px] text-slate-400 font-bold">Done</p>
             </ProgressRing>
@@ -372,8 +388,6 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
               </div>
             </div>
           </div>
-
-          {/* Potential amount */}
           <div className="mt-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl px-4 py-3 border border-emerald-100 dark:border-emerald-800/40">
             <p className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider mb-0.5">Based on current activity, you may qualify for</p>
             <p className="text-lg font-black text-emerald-700 dark:text-emerald-300">{loanTier}</p>
@@ -381,21 +395,19 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
           </div>
         </div>
 
-        {/* Activity stats */}
         <div className="grid grid-cols-3 gap-2.5 mb-4">
           {[
-            { label: "Transactions", val: totalTxns, icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2|M9 5a2 2 0 002 2h2a2 2 0 002-2", color: "text-blue-600 dark:text-blue-400", bg: "bg-blue-50 dark:bg-blue-900/20" },
-            { label: "Last 30 days", val: recentTxns, icon: "M8 6h13M8 12h13M8 18h13", color: "text-violet-600 dark:text-violet-400", bg: "bg-violet-50 dark:bg-violet-900/20" },
-            { label: "Credit records", val: credits.length, icon: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2|M9 11a4 4 0 100-8 4 4 0 000 8", color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-900/20" },
+            { label: "Transactions", val: totalTxns,    color: "text-blue-600 dark:text-blue-400",   bg: "bg-blue-50 dark:bg-blue-900/20"   },
+            { label: "Last 30 days",  val: recentTxns,  color: "text-violet-600 dark:text-violet-400", bg: "bg-violet-50 dark:bg-violet-900/20" },
+            { label: "Credit records", val: credits.length, color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-900/20" },
           ].map(s => (
             <div key={s.label} className={`${s.bg} rounded-2xl p-3 border border-slate-100 dark:border-slate-700/30 text-center`}>
-              <p className={`text-xl font-black tabular ${s.color}`}>{s.val}</p>
+              <p className={`text-xl font-black tabular-nums ${s.color}`}>{s.val}</p>
               <p className="text-[10px] text-slate-500 dark:text-slate-400 font-bold mt-0.5 leading-tight">{s.label}</p>
             </div>
           ))}
         </div>
 
-        {/* Rotating encouragement */}
         <div className="bg-white dark:bg-slate-800 rounded-3xl px-5 py-4 border border-slate-100 dark:border-slate-700/50 shadow-card mb-4">
           <div className="flex items-start gap-3">
             <span className="text-2xl flex-shrink-0">{msg.emoji}</span>
@@ -411,7 +423,6 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
           </div>
         </div>
 
-        {/* What partners look for */}
         <div className="bg-white dark:bg-slate-800 rounded-3xl p-5 border border-slate-100 dark:border-slate-700/50 shadow-card">
           <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3">What Our Partners Analyse</p>
           <div className="space-y-2">
@@ -425,8 +436,8 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
               <div key={item.text} className="flex items-center gap-3">
                 <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${item.done ? "bg-emerald-100 dark:bg-emerald-900/30" : "bg-slate-100 dark:bg-slate-700"}`}>
                   {item.done
-                    ? <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={3} strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
-                    : <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={2.5} strokeLinecap="round"><circle cx="12" cy="12" r="10"/></svg>
+                    ? <Svg d="M20 6L9 17l-5-5" size={12} color="#3DA829" sw={3} />
+                    : <Svg d="M12 2a10 10 0 100 20 10 10 0 000-20" size={12} color="#94a3b8" sw={2.5} />
                   }
                 </div>
                 <p className={`text-xs font-semibold ${item.done ? "text-emerald-700 dark:text-emerald-400" : "text-slate-500 dark:text-slate-400"}`}>{item.text}</p>
@@ -438,17 +449,16 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
     );
   }
 
-  // ── Eligible — ready to apply ──────────────────────────────────────────────
+  /* ── Eligible — ready to apply ───────────────────────────────────────────── */
   return (
     <div className="px-4 pt-5 pb-28">
       {showTC && <TCModal />}
 
-      {/* Hero */}
-      <div className="rounded-3xl overflow-hidden mb-5 shadow-xl bg-[linear-gradient(135deg,#064e3b,#065f46,#047857)]">
+      <div className="rounded-3xl overflow-hidden mb-5 shadow-xl bg-gradient-to-br from-emerald-950 to-emerald-700">
         <div className="px-5 pt-6 pb-4 text-white">
           <div className="flex items-center gap-2 mb-2">
             <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center">
-              <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.5} strokeLinecap="round"><path d="M9 12l2 2 4-4"/></svg>
+              <Svg d="M9 12l2 2 4-4" size={12} color="white" sw={2.5} />
             </div>
             <p className="text-xs font-bold text-white/60 uppercase tracking-widest">You're Eligible!</p>
           </div>
@@ -467,19 +477,17 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
         </div>
       </div>
 
-      {/* Your estimated tier */}
       <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl px-5 py-4 mb-4 border border-emerald-200 dark:border-emerald-800/40">
         <p className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider mb-1">Your Estimated Loan Range</p>
         <p className="text-2xl font-black text-emerald-800 dark:text-emerald-300">{loanTier}</p>
         <p className="text-xs text-emerald-700/60 dark:text-emerald-400/60 mt-1">Final amount determined by our partners after review</p>
       </div>
 
-      {/* Activity snapshot what partners see */}
       <div className="bg-white dark:bg-slate-800 rounded-3xl p-5 mb-4 border border-slate-100 dark:border-slate-700/50 shadow-card">
         <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4">Your Business Profile</p>
         <div className="grid grid-cols-2 gap-3">
           {[
-            { label: "Days Active",       val: daysActive,          color: "text-emerald-600 dark:text-emerald-400" },
+            { label: "Days Active",        val: daysActive,          color: "text-emerald-600 dark:text-emerald-400" },
             { label: "Total Transactions", val: totalTxns,           color: "text-blue-600 dark:text-blue-400" },
             { label: "Last 30 Days",       val: `${recentTxns} txns`, color: "text-violet-600 dark:text-violet-400" },
             { label: "Total Revenue",      val: fmt(cashIn),         color: "text-slate-800 dark:text-white" },
@@ -488,23 +496,22 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
           ].map(s => (
             <div key={s.label} className="bg-slate-50 dark:bg-slate-700/50 rounded-xl px-3 py-2.5">
               <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wide mb-0.5">{s.label}</p>
-              <p className={`text-base font-black tabular ${s.color}`}>{s.val}</p>
+              <p className={`text-base font-black tabular-nums ${s.color}`}>{s.val}</p>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Features */}
       <div className="space-y-2 mb-5">
         {[
-          { icon: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z", text: "Fast review within 48–72 hours", sub: "Our partners respond quickly" },
+          { icon: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z", text: "Fast review within 48–72 hours",    sub: "Our partners respond quickly" },
           { icon: "M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6", text: "Competitive interest rates", sub: "Based on your business profile" },
-          { icon: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z", text: "No collateral required", sub: "Your data is your guarantee" },
-          { icon: "M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01", text: "Flexible repayment terms", sub: "Tailored to your cash flow" },
+          { icon: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z", text: "No collateral required",             sub: "Your data is your guarantee" },
+          { icon: "M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01", text: "Flexible repayment terms",     sub: "Tailored to your cash flow" },
         ].map(f => (
           <div key={f.text} className="flex items-center gap-3 bg-white dark:bg-slate-800 rounded-2xl px-4 py-3 border border-slate-100 dark:border-slate-700/50 shadow-sm">
             <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-900/30 flex items-center justify-center flex-shrink-0">
-              <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d={f.icon}/></svg>
+              <Svg d={f.icon} size={16} color="#3DA829" sw={2} />
             </div>
             <div>
               <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{f.text}</p>
@@ -514,7 +521,6 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
         ))}
       </div>
 
-      {/* Encouragement */}
       <div className="bg-white dark:bg-slate-800 rounded-3xl px-5 py-4 border border-slate-100 dark:border-slate-700/50 shadow-card mb-5">
         <div className="flex items-start gap-3">
           <span className="text-2xl flex-shrink-0">{msg.emoji}</span>
@@ -527,7 +533,7 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
 
       <button
         onClick={() => tcAccepted ? onApply() : setShowTC(true)}
-        className="w-full py-4 rounded-2xl font-bold text-sm text-white active:scale-95 transition shadow-lg bg-gradient-to-br from-[#064e3b] to-[#16a34a]">
+        className="w-full py-4 rounded-2xl font-bold text-sm text-white active:scale-95 transition shadow-lg bg-gradient-to-br from-emerald-950 to-green-600">
         {tcAccepted ? "Apply for Business Loan →" : "View Terms & Apply →"}
       </button>
       <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center mt-2">
@@ -537,7 +543,10 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
   );
 }
 
-// ── Main Finance component ────────────────────────────────────────────────────
+/* ── Expense category label map ──────────────────────────────────────────────── */
+const CAT_LABEL = { expense: "Expense", stock: "Stock Purchase", other: "Other" };
+
+/* ── Main Finance component ──────────────────────────────────────────────────── */
 export default function Finance({
   store, plan, onUpgrade,
   autoOpenTab, onAutoOpened,
@@ -548,7 +557,10 @@ export default function Finance({
 }) {
   const [section,  setSection]  = useState(autoOpenTab || null);
   const [showLoan, setShowLoan] = useState(false);
-  const { slotMap: camSlots, loading: camLoading, recordEvent: recordCamEvent } = useCampaigns(["announcement_bar", "upsell_inline"], "business", "business.finance");
+  const [period,   setPeriod]   = useState("month");
+
+  const { slotMap: camSlots, loading: camLoading, recordEvent: recordCamEvent } =
+    useCampaigns(["announcement_bar", "upsell_inline"], "business", "business.finance");
   const financeAnnBars = camSlots.announcement_bar || [];
 
   useEffect(() => {
@@ -558,85 +570,253 @@ export default function Finance({
     }
   }, [autoOpenTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const credits         = store.credits || [];
+  const credits         = store.credits    || [];
+  const asoClients      = store.asoClients || [];
   const hasCreditAccess = canDo(plan, "credit");
   const isEnterprise    = canDo(plan, "loanAccess");
 
-  const openSection = (id) => {
-    setSection(id);
-    onAutoOpened?.();
-  };
+  const openSection = (id) => { setSection(id); onAutoOpened?.(); };
 
-  // ── Sub-section view ────────────────────────────────────────────────────────
+  /* ── Period-filtered P&L (client-side) ───────────────────────────────────── */
+  const { moneyIn, moneyOut, netPL, inCount, outCount,
+          trendPct, trendUp, sparkData, expenseBreakdown } = useMemo(() => {
+    const transactions = store.transactions || [];
+    const now       = new Date();
+    const start     = getPeriodStart(period);
+    const diffMs    = now - start;
+    const priorStart = new Date(start - diffMs);
+    const priorEnd  = start;
+
+    const curr  = filterByRange(transactions, start, now);
+    const prior = filterByRange(transactions, priorStart, priorEnd);
+
+    const mIn    = curr.filter(t => t.type === "in").reduce((s, t) => s + t.amount, 0);
+    const mOut   = curr.filter(t => t.type === "out").reduce((s, t) => s + t.amount, 0);
+    const pIn    = prior.filter(t => t.type === "in").reduce((s, t) => s + t.amount, 0);
+    const pOut   = prior.filter(t => t.type === "out").reduce((s, t) => s + t.amount, 0);
+    const netNow  = mIn - mOut;
+    const netPrev = pIn - pOut;
+
+    let tPct = null, tUp = null;
+    if (netPrev !== 0) {
+      tPct = Math.abs(Math.round(((netNow - netPrev) / Math.abs(netPrev)) * 100));
+      tUp  = netNow >= netPrev;
+    }
+
+    const expMap = {};
+    curr.filter(t => t.type === "out").forEach(t => {
+      const cat = t.category || "other";
+      expMap[cat] = (expMap[cat] || 0) + t.amount;
+    });
+    const expBreak = Object.entries(expMap).sort((a, b) => b[1] - a[1]).slice(0, 4);
+
+    return {
+      moneyIn:          mIn,
+      moneyOut:         mOut,
+      netPL:            netNow,
+      inCount:          curr.filter(t => t.type === "in").length,
+      outCount:         curr.filter(t => t.type === "out").length,
+      trendPct:         tPct,
+      trendUp:          tUp,
+      sparkData:        buildSparkData(transactions),
+      expenseBreakdown: expBreak,
+    };
+  }, [store.transactions, period]);
+
+  /* ── Finance tools summary values ─────────────────────────────────────────── */
+  const creditOutstanding = credits.reduce((s, c) => s + (c.outstanding || 0), 0);
+  const overdueCount      = credits.filter(c => c.status === "overdue").length;
+  const ajoBalance        = asoClients.reduce((s, c) => s + (c.current_balance || 0), 0);
+  const ajoActive         = asoClients.filter(c => c.status === "active").length;
+
+  /* ── Sub-section view ─────────────────────────────────────────────────────── */
   if (section) {
     return (
       <div className="flex flex-col min-h-full">
         <SectionHeader title={SECTION_LABELS[section]} onBack={() => setSection(null)} />
 
-        {section === "credit" && (
-          <Credit store={store} plan={plan} autoOpen={false} onAutoOpened={null} onUpgrade={onUpgrade} embedded />
+        {section === "credit"  && <Credit store={store} plan={plan} autoOpen={false} onAutoOpened={null} onUpgrade={onUpgrade} embedded />}
+        {section === "ajo"     && <Aso    store={store} plan={plan} autoOpen={false} onAutoOpened={null} onUpgrade={onUpgrade} embedded />}
+        {section === "loan"    && (
+          <LoanTab isEnterprise={isEnterprise} accountCreatedAt={session?.user?.created_at}
+            onUpgrade={onUpgrade} onApply={() => setShowLoan(true)} store={store} />
         )}
-        {section === "ajo" && (
-          <Aso store={store} plan={plan} autoOpen={false} onAutoOpened={null} onUpgrade={onUpgrade} embedded />
-        )}
-        {section === "loan" && (
-          <LoanTab
-            isEnterprise={isEnterprise}
-            accountCreatedAt={session?.user?.created_at}
-            onUpgrade={onUpgrade}
-            onApply={() => setShowLoan(true)}
-            store={store}
-          />
-        )}
-        {section === "org" && (
-          <CoopList userId={userId} onOpen={onSelectCoopOrg} onClose={null} embedded />
-        )}
+        {section === "org"      && <CoopList userId={userId} onOpen={onSelectCoopOrg} onClose={null} embedded />}
         {section === "invoices" && (
-          <Invoices
-            invoiceHook={invoiceHook}
-            plan={plan}
-            onUpgrade={onUpgrade}
-            profile={store.profile}
-            inventory={inventory}
-            addTransaction={store.addTransaction}
-            userId={userId}
-          />
+          <Invoices invoiceHook={invoiceHook} plan={plan} onUpgrade={onUpgrade}
+            profile={store.profile} inventory={inventory}
+            addTransaction={store.addTransaction} userId={userId} />
         )}
 
         {showLoan && (
-          <LoanApplicationModal
-            session={session}
-            profile={store.profile}
-            onClose={() => setShowLoan(false)}
-          />
+          <LoanApplicationModal session={session} profile={store.profile} onClose={() => setShowLoan(false)} />
         )}
       </div>
     );
   }
 
-  const asoClients = store.asoClients || [];
+  /* Preview slices */
   const urgentCredits = hasCreditAccess
-    ? [...credits].sort((a, b) => {
-        if (a.status === "overdue" && b.status !== "overdue") return -1;
-        if (b.status === "overdue" && a.status !== "overdue") return 1;
-        return 0;
-      }).slice(0, 2)
+    ? [...credits].sort((a, b) => (a.status === "overdue" && b.status !== "overdue") ? -1 : (b.status === "overdue" && a.status !== "overdue") ? 1 : 0).slice(0, 2)
     : [];
   const activeAjo = asoClients.filter(c => c.status === "active").slice(0, 2);
 
-  // ── Finance dashboard ───────────────────────────────────────────────────────
+  /* ── Finance dashboard ────────────────────────────────────────────────────── */
   return (
     <div className="px-4 pt-4 pb-28 space-y-4">
       <AnnouncementBarSlot campaigns={financeAnnBars} loading={camLoading} recordEvent={recordCamEvent} />
-      <FinanceOverviewCard
-        credits={credits}
-        ajoClients={asoClients}
-        hasCreditAccess={hasCreditAccess}
-        onCreditClick={() => hasCreditAccess ? openSection("credit") : onUpgrade?.()}
-        onAjoClick={() => openSection("ajo")}
-      />
 
-      {/* ── Recent credit entries preview ── */}
+      {/* ── P&L Hero Card ── */}
+      <div className="rounded-3xl p-5 text-white relative overflow-hidden bg-gradient-to-br from-[#16255A] to-[#1D3070] shadow-md">
+        <div className="absolute -top-8 -right-8 w-28 h-28 rounded-full bg-white/5 pointer-events-none" />
+        <div className="absolute -bottom-10 -left-6 w-32 h-32 rounded-full bg-white/5 pointer-events-none" />
+
+        {/* Period pills */}
+        <div className="flex gap-1.5 mb-4 relative">
+          {PERIODS.map(p => (
+            <button key={p.key} onClick={() => setPeriod(p.key)}
+              className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition min-h-[28px] ${
+                period === p.key
+                  ? "bg-white text-[#16255A]"
+                  : "bg-white/15 text-white/70 active:bg-white/25"
+              }`}>
+              {p.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Net P&L */}
+        <div className="relative mb-1">
+          <p className="text-[9px] font-bold uppercase tracking-widest opacity-60 mb-1">Net Cash Flow</p>
+          <AmountDisplay
+            amount={Math.abs(netPL)} size="hero" align="left"
+            className={netPL >= 0 ? "text-green-400" : "text-red-400"}
+          />
+          {netPL < 0 && <span className="text-red-400 text-lg font-black absolute left-0 -top-0.5">−</span>}
+        </div>
+
+        {/* Trend badge */}
+        {trendPct !== null && (
+          <div className="flex items-center gap-2 mb-3">
+            <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${
+              trendUp ? "bg-green-500/20 text-green-300" : "bg-red-500/20 text-red-300"
+            }`}>
+              {trendUp ? "↑" : "↓"} {trendPct}% vs prior period
+            </span>
+          </div>
+        )}
+
+        {/* 7-day sparkline */}
+        <div className="mt-2 opacity-80">
+          <Sparkline data={sparkData} />
+        </div>
+      </div>
+
+      {/* ── Money In / Money Out paired cards ── */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="bg-green-50 dark:bg-green-900/20 rounded-2xl p-4 border border-green-100 dark:border-green-800/40">
+          <p className="text-[9px] font-bold uppercase tracking-widest text-green-700 dark:text-green-400 opacity-70 mb-1.5">Money In</p>
+          <AmountDisplay amount={moneyIn} size="stat" colorBy="in" align="left" />
+          <p className="text-[10px] text-green-700/50 dark:text-green-400/50 mt-1.5 font-semibold">
+            {inCount} {inCount === 1 ? "entry" : "entries"}
+          </p>
+        </div>
+        <div className="bg-red-50 dark:bg-red-900/20 rounded-2xl p-4 border border-red-100 dark:border-red-800/40">
+          <p className="text-[9px] font-bold uppercase tracking-widest text-red-700 dark:text-red-400 opacity-70 mb-1.5">Money Out</p>
+          <AmountDisplay amount={moneyOut} size="stat" colorBy="out" align="left" />
+          <p className="text-[10px] text-red-700/50 dark:text-red-400/50 mt-1.5 font-semibold">
+            {outCount} {outCount === 1 ? "entry" : "entries"}
+          </p>
+        </div>
+      </div>
+
+      {/* ── Expense category breakdown ── */}
+      {expenseBreakdown.length > 0 && (
+        <div className="bg-white dark:bg-slate-800 rounded-3xl p-4 border border-slate-100 dark:border-slate-700/50 shadow-card">
+          <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3.5">Where it went</p>
+          <div className="space-y-3">
+            {expenseBreakdown.map(([cat, total]) => {
+              const pct = Math.round((total / expenseBreakdown[0][1]) * 100);
+              return (
+                <div key={cat}>
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 capitalize">
+                      {CAT_LABEL[cat] || cat}
+                    </p>
+                    <p className="text-xs font-extrabold text-slate-700 dark:text-slate-200 tabular-nums">{fmt(total)}</p>
+                  </div>
+                  <div className="h-1.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                    <div className="h-full bg-brand-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Finance Tools — card language ── */}
+      <div className="bg-white dark:bg-slate-800 rounded-3xl p-4 border border-slate-100 dark:border-slate-700/50 shadow-card">
+        <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3.5">Finance Tools</p>
+
+        {/* Top row: Credit + Ajo as data cards */}
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <button
+            onClick={() => hasCreditAccess ? openSection("credit") : onUpgrade?.()}
+            className="flex flex-col gap-1.5 bg-slate-50 dark:bg-slate-700/50 rounded-2xl p-3.5 active:scale-95 transition text-left border border-slate-100 dark:border-slate-700/30 min-h-[44px]">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-rose-100 dark:bg-rose-900/30 flex items-center justify-center flex-shrink-0">
+                <Svg d={FINANCE_TILES[0].icon} size={13} color="#e11d48" sw={2} />
+              </div>
+              <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                {hasCreditAccess ? "Credit" : "🔒 Credit"}
+              </p>
+            </div>
+            {hasCreditAccess ? (
+              <>
+                <AmountDisplay amount={creditOutstanding} size="small" colorBy="out" align="left" />
+                <p className="text-[10px] text-slate-400 dark:text-slate-500">
+                  {overdueCount > 0 ? `⚠ ${overdueCount} overdue` : `${credits.length} record${credits.length !== 1 ? "s" : ""}`}
+                </p>
+              </>
+            ) : (
+              <p className="text-xs font-bold text-rose-600 dark:text-rose-400">Upgrade to access</p>
+            )}
+          </button>
+
+          <button
+            onClick={() => openSection("ajo")}
+            className="flex flex-col gap-1.5 bg-slate-50 dark:bg-slate-700/50 rounded-2xl p-3.5 active:scale-95 transition text-left border border-slate-100 dark:border-slate-700/30 min-h-[44px]">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center flex-shrink-0">
+                <Svg d={FINANCE_TILES[1].icon} size={13} color="#7c3aed" sw={2} />
+              </div>
+              <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400">Ajo Savings</p>
+            </div>
+            <AmountDisplay amount={ajoBalance} size="small" align="left" />
+            <p className="text-[10px] text-slate-400 dark:text-slate-500">
+              {ajoActive} active client{ajoActive !== 1 ? "s" : ""}
+            </p>
+          </button>
+        </div>
+
+        {/* Bottom row: Loan / Org / Invoices — smaller icon tiles */}
+        <div className="grid grid-cols-3 gap-2">
+          {FINANCE_TILES.slice(2).map(tile => (
+            <button key={tile.id} onClick={() => openSection(tile.id)}
+              className="flex flex-col items-center gap-1.5 py-3 rounded-2xl bg-slate-50 dark:bg-slate-700/50 active:scale-95 transition border border-slate-100 dark:border-slate-700/30 min-h-[44px]">
+              <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${tile.bg}`}>
+                <Svg d={tile.icon} size={15} color={tile.color} sw={2} />
+              </div>
+              <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400 text-center leading-tight px-1">
+                {tile.label}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Pending credits preview ── */}
       {hasCreditAccess && urgentCredits.length > 0 && (
         <div>
           <div className="flex items-center justify-between mb-2.5">
@@ -645,10 +825,12 @@ export default function Finance({
               className="text-[11px] font-bold text-brand-600 dark:text-brand-400">See all</button>
           </div>
           {urgentCredits.map(c => (
-            <div key={c.id}
-              className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 mb-2 border border-slate-100 dark:border-slate-700/50 shadow-card flex items-center gap-3">
+            <button key={c.id} onClick={() => openSection("credit")}
+              className="w-full text-left bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 mb-2 border border-slate-100 dark:border-slate-700/50 shadow-card flex items-center gap-3 active:scale-[0.98] transition">
               <div className="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
-                <span className="text-sm font-black text-amber-600 dark:text-amber-400">{c.customer_name?.[0]?.toUpperCase() || "?"}</span>
+                <span className="text-sm font-black text-amber-600 dark:text-amber-400">
+                  {c.customer_name?.[0]?.toUpperCase() || "?"}
+                </span>
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-bold text-slate-800 dark:text-white truncate">{c.customer_name}</p>
@@ -661,13 +843,13 @@ export default function Finance({
                   {c.due_date && <span className="text-[10px] text-slate-400">Due {c.due_date}</span>}
                 </div>
               </div>
-              <p className="text-sm font-extrabold text-amber-600 dark:text-amber-400 tabular flex-shrink-0">{fmt(c.outstanding)}</p>
-            </div>
+              <AmountDisplay amount={c.outstanding} size="small" colorBy="out" align="right" className="flex-shrink-0" />
+            </button>
           ))}
         </div>
       )}
 
-      {/* ── Active ajo clients preview ── */}
+      {/* ── Active Ajo preview ── */}
       {activeAjo.length > 0 && (
         <div>
           <div className="flex items-center justify-between mb-2.5">
@@ -675,25 +857,28 @@ export default function Finance({
             <button onClick={() => openSection("ajo")}
               className="text-[11px] font-bold text-brand-600 dark:text-brand-400">See all</button>
           </div>
-          {activeAjo.map(c => (
-            <div key={c.id}
-              className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 mb-2 border border-slate-100 dark:border-slate-700/50 shadow-card flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center flex-shrink-0">
-                <span className="text-sm font-black text-violet-600 dark:text-violet-400">{c.name?.[0]?.toUpperCase() || "?"}</span>
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-slate-800 dark:text-white truncate">{c.name}</p>
-                {c.next_contribution_date && (
-                  <p className="text-[10px] text-slate-400 mt-0.5">Next: {c.next_contribution_date}</p>
-                )}
-              </div>
-              <p className="text-sm font-extrabold text-violet-600 dark:text-violet-400 tabular flex-shrink-0">{fmt(c.current_balance || 0)}</p>
-            </div>
-          ))}
+          {activeAjo.map(c => {
+            const displayName = c.full_name || c.name || "";
+            return (
+              <button key={c.id} onClick={() => openSection("ajo")}
+                className="w-full text-left bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 mb-2 border border-slate-100 dark:border-slate-700/50 shadow-card flex items-center gap-3 active:scale-[0.98] transition">
+                <div className="w-10 h-10 rounded-full bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center flex-shrink-0">
+                  <span className="text-sm font-black text-violet-600 dark:text-violet-400">
+                    {displayName[0]?.toUpperCase() || "?"}
+                  </span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-slate-800 dark:text-white truncate">{displayName}</p>
+                  {c.next_contribution_date && (
+                    <p className="text-[10px] text-slate-400 mt-0.5">Next: {c.next_contribution_date}</p>
+                  )}
+                </div>
+                <AmountDisplay amount={c.current_balance || 0} size="small" align="right" className="flex-shrink-0" />
+              </button>
+            );
+          })}
         </div>
       )}
-
-      <FinanceToolsCard tiles={FINANCE_TILES} onSelect={openSection} />
     </div>
   );
 }
