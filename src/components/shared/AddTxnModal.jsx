@@ -240,15 +240,7 @@ export function AddTxnModal({
     setSaveError("");
   };
 
-  /* ── Unit-price ↔ amount relationship ── */
-  const handleUnitPrice = (v) => {
-    setUnitPrice(v);
-    const u = parseFloat(v), q = qtyNum;
-    if (u > 0) {
-      const t = u * q;
-      setAmtStr(Number.isInteger(t) ? String(t) : t.toFixed(2));
-    }
-  };
+  /* ── Qty stepper recalculates amount when unit price is known (set by autocomplete) ── */
   const handleQty = (v) => {
     setQty(v);
     const u = parseFloat(unitPrice), q = parseInt(v) || 1;
@@ -310,10 +302,6 @@ export function AddTxnModal({
           /* Voice feedback (unchanged path) */
           if (Capacitor.isNativePlatform()) {
             speakEvent(type === "in" ? "cashIn" : "cashOut", getLang(), { amount: amtValue }).catch(() => {});
-            /* Haptic — optional plugin */
-            import("@capacitor/haptics").then(({ Haptics, ImpactStyle }) =>
-              Haptics.impact({ style: ImpactStyle.Medium }).catch(() => {})
-            ).catch(() => {});
           } else {
             speakConfirmation(type === "in" ? "cashIn" : "cashOut", getLang());
           }
