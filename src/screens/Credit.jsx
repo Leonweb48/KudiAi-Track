@@ -417,7 +417,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
             const pct       = Math.min(100, ((c.amount_paid || 0) / (c.total_amount || 1)) * 100);
             const initials  = (c.customer_name || "?").slice(0, 2).toUpperCase();
             const overdueDays = daysOverdue(c.due_date);
-            const isOverdue = c.status === "overdue";
+            const isOverdue = overdueDays > 0 && c.status !== "paid" && c.status !== "voided";
             const isPaid    = c.status === "paid";
             const isVoided  = c.status === "voided";
 
