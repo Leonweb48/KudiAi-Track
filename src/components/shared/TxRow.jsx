@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { AmountDisplay } from "./AmountDisplay";
+import { fmt } from "../../utils/helpers";
 
 /* ── Tiny SVG renderer ──────────────────────────────────────────────── */
 function Svg({ d, size = 18, color = "currentColor", sw = 2 }) {
@@ -238,9 +239,57 @@ function TxRowTransactions({ tx, hidden, onClick, staffName, onSwipeReceipt, onS
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
+   Stock variant — inventory movement row
+   ═══════════════════════════════════════════════════════════════════════ */
+const STOCK_MOV_STYLE = {
+  sale:       { bg: "bg-green-100 dark:bg-green-900/30",  color: "#16a34a",
+                icon: "M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" },
+  restock:    { bg: "bg-blue-100 dark:bg-blue-900/30",    color: "#2563eb",
+                icon: "M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z|M3.27 6.96L12 12.01l8.73-5.05|M12 22.08V12" },
+  adjustment: { bg: "bg-slate-100 dark:bg-slate-700/60",  color: "#475569",
+                icon: "M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7|M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 8.5-8.5z" },
+};
+const STOCK_TYPE_LABEL = { sale: "Sale", restock: "Restock", adjustment: "Adjustment" };
+
+function TxRowStock({ tx }) {
+  const style = STOCK_MOV_STYLE[tx.type] || STOCK_MOV_STYLE.adjustment;
+  const qty = Number(tx.quantity || 0);
+  const qtyStr = `${qty > 0 ? "+" : ""}${qty}`;
+  const qtyColor = qty > 0
+    ? "text-green-600 dark:text-green-400"
+    : qty < 0
+    ? "text-red-500 dark:text-red-400"
+    : "text-slate-500 dark:text-slate-400";
+  const dateStr = tx.created_at
+    ? new Date(tx.created_at).toLocaleDateString("en-NG", { day: "numeric", month: "short" })
+    : "—";
+
+  return (
+    <div className="flex items-center gap-3 bg-white dark:bg-slate-800 rounded-2xl px-4 py-3 border border-slate-100 dark:border-slate-700/50 shadow-card">
+      <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${style.bg}`}>
+        <Svg d={style.icon} size={14} color={style.color} sw={2.5} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-bold text-slate-800 dark:text-slate-100">{STOCK_TYPE_LABEL[tx.type] || "Movement"}</p>
+        <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 truncate">
+          {dateStr}{tx.notes ? ` · ${tx.notes}` : ""}
+        </p>
+      </div>
+      <div className="text-right flex-shrink-0">
+        <p className={`text-sm font-extrabold tabular-nums ${qtyColor}`}>{qtyStr}</p>
+        {tx.unit_price > 0 && (
+          <p className="text-[10px] text-slate-300 dark:text-slate-600 mt-0.5">{fmt(tx.unit_price)}/unit</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
    Public export — variant prop routes to the correct implementation
    ═══════════════════════════════════════════════════════════════════════ */
 export function TxRow({ tx, hidden = false, onClick, variant = "home", staffName, onSwipeReceipt, onSwipeDelete }) {
+  if (variant === "stock") return <TxRowStock tx={tx} />;
   if (variant === "transactions") {
     return (
       <TxRowTransactions

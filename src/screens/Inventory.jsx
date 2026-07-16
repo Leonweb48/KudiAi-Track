@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { fmt } from "../utils/helpers";
+import { TxRow } from "../components/shared/TxRow";
 import Field from "../components/shared/Field";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
 import { useCampaigns }    from "../hooks/useCampaigns";
@@ -26,11 +27,59 @@ function margin(cost, sell) {
   return Math.round(((sell - cost) / cost) * 100);
 }
 
-function fmtDate(s) {
-  if (!s) return "—";
-  return new Date(s).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" });
+/* ── Initials tile helpers ────────────────────────────────────── */
+const TILE_CLASSES = [
+  "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300",
+  "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300",
+  "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300",
+  "bg-pink-100 dark:bg-pink-900/30 text-pink-700 dark:text-pink-300",
+  "bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300",
+  "bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300",
+];
+
+function productInitials(name) {
+  const words = (name || "").trim().split(/\s+/);
+  if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
+  return (name || "?").slice(0, 2).toUpperCase();
 }
 
+function tileColorIdx(name) {
+  let h = 0;
+  for (let i = 0; i < (name || "").length; i++) h = (h * 31 + (name || "").charCodeAt(i)) & 0xffff;
+  return h % TILE_CLASSES.length;
+}
+
+/* ── Product skeleton card ────────────────────────────────────── */
+function ProductSkeleton() {
+  return (
+    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-card animate-pulse">
+      <div className="px-3.5 pt-3.5 pb-3">
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-700 flex-shrink-0"/>
+          <div className="flex-1 min-w-0 pt-1">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex-1">
+                <div className="h-3.5 bg-slate-100 dark:bg-slate-700 rounded-full w-3/4 mb-2"/>
+                <div className="h-2.5 bg-slate-100 dark:bg-slate-700 rounded-full w-1/3"/>
+              </div>
+              <div className="h-7 w-12 bg-slate-100 dark:bg-slate-700 rounded-xl flex-shrink-0"/>
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 mt-3">
+          <div className="h-2.5 bg-slate-100 dark:bg-slate-700 rounded-full w-1/2"/>
+          <div className="h-2.5 bg-slate-100 dark:bg-slate-700 rounded-full w-1/4 ml-auto"/>
+        </div>
+        <div className="mt-2.5 h-2 bg-slate-100 dark:bg-slate-700 rounded-full"/>
+      </div>
+      <div className="border-t border-slate-100 dark:border-slate-700 h-11 flex items-center px-5 gap-5">
+        <div className="h-2.5 bg-slate-100 dark:bg-slate-700 rounded-full w-10"/>
+        <div className="w-px h-5 bg-slate-100 dark:bg-slate-700"/>
+        <div className="h-2.5 bg-slate-100 dark:bg-slate-700 rounded-full w-14"/>
+      </div>
+    </div>
+  );
+}
 
 /* ── Product Form ─────────────────────────────────────────────── */
 function ProductForm({ initial, onSave, onClose, saving, branches = [], staffBranchId = null }) {
@@ -56,7 +105,7 @@ function ProductForm({ initial, onSave, onClose, saving, branches = [], staffBra
   };
 
   return (
-    <div className="fixed inset-0 z-[70] flex flex-col bg-slate-50 dark:bg-slate-900">
+    <div className="fixed inset-0 z-sub-sheet flex flex-col bg-slate-50 dark:bg-slate-900">
       <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 px-4 pb-3 flex items-center gap-3 flex-shrink-0" style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
         <button onClick={onClose} className="w-11 h-11 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center active:scale-95">
           <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
@@ -110,7 +159,7 @@ function ProductForm({ initial, onSave, onClose, saving, branches = [], staffBra
         <p className="text-[10px] text-slate-400 dark:text-slate-500">Alert fires when quantity falls at or below the threshold value.</p>
 
         <button type="submit" disabled={saving || !form.product_name.trim()}
-          className="w-full py-3.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-extrabold text-sm rounded-2xl transition active:scale-[0.98] flex items-center justify-center gap-2 mt-2">
+          className="w-full py-3.5 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white font-extrabold text-sm rounded-2xl transition active:scale-[0.98] flex items-center justify-center gap-2 mt-2">
           {saving ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/>Saving…</> : isEdit ? "Update Product" : "Add Product"}
         </button>
         <div className="h-6"/>
@@ -126,9 +175,9 @@ function MovementModal({ product, movType, onRecord, onClose, saving }) {
   const [notes, setNotes] = useState("");
 
   const TYPE_META = {
-    sale:       { label: "Record Sale",         color: "bg-green-600",  hint: "Enter qty sold. Stock will decrease." },
-    restock:    { label: "Record Restock",       color: "bg-blue-600",   hint: "Enter qty received. Stock will increase." },
-    adjustment: { label: "Stock Adjustment",     color: "bg-slate-700 dark:bg-slate-600", hint: "Positive to add, negative to remove." },
+    sale:       { label: "Record Sale",     color: "bg-brand-500",                   hint: "Enter qty sold. Stock will decrease." },
+    restock:    { label: "Record Restock",  color: "bg-blue-600",                    hint: "Enter qty received. Stock will increase." },
+    adjustment: { label: "Stock Adjustment",color: "bg-slate-700 dark:bg-slate-600", hint: "Positive to add, negative to remove." },
   };
   const meta = TYPE_META[movType];
   const preview = (() => {
@@ -139,9 +188,12 @@ function MovementModal({ product, movType, onRecord, onClose, saving }) {
   })();
 
   return (
-    <div className="fixed inset-0 z-[70] bg-black/50 flex items-end">
-      <div className="w-full max-w-md mx-auto bg-white dark:bg-slate-900 rounded-t-3xl px-5 pt-5 pb-[calc(2.5rem+env(safe-area-inset-bottom,0px))]">
-        <div className="flex items-center justify-between mb-4">
+    <div className="fixed inset-0 z-sub-sheet bg-black/50 flex items-end">
+      <div className="w-full max-w-md mx-auto bg-white dark:bg-slate-900 rounded-t-3xl px-5 pb-[calc(2.5rem+env(safe-area-inset-bottom,0px))]">
+        <div className="flex justify-center pt-3 pb-1">
+          <div className="w-10 h-1 rounded-full bg-slate-200 dark:bg-slate-700"/>
+        </div>
+        <div className="flex items-center justify-between mb-4 pt-2">
           <div>
             <p className="text-sm font-extrabold text-slate-800 dark:text-white">{meta.label}</p>
             <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5 truncate max-w-[220px]">{product.product_name}</p>
@@ -199,21 +251,15 @@ function MovementModal({ product, movType, onRecord, onClose, saving }) {
 }
 
 /* ── Product Detail ───────────────────────────────────────────── */
-function ProductDetail({ product, movements, onClose, onEdit, onDelete, isOwner }) {
+function ProductDetail({ product, movements, onClose, onEdit, onDelete, onAdjust, isOwner }) {
   const pMovements = movements.filter(m => m.product_id === product.id).slice(0, 30);
-  const totalSold     = pMovements.filter(m => m.type === "sale").reduce((s,m) => s + Math.abs(m.quantity), 0);
+  const totalSold      = pMovements.filter(m => m.type === "sale").reduce((s,m) => s + Math.abs(m.quantity), 0);
   const totalRestocked = pMovements.filter(m => m.type === "restock").reduce((s,m) => s + Math.abs(m.quantity), 0);
-  const totalRevenue  = pMovements.filter(m => m.type === "sale").reduce((s,m) => s + Math.abs(m.quantity) * (m.unit_price || 0), 0);
-  const m             = margin(product.cost_price, product.selling_price);
-  const MOV_LABEL = { sale:"Sale", restock:"Restock", adjustment:"Adjustment" };
-  const MOV_COLOR = {
-    sale:       "text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20",
-    restock:    "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20",
-    adjustment: "text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-700",
-  };
+  const totalRevenue   = pMovements.filter(m => m.type === "sale").reduce((s,m) => s + Math.abs(m.quantity) * (m.unit_price || 0), 0);
+  const m = margin(product.cost_price, product.selling_price);
 
   return (
-    <div className="fixed inset-0 z-[70] flex flex-col bg-slate-50 dark:bg-slate-900">
+    <div className="fixed inset-0 z-sub-sheet flex flex-col bg-slate-50 dark:bg-slate-900">
       <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 px-4 pb-3 flex items-center gap-3 flex-shrink-0" style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
         <button onClick={onClose} className="w-11 h-11 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center active:scale-95">
           <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
@@ -221,6 +267,9 @@ function ProductDetail({ product, movements, onClose, onEdit, onDelete, isOwner 
         <p className="text-base font-extrabold text-slate-800 dark:text-white flex-1 truncate">{product.product_name}</p>
         {isOwner && (
           <div className="flex gap-2">
+            {onAdjust && (
+              <button onClick={() => onAdjust(product)} className="px-3 py-1.5 text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-xl active:scale-95">Adjust</button>
+            )}
             <button onClick={onEdit} className="px-3 py-1.5 text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-xl active:scale-95">Edit</button>
             <button onClick={onDelete} className="px-3 py-1.5 text-xs font-bold bg-red-50 dark:bg-red-900/20 text-red-500 rounded-xl active:scale-95">Delete</button>
           </div>
@@ -234,7 +283,7 @@ function ProductDetail({ product, movements, onClose, onEdit, onDelete, isOwner 
             <div className="flex-1 min-w-0">
               <p className="text-lg font-extrabold text-slate-800 dark:text-white leading-tight">{product.product_name}</p>
               {product.sku && <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5 font-mono">SKU: {product.sku}</p>}
-              {product.category && <span className="mt-1.5 inline-block text-[10px] font-bold px-2 py-0.5 bg-violet-50 dark:bg-violet-900/20 text-violet-600 dark:text-violet-400 rounded-full">{product.category}</span>}
+              {product.category && <span className="mt-1.5 inline-block text-[10px] font-bold px-2 py-0.5 bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 rounded-full">{product.category}</span>}
             </div>
             <span className={`text-sm font-extrabold px-3 py-1.5 rounded-xl flex-shrink-0 ${qtyColor(product.quantity, product.low_stock_threshold)}`}>
               {fmtQty(product.quantity)} units
@@ -247,11 +296,11 @@ function ProductDetail({ product, movements, onClose, onEdit, onDelete, isOwner 
             </div>
             <div>
               <p className="text-[9px] text-slate-400 uppercase tracking-wide font-bold">Sell Price</p>
-              <p className="text-sm font-bold text-green-600">{fmt(product.selling_price)}</p>
+              <p className="text-sm font-bold text-brand-500">{fmt(product.selling_price)}</p>
             </div>
             <div>
               <p className="text-[9px] text-slate-400 uppercase tracking-wide font-bold">Margin</p>
-              <p className={`text-sm font-black ${m !== null && m > 0 ? "text-green-600" : "text-red-500"}`}>{m !== null ? `${m}%` : "—"}</p>
+              <p className={`text-sm font-black ${m !== null && m > 0 ? "text-brand-500" : "text-red-500"}`}>{m !== null ? `${m}%` : "—"}</p>
             </div>
           </div>
         </div>
@@ -259,9 +308,9 @@ function ProductDetail({ product, movements, onClose, onEdit, onDelete, isOwner 
         {/* Summary stats */}
         <div className="grid grid-cols-3 gap-2">
           {[
-            { label:"Units Sold",    value:fmtQty(totalSold),    color:"text-green-600" },
-            { label:"Restocked",     value:fmtQty(totalRestocked),color:"text-blue-600" },
-            { label:"Total Revenue", value:fmt(totalRevenue),     color:"text-green-600" },
+            { label:"Units Sold",    value:fmtQty(totalSold),     color:"text-brand-500" },
+            { label:"Restocked",     value:fmtQty(totalRestocked), color:"text-blue-600" },
+            { label:"Total Revenue", value:fmt(totalRevenue),      color:"text-brand-500" },
           ].map(s => (
             <div key={s.label} className="bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 p-3">
               <p className="text-[9px] text-slate-400 uppercase font-bold tracking-wide">{s.label}</p>
@@ -271,7 +320,7 @@ function ProductDetail({ product, movements, onClose, onEdit, onDelete, isOwner 
         </div>
 
         {/* Stock value */}
-        <div className="bg-slate-800 dark:bg-slate-700 rounded-2xl p-4">
+        <div className="bg-navy rounded-2xl p-4">
           <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wide">Stock Value</p>
           <AmountDisplay amount={product.cost_price * product.quantity} size="stat" align="left" className="text-white mt-0.5" />
           <p className="text-xs text-slate-400 mt-0.5">Retail value: {fmt(product.selling_price * product.quantity)}</p>
@@ -284,21 +333,7 @@ function ProductDetail({ product, movements, onClose, onEdit, onDelete, isOwner 
             ? <p className="text-xs text-slate-400 dark:text-slate-500 text-center py-6">No movements yet</p>
             : (
               <div className="space-y-2">
-                {pMovements.map(m => (
-                  <div key={m.id} className="bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 px-3.5 py-3 flex items-center gap-3">
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${MOV_COLOR[m.type]}`}>{MOV_LABEL[m.type]}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs text-slate-500 dark:text-slate-400">{fmtDate(m.created_at)}</p>
-                      {m.notes && <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate mt-0.5">{m.notes}</p>}
-                    </div>
-                    <div className="text-right flex-shrink-0">
-                      <p className={`text-sm font-extrabold ${m.quantity < 0 ? "text-red-500" : "text-green-600"}`}>
-                        {m.quantity > 0 ? "+" : ""}{m.quantity}
-                      </p>
-                      {m.unit_price > 0 && <p className="text-[10px] text-slate-400 dark:text-slate-500">{fmt(m.unit_price)}/unit</p>}
-                    </div>
-                  </div>
-                ))}
+                {pMovements.map(mv => <TxRow key={mv.id} tx={mv} variant="stock" />)}
               </div>
             )
           }
@@ -342,7 +377,7 @@ function AnalyticsView({ analytics, products, onClose }) {
                  : "No products with positive margin";
 
   return (
-    <div className="fixed inset-0 z-[70] flex flex-col bg-slate-50 dark:bg-slate-900">
+    <div className="fixed inset-0 z-sub-sheet flex flex-col bg-slate-50 dark:bg-slate-900">
       <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 px-4 pb-3 flex items-center gap-3 flex-shrink-0" style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
         <button onClick={onClose} className="w-11 h-11 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center active:scale-95">
           <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
@@ -393,7 +428,17 @@ function AnalyticsView({ analytics, products, onClose }) {
         {rows.length === 0
           ? (
             <div className="text-center py-12">
-              <p className="text-4xl mb-3">{tab === "slow" ? "🎉" : "📊"}</p>
+              <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3 bg-slate-50 dark:bg-slate-800">
+                {tab === "slow" ? (
+                  <svg width={32} height={32} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" className="text-brand-500">
+                    <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+                  </svg>
+                ) : (
+                  <svg width={32} height={32} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" className="text-slate-400 dark:text-slate-500">
+                    <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
+                  </svg>
+                )}
+              </div>
               <p className="text-sm text-slate-500 dark:text-slate-400">{emptyMsg}</p>
             </div>
           )
@@ -449,47 +494,59 @@ function ProductCard({ product, onView, onSale, onRestock, isOwner, onEdit, staf
   const m    = margin(product.cost_price, product.selling_price);
   const low  = product.quantity <= product.low_stock_threshold;
   const zero = product.quantity === 0;
-  // Main business stock: product has no branch — branch staff can sell but not restock
   const isMainStock = Boolean(staffBranchId && !product.branch_id);
+  const initials  = productInitials(product.product_name);
+  const tileCls   = TILE_CLASSES[tileColorIdx(product.product_name)];
+  const stockVal  = fmt(product.cost_price * product.quantity);
+  const bandPct   = Math.max(2, Math.min(100, Math.round((product.quantity / Math.max(product.low_stock_threshold * 3, 1)) * 100)));
 
   return (
     <div onClick={() => onView(product)}
-      className={`bg-white dark:bg-slate-800 rounded-2xl border transition cursor-pointer active:scale-[0.99] ${
+      className={`bg-white dark:bg-slate-800 rounded-2xl border transition cursor-pointer active:scale-[0.99] shadow-card ${
         zero ? "border-red-200 dark:border-red-900/50" : low ? "border-amber-200 dark:border-amber-800/50" : "border-slate-100 dark:border-slate-700"
       }`}>
-      <div className="px-4 pt-3.5 pb-3">
-        <div className="flex items-start justify-between gap-2 mb-1.5">
+      <div className="px-3.5 pt-3.5 pb-3">
+        <div className="flex items-start gap-3">
+          {/* Initials tile */}
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 text-[11px] font-black ${tileCls}`}>
+            {initials}
+          </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-extrabold text-slate-800 dark:text-white leading-tight truncate">{product.product_name}</p>
-            <div className="flex items-center gap-2 mt-1 flex-wrap">
-              {isMainStock && <span className="text-[9px] font-bold px-2 py-0.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full">Business Stock</span>}
-              {product.category && <span className="text-[10px] font-bold px-2 py-0.5 bg-violet-50 dark:bg-violet-900/20 text-violet-600 dark:text-violet-400 rounded-full">{product.category}</span>}
-              {product.sku && <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500">{product.sku}</span>}
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-extrabold text-slate-800 dark:text-white leading-tight truncate">{product.product_name}</p>
+                <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                  {isMainStock && <span className="text-[9px] font-bold px-1.5 py-0.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full">Business Stock</span>}
+                  {product.category && <span className="text-[9px] font-semibold px-1.5 py-0.5 bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 rounded-full">{product.category}</span>}
+                  {product.sku && <span className="text-[9px] font-mono text-slate-400 dark:text-slate-500 truncate max-w-[70px]">{product.sku}</span>}
+                </div>
+              </div>
+              <span className={`text-xs font-extrabold px-2.5 py-1 rounded-xl flex-shrink-0 ${qtyColor(product.quantity, product.low_stock_threshold)}`}>
+                {fmtQty(product.quantity)}
+              </span>
             </div>
           </div>
-          <span className={`text-xs font-extrabold px-2.5 py-1.5 rounded-xl flex-shrink-0 ${qtyColor(product.quantity, product.low_stock_threshold)}`}>
-            {fmtQty(product.quantity)}
-          </span>
         </div>
 
-        <div className="flex items-center gap-3 mt-2">
-          <p className="text-xs text-slate-400 dark:text-slate-500">{fmt(product.cost_price)} → <span className="font-bold text-slate-600 dark:text-slate-300">{fmt(product.selling_price)}</span></p>
+        {/* Price + margin + stock value */}
+        <div className="flex items-center gap-1.5 mt-2.5 min-w-0">
+          <p className="text-xs text-slate-400 dark:text-slate-500 truncate">
+            {fmt(product.cost_price)} → <span className="font-bold text-slate-600 dark:text-slate-300">{fmt(product.selling_price)}</span>
+          </p>
           {m !== null && (
-            <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded-full flex-shrink-0 ${
-              m > 0
-                ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
-                : "bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400"
+            <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full flex-shrink-0 ${
+              m > 0 ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
+                    : "bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400"
             }`}>{m > 0 ? "+" : ""}{m}%</span>
           )}
-          {low && !zero && <span className="text-[10px] font-bold text-amber-500 ml-auto">⚠ Low</span>}
-          {zero          && <span className="text-[10px] font-bold text-red-500 ml-auto">✕ Out</span>}
+          <span className="text-[9px] text-slate-400 dark:text-slate-500 ml-auto flex-shrink-0">{stockVal}</span>
         </div>
 
-        {/* Stock level bar */}
-        <div className="mt-2.5 h-1 bg-slate-100 dark:bg-slate-700/60 rounded-full overflow-hidden">
+        {/* Stock level band — 8px */}
+        <div className="mt-2 h-2 bg-slate-100 dark:bg-slate-700/60 rounded-full overflow-hidden">
           <div
-            className={`h-full rounded-full transition-all duration-300 ${zero ? "bg-red-400" : low ? "bg-amber-400" : "bg-green-500"}`}
-            style={{ width: `${Math.max(2, Math.min(100, Math.round((product.quantity / Math.max(product.low_stock_threshold * 3, 1)) * 100)))}%` }}
+            className={`h-full rounded-full transition-all duration-300 ${zero ? "bg-red-400" : low ? "bg-amber-400" : "bg-brand-500"}`}
+            style={{ width: `${bandPct}%` }}
           />
         </div>
       </div>
@@ -497,7 +554,7 @@ function ProductCard({ product, onView, onSale, onRestock, isOwner, onEdit, staf
       {/* Actions row */}
       <div className="border-t border-slate-100 dark:border-slate-700 flex">
         <button onClick={e => { e.stopPropagation(); onSale(product); }}
-          className="flex-1 py-2.5 text-xs font-bold text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 transition rounded-bl-2xl flex items-center justify-center gap-1.5 active:scale-95">
+          className="flex-1 py-2.5 text-xs font-bold text-brand-500 dark:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition rounded-bl-2xl flex items-center justify-center gap-1.5 min-h-[44px] active:scale-95">
           <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
           Sale
         </button>
@@ -505,7 +562,7 @@ function ProductCard({ product, onView, onSale, onRestock, isOwner, onEdit, staf
           <>
             <div className="w-px bg-slate-100 dark:bg-slate-700"/>
             <button onClick={e => { e.stopPropagation(); onRestock(product); }}
-              className="flex-1 py-2.5 text-xs font-bold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition flex items-center justify-center gap-1.5 active:scale-95">
+              className="flex-1 py-2.5 text-xs font-bold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition flex items-center justify-center gap-1.5 min-h-[44px] active:scale-95">
               <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M12 5v14M5 12l7-7 7 7"/></svg>
               Restock
             </button>
@@ -515,7 +572,7 @@ function ProductCard({ product, onView, onSale, onRestock, isOwner, onEdit, staf
           <>
             <div className="w-px bg-slate-100 dark:bg-slate-700"/>
             <button onClick={e => { e.stopPropagation(); onEdit(product); }}
-              className="flex-1 py-2.5 text-xs font-bold text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 transition rounded-br-2xl flex items-center justify-center gap-1.5 active:scale-95">
+              className="flex-1 py-2.5 text-xs font-bold text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 transition rounded-br-2xl flex items-center justify-center gap-1.5 min-h-[44px] active:scale-95">
               <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
               Edit
             </button>
@@ -560,7 +617,7 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
         <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 max-w-xs leading-relaxed">
           Track stock, manage products, get low-stock alerts, and analyse your best sellers. {planAvailableText("inventory")}
         </p>
-        <button onClick={onUpgrade} className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-2xl font-bold text-sm active:scale-95 transition shadow-md">
+        <button onClick={onUpgrade} className="bg-brand-500 hover:bg-brand-600 text-white px-6 py-3 rounded-2xl font-bold text-sm active:scale-95 transition shadow-md">
           {upgradeLabel("inventory")}
         </button>
       </div>
@@ -626,7 +683,7 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
     <div className="pb-28 screen-enter">
       <AnnouncementBarSlot campaigns={invAnnBars} loading={camLoading} recordEvent={recordCamEvent} />
       {/* Header */}
-      <div className="sticky top-0 z-20 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 pt-4 pb-3">
+      <div className="sticky top-0 z-sticky bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 pt-4 pb-3">
         <div className="flex items-center justify-between gap-3 mb-3">
           <div>
             <h1 className="text-xl font-black text-slate-800 dark:text-white">{t("inv.title")}</h1>
@@ -641,7 +698,7 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
             </button>
             {canAddStock && (
               <button onClick={openAddForm}
-                className="flex items-center gap-1.5 px-3.5 py-2 bg-green-600 text-white text-xs font-extrabold rounded-xl active:scale-95 transition shadow-sm">
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-brand-500 text-white text-xs font-extrabold rounded-xl active:scale-95 transition shadow-sm">
                 <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
                 Add Stock
               </button>
@@ -656,14 +713,14 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
           </svg>
           <input value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Search by name or SKU…"
-            className="w-full bg-slate-100 dark:bg-slate-800 rounded-xl pl-9 pr-4 py-2.5 text-sm text-slate-800 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-green-500/40"/>
+            className="w-full bg-slate-100 dark:bg-slate-800 rounded-xl pl-9 pr-4 py-2.5 text-sm text-slate-800 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500/40"/>
         </div>
 
         {/* Category filters */}
         <div className="flex gap-2 overflow-x-auto no-scrollbar pb-0.5">
           {[
             { id:"all",       label:`All (${products.length})` },
-            ...(lowStock.length > 0 ? [{ id:"low_stock", label:`⚠ Low (${lowStock.length})` }] : []),
+            ...(lowStock.length > 0 ? [{ id:"low_stock", label:`Low (${lowStock.length})` }] : []),
             ...categories.map(c => ({ id:c, label:c })),
           ].map(f => (
             <button key={f.id} onClick={() => setCatFilter(f.id)}
@@ -700,7 +757,10 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
         {lowStock.length > 0 && (
           <button onClick={() => setCatFilter("low_stock")}
             className="w-full mb-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl px-4 py-3 flex items-center gap-3 text-left active:scale-[0.99] transition">
-            <span className="text-xl">⚠</span>
+            <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" className="text-amber-500 flex-shrink-0">
+              <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-bold text-amber-700 dark:text-amber-400">{lowStock.length} product{lowStock.length > 1 ? "s are" : " is"} low on stock</p>
               <p className="text-xs text-amber-600/70 dark:text-amber-500/70 mt-0.5 truncate">{lowStock.slice(0,3).map(p => p.product_name).join(", ")}{lowStock.length > 3 ? "…" : ""}</p>
@@ -709,11 +769,12 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
           </button>
         )}
 
-        {/* Loading */}
+        {/* Loading — skeleton cards (zero layout shift) */}
         {loading && (
-          <div className="flex flex-col items-center py-16 gap-3">
-            <div className="w-8 h-8 border-[3px] border-green-500 border-t-transparent rounded-full animate-spin"/>
-            <p className="text-xs text-slate-400">Loading inventory…</p>
+          <div className="space-y-3">
+            <ProductSkeleton />
+            <ProductSkeleton />
+            <ProductSkeleton />
           </div>
         )}
 
@@ -732,7 +793,7 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
             </p>
             {canAddStock && (
               <button onClick={openAddForm}
-                className="px-5 py-2.5 bg-green-600 text-white font-bold text-sm rounded-xl active:scale-95 transition">
+                className="px-5 py-2.5 bg-brand-500 text-white font-bold text-sm rounded-xl active:scale-95 transition">
                 Add First Product
               </button>
             )}
@@ -747,28 +808,49 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
           </div>
         )}
 
-        {/* Product list */}
-        {!loading && filtered.length > 0 && (
-          <div className="space-y-3">
-            {filtered.map(p => (
-              <ProductCard
-                key={p.id}
-                product={p}
-                isOwner={isOwner}
-                staffBranchId={staffBranchId}
-                onView={setDetailProd}
-                onEdit={prod => { setEditProd(prod); setShowForm(true); }}
-                onSale={prod => setMovModal({ product: prod, type: "sale" })}
-                onRestock={prod => setMovModal({ product: prod, type: "restock" })}
-              />
-            ))}
-          </div>
-        )}
+        {/* Product list — low-stock items pinned at top when showing all */}
+        {!loading && filtered.length > 0 && (() => {
+          const renderCard = p => (
+            <ProductCard
+              key={p.id}
+              product={p}
+              isOwner={isOwner}
+              staffBranchId={staffBranchId}
+              onView={setDetailProd}
+              onEdit={prod => { setEditProd(prod); setShowForm(true); }}
+              onSale={prod => setMovModal({ product: prod, type: "sale" })}
+              onRestock={prod => setMovModal({ product: prod, type: "restock" })}
+            />
+          );
+          if (catFilter !== "all") return <div className="space-y-3">{filtered.map(renderCard)}</div>;
+          const lowIds       = new Set(lowStock.map(p => p.id));
+          const lowFiltered  = filtered.filter(p => lowIds.has(p.id));
+          const restFiltered = filtered.filter(p => !lowIds.has(p.id));
+          if (!lowFiltered.length) return <div className="space-y-3">{filtered.map(renderCard)}</div>;
+          return (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 pt-1">
+                <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-widest">Low Stock</span>
+                <div className="flex-1 h-px bg-amber-200 dark:bg-amber-800/50"/>
+              </div>
+              {lowFiltered.map(renderCard)}
+              {restFiltered.length > 0 && (
+                <>
+                  <div className="flex items-center gap-2 pt-1">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">All Products</span>
+                    <div className="flex-1 h-px bg-slate-100 dark:bg-slate-700"/>
+                  </div>
+                  {restFiltered.map(renderCard)}
+                </>
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       {/* DB error */}
       {dbError && (
-        <div className="fixed bottom-28 left-4 right-4 max-w-md mx-auto z-50 bg-red-600 text-white rounded-2xl px-4 py-3 shadow-lg flex items-start gap-3">
+        <div className="fixed bottom-28 left-4 right-4 max-w-md mx-auto z-toast bg-red-600 text-white rounded-2xl px-4 py-3 shadow-lg flex items-start gap-3">
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold">Error</p>
             <p className="text-xs opacity-80 mt-0.5 break-words">{dbError}</p>
@@ -809,6 +891,7 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
           onClose={() => setDetailProd(null)}
           onEdit={prod => { setEditProd(prod); setDetailProd(null); setShowForm(true); }}
           onDelete={prod => { setConfirmDel(prod); setDetailProd(null); }}
+          onAdjust={prod => setMovModal({ product: prod, type: "adjustment" })}
         />
       )}
 
@@ -818,7 +901,7 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
 
       {/* Delete confirm */}
       {confirmDel && (
-        <div className="fixed inset-0 z-[80] bg-black/50 flex items-center justify-center px-6">
+        <div className="fixed inset-0 z-modal bg-black/50 flex items-center justify-center px-6">
           <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 w-full max-w-xs shadow-2xl">
             <p className="text-base font-extrabold text-slate-800 dark:text-white mb-1">Delete Product?</p>
             <p className="text-sm text-slate-500 dark:text-slate-400 mb-5">
@@ -835,15 +918,6 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
         </div>
       )}
 
-      {/* Adjustment shortcut (owner only) */}
-      {isOwner && detailProd && !showForm && !movModal && !confirmDel && (
-        <div className="fixed bottom-28 right-4 z-50">
-          <button onClick={() => setMovModal({ product: detailProd, type: "adjustment" })}
-            className="text-xs font-bold bg-slate-800 dark:bg-slate-700 text-white px-3 py-2 rounded-xl shadow-lg active:scale-95">
-            Adjust Stock
-          </button>
-        </div>
-      )}
     </div>
   );
 }
