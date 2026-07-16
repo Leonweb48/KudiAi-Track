@@ -84,7 +84,7 @@ function TxRowHome({ tx, hidden, onClick }) {
       <div className="text-right flex-shrink-0">
         <AmountDisplay
           amount={tx.amount} size="row" align="right" hidden={hidden}
-          className={isIn ? "text-green-600 dark:text-green-400" : "text-[#16255A] dark:text-blue-300"}
+          className={isIn ? "text-green-600 dark:text-green-400" : "text-navy dark:text-blue-300"}
         />
         <p className="text-[10px] text-slate-300 dark:text-slate-600 mt-0.5">{tx.transaction_date}</p>
       </div>
@@ -209,7 +209,7 @@ function TxRowTransactions({ tx, hidden, onClick, staffName, onSwipeReceipt, onS
             <div className="text-right flex-shrink-0 ml-2">
               <AmountDisplay
                 amount={tx.amount} size="row" align="right" hidden={hidden}
-                className={isIn ? "text-green-600 dark:text-green-400" : "text-[#16255A] dark:text-blue-300"}
+                className={isIn ? "text-green-600 dark:text-green-400" : "text-navy dark:text-blue-300"}
               />
               <p className="text-[10px] text-slate-300 dark:text-slate-600 mt-0.5">{tx.transaction_date}</p>
             </div>

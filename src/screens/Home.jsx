@@ -338,8 +338,8 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
         <div className="grid grid-cols-4 gap-2 mb-5">
           {PRIMARY_ACTIONS.map(a => (
             <button key={a.label} onClick={a.action}
-              className="flex flex-col items-center gap-2 active:scale-90 transition-transform duration-150 min-h-[44px] min-w-[44px] text-[#16255A] dark:text-white">
-              <div className="w-14 h-14 rounded-full flex items-center justify-center shadow-sm bg-[#E8F5E3] dark:bg-[#16255A]/40">
+              className="flex flex-col items-center gap-2 active:scale-90 transition-transform duration-150 min-h-[44px] min-w-[44px] text-navy dark:text-white">
+              <div className="w-14 h-14 rounded-full flex items-center justify-center shadow-sm bg-brand-50 dark:bg-navy/40">
                 <Svg d={a.icon} size={22} color="currentColor" sw={2} />
               </div>
               <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400 text-center leading-tight max-w-[60px]">

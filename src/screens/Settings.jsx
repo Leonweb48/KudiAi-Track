@@ -717,8 +717,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
           {/* Upgrade / Change Plan */}
           <button
             onClick={onUpgrade}
-            className="flex-1 py-2.5 rounded-2xl text-sm font-bold text-white active:scale-95 transition"
-            style={{ background: planTier >= 2 ? "#1B2A5E" : planTier >= 1 ? "#1d4ed8" : "#059669" }}>
+            className={`flex-1 py-2.5 rounded-2xl text-sm font-bold text-white active:scale-95 transition ${planTier >= 2 ? "bg-navy" : planTier >= 1 ? "bg-blue-700" : "bg-emerald-600"}`}>
             {planTier === 0 ? "Upgrade Plan" : hasHigherPlanAvailable(plan) ? "Upgrade Plan" : "Change Plan"}
           </button>
 

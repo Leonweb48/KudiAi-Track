@@ -51,16 +51,16 @@ function RegisterModal({ onClose, onCreated, userId }) {
     finally { setLoading(false); }
   };
 
-  const inp = "w-full px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#3DA829]/40 focus:border-[#3DA829] transition placeholder:text-slate-300 dark:placeholder:text-slate-600";
+  const inp = "w-full px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/40 focus:border-brand-500 transition placeholder:text-slate-300 dark:placeholder:text-slate-600";
 
   const selectedType = ORG_TYPES.find(t => t.value === type);
 
   return (
     <div className="fixed inset-0 z-[70] bg-black/60 flex items-end justify-center" onClick={onClose}>
-      <div className="w-full max-w-md bg-white dark:bg-[#0f1117] rounded-t-3xl overflow-y-auto"
+      <div className="w-full max-w-md bg-white dark:bg-slate-950 rounded-t-3xl overflow-y-auto"
         style={{ maxHeight: "92dvh" }} onClick={e => e.stopPropagation()}>
         {/* Handle + header */}
-        <div className="px-5 pt-4 pb-4 border-b border-slate-100 dark:border-slate-800 sticky top-0 bg-white dark:bg-[#0f1117] z-10">
+        <div className="px-5 pt-4 pb-4 border-b border-slate-100 dark:border-slate-800 sticky top-0 bg-white dark:bg-slate-950 z-10">
           <div className="w-8 h-1 bg-slate-200 dark:bg-slate-700 rounded-full mx-auto mb-4" />
           <div className="flex items-center justify-between">
             <button onClick={onClose}
@@ -73,7 +73,7 @@ function RegisterModal({ onClose, onCreated, userId }) {
             {/* Step dots */}
             <div className="flex gap-1.5">
               {[1, 2, 3].map(s => (
-                <div key={s} className={`w-5 h-1 rounded-full transition-colors ${s <= step ? "bg-[#3DA829]" : "bg-slate-200 dark:bg-slate-700"}`} />
+                <div key={s} className={`w-5 h-1 rounded-full transition-colors ${s <= step ? "bg-brand-500" : "bg-slate-200 dark:bg-slate-700"}`} />
               ))}
             </div>
           </div>
@@ -96,14 +96,14 @@ function RegisterModal({ onClose, onCreated, userId }) {
               <div className="grid grid-cols-2 gap-2 mb-6">
                 {ORG_TYPES.map(t => (
                   <button key={t.value} onClick={() => setType(t.value)}
-                    className={`flex items-center gap-2.5 px-3.5 py-3 rounded-2xl border-2 text-left transition ${type === t.value ? "border-[#3DA829] bg-[#3DA829]/5 dark:bg-[#3DA829]/10" : "border-slate-200 dark:border-slate-700 hover:border-slate-300"}`}>
+                    className={`flex items-center gap-2.5 px-3.5 py-3 rounded-2xl border-2 text-left transition ${type === t.value ? "border-brand-500 bg-brand-500/5 dark:bg-brand-500/10" : "border-slate-200 dark:border-slate-700 hover:border-slate-300"}`}>
                     <span className="text-xl flex-shrink-0">{t.icon}</span>
                     <span className="text-xs font-bold text-slate-700 dark:text-slate-200 leading-tight">{t.label}</span>
                   </button>
                 ))}
               </div>
               <button onClick={() => { if (!type) { setError("Please select a type"); return; } setError(""); setStep(2); }}
-                className="w-full py-3.5 rounded-full font-extrabold text-sm text-white transition bg-[#3DA829]">
+                className="w-full py-3.5 rounded-full font-extrabold text-sm text-white transition bg-brand-500">
                 Continue →
               </button>
             </>
@@ -113,7 +113,7 @@ function RegisterModal({ onClose, onCreated, userId }) {
             <>
               <div className="flex items-center gap-2 mb-5">
                 <span className="text-2xl">{selectedType?.icon}</span>
-                <span className="text-sm font-bold text-[#3DA829]">{selectedType?.label}</span>
+                <span className="text-sm font-bold text-brand-500">{selectedType?.label}</span>
               </div>
               <div className="flex flex-col gap-3">
                 <div>
@@ -155,7 +155,7 @@ function RegisterModal({ onClose, onCreated, userId }) {
                   ← Back
                 </button>
                 <button onClick={() => { if (!form.name.trim()) { setError("Organisation name is required"); return; } setError(""); setStep(3); }}
-                  className="flex-1 py-3.5 text-white rounded-full font-extrabold text-sm bg-[#3DA829]">
+                  className="flex-1 py-3.5 text-white rounded-full font-extrabold text-sm bg-brand-500">
                   Continue →
                 </button>
               </div>
@@ -205,7 +205,7 @@ function RegisterModal({ onClose, onCreated, userId }) {
                   ← Back
                 </button>
                 <button onClick={handleCreate} disabled={loading}
-                  className="flex-1 py-3.5 text-white rounded-full font-extrabold text-sm disabled:opacity-50 transition bg-[#3DA829]">
+                  className="flex-1 py-3.5 text-white rounded-full font-extrabold text-sm disabled:opacity-50 transition bg-brand-500">
                   {loading ? "Creating…" : "Create"}
                 </button>
               </div>
@@ -263,11 +263,11 @@ export default function CoopList({ userId, onOpen, onClose, embedded }) {
   };
 
   return (
-    <div className={embedded ? "flex flex-col" : "fixed inset-0 z-[60] bg-white dark:bg-[#0f1117] flex justify-center"}>
+    <div className={embedded ? "flex flex-col" : "fixed inset-0 z-[60] bg-white dark:bg-slate-950 flex justify-center"}>
       <div className={embedded ? "w-full flex flex-col" : "w-full max-w-md flex flex-col h-full"}>
 
         {/* ── Twitter-style sticky header ── */}
-        <div className="sticky top-0 z-10 bg-white/90 dark:bg-[#0f1117]/90 backdrop-blur-md border-b border-slate-100 dark:border-slate-800 px-4 pb-3 flex items-center gap-3 min-h-[56px] flex-shrink-0" style={{ paddingTop: "max(14px, env(safe-area-inset-top, 14px))" }}>
+        <div className="sticky top-0 z-10 bg-white/90 dark:bg-slate-950/90 backdrop-blur-md border-b border-slate-100 dark:border-slate-800 px-4 pb-3 flex items-center gap-3 min-h-[56px] flex-shrink-0" style={{ paddingTop: "max(14px, env(safe-area-inset-top, 14px))" }}>
           {!embedded && (
             <button onClick={onClose}
               className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition flex-shrink-0">
@@ -283,7 +283,7 @@ export default function CoopList({ userId, onOpen, onClose, embedded }) {
             </p>
           </div>
           <button onClick={() => setShowCreate(true)}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-full font-extrabold text-xs text-white transition active:scale-95 bg-[#3DA829]">
+            className="flex items-center gap-1.5 px-4 py-2 rounded-full font-extrabold text-xs text-white transition active:scale-95 bg-brand-500">
             <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
               <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
             </svg>
@@ -295,11 +295,11 @@ export default function CoopList({ userId, onOpen, onClose, embedded }) {
         <div className="flex-1 overflow-y-auto">
           {loading ? (
             <div className="flex justify-center py-20">
-              <div className="w-7 h-7 border-[3px] border-t-transparent rounded-full animate-spin" style={{ borderColor: "#3DA829", borderTopColor: "transparent" }} />
+              <div className="w-7 h-7 border-[3px] border-brand-500 border-t-transparent rounded-full animate-spin" />
             </div>
           ) : orgs.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-24 px-8 text-center">
-              <div className="w-20 h-20 rounded-full flex items-center justify-center text-4xl mb-5 bg-[linear-gradient(145deg,#3DA829,#065f46)]">
+              <div className="w-20 h-20 rounded-full flex items-center justify-center text-4xl mb-5 bg-gradient-to-br from-brand-500 to-emerald-900">
                 🤝
               </div>
               <h3 className="text-xl font-black text-slate-900 dark:text-white mb-2">No organisations yet</h3>
@@ -307,7 +307,7 @@ export default function CoopList({ userId, onOpen, onClose, embedded }) {
                 Register a cooperative, church, market association, NGO, savings group or any organisation to get started.
               </p>
               <button onClick={() => setShowCreate(true)}
-                className="px-8 py-3.5 rounded-full font-extrabold text-sm text-white active:scale-95 transition bg-[#3DA829]">
+                className="px-8 py-3.5 rounded-full font-extrabold text-sm text-white active:scale-95 transition bg-brand-500">
                 Register Organisation
               </button>
             </div>
@@ -321,7 +321,7 @@ export default function CoopList({ userId, onOpen, onClose, embedded }) {
                     className={`w-full flex items-start gap-3 px-4 py-4 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 active:bg-slate-100 dark:active:bg-slate-800 transition-colors ${idx < displayOrgs.length - 1 ? "border-b border-slate-100 dark:border-slate-800" : ""}`}>
 
                     {/* Avatar */}
-                    <div className="w-11 h-11 rounded-full flex items-center justify-center text-2xl flex-shrink-0 shadow-sm bg-[linear-gradient(145deg,#3DA829,#065f46)]">
+                    <div className="w-11 h-11 rounded-full flex items-center justify-center text-2xl flex-shrink-0 shadow-sm bg-gradient-to-br from-brand-500 to-emerald-900">
                       {typeInfo?.icon || "🏢"}
                     </div>
 
@@ -341,7 +341,7 @@ export default function CoopList({ userId, onOpen, onClose, embedded }) {
                         )}
                       </div>
                       <p className="text-[11px] text-slate-400 dark:text-slate-500 mb-1.5">{org.reg_number}</p>
-                      <span className="text-[10px] font-bold px-2.5 py-1 rounded-full border text-[#3DA829] border-[#3DA829] bg-[#3DA82910]">
+                      <span className="text-[10px] font-bold px-2.5 py-1 rounded-full border text-brand-500 border-brand-500 bg-brand-500/10">
                         {typeInfo?.label || org.type}
                       </span>
                     </div>
@@ -393,7 +393,7 @@ export default function CoopList({ userId, onOpen, onClose, embedded }) {
         {orgs.length > 0 && (
           <button
             onClick={() => setShowCreate(true)}
-            className="fixed right-5 bottom-24 w-14 h-14 rounded-full shadow-xl flex items-center justify-center active:scale-95 transition z-20 bg-[#3DA829]">
+            className="fixed right-5 bottom-24 w-14 h-14 rounded-full shadow-xl flex items-center justify-center active:scale-95 transition z-20 bg-brand-500">
             <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6" stroke="white" strokeWidth={2.5} strokeLinecap="round">
               <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
             </svg>

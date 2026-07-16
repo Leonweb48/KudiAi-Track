@@ -1362,7 +1362,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       </div>
 
       {/* Hero */}
-      <div className="rounded-3xl px-5 py-5 mb-4 text-white relative overflow-hidden shadow-hero bg-[linear-gradient(135deg,#7c3aed_0%,#5b21b6_55%,#4c1d95_100%)]">
+      <div className="rounded-3xl px-5 py-5 mb-4 text-white relative overflow-hidden shadow-hero bg-gradient-to-br from-violet-600 via-violet-900 to-violet-950">
         <div className="absolute -top-10 -right-10 w-36 h-36 rounded-full bg-white/5 pointer-events-none" />
         <div className="absolute -bottom-12 -left-8 w-44 h-44 rounded-full bg-white/5 pointer-events-none" />
         <div className="relative">
@@ -2593,7 +2593,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         }
         return (
           <div className="fixed inset-0 z-[60] bg-white dark:bg-slate-900 flex flex-col">
-            <div className="h-1 w-full bg-[linear-gradient(90deg,#7c3aed,#10b981)]" />
+            <div className="h-1 w-full bg-gradient-to-r from-violet-600 to-emerald-500" />
             <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
               <div className="w-20 h-20 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mb-5 shadow-md">
                 <svg viewBox="0 0 24 24" fill="none" className="w-10 h-10 text-green-500" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">

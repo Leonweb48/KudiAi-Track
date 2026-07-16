@@ -395,7 +395,7 @@ export function AddTxnModal({
               <div className={`flex items-baseline justify-center gap-1 ${
                 type === "in"
                   ? "text-green-600 dark:text-green-400"
-                  : "text-[#16255A] dark:text-blue-300"
+                  : "text-navy dark:text-blue-300"
               }`}>
                 <span className="text-2xl font-bold leading-none">₦</span>
                 <span

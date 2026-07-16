@@ -260,7 +260,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
       </div>
 
       {/* Hero */}
-      <div className="rounded-3xl px-5 py-5 mb-4 text-white relative overflow-hidden shadow-hero bg-[linear-gradient(135deg,#f59e0b_0%,#d97706_55%,#b45309_100%)]">
+      <div className="rounded-3xl px-5 py-5 mb-4 text-white relative overflow-hidden shadow-hero bg-gradient-to-br from-amber-400 via-amber-600 to-amber-700">
         <div className="absolute -top-10 -right-10 w-36 h-36 rounded-full bg-white/5 pointer-events-none" />
         <div className="absolute -bottom-12 -left-8 w-44 h-44 rounded-full bg-white/5 pointer-events-none" />
         <div className="relative">

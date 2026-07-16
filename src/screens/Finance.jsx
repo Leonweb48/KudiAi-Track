@@ -677,7 +677,7 @@ export default function Finance({
             <button key={p.key} onClick={() => setPeriod(p.key)}
               className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition min-h-[28px] ${
                 period === p.key
-                  ? "bg-white text-[#16255A]"
+                  ? "bg-white text-navy"
                   : "bg-white/15 text-white/70 active:bg-white/25"
               }`}>
               {p.label}
