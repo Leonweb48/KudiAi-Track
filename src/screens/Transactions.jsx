@@ -21,10 +21,10 @@ import { Capacitor } from "@capacitor/core";
 const CATEGORIES   = ["sale", "expense", "stock", "credit sale", "debt repayment", "other"];
 const PAYMENT_TYPES = ["cash", "transfer", "pos", "mobile money"];
 
-export function AddTxnModal({ onAdd, onClose, defaultType = "in", inventory = null }) {
+export function AddTxnModal({ onAdd, onClose, defaultType = "in", defaultCategory = "sale", inventory = null }) {
   const [f, setF] = useState({
     type:             defaultType,
-    category:         "sale",
+    category:         defaultCategory,
     amount:           "",
     unit_price:       "",
     item_name:        "",
@@ -232,12 +232,13 @@ export function AddTxnModal({ onAdd, onClose, defaultType = "in", inventory = nu
   );
 }
 
-export default function Transactions({ store, plan = "starter", onVoiceOpen, autoOpen, autoType, onAutoOpened, onUpgrade, readOnly, inventory = null }) {
+export default function Transactions({ store, plan = "starter", onVoiceOpen, autoOpen, autoType, autoCategory, onAutoOpened, onUpgrade, readOnly, inventory = null }) {
   const t = useT();
   const { slotMap: camSlots, loading: camLoading, recordEvent: recordCamEvent } = useCampaigns(["announcement_bar", "upsell_inline"], "business", "business.sales");
   const salesAnnBars = camSlots.announcement_bar || [];
   const [showAdd,      setShowAdd]      = useState(false);
   const [initType,     setInitType]     = useState("in");
+  const [initCategory, setInitCategory] = useState("sale");
   const [filter,       setFilter]       = useState("all");
   const [search,       setSearch]       = useState("");
   const [receipt,      setReceipt]      = useState(null);
@@ -276,12 +277,13 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
   useEffect(() => {
     if (autoOpen && !txLimitReached) {
       setInitType(autoType || "in");
+      setInitCategory(autoCategory || "sale");
       setShowAdd(true);
       onAutoOpened?.();
     } else if (autoOpen) {
       onAutoOpened?.();
     }
-  }, [autoOpen, autoType, onAutoOpened, txLimitReached]);
+  }, [autoOpen, autoType, autoCategory, onAutoOpened, txLimitReached]);
 
   const isAjoMode = filter === "ajo";
   const filtered = isAjoMode ? [] : transactions.filter(t => {
@@ -620,7 +622,7 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
       )}
 
       {showAdd && (
-        <AddTxnModal defaultType={initType} onAdd={addTransaction} onClose={() => setShowAdd(false)} inventory={inventory} />
+        <AddTxnModal defaultType={initType} defaultCategory={initCategory} onAdd={addTransaction} onClose={() => setShowAdd(false)} inventory={inventory} />
       )}
 
       {receipt && (

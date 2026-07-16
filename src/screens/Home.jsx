@@ -52,25 +52,27 @@ const P = {
   eyeOff:  "M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24|M1 1l22 22",
 };
 
+/* Mic tile gets brand treatment; service tiles keep category-identifier colors via Tailwind */
 const BILL_SERVICES = [
-  { id: "mic",         label: "Mic Sale",    g1: "#059669", g2: "#065f46", mic: true },
-  { id: "airtime",     label: "Airtime",     g1: "#ef4444", g2: "#dc2626", icon: "M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81a19.79 19.79 0 01-3.07-8.67A2 2 0 012 .82h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" },
-  { id: "data",        label: "Data",        g1: "#3b82f6", g2: "#1d4ed8", icon: "M1 6l11-4 11 4|M1 12l11-4 11 4|M1 18l11-4 11 4" },
-  { id: "electricity", label: "Electricity", g1: "#f59e0b", g2: "#d97706", icon: "M13 2L3 14h9l-1 8 10-12h-9l1-8z" },
-  { id: "cable",       label: "Cable TV",    g1: "#8b5cf6", g2: "#6d28d9", icon: "M2 7a2 2 0 012-2h16a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V7z|M12 19v3|M8 22h8" },
-  { id: "betting",     label: "Betting",     g1: "#10b981", g2: "#059669", icon: "M12 2a10 10 0 100 20A10 10 0 0012 2z|M12 8v4l3 3" },
+  { id: "mic",         label: "Mic Sale",    brand: true,  mic: true },
+  { id: "airtime",     label: "Airtime",     bg: "from-red-500 to-red-600",        icon: "M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81a19.79 19.79 0 01-3.07-8.67A2 2 0 012 .82h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" },
+  { id: "data",        label: "Data",        bg: "from-blue-500 to-blue-700",       icon: "M1 6l11-4 11 4|M1 12l11-4 11 4|M1 18l11-4 11 4" },
+  { id: "electricity", label: "Electricity", bg: "from-amber-400 to-amber-600",     icon: "M13 2L3 14h9l-1 8 10-12h-9l1-8z" },
+  { id: "cable",       label: "Cable TV",    bg: "from-violet-500 to-violet-700",   icon: "M2 7a2 2 0 012-2h16a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V7z|M12 19v3|M8 22h8" },
+  { id: "betting",     label: "Betting",     bg: "from-emerald-500 to-emerald-600", icon: "M12 2a10 10 0 100 20A10 10 0 0012 2z|M12 8v4l3 3" },
 ];
 
 /* ── Transaction row icon/color by type ───────────────────────────── */
 function getTxStyle(tx) {
-  if (tx.payment_type === "bill_payment") return { bg: "bg-cyan-100 dark:bg-cyan-900/30",   color: "#0891b2", icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2|M9 5a2 2 0 002 2h2a2 2 0 002-2|M9 5a2 2 0 012-2h2a2 2 0 012 2|M9 13h6|M9 17h4" };
-  if (tx.category === "credit sale")      return { bg: "bg-amber-100 dark:bg-amber-900/30", color: "#d97706", icon: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2|M9 11a4 4 0 100-8 4 4 0 000 8" };
-  if (tx.category === "debt repayment")   return { bg: "bg-blue-100 dark:bg-blue-900/30",   color: "#2563eb", icon: "M3 22h18|M6 18v-7|M10 18v-7|M14 18v-7|M18 18v-7|M12 2L2 7h20L12 2z" };
-  if (tx.type === "in")                   return { bg: "bg-green-100 dark:bg-green-900/30", color: "#16a34a", icon: "M12 19V5|M5 12l7-7 7 7" };
-  return                                         { bg: "bg-red-100 dark:bg-red-900/30",     color: "#ef4444", icon: "M12 5v14|M19 12l-7 7-7-7" };
+  if (tx.payment_type === "bill_payment") return { bg: "bg-cyan-100 dark:bg-cyan-900/30",    color: "#0891b2", icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2|M9 5a2 2 0 002 2h2a2 2 0 002-2|M9 5a2 2 0 012-2h2a2 2 0 012 2|M9 13h6|M9 17h4" };
+  if (tx.category === "credit sale")      return { bg: "bg-amber-100 dark:bg-amber-900/30",  color: "#d97706", icon: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2|M9 11a4 4 0 100-8 4 4 0 000 8" };
+  if (tx.category === "debt repayment")   return { bg: "bg-blue-100 dark:bg-blue-900/30",    color: "#2563eb", icon: "M3 22h18|M6 18v-7|M10 18v-7|M14 18v-7|M18 18v-7|M12 2L2 7h20L12 2z" };
+  if (tx.category === "stock")            return { bg: "bg-slate-100 dark:bg-slate-700/60",  color: "#475569", icon: "M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z|M3.27 6.96L12 12.01l8.73-5.05|M12 22.08V12" };
+  if (tx.type === "in")                   return { bg: "bg-green-100 dark:bg-green-900/30",  color: "#16a34a", icon: "M12 19V5|M5 12l7-7 7 7" };
+  return                                         { bg: "bg-red-100 dark:bg-red-900/30",      color: "#ef4444", icon: "M12 5v14|M19 12l-7 7-7-7" };
 }
 
-/* ── Recent transaction row — colored circle icons ────────────────── */
+/* ── Transaction feed row — OPay-standard language ────────────────── */
 function TxRow({ tx, onClick, balanceHidden }) {
   const isIn  = tx.type === "in";
   const style = getTxStyle(tx);
@@ -81,12 +83,16 @@ function TxRow({ tx, onClick, balanceHidden }) {
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate">{tx.item_name || "Transaction"}</p>
-        <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 truncate">{tx.category} · {tx.payment_type}</p>
+        <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 truncate capitalize">{tx.category} · {tx.payment_type}</p>
       </div>
       <div className="text-right flex-shrink-0">
-        <p className={`text-sm font-extrabold tabular ${isIn ? "text-green-600" : "text-red-500"}`}>
-          {balanceHidden ? "••••" : `${isIn ? "+" : "−"}${fmt(tx.amount)}`}
-        </p>
+        <AmountDisplay
+          amount={tx.amount}
+          size="row"
+          align="right"
+          hidden={balanceHidden}
+          className={isIn ? "text-green-600 dark:text-green-400" : "text-[#16255A] dark:text-blue-300"}
+        />
         <p className="text-[10px] text-slate-300 dark:text-slate-600 mt-0.5">{tx.transaction_date}</p>
       </div>
     </button>
@@ -136,12 +142,18 @@ function SalesForecastCard({ prediction, t, balanceHidden }) {
 export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, onAIOpen, notif }) {
   const { transactions, credits, asoClients, profile, loading } = store;
   const t = useT();
-  const [balanceHidden,      setBalanceHidden]      = useState(false);
+  const [balanceHidden,      setBalanceHidden]      = useState(() => sessionStorage.getItem("kt_balance_hidden") === "1");
   const [search,             setSearch]             = useState("");
   const [receipt,            setReceipt]            = useState(null);
   const [showProfilePreview, setShowProfilePreview] = useState(false);
   const [todayAjo,           setTodayAjo]           = useState(0);
   const [showAITip,          setShowAITip]          = useState(() => !localStorage.getItem("kt_ai_intro_seen"));
+
+  const toggleBalanceHidden = () => {
+    const next = !balanceHidden;
+    sessionStorage.setItem("kt_balance_hidden", next ? "1" : "0");
+    setBalanceHidden(next);
+  };
 
   useEffect(() => {
     if (!asoClients.length) return;
@@ -156,6 +168,7 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
       .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [asoClients.length]);
+
   const { slotMap, loading: camLoading, recordEvent } = useCampaigns(
     ["home_banner","popup","feed_card","upsell_inline","announcement_bar","tab_card_quad","tab_card_duo"],
     "business",
@@ -167,23 +180,23 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
   const feedCampaign = (slotMap.feed_card       || [])[0] ?? null;
   const upsells      = slotMap.upsell_inline    || [];
   const annBars      = slotMap.announcement_bar || [];
-  // Density rule: max one tab-card row per page; quad takes priority over duo
   const tabCard = (slotMap.tab_card_quad || [])[0] ?? (slotMap.tab_card_duo || [])[0] ?? null;
 
-  const todayTx     = transactions.filter(tx => tx.transaction_date === today());
-  const cashIn      = todayTx.filter(tx => tx.type === "in" ).reduce((s, tx) => s + tx.amount, 0);
-  const cashOut     = todayTx.filter(tx => tx.type === "out").reduce((s, tx) => s + tx.amount, 0);
-  const profit      = cashIn - cashOut;
+  const todayTx      = transactions.filter(tx => tx.transaction_date === today());
+  const cashIn       = todayTx.filter(tx => tx.type === "in" ).reduce((s, tx) => s + tx.amount, 0);
+  const cashOut      = todayTx.filter(tx => tx.type === "out").reduce((s, tx) => s + tx.amount, 0);
+  const profit       = cashIn - cashOut;
   const totalCredit  = credits.reduce((s, c) => s + c.outstanding, 0);
   const overdueCount = credits.filter(c => c.status === "overdue").length;
   const totalAso     = asoClients.reduce((s, c) => s + c.current_balance, 0);
   const forecast     = useMemo(() => getSalesPrediction(transactions), [transactions]);
 
+  /* Quick actions — tap destinations frozen per Gate 0 ruling 6 */
   const PRIMARY_ACTIONS = [
-    { label: t("home.cashIn"),  icon: P.in,      g1: "#16a34a", g2: "#059669", action: () => onQuickAction?.("transactions", "in")  },
-    { label: t("home.cashOut"), icon: P.out,     g1: "#ef4444", g2: "#dc2626", action: () => onQuickAction?.("transactions", "out") },
-    { label: "Invoice",         icon: P.invoice, g1: "#ec4899", g2: "#be185d", action: () => onQuickAction?.("finance", "invoices") },
-    { label: "Credit",          icon: P.credit,  g1: "#d97706", g2: "#b45309", action: () => onQuickAction?.("credit")              },
+    { label: "Record Sale",     icon: P.in,      action: () => onQuickAction?.("transactions", "in")                   },
+    { label: "New Invoice",     icon: P.invoice, action: () => onQuickAction?.("finance", "invoices")                  },
+    { label: "Pay Bills",       icon: P.report,  action: () => onQuickAction?.("bills")                                },
+    { label: "Receive Payment", icon: P.bank,    action: () => onQuickAction?.("transactions", "in", "debt repayment") },
   ];
 
   return (
@@ -215,109 +228,162 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
       {/* ── Announcement bar slot ────────────────────────────────── */}
       <AnnouncementBarSlot campaigns={annBars} loading={camLoading} recordEvent={recordEvent} />
 
-      {/* ── Hero card — greeting + profit + eye toggle ────────────── */}
-      <div className="rounded-3xl px-5 pt-5 pb-6 text-white relative overflow-hidden shadow-hero bg-[linear-gradient(145deg,#059669_0%,#047857_55%,#065f46_100%)]">
+      {/* ── Hero card — brand navy ─────────────────────────────────── */}
+      <div className="rounded-3xl px-5 pt-5 pb-6 text-white relative overflow-hidden shadow-hero"
+        style={{ background: "linear-gradient(145deg,var(--navy) 0%,var(--navy-mid) 55%,var(--navy-dark) 100%)" }}>
         <div className="absolute -top-10 -right-10 w-36 h-36 rounded-full bg-white/5 pointer-events-none" />
         <div className="absolute -bottom-12 -left-8  w-44 h-44 rounded-full bg-white/5 pointer-events-none" />
         <div className="absolute top-4   right-20   w-12 h-12 rounded-full bg-white/5 pointer-events-none" />
 
         <div className="relative">
-          {/* Greeting + eye toggle */}
+          {/* Greeting + eye toggle (≥44px tile) */}
           <div className="flex items-start justify-between mb-4">
             <div className="flex-1 min-w-0">
               <p className="text-[12px] font-semibold text-white/70 mb-0.5">{t(greetingKey())} 👋</p>
               <p className="text-[15px] font-black text-white truncate">{profile.business_name || profile.owner_name || "Welcome"}</p>
             </div>
             <button
-              onClick={() => setBalanceHidden(h => !h)}
+              onClick={toggleBalanceHidden}
+              aria-label={balanceHidden ? "Show balances" : "Hide balances"}
               className="w-11 h-11 flex items-center justify-center rounded-xl bg-white/15 active:bg-white/25 active:scale-90 transition mt-0.5 flex-shrink-0 ml-3">
               <Svg d={balanceHidden ? P.eyeOff : P.eye} size={15} color="white" sw={2} />
             </button>
           </div>
 
-          {/* Profit label + amount */}
-          <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest">{t("home.todayProfit")}</p>
+          {/* TODAY'S SALES — dominant amount via AmountDisplay */}
+          <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest">TODAY'S SALES</p>
           {loading ? (
-            <div className="h-11 w-40 bg-white/20 rounded-xl animate-pulse mt-2 mb-5" />
-          ) : balanceHidden ? (
-            <p className="text-[38px] font-black tracking-tight mt-1.5 mb-5 tabular leading-none text-white">₦ ••••••</p>
+            <div className="h-11 w-40 bg-white/20 rounded-xl animate-pulse mt-2 mb-4" />
           ) : (
-            <AmountDisplay amount={Math.abs(profit)} size="hero" align="left" className="mt-1.5 mb-5" style={{ color: profit < 0 ? '#fca5a5' : '#fff' }} />
+            <AmountDisplay
+              amount={Math.abs(profit)}
+              size="hero"
+              align="left"
+              hidden={balanceHidden}
+              className={`mt-1.5 mb-4 ${profit < 0 ? "text-red-300" : "text-white"}`}
+            />
           )}
 
-          {/* Sub-stats row */}
-          <div className="flex gap-5">
-            <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">{t("home.cashIn")}</p>
-              {loading || balanceHidden
-                ? <p className="text-base font-bold tabular">{loading ? "—" : "••••"}</p>
-                : <AmountDisplay amount={cashIn} size="row" align="left" className="text-white font-bold" />
-              }
+          {/* Compact in/out line — brand-green in, white/70 out, txn count chip */}
+          {loading ? (
+            <div className="h-4 w-40 bg-white/20 rounded animate-pulse" />
+          ) : (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[11px] font-bold" style={{ color: "var(--brand-green)" }}>↑</span>
+              <AmountDisplay
+                amount={cashIn}
+                size="small"
+                align="left"
+                hidden={balanceHidden}
+                style={{ color: "var(--brand-green)", maxWidth: 84 }}
+              />
+              <span className="text-white/50 text-[10px]">in</span>
+              <span className="text-white/30 text-[10px] mx-0.5">·</span>
+              <span className="text-white/70 text-[11px] font-bold">↓</span>
+              <AmountDisplay
+                amount={cashOut}
+                size="small"
+                align="left"
+                hidden={balanceHidden}
+                style={{ color: "rgba(255,255,255,0.7)", maxWidth: 84 }}
+              />
+              <span className="text-white/50 text-[10px]">out</span>
+              {todayTx.length > 0 && (
+                <span className="text-[10px] text-white/40 ml-1">· {todayTx.length} txn{todayTx.length !== 1 ? "s" : ""}</span>
+              )}
             </div>
-            <div className="w-px bg-white/20 self-stretch" />
-            <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">{t("home.cashOut")}</p>
-              {loading || balanceHidden
-                ? <p className="text-base font-bold tabular">{loading ? "—" : "••••"}</p>
-                : <AmountDisplay amount={cashOut} size="row" align="left" className="text-white font-bold" />
-              }
-            </div>
-            <div className="w-px bg-white/20 self-stretch" />
-            <div className="min-w-0">
-              <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">{t("home.txns")}</p>
-              <p className="text-base font-bold tabular">{loading ? "—" : todayTx.length}</p>
-            </div>
-          </div>
+          )}
         </div>
       </div>
 
-      {/* ── Daily summary chip ──────────────────────────────────── */}
-      {(!loading && todayTx.length > 0) || todayAjo > 0 ? (
-        <div className="flex flex-col items-center gap-1.5">
-          {!loading && todayTx.length > 0 && (
-            <div className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-[11px] font-bold border ${
-              profit >= 0
-                ? "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-green-100 dark:border-green-800/40"
-                : "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border-red-100 dark:border-red-800/40"
-            }`}>
-              <span>Today</span>
-              <span className="opacity-40">·</span>
-              <span>{todayTx.length} transaction{todayTx.length !== 1 ? "s" : ""}</span>
-              <span className="opacity-40">·</span>
-              <span>{balanceHidden ? "•••• net" : `${profit >= 0 ? "+" : "−"}${fmt(Math.abs(profit))} net`}</span>
-            </div>
-          )}
-          {/* Ajo collections are client savings — not included in profit above */}
-          {todayAjo > 0 && (
-            <div className="inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-[11px] font-bold border bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-400 border-violet-100 dark:border-violet-800/40">
-              <span>Ajo</span>
-              <span className="opacity-40">·</span>
-              <span>{balanceHidden ? "•••• collected today" : `${fmt(todayAjo)} collected today`}</span>
-            </div>
-          )}
+      {/* ── Ajo chip — today's collections (separate from profit) ─── */}
+      {todayAjo > 0 && (
+        <div className="flex justify-center">
+          <div className="inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-[11px] font-bold border bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-400 border-violet-100 dark:border-violet-800/40">
+            <span>Ajo</span>
+            <span className="opacity-40">·</span>
+            <span>{balanceHidden ? "•••• collected today" : `${fmt(todayAjo)} collected today`}</span>
+          </div>
         </div>
-      ) : null}
+      )}
+
+      {/* ── Stat strip — 3 fixed cards (hostile-data certified at 320px) ── */}
+      {loading ? (
+        <div className="grid grid-cols-3 gap-2">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="h-[68px] bg-white dark:bg-slate-800 rounded-2xl animate-pulse border border-slate-100 dark:border-slate-700/50" />
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-3 gap-2">
+
+          {/* This week — source: forecast.thisWeekActual from getSalesPrediction */}
+          <button onClick={() => setTab("transactions")}
+            className="flex flex-col gap-0.5 bg-white dark:bg-slate-800 rounded-2xl px-3 py-3 shadow-card border border-slate-100 dark:border-slate-700/50 active:scale-95 transition-transform text-left">
+            <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider whitespace-nowrap">This Week</p>
+            <AmountDisplay
+              amount={forecast?.thisWeekActual ?? 0}
+              size="stat"
+              align="left"
+              hidden={balanceHidden}
+              className="text-slate-800 dark:text-slate-100"
+            />
+            <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-none">Sales</p>
+          </button>
+
+          {/* Credit outstanding */}
+          <button onClick={() => onQuickAction?.("credit")}
+            className="flex flex-col gap-0.5 bg-white dark:bg-slate-800 rounded-2xl px-3 py-3 shadow-card border border-slate-100 dark:border-slate-700/50 active:scale-95 transition-transform text-left">
+            <div className="flex items-center gap-1">
+              <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider whitespace-nowrap">Credit</p>
+              {overdueCount > 0 && <span className="text-[8px] text-red-500">⚠</span>}
+            </div>
+            <AmountDisplay
+              amount={totalCredit}
+              size="stat"
+              align="left"
+              hidden={balanceHidden}
+              className="text-slate-800 dark:text-slate-100"
+            />
+            <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-none">Outstanding</p>
+          </button>
+
+          {/* Ajo held */}
+          <button onClick={() => onQuickAction?.("aso")}
+            className="flex flex-col gap-0.5 bg-white dark:bg-slate-800 rounded-2xl px-3 py-3 shadow-card border border-slate-100 dark:border-slate-700/50 active:scale-95 transition-transform text-left">
+            <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider whitespace-nowrap">Ajo</p>
+            <AmountDisplay
+              amount={totalAso}
+              size="stat"
+              align="left"
+              hidden={balanceHidden}
+              className="text-slate-800 dark:text-slate-100"
+            />
+            <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-none">Held</p>
+          </button>
+
+        </div>
+      )}
 
       {/* ── Quick Actions + Services (single card) ────────────────── */}
       <div className="bg-white dark:bg-slate-800 rounded-3xl p-4 shadow-card border border-slate-100 dark:border-slate-700/50">
 
-        {/* 4 Primary action circles */}
+        {/* 4 primary tiles — navy icon on light-green rounded-full; min 44px target */}
         <div className="grid grid-cols-4 gap-2 mb-5">
           {PRIMARY_ACTIONS.map(a => (
             <button key={a.label} onClick={a.action}
-              className="flex flex-col items-center gap-2 active:scale-90 transition-transform duration-150">
-              <div className="w-[54px] h-[54px] rounded-2xl flex items-center justify-center shadow-sm"
-                style={{ background: `linear-gradient(135deg,${a.g1},${a.g2})` }}>
-                <Svg d={a.icon} size={22} color="white" sw={2} />
+              className="flex flex-col items-center gap-2 active:scale-90 transition-transform duration-150 min-h-[44px] min-w-[44px] text-[#16255A] dark:text-white">
+              <div className="w-14 h-14 rounded-full flex items-center justify-center shadow-sm bg-[#E8F5E3] dark:bg-[#16255A]/40">
+                <Svg d={a.icon} size={22} color="currentColor" sw={2} />
               </div>
-              <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400 text-center leading-tight max-w-[56px]">
+              <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400 text-center leading-tight max-w-[60px]">
                 {a.label}
               </span>
             </button>
           ))}
         </div>
 
-        {/* Quick Services section */}
+        {/* Quick Services — mic in slot 1 per ruling 6; bill tiles keep category colors */}
         <div className="border-t border-slate-100 dark:border-slate-700/60 pt-4">
           <div className="flex items-center justify-between mb-3.5">
             <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Quick Services</p>
@@ -329,8 +395,10 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
               <button key={s.id}
                 onClick={() => s.mic ? onVoiceOpen?.() : onQuickAction?.("bills", s.id)}
                 className="flex flex-col items-center gap-2 active:scale-90 transition-transform duration-150">
-                <div className="w-12 h-12 rounded-2xl flex items-center justify-center shadow-sm"
-                  style={{ background: `linear-gradient(135deg,${s.g1},${s.g2})` }}>
+                <div
+                  className={`w-12 h-12 rounded-2xl flex items-center justify-center shadow-sm ${s.bg ? `bg-gradient-to-br ${s.bg}` : ""}`}
+                  style={s.brand ? { background: "linear-gradient(135deg,var(--brand-green),var(--brand-green-dark))" } : undefined}
+                >
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
                     stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     {(s.mic ? P.mic : s.icon).split("|").map((d, i) => <path key={i} d={d} />)}
@@ -357,8 +425,7 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
             <button
               onClick={() => { localStorage.setItem("kt_ai_intro_seen", "1"); setShowAITip(false); }}
               aria-label="Dismiss"
-              className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full text-brand-400 dark:text-brand-500 hover:bg-brand-100 dark:hover:bg-brand-800/40 active:scale-90 transition-transform mt-0.5"
-            >
+              className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full text-brand-400 dark:text-brand-500 hover:bg-brand-100 dark:hover:bg-brand-800/40 active:scale-90 transition-transform mt-0.5">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                 <path d="M18 6L6 18M6 6l12 12" />
               </svg>
@@ -367,8 +434,7 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
         )}
         <button
           onClick={() => { localStorage.setItem("kt_ai_intro_seen", "1"); setShowAITip(false); onAIOpen?.(); }}
-          className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-3xl shadow-card border border-slate-100 dark:border-slate-700/50 active:scale-[0.98] transition-transform duration-150 bg-[linear-gradient(135deg,#16a34a,#059669)]"
-        >
+          className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-3xl shadow-card border border-slate-100 dark:border-slate-700/50 active:scale-[0.98] transition-transform duration-150 bg-[linear-gradient(135deg,#16a34a,#059669)]">
           <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center flex-shrink-0">
             <span className="text-xl leading-none">✨</span>
           </div>
@@ -382,69 +448,7 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
         </button>
       </div>
 
-      {/* ── Scrollable stat chips ─────────────────────────────────── */}
-      <div className="overflow-x-auto no-scrollbar -mx-4 px-4">
-        <div className="flex gap-3 pb-1" style={{ width: "max-content" }}>
-
-          <button onClick={() => setTab("transactions")}
-            className="flex items-center gap-2.5 bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800/40 rounded-2xl px-3.5 py-2.5 active:scale-95 transition-transform flex-shrink-0">
-            <div className="w-8 h-8 rounded-xl bg-green-100 dark:bg-green-900/40 flex items-center justify-center">
-              <Svg d={P.in} size={14} color="#16a34a" sw={2.5} />
-            </div>
-            <div>
-              <p className="text-[9px] font-bold text-green-600 dark:text-green-400 uppercase tracking-wider whitespace-nowrap">{t("home.cashIn")}</p>
-              <p className="text-sm font-extrabold text-green-700 dark:text-green-300 tabular leading-tight">
-                {loading ? "—" : balanceHidden ? "••••" : fmt(cashIn)}
-              </p>
-            </div>
-          </button>
-
-          <button onClick={() => setTab("transactions")}
-            className="flex items-center gap-2.5 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800/40 rounded-2xl px-3.5 py-2.5 active:scale-95 transition-transform flex-shrink-0">
-            <div className="w-8 h-8 rounded-xl bg-red-100 dark:bg-red-900/40 flex items-center justify-center">
-              <Svg d={P.out} size={14} color="#ef4444" sw={2.5} />
-            </div>
-            <div>
-              <p className="text-[9px] font-bold text-red-500 dark:text-red-400 uppercase tracking-wider whitespace-nowrap">{t("home.cashOut")}</p>
-              <p className="text-sm font-extrabold text-red-600 dark:text-red-300 tabular leading-tight">
-                {loading ? "—" : balanceHidden ? "••••" : fmt(cashOut)}
-              </p>
-            </div>
-          </button>
-
-          <button onClick={() => onQuickAction?.("credit")}
-            className="flex items-center gap-2.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800/40 rounded-2xl px-3.5 py-2.5 active:scale-95 transition-transform flex-shrink-0">
-            <div className="w-8 h-8 rounded-xl bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center">
-              <Svg d={P.credit} size={14} color="#d97706" sw={2.5} />
-            </div>
-            <div>
-              <div className="flex items-center gap-1">
-                <p className="text-[9px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider whitespace-nowrap">{t("home.pendingCredit")}</p>
-                {overdueCount > 0 && <span className="text-red-500 text-[9px]">⚠</span>}
-              </div>
-              <p className="text-sm font-extrabold text-amber-700 dark:text-amber-300 tabular leading-tight">
-                {loading ? "—" : balanceHidden ? "••••" : fmt(totalCredit)}
-              </p>
-            </div>
-          </button>
-
-          <button onClick={() => onQuickAction?.("aso")}
-            className="flex items-center gap-2.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/40 rounded-2xl px-3.5 py-2.5 active:scale-95 transition-transform flex-shrink-0">
-            <div className="w-8 h-8 rounded-xl bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center">
-              <Svg d={P.bank} size={14} color="#2563eb" sw={2.5} />
-            </div>
-            <div>
-              <p className="text-[9px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider whitespace-nowrap">{t("home.ajoBalance")}</p>
-              <p className="text-sm font-extrabold text-blue-700 dark:text-blue-300 tabular leading-tight">
-                {loading ? "—" : balanceHidden ? "••••" : fmt(totalAso)}
-              </p>
-            </div>
-          </button>
-
-        </div>
-      </div>
-
-      {/* ── Tab card slot — between stat chips and forecast (density: never adjacent to promo) */}
+      {/* ── Tab card slot ────────────────────────────────────────── */}
       {tabCard && tabCard.slot === "tab_card_quad" && (
         <TabCardQuadSlot campaign={tabCard} pageKey="business.home" recordEvent={recordEvent} />
       )}
@@ -492,14 +496,14 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
           </h2>
           {!search && (
             <button onClick={() => setTab("transactions")} className="text-xs text-brand-600 dark:text-brand-400 font-bold">
-              {t("home.seeAll")}
+              {t("home.seeAll")} →
             </button>
           )}
         </div>
 
         {loading ? (
           <div className="space-y-2">
-            {[1,2,3].map(i => (
+            {[1, 2, 3].map(i => (
               <div key={i} className="h-16 bg-white dark:bg-slate-800 rounded-2xl animate-pulse border border-slate-100 dark:border-slate-700/50" />
             ))}
           </div>
@@ -520,15 +524,21 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
             <div className="space-y-2">{results.map(tx => <TxRow key={tx.id} tx={tx} onClick={() => setReceipt(buildTransactionReceipt(tx, profile))} balanceHidden={balanceHidden} />)}</div>
           );
         })() : transactions.length === 0 ? (
+          /* ── Warm new-business empty state ── */
           <div className="text-center py-12 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700/50">
-            <div className="w-14 h-14 bg-slate-100 dark:bg-slate-700 rounded-full flex items-center justify-center mx-auto mb-3">
-              <Svg d={P.report} size={22} color="#94a3b8" sw={1.5} />
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
+              style={{ background: "linear-gradient(135deg,var(--brand-green),var(--brand-green-dark))" }}>
+              <Svg d={P.in} size={28} color="white" sw={2} />
             </div>
-            <p className="text-slate-500 dark:text-slate-400 text-sm font-semibold">{t("home.noTxns")}</p>
-            <p className="text-slate-400 dark:text-slate-500 text-xs mt-1">{t("home.startRecord")}</p>
+            <p className="text-slate-700 dark:text-slate-300 text-base font-bold mb-1">{t("home.noTxns")}</p>
+            <p className="text-slate-400 dark:text-slate-500 text-sm px-8 mb-5">
+              Record your first sale and watch this space come alive
+            </p>
             <button
               onClick={() => onQuickAction?.("transactions", "in")}
-              className="mt-4 px-5 py-2.5 rounded-xl text-xs font-bold text-white active:scale-95 transition bg-[linear-gradient(135deg,#16a34a,#059669)]">
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold text-white active:scale-95 transition shadow-sm"
+              style={{ background: "linear-gradient(135deg,var(--brand-green),var(--brand-green-dark))" }}>
+              <Svg d={P.in} size={16} color="white" sw={2.5} />
               Record First Sale
             </button>
           </div>

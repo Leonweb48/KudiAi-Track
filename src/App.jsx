@@ -368,9 +368,9 @@ export default function App() {
     return () => { sub.then(s => s.remove()); };
   }, [navigate]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const triggerQuickAction = (targetTab, type = null) => {
+  const triggerQuickAction = (targetTab, type = null, category = null) => {
     setTab(targetTab);
-    setAutoAdd({ tab: targetTab, type });
+    setAutoAdd({ tab: targetTab, type, category });
   };
   const clearAutoAdd = () => setAutoAdd(null);
 
@@ -484,6 +484,7 @@ export default function App() {
                     plan={plan}
                     autoOpen={autoAdd?.tab === "transactions"}
                     autoType={autoAdd?.type}
+                    autoCategory={autoAdd?.category}
                     onAutoOpened={clearAutoAdd}
                     onVoiceOpen={() => setVoiceOpen(true)}
                     onUpgrade={openUpgrade}

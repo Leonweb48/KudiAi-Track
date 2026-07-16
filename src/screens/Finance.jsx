@@ -51,7 +51,7 @@ function FinanceOverviewCard({ credits, ajoClients, hasCreditAccess, onCreditCli
   const ajoActive    = ajoClients.filter(c => c.status === "active").length;
 
   return (
-    <div className="rounded-2xl p-4 text-white shadow-md relative overflow-hidden bg-gradient-to-br from-[#1B2A5E] to-[#2d4a8a]">
+    <div className="rounded-2xl p-4 text-white shadow-md relative overflow-hidden bg-gradient-to-br from-[#16255A] to-[#1D3070]">
       <div className="absolute -top-8 -right-8 w-28 h-28 rounded-full bg-white/5 pointer-events-none" />
       <div className="absolute -bottom-10 -left-6 w-32 h-32 rounded-full bg-white/5 pointer-events-none" />
       <p className="text-[10px] font-bold uppercase tracking-widest opacity-60 mb-3 relative">Financial Overview</p>

@@ -53,6 +53,7 @@ export function AmountDisplay({
   size      = 'stat',
   colorBy   = null,
   align     = 'left',
+  hidden    = false,
   className = '',
   style     = {},
 }) {
@@ -152,17 +153,17 @@ export function AmountDisplay({
           whiteSpace:        'nowrap',
           lineHeight:        1.2,
           fontVariantNumeric:'tabular-nums',
-          cursor:            disp.isCompact ? 'pointer' : 'default',
+          cursor:            (!hidden && disp.isCompact) ? 'pointer' : 'default',
           userSelect:        'none',
         }}
-        onPointerDown={disp.isCompact ? (e) => { e.stopPropagation(); setTipVisible(v => !v); } : undefined}
-        title={disp.isCompact ? full : undefined}
+        onPointerDown={(!hidden && disp.isCompact) ? (e) => { e.stopPropagation(); setTipVisible(v => !v); } : undefined}
+        title={(!hidden && disp.isCompact) ? full : undefined}
       >
-        {disp.text}
+        {hidden ? '••••••' : disp.text}
       </span>
 
       {/* Tap-to-reveal popover for compact mode */}
-      {disp.isCompact && tipVisible && (
+      {!hidden && disp.isCompact && tipVisible && (
         <div
           aria-live="polite"
           style={{
