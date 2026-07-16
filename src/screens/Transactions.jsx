@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { supabase } from "../utils/supabase";
 import Icon   from "../components/Icon";
 import Modal  from "../components/shared/Modal";
@@ -10,6 +10,7 @@ import TransactionDetailModal from "../components/shared/TransactionDetailModal"
 import { buildTransactionReceipt } from "../utils/receiptConfig";
 import { fmt, today } from "../utils/helpers";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
+import { TxRow } from "../components/shared/TxRow";
 import { canDo, planLimits } from "../utils/plans";
 import { createReportPdf, fmtCurrency, fmtDate } from "../utils/generateReportPdf";
 import { buildTransactionsCSV, transactionsCSVFilename, shareCSV } from "../utils/exportCSV";
@@ -21,6 +22,9 @@ import { Capacitor } from "@capacitor/core";
 const CATEGORIES   = ["sale", "expense", "stock", "credit sale", "debt repayment", "other"];
 const PAYMENT_TYPES = ["cash", "transfer", "pos", "mobile money"];
 
+/* ══════════════════════════════════════════════════════════════════════
+   AddTxnModal — UNTOUCHED (Gate 3 scope)
+   ══════════════════════════════════════════════════════════════════════ */
 export function AddTxnModal({ onAdd, onClose, defaultType = "in", defaultCategory = "sale", inventory = null }) {
   const [f, setF] = useState({
     type:             defaultType,
@@ -40,7 +44,6 @@ export function AddTxnModal({ onAdd, onClose, defaultType = "in", defaultCategor
 
   const products = inventory?.products || [];
 
-  /* ── Auto-calculate amount ── */
   const recalc = (up, qty) => {
     const u = parseFloat(up); const q = parseInt(qty) || 1;
     if (u > 0) set("amount", String(u * q));
@@ -48,7 +51,6 @@ export function AddTxnModal({ onAdd, onClose, defaultType = "in", defaultCategor
   const handleUnitPrice = (v) => { set("unit_price", v); recalc(v, f.quantity); };
   const handleQty       = (v) => { set("quantity",   v); recalc(f.unit_price, v); };
 
-  /* ── Inventory lookup ── */
   const matchedProduct = f.item_name
     ? products.find(p => p.product_name.toLowerCase() === f.item_name.toLowerCase())
     : null;
@@ -84,8 +86,6 @@ export function AddTxnModal({ onAdd, onClose, defaultType = "in", defaultCategor
     } else {
       speakConfirmation(f.type === "in" ? "cashIn" : "cashOut", getLang());
     }
-
-    /* Sync matched inventory product on sales */
     if (matchedProduct && f.type === "in" && inventory?.recordMovement) {
       inventory.recordMovement({
         product_id: matchedProduct.id,
@@ -100,7 +100,6 @@ export function AddTxnModal({ onAdd, onClose, defaultType = "in", defaultCategor
 
   return (
     <Modal title="Record Transaction" onClose={onClose}>
-      {/* Type toggle */}
       <div className="flex gap-2 mb-5">
         {["in","out"].map(t => (
           <button key={t} onClick={() => set("type", t)}
@@ -118,12 +117,9 @@ export function AddTxnModal({ onAdd, onClose, defaultType = "in", defaultCategor
         {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
       </Field>
 
-      {/* Item name + autocomplete */}
       <div className="relative">
         <Field label="Item / Description" placeholder="e.g. Samsung Galaxy A15" value={f.item_name}
           onChange={e => { set("item_name", e.target.value); setShowSuggestions(true); }} />
-
-        {/* Autocomplete dropdown */}
         {suggestions.length > 0 && (
           <div className="absolute z-10 left-0 right-0 top-full mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg overflow-hidden">
             {suggestions.map(p => (
@@ -145,7 +141,6 @@ export function AddTxnModal({ onAdd, onClose, defaultType = "in", defaultCategor
         )}
       </div>
 
-      {/* Matched product stock banner */}
       {matchedProduct && (
         <div className={`rounded-xl px-3.5 py-2.5 flex items-center justify-between text-xs font-bold -mt-1 ${
           overStock
@@ -170,14 +165,12 @@ export function AddTxnModal({ onAdd, onClose, defaultType = "in", defaultCategor
         </div>
       )}
 
-      {/* Over-stock error */}
       {overStock && (
         <p className="text-xs font-bold text-red-500 dark:text-red-400 -mt-1">
           ✕ Cannot sell {requestedQty} — only {matchedProduct.quantity} unit{matchedProduct.quantity !== 1 ? "s" : ""} available in stock
         </p>
       )}
 
-      {/* Unit Price × Qty → Amount */}
       <div className="grid grid-cols-2 gap-3">
         <Field label="Unit Price (₦)" type="number" inputMode="decimal" placeholder="0.00"
           value={f.unit_price} onChange={e => handleUnitPrice(e.target.value)} />
@@ -185,7 +178,6 @@ export function AddTxnModal({ onAdd, onClose, defaultType = "in", defaultCategor
           value={f.quantity} onChange={e => handleQty(e.target.value)} />
       </div>
 
-      {/* Auto-calc display */}
       {parseFloat(f.unit_price) > 0 && (
         <div className="bg-slate-800 dark:bg-slate-700 rounded-xl px-4 py-2.5 flex items-center justify-between -mt-1">
           <span className="text-xs text-slate-400">
@@ -199,18 +191,14 @@ export function AddTxnModal({ onAdd, onClose, defaultType = "in", defaultCategor
 
       <Field label="Total Amount (₦)" type="number" inputMode="decimal" placeholder="0.00"
         value={f.amount} onChange={e => set("amount", e.target.value)} />
-
       <Field label="Customer Name (optional)" placeholder="e.g. Chidi Okeke" value={f.customer_name}
         onChange={e => set("customer_name", e.target.value)} />
-
       <Field label="Payment Method" as="select" value={f.payment_type}
         onChange={e => set("payment_type", e.target.value)}>
         {PAYMENT_TYPES.map(p => <option key={p} value={p}>{p}</option>)}
       </Field>
-
       <Field label="Note (optional)" as="textarea" placeholder="Any extra notes…" value={f.note}
         onChange={e => set("note", e.target.value)} />
-
       <Field label="Date" type="date" value={f.transaction_date}
         onChange={e => set("transaction_date", e.target.value)} />
 
@@ -232,18 +220,166 @@ export function AddTxnModal({ onAdd, onClose, defaultType = "in", defaultCategor
   );
 }
 
+/* ══════════════════════════════════════════════════════════════════════
+   Date utilities
+   ══════════════════════════════════════════════════════════════════════ */
+function getDateLabel(dateStr) {
+  const now      = new Date();
+  const todayStr = now.toISOString().slice(0, 10);
+  const yest     = new Date(now - 86400000);
+  const yestStr  = yest.toISOString().slice(0, 10);
+  if (dateStr === todayStr)  return "Today";
+  if (dateStr === yestStr)   return "Yesterday";
+  const d = new Date(dateStr + "T00:00:00");
+  return d.toLocaleDateString("en-NG", { day: "numeric", month: "short" });
+}
+
+function groupByDate(txns) {
+  const groups  = {};
+  const keyOrder = [];
+  for (const tx of txns) {
+    const key = tx.transaction_date || "";
+    if (!key) continue;
+    if (!groups[key]) {
+      const d = new Date(key + "T00:00:00");
+      groups[key] = {
+        key, label: getDateLabel(key), date: d,
+        month: d.getMonth(), year: d.getFullYear(),
+        txns: [], netIn: 0, netOut: 0,
+      };
+      keyOrder.push(key);
+    }
+    groups[key].txns.push(tx);
+    const amt = parseFloat(tx.amount) || 0;
+    if (tx.type === "in") groups[key].netIn += amt;
+    else                  groups[key].netOut += amt;
+  }
+  keyOrder.sort((a, b) => b.localeCompare(a));
+  return keyOrder.map(k => ({ ...groups[k], net: groups[k].netIn - groups[k].netOut }));
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   Sub-components
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* Sticky section header — "Today · Yesterday · 12 Jul" + subtotal chip */
+function SectionHeader({ label, net }) {
+  const pos   = net >= 0;
+  return (
+    <div
+      className="sticky flex items-center justify-between bg-white dark:bg-slate-900 py-1.5 -mx-4 px-4 border-b border-slate-50 dark:border-slate-800 mb-1.5 mt-3 first:mt-0"
+      style={{ top: "108px", zIndex: "var(--z-sticky)" }}>
+      <span className="text-[10px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
+        {label}
+      </span>
+      <div className={`flex items-center rounded-full px-2 py-0.5 ${pos ? "bg-green-50 dark:bg-green-900/20" : "bg-red-50 dark:bg-red-900/20"}`}>
+        <span className={`text-[9px] font-bold mr-0.5 ${pos ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}>
+          {pos ? "+" : "−"}
+        </span>
+        <AmountDisplay
+          amount={Math.abs(net)} size="small" align="right"
+          className={pos ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"}
+        />
+      </div>
+    </div>
+  );
+}
+
+/* Month-boundary summary card — inserted when feed crosses a month */
+function MonthSummaryCard({ date, totalIn, totalOut }) {
+  const net = totalIn - totalOut;
+  const label = new Date(date.getFullYear(), date.getMonth(), 1)
+    .toLocaleDateString("en-NG", { month: "long", year: "numeric" });
+  return (
+    <div className="bg-slate-50 dark:bg-slate-800/60 rounded-2xl px-4 py-3 border border-slate-100 dark:border-slate-700/40 my-3">
+      <p className="text-[9px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">
+        {label} summary
+      </p>
+      <div className="flex items-center gap-4">
+        <div className="flex-1 min-w-0">
+          <p className="text-[9px] text-slate-400 dark:text-slate-500 mb-0.5">Total In</p>
+          <AmountDisplay amount={totalIn} size="small" align="left" className="text-green-600 dark:text-green-400" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-[9px] text-slate-400 dark:text-slate-500 mb-0.5">Total Out</p>
+          <AmountDisplay amount={totalOut} size="small" align="left" className="text-red-500 dark:text-red-400" />
+        </div>
+        <div className="flex-1 min-w-0 text-right">
+          <p className="text-[9px] text-slate-400 dark:text-slate-500 mb-0.5">Net</p>
+          <AmountDisplay
+            amount={Math.abs(net)} size="small" align="right"
+            className={net >= 0 ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* Per-filter empty states — warm copy */
+function EmptyState({ filter, onAdd }) {
+  const msg = {
+    in:     { title: "No money-in yet",       sub: "Record your first sale to see it here." },
+    out:    { title: "No expenses recorded",  sub: "Expenses and stock purchases appear here." },
+    bills:  { title: "No bill payments yet",  sub: "Bill payments via Quick Services show here." },
+    credit: { title: "No credit transactions",sub: "Credit sales and debt repayments appear here." },
+    all:    { title: "No transactions yet",   sub: "Record your first sale and watch this space come alive." },
+  };
+  const { title, sub } = msg[filter] || msg.all;
+  return (
+    <div className="text-center py-14 px-4">
+      <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4"
+        style={{ background: "linear-gradient(135deg,var(--brand-green),var(--brand-green-dark))" }}>
+        <svg width={26} height={26} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 19V5"/><path d="M5 12l7-7 7 7"/>
+        </svg>
+      </div>
+      <p className="text-slate-700 dark:text-slate-300 text-base font-bold mb-1">{title}</p>
+      <p className="text-slate-400 dark:text-slate-500 text-sm mb-5">{sub}</p>
+      {onAdd && (
+        <button onClick={onAdd}
+          className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold text-white active:scale-95 transition shadow-sm"
+          style={{ background: "linear-gradient(135deg,var(--brand-green),var(--brand-green-dark))" }}>
+          + Record Transaction
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* Loading skeleton — matches reserved height of section-header + 3 rows */
+function FeedSkeleton() {
+  return (
+    <div className="space-y-2">
+      <div className="h-7 w-32 bg-slate-100 dark:bg-slate-800 rounded-full animate-pulse mt-4 mb-2" />
+      {[1,2,3].map(i => (
+        <div key={i} className="h-[68px] bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700/50 animate-pulse" />
+      ))}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   Main component
+   ══════════════════════════════════════════════════════════════════════ */
 export default function Transactions({ store, plan = "starter", onVoiceOpen, autoOpen, autoType, autoCategory, onAutoOpened, onUpgrade, readOnly, inventory = null }) {
   const t = useT();
   const { slotMap: camSlots, loading: camLoading, recordEvent: recordCamEvent } = useCampaigns(["announcement_bar", "upsell_inline"], "business", "business.sales");
   const salesAnnBars = camSlots.announcement_bar || [];
-  const [showAdd,      setShowAdd]      = useState(false);
-  const [initType,     setInitType]     = useState("in");
-  const [initCategory, setInitCategory] = useState("sale");
-  const [filter,       setFilter]       = useState("all");
-  const [search,       setSearch]       = useState("");
-  const [receipt,      setReceipt]      = useState(null);
-  const [ajoContribs,  setAjoContribs]  = useState(null);
+
+  const [showAdd,         setShowAdd]         = useState(false);
+  const [initType,        setInitType]        = useState("in");
+  const [initCategory,    setInitCategory]    = useState("sale");
+  const [filter,          setFilter]          = useState("all");
+  const [search,          setSearch]          = useState("");
+  const [searchOpen,      setSearchOpen]      = useState(false);
+  const [receipt,         setReceipt]         = useState(null);
+  const [ajoContribs,     setAjoContribs]     = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [displayCount,    setDisplayCount]    = useState(50);
+  const [isRefreshing,    setIsRefreshing]    = useState(false);
+  const searchRef = useRef(null);
+
   const { transactions, addTransaction, deleteTransaction, profile, staffMap = {}, asoClients = [] } = store;
 
   const asoClientMap = useMemo(() => {
@@ -252,6 +388,7 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
     return m;
   }, [asoClients]);
 
+  /* Ajo data fetch unchanged */
   useEffect(() => {
     if (filter !== "ajo") { setAjoContribs(null); return; }
     if (asoClients.length === 0) { setAjoContribs([]); return; }
@@ -267,8 +404,8 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
 
   const limits         = planLimits(plan);
   const now            = new Date();
-  const thisMonthTx    = transactions.filter(t => {
-    const d = new Date(t.transaction_date);
+  const thisMonthTx    = transactions.filter(tx => {
+    const d = new Date(tx.transaction_date);
     return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
   });
   const txLimitReached = limits.maxTxPerMonth !== Infinity && thisMonthTx.length >= limits.maxTxPerMonth;
@@ -285,25 +422,87 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
     }
   }, [autoOpen, autoType, autoCategory, onAutoOpened, txLimitReached]);
 
+  /* Reset display count when filter / search changes */
+  useEffect(() => { setDisplayCount(50); }, [filter, search]);
+
   const isAjoMode = filter === "ajo";
-  const filtered = isAjoMode ? [] : transactions.filter(t => {
-    if (filter === "in")          { if (t.type !== "in"  || t.payment_type === "bill_payment") return false; }
-    else if (filter === "out")    { if (t.type !== "out" || t.payment_type === "bill_payment") return false; }
-    else if (filter === "bills")  { if (t.payment_type !== "bill_payment") return false; }
-    else if (filter === "credit") { if (t.category !== "credit sale" && t.category !== "debt repayment") return false; }
-    if (search && !t.item_name?.toLowerCase().includes(search.toLowerCase()) &&
-        !t.customer_name?.toLowerCase().includes(search.toLowerCase())) return false;
-    return true;
-  });
 
-  const filteredAjo = isAjoMode
-    ? (ajoContribs || []).filter(c =>
-        !search || (asoClientMap[c.aso_client_id]?.full_name || "").toLowerCase().includes(search.toLowerCase())
-      )
-    : [];
+  /* ── Memoised filter (without search) — grouping source ── */
+  const filterBase = useMemo(() => {
+    if (isAjoMode) return [];
+    return transactions.filter(tx => {
+      if (filter === "in")     { if (tx.type !== "in"  || tx.payment_type === "bill_payment") return false; }
+      else if (filter === "out")   { if (tx.type !== "out" || tx.payment_type === "bill_payment") return false; }
+      else if (filter === "bills") { if (tx.payment_type !== "bill_payment") return false; }
+      else if (filter === "credit"){ if (tx.category !== "credit sale" && tx.category !== "debt repayment") return false; }
+      return true;
+    });
+  }, [transactions, filter, isAjoMode]);
 
-  const totIn  = transactions.reduce((s, t) => t.type === "in"  ? s + t.amount : s, 0);
-  const totOut = transactions.reduce((s, t) => t.type === "out" ? s + t.amount : s, 0);
+  /* ── Date grouping — never recomputes per search keystroke ── */
+  const groupedSections = useMemo(() => groupByDate(filterBase), [filterBase]);
+
+  /* ── Month totals pre-computed from grouped sections ── */
+  const monthTotals = useMemo(() => {
+    const m = {};
+    for (const s of groupedSections) {
+      const key = `${s.year}-${s.month}`;
+      if (!m[key]) m[key] = { date: s.date, totalIn: 0, totalOut: 0 };
+      m[key].totalIn  += s.netIn;
+      m[key].totalOut += s.netOut;
+    }
+    return m;
+  }, [groupedSections]);
+
+  /* ── Sections filtered by search — cheap per-keystroke pass ── */
+  const searchedSections = useMemo(() => {
+    if (!search) return groupedSections;
+    const q = search.toLowerCase();
+    return groupedSections
+      .map(s => ({
+        ...s,
+        txns: s.txns.filter(tx =>
+          tx.item_name?.toLowerCase().includes(q) ||
+          tx.customer_name?.toLowerCase().includes(q)
+        ),
+      }))
+      .filter(s => s.txns.length > 0);
+  }, [groupedSections, search]);
+
+  /* ── Paginated flat render list ── */
+  const { visibleItems, totalRows } = useMemo(() => {
+    const items    = [];
+    let rowCount   = 0;
+    let prevMonthKey = null;
+
+    for (const section of searchedSections) {
+      if (rowCount >= displayCount) break;
+
+      const monthKey = `${section.year}-${section.month}`;
+      if (prevMonthKey !== null && prevMonthKey !== monthKey && monthTotals[prevMonthKey]) {
+        items.push({ type: "month-card", key: `mc-${prevMonthKey}`, ...monthTotals[prevMonthKey] });
+      }
+      prevMonthKey = monthKey;
+
+      items.push({ type: "header", key: `hdr-${section.key}`, label: section.label, net: section.net });
+
+      for (const tx of section.txns) {
+        if (rowCount >= displayCount) break;
+        items.push({ type: "row", key: tx.id, tx });
+        rowCount++;
+      }
+    }
+
+    const total = searchedSections.reduce((s, sec) => s + sec.txns.length, 0);
+    return { visibleItems: items, totalRows: total };
+  }, [searchedSections, displayCount, monthTotals]);
+
+  const hasMore = displayCount < totalRows;
+
+  /* Summary totals — always from full transactions set */
+  const totIn  = transactions.reduce((s, tx) => tx.type === "in"  ? s + tx.amount : s, 0);
+  const totOut = transactions.reduce((s, tx) => tx.type === "out" ? s + tx.amount : s, 0);
+  const net    = totIn - totOut;
 
   const openAdd = (type = "in") => {
     if (txLimitReached) return;
@@ -311,8 +510,9 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
     setShowAdd(true);
   };
 
+  /* Export handlers unchanged */
   const handleExportCsv = async () => {
-    const csv = buildTransactionsCSV(filtered);
+    const csv = buildTransactionsCSV(filterBase);
     const filename = transactionsCSVFilename(filter, null, null);
     await shareCSV(csv, filename);
   };
@@ -320,16 +520,16 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
   const handleExportPdf = async () => {
     const biz    = store.profile?.business_name || store.profile?.owner_name || "My Business";
     const labels = { all: "All Transactions", in: "Income", out: "Expenses", bills: "Bill Payments", credit: "Credit" };
-    const sorted = [...filtered].sort((a, b) => new Date(a.transaction_date) - new Date(b.transaction_date));
+    const sorted = [...filterBase].sort((a, b) => new Date(a.transaction_date) - new Date(b.transaction_date));
     let runBal = 0, totD = 0, totC = 0;
-    const rows = sorted.map(t => {
-      const isIn = t.type === "in";
-      const amt  = parseFloat(t.amount) || 0;
+    const rows = sorted.map(tx => {
+      const isIn = tx.type === "in";
+      const amt  = parseFloat(tx.amount) || 0;
       if (isIn) { runBal += amt; totC += amt; } else { runBal -= amt; totD += amt; }
       return {
-        date:        fmtDate(t.transaction_date),
-        description: t.item_name || "—",
-        reference:   t.payment_type || "—",
+        date:        fmtDate(tx.transaction_date),
+        description: tx.item_name || "—",
+        reference:   tx.payment_type || "—",
         debit:       isIn ? "" : fmtCurrency(amt),
         credit:      isIn ? fmtCurrency(amt) : "",
         balance:     fmtCurrency(runBal),
@@ -345,30 +545,85 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
         store.profile?.email      ? { value: store.profile.email,      sub: true } : null,
       ].filter(Boolean),
       entityDetails: [
-        { label: "Business", value: biz },
-        { label: "Total Records", value: String(filtered.length) },
-        { label: "Total Income", value: fmtCurrency(totIn) },
+        { label: "Business",       value: biz },
+        { label: "Total Records",  value: String(filterBase.length) },
+        { label: "Total Income",   value: fmtCurrency(totIn) },
         { label: "Total Expenses", value: fmtCurrency(totOut) },
       ],
     });
     pdf.addStats([
-      { label: "Total Income",   value: fmtCurrency(totIn),        color: "#22c55e" },
-      { label: "Total Expenses", value: fmtCurrency(totOut),       color: "#ef4444" },
+      { label: "Total Income",   value: fmtCurrency(totIn),          color: "#22c55e" },
+      { label: "Total Expenses", value: fmtCurrency(totOut),         color: "#ef4444" },
       { label: "Net Cash Flow",  value: fmtCurrency(totIn - totOut), color: totIn >= totOut ? "#22c55e" : "#ef4444" },
-      { label: "Records",        value: String(filtered.length) },
+      { label: "Records",        value: String(filterBase.length) },
     ]);
     pdf.addStatement(rows, { openingBalance: 0, totalDebits: totD, totalCredits: totC });
     await pdf.save("Transaction_Statement.pdf");
   };
 
-  return (
-    <div className="px-4 pt-5 pb-28 screen-enter">
+  /* ── Pull-to-refresh ── */
+  const ptrRef      = useRef(null);
+  const ptrTouch    = useRef({ y: 0, active: false, progress: 0 });
+  const [pullPx, setPullPx] = useState(0);
 
+  useEffect(() => {
+    const el = ptrRef.current;
+    if (!el) return;
+    const onStart = (e) => {
+      ptrTouch.current = { y: e.touches[0].clientY, active: window.scrollY < 4, progress: 0 };
+    };
+    const onMove = (e) => {
+      if (!ptrTouch.current.active) return;
+      const dy = e.touches[0].clientY - ptrTouch.current.y;
+      if (dy > 0) setPullPx(Math.min(dy * 0.45, 56));
+    };
+    const onEnd = () => {
+      if (ptrTouch.current.active && pullPx > 40) {
+        setIsRefreshing(true);
+        setTimeout(() => { setIsRefreshing(false); setPullPx(0); }, 1000);
+      } else {
+        setPullPx(0);
+      }
+      ptrTouch.current.active = false;
+    };
+    el.addEventListener("touchstart", onStart, { passive: true });
+    el.addEventListener("touchmove",  onMove,  { passive: true });
+    el.addEventListener("touchend",   onEnd,   { passive: true });
+    return () => {
+      el.removeEventListener("touchstart", onStart);
+      el.removeEventListener("touchmove",  onMove);
+      el.removeEventListener("touchend",   onEnd);
+    };
+  }, [pullPx]);
+
+  /* ── Filter chip definitions ── */
+  const FILTERS = [
+    { id: "all",    label: t("txn.all")    },
+    { id: "in",     label: t("txn.cashIn") },
+    { id: "out",    label: t("txn.cashOut")},
+    { id: "bills",  label: "Bills"         },
+    { id: "credit", label: "Credit"        },
+    { id: "ajo",    label: "Ajo"           },
+  ];
+
+  /* ── Ajo feed (unchanged render logic) ── */
+  const filteredAjo = isAjoMode
+    ? (ajoContribs || []).filter(c =>
+        !search || (asoClientMap[c.aso_client_id]?.full_name || "").toLowerCase().includes(search.toLowerCase())
+      )
+    : [];
+
+  /* ════════════════════════════════════════════════════════════════════
+     RENDER
+     ════════════════════════════════════════════════════════════════════ */
+  return (
+    <div ref={ptrRef} className="pb-28 screen-enter overscroll-contain">
+
+      {/* ── Preamble (scrolls away) ───────────────────────────────── */}
       <AnnouncementBarSlot campaigns={salesAnnBars} loading={camLoading} recordEvent={recordCamEvent} />
 
-      {/* Limit banner */}
       {txLimitReached && (
-        <div className="mb-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl px-4 py-3 flex items-start gap-3">
+        <div className="mx-4 mt-4 mb-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl px-4 py-3 flex items-start gap-3">
           <span className="text-base flex-shrink-0">⚠️</span>
           <div className="flex-1">
             <p className="text-sm font-bold text-amber-800 dark:text-amber-300">Monthly limit reached</p>
@@ -383,259 +638,243 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
         </div>
       )}
 
-      {/* Header */}
-      <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 -mx-4 px-4 py-3 mb-4 border-b border-slate-100 dark:border-slate-700/60 flex items-center justify-between">
-        <h1 className="text-xl font-extrabold text-slate-800 dark:text-white tracking-tight">{t("txn.title")}</h1>
-        <div className="flex gap-2">
-          {pdfAllowed && filtered.length > 0 && (
-            <button onClick={handleExportPdf}
-              className="w-11 h-11 bg-slate-100 dark:bg-slate-700 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform">
-              <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 15V3m0 12l-4-4m4 4l4-4"/><path d="M2 17l.621 2.485A2 2 0 004.561 21h14.878a2 2 0 001.94-1.515L22 17"/>
-              </svg>
+      {/* ── Sticky block: header + filter rail ───────────────────── */}
+      <div className="sticky top-0 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700/60 shadow-sm"
+        style={{ zIndex: "var(--z-nav)" }}>
+
+        {/* Header row */}
+        <div className="flex items-center justify-between px-4 pt-3 pb-2">
+          <h1 className="text-xl font-extrabold text-slate-800 dark:text-white tracking-tight">
+            {t("txn.title")}
+          </h1>
+          <div className="flex gap-2">
+            {pdfAllowed && filterBase.length > 0 && (
+              <button onClick={handleExportPdf}
+                className="w-11 h-11 bg-slate-100 dark:bg-slate-700 rounded-full flex items-center justify-center active:scale-95 transition-transform">
+                <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 15V3m0 12l-4-4m4 4l4-4"/><path d="M2 17l.621 2.485A2 2 0 004.561 21h14.878a2 2 0 001.94-1.515L22 17"/>
+                </svg>
+              </button>
+            )}
+            {filterBase.length > 0 && (
+              <button onClick={handleExportCsv}
+                className="w-11 h-11 bg-slate-100 dark:bg-slate-700 rounded-full flex items-center justify-center active:scale-95 transition-transform">
+                <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+                </svg>
+              </button>
+            )}
+            {onVoiceOpen && !txLimitReached && (
+              <button onClick={onVoiceOpen}
+                className="w-11 h-11 bg-slate-800 dark:bg-slate-700 rounded-full flex items-center justify-center active:scale-95 transition-transform">
+                <Icon name="mic" size={16} className="text-white" />
+              </button>
+            )}
+            <button onClick={txLimitReached ? onUpgrade : () => openAdd("in")}
+              className={`w-11 h-11 rounded-full flex items-center justify-center active:scale-95 transition-transform ${txLimitReached ? "bg-amber-400" : "bg-green-600"}`}>
+              <Icon name={txLimitReached ? "lock" : "plus"} size={18} className="text-white" />
             </button>
-          )}
-          {filtered.length > 0 && (
-            <button onClick={handleExportCsv} title="Export CSV"
-              className="w-11 h-11 bg-slate-100 dark:bg-slate-700 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform">
-              <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
-              </svg>
-            </button>
-          )}
-          {onVoiceOpen && !txLimitReached && (
-            <button onClick={onVoiceOpen}
-              className="w-11 h-11 bg-slate-800 dark:bg-slate-700 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform">
-              <Icon name="mic" size={16} className="text-white" />
-            </button>
-          )}
-          <button onClick={txLimitReached ? onUpgrade : () => openAdd("in")}
-            className={`w-11 h-11 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform ${txLimitReached ? "bg-amber-400" : "bg-green-600"}`}>
-            <Icon name={txLimitReached ? "lock" : "plus"} size={18} className="text-white" />
-          </button>
-        </div>
-      </div>
-
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 gap-3 mb-4">
-        <div className="bg-green-50 dark:bg-green-900/20 rounded-2xl p-3.5 border border-green-100 dark:border-green-800/60">
-          <p className="text-[10px] text-green-600 dark:text-green-400 font-bold uppercase tracking-wide">Total In</p>
-          <AmountDisplay amount={totIn} size="stat" align="left" className="text-green-700 dark:text-green-400 mt-0.5" />
-        </div>
-        <div className="bg-red-50 dark:bg-red-900/20 rounded-2xl p-3.5 border border-red-100 dark:border-red-800/60">
-          <p className="text-[10px] text-red-500 dark:text-red-400 font-bold uppercase tracking-wide">Total Out</p>
-          <AmountDisplay amount={totOut} size="stat" align="left" className="text-red-600 dark:text-red-400 mt-0.5" />
-        </div>
-      </div>
-
-      {/* Net position chip */}
-      {transactions.length > 0 && (
-        <div className={`flex items-center justify-between rounded-2xl px-4 py-2.5 mb-4 ${
-          totIn - totOut >= 0
-            ? "bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800/40"
-            : "bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800/40"
-        }`}>
-          <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400">Net Position</p>
-          <p className={`text-sm font-extrabold tabular ${totIn - totOut >= 0 ? "text-green-600" : "text-red-500"}`}>
-            {totIn - totOut >= 0 ? "+" : "−"}{fmt(Math.abs(totIn - totOut))}
-          </p>
-        </div>
-      )}
-
-      {/* Quick add */}
-      <div className="flex gap-2 mb-4">
-        <button onClick={() => openAdd("in")}
-          className="flex-1 py-3.5 bg-green-600 text-white rounded-xl font-bold text-xs active:scale-95 transition-transform shadow-sm">
-          + {t("txn.cashIn")}
-        </button>
-        <button onClick={() => openAdd("out")}
-          className="flex-1 py-3.5 bg-red-500 text-white rounded-xl font-bold text-xs active:scale-95 transition-transform shadow-sm">
-          + {t("txn.cashOut")}
-        </button>
-      </div>
-
-      {/* Filter chips */}
-      <div className="flex gap-2 mb-3 overflow-x-auto no-scrollbar pb-0.5">
-        {[
-          { id: "all",    label: t("txn.all") },
-          { id: "in",     label: t("txn.cashIn") },
-          { id: "out",    label: t("txn.cashOut") },
-          { id: "bills",  label: "Bills" },
-          { id: "credit", label: "Credit" },
-          { id: "ajo",    label: "Ajo" },
-        ].map(opt => (
-          <button key={opt.id} onClick={() => setFilter(opt.id)}
-            className={`flex-shrink-0 px-3.5 py-3 rounded-full text-xs font-bold transition-colors min-h-[44px] inline-flex items-center ${
-              filter === opt.id
-                ? opt.id === "ajo"
-                  ? "bg-violet-600 text-white"
-                  : "bg-slate-800 dark:bg-white text-white dark:text-slate-900"
-                : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
-            }`}>
-            {opt.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Search */}
-      <div className="relative mb-4">
-        <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-          <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-        </svg>
-        <input
-          type="search" placeholder="Search item or customer…" value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-700 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
-        />
-      </div>
-
-      {/* Ajo events list (read-only) */}
-      {isAjoMode && (
-        ajoContribs === null ? (
-          <div className="text-center py-14">
-            <p className="text-slate-400 dark:text-slate-500 text-sm font-semibold">Loading Ajo events…</p>
           </div>
-        ) : filteredAjo.length === 0 ? (
-          <div className="text-center py-14">
-            <p className="text-slate-400 dark:text-slate-500 text-sm font-semibold">No Ajo activity found</p>
-            <p className="text-slate-300 dark:text-slate-600 text-xs mt-1">Ajo contributions and withdrawals appear here</p>
-          </div>
-        ) : (
-          <div className="space-y-2.5">
-            {filteredAjo.map(c => {
-              const client   = asoClientMap[c.aso_client_id];
-              const isFee    = c.type === "withdrawal_fee" || c.type === "registration_fee";
-              const isWd     = c.type === "withdrawal" || isFee;
-              const amt      = parseFloat(c.amount) || 0;
-              const typeLabel = isFee
-                ? (c.type === "withdrawal_fee" ? "Withdrawal Fee" : "Reg. Fee")
-                : c.type === "withdrawal" ? "Withdrawal"
-                : c.payment_method === "manual_transfer" ? "Manual Deposit"
-                : "Contribution";
-              const dateStr  = c.created_at
-                ? new Date(c.created_at).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })
-                : "—";
-              return (
-                <div key={c.id} className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 shadow-card border border-slate-100 dark:border-slate-700/60">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${isWd ? "bg-red-100 dark:bg-red-900/30" : "bg-violet-100 dark:bg-violet-900/30"}`}>
-                      <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke={isWd ? "#ef4444" : "#7c3aed"} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-                        {isWd
-                          ? <><path d="M12 5v14"/><path d="M19 12l-7 7-7-7"/></>
-                          : <><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></>}
-                      </svg>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[13px] font-bold text-slate-800 dark:text-white truncate">{client?.full_name || "Unknown Client"}</p>
-                      <p className="text-[11px] text-slate-400 dark:text-slate-500">{typeLabel} · {dateStr}</p>
-                    </div>
-                    <p className={`text-[14px] font-extrabold tabular flex-shrink-0 ${isWd ? "text-red-500" : "text-violet-600 dark:text-violet-400"}`}>
-                      {isWd ? "−" : "+"}{fmt(amt)}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )
-      )}
-
-      {/* List */}
-      {!isAjoMode && filtered.length === 0 ? (
-        <div className="text-center py-14">
-          <p className="text-slate-400 dark:text-slate-500 text-sm font-semibold">No transactions found</p>
-          <p className="text-slate-300 dark:text-slate-600 text-xs mt-1">Tap + or use Voice to record one</p>
         </div>
-      ) : !isAjoMode && (
-        <div className="space-y-2.5">
-          {filtered.map(t => {
-            const isIn = t.type === "in";
-            const iconStyle = (() => {
-              if (t.payment_type === "bill_payment") return { bg: "bg-cyan-100 dark:bg-cyan-900/30",   color: "#0891b2", paths: ["M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2","M9 5a2 2 0 002 2h2a2 2 0 002-2","M9 5a2 2 0 012-2h2a2 2 0 012 2","M9 13h6","M9 17h4"] };
-              if (t.category === "credit sale")      return { bg: "bg-amber-100 dark:bg-amber-900/30", color: "#d97706", paths: ["M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2","M9 11a4 4 0 100-8 4 4 0 000 8"] };
-              if (t.category === "debt repayment")   return { bg: "bg-blue-100 dark:bg-blue-900/30",   color: "#2563eb", paths: ["M3 22h18","M6 18v-7","M10 18v-7","M14 18v-7","M18 18v-7","M12 2L2 7h20L12 2z"] };
-              if (isIn) return { bg: "bg-green-100 dark:bg-green-900/30", color: "#16a34a", paths: ["M12 19V5","M5 12l7-7 7 7"] };
-              return          { bg: "bg-red-100 dark:bg-red-900/30",     color: "#ef4444", paths: ["M12 5v14","M19 12l-7 7-7-7"] };
-            })();
-            return (
-              <div key={t.id} className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 shadow-card border border-slate-100 dark:border-slate-700/60">
-                <div className="flex items-start gap-3">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${iconStyle.bg}`}>
-                    <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke={iconStyle.color} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-                      {iconStyle.paths.map((d, i) => <path key={i} d={d} />)}
-                    </svg>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="font-bold text-slate-800 dark:text-slate-100 text-sm truncate">{t.item_name}</p>
-                      <p className={`font-extrabold text-sm tabular flex-shrink-0 ${isIn ? "text-green-600" : "text-red-500"}`}>
-                        {isIn ? "+" : "−"}{fmt(t.amount)}
+
+        {/* Filter rail OR search input */}
+        <div className="px-4 pb-3">
+          {searchOpen ? (
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none"
+                  viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                  <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+                </svg>
+                <input
+                  ref={searchRef}
+                  type="search" autoFocus placeholder="Search item or customer…" value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-700 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-green-500/40"
+                />
+              </div>
+              <button onClick={() => { setSearchOpen(false); setSearch(""); }}
+                className="w-11 h-11 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-700 flex-shrink-0 active:scale-95 transition-transform">
+                <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-500" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+                  <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+          ) : (
+            <div className="flex gap-2 overflow-x-auto no-scrollbar">
+              {FILTERS.map(opt => (
+                <button key={opt.id} onClick={() => setFilter(opt.id)}
+                  className={`flex-shrink-0 px-3.5 min-h-[44px] rounded-full text-xs font-bold transition-colors inline-flex items-center ${
+                    filter === opt.id
+                      ? opt.id === "ajo"
+                        ? "bg-violet-600 text-white"
+                        : "text-white"
+                      : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
+                  }`}
+                  style={filter === opt.id && opt.id !== "ajo"
+                    ? { background: "var(--brand-green)" }
+                    : undefined}>
+                  {opt.label}
+                </button>
+              ))}
+              {/* Search toggle */}
+              <button onClick={() => { setSearchOpen(true); setTimeout(() => searchRef.current?.focus(), 50); }}
+                className="flex-shrink-0 w-11 h-11 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center active:scale-90 transition-transform ml-1">
+                <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-500 dark:text-slate-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                  <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+                </svg>
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Summary header — BX-NET-01 fixed ────────────────────── */}
+      <div className="px-4 pt-3">
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <div className="bg-green-50 dark:bg-green-900/20 rounded-2xl p-3.5 border border-green-100 dark:border-green-800/60">
+            <p className="text-[10px] text-green-600 dark:text-green-400 font-bold uppercase tracking-wide">Total In</p>
+            <AmountDisplay amount={totIn} size="stat" align="left" className="text-green-700 dark:text-green-400 mt-0.5" />
+          </div>
+          <div className="bg-red-50 dark:bg-red-900/20 rounded-2xl p-3.5 border border-red-100 dark:border-red-800/60">
+            <p className="text-[10px] text-red-500 dark:text-red-400 font-bold uppercase tracking-wide">Total Out</p>
+            <AmountDisplay amount={totOut} size="stat" align="left" className="text-red-600 dark:text-red-400 mt-0.5" />
+          </div>
+        </div>
+        {transactions.length > 0 && (
+          <div className={`flex items-center justify-between rounded-2xl px-4 py-2.5 mb-3 ${
+            net >= 0
+              ? "bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800/40"
+              : "bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800/40"
+          }`}>
+            <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400">Net Position</p>
+            <div className="flex items-center gap-0.5">
+              <span className={`text-[11px] font-bold ${net >= 0 ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}>
+                {net >= 0 ? "+" : "−"}
+              </span>
+              <AmountDisplay
+                amount={Math.abs(net)} size="small" align="right"
+                className={net >= 0 ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Feed ─────────────────────────────────────────────────── */}
+      <div className="px-4">
+
+        {/* PTR indicator */}
+        {(pullPx > 0 || isRefreshing) && (
+          <div className="flex items-center justify-center overflow-hidden" style={{ height: Math.min(pullPx, 56) }}>
+            <div className={`w-6 h-6 rounded-full border-2 border-slate-200 dark:border-slate-700 border-t-green-500 spinner ${isRefreshing ? "opacity-100" : pullPx > 40 ? "opacity-80" : "opacity-40"}`} />
+          </div>
+        )}
+
+        {/* Ajo mode */}
+        {isAjoMode && (
+          ajoContribs === null ? (
+            <FeedSkeleton />
+          ) : filteredAjo.length === 0 ? (
+            <EmptyState filter="ajo" />
+          ) : (
+            <div className="space-y-2 mt-2">
+              {filteredAjo.map(c => {
+                const client   = asoClientMap[c.aso_client_id];
+                const isFee    = c.type === "withdrawal_fee" || c.type === "registration_fee";
+                const isWd     = c.type === "withdrawal" || isFee;
+                const amt      = parseFloat(c.amount) || 0;
+                const typeLabel = isFee
+                  ? (c.type === "withdrawal_fee" ? "Withdrawal Fee" : "Reg. Fee")
+                  : c.type === "withdrawal" ? "Withdrawal"
+                  : c.payment_method === "manual_transfer" ? "Manual Deposit"
+                  : "Contribution";
+                const dateStr  = c.created_at
+                  ? new Date(c.created_at).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })
+                  : "—";
+                return (
+                  <div key={c.id} className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 shadow-card border border-slate-100 dark:border-slate-700/60">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${isWd ? "bg-red-100 dark:bg-red-900/30" : "bg-violet-100 dark:bg-violet-900/30"}`}>
+                        <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke={isWd ? "#ef4444" : "#7c3aed"} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                          {isWd ? <><path d="M12 5v14"/><path d="M19 12l-7 7-7-7"/></> : <><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></>}
+                        </svg>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[13px] font-bold text-slate-800 dark:text-white truncate">{client?.full_name || "Unknown Client"}</p>
+                        <p className="text-[11px] text-slate-400 dark:text-slate-500">{typeLabel} · {dateStr}</p>
+                      </div>
+                      <p className={`text-[14px] font-extrabold tabular flex-shrink-0 ${isWd ? "text-red-500" : "text-violet-600 dark:text-violet-400"}`}>
+                        {isWd ? "−" : "+"}{fmt(amt)}
                       </p>
                     </div>
-                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                      <span className="text-[10px] bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-full font-semibold">{t.category}</span>
-                      <span className="text-[10px] bg-blue-50 dark:bg-blue-900/20 text-blue-500 dark:text-blue-400 px-2 py-0.5 rounded-full font-semibold">{t.payment_type}</span>
-                      {t.quantity > 1 && <span className="text-[10px] bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-full font-semibold">×{t.quantity}</span>}
-                      {t.customer_name && <span className="text-[10px] text-slate-400 dark:text-slate-500">{t.customer_name}</span>}
-                      {staffMap[t.staff_id] && (
-                        <span className="text-[10px] bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 px-2 py-0.5 rounded-full font-semibold">
-                          {staffMap[t.staff_id]}
-                        </span>
-                      )}
-                      <span className="text-[10px] text-slate-300 dark:text-slate-600 ml-auto">{t.transaction_date}</span>
-                    </div>
-                    {t.note && <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1 italic">"{t.note}"</p>}
                   </div>
-                </div>
+                );
+              })}
+            </div>
+          )
+        )}
 
-                {/* Actions row */}
-                <div className="flex items-center gap-3 mt-2.5 pt-2.5 border-t border-slate-50 dark:border-slate-700/60">
-                  <button
-                    onClick={() => setReceipt(buildTransactionReceipt(t, profile))}
-                    className="flex items-center gap-1.5 min-h-[44px] px-2 text-[11px] font-bold text-brand-600 dark:text-brand-400 hover:text-brand-700 transition"
-                  >
-                    <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-                      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-                      <path d="M14 2v6h6M16 13H8M16 17H8" />
-                    </svg>
-                    Receipt
-                  </button>
+        {/* Regular mode */}
+        {!isAjoMode && (
+          <>
+            {/* Empty state */}
+            {totalRows === 0 && !isRefreshing && (
+              <EmptyState filter={search ? "all" : filter} onAdd={txLimitReached ? onUpgrade : () => openAdd("in")} />
+            )}
 
-                  {!pdfAllowed && (
-                    <button onClick={onUpgrade}
-                      className="text-[11px] font-semibold text-slate-300 dark:text-slate-600 hover:text-amber-500 transition">
-                      🔒 PDF (Upgrade)
-                    </button>
-                  )}
+            {/* Date-sectioned feed */}
+            {visibleItems.map(item => {
+              if (item.type === "month-card") {
+                return <MonthSummaryCard key={item.key} date={item.date} totalIn={item.totalIn} totalOut={item.totalOut} />;
+              }
+              if (item.type === "header") {
+                return <SectionHeader key={item.key} label={item.label} net={item.net} />;
+              }
+              return (
+                <TxRow
+                  key={item.key}
+                  tx={item.tx}
+                  variant="transactions"
+                  staffName={staffMap[item.tx.staff_id]}
+                  onClick={() => setReceipt(buildTransactionReceipt(item.tx, profile))}
+                  onSwipeReceipt={() => setReceipt(buildTransactionReceipt(item.tx, profile))}
+                  onSwipeDelete={setConfirmDeleteId}
+                />
+              );
+            })}
 
-                  {deleteTransaction && (
-                    <button onClick={() => setConfirmDeleteId(t.id)}
-                      className="ml-auto min-h-[44px] px-2 flex items-center text-[11px] text-red-400 hover:text-red-600 dark:text-red-500 dark:hover:text-red-400 font-semibold transition">
-                      Delete
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+            {/* Load more — pagination: 50 rows per page */}
+            {hasMore && (
+              <button
+                onClick={() => setDisplayCount(c => c + 50)}
+                className="w-full mt-3 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-500 dark:text-slate-400 active:scale-95 transition-transform bg-white dark:bg-slate-800">
+                Load {Math.min(50, totalRows - displayCount)} more
+              </button>
+            )}
+          </>
+        )}
+      </div>
 
+      {/* ── Modals ────────────────────────────────────────────────── */}
       {showAdd && (
         <AddTxnModal defaultType={initType} defaultCategory={initCategory} onAdd={addTransaction} onClose={() => setShowAdd(false)} inventory={inventory} />
       )}
 
       {receipt && (
-        <TransactionDetailModal
-          data={receipt}
-          onClose={() => setReceipt(null)}
-        />
+        <TransactionDetailModal data={receipt} onClose={() => setReceipt(null)} />
       )}
 
+      {/* Delete confirm — ZS-01: --z-sub-sheet first consumer */}
       {confirmDeleteId && (
-        <div className="fixed inset-0 z-[50] flex items-end" onClick={() => setConfirmDeleteId(null)}>
-          <div className="w-full bg-white dark:bg-slate-900 rounded-t-2xl p-6 shadow-2xl" onClick={e => e.stopPropagation()}
-            style={{ paddingBottom: "max(24px, env(safe-area-inset-bottom, 24px))" }}>
+        <div
+          className="fixed inset-0 flex items-end"
+          style={{ zIndex: "var(--z-sub-sheet)" }}
+          onClick={() => setConfirmDeleteId(null)}>
+          <div
+            className="w-full bg-white dark:bg-slate-900 rounded-t-2xl p-6 shadow-2xl overscroll-contain"
+            style={{ paddingBottom: "max(24px, env(safe-area-inset-bottom, 24px))" }}
+            onClick={e => e.stopPropagation()}>
             <p className="text-base font-bold text-slate-900 dark:text-white">Delete this transaction?</p>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">This action cannot be undone.</p>
             <div className="flex gap-3 mt-5">

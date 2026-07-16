@@ -13,7 +13,7 @@
 
   /* ── Z-index token scale (mirrors tailwind.config.js zIndex) ──────
    * Tier order: content(0) < sticky(30) < nav(40) < floating(55) <
-   *   sheet(60) < modal(100) < lock(200) < pin-auth(210) <
+   *   sheet(60) < sub-sheet(70) < modal(100) < lock(200) < pin-auth(210) <
    *   card-detail(260) < pin-scrim(300) < pin-sheet(301) < toast(400)
    * Use these vars for inline-style z-index; use Tailwind z-* classes
    * (z-sheet, z-modal, z-pin-scrim, …) everywhere else.
@@ -22,6 +22,7 @@
   --z-nav:         40;
   --z-floating:    55;
   --z-sheet:       60;
+  --z-sub-sheet:   70;
   --z-modal:       100;
   --z-lock:        200;
   --z-pin-auth:    210;

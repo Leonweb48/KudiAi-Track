@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from "react";
 import { fmt, today } from "../utils/helpers";
 import { supabase } from "../utils/supabase";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
+import { TxRow } from "../components/shared/TxRow";
 import { NotificationBell } from "../components/NotificationCenter";
 import { useT } from "../contexts/LanguageContext";
 import AppLogo from "../components/AppLogo";
@@ -62,42 +63,7 @@ const BILL_SERVICES = [
   { id: "betting",     label: "Betting",     bg: "from-emerald-500 to-emerald-600", icon: "M12 2a10 10 0 100 20A10 10 0 0012 2z|M12 8v4l3 3" },
 ];
 
-/* ── Transaction row icon/color by type ───────────────────────────── */
-function getTxStyle(tx) {
-  if (tx.payment_type === "bill_payment") return { bg: "bg-cyan-100 dark:bg-cyan-900/30",    color: "#0891b2", icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2|M9 5a2 2 0 002 2h2a2 2 0 002-2|M9 5a2 2 0 012-2h2a2 2 0 012 2|M9 13h6|M9 17h4" };
-  if (tx.category === "credit sale")      return { bg: "bg-amber-100 dark:bg-amber-900/30",  color: "#d97706", icon: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2|M9 11a4 4 0 100-8 4 4 0 000 8" };
-  if (tx.category === "debt repayment")   return { bg: "bg-blue-100 dark:bg-blue-900/30",    color: "#2563eb", icon: "M3 22h18|M6 18v-7|M10 18v-7|M14 18v-7|M18 18v-7|M12 2L2 7h20L12 2z" };
-  if (tx.category === "stock")            return { bg: "bg-slate-100 dark:bg-slate-700/60",  color: "#475569", icon: "M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z|M3.27 6.96L12 12.01l8.73-5.05|M12 22.08V12" };
-  if (tx.type === "in")                   return { bg: "bg-green-100 dark:bg-green-900/30",  color: "#16a34a", icon: "M12 19V5|M5 12l7-7 7 7" };
-  return                                         { bg: "bg-red-100 dark:bg-red-900/30",      color: "#ef4444", icon: "M12 5v14|M19 12l-7 7-7-7" };
-}
-
-/* ── Transaction feed row — OPay-standard language ────────────────── */
-function TxRow({ tx, onClick, balanceHidden }) {
-  const isIn  = tx.type === "in";
-  const style = getTxStyle(tx);
-  return (
-    <button onClick={onClick} className="w-full text-left flex items-center gap-3 bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 shadow-card border border-slate-100 dark:border-slate-700/50 active:scale-[0.98] transition-transform">
-      <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${style.bg}`}>
-        <Svg d={style.icon} size={15} color={style.color} sw={2.5} />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate">{tx.item_name || "Transaction"}</p>
-        <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 truncate capitalize">{tx.category} · {tx.payment_type}</p>
-      </div>
-      <div className="text-right flex-shrink-0">
-        <AmountDisplay
-          amount={tx.amount}
-          size="row"
-          align="right"
-          hidden={balanceHidden}
-          className={isIn ? "text-green-600 dark:text-green-400" : "text-[#16255A] dark:text-blue-300"}
-        />
-        <p className="text-[10px] text-slate-300 dark:text-slate-600 mt-0.5">{tx.transaction_date}</p>
-      </div>
-    </button>
-  );
-}
+/* getTxStyle and TxRow are imported from components/shared/TxRow */
 
 /* ── Sales forecast card ─────────────────────────────────────────── */
 function SalesForecastCard({ prediction, t, balanceHidden }) {
@@ -208,7 +174,7 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
         <div className="flex-1 flex justify-center items-baseline gap-0.5 select-none">
           <span className="text-[18px] font-black tracking-tight text-slate-800 dark:text-white leading-none">Kudi</span>
           <span className="text-[18px] font-black tracking-tight leading-none"
-            style={{ background: "linear-gradient(135deg,#16a34a,#059669)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>AI</span>
+            style={{ background: "linear-gradient(135deg,var(--brand-green),var(--brand-green-dark))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>AI</span>
           <span className="text-[12px] font-bold text-slate-400 dark:text-slate-500 tracking-widest uppercase leading-none ml-1">Track</span>
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -434,7 +400,8 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
         )}
         <button
           onClick={() => { localStorage.setItem("kt_ai_intro_seen", "1"); setShowAITip(false); onAIOpen?.(); }}
-          className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-3xl shadow-card border border-slate-100 dark:border-slate-700/50 active:scale-[0.98] transition-transform duration-150 bg-[linear-gradient(135deg,#16a34a,#059669)]">
+          className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-3xl shadow-card border border-slate-100 dark:border-slate-700/50 active:scale-[0.98] transition-transform duration-150"
+          style={{ background: "linear-gradient(135deg,var(--brand-green),var(--brand-green-dark))" }}>
           <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center flex-shrink-0">
             <span className="text-xl leading-none">✨</span>
           </div>
@@ -457,7 +424,7 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
       )}
 
       {/* ── Sales Forecast ───────────────────────────────────────── */}
-      {!loading && forecast && <SalesForecastCard prediction={forecast} t={t} balanceHidden={balanceHidden} />}
+      {!loading && forecast && <SalesForecastCard prediction={forecast} t={t} hidden={balanceHidden} />}
 
       {/* ── Upsell inline slot ───────────────────────────────────── */}
       <UpsellInlineSlot campaigns={upsells} loading={camLoading} recordEvent={recordEvent} />
@@ -521,7 +488,7 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
               <p className="text-slate-300 dark:text-slate-600 text-xs mt-1">Try a different search term</p>
             </div>
           ) : (
-            <div className="space-y-2">{results.map(tx => <TxRow key={tx.id} tx={tx} onClick={() => setReceipt(buildTransactionReceipt(tx, profile))} balanceHidden={balanceHidden} />)}</div>
+            <div className="space-y-2">{results.map(tx => <TxRow key={tx.id} tx={tx} onClick={() => setReceipt(buildTransactionReceipt(tx, profile))} hidden={balanceHidden} />)}</div>
           );
         })() : transactions.length === 0 ? (
           /* ── Warm new-business empty state ── */
@@ -546,7 +513,7 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
           const recent = transactions.slice(0, 5);
           const rows = [];
           recent.forEach((tx, i) => {
-            rows.push(<TxRow key={tx.id} tx={tx} onClick={() => setReceipt(buildTransactionReceipt(tx, profile))} balanceHidden={balanceHidden} />);
+            rows.push(<TxRow key={tx.id} tx={tx} onClick={() => setReceipt(buildTransactionReceipt(tx, profile))} hidden={balanceHidden} />);
             if (i === 2 && feedCampaign) {
               rows.push(<FeedCardSlot key={`fc-${feedCampaign.id}`} campaign={feedCampaign} recordEvent={recordEvent} />);
             }
