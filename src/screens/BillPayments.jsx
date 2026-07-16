@@ -443,6 +443,114 @@ function VerifyBadge({ status, name }) {
   return null;
 }
 
+/* ─── Visual provider selectors ────────────────────────────────────────────── */
+
+const CABLE_CFG = {
+  dstv:      { bg: "#0096DC", fg: "#fff", abbr: "DTV"  },
+  gotv:      { bg: "#F6A800", fg: "#000", abbr: "GOtv" },
+  startimes: { bg: "#E61A23", fg: "#fff", abbr: "ST"   },
+  showmax:   { bg: "#1A1A2E", fg: "#fff", abbr: "SMX"  },
+};
+
+function CableSelector({ value, onChange }) {
+  return (
+    <div>
+      <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">Provider *</label>
+      <div className="grid grid-cols-4 gap-2">
+        {CABLE_PROVIDERS.map(p => {
+          const cfg = CABLE_CFG[p.code] || { bg: "#334155", fg: "#fff", abbr: p.name.slice(0, 3).toUpperCase() };
+          const sel = value === p.code;
+          return (
+            <button key={p.code} type="button" onClick={() => onChange(p.code)}
+              className={`relative flex flex-col items-center gap-1.5 py-3 rounded-2xl border-2 transition-all duration-200 active:scale-95 ${sel ? "shadow-md" : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"}`}
+              style={sel ? { borderColor: cfg.bg, background: cfg.bg + "18" } : {}}>
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center text-[10px] font-black"
+                style={{ background: cfg.bg, color: cfg.fg }}>{cfg.abbr}</div>
+              <span className={`text-[9px] font-bold text-center leading-tight ${sel ? "text-slate-700 dark:text-slate-200" : "text-slate-400 dark:text-slate-500"}`}>{p.name}</span>
+              {sel && (
+                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full flex items-center justify-center shadow-sm" style={{ background: cfg.bg }}>
+                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke={cfg.fg} strokeWidth={4} strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+const ELEC_COLORS = ["#0096DC","#E61A23","#16a34a","#7c3aed","#d97706","#0891b2","#ea580c","#9333ea","#dc2626","#2563eb","#059669","#db2777"];
+
+function ElecCompanySelector({ value, onChange }) {
+  return (
+    <div>
+      <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">Electricity Company *</label>
+      <div className="space-y-1.5 max-h-52 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+        {ELECTRICITY_COMPANIES.map((c, i) => {
+          const sel = value === c.code;
+          const col = ELEC_COLORS[i % ELEC_COLORS.length];
+          const abbr = c.name.match(/\(([^)]+)\)/)?.[1] || c.name.slice(0, 4).toUpperCase();
+          return (
+            <button key={c.code} type="button" onClick={() => onChange(c.code)}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors active:scale-[0.98] ${sel ? "bg-slate-50 dark:bg-slate-700/60" : "hover:bg-slate-50 dark:hover:bg-slate-700/40"} ${i > 0 ? "border-t border-slate-100 dark:border-slate-700/60" : ""}`}>
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 text-[9px] font-black text-white"
+                style={{ background: col }}>{abbr}</div>
+              <div className="flex-1 min-w-0">
+                <p className={`text-xs font-bold truncate ${sel ? "text-slate-800 dark:text-white" : "text-slate-600 dark:text-slate-300"}`}>{c.name}</p>
+              </div>
+              {sel && (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={2.5} strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+const BETTING_CFG = {
+  "product-nairabet":  { bg: "#006B3C", fg: "#fff" },
+  "product-bang-bet":  { bg: "#FF6B00", fg: "#fff" },
+  "product-bet-way":   { bg: "#00A651", fg: "#fff" },
+  "product-bet-land":  { bg: "#1E3A8A", fg: "#fff" },
+  "product-bet-king":  { bg: "#8B0000", fg: "#fff" },
+  "product-1x-bet":    { bg: "#1565C0", fg: "#fff" },
+  "product-naija-bet": { bg: "#006400", fg: "#fff" },
+  "prd-sporty-bet":    { bg: "#E31837", fg: "#fff" },
+  "product-merry-bet": { bg: "#7B2D8B", fg: "#fff" },
+};
+
+function BettingSelector({ value, onChange }) {
+  return (
+    <div>
+      <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">Betting Platform *</label>
+      <div className="grid grid-cols-3 gap-2">
+        {BETTING_COMPANIES.map(b => {
+          const cfg = BETTING_CFG[b.code] || { bg: "#334155", fg: "#fff" };
+          const sel = value === b.code;
+          const abbr = b.name.slice(0, 3).toUpperCase();
+          return (
+            <button key={b.code} type="button" onClick={() => onChange(b.code)}
+              className={`relative flex flex-col items-center gap-1.5 py-2.5 rounded-2xl border-2 transition-all duration-200 active:scale-95 ${sel ? "shadow-md" : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"}`}
+              style={sel ? { borderColor: cfg.bg, background: cfg.bg + "18" } : {}}>
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center text-[10px] font-black text-white"
+                style={{ background: cfg.bg }}>{abbr}</div>
+              <span className={`text-[9px] font-bold text-center leading-tight px-1 ${sel ? "text-slate-700 dark:text-slate-200" : "text-slate-400 dark:text-slate-500"}`}>{b.name}</span>
+              {sel && (
+                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full flex items-center justify-center shadow-sm" style={{ background: cfg.bg }}>
+                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke={cfg.fg} strokeWidth={4} strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /* ─── Amount numpad for bill services (mirrors Gate 3 BigNumpad) ───────────── */
 function BillNumpad({ value, onChange }) {
   const handleKey = (key) => {
@@ -718,7 +826,7 @@ function BillRow({ bill, onOpen }) {
 
 function PinModal({ pins, title, onClose }) {
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-4">
+    <div className="fixed inset-0 z-sheet flex items-center justify-center bg-black/50 px-4">
       <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl">
         <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-800">
           <h3 className="text-base font-bold text-slate-800 dark:text-white">{title}</h3>
@@ -884,7 +992,7 @@ function BillStatementModal({ bills, profile, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/50">
+    <div className="fixed inset-0 z-sub-sheet flex items-end justify-center bg-black/50">
       <div className="bg-white dark:bg-slate-900 rounded-t-3xl w-full max-w-md safe-bottom">
         <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-slate-100 dark:border-slate-800">
           <div>
@@ -945,7 +1053,7 @@ function ConfirmPaymentSheet({ data, onConfirm, onCancel }) {
   const [logoErr, setLogoErr] = useState(false);
 
   return (
-    <div className="fixed inset-0 z-[70] flex flex-col justify-end bg-black/55">
+    <div className="fixed inset-0 z-sub-sheet flex flex-col justify-end bg-black/55">
       <div className="bg-white dark:bg-slate-900 rounded-t-3xl shadow-2xl" style={{ maxHeight: "88dvh", overflowY: "auto", overscrollBehavior: "contain" }}>
         {/* Drag handle */}
         <div className="flex justify-center pt-3 pb-1">
@@ -1225,7 +1333,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
   );
 
   return (
-    <div className="fixed inset-0 z-[60] flex flex-col bg-slate-100 dark:bg-slate-900">
+    <div className="fixed inset-0 z-sheet flex flex-col bg-slate-100 dark:bg-slate-900">
       {!isSuccess && <Header />}
 
       {/* ── Processing ── */}
@@ -1579,7 +1687,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
       {/* ── Share sheet overlay ── */}
       {shareSheet && (
         <div
-          className="fixed inset-0 z-[70] flex items-end justify-center bg-black/45"
+          className="fixed inset-0 z-sub-sheet flex items-end justify-center bg-black/45"
           onClick={() => setShareSheet(false)}
         >
           <div
@@ -1628,7 +1736,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
 
       {/* ── Capture loading overlay ── */}
       {shareLoading && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50">
+        <div className="fixed inset-0 z-modal flex items-center justify-center bg-black/50">
           <div className="bg-white rounded-2xl px-8 py-6 flex flex-col items-center gap-3 shadow-xl">
             <div className="w-8 h-8 border-2 border-slate-200 border-t-green-500 rounded-full animate-spin" />
             <p className="text-sm font-semibold text-slate-600">
@@ -3067,7 +3175,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
       {/* Bottom sheet */}
       {selectedCat && cat && (
-        <div className="fixed inset-0 z-[60] flex flex-col justify-end bg-black/40">
+        <div className="fixed inset-0 z-sheet flex flex-col justify-end bg-black/40">
           <div className="bg-white dark:bg-slate-900 rounded-t-3xl max-h-[94dvh] flex flex-col transition-all duration-300"
           style={netTheme ? { borderTop: `3px solid ${netTheme.bg}` } : {}}>
 
@@ -3179,7 +3287,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
               {/* ── CABLE TV ── */}
               {selectedCat === "cable" && <>
-                <SelectInput label="Provider *" value={form.provider} onChange={handleProviderChange} options={CABLE_PROVIDERS} placeholder="Select provider…" />
+                <CableSelector value={form.provider} onChange={handleProviderChange} />
                 {form.provider && <>
                   <TextInput label="Smartcard / IUC Number *" value={form.smartcard} onChange={v => { setF("smartcard", v); resetVerify(); }} placeholder="Enter smartcard number" />
                   <PhoneInput label="Phone Number *" value={form.phone} onChange={e => setF("phone", e.target.value)} placeholder="08012345678" />
@@ -3202,7 +3310,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
               {/* ── ELECTRICITY ── */}
               {selectedCat === "electricity" && <>
-                <SelectInput label="Electricity Company *" value={form.company} onChange={v => { setF("company", v); resetVerify(); }} options={ELECTRICITY_COMPANIES} placeholder="Select company…" />
+                <ElecCompanySelector value={form.company} onChange={v => { setF("company", v); resetVerify(); }} />
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">Meter Type *</label>
                   <div className="grid grid-cols-2 gap-2">
@@ -3239,7 +3347,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
               {/* ── BETTING ── */}
               {selectedCat === "betting" && <>
-                <SelectInput label="Betting Platform *" value={form.company} onChange={v => { setF("company", v); resetVerify(); setF("customerId", ""); }} options={BETTING_COMPANIES} placeholder="Select platform…" />
+                <BettingSelector value={form.company} onChange={v => { setF("company", v); resetVerify(); setF("customerId", ""); }} />
                 <TextInput label="Customer ID *" value={form.customerId} onChange={v => { setF("customerId", v); resetVerify(); }} placeholder="Enter your betting ID" />
                 <button type="button" onClick={verifyBetting} disabled={verifyStatus === "loading"}
                   className="w-full border-2 border-emerald-500 text-emerald-600 dark:text-emerald-400 font-bold rounded-xl py-2.5 text-sm disabled:opacity-50">

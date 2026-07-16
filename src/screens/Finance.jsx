@@ -730,6 +730,19 @@ export default function Finance({
         </div>
       </div>
 
+      {/* ── Empty state — no transactions for this period ── */}
+      {moneyIn === 0 && moneyOut === 0 && (
+        <div className="flex flex-col items-center gap-2.5 py-7 px-4 bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700/50 shadow-card">
+          <div className="w-12 h-12 rounded-2xl bg-brand-50 dark:bg-brand-900/20 flex items-center justify-center flex-shrink-0">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3DA829" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+          </div>
+          <p className="text-sm font-bold text-slate-700 dark:text-slate-300 text-center">No transactions for this period</p>
+          <p className="text-xs text-slate-400 dark:text-slate-500 text-center">Tap + to record income or expenses</p>
+        </div>
+      )}
+
       {/* ── Expense category breakdown ── */}
       {expenseBreakdown.length > 0 && (
         <div className="bg-white dark:bg-slate-800 rounded-3xl p-4 border border-slate-100 dark:border-slate-700/50 shadow-card">
