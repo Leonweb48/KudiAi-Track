@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "../utils/supabase";
 import Icon   from "../components/Icon";
 import Modal  from "../components/shared/Modal";
