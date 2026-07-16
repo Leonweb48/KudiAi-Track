@@ -30,19 +30,19 @@ import { Share } from "@capacitor/share";
 /* ─── Service catalogue ───────────────────────────────────────────────────── */
 
 const CATS = [
-  { id: "airtime",      label: "Airtime",        g1: "#ef4444", g2: "#dc2626" },
-  { id: "data",         label: "Data Bundle",     g1: "#3b82f6", g2: "#1d4ed8" },
-  { id: "cable",        label: "Cable TV",        g1: "#8b5cf6", g2: "#6d28d9" },
-  { id: "electricity",  label: "Electricity",     g1: "#f59e0b", g2: "#d97706" },
-  { id: "betting",      label: "Betting Wallet",  g1: "#10b981", g2: "#059669" },
-  { id: "waec",         label: "WAEC ePin",       g1: "#06b6d4", g2: "#0891b2" },
-  { id: "jamb",         label: "JAMB ePin",       g1: "#f97316", g2: "#ea580c" },
-  { id: "spectranet",   label: "Spectranet",      g1: "#6366f1", g2: "#4f46e5" },
-  { id: "smile",        label: "Smile 4G",        g1: "#ec4899", g2: "#db2777" },
-  { id: "print-airtime",   label: "Print Airtime",    g1: "#64748b", g2: "#475569", wholesale: true },
-  { id: "print-data",      label: "Print Data",       g1: "#64748b", g2: "#475569", wholesale: true },
-  { id: "airtime-bundle",  label: "Bundle Set",       g1: "#7c3aed", g2: "#5b21b6", enterprise: true },
-  { id: "business-loan",   label: "Business Loan",    g1: "#059669", g2: "#047857", loan: true },
+  { id: "airtime",        label: "Airtime",        tileCls: "from-red-500 to-red-700",         iconCls: "bg-red-500"     },
+  { id: "data",           label: "Data Bundle",    tileCls: "from-blue-500 to-blue-700",        iconCls: "bg-blue-500"    },
+  { id: "cable",          label: "Cable TV",       tileCls: "from-violet-500 to-violet-700",    iconCls: "bg-violet-500"  },
+  { id: "electricity",    label: "Electricity",    tileCls: "from-amber-400 to-amber-600",      iconCls: "bg-amber-500"   },
+  { id: "betting",        label: "Betting Wallet", tileCls: "from-emerald-500 to-emerald-700",  iconCls: "bg-emerald-500" },
+  { id: "waec",           label: "WAEC ePin",      tileCls: "from-cyan-500 to-cyan-700",        iconCls: "bg-cyan-500"    },
+  { id: "jamb",           label: "JAMB ePin",      tileCls: "from-orange-400 to-orange-600",    iconCls: "bg-orange-500"  },
+  { id: "spectranet",     label: "Spectranet",     tileCls: "from-indigo-500 to-indigo-700",    iconCls: "bg-indigo-500"  },
+  { id: "smile",          label: "Smile 4G",       tileCls: "from-pink-500 to-pink-700",        iconCls: "bg-pink-500"    },
+  { id: "print-airtime",  label: "Print Airtime",  tileCls: "from-slate-500 to-slate-600",      iconCls: "bg-slate-500",  wholesale: true },
+  { id: "print-data",     label: "Print Data",     tileCls: "from-slate-500 to-slate-600",      iconCls: "bg-slate-500",  wholesale: true },
+  { id: "airtime-bundle", label: "Bundle Set",     tileCls: "from-violet-600 to-violet-900",    iconCls: "bg-violet-700", enterprise: true },
+  { id: "business-loan",  label: "Business Loan",  tileCls: "from-emerald-600 to-emerald-900",  iconCls: "bg-emerald-700",loan: true },
 ];
 
 const NETWORKS = ["MTN", "Airtel", "Glo", "9mobile"];
@@ -633,8 +633,7 @@ function BillRow({ bill, onOpen }) {
     <div className={`rounded-2xl border shadow-sm overflow-hidden ${failed ? "bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800/50" : "bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700/50"}`}>
       <div onClick={onOpen}
         className="px-4 py-3.5 flex items-center gap-3 cursor-pointer active:scale-[0.98] transition-transform">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-          style={{ background: failed ? "linear-gradient(135deg,#ef4444,#dc2626)" : `linear-gradient(135deg,${cat.g1},${cat.g2})` }}>
+        <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-gradient-to-br ${failed ? "from-red-500 to-red-700" : cat.tileCls}`}>
           <Ico d={CAT_ICONS[bill.category] || CAT_ICONS.airtime} size={18} c="white" />
         </div>
         <div className="flex-1 min-w-0">
@@ -844,7 +843,7 @@ function BillStatementModal({ bills, profile, onClose }) {
             <div className="flex flex-wrap gap-2">
               {[{ id: "all", label: "All Services" }, ...usedCats].map(c => (
                 <button key={c.id} onClick={() => setCatFilter(c.id)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors ${catFilter === c.id ? "bg-[#1B2A5E] border-[#1B2A5E] text-white" : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"}`}>
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors ${catFilter === c.id ? "bg-slate-800 border-slate-800 text-white dark:bg-white dark:border-white dark:text-slate-900" : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"}`}>
                   {c.label}
                 </button>
               ))}
@@ -856,7 +855,7 @@ function BillStatementModal({ bills, profile, onClose }) {
             <div className="flex flex-wrap gap-2">
               {[{ id: "month", label: "This Month" }, { id: "last3", label: "Last 3 Months" }, { id: "year", label: "This Year" }, { id: "all", label: "All Time" }].map(p => (
                 <button key={p.id} onClick={() => setPeriod(p.id)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors ${period === p.id ? "bg-[#1B2A5E] border-[#1B2A5E] text-white" : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"}`}>
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors ${period === p.id ? "bg-slate-800 border-slate-800 text-white dark:bg-white dark:border-white dark:text-slate-900" : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"}`}>
                   {p.label}
                 </button>
               ))}
@@ -864,7 +863,7 @@ function BillStatementModal({ bills, profile, onClose }) {
           </div>
 
           <button onClick={handleGenerate} disabled={busy}
-            className="w-full bg-[#1B2A5E] text-white rounded-2xl py-3.5 text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-60 active:scale-[0.98] transition-transform">
+            className="w-full bg-slate-800 dark:bg-slate-700 text-white rounded-2xl py-3.5 text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-60 active:scale-[0.98] transition-transform">
             {busy
               ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
               : <>
@@ -989,7 +988,7 @@ function ConfirmPaymentSheet({ data, onConfirm, onCancel }) {
         {/* Actions */}
         <div className="px-5 pb-[calc(2rem+env(safe-area-inset-bottom,0px))] space-y-3">
           <button onClick={onConfirm}
-            className="w-full py-4 rounded-2xl text-white font-black text-base active:scale-[0.98] transition-transform shadow-lg bg-[linear-gradient(135deg,#16a34a,#059669)]">
+            className="w-full py-4 rounded-2xl text-white font-black text-base active:scale-[0.98] transition-transform shadow-lg bg-gradient-to-br from-green-600 to-emerald-600">
             {isFree ? "Activate Free Service" : "Confirm & Pay"}
           </button>
           <button onClick={onCancel}
@@ -1119,7 +1118,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
   /* Shared header — logo left, service right, green stripe below (hidden on success) */
   const Header = () => (
     <div className="flex-shrink-0">
-      <div className="px-5 pt-6 pb-5 flex items-center justify-between bg-[linear-gradient(135deg,#0F1D42_0%,#1B2A5E_60%,#1e3a6e_100%)]">
+      <div className="px-5 pt-6 pb-5 flex items-center justify-between bg-gradient-to-br from-slate-950 via-blue-950 to-blue-900">
         {/* Brand left */}
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-xl overflow-hidden bg-white/10 flex items-center justify-center shadow-inner">
@@ -1139,7 +1138,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
         </div>
       </div>
       {/* Green accent stripe */}
-      <div className="bg-[linear-gradient(90deg,#16a34a,#22c55e)]" style={{ height: 3 }} />
+      <div className="bg-gradient-to-r from-green-600 to-green-400" style={{ height: 3 }} />
       {/* Ref bar — only when a payment ref exists */}
       {fulfillResult?.psRef ? (
         <div className="px-5 py-1.5 flex items-center justify-between bg-green-50 dark:bg-green-900/20">
@@ -1152,7 +1151,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
 
   /* Shared footer */
   const Footer = () => (
-    <div className="flex-shrink-0 px-5 py-3 flex items-center justify-between bg-[linear-gradient(135deg,#0F1D42,#1B2A5E)]">
+    <div className="flex-shrink-0 px-5 py-3 flex items-center justify-between bg-gradient-to-br from-slate-950 to-blue-950">
       <div>
         <p className="text-[10px] font-black text-green-500">AMAYA &amp; Co. Technologies</p>
         <p className="text-[8.5px] text-white/35">All rights reserved · Copyright © 2026</p>
@@ -1175,7 +1174,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
         <div className="flex-1 flex flex-col items-center justify-center gap-7 px-8">
           <div className="relative">
             <div className="absolute inset-0 rounded-full animate-ping bg-green-600/[0.18]" />
-            <div className="relative w-24 h-24 rounded-full shadow-2xl flex items-center justify-center bg-[linear-gradient(135deg,#0F1D42,#1B2A5E)]">
+            <div className="relative w-24 h-24 rounded-full shadow-2xl flex items-center justify-center bg-gradient-to-br from-slate-950 to-blue-950">
               <img src="/logo.png" alt="" className="w-14 h-14 object-contain"
                 onError={e => { e.target.style.display = "none"; }} />
             </div>
@@ -1199,7 +1198,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
           <div className="flex flex-col items-center gap-3 pt-2">
             <div className="relative">
               <div className="absolute inset-0 rounded-full blur-xl bg-amber-500/30" style={{ transform: "scale(1.4)" }} />
-              <div className="relative w-20 h-20 rounded-full shadow-xl flex items-center justify-center bg-[linear-gradient(135deg,#fef3c7,#fde68a)] dark:bg-amber-900/20">
+              <div className="relative w-20 h-20 rounded-full shadow-xl flex items-center justify-center bg-gradient-to-br from-amber-100 to-amber-200 dark:bg-amber-900/20">
                 <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2.5" strokeLinecap="round">
                   <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
                 </svg>
@@ -1232,7 +1231,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
             </div>
           </div>
           <button onClick={onDone}
-            className="w-full py-4 font-black rounded-xl text-sm text-white shadow-lg active:scale-[0.98] transition-transform bg-[linear-gradient(135deg,#1B2A5E,#2d4a8a)]">
+            className="w-full py-4 font-black rounded-xl text-sm text-white shadow-lg active:scale-[0.98] transition-transform bg-gradient-to-br from-blue-950 to-blue-800">
             Done
           </button>
         </div>
@@ -1253,7 +1252,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
             {/* ── Electricity Token (above receipt — highest priority info) ── */}
             {(fulfillResult.elecToken || fulfillResult.elecOrderId) && fulfillResult.cat === "electricity" && (
               <div className="mx-4 mt-4 rounded-2xl overflow-hidden shadow-sm border-2 border-amber-400 dark:border-amber-600">
-                <div className="px-4 py-3 flex items-center gap-2 bg-[linear-gradient(135deg,#fef3c7,#fde68a)] dark:bg-amber-900/20">
+                <div className="px-4 py-3 flex items-center gap-2 bg-gradient-to-br from-amber-100 to-amber-200 dark:bg-amber-900/20">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2.5" strokeLinecap="round">
                     <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
                   </svg>
@@ -1364,7 +1363,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
           <div className="flex-shrink-0 px-4 pt-3 pb-3 bg-white border-t border-slate-100 space-y-2"
             style={{ paddingBottom: 'calc(12px + env(safe-area-inset-bottom, 0px))' }}>
             <button onClick={() => setShareSheet(true)}
-              className="w-full py-3.5 rounded-2xl text-white font-black text-base flex items-center justify-center gap-2.5 active:scale-[0.98] transition-transform shadow-lg bg-[linear-gradient(135deg,#16a34a,#059669)]">
+              className="w-full py-3.5 rounded-2xl text-white font-black text-base flex items-center justify-center gap-2.5 active:scale-[0.98] transition-transform shadow-lg bg-gradient-to-br from-green-600 to-emerald-600">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13"/>
               </svg>
@@ -1416,7 +1415,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
           {/* Amber glow icon */}
           <div className="relative">
             <div className="absolute inset-0 rounded-full blur-xl bg-amber-500/30" style={{ transform: "scale(1.4)" }} />
-            <div className="relative w-24 h-24 rounded-full shadow-xl flex items-center justify-center bg-[linear-gradient(135deg,#fef3c7,#fde68a)] dark:bg-amber-900/20">
+            <div className="relative w-24 h-24 rounded-full shadow-xl flex items-center justify-center bg-gradient-to-br from-amber-100 to-amber-200 dark:bg-amber-900/20">
               <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2.5" strokeLinecap="round">
                 <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
                 <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
@@ -1439,7 +1438,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
             <p className="text-xs mt-1 text-amber-700 dark:text-amber-300">You may safely try your payment again.</p>
           </div>
           <button onClick={onDone}
-            className="w-full py-4 font-black rounded-xl text-sm text-white shadow-lg active:scale-[0.98] transition-transform bg-[linear-gradient(135deg,#1B2A5E,#2d4a8a)]">
+            className="w-full py-4 font-black rounded-xl text-sm text-white shadow-lg active:scale-[0.98] transition-transform bg-gradient-to-br from-blue-950 to-blue-800">
             Try Again
           </button>
         </div>
@@ -1453,7 +1452,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
             <div className="relative" style={{ width: 90, height: 90 }}>
               <div className="absolute rounded-full bg-amber-500/[0.08]" style={{ inset: -18 }} />
               <div className="absolute rounded-full bg-amber-500/[0.14]" style={{ inset: -8 }} />
-              <div className="relative w-full h-full rounded-full shadow-xl flex items-center justify-center bg-[linear-gradient(135deg,#fffbeb,#fef3c7)] dark:bg-amber-900/30">
+              <div className="relative w-full h-full rounded-full shadow-xl flex items-center justify-center bg-gradient-to-br from-amber-50 to-amber-100 dark:bg-amber-900/30">
                 <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round">
                   <circle cx="12" cy="12" r="10"/>
                   <polyline points="12 6 12 12 16 14"/>
@@ -1494,7 +1493,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
           {/* Actions */}
           <div className="space-y-3 mt-2">
             <button onClick={onShareReceipt}
-              className="w-full py-3.5 rounded-2xl text-white font-black text-sm flex items-center justify-center gap-2 active:scale-[0.98] transition-transform shadow-lg bg-[linear-gradient(135deg,#16a34a,#059669)]">
+              className="w-full py-3.5 rounded-2xl text-white font-black text-sm flex items-center justify-center gap-2 active:scale-[0.98] transition-transform shadow-lg bg-gradient-to-br from-green-600 to-emerald-600">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13"/>
               </svg>
@@ -2896,8 +2895,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
               const badge  = lockedEnterprise ? reqPlanLabel : lockedWholesale ? reqPlanLabel : lockedLoan && !isEnterprise ? reqPlanLabel : lockedLoan ? "4MO" : null;
               return (
                 <button key={c.id} onClick={() => openSheet(c.id)} disabled={locked}
-                  className={`rounded-2xl p-4 flex flex-col items-center gap-2 shadow-sm active:scale-95 transition-all duration-150 text-white relative ${locked ? "opacity-50 cursor-not-allowed" : ""}`}
-                  style={{ background: `linear-gradient(135deg,${c.g1},${c.g2})` }}>
+                  className={`rounded-2xl p-4 flex flex-col items-center gap-2 shadow-sm active:scale-95 transition-all duration-150 text-white relative bg-gradient-to-br ${c.tileCls} ${locked ? "opacity-50 cursor-not-allowed" : ""}`}>
                   {badge && (
                     <span className="absolute top-1.5 right-1.5 bg-white/30 rounded-full px-1.5 py-0.5 text-[8px] font-black tracking-wide">{badge}</span>
                   )}
@@ -2928,7 +2926,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
             </h2>
             {bills.length > 0 && (
               <button onClick={() => setShowStatement(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#1B2A5E] text-white text-[11px] font-bold active:scale-95 transition-transform">
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 dark:bg-slate-700 text-white text-[11px] font-bold active:scale-95 transition-transform">
                 <Ico d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z|M14 2v6h6|M12 18v-6|M9 15h6" size={12} c="white" />
                 Statement
               </button>
@@ -2955,7 +2953,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                     <button key={c.id} onClick={() => setHistCat(c.id)}
                       className={`flex-shrink-0 px-3 py-1.5 rounded-full text-[11px] font-bold transition-colors ${
                         histCat === c.id
-                          ? "bg-[#1B2A5E] text-white"
+                          ? "bg-slate-800 dark:bg-white text-white dark:text-slate-900"
                           : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
                       }`}>
                       {CAT_LABELS[c.id] || c.label}
@@ -3299,7 +3297,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
               {selectedCat === "airtime-bundle" && <>
                 {/* Network breakdown card */}
                 <div className="rounded-2xl overflow-hidden border border-violet-200 dark:border-violet-800">
-                  <div className="px-4 py-3 bg-[linear-gradient(135deg,#7c3aed,#5b21b6)]">
+                  <div className="px-4 py-3 bg-gradient-to-br from-violet-600 to-violet-900">
                     <p className="text-xs font-black text-white">All-Network Bundle Set</p>
                     <p className="text-[10px] text-violet-200 mt-0.5">₦1,000 per network · MTN, Airtel, 9mobile & Glo</p>
                   </div>
@@ -3466,7 +3464,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                     isFree: finalAmt <= 0,
                   });
                 }} disabled={saving}
-                  className="w-full text-white font-bold rounded-xl py-3.5 text-sm transition-all disabled:opacity-60 bg-[linear-gradient(135deg,#16a34a,#15803d)]">
+                  className="w-full text-white font-bold rounded-xl py-3.5 text-sm transition-all disabled:opacity-60 bg-gradient-to-br from-green-600 to-green-700">
                   {saving ? (billAppliedCoupon && uiChargeAmt - ptsSavings - cbSavings - billCouponSavings <= 0 ? "Processing free bill…" : "Redirecting to Paystack…") : (
                     selectedCat === "print-airtime"   ? `Pay with Paystack · ${form.quantity || 1} × ₦${form.value}` :
                     selectedCat === "print-data"      ? `Pay with Paystack · ${form.quantity || 1} Plan${parseInt(form.quantity||"1")>1?"s":""}` :
