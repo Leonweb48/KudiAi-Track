@@ -3084,8 +3084,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                   <img src={netTheme.logo} alt={form.network} className="h-8 w-12 object-contain" draggable={false} />
                 </div>
               ) : (
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-                  className={`bg-gradient-to-br ${cat.tileCls}`}>
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-gradient-to-br ${cat.tileCls}`}>
                   <Ico d={CAT_ICONS[selectedCat]} size={17} c="white" />
                 </div>
               )}
