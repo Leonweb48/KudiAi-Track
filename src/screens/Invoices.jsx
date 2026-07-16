@@ -15,11 +15,21 @@ import InvoiceSettingsModal      from "../components/InvoiceSettingsModal";
 const koboToNaira = (k) => (k || 0) / 100;
 const fmtK        = (k) => fmt(koboToNaira(k));
 
+// ── Gradient pairs — single source; dark variants live in index.css .dark ───
+const GRAD = {
+  brand: "linear-gradient(135deg,var(--grad-brand-from),var(--grad-brand-to))",
+  paid:  "linear-gradient(135deg,var(--grad-paid-from),var(--grad-paid-to))",
+  red:   "linear-gradient(135deg,var(--grad-red-from),var(--grad-red-to))",
+  blue:  "linear-gradient(135deg,var(--grad-blue-from),var(--grad-blue-to))",
+  slate: "linear-gradient(135deg,var(--grad-slate-from),var(--grad-slate-to))",
+  grey:  "linear-gradient(135deg,var(--grad-grey-from),var(--grad-grey-to))",
+};
+
 const STATUS_CONFIG = {
   draft:          { label: "Draft",     color: "bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400" },
   sent:           { label: "Sent",      color: "bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" },
-  partially_paid: { label: "Part Paid", color: "bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400" },
-  paid:           { label: "Paid",      color: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
+  partially_paid: { label: "Part Paid", color: "bg-indigo-50 text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-400" },
+  paid:           { label: "Paid",      color: "bg-brand-100 text-brand-700 dark:bg-brand-900/30 dark:text-brand-400" },
   overdue:        { label: "Overdue",   color: "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400" },
   cancelled:      { label: "Cancelled", color: "bg-slate-100 text-slate-400 dark:bg-slate-700 dark:text-slate-500" },
 };
@@ -32,13 +42,24 @@ const METHODS = [
   { value: "other",        label: "Other" },
 ];
 
+// Card accent stripe — static Tailwind class strings (safe for JIT purge)
+const CARD_ACCENT_CLS = {
+  draft:          "bg-slate-300 dark:bg-slate-600",
+  sent:           "bg-blue-500",
+  partially_paid: "bg-indigo-500",
+  paid:           "bg-brand-600",
+  overdue:        "bg-red-500",
+  cancelled:      "bg-slate-200 dark:bg-slate-700",
+};
+
+// iconColor values are mid-saturation so they read on both light and dark backgrounds
 const STATUS_TILES = [
-  { id: "all",       label: "All",       g1: "#1B2A5E", g2: "#2d4a8a", icon: "M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" },
-  { id: "draft",     label: "Draft",     g1: "#64748b", g2: "#475569", icon: "M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7|M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" },
-  { id: "sent",      label: "Sent",      g1: "#2563eb", g2: "#1d4ed8", icon: "M22 2L11 13|M22 2l-7 20-4-9-9-4 20-7z" },
-  { id: "overdue",   label: "Overdue",   g1: "#ef4444", g2: "#dc2626", icon: "M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z|M12 9v4|M12 17h.01" },
-  { id: "paid",      label: "Paid",      g1: "#16a34a", g2: "#15803d", icon: "M22 11.08V12a10 10 0 11-5.93-9.14|M22 4L12 14.01l-3-3" },
-  { id: "cancelled", label: "Cancelled", g1: "#94a3b8", g2: "#64748b", icon: "M18 6L6 18|M6 6l12 12" },
+  { id: "all",       label: "All",       grad: GRAD.brand, iconColor: "#3DA829", icon: "M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" },
+  { id: "draft",     label: "Draft",     grad: GRAD.slate, iconColor: "#94a3b8", icon: "M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7|M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" },
+  { id: "sent",      label: "Sent",      grad: GRAD.blue,  iconColor: "#60a5fa", icon: "M22 2L11 13|M22 2l-7 20-4-9-9-4 20-7z" },
+  { id: "overdue",   label: "Overdue",   grad: GRAD.red,   iconColor: "#f87171", icon: "M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z|M12 9v4|M12 17h.01" },
+  { id: "paid",      label: "Paid",      grad: GRAD.paid,  iconColor: "#3DA829", icon: "M22 11.08V12a10 10 0 11-5.93-9.14|M22 4L12 14.01l-3-3" },
+  { id: "cancelled", label: "Cancelled", grad: GRAD.grey,  iconColor: "#94a3b8", icon: "M18 6L6 18|M6 6l12 12" },
 ];
 
 // ── Share helpers ──────────────────────────────────────────────────────────
@@ -73,7 +94,7 @@ function openWhatsApp(url) {
   }
 }
 
-// ── Empty state ───────────────────────────────────────────────────────────
+// ── Empty state ────────────────────────────────────────────────────────────
 function EmptyInvoices({ onNew }) {
   return (
     <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
@@ -94,72 +115,91 @@ function EmptyInvoices({ onNew }) {
   );
 }
 
-// ── Invoice card ──────────────────────────────────────────────────────────
-const CARD_ACCENT = {
-  draft:          "#94a3b8",
-  sent:           "#2563eb",
-  partially_paid: "#f59e0b",
-  paid:           "#16a34a",
-  overdue:        "#ef4444",
-  cancelled:      "#cbd5e1",
-};
+// ── Avatar colour — deterministic hash of customer name ───────────────────
+const AVATAR_COLORS = [
+  "bg-brand-600 text-white",
+  "bg-blue-600 text-white",
+  "bg-purple-600 text-white",
+  "bg-rose-600 text-white",
+  "bg-teal-600 text-white",
+  "bg-orange-500 text-white",
+];
+function avatarColor(name) {
+  const h = (name || "").split("").reduce((s, c) => s + c.charCodeAt(0), 0);
+  return AVATAR_COLORS[h % AVATAR_COLORS.length];
+}
 
+// ── Invoice card ───────────────────────────────────────────────────────────
 function InvoiceCard({ inv, onTap }) {
-  const sc          = STATUS_CONFIG[inv.status] || STATUS_CONFIG.draft;
+  const sc        = STATUS_CONFIG[inv.status] || STATUS_CONFIG.draft;
+  const accentCls = CARD_ACCENT_CLS[inv.status] || "bg-slate-300";
   const outstanding = inv.total_kobo - inv.amount_paid_kobo;
-  const accent      = CARD_ACCENT[inv.status] || CARD_ACCENT.draft;
-  const paidPct     = inv.total_kobo > 0 ? Math.min(100, (inv.amount_paid_kobo / inv.total_kobo) * 100) : 0;
+  const paidPct   = inv.total_kobo > 0 ? Math.min(100, (inv.amount_paid_kobo / inv.total_kobo) * 100) : 0;
+  const initials  = (inv.customer_name || "?").slice(0, 2).toUpperCase();
 
   return (
     <button onClick={() => onTap(inv)}
       className="w-full text-left bg-white dark:bg-slate-800 rounded-2xl mb-3 shadow-sm active:scale-[0.98] transition-transform overflow-hidden flex border border-slate-100 dark:border-slate-700/50">
       {/* Status accent stripe */}
-      <div className="w-[4px] shrink-0 self-stretch" style={{ background: accent }} />
+      <div className={`w-[4px] shrink-0 self-stretch ${accentCls}`} />
       {/* Card body */}
-      <div className="flex-1 px-4 py-3.5 min-w-0">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
-              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 tracking-wide">{inv.invoice_number}</span>
-              <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wide ${sc.color}`}>{sc.label}</span>
-            </div>
-            <p className="font-extrabold text-slate-800 dark:text-white text-[15px] truncate leading-tight">{inv.customer_name}</p>
-            {inv.due_date && !["paid", "cancelled"].includes(inv.status) && (
-              <p className={`text-[11px] mt-0.5 font-semibold ${inv.status === "overdue" ? "text-red-500" : "text-slate-400"}`}>
-                {inv.status === "overdue" ? "⚠ Overdue · " : "Due "}
-                {new Date(inv.due_date + "T00:00:00").toLocaleDateString("en-NG", { day: "numeric", month: "short" })}
-              </p>
-            )}
-            {inv.status === "paid" && (
-              <p className="text-[11px] mt-0.5 font-bold text-green-500">Fully paid</p>
-            )}
+      <div className="flex-1 px-3.5 py-3.5 min-w-0">
+        <div className="flex items-start gap-3">
+          {/* Avatar */}
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-[13px] font-extrabold flex-shrink-0 ${avatarColor(inv.customer_name)}`}>
+            {initials}
           </div>
-          <div className="min-w-0 ml-2" style={{ maxWidth: '48%' }}>
-            <AmountDisplay amount={inv.total_kobo} fromKobo size="row" align="right" />
-            {outstanding > 0 && !["draft", "cancelled"].includes(inv.status) && (
-              <p className="text-[11px] text-slate-400 mt-0.5 text-right truncate">{fmtK(outstanding)} left</p>
-            )}
+          {/* Content + amount */}
+          <div className="flex-1 min-w-0 flex items-start justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 tracking-wide">{inv.invoice_number}</span>
+                <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wide ${sc.color}`}>{sc.label}</span>
+              </div>
+              <p className="font-extrabold text-slate-800 dark:text-white text-[15px] truncate leading-tight">{inv.customer_name}</p>
+              {inv.due_date && !["paid", "cancelled"].includes(inv.status) && (
+                <p className={`text-[11px] mt-0.5 font-semibold flex items-center gap-1 ${inv.status === "overdue" ? "text-red-500 dark:text-red-400" : "text-slate-400"}`}>
+                  {inv.status === "overdue" && (
+                    <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="flex-shrink-0">
+                      <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                      <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                  )}
+                  {inv.status === "overdue" ? "Overdue · " : "Due "}
+                  {new Date(inv.due_date + "T00:00:00").toLocaleDateString("en-NG", { day: "numeric", month: "short" })}
+                </p>
+              )}
+              {inv.status === "paid" && (
+                <p className="text-[11px] mt-0.5 font-bold text-brand-600 dark:text-brand-400">Fully paid</p>
+              )}
+            </div>
+            <div className="text-right flex-shrink-0">
+              <AmountDisplay amount={inv.total_kobo} fromKobo size="row" align="right" />
+              {outstanding > 0 && !["draft", "cancelled"].includes(inv.status) && (
+                <p className="text-[11px] text-slate-400 mt-0.5 tabular-nums">{fmtK(outstanding)} left</p>
+              )}
+            </div>
           </div>
         </div>
-        {/* Progress bar — partially paid */}
+        {/* Partial-payment progress bar */}
         {inv.status === "partially_paid" && inv.total_kobo > 0 && (
-          <div className="mt-2.5">
+          <div className="mt-2.5 ml-[52px]">
             <div className="h-1.5 rounded-full bg-slate-100 dark:bg-slate-700 overflow-hidden">
-              <div className="h-full rounded-full transition-all" style={{ width: `${paidPct}%`, background: accent }} />
+              <div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${paidPct}%` }} />
             </div>
-            <p className="text-[10px] text-slate-400 mt-0.5">{Math.round(paidPct)}% paid</p>
+            <p className="text-[10px] text-slate-400 mt-0.5 tabular-nums">{Math.round(paidPct)}% paid</p>
           </div>
         )}
       </div>
       {/* Chevron */}
-      <div className="flex items-center pr-3 text-slate-300 dark:text-slate-600">
+      <div className="flex items-center pr-3 pl-1 text-slate-300 dark:text-slate-600">
         <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M9 18l6-6-6-6"/></svg>
       </div>
     </button>
   );
 }
 
-// ── Record Payment modal ──────────────────────────────────────────────────
+// ── Record Payment modal ───────────────────────────────────────────────────
 function RecordPaymentModal({ inv, onClose, onSave }) {
   const outstanding = koboToNaira(inv.total_kobo - inv.amount_paid_kobo);
   const [amount,    setAmount]    = useState(String(outstanding));
@@ -180,20 +220,22 @@ function RecordPaymentModal({ inv, onClose, onSave }) {
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center" style={{ background: "rgba(0,0,0,0.6)" }}
+    <div className="fixed inset-0 z-modal flex items-end justify-center" style={{ background: "rgba(0,0,0,0.6)" }}
       onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-t-2xl shadow-2xl">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-700">
+      <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-t-2xl shadow-2xl max-h-[90dvh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex-shrink-0">
           <div>
             <p className="font-extrabold text-slate-800 dark:text-white">Record Payment</p>
             <p className="text-xs text-slate-400">{inv.invoice_number} · Outstanding {fmtK(inv.total_kobo - inv.amount_paid_kobo)}</p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700">
+          <button onClick={onClose} className="w-11 h-11 flex items-center justify-center rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 transition active:scale-95">
             <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M18 6L6 18M6 6l12 12"/></svg>
           </button>
         </div>
 
-        <div className="px-5 py-4 space-y-4">
+        {/* Scrollable form body */}
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
           <div>
             <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Amount (₦) *</label>
             <input type="number" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)}
@@ -227,9 +269,10 @@ function RecordPaymentModal({ inv, onClose, onSave }) {
           {error && <p className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded-xl px-3 py-2">{error}</p>}
         </div>
 
-        <div className="px-5 pb-5">
+        {/* Footer */}
+        <div className="px-5 pb-5 pt-3 border-t border-slate-100 dark:border-slate-700 flex-shrink-0">
           <button onClick={handleSave} disabled={saving}
-            className="w-full py-3.5 rounded-2xl bg-green-600 hover:bg-green-700 text-white font-bold text-sm active:scale-95 transition">
+            className="w-full py-3.5 rounded-2xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-sm active:scale-95 transition">
             {saving ? "Recording…" : "Record Payment"}
           </button>
         </div>
@@ -238,11 +281,13 @@ function RecordPaymentModal({ inv, onClose, onSave }) {
   );
 }
 
-// ── Invoice detail sheet ──────────────────────────────────────────────────
+// ── Invoice detail sheet ───────────────────────────────────────────────────
 function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCancel, onPayment, onDelete, onResend, onEdit }) {
-  const [acting,      setActing]      = useState(false);
-  const [showPayment, setShowPayment] = useState(false);
-  const [pdfLoading,  setPdfLoading]  = useState(false);
+  const [acting,        setActing]        = useState(false);
+  const [showPayment,   setShowPayment]   = useState(false);
+  const [pdfLoading,    setPdfLoading]    = useState(false);
+  const [confirmAction, setConfirmAction] = useState(null); // { type: "cancel"|"delete", label: string }
+
   const sc          = STATUS_CONFIG[inv.status] || STATUS_CONFIG.draft;
   const outstanding = inv.total_kobo - inv.amount_paid_kobo;
 
@@ -253,18 +298,20 @@ function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCance
     onClose();
   };
 
-  const handleCancel = async () => {
-    if (!window.confirm("Cancel this invoice?")) return;
-    setActing(true);
-    await onCancel(inv.id);
-    setActing(false);
-    onClose();
+  const handleCancel = () => {
+    setConfirmAction({ type: "cancel", label: "Cancel this invoice?" });
   };
 
-  const handleDelete = async () => {
-    if (!window.confirm(`Delete invoice ${inv.invoice_number} permanently? This cannot be undone.`)) return;
+  const handleDelete = () => {
+    setConfirmAction({ type: "delete", label: `Delete ${inv.invoice_number} permanently?` });
+  };
+
+  const executeConfirm = async () => {
+    const ct = confirmAction.type;
     setActing(true);
-    await onDelete(inv.id);
+    setConfirmAction(null);
+    if (ct === "cancel") await onCancel(inv.id);
+    else await onDelete(inv.id);
     setActing(false);
     onClose();
   };
@@ -276,12 +323,6 @@ function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCance
     setPdfLoading(false);
   };
 
-  const handleWhatsApp = () => openWhatsApp(buildWhatsAppUrl(inv, profile));
-
-  const handleResend = () => onResend && onResend(inv);
-
-  const handleEdit = () => { onEdit && onEdit(inv); onClose(); };
-
   const handleReceipt = async () => {
     setPdfLoading(true);
     try { await exportInvoicePdf(inv, profile, invoiceSettings || {}, { isReceipt: true }); }
@@ -291,29 +332,26 @@ function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCance
 
   const handleEmail = () => {
     if (!inv.customer_email) return;
-    const outstanding = inv.total_kobo - inv.amount_paid_kobo;
+    const out = inv.total_kobo - inv.amount_paid_kobo;
     const subject = encodeURIComponent(`Invoice ${inv.invoice_number}`);
     const body = encodeURIComponent(
       `Hello ${inv.customer_name},\n\nPlease find your invoice details below.\n\n` +
       `Invoice No: ${inv.invoice_number}\nTotal: ${fmtK(inv.total_kobo)}\n` +
-      (outstanding > 0 ? `Outstanding: ${fmtK(outstanding)}\n` : "Status: FULLY PAID\n") +
+      (out > 0 ? `Outstanding: ${fmtK(out)}\n` : "Status: FULLY PAID\n") +
       (inv.due_date ? `Due Date: ${new Date(inv.due_date + "T00:00:00").toLocaleDateString("en-NG")}\n` : "") +
       (inv.payment_instructions ? `\n${inv.payment_instructions}\n` : "") +
       `\nThank you!`
     );
-    const url = `mailto:${inv.customer_email}?subject=${subject}&body=${body}`;
-    // '_system' tells Capacitor to hand the URL to the OS (opens mail app on native, mail client on web)
-    // Browser.open only handles http/https and freezes on mailto:
-    window.open(url, "_system");
+    window.open(`mailto:${inv.customer_email}?subject=${subject}&body=${body}`, "_system");
   };
 
   const handleShare = async () => {
-    const outstanding = inv.total_kobo - inv.amount_paid_kobo;
+    const out = inv.total_kobo - inv.amount_paid_kobo;
     const text = [
       `Invoice: ${inv.invoice_number}`,
       `Customer: ${inv.customer_name}`,
       `Total: ${fmtK(inv.total_kobo)}`,
-      outstanding > 0 ? `Outstanding: ${fmtK(outstanding)}` : "Status: FULLY PAID",
+      out > 0 ? `Outstanding: ${fmtK(out)}` : "Status: FULLY PAID",
       inv.due_date ? `Due: ${new Date(inv.due_date + "T00:00:00").toLocaleDateString("en-NG")}` : "",
       inv.payment_instructions || "",
     ].filter(Boolean).join("\n");
@@ -328,12 +366,44 @@ function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCance
     } catch {}
   };
 
+  const handleWhatsApp = () => openWhatsApp(buildWhatsAppUrl(inv, profile));
+  const handleResend   = () => onResend && onResend(inv);
+  const handleEdit     = () => { onEdit && onEdit(inv); onClose(); };
+
   const canRecordPayment = ["sent", "overdue", "partially_paid"].includes(inv.status);
-  const canReceipt = inv.status === "paid" || inv.amount_paid_kobo > 0;
+  const canReceipt       = inv.status === "paid" || inv.amount_paid_kobo > 0;
+
+  // ── Action button grid data ──────────────────────────────────────────────
+  const actionBtns = [
+    { key:"pdf",      label: pdfLoading ? "…" : "PDF", disabled: pdfLoading, onClick: handlePdf,
+      cls:"bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300",
+      icon:<svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg> },
+    canReceipt && { key:"receipt", label:"Receipt", disabled: pdfLoading, onClick: handleReceipt,
+      cls:"bg-brand-50 dark:bg-brand-900/20 text-brand-700 dark:text-brand-400",
+      icon:<svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M9 14l2 2 4-4"/><rect x="3" y="3" width="18" height="18" rx="2"/></svg> },
+    inv.customer_email && { key:"email", label:"Email", onClick: handleEmail,
+      cls:"bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400",
+      icon:<svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg> },
+    { key:"share", label:"Share", onClick: handleShare,
+      cls:"bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400",
+      icon:<svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg> },
+    inv.customer_phone && { key:"whatsapp", label:"WhatsApp", onClick: handleWhatsApp,
+      cls:"bg-brand-50 dark:bg-brand-900/20 text-brand-700 dark:text-brand-400",
+      icon:<svg width={16} height={16} viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.025.502 3.935 1.385 5.608L0 24l6.585-1.328A11.946 11.946 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.85 0-3.596-.467-5.12-1.286l-.369-.213-3.811.97.997-3.701-.231-.381A9.972 9.972 0 012 12C2 6.478 6.478 2 12 2s10 4.478 10 10-4.478 10-10 10z"/></svg> },
+    ["sent","overdue"].includes(inv.status) && { key:"resend", label:"Resend", onClick: handleResend,
+      cls:"bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400",
+      icon:<svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg> },
+    { key:"edit", label:"Edit", onClick: handleEdit,
+      cls:"bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300",
+      icon:<svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> },
+    { key:"delete", label:"Delete", disabled: acting || !!confirmAction, onClick: handleDelete,
+      cls:"bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400",
+      icon:<svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg> },
+  ].filter(Boolean);
 
   return (
     <>
-      <div className="fixed inset-0 z-[60] flex items-end justify-center" style={{ background: "rgba(0,0,0,0.6)" }}
+      <div className="fixed inset-0 z-sub-sheet flex items-end justify-center" style={{ background: "rgba(0,0,0,0.6)" }}
         onClick={e => e.target === e.currentTarget && onClose()}>
         <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-t-2xl shadow-2xl max-h-[92dvh] flex flex-col">
 
@@ -345,62 +415,21 @@ function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCance
             </div>
             <div className="flex items-center gap-2">
               <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${sc.color}`}>{sc.label}</span>
-              <button onClick={onClose} className="p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700">
+              <button onClick={onClose} className="w-11 h-11 flex items-center justify-center rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 transition active:scale-95">
                 <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M18 6L6 18M6 6l12 12"/></svg>
               </button>
             </div>
           </div>
 
-          {/* Action shortcuts row */}
-          <div className="flex flex-wrap gap-2 px-5 pt-3 pb-1 flex-shrink-0">
-            <button onClick={handlePdf} disabled={pdfLoading}
-              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold active:scale-95 transition min-w-[70px]">
-              <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-              {pdfLoading ? "…" : "PDF"}
-            </button>
-            {canReceipt && (
-              <button onClick={handleReceipt} disabled={pdfLoading}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 text-xs font-bold active:scale-95 transition min-w-[70px]">
-                <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M9 14l2 2 4-4"/><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
-                Receipt
+          {/* Action grid — 3 columns, icon over label, 56px min height */}
+          <div className="grid grid-cols-3 gap-2 px-5 pt-3 pb-2 flex-shrink-0">
+            {actionBtns.map(btn => (
+              <button key={btn.key} onClick={btn.onClick} disabled={btn.disabled}
+                className={`flex flex-col items-center justify-center gap-1 min-h-[56px] rounded-xl text-[11px] font-bold active:scale-95 transition ${btn.cls} disabled:opacity-40`}>
+                {btn.icon}
+                {btn.label}
               </button>
-            )}
-            {inv.customer_email && (
-              <button onClick={handleEmail}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 text-xs font-bold active:scale-95 transition min-w-[70px]">
-                <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-                Email
-              </button>
-            )}
-            <button onClick={handleShare}
-              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 text-xs font-bold active:scale-95 transition min-w-[70px]">
-              <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
-              Share
-            </button>
-            {inv.customer_phone && (
-              <button onClick={handleWhatsApp}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 text-xs font-bold active:scale-95 transition min-w-[70px]">
-                <svg width={13} height={13} viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.025.502 3.935 1.385 5.608L0 24l6.585-1.328A11.946 11.946 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.85 0-3.596-.467-5.12-1.286l-.369-.213-3.811.97.997-3.701-.231-.381A9.972 9.972 0 012 12C2 6.478 6.478 2 12 2s10 4.478 10 10-4.478 10-10 10z"/></svg>
-                WhatsApp
-              </button>
-            )}
-            {["sent", "overdue"].includes(inv.status) && (
-              <button onClick={handleResend}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 text-xs font-bold active:scale-95 transition min-w-[70px]">
-                <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
-                Resend
-              </button>
-            )}
-            <button onClick={handleEdit}
-              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 text-xs font-bold active:scale-95 transition min-w-[70px]">
-              <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-              Edit
-            </button>
-            <button onClick={handleDelete} disabled={acting}
-              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-xs font-bold active:scale-95 transition min-w-[70px]">
-              <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
-              Delete
-            </button>
+            ))}
           </div>
 
           {/* Body */}
@@ -408,34 +437,34 @@ function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCance
             {/* Amounts */}
             <div className="bg-slate-50 dark:bg-slate-700/50 rounded-2xl p-4 space-y-1.5">
               <div className="flex justify-between text-sm text-slate-500 dark:text-slate-400">
-                <span>Subtotal</span><span>{fmtK(inv.subtotal_kobo)}</span>
+                <span>Subtotal</span><span className="tabular-nums">{fmtK(inv.subtotal_kobo)}</span>
               </div>
               {inv.discount_kobo > 0 && (
                 <div className="flex justify-between text-sm text-red-500">
-                  <span>Discount</span><span>−{fmtK(inv.discount_kobo)}</span>
+                  <span>Discount</span><span className="tabular-nums">−{fmtK(inv.discount_kobo)}</span>
                 </div>
               )}
               {inv.vat_kobo > 0 && (
                 <div className="flex justify-between text-sm text-slate-500 dark:text-slate-400">
-                  <span>VAT (7.5%)</span><span>{fmtK(inv.vat_kobo)}</span>
+                  <span>VAT (7.5%)</span><span className="tabular-nums">{fmtK(inv.vat_kobo)}</span>
                 </div>
               )}
               {(inv.other_charges_kobo || 0) > 0 && (
                 <div className="flex justify-between text-sm text-slate-500 dark:text-slate-400">
-                  <span>{inv.other_charges_label || "Other Charges"}</span><span>{fmtK(inv.other_charges_kobo)}</span>
+                  <span>{inv.other_charges_label || "Other Charges"}</span><span className="tabular-nums">{fmtK(inv.other_charges_kobo)}</span>
                 </div>
               )}
               <div className="flex justify-between font-extrabold text-slate-800 dark:text-white text-base pt-1.5 border-t border-slate-200 dark:border-slate-700">
-                <span>Total</span><span>{fmtK(inv.total_kobo)}</span>
+                <span>Total</span><span className="tabular-nums">{fmtK(inv.total_kobo)}</span>
               </div>
               {inv.amount_paid_kobo > 0 && (
                 <>
-                  <div className="flex justify-between text-sm text-green-600">
-                    <span>Paid</span><span>{fmtK(inv.amount_paid_kobo)}</span>
+                  <div className="flex justify-between text-sm text-brand-600 dark:text-brand-400">
+                    <span>Paid</span><span className="tabular-nums">{fmtK(inv.amount_paid_kobo)}</span>
                   </div>
                   {outstanding > 0 && (
-                    <div className="flex justify-between font-bold text-amber-600">
-                      <span>Outstanding</span><span>{fmtK(outstanding)}</span>
+                    <div className="flex justify-between font-bold text-slate-600 dark:text-slate-300">
+                      <span>Outstanding</span><span className="tabular-nums">{fmtK(outstanding)}</span>
                     </div>
                   )}
                 </>
@@ -463,7 +492,7 @@ function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCance
                                 : `${item.quantity} × ${fmtK(item.unit_price_kobo)}`}
                             </p>
                           </div>
-                          <span className="text-sm font-bold text-slate-800 dark:text-white">{fmtK(item.line_total_kobo)}</span>
+                          <span className="text-sm font-bold text-slate-800 dark:text-white tabular-nums">{fmtK(item.line_total_kobo)}</span>
                         </div>
                         {subs.length > 0 && (
                           <div className="ml-2 pl-3 border-l-2 border-slate-100 dark:border-slate-700 mt-1 space-y-0.5">
@@ -472,11 +501,11 @@ function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCance
                                 <div className="flex-1 mr-3">
                                   <p className="text-xs text-slate-500 dark:text-slate-400">• {sub.description}</p>
                                   {sub.unit_price_kobo > 0 && (
-                                    <p className="text-[10px] text-slate-400">{sub.quantity} × {fmtK(sub.unit_price_kobo)}</p>
+                                    <p className="text-[10px] text-slate-400 tabular-nums">{sub.quantity} × {fmtK(sub.unit_price_kobo)}</p>
                                   )}
                                 </div>
                                 {sub.line_total_kobo > 0 && (
-                                  <span className="text-xs text-slate-500 dark:text-slate-400">{fmtK(sub.line_total_kobo)}</span>
+                                  <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">{fmtK(sub.line_total_kobo)}</span>
                                 )}
                               </div>
                             ))}
@@ -520,10 +549,12 @@ function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCance
                 {inv.invoice_payments.map(p => (
                   <div key={p.id} className="flex items-center justify-between py-2 border-b border-slate-50 dark:border-slate-700 last:border-0">
                     <div>
-                      <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 capitalize">{p.method.replace("_", " ")}</p>
+                      <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                        {METHODS.find(m => m.value === p.method)?.label || p.method}
+                      </p>
                       <p className="text-xs text-slate-400">{new Date(p.paid_at).toLocaleDateString("en-NG", { day:"numeric", month:"short" })}{p.reference ? ` · ${p.reference}` : ""}</p>
                     </div>
-                    <span className="text-sm font-bold text-green-600">{fmtK(p.amount_kobo)}</span>
+                    <span className="text-sm font-bold text-brand-600 dark:text-brand-400 tabular-nums">{fmtK(p.amount_kobo)}</span>
                   </div>
                 ))}
               </div>
@@ -534,24 +565,39 @@ function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCance
             )}
           </div>
 
+          {/* In-sheet confirmation strip */}
+          {confirmAction && (
+            <div className="mx-5 mb-2 flex-shrink-0 border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 rounded-2xl px-4 py-3 flex items-center gap-2">
+              <p className="flex-1 text-sm text-red-700 dark:text-red-300 font-semibold leading-snug">{confirmAction.label}</p>
+              <button onClick={() => setConfirmAction(null)}
+                className="w-11 h-11 flex items-center justify-center rounded-xl border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 font-bold text-sm flex-shrink-0 active:scale-95 transition">
+                No
+              </button>
+              <button onClick={executeConfirm} disabled={acting}
+                className="w-11 h-11 flex items-center justify-center rounded-xl bg-red-600 text-white font-bold text-sm flex-shrink-0 active:scale-95 transition disabled:opacity-50">
+                Yes
+              </button>
+            </div>
+          )}
+
           {/* Footer actions */}
           {(inv.status === "draft" || canRecordPayment) && (
             <div className="px-5 py-4 border-t border-slate-100 dark:border-slate-700 flex gap-3 flex-shrink-0">
               {inv.status === "draft" && (
                 <>
-                  <button onClick={handleCancel} disabled={acting}
-                    className="flex-1 py-3 rounded-2xl border border-slate-200 dark:border-slate-600 text-sm font-bold text-slate-500 active:scale-95 transition">
-                    Cancel
+                  <button onClick={handleCancel} disabled={acting || !!confirmAction}
+                    className="flex-1 py-3 rounded-2xl border border-slate-200 dark:border-slate-600 text-sm font-bold text-slate-500 active:scale-95 transition disabled:opacity-40">
+                    Cancel Invoice
                   </button>
                   <button onClick={handleSent} disabled={acting}
-                    className="flex-1 py-3 rounded-2xl bg-brand-600 text-white text-sm font-bold active:scale-95 transition">
+                    className="flex-1 py-3 rounded-2xl bg-brand-600 text-white text-sm font-bold active:scale-95 transition disabled:opacity-50">
                     {acting ? "Marking…" : "Mark as Sent"}
                   </button>
                 </>
               )}
               {canRecordPayment && (
                 <button onClick={() => setShowPayment(true)}
-                  className="flex-1 py-3 rounded-2xl bg-green-600 hover:bg-green-700 text-white text-sm font-bold active:scale-95 transition">
+                  className="flex-1 py-3 rounded-2xl bg-brand-600 hover:bg-brand-700 text-white text-sm font-bold active:scale-95 transition">
                   Record Payment
                 </button>
               )}
@@ -575,7 +621,7 @@ function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCance
   );
 }
 
-// ── Main Invoices screen ──────────────────────────────────────────────────
+// ── Main Invoices screen ───────────────────────────────────────────────────
 export default function Invoices({ invoiceHook, plan, onUpgrade, profile, inventory, addTransaction, userId }) {
   const { invoices, customers, loading, reload, createDraft, updateDraft, markSent, cancelInvoice, deleteInvoice, recordInvoicePayment } = invoiceHook;
   const [filter,       setFilter]      = useState("all");
@@ -589,8 +635,8 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
   if (!canDo(plan, "invoices")) {
     return (
       <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
-        <div className="w-16 h-16 rounded-2xl bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center mb-4">
-          <svg width={32} height={32} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="text-amber-400">
+        <div className="w-16 h-16 rounded-2xl bg-brand-50 dark:bg-brand-900/20 flex items-center justify-center mb-4">
+          <svg width={32} height={32} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="text-brand-400">
             <path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.27 5.82 21 7 14.14 2 9.27l6.91-1.01L12 2z"/>
           </svg>
         </div>
@@ -629,37 +675,35 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
   };
 
   const SUMMARY_AMT_CARDS = [
-    { label: "Outstanding", kobo: outstanding_total, g1: "#1B2A5E", g2: "#2563eb" },
-    { label: "Paid",        kobo: paid_total,        g1: "#14532d", g2: "#16a34a" },
+    { label: "Outstanding", kobo: outstanding_total, grad: GRAD.brand },
+    { label: "Paid",        kobo: paid_total,        grad: GRAD.paid  },
   ];
   const SUMMARY_CNT_CARDS = [
-    { label: "Overdue", value: String(counts.overdue), g1: "#7f1d1d", g2: "#ef4444" },
-    { label: "Sent",    value: String(counts.sent),    g1: "#1e3a8a", g2: "#3b82f6" },
-    { label: "Draft",   value: String(counts.draft),   g1: "#334155", g2: "#64748b" },
+    { label: "Overdue", value: String(counts.overdue), grad: GRAD.red   },
+    { label: "Sent",    value: String(counts.sent),    grad: GRAD.blue  },
+    { label: "Draft",   value: String(counts.draft),   grad: GRAD.slate },
   ];
 
   return (
     <div className="pb-36">
-      {/* 5 Summary cards */}
+      {/* Summary cards */}
       {invoices.length > 0 && (
         <div className="mx-4 mt-4 mb-3">
-          {/* Row 1: Outstanding + Paid (amount cards) */}
           <div className="flex gap-2.5 mb-2.5">
             {SUMMARY_AMT_CARDS.map(c => (
               <div key={c.label} className="flex-1 min-w-0 rounded-2xl px-4 py-3.5 text-white shadow overflow-hidden"
-                style={{ background: `linear-gradient(135deg,${c.g1},${c.g2})` }}>
+                style={{ background: c.grad }}>
                 <p className="text-[10px] font-bold uppercase tracking-widest opacity-70 mb-1">{c.label}</p>
                 <AmountDisplay amount={c.kobo} fromKobo size="stat" align="left" className="text-white" />
               </div>
             ))}
           </div>
-          {/* Row 2: Overdue + Sent + Draft (count cards) */}
           <div className="flex gap-2.5">
             {SUMMARY_CNT_CARDS.map(c => (
               <div key={c.label} className="flex-1 min-w-0 rounded-2xl px-3 py-3 text-white shadow overflow-hidden"
-                style={{ background: `linear-gradient(135deg,${c.g1},${c.g2})` }}>
+                style={{ background: c.grad }}>
                 <p className="text-[10px] font-bold uppercase tracking-widest opacity-70 mb-1">{c.label}</p>
-                <p className="text-xl font-black leading-tight">{c.value}</p>
+                <p className="text-xl font-black leading-tight tabular-nums">{c.value}</p>
               </div>
             ))}
           </div>
@@ -673,7 +717,7 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
             <div className="flex items-center justify-between mb-4">
               <p className="text-[12px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Filter by Status</p>
               <button onClick={() => setShowSettings(true)}
-                className="w-8 h-8 flex items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-700 active:scale-90 transition">
+                className="w-11 h-11 flex items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-700 active:scale-90 transition">
                 <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-slate-500 dark:text-slate-400">
                   <path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/>
                   <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/>
@@ -685,19 +729,19 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
                 const active = filter === s.id;
                 return (
                   <button key={s.id} onClick={() => setFilter(s.id)}
-                    className="flex flex-col items-center gap-1.5 active:scale-90 transition-transform duration-150">
-                    <div className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm relative"
-                      style={active
-                        ? { background: `linear-gradient(135deg,${s.g1},${s.g2})` }
-                        : { background: "transparent", border: "2px solid #e2e8f0" }}>
+                    className="flex flex-col items-center gap-1.5 active:scale-90 transition-transform duration-150 overflow-visible">
+                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm relative transition-colors ${
+                      active ? "" : "bg-transparent border-2 border-slate-200 dark:border-slate-600"
+                    }`}
+                      style={active ? { background: s.grad } : {}}>
                       <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-                        stroke={active ? "white" : s.g1} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        stroke={active ? "white" : s.iconColor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         {s.icon.split("|").map((d, i) => <path key={i} d={d} />)}
                       </svg>
                       {counts[s.id] > 0 && (
-                        <span className={`absolute -top-1 -right-1 text-[9px] font-black px-1.5 py-0.5 rounded-full leading-none ${
+                        <span className={`absolute -top-1 -right-1 text-[9px] font-black px-1.5 py-0.5 rounded-full leading-none tabular-nums ${
                           active ? "bg-white text-slate-800" : "text-white"
-                        }`} style={active ? {} : { background: s.g1 }}>
+                        }`} style={active ? {} : { background: s.iconColor }}>
                           {counts[s.id]}
                         </span>
                       )}
@@ -731,12 +775,13 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
         </div>
       )}
 
-      {/* FABs */}
+      {/* FAB */}
       <button onClick={() => setShowBuilder(true)}
-        className="fixed bottom-24 right-4 z-30 w-14 h-14 bg-brand-600 hover:bg-brand-700 text-white rounded-full shadow-lg flex items-center justify-center active:scale-95 transition">
+        className="fixed bottom-24 right-4 z-sticky w-14 h-14 bg-brand-600 hover:bg-brand-700 text-white rounded-full shadow-lg flex items-center justify-center active:scale-95 transition">
         <svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M12 5v14M5 12h14"/></svg>
       </button>
-      {/* Invoice builder modal — new invoice */}
+
+      {/* Invoice builder — new */}
       {showBuilder && (
         <InvoiceBuilder
           profile={profile}
@@ -747,7 +792,7 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
         />
       )}
 
-      {/* Invoice builder modal — edit draft */}
+      {/* Invoice builder — edit draft */}
       {editInv && (
         <InvoiceBuilder
           profile={profile}
@@ -759,7 +804,7 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
         />
       )}
 
-      {/* Invoice detail modal */}
+      {/* Invoice detail */}
       {detailInv && (
         <InvoiceDetail
           inv={detailInv}
@@ -913,7 +958,7 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
         />
       )}
 
-      {/* Invoice settings modal */}
+      {/* Invoice settings */}
       {showSettings && (
         <InvoiceSettingsModal
           settings={invoiceSettings}

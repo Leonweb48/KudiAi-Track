@@ -50,7 +50,7 @@ export default function InvoiceSettingsModal({ settings, onSave, onClose, userId
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-white dark:bg-slate-900">
+    <div className="fixed inset-0 z-sub-sheet flex flex-col bg-white dark:bg-slate-900">
       {/* Header — padded past status bar */}
       <div className="flex items-center gap-3 px-4 pb-3 border-b border-slate-100 dark:border-slate-800 shrink-0"
         style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 16px)" }}>
@@ -92,7 +92,7 @@ export default function InvoiceSettingsModal({ settings, onSave, onClose, userId
                   <button
                     onClick={() => fileRef.current?.click()}
                     disabled={uploading}
-                    className="text-xs font-bold px-3 py-1.5 rounded-lg text-white active:scale-95 transition bg-[linear-gradient(135deg,#1B2A5E,#2563eb)]">
+                    className="text-xs font-bold px-3 py-1.5 rounded-lg text-white active:scale-95 transition bg-brand-600 hover:bg-brand-700">
                     {uploading ? "Uploading…" : "Change"}
                   </button>
                   <button
@@ -161,8 +161,9 @@ export default function InvoiceSettingsModal({ settings, onSave, onClose, userId
         <button
           onClick={handleSave}
           disabled={saving || uploading}
-          className="w-full py-3.5 rounded-2xl font-bold text-sm text-white active:scale-95 transition"
-          style={{ background: saved ? "#16a34a" : "linear-gradient(135deg,#1B2A5E,#2563eb)" }}>
+          className={`w-full py-3.5 rounded-2xl font-bold text-sm text-white active:scale-95 transition ${
+            saved ? "bg-brand-600" : "bg-brand-700 hover:bg-brand-600"
+          }`}>
           {saving ? "Saving…" : saved ? "✓ Saved!" : "Save Invoice Settings"}
         </button>
       </div>

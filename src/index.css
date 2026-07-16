@@ -11,6 +11,23 @@
   --navy-mid: #1D3070;
   --navy-dark: #0F1A42;
 
+  /* ── Invoice gradient pairs — single source; dark overrides below ──
+   * Brand = outstanding / "All" tile (active brand green)
+   * Paid  = paid surfaces (deep forest green)
+   * ---------------------------------------------------------------- */
+  --grad-brand-from: #1a4e12;  /* brand-800 */
+  --grad-brand-to:   #3DA829;  /* brand-500 */
+  --grad-paid-from:  #13380d;  /* brand-900 */
+  --grad-paid-to:    #2E8020;  /* brand-600 */
+  --grad-red-from:   #7f1d1d;
+  --grad-red-to:     #ef4444;
+  --grad-blue-from:  #1e3a8a;
+  --grad-blue-to:    #3b82f6;
+  --grad-slate-from: #334155;
+  --grad-slate-to:   #64748b;
+  --grad-grey-from:  #94a3b8;
+  --grad-grey-to:    #cbd5e1;
+
   /* ── Z-index token scale (mirrors tailwind.config.js zIndex) ──────
    * Tier order: content(0) < sticky(30) < nav(40) < floating(55) <
    *   sheet(60) < sub-sheet(70) < modal(100) < lock(200) < pin-auth(210) <
@@ -109,6 +126,22 @@ body {
 /* ── Dark mode body ───────────────────────────────────────────────── */
 .dark body  { background: #0F172A; }
 .dark       { color-scheme: dark; }
+
+/* ── Invoice gradient dark overrides ─────────────────────────────── */
+.dark {
+  --grad-brand-from: #13380d;
+  --grad-brand-to:   #2E8020;
+  --grad-paid-from:  #0a1f06;
+  --grad-paid-to:    #1a4e12;
+  --grad-red-from:   #450a0a;
+  --grad-red-to:     #dc2626;
+  --grad-blue-from:  #172554;
+  --grad-blue-to:    #2563eb;
+  --grad-slate-from: #1e293b;
+  --grad-slate-to:   #475569;
+  --grad-grey-from:  #64748b;
+  --grad-grey-to:    #94a3b8;
+}
 
 /* ══════════════════════════════════════════════════════════════════════
    GLOBAL TEXT & AMOUNT CONTAINMENT GUARDRAILS
