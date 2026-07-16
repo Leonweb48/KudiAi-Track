@@ -216,7 +216,7 @@ export default function App() {
     notif.clearLastNotif();
   }, [notif.lastNotif]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const isDark = store.profile?.dark_mode;
+  const isDark = store.profile?.dark_mode ?? (localStorage.getItem("kuditrack_dark") === "1");
   useEffect(() => {
     document.documentElement.classList.toggle("dark", !!isDark);
   }, [isDark]);
