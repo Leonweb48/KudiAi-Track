@@ -20,7 +20,7 @@ export function AuthShell({ variant = "card", children, className = "" }) {
   }
 
   return (
-    <div className={`min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col ${className}`}>
+    <div className={`min-h-[100dvh] bg-slate-50 dark:bg-slate-950 flex flex-col ${className}`}>
       {children}
     </div>
   );
