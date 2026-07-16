@@ -140,7 +140,7 @@ function MovementModal({ product, movType, onRecord, onClose, saving }) {
 
   return (
     <div className="fixed inset-0 z-[70] bg-black/50 flex items-end">
-      <div className="w-full max-w-md mx-auto bg-white dark:bg-slate-900 rounded-t-3xl px-5 pt-5 pb-10">
+      <div className="w-full max-w-md mx-auto bg-white dark:bg-slate-900 rounded-t-3xl px-5 pt-5 pb-[calc(2.5rem+env(safe-area-inset-bottom,0px))]">
         <div className="flex items-center justify-between mb-4">
           <div>
             <p className="text-sm font-extrabold text-slate-800 dark:text-white">{meta.label}</p>

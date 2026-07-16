@@ -827,7 +827,7 @@ function BillStatementModal({ bills, profile, onClose }) {
 
   return (
     <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/50">
-      <div className="bg-white dark:bg-slate-900 rounded-t-3xl w-full max-w-md pb-safe-bottom">
+      <div className="bg-white dark:bg-slate-900 rounded-t-3xl w-full max-w-md safe-bottom">
         <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-slate-100 dark:border-slate-800">
           <div>
             <h3 className="text-base font-bold text-slate-800 dark:text-white">Generate Statement</h3>
@@ -888,7 +888,7 @@ function ConfirmPaymentSheet({ data, onConfirm, onCancel }) {
 
   return (
     <div className="fixed inset-0 z-[70] flex flex-col justify-end bg-black/55">
-      <div className="bg-white dark:bg-slate-900 rounded-t-3xl shadow-2xl" style={{ maxHeight: "88dvh", overflowY: "auto" }}>
+      <div className="bg-white dark:bg-slate-900 rounded-t-3xl shadow-2xl" style={{ maxHeight: "88dvh", overflowY: "auto", overscrollBehavior: "contain" }}>
         {/* Drag handle */}
         <div className="flex justify-center pt-3 pb-1">
           <div className="w-10 h-1 rounded-full bg-slate-200 dark:bg-slate-700" />
@@ -987,7 +987,7 @@ function ConfirmPaymentSheet({ data, onConfirm, onCancel }) {
         </div>
 
         {/* Actions */}
-        <div className="px-5 pb-8 space-y-3">
+        <div className="px-5 pb-[calc(2rem+env(safe-area-inset-bottom,0px))] space-y-3">
           <button onClick={onConfirm}
             className="w-full py-4 rounded-2xl text-white font-black text-base active:scale-[0.98] transition-transform shadow-lg bg-[linear-gradient(135deg,#16a34a,#059669)]">
             {isFree ? "Activate Free Service" : "Confirm & Pay"}
@@ -3029,7 +3029,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
               </div>
             </div>
 
-            <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4 transition-all duration-300"
+            <div className="overflow-y-auto overscroll-contain flex-1 px-5 py-4 space-y-4 transition-all duration-300"
               style={netTheme ? { background: `${netTheme.bg}09` } : {}}>
 
               {/* ── SAVED BENEFICIARIES ── */}
@@ -3449,7 +3449,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
               {error && <p className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-3 py-2">{error}</p>}
 
-              <div className="pb-6">
+              <div className="pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))]">
                 <button onClick={() => {
                   const finalAmt = Math.max(0, uiChargeAmt - ptsSavings - cbSavings - billCouponSavings);
                   const catInfo = CATS.find(c => c.id === selectedCat);

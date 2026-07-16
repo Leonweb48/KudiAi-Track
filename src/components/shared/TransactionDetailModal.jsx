@@ -122,7 +122,7 @@ function ShareSheet({ onOption, onClose }) {
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md bg-white dark:bg-slate-800 rounded-t-2xl pb-safe shadow-xl"
+        className="w-full max-w-md bg-white dark:bg-slate-800 rounded-t-2xl safe-bottom shadow-xl"
         onClick={e => e.stopPropagation()}
       >
         <div className="w-10 h-1 bg-slate-200 dark:bg-slate-600 rounded-full mx-auto mt-3 mb-4" />

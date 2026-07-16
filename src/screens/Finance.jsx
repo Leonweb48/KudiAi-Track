@@ -297,7 +297,7 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
           <p className="text-base font-black text-slate-800 dark:text-white">Terms & Conditions</p>
           <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Read carefully before applying for a loan</p>
         </div>
-        <div className="flex-1 overflow-y-auto px-5 py-4" style={{ WebkitOverflowScrolling: "touch" }}>
+        <div className="flex-1 overflow-y-auto px-5 py-4" style={{ WebkitOverflowScrolling: "touch", overscrollBehavior: "contain" }}>
           <pre className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed whitespace-pre-wrap font-sans">{LOAN_TERMS}</pre>
         </div>
         <div className="px-5 py-4 border-t border-slate-100 dark:border-slate-800 flex-shrink-0" style={{ paddingBottom: "calc(1rem + env(safe-area-inset-bottom, 0px))" }}>
