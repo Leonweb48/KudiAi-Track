@@ -3799,8 +3799,8 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
         setOwnerInfo(ownerRes.value);
       if (reqRes.status === "fulfilled" && reqRes.value?.requests)
         setWithdrawRequests(reqRes.value.requests);
-      if (cycleRes.status === "fulfilled" && cycleRes.value?.cycle)
-        setCycle(cycleRes.value.cycle);
+      if (cycleRes.status === "fulfilled")
+        setCycle(cycleRes.value?.cycle || null);
       if (!silent) {
         const allRejected = [clientRes, contribRes, ownerRes, reqRes, cycleRes]
           .every(r => r.status === "rejected");
@@ -3887,6 +3887,10 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
             notif.addNotification("aso", "Contribution Approved", `Your ${amt} contribution has been approved and added to your balance`);
           }
         })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "ajo_cycles", filter: `client_id=eq.${ajoClient.id}` },
+        () => { fetchPortalDataRef.current(true); })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "ajo_cycles", filter: `client_id=eq.${ajoClient.id}` },
+        () => { fetchPortalDataRef.current(true); })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "ajo_withdrawal_requests", filter: `aso_client_id=eq.${ajoClient.id}` },
         (payload) => {
           refreshWithdrawRequests();

@@ -286,6 +286,32 @@ serve(async (req: Request) => {
     });
     if (error) return json({ ok: false, error: error.message });
 
+    // Auto-open a cycle the instant the first personal-savings contribution lands
+    if (!contribution_context || contribution_context === "personal_savings") {
+      const { data: existingCycle } = await sb
+        .from("ajo_cycles").select("id").eq("client_id", client_id).eq("status", "active").maybeSingle();
+      if (!existingCycle) {
+        const { data: clientRow } = await sb
+          .from("aso_clients")
+          .select("contribution_amount, registration_date, commission_model, commission_percent")
+          .eq("id", client_id).maybeSingle();
+        if ((clientRow as Record<string, unknown>)?.contribution_amount) {
+          const cr = clientRow as Record<string, unknown>;
+          await sb.rpc("ajo_open_cycle", {
+            p_client_id:        client_id,
+            p_owner_id:         ownerId,
+            p_start:            (cr.registration_date as string) || new Date().toISOString().slice(0, 10),
+            p_length:           null,
+            p_amount:           cr.contribution_amount as number,
+            p_label:            null,
+            p_commission_model: (cr.commission_model as string) || null,
+            p_commission_pct:   (cr.commission_percent as number) || null,
+            p_force:            false,
+          }); // best-effort — errors are silently discarded; cycle creation never fails the contribution
+        }
+      }
+    }
+
     // Notify client that a contribution was recorded and is awaiting approval
     const ctx = await fetchEmailContext(sb, client_id, ownerId, user.id);
     await fireAjoEmail("ajo_contribution_pending", {

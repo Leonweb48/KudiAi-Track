@@ -108,6 +108,8 @@ function isGroupAccount(c) {
 /* ── Per-client Ajo Contribution History Modal ─────────────────────────── */
 function AsoClientHistoryModal({ client, contributions, cycle, businessName, staffMap = {}, onClose, onOpenCycle, onCloseCycle, onExecuteCommission, onReverseContrib }) {
   const [tab,           setTab]           = useState(cycle ? "card" : "history");
+  // Auto-switch to card tab when a cycle is opened/created
+  useEffect(() => { if (cycle) setTab("card"); }, [cycle]);
   const [typeFilter,    setTypeFilter]    = useState("all");
   const [receipt,       setReceipt]       = useState(null);
   const [clearedIds,    setClearedIds]    = useState(() => new Set());

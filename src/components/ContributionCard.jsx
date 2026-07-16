@@ -273,7 +273,7 @@ export default function ContributionCard({
       <div className="rounded-xl border border-dashed border-slate-300 dark:border-slate-600 p-6 text-center">
         <p className="text-sm text-slate-500 dark:text-slate-400 mb-3">No active cycle. Start one to track contributions.</p>
         <button
-          onClick={onOpenCycle}
+          onClick={() => onOpenCycle()}
           className="px-4 py-2 bg-brand-500 text-white text-sm font-semibold rounded-lg hover:bg-brand-600 transition-colors"
         >
           Open Cycle
@@ -328,7 +328,7 @@ export default function ContributionCard({
           )}
           {!compact && onOpenCycle && cycle.status !== "active" && (
             <button
-              onClick={onOpenCycle}
+              onClick={() => onOpenCycle()}
               className="text-[11px] font-semibold text-brand-500 hover:text-brand-600 transition-colors min-h-[44px] px-3 inline-flex items-center"
             >
               New Cycle
