@@ -6,7 +6,7 @@ import AnnouncementBarSlot from "../components/slots/AnnouncementBarSlot";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
 import { useT } from "../contexts/LanguageContext";
 import { calcPointsDiscount, calcCashbackDiscount, calcCouponDiscount, calcBillAmounts } from "../utils/billCalc";
-import { saveBeneficiary, getBeneficiaries, getRecentBeneficiaries, benDisplayName, benSubLabel, BEN_CATS } from "../utils/billBeneficiaries";
+import { saveBeneficiary, getBeneficiaries, getRecentBeneficiaries, deleteBeneficiary, benDisplayName, benSubLabel, BEN_CATS, upsertRemote, syncLocalToRemote, fetchRemoteRecent, fetchAllRemote, deleteRemote, updateRemoteNickname } from "../utils/billBeneficiaries";
 import { clubkonnect } from "../utils/clubkonnect";
 import { canDo, getLowestPlanWithFeature } from "../utils/plans";
 import TransactionDetailModal from "../components/shared/TransactionDetailModal";
@@ -841,6 +841,118 @@ function PinModal({ pins, title, onClose }) {
         </div>
         <div className="px-5 pb-5">
           <button onClick={onClose} className="w-full bg-slate-800 dark:bg-slate-700 text-white rounded-xl py-3.5 text-sm font-bold">Done</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Beneficiary manager sheet ─────────────────────────────────────────────── */
+function BeneficiaryManagerSheet({ bens, onClose, onDelete, onNicknameSave }) {
+  const [editingId, setEditingId]   = useState(null);
+  const [nickDraft, setNickDraft]   = useState("");
+  const [deletingId, setDeletingId] = useState(null);
+
+  const startEdit = (ben) => { setEditingId(ben.id); setNickDraft(ben.nickname || ""); };
+  const commitEdit = () => {
+    if (editingId) { onNicknameSave(editingId, nickDraft.trim()); setEditingId(null); }
+  };
+
+  const grouped = bens.reduce((acc, b) => {
+    (acc[b.cat] = acc[b.cat] || []).push(b);
+    return acc;
+  }, {});
+  const catOrder = ["airtime", "data", "electricity", "cable", "betting", "spectranet", "smile"];
+  const catLabels = { airtime: "Airtime", data: "Data", electricity: "Electricity", cable: "Cable TV", betting: "Betting", spectranet: "Spectranet", smile: "Smile 4G" };
+
+  return (
+    <div className="fixed inset-0 z-sub-sheet flex flex-col" style={{ background: "rgba(0,0,0,0.45)" }}>
+      <div className="flex-1" onClick={onClose} />
+      <div className="bg-white dark:bg-slate-900 rounded-t-3xl max-h-[82vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-800 flex-shrink-0">
+          <h3 className="text-base font-bold text-slate-800 dark:text-white">Saved Recipients</h3>
+          <button onClick={onClose} className="w-10 h-10 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
+            <Ico d="M18 6L6 18|M6 6l12 12" size={14} c="#64748b" />
+          </button>
+        </div>
+
+        {/* List */}
+        <div className="overflow-y-auto flex-1 px-4 py-3 space-y-5">
+          {bens.length === 0 && (
+            <div className="flex flex-col items-center gap-2 py-10">
+              <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+                <Ico d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2|M9 11a4 4 0 100-8 4 4 0 000 8|M23 21v-2a4 4 0 00-3-3.87|M16 3.13a4 4 0 010 7.75" size={20} c="#94a3b8" />
+              </div>
+              <p className="text-sm font-bold text-slate-500 dark:text-slate-400">No saved recipients yet</p>
+              <p className="text-xs text-slate-400 dark:text-slate-500 text-center">Complete a bill payment and recipients will appear here.</p>
+            </div>
+          )}
+          {catOrder.filter(cat => grouped[cat]?.length).map(cat => (
+            <div key={cat}>
+              <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">{catLabels[cat]}</p>
+              <div className="space-y-2">
+                {grouped[cat].map(ben => {
+                  const primary = ben.nickname || ben.verifyName || ben.phone || ben.meterNo || ben.smartcard || ben.customerId || ben.accountNo || "Saved";
+                  const secondary = ben.nickname ? (ben.verifyName || ben.phone || ben.meterNo || ben.smartcard || ben.customerId || ben.accountNo) : null;
+                  const isEditing  = editingId === ben.id;
+                  const isDeleting = deletingId === ben.id;
+                  return (
+                    <div key={ben.id} className="bg-slate-50 dark:bg-slate-800 rounded-2xl px-4 py-3 border border-slate-100 dark:border-slate-700/60">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-gradient-to-br ${CATS.find(c => c.id === cat)?.tileCls || "from-slate-400 to-slate-600"}`}>
+                          <Ico d={CAT_ICONS[cat] || CAT_ICONS.airtime} size={15} c="white" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-bold text-slate-800 dark:text-white truncate">{primary}</p>
+                          {secondary && <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate">{secondary}</p>}
+                        </div>
+                        {!isDeleting && (
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            <button onClick={() => startEdit(ben)}
+                              className="w-8 h-8 flex items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-700 active:opacity-60">
+                              <Ico d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7|M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" size={12} c="#64748b" />
+                            </button>
+                            <button onClick={() => setDeletingId(ben.id)}
+                              className="w-8 h-8 flex items-center justify-center rounded-xl bg-red-50 dark:bg-red-900/20 active:opacity-60">
+                              <Ico d="M3 6h18|M19 6l-1 14H6L5 6|M9 6V4h6v2" size={12} c="#ef4444" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {isEditing && (
+                        <div className="mt-2.5 flex gap-2">
+                          <input
+                            autoFocus
+                            value={nickDraft}
+                            onChange={e => setNickDraft(e.target.value)}
+                            onKeyDown={e => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") setEditingId(null); }}
+                            placeholder="Add a nickname…"
+                            className="flex-1 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-1.5 text-sm bg-white dark:bg-slate-700 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500"
+                          />
+                          <button onClick={commitEdit}
+                            className="px-3 py-1.5 rounded-xl bg-brand-500 text-white text-xs font-bold active:opacity-80">Save</button>
+                          <button onClick={() => setEditingId(null)}
+                            className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold active:opacity-80">Cancel</button>
+                        </div>
+                      )}
+
+                      {isDeleting && (
+                        <div className="mt-2.5 flex items-center gap-2">
+                          <p className="flex-1 text-xs text-red-500 dark:text-red-400 font-medium">Remove this recipient?</p>
+                          <button onClick={() => { onDelete(ben.id); setDeletingId(null); }}
+                            className="px-3 py-1.5 rounded-xl bg-red-500 text-white text-xs font-bold active:opacity-80">Remove</button>
+                          <button onClick={() => setDeletingId(null)}
+                            className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold active:opacity-80">Cancel</button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </div>
@@ -1929,6 +2041,28 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       });
   }, [userEmailCB]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Remote beneficiaries — buy-again chips + management sheet
+  const [recentBens,  setRecentBens]  = useState(() => getRecentBeneficiaries(5));
+  const [showBenMgr,  setShowBenMgr]  = useState(false);
+  const [allBens,     setAllBens]     = useState([]);
+
+  const ownerId = profile?.id || null;
+
+  const refreshBens = async () => {
+    if (!ownerId) return;
+    const [recent, all] = await Promise.all([
+      fetchRemoteRecent(supabase, ownerId, 5),
+      fetchAllRemote(supabase, ownerId),
+    ]);
+    setRecentBens(recent);
+    setAllBens(all);
+  };
+
+  useEffect(() => {
+    if (!ownerId) return;
+    syncLocalToRemote(supabase, ownerId).then(refreshBens);
+  }, [ownerId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Handle return from Paystack redirect — fulfillment runs after first render.
   // Also handles orphaned pending entries: tries Paystack verification before showing disrupted.
   // This covers: intent:// redirect blocked by Chrome CCT, app killed while CCT was open,
@@ -2701,6 +2835,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       setFulfillResult(successResult);
       try { sessionStorage.setItem(BILL_LAST_RESULT, JSON.stringify(successResult)); } catch (_) {}
       saveBeneficiary(cat, f, vName);
+      upsertRemote(supabase, ownerId, cat, f, vName).then(refreshBens);
 
       // For electricity PENDING: defer DB update + email until polling finds the token
       const svcLabel = CATS.find(c => c.id === cat)?.label || cat;
@@ -3017,14 +3152,15 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         )}
 
         {/* Buy again row */}
-        {(() => {
-          const recent = getRecentBeneficiaries(5);
-          if (!recent.length) return null;
-          return (
-            <div className="mb-4">
-              <h2 className="text-[13px] font-bold text-slate-700 dark:text-slate-300 mb-2.5 tracking-wide">Buy again</h2>
+        {recentBens.length > 0 && (
+          <div className="mb-4">
+            <div className="flex items-center justify-between mb-2.5">
+              <h2 className="text-[13px] font-bold text-slate-700 dark:text-slate-300 tracking-wide">Buy again</h2>
+              <button onClick={() => { fetchAllRemote(supabase, ownerId).then(setAllBens); setShowBenMgr(true); }}
+                className="text-[11px] font-semibold text-brand-500 dark:text-brand-400 active:opacity-60">Manage</button>
+            </div>
               <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-                {recent.map(ben => {
+                {recentBens.map(ben => {
                   const name = benDisplayName(ben);
                   const netCfg = (ben.cat === "airtime" || ben.cat === "data") && ben.network ? NET_CONFIG[ben.network] : null;
                   const catEntry = CATS.find(c => c.id === ben.cat);
@@ -3056,8 +3192,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                 })}
               </div>
             </div>
-          );
-        })()}
+        )}
 
         {/* Service grid */}
         <div>
@@ -3351,19 +3486,10 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                 </button>
                 <VerifyBadge status={verifyStatus === "idle" ? null : verifyStatus} name={verifyName} />
                 {verifyStatus === "ok" && (
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Amount (₦) *</label>
-                    <input type="number" value={form.amount} onChange={e => setF("amount", e.target.value)} placeholder="500"
-                      className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                    <div className="flex gap-2 mt-2 flex-wrap">
-                      {[500,1000,2000,5000,10000].map(a => (
-                        <button key={a} type="button" onClick={() => setF("amount", String(a))}
-                          className={`px-3 py-1 rounded-full text-xs font-bold border transition-colors ${form.amount === String(a) ? "bg-emerald-600 text-white border-emerald-600" : "border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400"}`}>
-                          ₦{a.toLocaleString()}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                  <>
+                    <BillAmountDisplay value={form.amount} label="Amount (₦)" />
+                    <BillNumpad value={form.amount} onChange={v => setF("amount", v)} />
+                  </>
                 )}
               </>}
 
@@ -3673,6 +3799,26 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       )}
 
       {pins && <PinModal pins={pins.list} title={pins.title} onClose={() => setPins(null)} />}
+
+      {showBenMgr && (
+        <BeneficiaryManagerSheet
+          bens={allBens}
+          onClose={() => setShowBenMgr(false)}
+          onDelete={async (id) => {
+            deleteBeneficiary(id);
+            await deleteRemote(supabase, id);
+            const updated = allBens.filter(b => b.id !== id);
+            setAllBens(updated);
+            setRecentBens(updated.slice(0, 5));
+          }}
+          onNicknameSave={async (id, nickname) => {
+            await updateRemoteNickname(supabase, id, nickname);
+            const updated = allBens.map(b => b.id === id ? { ...b, nickname } : b);
+            setAllBens(updated);
+            setRecentBens(updated.slice(0, 5));
+          }}
+        />
+      )}
       {receipt && (
         <TransactionDetailModal
           data={buildBillReceipt(receipt)}
