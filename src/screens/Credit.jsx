@@ -251,10 +251,10 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
     <div className="px-4 pt-5 pb-28 screen-enter">
 
       {/* Header */}
-      <div className={`${embedded ? "" : "sticky top-0 z-10"} bg-white dark:bg-slate-900 -mx-4 px-4 py-3 mb-4 border-b border-slate-100 dark:border-slate-700/60 flex items-center justify-between`}>
+      <div className={`${embedded ? "" : "sticky top-0 z-sticky"} bg-white dark:bg-slate-900 -mx-4 px-4 py-3 mb-4 border-b border-slate-100 dark:border-slate-700/60 flex items-center justify-between`}>
         <h1 className="text-xl font-extrabold text-slate-800 dark:text-white tracking-tight">{t("credit.title")}</h1>
         <button onClick={() => setShowAdd(true)}
-          className="w-9 h-9 bg-amber-500 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform">
+          className="w-9 h-9 bg-brand-500 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform">
           <Icon name="plus" size={18} className="text-white" />
         </button>
       </div>
@@ -277,10 +277,12 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
             </div>
             <div className="pl-3 min-w-0">
               <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">Debtors</p>
-              <p className="text-sm font-extrabold tabular">
+              <p className="text-sm font-extrabold tabular-nums">
                 {credits.length}
                 {overdueList.length > 0 && (
-                  <span className="ml-1 text-red-200"> · ⚠{overdueList.length}</span>
+                  <span className="ml-1 text-red-200 inline-flex items-center gap-0.5">
+                    · <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3 inline" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>{overdueList.length}
+                  </span>
                 )}
               </p>
             </div>
@@ -305,7 +307,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
             </p>
           </div>
           <button onClick={() => setFilter("overdue")}
-            className="text-xs font-bold text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/40 px-3 py-1.5 rounded-lg flex-shrink-0 active:scale-95 transition-transform">
+            className="text-xs font-bold text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/40 px-3 py-1.5 rounded-xl flex-shrink-0 active:scale-95 transition-transform">
             View All
           </button>
         </div>
@@ -323,7 +325,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Search by name or phone…"
-          className="w-full pl-9 pr-9 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-400/60 transition"
+          className="w-full pl-9 pr-9 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500/40 transition"
         />
         {search && (
           <button onClick={() => setSearch("")}
@@ -344,7 +346,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                 ? key === "overdue" ? "bg-red-500 text-white shadow-sm"
                   : key === "paid"   ? "bg-green-500 text-white shadow-sm"
                   : key === "voided" ? "bg-slate-500 text-white shadow-sm"
-                  : "bg-amber-500 text-white shadow-sm"
+                  : "bg-brand-500 text-white shadow-sm"
                 : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
             }`}>
             {label}
@@ -358,7 +360,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
         <button onClick={() => setShowDateFilter(v => !v)}
           className={`ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all active:scale-95 ${
             dueBefore
-              ? "bg-blue-500 text-white shadow-sm"
+              ? "bg-brand-500 text-white shadow-sm"
               : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
           }`}>
           <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
@@ -413,7 +415,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
         <div className="space-y-3">
           {filtered.map(c => {
             const pct       = Math.min(100, ((c.amount_paid || 0) / (c.total_amount || 1)) * 100);
-            const initials  = (c.customer_name || "?")[0].toUpperCase();
+            const initials  = (c.customer_name || "?").slice(0, 2).toUpperCase();
             const overdueDays = daysOverdue(c.due_date);
             const isOverdue = c.status === "overdue";
             const isPaid    = c.status === "paid";
@@ -500,7 +502,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                   </div>
                   <div className="h-1.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
                     <div
-                      className={`h-full rounded-full transition-all ${isOverdue ? "bg-red-400 dark:bg-red-500" : isPaid ? "bg-green-500" : "bg-green-500"}`}
+                      className={`h-full rounded-full transition-all ${isOverdue ? "bg-red-400 dark:bg-red-500" : "bg-green-500"}`}
                       style={{ width: `${pct}%` }}
                     />
                   </div>
@@ -512,13 +514,13 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                 <div className="flex gap-2 pt-2.5 border-t border-slate-50 dark:border-slate-700/60">
                   {c.outstanding > 0 && !isVoidLocked && !isVoided && (
                     <button onClick={() => setRepaying(c)}
-                      className="flex-1 py-2 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 rounded-xl font-bold text-xs border border-green-200 dark:border-green-800 hover:bg-green-100 dark:hover:bg-green-900/30 transition active:scale-[0.99]">
+                      className="flex-1 py-2 min-h-[44px] bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 rounded-xl font-bold text-xs border border-green-200 dark:border-green-800 hover:bg-green-100 dark:hover:bg-green-900/30 transition active:scale-[0.99]">
                       Record Payment
                     </button>
                   )}
                   {c.outstanding > 0 && (
                     <button onClick={() => { setReminderFor(c); setCopied(false); }}
-                      className={`py-2 px-3 rounded-xl font-bold text-xs border transition flex items-center gap-1.5 active:scale-[0.99] ${
+                      className={`py-2 px-3 min-h-[44px] rounded-xl font-bold text-xs border transition flex items-center gap-1.5 active:scale-[0.99] ${
                         isOverdue
                           ? "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800 hover:bg-red-100"
                           : "bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800 hover:bg-amber-100"
@@ -530,7 +532,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                     </button>
                   )}
                   <button onClick={() => setReceipt(c)}
-                    className="py-2 px-3 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 rounded-xl font-bold text-xs border border-amber-200 dark:border-amber-800 hover:bg-amber-100 dark:hover:bg-amber-900/30 transition flex items-center gap-1.5 active:scale-[0.99]">
+                    className="py-2 px-3 min-h-[44px] bg-slate-50 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-xs border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 transition flex items-center gap-1.5 active:scale-[0.99]">
                     <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                       <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M16 13H8" />
                     </svg>
@@ -538,7 +540,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                   </button>
                   {debtPayments.some(p => p.credit_id === c.id) && (
                     <button onClick={() => setHistoryFor(c)}
-                      className="py-2 px-3 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-xl font-bold text-xs border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition flex items-center gap-1.5 active:scale-[0.99]">
+                      className="py-2 px-3 min-h-[44px] bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-xl font-bold text-xs border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition flex items-center gap-1.5 active:scale-[0.99]">
                       <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                         <polyline points="12 8 12 12 14 14"/><path d="M3.05 11a9 9 0 1 0 .5-4.5"/>
                         <polyline points="3 3 3 7 7 7"/>
@@ -549,7 +551,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                   {!isVoidLocked && !isVoidOpen && !isVoided && (
                     <button
                       onClick={() => { setVoidingCredit(c.id); setVoidReason(""); setVoidMsg({ id: null, text: "", ok: false }); }}
-                      className="py-2 px-3 bg-red-50 dark:bg-red-900/20 text-red-500 dark:text-red-400 rounded-xl font-bold text-xs border border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/30 transition flex items-center gap-1.5 active:scale-[0.99]">
+                      className="py-2 px-3 min-h-[44px] bg-red-50 dark:bg-red-900/20 text-red-500 dark:text-red-400 rounded-xl font-bold text-xs border border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/30 transition flex items-center gap-1.5 active:scale-[0.99]">
                       <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                         <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
                       </svg>
@@ -602,10 +604,10 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                   <div className="mt-3 bg-red-50 dark:bg-red-900/20 rounded-xl p-3 space-y-2.5 border border-red-200 dark:border-red-800">
                     <p className="text-xs font-bold text-red-700 dark:text-red-300 uppercase tracking-wider">Request Credit Void</p>
                     <p className="text-[10px] text-red-600 dark:text-red-400 leading-relaxed">
-                      Voiding <strong>{c.customer_name}</strong>'s credit record (₦{fmt(c.total_amount)}) requires admin approval. All payment history will be preserved. The record will be removed from your active list once approved.
+                      Voiding <strong className="inline-block max-w-[140px] truncate align-text-bottom">{c.customer_name}</strong>'s credit record (₦{fmt(c.total_amount)}) requires admin approval. All payment history will be preserved. The record will be removed from your active list once approved.
                     </p>
                     {c.amount_paid > 0 && (
-                      <div className="bg-amber-50 dark:bg-amber-900/20 rounded-lg px-3 py-2 border border-amber-200 dark:border-amber-700/40">
+                      <div className="bg-amber-50 dark:bg-amber-900/20 rounded-xl px-3 py-2 border border-amber-200 dark:border-amber-700/40">
                         <p className="text-[10px] font-bold text-amber-700 dark:text-amber-300">Partial repayments already recorded</p>
                         <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5 leading-relaxed">
                           ₦{fmt(c.amount_paid)} has been repaid against this credit. Voiding is permanent — those repayments stay in your transaction history but will no longer count toward outstanding totals.
@@ -615,7 +617,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                     <div>
                       <p className="text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-wide mb-0.5">Reason *</p>
                       <textarea rows={2} value={voidReason} onChange={e => setVoidReason(e.target.value)} placeholder="Why do you need to void this credit record?"
-                        className="w-full text-sm bg-white dark:bg-slate-800 border border-red-200 dark:border-red-700 rounded-lg px-3 py-2 text-slate-800 dark:text-white focus:outline-none resize-none" />
+                        className="w-full text-sm bg-white dark:bg-slate-800 border border-red-200 dark:border-red-700 rounded-xl px-3 py-2 text-slate-800 dark:text-white focus:outline-none resize-none" />
                     </div>
                     <div className="flex gap-2 pt-1">
                       <button
@@ -651,7 +653,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                     </svg>
                 }
               </div>
-              <label className="absolute -bottom-2 -right-2 w-8 h-8 bg-amber-500 hover:bg-amber-600 rounded-full flex items-center justify-center cursor-pointer shadow-md transition active:scale-95">
+              <label className="absolute -bottom-2 -right-2 w-8 h-8 bg-brand-500 hover:bg-brand-600 rounded-full flex items-center justify-center cursor-pointer shadow-md transition active:scale-95">
                 <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-white" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
                   <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" /><circle cx="12" cy="13" r="4" />
                 </svg>
@@ -721,7 +723,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
 
           <button onClick={handleAdd}
             disabled={!f.customer_name || !f.total_amount || adding}
-            className="w-full py-3.5 mt-1 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] shadow-sm disabled:opacity-50">
+            className="w-full py-3.5 mt-1 bg-brand-500 hover:bg-brand-600 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] shadow-sm disabled:opacity-50">
             {adding ? "Saving…" : "Save Credit Record"}
           </button>
         </Modal>
@@ -980,7 +982,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-2">
-                            <span className="text-sm font-extrabold text-green-600 dark:text-green-400 tabular">+{fmt(p.amount)}</span>
+                            <span className="text-sm font-extrabold text-green-600 dark:text-green-400 tabular-nums">+{fmt(p.amount)}</span>
                             <span className="text-[10px] font-bold text-slate-400">{dateStr}</span>
                           </div>
                           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 capitalize">
