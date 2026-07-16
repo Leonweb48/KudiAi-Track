@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { supabase } from "../utils/supabase";
+import Field from "./shared/Field";
 
 const BUSINESS_TYPES = [
   "Retail / Trading",
@@ -109,9 +110,9 @@ export default function LoanApplicationModal({ session, profile, onClose }) {
               <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>
             )}
 
-            <Field label="Full Name" value={form.full_name} onChange={v => set("full_name", v)} placeholder="Your full name" />
-            <Field label="Business Name" value={form.business_name} onChange={v => set("business_name", v)} placeholder="Your business name" />
-            <Field label="Phone Number *" value={form.phone} onChange={v => set("phone", v)} placeholder="e.g. 08012345678" type="tel" required />
+            <Field label="Full Name" value={form.full_name} onChange={e => set("full_name", e.target.value)} placeholder="Your full name" />
+            <Field label="Business Name" value={form.business_name} onChange={e => set("business_name", e.target.value)} placeholder="Your business name" />
+            <Field label="Phone Number *" value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="e.g. 08012345678" type="tel" required />
 
             <div>
               <label className="block text-xs font-semibold text-gray-600 dark:text-slate-400 mb-1.5">Business Type *</label>
@@ -141,7 +142,7 @@ export default function LoanApplicationModal({ session, profile, onClose }) {
             <Field
               label="Loan Amount (₦) *"
               value={form.loan_amount}
-              onChange={v => set("loan_amount", v)}
+              onChange={e => set("loan_amount", e.target.value)}
               placeholder="e.g. 500000"
               type="number"
               required
@@ -149,7 +150,7 @@ export default function LoanApplicationModal({ session, profile, onClose }) {
             <Field
               label="Monthly Revenue (₦)"
               value={form.monthly_revenue}
-              onChange={v => set("monthly_revenue", v)}
+              onChange={e => set("monthly_revenue", e.target.value)}
               placeholder="Approximate monthly income"
               type="number"
             />
@@ -181,22 +182,6 @@ export default function LoanApplicationModal({ session, profile, onClose }) {
           </form>
         )}
       </div>
-    </div>
-  );
-}
-
-function Field({ label, value, onChange, placeholder, type = "text", required = false }) {
-  return (
-    <div>
-      <label className="block text-xs font-semibold text-gray-600 dark:text-slate-400 mb-1.5">{label}</label>
-      <input
-        type={type}
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        placeholder={placeholder}
-        required={required}
-        className="w-full border border-gray-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-gray-800 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500"
-      />
     </div>
   );
 }

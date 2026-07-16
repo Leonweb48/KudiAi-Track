@@ -1,7 +1,6 @@
-export const fmt = (n) => {
-  const [int, dec] = Number(n || 0).toFixed(2).split('.');
-  return '₦' + int.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '.' + dec;
-};
+import { formatNGN } from './formatNGN';
+export { formatNGN };
+export const fmt = (amount) => formatNGN(amount);
 
 export const LEDGER_LABELS = {
   contribution:              "Contribution",

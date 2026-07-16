@@ -1,29 +1,42 @@
 /**
- * Reusable form field — input, select, or textarea. Full dark mode support.
+ * Reusable form field — input, select, textarea, or custom children. Full dark mode support.
  */
-export default function Field({ label, as, children, ...props }) {
+export default function Field({
+  label,
+  as,
+  hint,
+  required,
+  children,
+  className = "",
+  ...props
+}) {
   const base =
-    "w-full border border-slate-200 dark:border-slate-600 rounded-xl px-3.5 py-3 text-sm " +
-    "bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 " +
-    "placeholder:text-slate-400 dark:placeholder:text-slate-500 " +
-    "focus:outline-none focus:ring-2 focus:ring-brand-500 transition " +
-    "disabled:opacity-50";
+    "w-full border rounded-xl px-3 py-2 text-sm bg-white dark:bg-slate-700 dark:text-white " +
+    "border-slate-200 dark:border-slate-600 placeholder-slate-400 " +
+    "focus:outline-none focus:ring-2 focus:ring-brand-500/40 transition";
+
+  let control;
+  if (as === "select") {
+    control = <select className={base} {...props}>{children}</select>;
+  } else if (as === "textarea") {
+    control = <textarea className={`${base} resize-none`} rows={3} {...props} />;
+  } else if (children) {
+    control = children;
+  } else {
+    control = <input className={base} {...props} />;
+  }
 
   return (
-    <div className="mb-3">
+    <div className={`mb-3 ${className}`}>
       {label && (
-        <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 tracking-wide uppercase">
+        <label className="block mb-1 text-xs font-semibold text-slate-500 dark:text-slate-400 tracking-wide uppercase">
           {label}
+          {required && <span className="text-red-400 ml-0.5">*</span>}
         </label>
       )}
-      {as === "select" ? (
-        <select className={base} {...props}>
-          {children}
-        </select>
-      ) : as === "textarea" ? (
-        <textarea className={`${base} resize-none`} rows={3} {...props} />
-      ) : (
-        <input className={base} {...props} />
+      {control}
+      {hint && (
+        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">{hint}</p>
       )}
     </div>
   );

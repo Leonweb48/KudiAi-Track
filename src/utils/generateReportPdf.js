@@ -13,6 +13,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { savePdf } from "./pdfSave";
+import { formatNGN } from "./formatNGN";
 
 // Brand palette — matches invoice PDF
 const NAVY   = [15,  28,  69];
@@ -41,8 +42,8 @@ function resolveColor(c, row) {
   return hexToRgb(c);
 }
 
-export function fmtCurrency(n) {
-  return "₦" + Number(n || 0).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+export function fmtCurrency(amount) {
+  return formatNGN(amount);
 }
 
 export function fmtDate(d) {

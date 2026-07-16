@@ -1,4 +1,5 @@
 import { savePdf } from "./pdfSave";
+import { formatNGN } from "./formatNGN";
 
 // ── Brand palette ──────────────────────────────────────────────────────────────
 const NAVY    = [22,  37,  90];
@@ -22,11 +23,7 @@ const SLOGAN = "Talk your money. Track your profit. Grow your business.";
 // ── Formatting ─────────────────────────────────────────────────────────────────
 const koboToNaira = (k) => (k || 0) / 100;
 const fmtK = (k) => fmtN(koboToNaira(k));
-const fmtN = (n) =>
-  "₦" + Number(n || 0).toLocaleString("en-NG", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+const fmtN = (amount) => formatNGN(amount);
 
 function dateFmtShort(str) {
   if (!str) return "";

@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import TransactionPinModal from "./TransactionPinModal";
 import { fmtDate } from "../utils/helpers";
+import Badge from "./shared/Badge";
 
 const fmtCur = (n) =>
   `₦${Number(n || 0).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
@@ -16,22 +17,6 @@ function displayName(name = "", showFull) {
   const parts = name.trim().split(/\s+/);
   if (parts.length <= 1) return name.slice(0, 2).toUpperCase() + ".";
   return parts[0] + " " + parts[parts.length - 1][0].toUpperCase() + ".";
-}
-
-const STATUS_BADGE = {
-  current:  { cls: "bg-brand-100 dark:bg-brand-900/50 text-brand-600 dark:text-brand-300", label: "Current" },
-  upcoming: { cls: "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300",        label: "Upcoming" },
-  paid:     { cls: "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300",     label: "Paid" },
-  skipped:  { cls: "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300",     label: "Skipped" },
-};
-
-function Badge({ status }) {
-  const b = STATUS_BADGE[status] || STATUS_BADGE.upcoming;
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${b.cls}`}>
-      {b.label}
-    </span>
-  );
 }
 
 function Spin() {

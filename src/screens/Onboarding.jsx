@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { supabase } from "../utils/supabase";
+import Field from "../components/shared/Field";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import { AuthShell } from "../components/AuthShell";
 import AppLogo from "../components/AppLogo";
@@ -86,24 +87,6 @@ async function uploadFile(file, bucket, path) {
 // Returns the custom text when "Other" is picked, otherwise the selected value
 const actual = (sel, other) => (sel === "Other" ? (other.trim() || "Other") : sel);
 
-/* ── Reusable UI components ────────────────────────────────────── */
-function Field({ label, required: req, hint, children, ...props }) {
-  return (
-    <div>
-      <label className="block text-xs font-semibold text-gray-600 dark:text-slate-300 mb-1">
-        {label}{req && <span className="text-red-500 ml-0.5">*</span>}
-      </label>
-      {children || (
-        <input
-          className="w-full border border-gray-300 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm
-            focus:outline-none focus:ring-2 focus:ring-green-500 bg-white dark:bg-slate-900 dark:text-white"
-          {...props}
-        />
-      )}
-      {hint && <p className="text-[10px] text-gray-400 dark:text-slate-500 mt-0.5">{hint}</p>}
-    </div>
-  );
-}
 
 function Select({ label, required: req, value, onChange, disabled, placeholder, options }) {
   return (

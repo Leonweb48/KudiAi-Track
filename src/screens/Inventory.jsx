@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { fmt } from "../utils/helpers";
+import Field from "../components/shared/Field";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
 import { useCampaigns }    from "../hooks/useCampaigns";
 import AnnouncementBarSlot from "../components/slots/AnnouncementBarSlot";
@@ -30,24 +31,6 @@ function fmtDate(s) {
   return new Date(s).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" });
 }
 
-/* ── Mini input ─────────────────────────────────────────────────── */
-function Field({ label, type = "text", value, onChange, required, placeholder, min, step }) {
-  return (
-    <div>
-      <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1.5">{label}{required && " *"}</p>
-      <input
-        type={type}
-        value={value}
-        onChange={onChange}
-        required={required}
-        placeholder={placeholder}
-        min={min}
-        step={step}
-        className="w-full bg-slate-100 dark:bg-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-green-500/40"
-      />
-    </div>
-  );
-}
 
 /* ── Product Form ─────────────────────────────────────────────── */
 function ProductForm({ initial, onSave, onClose, saving, branches = [], staffBranchId = null }) {

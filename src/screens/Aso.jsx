@@ -180,12 +180,6 @@ function AsoClientHistoryModal({ client, contributions, cycle, businessName, sta
     { id: "withdrawal", label: "Withdrawals" },
   ];
 
-  const statusCls = (s) => {
-    if (s === "completed" || s === "approved") return "bg-green-50 text-green-600";
-    if (s === "failed") return "bg-red-50 text-red-500";
-    return "bg-amber-50 text-amber-600";
-  };
-
   return (
     <div className="fixed inset-0 z-[60] bg-black/60 flex flex-col">
       {receipt && (
@@ -361,7 +355,7 @@ function AsoClientHistoryModal({ client, contributions, cycle, businessName, sta
                       <span className={`text-sm font-extrabold tabular ${isWithdraw ? "text-red-500" : "text-green-600 dark:text-green-400"}`}>
                         {isWithdraw ? "−" : "+"}{fmt(tx.amount)}
                       </span>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize flex-shrink-0 ${statusCls(tx.status)}`}>{tx.status || "completed"}</span>
+                      <Badge status={tx.status || "completed"} />
                     </div>
                     <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 capitalize">
                       {tx.type} · {tx.payment_method || "cash"}

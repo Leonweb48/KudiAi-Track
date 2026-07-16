@@ -1,3 +1,5 @@
+import { formatNGN } from './formatNGN';
+
 /* ── Language configuration ──────────────────────────────────────── */
 export const LANGUAGES = [
   { code: "en",     name: "English",          native: "English",   flag: "🇬🇧" },
@@ -35,7 +37,7 @@ export function detectLanguage(text) {
 }
 
 /* ── Number formatting (shared across all languages) ────────────── */
-export const fmtN = (n) => "₦" + Math.round(n || 0).toLocaleString();
+export const fmtN = (amount) => formatNGN(Math.round(amount), { decimals: 0 });
 
 /* ── AI Response templates — one per intent × language ──────────── */
 
