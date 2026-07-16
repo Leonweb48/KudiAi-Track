@@ -788,6 +788,9 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
     setProfileState(next);
     if (typeof next.dark_mode === "boolean") {
       localStorage.setItem("kuditrack_dark", next.dark_mode ? "1" : "0");
+      // Synchronous — before React re-renders — so documentElement and wrapper div
+      // are always consistent on the same paint frame. Eliminates the toggle flash.
+      document.documentElement.classList.toggle("dark", next.dark_mode);
     }
 
     const { error } = await supabase.from("profiles").update({
