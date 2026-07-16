@@ -18,6 +18,7 @@ import { useT } from "../contexts/LanguageContext";
 import { getLang, speakConfirmation } from "../utils/i18n";
 import { speakEvent } from "../utils/tts";
 import { Capacitor } from "@capacitor/core";
+import { App as CapApp } from "@capacitor/app";
 
 const CATEGORIES   = ["sale", "expense", "stock", "credit sale", "debt repayment", "other"];
 const PAYMENT_TYPES = ["cash", "transfer", "pos", "mobile money"];
@@ -561,40 +562,128 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
     await pdf.save("Transaction_Statement.pdf");
   };
 
-  /* ── Pull-to-refresh ── */
-  const ptrRef      = useRef(null);
-  const ptrTouch    = useRef({ y: 0, active: false, progress: 0 });
+  /* ── Store ref: stable closure for async callbacks ── */
+  const storeRef = useRef(store);
+  useEffect(() => { storeRef.current = store; }, [store]);
+
+  /* ── Pull-to-refresh — wired to real silentRefresh, 400ms minimum ── */
+  const ptrRef          = useRef(null);
+  const ptrState        = useRef({ startY: null, direction: null, active: false });
+  const ptrPullPxRef    = useRef(0);
+  const isRefreshingRef = useRef(false);
   const [pullPx, setPullPx] = useState(0);
 
   useEffect(() => {
     const el = ptrRef.current;
     if (!el) return;
+
     const onStart = (e) => {
-      ptrTouch.current = { y: e.touches[0].clientY, active: window.scrollY < 4, progress: 0 };
+      if (window.scrollY > 4 || isRefreshingRef.current) return;
+      ptrState.current = { startY: e.touches[0].clientY, direction: null, active: false };
     };
+
     const onMove = (e) => {
-      if (!ptrTouch.current.active) return;
-      const dy = e.touches[0].clientY - ptrTouch.current.y;
-      if (dy > 0) setPullPx(Math.min(dy * 0.45, 56));
+      const s = ptrState.current;
+      if (s.startY === null) return;
+      if (window.scrollY > 4) { s.startY = null; setPullPx(0); ptrPullPxRef.current = 0; return; }
+      const dy = e.touches[0].clientY - s.startY;
+      if (s.direction === null) {
+        if (Math.abs(dy) < 4) return;
+        s.direction = dy > 0 ? "pull" : "scroll";
+      }
+      if (s.direction !== "pull") return;
+      const px = Math.min(Math.max(dy, 0) * 0.45, 56);
+      ptrPullPxRef.current = px;
+      setPullPx(px);
+      s.active = true;
     };
+
     const onEnd = () => {
-      if (ptrTouch.current.active && pullPx > 40) {
+      const s = ptrState.current;
+      if (s.active && ptrPullPxRef.current > 40 && !isRefreshingRef.current) {
+        isRefreshingRef.current = true;
+        setPullPx(40);
         setIsRefreshing(true);
-        setTimeout(() => { setIsRefreshing(false); setPullPx(0); }, 1000);
+        const t0 = Date.now();
+        Promise.resolve(storeRef.current.silentRefresh?.() || Promise.resolve())
+          .catch(() => {})
+          .finally(() => {
+            const wait = Math.max(0, 400 - (Date.now() - t0));
+            setTimeout(() => {
+              setIsRefreshing(false);
+              setPullPx(0);
+              ptrPullPxRef.current = 0;
+              isRefreshingRef.current = false;
+            }, wait);
+          });
       } else {
         setPullPx(0);
+        ptrPullPxRef.current = 0;
       }
-      ptrTouch.current.active = false;
+      ptrState.current = { startY: null, direction: null, active: false };
     };
-    el.addEventListener("touchstart", onStart, { passive: true });
-    el.addEventListener("touchmove",  onMove,  { passive: true });
-    el.addEventListener("touchend",   onEnd,   { passive: true });
+
+    el.addEventListener("touchstart",  onStart, { passive: true });
+    el.addEventListener("touchmove",   onMove,  { passive: true });
+    el.addEventListener("touchend",    onEnd,   { passive: true });
+    el.addEventListener("touchcancel", onEnd,   { passive: true });
     return () => {
-      el.removeEventListener("touchstart", onStart);
-      el.removeEventListener("touchmove",  onMove);
-      el.removeEventListener("touchend",   onEnd);
+      el.removeEventListener("touchstart",  onStart);
+      el.removeEventListener("touchmove",   onMove);
+      el.removeEventListener("touchend",    onEnd);
+      el.removeEventListener("touchcancel", onEnd);
     };
-  }, [pullPx]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ── Resume refresh — visibilitychange (web) + appStateChange (APK), debounced 10s ── */
+  const lastResumeRef = useRef(0);
+
+  useEffect(() => {
+    const onResume = () => {
+      if (Date.now() - lastResumeRef.current < 10_000) return;
+      lastResumeRef.current = Date.now();
+      storeRef.current.silentRefresh?.().catch(() => {});
+    };
+
+    const onVisibility = () => { if (!document.hidden) onResume(); };
+    document.addEventListener("visibilitychange", onVisibility);
+
+    let appListener;
+    if (Capacitor.isNativePlatform()) {
+      CapApp.addListener("appStateChange", ({ isActive }) => { if (isActive) onResume(); })
+        .then(l => { appListener = l; });
+    }
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      appListener?.remove();
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ── 15s background poll — never when hidden/offline/modal open ── */
+  const pendingPollRef = useRef(false);
+
+  useEffect(() => {
+    const tick = () => {
+      if (document.hidden || !navigator.onLine) return;
+      if (showAdd || !!receipt || !!confirmDeleteId) return;
+      if (window.scrollY > 200) { pendingPollRef.current = true; return; }
+      storeRef.current.silentRefresh?.().catch(() => {});
+    };
+    const id = setInterval(tick, 15_000);
+    return () => clearInterval(id);
+  }, [showAdd, receipt, confirmDeleteId]);
+
+  /* ── Deferred merge: fire pending poll when user scrolls near top ── */
+  useEffect(() => {
+    const onScroll = () => {
+      if (!pendingPollRef.current || window.scrollY > 100) return;
+      pendingPollRef.current = false;
+      storeRef.current.silentRefresh?.().catch(() => {});
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   /* ── Filter chip definitions ── */
   const FILTERS = [
@@ -820,7 +909,19 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
           <>
             {/* Empty state */}
             {totalRows === 0 && !isRefreshing && (
-              <EmptyState filter={search ? "all" : filter} onAdd={txLimitReached ? onUpgrade : () => openAdd("in")} />
+              search ? (
+                <div className="text-center py-14 px-4">
+                  <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4 bg-slate-100 dark:bg-slate-800">
+                    <svg width={26} height={26} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="text-slate-400 dark:text-slate-500">
+                      <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+                    </svg>
+                  </div>
+                  <p className="text-slate-700 dark:text-slate-300 text-base font-bold mb-1">No results for "{search}"</p>
+                  <p className="text-slate-400 dark:text-slate-500 text-sm">Try a different item name or customer.</p>
+                </div>
+              ) : (
+                <EmptyState filter={filter} onAdd={txLimitReached ? onUpgrade : () => openAdd("in")} />
+              )
             )}
 
             {/* Date-sectioned feed */}
