@@ -161,8 +161,8 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
     if (profRes.data) {
       const p = profRes.data;
       const darkFromDb = p.dark_mode != null ? p.dark_mode : (localStorage.getItem("kuditrack_dark") === "1");
-      localStorage.setItem("kuditrack_dark", darkFromDb ? "1" : "0");
-      setProfileState({
+      if (!silent) localStorage.setItem("kuditrack_dark", darkFromDb ? "1" : "0");
+      setProfileState(prev => ({
         id:                p.id                || "",
         business_name:     p.business_name     || "",
         owner_name:        p.full_name         || "",
@@ -176,14 +176,17 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
         lga:               p.lga               || "",
         ward:              p.ward              || "",
         currency:          p.currency          || "Nigerian Naira (₦)",
-        dark_mode:         darkFromDb,
+        // Silent polls (3-second interval) must not race against a just-toggled preference
+        // that may not have committed to DB yet. Preserve current state on silent refresh;
+        // only trust DB value on initial load.
+        dark_mode:         silent && prev?.dark_mode != null ? prev.dark_mode : darkFromDb,
         profile_image_url: p.profile_image_url
           ? `${p.profile_image_url.split("?")[0]}?v=${Date.now()}`
           : null,
         store_image_url: p.store_image_url
           ? `${p.store_image_url.split("?")[0]}?v=${Date.now()}`
           : null,
-      });
+      }));
     }
 
     // Cache up to 300 transactions for offline access
@@ -817,6 +820,10 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
 
     if (error) {
       setProfileState(prev);
+      if (typeof prev.dark_mode === "boolean") {
+        localStorage.setItem("kuditrack_dark", prev.dark_mode ? "1" : "0");
+        document.documentElement.classList.toggle("dark", prev.dark_mode);
+      }
       setDbError(`Failed to save profile: ${error.message}`);
       return { error };
     }
