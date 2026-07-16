@@ -313,7 +313,7 @@ export default function ContributionCard({
             <button
               onClick={handleExport}
               disabled={exporting}
-              className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 hover:text-brand-500 transition-colors disabled:opacity-50"
+              className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 hover:text-brand-500 transition-colors disabled:opacity-50 min-h-[44px] px-3 inline-flex items-center"
             >
               {exporting ? "Exporting…" : "PDF"}
             </button>
@@ -321,7 +321,7 @@ export default function ContributionCard({
           {!compact && onCloseCycle && cycle.status === "active" && (
             <button
               onClick={onCloseCycle}
-              className="text-[11px] font-semibold text-red-500 hover:text-red-600 transition-colors"
+              className="text-[11px] font-semibold text-red-500 hover:text-red-600 transition-colors min-h-[44px] px-3 inline-flex items-center"
             >
               Close
             </button>
@@ -329,7 +329,7 @@ export default function ContributionCard({
           {!compact && onOpenCycle && cycle.status !== "active" && (
             <button
               onClick={onOpenCycle}
-              className="text-[11px] font-semibold text-brand-500 hover:text-brand-600 transition-colors"
+              className="text-[11px] font-semibold text-brand-500 hover:text-brand-600 transition-colors min-h-[44px] px-3 inline-flex items-center"
             >
               New Cycle
             </button>
@@ -392,7 +392,7 @@ export default function ContributionCard({
           <button
             onClick={() => setShowPinForCommission(true)}
             disabled={commissionExecuting}
-            className="w-full py-2.5 rounded-xl bg-brand-500 text-white text-sm font-bold hover:bg-brand-600 transition-colors disabled:opacity-50 active:scale-[0.98]"
+            className="w-full py-3.5 min-h-[44px] rounded-xl bg-brand-500 text-white text-sm font-bold hover:bg-brand-600 transition-colors disabled:opacity-50 active:scale-[0.98]"
           >
             {commissionExecuting ? "Processing…" : `Execute Commission — ${fmtCurrency(commission.amount)}`}
           </button>
@@ -432,9 +432,11 @@ export default function ContributionCard({
           className="fixed inset-0 z-card-detail flex items-end"
           onClick={() => setSelected(null)}
         >
+          <style>{`@keyframes cc-sheet-up{from{transform:translateY(100%)}to{transform:translateY(0)}}`}</style>
           <div className="absolute inset-0 bg-black/40" />
           <div
             className="relative w-full bg-white dark:bg-slate-900 rounded-t-2xl shadow-2xl p-5 max-w-lg mx-auto"
+            style={{ animation: "cc-sheet-up 0.28s cubic-bezier(0.34,1.56,0.64,1)" }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-3">
@@ -443,9 +445,9 @@ export default function ContributionCard({
               </p>
               <button
                 onClick={() => setSelected(null)}
-                className="text-slate-400 hover:text-slate-600 text-xl leading-none"
+                className="w-11 h-11 flex items-center justify-center rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition text-slate-400 hover:text-slate-600"
               >
-                ×
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
               </button>
             </div>
             <div className="space-y-2 text-sm">

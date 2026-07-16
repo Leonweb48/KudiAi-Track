@@ -1855,6 +1855,17 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
         </div>
       </div>
 
+      {/* Contribution card — surfaced here for ≤2 taps access (AJ-M01) */}
+      {cycle && (
+        <ContributionCard
+          cycle={cycle}
+          contributions={contributions}
+          frequency={client?.contribution_frequency}
+          clientName={client?.full_name || ""}
+          businessName={ownerInfo?.owner?.business_name || ""}
+        />
+      )}
+
       {/* Cashback Balance */}
       <CashbackCard userEmail={userEmail} />
 
@@ -2045,17 +2056,6 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
             ))}
           </div>
         </div>
-      )}
-
-      {/* Contribution card (shown when a cycle is active) */}
-      {cycle && (
-        <ContributionCard
-          cycle={cycle}
-          contributions={contributions}
-          frequency={client?.contribution_frequency}
-          clientName={client?.full_name || ""}
-          businessName={ownerInfo?.owner?.business_name || ""}
-        />
       )}
 
       {/* Esusu rotation dashboard (shown when member is in a rotating group with an active round) */}

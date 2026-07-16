@@ -98,7 +98,7 @@ function RestockSection({ data, t }) {
           <div className="flex gap-2 mb-3">
             {tabs.map(tb => (
               <button key={tb.key} onClick={() => setTab(tb.key)}
-                className={`flex-1 py-1.5 rounded-xl text-[11px] font-bold transition-colors ${
+                className={`flex-1 py-3 min-h-[44px] flex items-center justify-center rounded-xl text-[11px] font-bold transition-colors ${
                   tab === tb.key
                     ? "bg-slate-800 dark:bg-white text-white dark:text-slate-900"
                     : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
@@ -329,7 +329,7 @@ Use real figures from my data. Each point: 1-2 sentences max. Complete every sec
         </div>
         {onReports && !isStaffView && (
           <button onClick={onReports}
-            className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-400 rounded-xl font-bold text-xs active:scale-95 transition-all mt-0.5">
+            className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 min-h-[44px] bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-400 rounded-xl font-bold text-xs active:scale-95 transition-all mt-0.5">
             <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
               <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>
             </svg>
@@ -352,7 +352,7 @@ Use real figures from my data. Each point: 1-2 sentences max. Complete every sec
               <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">KudiAI Business Assistant</p>
             </div>
             <button onClick={() => onAIOpen("")}
-              className="text-[11px] font-bold text-brand-600 dark:text-brand-400 flex items-center gap-1">
+              className="text-[11px] font-bold text-brand-600 dark:text-brand-400 flex items-center gap-1 min-h-[44px] px-2 -mr-2">
               Open Chat
               <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <path d="M9 18l6-6-6-6"/>
@@ -362,7 +362,7 @@ Use real figures from my data. Each point: 1-2 sentences max. Complete every sec
           <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 pb-1">
             {AI_QUICK.map(({ label, q }) => (
               <button key={label} onClick={() => onAIOpen(q)}
-                className="flex-shrink-0 flex items-center gap-1.5 text-[11px] font-bold px-3.5 py-2.5 rounded-2xl whitespace-nowrap transition-all active:scale-95 shadow-sm bg-[linear-gradient(135deg,#1e293b,#0f172a)] text-white">
+                className="flex-shrink-0 flex items-center gap-1.5 text-[11px] font-bold px-3.5 min-h-[44px] rounded-2xl whitespace-nowrap transition-all active:scale-95 shadow-sm bg-slate-800 dark:bg-slate-700 text-white">
                 <span className="opacity-60">✦</span>
                 {label}
               </button>
@@ -388,7 +388,7 @@ Use real figures from my data. Each point: 1-2 sentences max. Complete every sec
               <div className="flex gap-2 mb-5">
                 {["today", "week", "month"].map(p => (
                   <button key={p} onClick={() => setPeriod(p)}
-                    className={`flex-1 py-2 rounded-xl font-bold text-xs transition-colors ${
+                    className={`flex-1 min-h-[44px] flex items-center justify-center rounded-xl font-bold text-xs transition-colors ${
                       period === p
                         ? "bg-slate-800 dark:bg-white text-white dark:text-slate-900"
                         : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
