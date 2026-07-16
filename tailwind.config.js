@@ -49,10 +49,26 @@ module.exports = {
         "3xl": "24px",
         "4xl": "32px",
       },
+      // ── Semantic colour assignments ───────────────────────────────────────
+      // These are naming conventions for Tailwind classes, not extra tokens.
+      //
+      //  brand (green) → positive / paid / success / brand CTA
+      //  indigo        → PARTIAL / IN-PROGRESS — app-wide convention.
+      //                  Use for any "started but not complete" state:
+      //                  partially_paid invoices, partial disbursements, etc.
+      //                  badge:   bg-indigo-50 text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-400
+      //                  stripe:  bg-indigo-500
+      //                  bar:     bg-indigo-500
+      //  blue          → informational / sent / transient states
+      //  amber         → WARNING SURFACES ONLY. Never for status chips or badges.
+      //  red           → error / overdue / destructive actions
+      //  slate         → neutral / draft / disabled / cancelled / secondary text
+
       // ── Z-index token scale ───────────────────────────────────────────────
-      // Tier order: content(0) < sticky(30) < nav(40) < floating(55) <
-      //   sheet(60) < modal(100) < lock(200) < pin-auth(210) <
-      //   sub-sheet(70) < modal(100) < card-detail(260) < pin-scrim(300) < pin-sheet(301) < toast(400)
+      // Tier order (ascending):
+      //   content(0) < sticky(30) < nav(40) < floating(55) < sheet(60) <
+      //   sub-sheet(70) < modal(100) < lock(200) < pin-auth(210) <
+      //   card-detail(260) < pin-scrim(300) < pin-sheet(301) < toast(400)
       // No ad-hoc z-[N] values outside this scale.
       // CSS custom-property mirrors live in src/index.css (--z-*).
       zIndex: {
