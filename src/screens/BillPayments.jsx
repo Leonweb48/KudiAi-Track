@@ -500,7 +500,7 @@ function ElecCompanySelector({ value, onChange }) {
       <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">Electricity Company *</label>
       <div className="max-h-52 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
         {ELECTRICITY_COMPANIES.map((c, i) => {
-          const abbr = c.name.match(/\(([^)]+)\)/)?.[1] || c.name.slice(0, 4).toUpperCase();
+          const abbr = c.name.match(/^([A-Z]+DC|APLE)/)?.[1] || c.name.slice(0, 5).toUpperCase();
           const sel  = value === c.code;
           return (
             <button key={c.code} type="button" onClick={() => onChange(c.code)}
