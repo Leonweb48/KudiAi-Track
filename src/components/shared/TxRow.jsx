@@ -14,6 +14,17 @@ function Svg({ d, size = 18, color = "currentColor", sw = 2 }) {
 /* ── Capitalise first character ─────────────────────────────────────── */
 function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ""; }
 
+/* ── Sensible title when item_name is absent ─────────────────────────── */
+const CAT_LABEL = {
+  sale:             "Sale",
+  expense:          "Expense",
+  stock:            "Stock Purchase",
+  "credit sale":    "Credit Sale",
+  "debt repayment": "Debt Repayment",
+  other:            "Other",
+};
+function catTitle(tx) { return tx.item_name || CAT_LABEL[tx.category] || "Transaction"; }
+
 /* ── Icon / colour map — single source of truth for all six variants ── */
 export function getTxStyle(tx) {
   if (tx.payment_type === "bill_payment") return {
@@ -65,7 +76,7 @@ function TxRowHome({ tx, hidden, onClick }) {
         <Svg d={style.icon} size={15} color={style.color} sw={2.5} />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate">{tx.item_name || "Transaction"}</p>
+        <p className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate">{catTitle(tx)}</p>
         <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 truncate capitalize">
           {tx.category} · {tx.payment_type}
         </p>
@@ -193,7 +204,7 @@ function TxRowTransactions({ tx, hidden, onClick, staffName, onSwipeReceipt, onS
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
             <p className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate flex-1">
-              {tx.item_name || "Transaction"}
+              {catTitle(tx)}
             </p>
             <div className="text-right flex-shrink-0 ml-2">
               <AmountDisplay

@@ -51,7 +51,7 @@ export function buildTransactionReceipt(txn, profile) {
   const { ref, image, pdf } = receiptFilenames(txn.id, txn.created_at || txn.transaction_date);
 
   return {
-    title:       isIn ? 'Payment Received' : 'Payment Made',
+    title:       txn.item_name || humanize(txn.category) || (isIn ? 'Payment Received' : 'Payment Made'),
     direction:   isIn ? 'in' : 'out',
     status,
     amount:      txn.amount,

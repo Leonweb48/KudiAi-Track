@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from "react";
 import { Capacitor } from "@capacitor/core";
-import TransactionPinModal from "../TransactionPinModal";
 import { today } from "../../utils/helpers";
 import { speakEvent } from "../../utils/tts";
 import { getLang, speakConfirmation } from "../../utils/i18n";
@@ -119,7 +118,6 @@ export function AddTxnModal({
     try { return sessionStorage.getItem("kt_add_details_open") === "1"; } catch { return false; }
   });
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
-  const [txnPin,             setTxnPin]             = useState(null);
   const [saving,             setSaving]             = useState(false);
   const [saveError,          setSaveError]          = useState("");
   const [saveSuccess,        setSaveSuccess]        = useState(false);
@@ -282,49 +280,40 @@ export function AddTxnModal({
     };
   };
 
-  /* ── Submit via PIN ── */
+  /* PIN security boundary: recording income/expense entries requires NO PIN.
+     PIN stays mandatory on: disbursements, Ajo withdrawals, payout execution,
+     reversals, transaction deletion, credit voiding, archive actions, and
+     bank-detail changes. Recording an entry is additive, not destructive. */
   const handleSubmit = () => {
     if (!canSave || saving || saveSuccess || overStock) return;
     const payload = buildPayload();
-    setTxnPin({
-      title:       type === "in" ? "Record Income" : "Record Expense",
-      amount:      Math.round(amtValue * 100),
-      recipient:   customerName  || undefined,
-      description: itemName      || undefined,
-      onApprove: () => {
-        setTxnPin(null);
-        setSaving(true);
-        setSaveError("");
+    setSaving(true);
+    setSaveError("");
 
-        /* Fire-and-forget (matches existing contract — errors handled at store level) */
-        try {
-          onAdd(payload);
-          /* Voice feedback (unchanged path) */
-          if (Capacitor.isNativePlatform()) {
-            speakEvent(type === "in" ? "cashIn" : "cashOut", getLang(), { amount: amtValue }).catch(() => {});
-          } else {
-            speakConfirmation(type === "in" ? "cashIn" : "cashOut", getLang());
-          }
-          /* Inventory movement (unchanged path) */
-          if (matchedProduct && type === "in" && inventory?.recordMovement) {
-            inventory.recordMovement({
-              product_id: matchedProduct.id,
-              type:       "sale",
-              quantity:   qtyNum,
-              unit_price: parseFloat(unitPrice) || (amtValue / qtyNum),
-              notes:      customerName ? `Sale to ${customerName}` : "Auto-synced from transaction",
-            });
-          }
-          setSaving(false);
-          setSaveSuccess(true);
-          /* Brief success tick, then animated close */
-          setTimeout(() => animClose(onClose), 1100);
-        } catch (err) {
-          setSaving(false);
-          setSaveError(err?.message || "Something went wrong. Try again.");
-        }
-      },
-    });
+    /* Fire-and-forget (errors handled at store level via dbError state) */
+    try {
+      onAdd(payload);
+      if (Capacitor.isNativePlatform()) {
+        speakEvent(type === "in" ? "cashIn" : "cashOut", getLang(), { amount: amtValue }).catch(() => {});
+      } else {
+        speakConfirmation(type === "in" ? "cashIn" : "cashOut", getLang());
+      }
+      if (matchedProduct && type === "in" && inventory?.recordMovement) {
+        inventory.recordMovement({
+          product_id: matchedProduct.id,
+          type:       "sale",
+          quantity:   qtyNum,
+          unit_price: parseFloat(unitPrice) || (amtValue / qtyNum),
+          notes:      customerName ? `Sale to ${customerName}` : "Auto-synced from transaction",
+        });
+      }
+      setSaving(false);
+      setSaveSuccess(true);
+      setTimeout(() => animClose(onClose), 1100);
+    } catch (err) {
+      setSaving(false);
+      setSaveError(err?.message || "Something went wrong. Try again.");
+    }
   };
 
   /* ── Hero font size — shrinks as digits grow ── */
@@ -731,8 +720,6 @@ export function AddTxnModal({
         </div>
       )}
 
-      {/* ── PIN modal — z-pin-auth: 210, z-pin-scrim: 300, z-pin-sheet: 301 ── */}
-      {txnPin && <TransactionPinModal {...txnPin} onCancel={() => setTxnPin(null)} />}
     </>
   );
 }
