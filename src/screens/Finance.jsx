@@ -539,7 +539,7 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
 
       <div className="w-full py-4 rounded-2xl bg-slate-100 dark:bg-slate-800 flex flex-col items-center justify-center gap-1.5 border border-slate-200 dark:border-slate-700">
         <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Business Loans</span>
-        <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-[10px] font-bold rounded-full uppercase tracking-wider">
+        <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-brand-50 dark:bg-brand-900/20 text-brand-600 dark:text-brand-400 text-[10px] font-bold rounded-full uppercase tracking-wider">
           Coming Soon
         </span>
       </div>

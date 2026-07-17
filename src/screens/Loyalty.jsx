@@ -338,7 +338,7 @@ export default function Loyalty({ loyalty, plan, onUpgrade, onClose }) {
                 <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
               </svg>
             </div>
-            <span className="inline-block px-3 py-1 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-xs font-bold tracking-wide mb-4">
+            <span className="inline-block px-3 py-1 rounded-full bg-brand-50 dark:bg-brand-900/20 text-brand-600 dark:text-brand-400 text-xs font-bold tracking-wide mb-4">
               COMING SOON
             </span>
             <h2 className="text-2xl font-extrabold text-slate-800 dark:text-white mb-3">Loyalty Program</h2>

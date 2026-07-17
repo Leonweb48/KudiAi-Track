@@ -1715,7 +1715,7 @@ function ProfileSheet({ member, onClose, onSave }) {
           ))}
         </div>
 
-        <div className="px-5 py-4 border-t border-slate-100 flex gap-2 flex-shrink-0">
+        <div className="px-5 border-t border-slate-100 flex gap-2 flex-shrink-0" style={{ paddingTop: 16, paddingBottom: "max(16px, env(safe-area-inset-bottom, 16px))" }}>
           <button onClick={onClose} className="flex-1 py-3 border border-slate-200 text-slate-600 rounded-xl font-bold text-sm active:bg-slate-50">Cancel</button>
           <button onClick={save} disabled={saving}
             className="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-50 active:bg-green-700">
