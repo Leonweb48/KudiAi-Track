@@ -14,7 +14,7 @@ function loadCacheLS(key) {
   try { return JSON.parse(localStorage.getItem(key) || "null"); } catch { return null; }
 }
 
-export function useStore(userId, staffId = null, staffName = null, onNotify = null, branchId = null) {
+export function useStore(userId, staffId = null, staffName = null, branchId = null) {
   const [transactions, setTransactions] = useState([]);
   const [credits,      setCredits]      = useState([]);
   const [asoClients,   setAsoClients]   = useState([]);
@@ -36,8 +36,6 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
   const [rtConnected, setRtConnected] = useState(false);
 
   const authEmailRef = useRef("");
-  const onNotifyRef  = useRef(onNotify);
-  useEffect(() => { onNotifyRef.current = onNotify; }, [onNotify]);
 
   // ── Load all data ──────────────────────────────────────────────
   const loadData = useCallback(async (silent = false) => {
@@ -243,20 +241,6 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
             if (prev.some(r => r.id === t.id || (t.client_txn_id && r.client_txn_id === t.client_txn_id))) return prev;
             return [t, ...prev];
           });
-          // Notify only owner sessions about staff-originated transactions.
-          // Own-session recordings (staffId null, t.staff_id null) are suppressed.
-          // Staff sessions (staffId set) never self-notify.
-          if (!staffId && t.staff_id) {
-            const label = t.item_name || t.category || "Transaction";
-            const fmt = (n) => `₦${(+n || 0).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
-            if (t.payment_type === "bill_payment") {
-              onNotifyRef.current?.("bills", "Bill Payment", `${fmt(t.amount)} · ${label}`);
-            } else if (t.type === "in") {
-              onNotifyRef.current?.("sales", "Sale Recorded", `${fmt(t.amount)} · ${label}`);
-            } else {
-              onNotifyRef.current?.("sales", "Expense Recorded", `${fmt(t.amount)} · ${label}`);
-            }
-          }
         })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "transactions", filter: `user_id=eq.${userId}` },
         (payload) => {
@@ -269,8 +253,6 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
           setCredits(prev => {
             if (prev.some(c => c.id === payload.new.id)) return prev;
             const c = payload.new;
-            const fmt = (n) => `₦${(+n || 0).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
-            onNotifyRef.current?.("credits", "Credit Added", `${fmt(c.total_amount || 0)} · ${c.customer_name || ""}`);
             return [c, ...prev];
           });
         })
@@ -441,7 +423,6 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
       return { data: null, error };
     } else {
       setCredits(p => p.map(cr => cr.id === tempId ? data : cr));
-      onNotify?.("credits", "Credit Added", `${fmt(parseFloat(c.total_amount || 0))} · ${c.customer_name}`);
       if (staffId) {
         const due = c.due_date ? ` · due ${c.due_date}` : "";
         logAudit({ ownerId: userId, staffId, staffName: staffName || "Staff",
@@ -497,7 +478,6 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
     if (dp) setDebtPayments(prev => [dp, ...prev]);
     if (updated) {
 
-        onNotify?.("payments", "Payment Received", `${fmt(amount)} from ${updated.customer_name}`);
         fireEmailTrigger("credit_repayment", {
           customer_name:  updated.customer_name || "",
           customer_email: updated.email         || "",

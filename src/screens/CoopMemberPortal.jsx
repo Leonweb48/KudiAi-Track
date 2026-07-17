@@ -13,7 +13,6 @@ import AIChatWidget from "../components/AIChatWidget";
 import { buildCoopMemberContext } from "../utils/buildContext";
 import TransactionDetailModal from "../components/shared/TransactionDetailModal";
 import { buildCoopSavingsReceipt, buildCoopWithdrawalRequestReceipt, buildCoopLoanRepaymentReceipt } from "../utils/receiptConfig";
-import { CoopNotificationBell, useChatUnread, ChatToast } from "../components/shared/CoopNotifications";
 import { sendEmailTrigger } from "../utils/emailTrigger";
 import AppLogo from "../components/AppLogo";
 import TransactionPinModal from "../components/TransactionPinModal";
@@ -1766,10 +1765,6 @@ export default function CoopMemberPortal({ member: initialMember }) {
 
   const org = member?.org || member?.organizations || {};
 
-  const { chatUnread, chatToasts, dismissChatToast } = useChatUnread({
-    orgId: org.id,
-    isActive: tab === "messages",
-  });
   const { slotMap: camSlots, loading: camLoading, recordEvent: recordCamEvent } = useCampaigns(["announcement_bar","tab_card_quad","tab_card_duo"], "org_member", "org_member.home");
   const coopTabCard = (camSlots.tab_card_quad || [])[0] ?? (camSlots.tab_card_duo || [])[0] ?? null;
   const annBars = camSlots.announcement_bar || [];
@@ -1956,7 +1951,6 @@ export default function CoopMemberPortal({ member: initialMember }) {
             <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 tracking-widest uppercase leading-none ml-1">Track</span>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
-            <CoopNotificationBell orgId={org.id} recipientId={member.id} recipientType="member" onNavigate={navigateTo} />
             <button onClick={() => setShowProfile(true)} className="active:scale-90 transition-transform">
               {member.avatar_url
                 ? <img src={member.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover border-2 border-slate-100 dark:border-slate-700 shadow-sm" />
@@ -2010,11 +2004,6 @@ export default function CoopMemberPortal({ member: initialMember }) {
                       stroke={active ? "#3DA829" : "#94a3b8"} strokeWidth={active ? 2.5 : 2} strokeLinecap="round" strokeLinejoin="round">
                       <path d={t.icon} />
                     </svg>
-                    {t.id === "messages" && chatUnread > 0 && !active && (
-                      <span className="absolute -top-1 -right-1.5 min-w-[16px] h-4 bg-green-500 text-white text-[9px] font-extrabold rounded-full flex items-center justify-center px-0.5 shadow-sm">
-                        {chatUnread > 99 ? "99+" : chatUnread}
-                      </span>
-                    )}
                   </div>
                   <span className={`text-[8px] font-bold uppercase tracking-wide leading-none ${active ? "text-[#3DA829] dark:text-green-400" : "text-slate-400 dark:text-slate-500"}`}>
                     {t.label}
@@ -2042,21 +2031,6 @@ export default function CoopMemberPortal({ member: initialMember }) {
           </div>
           <div style={{ height: "env(safe-area-inset-bottom, 0px)" }} className="bg-white dark:bg-slate-900" />
         </nav>
-
-        {/* ── Chat drop-in toasts ── */}
-        {chatToasts.length > 0 && (
-          <div className="fixed top-[60px] inset-x-0 z-toast flex flex-col items-center gap-2 px-4 pointer-events-none">
-            {chatToasts.map(ct => (
-              <ChatToast
-                key={ct._tid}
-                toast={ct}
-                orgName={org.name}
-                onNavigate={() => { navigateTo("messages"); dismissChatToast(ct._tid); }}
-                onDismiss={() => dismissChatToast(ct._tid)}
-              />
-            ))}
-          </div>
-        )}
 
         {/* ── Side Drawer — matches org portal ── */}
         {showMore && (

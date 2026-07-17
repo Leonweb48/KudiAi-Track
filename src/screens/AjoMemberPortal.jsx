@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { Capacitor } from "@capacitor/core";
 import { friendlyError, moneyError } from "../utils/errorMessages";
 import { openPaystackPopup } from "../utils/paystackCheckout";
 import { supabase } from "../utils/supabase";
@@ -9,7 +8,6 @@ import { fmt, fmtDate, fmtDateTime, ledgerTypeLabel } from "../utils/helpers";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
 import Icon from "../components/Icon";
 import Modal from "../components/shared/Modal";
-import { useNotifications } from "../hooks/useNotifications";
 import { usePullToRefresh } from "../hooks/usePullToRefresh";
 import PullIndicator from "../components/PullIndicator";
 import { useCampaigns } from "../hooks/useCampaigns";
@@ -20,7 +18,6 @@ import PoweredByCardSlot from "../components/slots/PoweredByCardSlot";
 import TabCardQuadSlot from "../components/slots/TabCardQuadSlot";
 import TabCardDuoSlot from "../components/slots/TabCardDuoSlot";
 import TransactionPinModal from "../components/TransactionPinModal";
-import NotificationCenter, { NotificationBell } from "../components/NotificationCenter";
 import TransactionDetailModal from "../components/shared/TransactionDetailModal";
 import { buildAjoContributionReceipt, buildAjoWithdrawalReceipt } from "../utils/receiptConfig";
 import AIChatWidget from "../components/AIChatWidget";
@@ -3715,10 +3712,6 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
   const [withdrawRequests, setWithdrawRequests] = useState([]);
   const [showPwdModal,     setShowPwdModal]     = useState(false);
 
-  const notif = useNotifications(ajoClient?.id);
-  const [toastNotif, setToastNotif] = useState(null);
-  const toastTimer = useRef(null);
-
   const { slotMap: camSlots, loading: camLoading, recordEvent: recordCamEvent } = useCampaigns(["announcement_bar","tab_card_quad","tab_card_duo"], "ajo_client", "ajo_client.home");
   const ajoTabCard = (camSlots.tab_card_quad || [])[0] ?? (camSlots.tab_card_duo || [])[0] ?? null;
   const annBars = camSlots.announcement_bar || [];
@@ -3729,29 +3722,6 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
   useEffect(() => {
     document.documentElement.classList.toggle("dark", localStorage.getItem("kuditrack_dark") === "1");
   }, []);
-
-  // Show in-app toast banner when a new notification arrives while the panel is closed
-  useEffect(() => {
-    if (!notif.lastNotif) return;
-    if (!notif.open) {
-      clearTimeout(toastTimer.current);
-      setToastNotif(notif.lastNotif);
-      toastTimer.current = setTimeout(() => setToastNotif(null), 4500);
-    }
-    notif.clearLastNotif();
-  }, [notif.lastNotif]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Auto-request push permission on first native (APK) visit so pop-out alerts work
-  useEffect(() => {
-    if (!ajoClient?.id || !Capacitor.isNativePlatform()) return;
-    const key = `kt_push_asked_${ajoClient.id}`;
-    if (localStorage.getItem(key)) return;
-    const t = setTimeout(() => {
-      localStorage.setItem(key, "1");
-      notif.requestPush();
-    }, 2000);
-    return () => clearTimeout(t);
-  }, [ajoClient?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const retryLoad = useCallback(() => {
     setPortalLoadError(false);
@@ -3861,31 +3831,11 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
         (payload) => {
           if (!payload.new) return;
           setContributions(prev => [payload.new, ...prev]);
-          const amt = `₦${Number(payload.new.amount || 0).toLocaleString("en-NG")}`;
-          if (payload.new.type === "withdrawal") {
-            notif.addNotification("aso", "Payment Processed", `${amt} paid out to you`);
-          } else if (payload.new.type === "reversal") {
-            notif.addNotification("aso", "Transaction Reversed", `${amt} reversal applied to your account`);
-          } else if (payload.new.type === "esusu_payout") {
-            notif.addNotification("aso", "Esusu Payout Received", `${amt} has been credited to your wallet`);
-          } else if (payload.new.status !== "pending") {
-            notif.addNotification("aso", "Contribution Recorded", `${amt} saved successfully`);
-          }
         })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "ajo_contributions", filter: `aso_client_id=eq.${ajoClient.id}` },
         (payload) => {
           if (!payload.new) return;
           setContributions(prev => prev.map(c => c.id === payload.new.id ? { ...c, ...payload.new } : c));
-          const amt = `₦${Number(payload.new.amount || 0).toLocaleString("en-NG")}`;
-          if (payload.new.payment_method === "manual_transfer") {
-            if (payload.new.status === "completed") {
-              notif.addNotification("aso", "Deposit Confirmed", `${amt} bank transfer confirmed and added to your balance`);
-            } else if (payload.new.status === "rejected") {
-              notif.addNotification("aso", "Deposit Declined", `Your ${amt} bank transfer claim was not confirmed`);
-            }
-          } else if (payload.new.type === "contribution" && payload.new.status === "completed" && payload.old?.status === "pending") {
-            notif.addNotification("aso", "Contribution Approved", `Your ${amt} contribution has been approved and added to your balance`);
-          }
         })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "ajo_cycles", filter: `client_id=eq.${ajoClient.id}` },
         () => { fetchPortalDataRef.current(true); })
@@ -3894,12 +3844,6 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "ajo_withdrawal_requests", filter: `aso_client_id=eq.${ajoClient.id}` },
         (payload) => {
           refreshWithdrawRequests();
-          const amt = `₦${Number(payload.new?.amount || 0).toLocaleString("en-NG")}`;
-          if (payload.new?.status === "approved" || payload.new?.status === "completed") {
-            notif.addNotification("aso", "Withdrawal Approved", `Your ${amt} withdrawal has been approved`);
-          } else if (payload.new?.status === "rejected") {
-            notif.addNotification("aso", "Withdrawal Declined", `Your ${amt} withdrawal request was declined`);
-          }
         })
       .subscribe((status) => {
         if (status === "SUBSCRIBED") {
@@ -3954,7 +3898,6 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
 
           <div className="flex-none flex items-center gap-2">
             {loadingData && <div className="w-3.5 h-3.5 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />}
-            <NotificationBell unreadCount={notif.unreadCount} onClick={() => notif.setOpen(true)} />
             <button onClick={() => setTab("me")}
               className="w-9 h-9 rounded-full bg-gradient-to-br from-brand-500 to-brand-600 relative flex items-center justify-center border-2 border-slate-100 dark:border-slate-700 shadow-sm active:scale-90 transition-transform overflow-hidden">
               <span className="text-sm font-black text-white">{avatarInitial}</span>
@@ -4086,42 +4029,6 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
           </div>
           <div style={{ height: "env(safe-area-inset-bottom, 0px)" }} className="bg-white dark:bg-slate-900" />
         </nav>
-
-        {/* Notification Center */}
-        <NotificationCenter notif={notif} allowedTypeKeys={["aso", "bills", "system"]} />
-
-        {/* In-app notification toast */}
-        {toastNotif && (
-          <div
-            className="fixed left-4 right-4 notif-toast"
-            style={{ top: "max(64px, calc(env(safe-area-inset-top, 0px) + 64px))", zIndex: "var(--z-toast)" }}
-          >
-            <div className="flex items-center gap-3 bg-slate-800 dark:bg-slate-700 rounded-2xl shadow-2xl px-4 py-3 max-w-md mx-auto">
-              <button
-                onClick={() => { setToastNotif(null); notif.setOpen(true); }}
-                className="flex items-center gap-3 flex-1 min-w-0 text-left"
-              >
-                <div className="w-8 h-8 rounded-xl bg-green-500 flex items-center justify-center flex-shrink-0">
-                  <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.5} strokeLinecap="round">
-                    <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0" />
-                  </svg>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-white leading-tight truncate">{toastNotif.title}</p>
-                  <p className="text-xs text-slate-300 truncate">{toastNotif.message}</p>
-                </div>
-              </button>
-              <button
-                onClick={() => { clearTimeout(toastTimer.current); setToastNotif(null); }}
-                className="w-6 h-6 flex-shrink-0 flex items-center justify-center opacity-50 active:opacity-100"
-              >
-                <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={3} strokeLinecap="round">
-                  <path d="M18 6L6 18M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-          </div>
-        )}
 
       </div>
 

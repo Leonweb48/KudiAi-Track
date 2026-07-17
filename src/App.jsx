@@ -2,12 +2,9 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation, Routes, Route } from "react-router-dom";
 import { useStore }          from "./hooks/useStore";
 import { useAuth }           from "./hooks/useAuth";
-import { useNotifications }  from "./hooks/useNotifications";
-import { fmt }               from "./utils/helpers";
 import SyncBar               from "./components/SyncBar";
 import BottomNav             from "./components/BottomNav";
 import VoiceModal            from "./components/VoiceModal";
-import NotificationCenter    from "./components/NotificationCenter";
 import DailyVoice            from "./components/DailyVoice";
 import Home                  from "./screens/Home";
 import Transactions          from "./screens/Transactions";
@@ -78,25 +75,12 @@ function Spinner() {
 export default function App() {
   const navigate   = useNavigate();
   const location   = useLocation();
-  const [toastNotif, setToastNotif] = useState(null);
-  const toastTimer = useRef(null);
 
   // Listen for deep-link navigation from campaign CTAs
   useEffect(() => {
     const handler = (e) => { if (e.detail?.path) navigate(e.detail.path); };
     window.addEventListener("promoNavigate", handler);
     return () => window.removeEventListener("promoNavigate", handler);
-  }, [navigate]);
-
-  // Notification action deep-link — foreground: window event fires immediately
-  useEffect(() => {
-    const handler = (e) => {
-      if (!e.detail?.route) return;
-      localStorage.removeItem("kt_pending_notif_route"); // prevent double-navigation
-      navigate(e.detail.route);
-    };
-    window.addEventListener("kt-notif-navigate", handler);
-    return () => window.removeEventListener("kt-notif-navigate", handler);
   }, [navigate]);
 
   // Derive active tab from URL path — maps legacy credit/aso routes to finance
@@ -135,15 +119,11 @@ export default function App() {
   // Consent gate — checks once per userId whether the user has accepted legal docs
   const consent = useConsent(userId);
 
-  // Notification system — initialised before store so addNotification is stable
-  const notif = useNotifications(userId);
-  const { addNotification } = notif;
+  // Store
+  const store = useStore(userId, null, null);
 
-  // Store — pass addNotification so it fires on key events
-  const store = useStore(userId, null, null, addNotification);
-
-  // Inventory — separate hook; also fires low-stock notifications
-  const inventory = useInventory(userId, null, addNotification);
+  // Inventory
+  const inventory = useInventory(userId, null);
 
   // Invoices — lifted here so daily alerts + AI context can use invoice data
   const invoiceHook = useInvoices(userId);
@@ -174,27 +154,8 @@ export default function App() {
   // The 3s interval and the kt-new-transaction re-dispatch were removed — they caused
   // duplicate owner notifications for every staff-recorded transaction.
 
-  // Request camera, mic, location, and notification permissions on native (also sets push=true in notif settings)
-  usePermissions(notif.requestPush);
-
-  // Auto-enable push in notif settings if browser permission was already granted
-  useEffect(() => {
-    if (notif.settings.push || Capacitor.isNativePlatform()) return;
-    if ("Notification" in window && Notification.permission === "granted") {
-      notif.updateSetting("push", true);
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Show in-app toast banner when a new notification arrives while panel is closed
-  useEffect(() => {
-    if (!notif.lastNotif) return;
-    if (!notif.open) {
-      clearTimeout(toastTimer.current);
-      setToastNotif(notif.lastNotif);
-      toastTimer.current = setTimeout(() => setToastNotif(null), 4500);
-    }
-    notif.clearLastNotif();
-  }, [notif.lastNotif]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Request camera, mic, and location permissions on native
+  usePermissions();
 
   const isDark = store.profile?.dark_mode ?? (localStorage.getItem("kuditrack_dark") === "1");
   useEffect(() => {
@@ -247,42 +208,7 @@ export default function App() {
     alertFiredRef.current = true;
     sessionStorage.setItem(key, todayStr);
 
-    // Overdue credits
-    const overdueCredits = store.credits.filter(c => c.status === "overdue");
-    if (overdueCredits.length > 0) {
-      const total = overdueCredits.reduce((s, c) => s + c.outstanding, 0);
-      addNotification(
-        "credits",
-        `${overdueCredits.length} Overdue Credit${overdueCredits.length > 1 ? "s" : ""}`,
-        `${fmt(total)} still outstanding`
-      );
-    }
-
-    // Overdue invoices
-    const overdueInvoices = invoiceHook.invoices.filter(i => i.status === "overdue");
-    if (overdueInvoices.length > 0) {
-      const totalOwed = overdueInvoices.reduce((s, i) => s + ((i.total_kobo - i.amount_paid_kobo) / 100), 0);
-      addNotification(
-        "invoices",
-        `${overdueInvoices.length} Overdue Invoice${overdueInvoices.length > 1 ? "s" : ""}`,
-        `${fmt(totalOwed)} still outstanding`
-      );
-    }
-
-    // Missed aso contributions
-    const now = new Date(); now.setHours(0, 0, 0, 0);
-    const overdueAso = store.asoClients.filter(c => {
-      if (!c.next_contribution_date || c.status !== "active") return false;
-      return now > new Date(c.next_contribution_date);
-    });
-    if (overdueAso.length > 0) {
-      addNotification(
-        "aso",
-        `${overdueAso.length} Ajo Payment${overdueAso.length > 1 ? "s" : ""} Overdue`,
-        "Clients have missed their contribution dates"
-      );
-    }
-  }, [userId, store.loading, store.credits, store.asoClients, invoiceHook.invoices, addNotification]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [userId, store.loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const addTransactionWithLoyalty = async (txnData) => {
     await store.addTransaction(txnData);
@@ -457,8 +383,7 @@ export default function App() {
                     setTab={setTab}
                     onQuickAction={triggerQuickAction}
                     onVoiceOpen={() => setVoiceOpen(true)}
-                    onAIOpen={() => setShowAI(true)}
-                    notif={notif} />,
+                    onAIOpen={() => setShowAI(true)} />,
     transactions: <Transactions
                     store={{ ...store, addTransaction: addTransactionWithLoyalty }}
                     plan={plan}
@@ -515,7 +440,6 @@ export default function App() {
                     plan={plan}
                     onUpgrade={openUpgrade}
                     lock={pinLock}
-                    onNotifications={() => notif.setOpen(true)}
                     onLoyalty={() => setShowLoyalty(true)}
                     onBranches={() => setShowBranches(true)}
                     onCoops={() => setShowCoop(true)} />,
@@ -641,42 +565,6 @@ export default function App() {
 
         </div>
       </div>
-
-      {/* Notification panel — full-screen overlay, z-50 */}
-      <NotificationCenter notif={notif} onNavigate={navigate} />
-
-      {/* In-app notification toast */}
-      {toastNotif && (
-        <div
-          className="fixed left-4 right-4 notif-toast"
-          style={{ top: "max(64px, calc(env(safe-area-inset-top, 0px) + 64px))", zIndex: "var(--z-toast)" }}
-        >
-          <div className="flex items-center gap-3 bg-slate-800 dark:bg-slate-700 rounded-2xl shadow-2xl px-4 py-3 max-w-md mx-auto">
-            <button
-              onClick={() => { setToastNotif(null); notif.setOpen(true); }}
-              className="flex items-center gap-3 flex-1 min-w-0 text-left"
-            >
-              <div className="w-8 h-8 rounded-xl bg-green-500 flex items-center justify-center flex-shrink-0">
-                <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.5} strokeLinecap="round">
-                  <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0" />
-                </svg>
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-white leading-tight truncate">{toastNotif.title}</p>
-                <p className="text-xs text-slate-300 truncate">{toastNotif.message}</p>
-              </div>
-            </button>
-            <button
-              onClick={() => { clearTimeout(toastTimer.current); setToastNotif(null); }}
-              className="w-6 h-6 flex-shrink-0 flex items-center justify-center opacity-50 active:opacity-100"
-            >
-              <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={3} strokeLinecap="round">
-                <path d="M18 6L6 18M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Report generator — full-screen overlay, z-60 */}
       {showReports && <Reports store={store} onClose={() => setShowReports(false)} />}

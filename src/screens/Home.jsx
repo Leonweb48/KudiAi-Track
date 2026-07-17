@@ -3,7 +3,6 @@ import { fmt, today } from "../utils/helpers";
 import { supabase } from "../utils/supabase";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
 import { TxRow } from "../components/shared/TxRow";
-import { NotificationBell } from "../components/NotificationCenter";
 import { useT } from "../contexts/LanguageContext";
 import AppLogo from "../components/AppLogo";
 import { getSalesPrediction } from "../utils/predictions";
@@ -105,7 +104,7 @@ function SalesForecastCard({ prediction, t, balanceHidden }) {
 }
 
 /* ── Main ────────────────────────────────────────────────────────── */
-export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, onAIOpen, notif }) {
+export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, onAIOpen }) {
   const { transactions, credits, asoClients, profile, loading } = store;
   const t = useT();
   const [balanceHidden,      setBalanceHidden]      = useState(() => sessionStorage.getItem("kt_balance_hidden") === "1");
@@ -178,7 +177,6 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
           <span className="text-[12px] font-bold text-slate-400 dark:text-slate-500 tracking-widest uppercase leading-none ml-1">Track</span>
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
-          <NotificationBell unreadCount={notif?.unreadCount || 0} onClick={() => notif?.setOpen(true)} />
           <button onClick={() => setShowProfilePreview(true)} aria-label="Profile"
             className="w-9 h-9 rounded-full border-2 border-slate-100 dark:border-slate-700 shadow-sm overflow-hidden active:scale-95 transition-transform">
             {profile.profile_image_url

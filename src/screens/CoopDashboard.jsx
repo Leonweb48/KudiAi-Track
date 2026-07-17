@@ -10,7 +10,6 @@ import { CoopBulkWithdrawalReceipt } from "../components/shared/Receipt";
 import TransactionDetailModal from "../components/shared/TransactionDetailModal";
 import { buildCoopSavingsReceipt, buildCoopWithdrawalRequestReceipt, buildCoopLoanRepaymentReceipt } from "../utils/receiptConfig";
 import { maxDobDate, isAtLeast18, AGE_ERROR } from "../utils/ageValidation";
-import { CoopNotificationBell, useChatUnread, ChatToast } from "../components/shared/CoopNotifications";
 import AIChatWidget from "../components/AIChatWidget";
 import { buildCoopOrgContext } from "../utils/buildContext";
 import TransactionPinModal from "../components/TransactionPinModal";
@@ -3294,11 +3293,6 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
   const [showMore,      setShowMore]      = useState(false);
   const [billsAutoSvc,  setBillsAutoSvc]  = useState(null);
 
-  const { chatUnread, chatToasts, dismissChatToast } = useChatUnread({
-    orgId: org.id,
-    isActive: tab === "messages",
-  });
-
   const loadAll = useCallback(() => {
     const orgId = org.id;
     const safe = fn => fn.catch(() => ({}));
@@ -3373,11 +3367,6 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
               <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 tracking-widest uppercase leading-none ml-1">Track</span>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
-              <CoopNotificationBell
-                orgId={org.id}
-                recipientType="org"
-                onNavigate={navigateTo}
-              />
               <button onClick={() => navigateTo("profile")}
                 className="active:scale-90 transition-transform">
                 {org.logo_url
@@ -3411,11 +3400,6 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
                         strokeLinecap="round" strokeLinejoin="round">
                         <path d={t.icon} />
                       </svg>
-                      {t.id === "messages" && chatUnread > 0 && !active && (
-                        <span className="absolute -top-1 -right-2 min-w-[15px] h-[15px] bg-[#3DA829] text-white text-[8px] font-extrabold rounded-full flex items-center justify-center px-0.5">
-                          {chatUnread > 99 ? "99+" : chatUnread}
-                        </span>
-                      )}
                     </div>
                   </button>
                 );
@@ -3435,21 +3419,6 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
             </div>
             <div style={{ height: "env(safe-area-inset-bottom, 0px)" }} className="bg-white dark:bg-[#0f1117]" />
           </nav>
-
-          {/* ── Chat message drop-in toasts ── */}
-          {chatToasts.length > 0 && (
-            <div className="fixed top-[60px] inset-x-0 z-[185] flex flex-col items-center gap-2 px-4 pointer-events-none">
-              {chatToasts.map(ct => (
-                <ChatToast
-                  key={ct._tid}
-                  toast={ct}
-                  orgName={org.name}
-                  onNavigate={() => { setTab("messages"); setShowMore(false); dismissChatToast(ct._tid); }}
-                  onDismiss={() => dismissChatToast(ct._tid)}
-                />
-              ))}
-            </div>
-          )}
 
           {/* ── Side Drawer (Twitter/X-style) ── */}
           {showMore && (

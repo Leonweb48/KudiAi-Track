@@ -2,8 +2,6 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase }           from "../utils/supabase";
 import { useStore }           from "../hooks/useStore";
 import { useInventory }       from "../hooks/useInventory";
-import { useNotifications }   from "../hooks/useNotifications";
-import NotificationCenter, { NotificationBell } from "../components/NotificationCenter";
 import { today }              from "../utils/helpers";
 import { normalizeSlug }      from "../utils/plans";
 import AppLogo                from "../components/AppLogo";
@@ -61,11 +59,8 @@ export default function StaffDashboard({ session, staff: staffProp, pinLock }) {
   const staffId = staff?.id;
   const ownerId = staff?.owner_id;
 
-  const notif           = useNotifications(staffId);
-  const { addNotification } = notif;
-
-  const store       = useStore(ownerId, staffId, staff?.full_name, addNotification);
-  const inventory   = useInventory(ownerId, staffId, addNotification, staff?.branch_id || null);
+  const store       = useStore(ownerId, staffId, staff?.full_name);
+  const inventory   = useInventory(ownerId, staffId, staff?.branch_id || null);
   const invoiceHook = useInvoices(ownerId);
 
   const [ownerPlan, setOwnerPlan] = useState("starter");
@@ -207,7 +202,6 @@ If asked about business-wide figures (total business revenue, all staff performa
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <NotificationBell unreadCount={notif.unreadCount} onClick={() => notif.setOpen(true)} />
             <button onClick={() => goTo("me")}
               className="w-9 h-9 rounded-full flex items-center justify-center border-2 border-slate-100 dark:border-slate-700 shadow-sm active:scale-90 transition-transform overflow-hidden bg-[linear-gradient(135deg,#3DA829,#2E8020)]">
               {staff?.profile_image_url
@@ -289,8 +283,6 @@ If asked about business-wide figures (total business revenue, all staff performa
         {voiceOpen && (
           <VoiceModal onClose={() => setVoiceOpen(false)} onSave={handleVoiceSave} />
         )}
-        <NotificationCenter notif={notif} />
-
         {/* D11: Staff-aware AI assistant — staff-scoped context, no business-wide data */}
         <AIChatWidget
           portalContext={staffPortalContext}

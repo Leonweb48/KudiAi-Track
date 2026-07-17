@@ -1237,19 +1237,6 @@ export default function GroupChat({ orgId, myName, myRole = "member", orgName, o
           }
           // Already have it by id?
           if (prev.find(x => x.id === m.id)) return prev;
-          // New message from someone else — notify if tab not focused
-          if (m.sender_id !== myIdRef.current) {
-            if (document.visibilityState !== "visible" || !document.hasFocus()) {
-              if (Notification.permission === "granted") {
-                new Notification(m.sender_name || "New message", {
-                  body: m.type === "audio" ? "🎤 Voice message" : m.type === "image" ? "📷 Photo" : m.content || "New message",
-                  icon: "/favicon.ico",
-                  tag: `msg-${orgId}`,
-                  renotify: true,
-                });
-              }
-            }
-          }
           if (atBottom.current) {
             setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 60);
             markRead();
@@ -1299,13 +1286,6 @@ export default function GroupChat({ orgId, myName, myRole = "member", orgName, o
 
     return () => { supabase.removeChannel(ch); };
   }, [orgId, myName, myRole, markRead]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Notification permission ────────────────────────────────────────────────
-  useEffect(() => {
-    if ("Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission();
-    }
-  }, []);
 
   // ── Sync missed messages + reconnect on tab focus ──────────────────────────
   useEffect(() => {

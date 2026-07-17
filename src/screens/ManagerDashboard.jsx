@@ -3,8 +3,6 @@ import { supabase }           from "../utils/supabase";
 import { useStore }           from "../hooks/useStore";
 import { useInventory }       from "../hooks/useInventory";
 import { useBiometricLock }   from "../hooks/useBiometricLock";
-import { useNotifications }   from "../hooks/useNotifications";
-import NotificationCenter, { NotificationBell } from "../components/NotificationCenter";
 import { fmt, today }         from "../utils/helpers";
 import { AmountDisplay }      from "../components/shared/AmountDisplay";
 import { canDo, normalizeSlug, planAvailableText } from "../utils/plans";
@@ -1100,11 +1098,8 @@ export default function ManagerDashboard({ session, staff: staffProp }) {
   const staffId  = staff?.id;
   const ownerId  = staff?.owner_id;
 
-  const notif    = useNotifications(staffId);
-  const { addNotification } = notif;
-
-  const store     = useStore(ownerId, staffId, staff?.full_name, addNotification);
-  const inventory = useInventory(ownerId, staffId, addNotification, staff?.branch_id || null);
+  const store     = useStore(ownerId, staffId, staff?.full_name);
+  const inventory = useInventory(ownerId, staffId, staff?.branch_id || null);
   const lock      = useBiometricLock(staffId);
 
   // Fetch the business owner's active subscription plan.
@@ -1230,7 +1225,6 @@ export default function ManagerDashboard({ session, staff: staffProp }) {
             <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 tracking-widest uppercase leading-none ml-1">Track</span>
           </div>
           <div className="flex items-center gap-2">
-            <NotificationBell unreadCount={notif.unreadCount} onClick={() => notif.setOpen(true)} />
             <button onClick={() => goTo("me")}
               className="w-9 h-9 rounded-full bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center border-2 border-slate-100 dark:border-slate-700 shadow-sm active:scale-90 transition-transform overflow-hidden">
               {staff?.profile_image_url
@@ -1290,9 +1284,6 @@ export default function ManagerDashboard({ session, staff: staffProp }) {
         {voiceOpen && (
           <VoiceModal onClose={() => setVoiceOpen(false)} onSave={handleVoiceSave} />
         )}
-
-        {/* Notification Center */}
-        <NotificationCenter notif={notif} />
 
       </div>
     </div>

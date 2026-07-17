@@ -211,7 +211,6 @@ const PersonIcon     = () => ic("M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2|M12 11a
 const UsersIcon      = ({ white } = {}) => white
   ? <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-white" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">{["M17 20h5v-2a4 4 0 00-4-4h-1","M9 20H4v-2a4 4 0 014-4h1m4 6v-2m0-4a4 4 0 100-8 4 4 0 000 8z"].map((d,i)=><path key={i} d={d}/>)}</svg>
   : ic("M17 20h5v-2a4 4 0 00-4-4h-1|M9 20H4v-2a4 4 0 014-4h1m4 6v-2m0-4a4 4 0 100-8 4 4 0 000 8z");
-const BellIcon       = () => ic("M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9|M13.73 21a2 2 0 01-3.46 0");
 const LockIcon       = () => ic("M3 11h18v11a2 2 0 01-2 2H5a2 2 0 01-2-2V11z|M7 11V7a5 5 0 0110 0v4");
 const ShieldIcon     = () => ic("M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z");
 const DocIcon        = () => ic("M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z|M14 2v6h6|M16 13H8|M16 17H8");
@@ -270,7 +269,7 @@ function LanguageModal({ current, onClose }) {
 
 
 /* ── Main component ───────────────────────────────────────────────── */
-export default function Settings({ store, session, plan = "starter", onUpgrade, onStaffManagement, lock, onNotifications, onLoyalty, onBranches, onCoops }) {
+export default function Settings({ store, session, plan = "starter", onUpgrade, onStaffManagement, lock, onLoyalty, onBranches, onCoops }) {
   const { profile, setProfile } = store;
   const { lang: langCode }      = useLanguage();
   const t                       = useT();
@@ -591,7 +590,6 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
       <SettingsCard>
         <Row icon={<PersonIcon />} label={t("settings.profile")}   sub={t("settings.profileSub")}  onClick={() => navigate("/profile")} />
         <Row icon={<UsersIcon />}  label={t("settings.staff")}     sub={canDo(plan, "staffManagement") ? t("settings.staffSub") : planAvailableText("staffManagement")}    onClick={() => canDo(plan, "staffManagement") ? setStaffMgmt(true) : onUpgrade?.()} />
-        <Row icon={<BellIcon />}   label={t("settings.notif")}     sub={t("settings.notifSub")}    onClick={() => onNotifications?.()} />
       </SettingsCard>
 
       {/* ── FEATURES ───────────────────────────────────────────────── */}

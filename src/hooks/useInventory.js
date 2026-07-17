@@ -1,16 +1,13 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../utils/supabase";
 import { uid } from "../utils/helpers";
 import { sendEmailTrigger } from "../utils/emailTrigger";
 
-export function useInventory(userId, staffId = null, onNotify = null, branchId = null) {
+export function useInventory(userId, staffId = null, branchId = null) {
   const [products,  setProducts]  = useState([]);
   const [movements, setMovements] = useState([]);
   const [loading,   setLoading]   = useState(true);
   const [dbError,   setDbError]   = useState(null);
-
-  const notifyRef = useRef(onNotify);
-  useEffect(() => { notifyRef.current = onNotify; }, [onNotify]);
 
   const loadData = useCallback(async () => {
     if (!userId || !supabase) { setLoading(false); return; }
@@ -156,7 +153,6 @@ export function useInventory(userId, staffId = null, onNotify = null, branchId =
     setProducts(prev => prev.map(p => p.id === product_id ? { ...p, quantity: newQty } : p));
 
     if (newQty <= product.low_stock_threshold) {
-      notifyRef.current?.("stock", `Low Stock: ${product.product_name}`, `Only ${newQty} unit${newQty !== 1 ? "s" : ""} remaining`);
       // Email only when crossing below threshold (not on every subsequent sale)
       if (product.quantity > product.low_stock_threshold) {
         sendEmailTrigger("low_stock_alert", {

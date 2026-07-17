@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { useStore }      from "../hooks/useStore";
 import { useInventory }  from "../hooks/useInventory";
-import { useNotifications } from "../hooks/useNotifications";
 import { supabase }      from "../utils/supabase";
 import { fmt, today }    from "../utils/helpers";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
@@ -169,11 +168,8 @@ export default function BranchManagerDashboard({ session, staff }) {
   const staffId    = staff?.id;
   const staffName  = staff?.full_name;
 
-  const notif    = useNotifications(ownerId);
-  const { addNotification } = notif;
-
-  const store     = useStore(ownerId, staffId, staffName, addNotification, branchId);
-  const inventory = useInventory(ownerId, staffId, addNotification, branchId);
+  const store     = useStore(ownerId, staffId, staffName, branchId);
+  const inventory = useInventory(ownerId, staffId, branchId);
 
   const isDark = store.profile?.dark_mode;
   useEffect(() => {
