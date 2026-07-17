@@ -28,7 +28,7 @@ const FINANCE_TILES = [
   {
     id: "ajo", label: "Ajo Savings",
     icon: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2|M9 11a4 4 0 100-8 4 4 0 000 8|M23 21v-2a4 4 0 00-3-3.87|M16 3.13a4 4 0 010 7.75",
-    bg: "bg-violet-100 dark:bg-violet-900/30", color: "#7c3aed",
+    bg: "bg-brand-100 dark:bg-brand-900/30", color: "#3DA829",
   },
   {
     id: "loan", label: "Business Loan",
@@ -196,12 +196,12 @@ By tapping "I Accept & Continue", you confirm you have read, understood, and agr
 const LOAN_TC_KEY = "kt_loan_tc_accepted";
 
 const ENCOURAGE_MSGS = [
-  { emoji: "🚀", title: "You're building something great!", body: "Every transaction you record is building your financial profile. Our lending partners see active, consistent businesses — and they reward them with better loan limits." },
-  { emoji: "💰", title: "Your records = your credit score!", body: "Unlike traditional banks, we don't just look at your bank statement. Every sale, every credit record, every Ajo contribution is evidence of your business strength." },
-  { emoji: "📈", title: "Active businesses get more!", body: "The more consistently you record your business activities, the stronger your profile becomes. Businesses with 100+ records qualify for our highest loan tiers — up to ₦5,000,000 or more." },
-  { emoji: "🏆", title: "Stay consistent — it pays!", body: "Our partners reward consistency. A business that records every day is far more trusted than one with gaps. Keep recording and watch your eligible amount grow." },
-  { emoji: "🤝", title: "Partners are watching your growth!", body: "Our lending partners analyse real business data — not guesswork. Your daily records are your strongest loan application. Record every sale, every expense, every credit." },
-  { emoji: "⚡", title: "Unlock up to ₦5,000,000!", body: "Hit 120 days of consistent activity and you'll be able to apply for up to ₦5,000,000 in business financing — with no collateral required." },
+  { icon: "M12 5v14|M5 12l7-7 7 7", title: "You're building something great!", body: "Every transaction you record is building your financial profile. Our lending partners see active, consistent businesses — and they reward them with better loan limits." },
+  { icon: "M12 2v20|M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6", title: "Your records = your credit score!", body: "Unlike traditional banks, we don't just look at your bank statement. Every sale, every credit record, every Ajo contribution is evidence of your business strength." },
+  { icon: "M23 6l-9.5 9.5-5-5L1 18|M17 6h6v6", title: "Active businesses get more!", body: "The more consistently you record your business activities, the stronger your profile becomes. Businesses with 100+ records qualify for our highest loan tiers — up to ₦5,000,000 or more." },
+  { icon: "M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z", title: "Stay consistent — it pays!", body: "Our partners reward consistency. A business that records every day is far more trusted than one with gaps. Keep recording and watch your eligible amount grow." },
+  { icon: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2|M9 11a4 4 0 100-8 4 4 0 000 8|M23 21v-2a4 4 0 00-3-3.87|M16 3.13a4 4 0 010 7.75", title: "Partners are watching your growth!", body: "Our lending partners analyse real business data — not guesswork. Your daily records are your strongest loan application. Record every sale, every expense, every credit." },
+  { icon: "M13 2L3 14h9l-1 8 10-12h-9l1-8z", title: "Unlock up to ₦5,000,000!", body: "Hit 120 days of consistent activity and you'll be able to apply for up to ₦5,000,000 in business financing — with no collateral required." },
 ];
 
 /* ── Loan sub-screen ─────────────────────────────────────────────────────────── */
@@ -272,7 +272,7 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
   if (!isEnterprise) {
     return (
       <div className="px-4 pt-6 pb-28">
-        <div className="rounded-3xl overflow-hidden mb-5 bg-gradient-to-br from-emerald-900 to-emerald-700">
+        <div className="rounded-3xl overflow-hidden mb-5 bg-gradient-to-br from-navy-500 to-navy-600">
           <div className="px-5 py-6 text-white">
             <p className="text-[10px] font-bold uppercase tracking-[3px] opacity-60 mb-2">Business Loan</p>
             <p className="text-4xl font-black mb-1">₦5,000,000+</p>
@@ -286,7 +286,9 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
         <div className="space-y-2.5 mb-6">
           {ENCOURAGE_MSGS.slice(0, 3).map(m => (
             <div key={m.title} className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 border border-slate-100 dark:border-slate-700/50 flex items-start gap-3">
-              <span className="text-xl flex-shrink-0">{m.emoji}</span>
+              <div className="w-8 h-8 rounded-xl bg-brand-100 dark:bg-brand-900/20 flex items-center justify-center flex-shrink-0">
+                <Svg d={m.icon} size={16} color="#3DA829" sw={2} />
+              </div>
               <div>
                 <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{m.title}</p>
                 <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5 leading-relaxed">{m.body}</p>
@@ -295,7 +297,7 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
           ))}
         </div>
         <button onClick={onUpgrade}
-          className="w-full py-4 rounded-2xl font-bold text-sm text-white shadow-md active:scale-95 transition bg-gradient-to-br from-emerald-900 to-emerald-700">
+          className="w-full py-4 rounded-2xl font-bold text-sm text-white shadow-md active:scale-95 transition bg-brand-600 hover:bg-brand-700">
           Upgrade to {getLowestPlanWithFeature("loanAccess")?.name ?? "Enterprise"} — Unlock Loans
         </button>
       </div>
@@ -304,7 +306,7 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
 
   /* ── T&C Modal ────────────────────────────────────────────────────────────── */
   const TCModal = () => (
-    <div className="fixed inset-0 z-[70] bg-black/70 flex flex-col items-center justify-end backdrop-blur-sm"
+    <div className="fixed inset-0 z-sub-sheet bg-black/70 flex flex-col items-center justify-end backdrop-blur-sm"
       onClick={() => setShowTC(false)}>
       <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-t-3xl flex flex-col"
         style={{ maxHeight: "92dvh" }} onClick={e => e.stopPropagation()}>
@@ -321,7 +323,7 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
         <div className="px-5 py-4 border-t border-slate-100 dark:border-slate-800 flex-shrink-0"
           style={{ paddingBottom: "calc(1rem + env(safe-area-inset-bottom, 0px))" }}>
           <button onClick={acceptTC}
-            className="w-full py-4 rounded-2xl font-bold text-sm text-white mb-2 active:scale-95 transition bg-gradient-to-br from-emerald-900 to-green-600">
+            className="w-full py-4 rounded-2xl font-bold text-sm text-white mb-2 active:scale-95 transition bg-brand-600 hover:bg-brand-700">
             I Accept & Continue to Apply
           </button>
           <button onClick={() => setShowTC(false)}
@@ -371,10 +373,10 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <p className="text-[11px] font-bold text-slate-600 dark:text-slate-300">Days Active</p>
-                  <p className="text-[11px] font-black text-emerald-600">{daysActive}/{REQUIRED_DAYS}</p>
+                  <p className="text-[11px] font-black text-brand-600">{daysActive}/{REQUIRED_DAYS}</p>
                 </div>
                 <div className="h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
-                  <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${progressPct}%` }} />
+                  <div className="h-full bg-brand-500 rounded-full transition-all" style={{ width: `${progressPct}%` }} />
                 </div>
               </div>
               <div>
@@ -388,17 +390,17 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
               </div>
             </div>
           </div>
-          <div className="mt-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl px-4 py-3 border border-emerald-100 dark:border-emerald-800/40">
-            <p className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider mb-0.5">Based on current activity, you may qualify for</p>
-            <p className="text-lg font-black text-emerald-700 dark:text-emerald-300">{loanTier}</p>
-            <p className="text-[10px] text-emerald-600/70 dark:text-emerald-400/60 mt-0.5">Keep recording to increase your limit!</p>
+          <div className="mt-4 bg-brand-50 dark:bg-brand-900/20 rounded-2xl px-4 py-3 border border-brand-100 dark:border-brand-800/40">
+            <p className="text-[10px] font-bold text-brand-700 dark:text-brand-400 uppercase tracking-wider mb-0.5">Based on current activity, you may qualify for</p>
+            <p className="text-lg font-black text-brand-700 dark:text-brand-300">{loanTier}</p>
+            <p className="text-[10px] text-brand-600/70 dark:text-brand-400/60 mt-0.5">Keep recording to increase your limit!</p>
           </div>
         </div>
 
         <div className="grid grid-cols-3 gap-2.5 mb-4">
           {[
             { label: "Transactions", val: totalTxns,    color: "text-blue-600 dark:text-blue-400",   bg: "bg-blue-50 dark:bg-blue-900/20"   },
-            { label: "Last 30 days",  val: recentTxns,  color: "text-violet-600 dark:text-violet-400", bg: "bg-violet-50 dark:bg-violet-900/20" },
+            { label: "Last 30 days",  val: recentTxns,  color: "text-brand-600 dark:text-brand-400", bg: "bg-brand-50 dark:bg-brand-900/20" },
             { label: "Credit records", val: credits.length, color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-900/20" },
           ].map(s => (
             <div key={s.label} className={`${s.bg} rounded-2xl p-3 border border-slate-100 dark:border-slate-700/30 text-center`}>
@@ -410,7 +412,9 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
 
         <div className="bg-white dark:bg-slate-800 rounded-3xl px-5 py-4 border border-slate-100 dark:border-slate-700/50 shadow-card mb-4">
           <div className="flex items-start gap-3">
-            <span className="text-2xl flex-shrink-0">{msg.emoji}</span>
+            <div className="w-8 h-8 rounded-xl bg-brand-100 dark:bg-brand-900/20 flex items-center justify-center flex-shrink-0">
+              <Svg d={msg.icon} size={16} color="#3DA829" sw={2} />
+            </div>
             <div>
               <p className="text-sm font-black text-slate-800 dark:text-white mb-1">{msg.title}</p>
               <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">{msg.body}</p>
@@ -418,7 +422,7 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
           </div>
           <div className="flex gap-1 mt-3 justify-center">
             {ENCOURAGE_MSGS.map((_, i) => (
-              <div key={i} className={`h-1 rounded-full transition-all ${i === msgIdx ? "w-5 bg-emerald-500" : "w-1.5 bg-slate-200 dark:bg-slate-700"}`} />
+              <div key={i} className={`h-1 rounded-full transition-all ${i === msgIdx ? "w-5 bg-brand-500" : "w-1.5 bg-slate-200 dark:bg-slate-700"}`} />
             ))}
           </div>
         </div>
@@ -434,13 +438,13 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
               { icon: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z", text: "120 days of active platform use", done: eligible },
             ].map(item => (
               <div key={item.text} className="flex items-center gap-3">
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${item.done ? "bg-emerald-100 dark:bg-emerald-900/30" : "bg-slate-100 dark:bg-slate-700"}`}>
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${item.done ? "bg-brand-100 dark:bg-brand-900/30" : "bg-slate-100 dark:bg-slate-700"}`}>
                   {item.done
                     ? <Svg d="M20 6L9 17l-5-5" size={12} color="#3DA829" sw={3} />
                     : <Svg d="M12 2a10 10 0 100 20 10 10 0 000-20" size={12} color="#94a3b8" sw={2.5} />
                   }
                 </div>
-                <p className={`text-xs font-semibold ${item.done ? "text-emerald-700 dark:text-emerald-400" : "text-slate-500 dark:text-slate-400"}`}>{item.text}</p>
+                <p className={`text-xs font-semibold ${item.done ? "text-brand-700 dark:text-brand-400" : "text-slate-500 dark:text-slate-400"}`}>{item.text}</p>
               </div>
             ))}
           </div>
@@ -454,7 +458,7 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
     <div className="px-4 pt-5 pb-28">
       {showTC && <TCModal />}
 
-      <div className="rounded-3xl overflow-hidden mb-5 shadow-xl bg-gradient-to-br from-emerald-950 to-emerald-700">
+      <div className="rounded-3xl overflow-hidden mb-5 shadow-xl bg-gradient-to-br from-navy-700 to-navy-500">
         <div className="px-5 pt-6 pb-4 text-white">
           <div className="flex items-center gap-2 mb-2">
             <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center">
@@ -477,10 +481,10 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
         </div>
       </div>
 
-      <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl px-5 py-4 mb-4 border border-emerald-200 dark:border-emerald-800/40">
-        <p className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider mb-1">Your Estimated Loan Range</p>
-        <p className="text-2xl font-black text-emerald-800 dark:text-emerald-300">{loanTier}</p>
-        <p className="text-xs text-emerald-700/60 dark:text-emerald-400/60 mt-1">Final amount determined by our partners after review</p>
+      <div className="bg-brand-50 dark:bg-brand-900/20 rounded-2xl px-5 py-4 mb-4 border border-brand-200 dark:border-brand-800/40">
+        <p className="text-[10px] font-bold text-brand-700 dark:text-brand-400 uppercase tracking-wider mb-1">Your Estimated Loan Range</p>
+        <p className="text-2xl font-black text-brand-800 dark:text-brand-300">{loanTier}</p>
+        <p className="text-xs text-brand-700/60 dark:text-brand-400/60 mt-1">Final amount determined by our partners after review</p>
       </div>
 
       <div className="bg-white dark:bg-slate-800 rounded-3xl p-5 mb-4 border border-slate-100 dark:border-slate-700/50 shadow-card">
@@ -489,7 +493,7 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
           {[
             { label: "Days Active",        val: daysActive,          color: "text-emerald-600 dark:text-emerald-400" },
             { label: "Total Transactions", val: totalTxns,           color: "text-blue-600 dark:text-blue-400" },
-            { label: "Last 30 Days",       val: `${recentTxns} txns`, color: "text-violet-600 dark:text-violet-400" },
+            { label: "Last 30 Days",       val: `${recentTxns} txns`, color: "text-brand-600 dark:text-brand-400" },
             { label: "Total Revenue",      val: fmt(cashIn),         color: "text-slate-800 dark:text-white" },
             { label: "Credit Records",     val: credits.length,      color: "text-amber-600 dark:text-amber-400" },
             { label: "Ajo Clients",        val: asoClients.length,   color: "text-indigo-600 dark:text-indigo-400" },
@@ -510,7 +514,7 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
           { icon: "M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01", text: "Flexible repayment terms",     sub: "Tailored to your cash flow" },
         ].map(f => (
           <div key={f.text} className="flex items-center gap-3 bg-white dark:bg-slate-800 rounded-2xl px-4 py-3 border border-slate-100 dark:border-slate-700/50 shadow-sm">
-            <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-900/30 flex items-center justify-center flex-shrink-0">
+            <div className="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-900/30 flex items-center justify-center flex-shrink-0">
               <Svg d={f.icon} size={16} color="#3DA829" sw={2} />
             </div>
             <div>
@@ -523,7 +527,9 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
 
       <div className="bg-white dark:bg-slate-800 rounded-3xl px-5 py-4 border border-slate-100 dark:border-slate-700/50 shadow-card mb-5">
         <div className="flex items-start gap-3">
-          <span className="text-2xl flex-shrink-0">{msg.emoji}</span>
+          <div className="w-8 h-8 rounded-xl bg-brand-100 dark:bg-brand-900/20 flex items-center justify-center flex-shrink-0">
+            <Svg d={msg.icon} size={16} color="#3DA829" sw={2} />
+          </div>
           <div>
             <p className="text-sm font-black text-slate-800 dark:text-white mb-1">{msg.title}</p>
             <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">{msg.body}</p>
@@ -531,14 +537,12 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
         </div>
       </div>
 
-      <button
-        onClick={() => tcAccepted ? onApply() : setShowTC(true)}
-        className="w-full py-4 rounded-2xl font-bold text-sm text-white active:scale-95 transition shadow-lg bg-gradient-to-br from-emerald-950 to-green-600">
-        {tcAccepted ? "Apply for Business Loan →" : "View Terms & Apply →"}
-      </button>
-      <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center mt-2">
-        Your data is shared securely with verified lending partners only
-      </p>
+      <div className="w-full py-4 rounded-2xl bg-slate-100 dark:bg-slate-800 flex flex-col items-center justify-center gap-1.5 border border-slate-200 dark:border-slate-700">
+        <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Business Loans</span>
+        <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-[10px] font-bold rounded-full uppercase tracking-wider">
+          Coming Soon
+        </span>
+      </div>
     </div>
   );
 }
@@ -667,7 +671,7 @@ export default function Finance({
       <AnnouncementBarSlot campaigns={financeAnnBars} loading={camLoading} recordEvent={recordCamEvent} />
 
       {/* ── P&L Hero Card ── */}
-      <div className="rounded-3xl p-5 text-white relative overflow-hidden bg-gradient-to-br from-[#16255A] to-[#1D3070] shadow-md">
+      <div className="rounded-3xl p-5 text-white relative overflow-hidden bg-gradient-to-br from-navy-500 to-navy-600 shadow-md">
         <div className="absolute -top-8 -right-8 w-28 h-28 rounded-full bg-white/5 pointer-events-none" />
         <div className="absolute -bottom-10 -left-6 w-32 h-32 rounded-full bg-white/5 pointer-events-none" />
 
@@ -801,8 +805,8 @@ export default function Finance({
             onClick={() => openSection("ajo")}
             className="flex flex-col gap-1.5 bg-slate-50 dark:bg-slate-700/50 rounded-2xl p-3.5 active:scale-95 transition text-left border border-slate-100 dark:border-slate-700/30 min-h-[44px]">
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center flex-shrink-0">
-                <Svg d={FINANCE_TILES[1].icon} size={13} color="#7c3aed" sw={2} />
+              <div className="w-7 h-7 rounded-lg bg-brand-100 dark:bg-brand-900/30 flex items-center justify-center flex-shrink-0">
+                <Svg d={FINANCE_TILES[1].icon} size={13} color="#3DA829" sw={2} />
               </div>
               <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400">Ajo Savings</p>
             </div>
@@ -853,7 +857,7 @@ export default function Finance({
                       ? "bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400"
                       : "bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400"
                   }`}>{c.status}</span>
-                  {c.due_date && <span className="text-[10px] text-slate-400">Due {c.due_date}</span>}
+                  {c.due_date && <span className="text-[10px] text-slate-400">Due {new Date(c.due_date).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })}</span>}
                 </div>
               </div>
               <AmountDisplay amount={c.outstanding} size="small" colorBy="out" align="right" className="flex-shrink-0" />
@@ -875,15 +879,15 @@ export default function Finance({
             return (
               <button key={c.id} onClick={() => openSection("ajo")}
                 className="w-full text-left bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 mb-2 border border-slate-100 dark:border-slate-700/50 shadow-card flex items-center gap-3 active:scale-[0.98] transition">
-                <div className="w-10 h-10 rounded-full bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center flex-shrink-0">
-                  <span className="text-sm font-black text-violet-600 dark:text-violet-400">
+                <div className="w-10 h-10 rounded-full bg-navy-100 dark:bg-navy-900/30 flex items-center justify-center flex-shrink-0">
+                  <span className="text-sm font-black text-navy-500 dark:text-navy-300">
                     {displayName[0]?.toUpperCase() || "?"}
                   </span>
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold text-slate-800 dark:text-white truncate">{displayName}</p>
                   {c.next_contribution_date && (
-                    <p className="text-[10px] text-slate-400 mt-0.5">Next: {c.next_contribution_date}</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Next: {new Date(c.next_contribution_date).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })}</p>
                   )}
                 </div>
                 <AmountDisplay amount={c.current_balance || 0} size="small" align="right" className="flex-shrink-0" />

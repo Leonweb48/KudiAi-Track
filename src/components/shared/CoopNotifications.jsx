@@ -29,7 +29,15 @@ const TYPE = {
   warning: { dot: "bg-orange-500", badge: "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300", borderL: "border-l-orange-500", ring: "ring-orange-200" },
   info:    { dot: "bg-blue-500",   badge: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",      borderL: "border-l-blue-500",   ring: "ring-blue-200"  },
 };
-const CAT_ICON = { loan: "💰", broadcast: "📡", program: "📋", finance: "💳", member: "👤", system: "⚙️" };
+const CAT_ICON = {
+  loan:      "M12 2v20|M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6",
+  broadcast: "M4.5 9.5a9 9 0 0115 0|M1.5 6.5a13.5 13.5 0 0121 0|M7.5 12.5a4.5 4.5 0 019 0",
+  program:   "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2|M9 5a2 2 0 002 2h2a2 2 0 002-2|M9 5a2 2 0 012-2h2a2 2 0 012 2|M9 12h6|M9 16h4",
+  finance:   "M2 8a2 2 0 012-2h16a2 2 0 012 2v9a2 2 0 01-2 2H4a2 2 0 01-2-2V8z|M2 11h20|M6 15h3",
+  member:    "M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2|M12 11a4 4 0 100-8 4 4 0 000 8z",
+  system:    "M12 15a3 3 0 100-6 3 3 0 000 6z|M12 2v2|M12 20v2|M4.22 4.22l1.42 1.42|M18.36 18.36l1.42 1.42|M2 12h2|M20 12h2|M4.22 19.78l1.42-1.42|M18.36 5.64l1.42-1.42",
+};
+const BELL_ICON = "M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9|M13.73 21a2 2 0 01-3.46 0";
 
 function relTime(iso) {
   const diff = (Date.now() - new Date(iso).getTime()) / 1000;
@@ -127,8 +135,10 @@ function CoopToast({ notif, onAction, onDismiss }) {
       className={`pointer-events-auto w-full rounded-2xl bg-white dark:bg-slate-800 shadow-2xl flex items-start gap-3 p-3.5 border-l-4 ${t.borderL}`}
       style={{ animation: "coopSlideDown 0.28s cubic-bezier(.22,.68,0,1.2) both", boxShadow: "0 8px 40px rgba(0,0,0,.18)" }}
     >
-      <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 text-base ${t.badge}`}>
-        {CAT_ICON[notif.category] || "🔔"}
+      <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${t.badge}`}>
+        <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+          {(CAT_ICON[notif.category] || BELL_ICON).split("|").map((p, i) => <path key={i} d={p} />)}
+        </svg>
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-[13px] font-extrabold text-slate-800 dark:text-white leading-snug truncate">{notif.title}</p>
@@ -154,8 +164,10 @@ function NotifRow({ notif, onAction }) {
   return (
     <button onClick={onAction}
       className={`w-full flex items-start gap-3 px-4 py-3.5 text-left border-l-[3px] ${t.borderL} transition-colors active:scale-[0.98] ${notif.is_read ? "bg-transparent" : "bg-blue-50/40 dark:bg-blue-900/10"}`}>
-      <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 text-base ${notif.is_read ? "bg-slate-100 dark:bg-slate-700" : t.badge}`}>
-        {CAT_ICON[notif.category] || "🔔"}
+      <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${notif.is_read ? "bg-slate-100 dark:bg-slate-700" : t.badge}`}>
+        <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+          {(CAT_ICON[notif.category] || BELL_ICON).split("|").map((p, i) => <path key={i} d={p} />)}
+        </svg>
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-2">
@@ -289,7 +301,7 @@ export function ChatToast({ toast, orgName, onNavigate, onDismiss }) {
         style={{ animation: "coopSlideDown 0.28s cubic-bezier(.22,.68,0,1.2) both", boxShadow: "0 8px 40px rgba(0,0,0,.18)" }}
       >
         {/* WhatsApp-style green header */}
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-[#128c7e]">
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-brand-600">
           <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 flex-shrink-0" stroke="white" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
           </svg>
@@ -359,7 +371,7 @@ export function CoopNotificationBell({ orgId, recipientId, recipientType, onNavi
       </button>
 
       {/* Toast stack — renders below header */}
-      <div className="fixed top-[60px] inset-x-0 z-[190] flex flex-col items-center gap-2 px-4 pointer-events-none">
+      <div className="fixed top-[60px] inset-x-0 z-toast flex flex-col items-center gap-2 px-4 pointer-events-none">
         {toasts.map(t => (
           <CoopToast
             key={t._tid}
@@ -372,7 +384,7 @@ export function CoopNotificationBell({ orgId, recipientId, recipientType, onNavi
 
       {/* Notification panel — bottom sheet */}
       {panelOpen && (
-        <div className="fixed inset-0 z-[110] flex items-end justify-center"
+        <div className="fixed inset-0 z-modal flex items-end justify-center"
           onClick={() => setPanelOpen(false)}>
           <div className="absolute inset-0 bg-black/55 backdrop-blur-[2px]" />
           <div

@@ -77,7 +77,7 @@ const FREQ_LABELS = {
 
 const input = "w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-green-400";
 const ModalWrap = ({ children, onClose }) => (
-  <div className="fixed inset-0 z-[75] bg-black/60 flex items-end justify-center" onClick={onClose}>
+  <div className="fixed inset-0 z-modal bg-black/60 flex items-end justify-center" onClick={onClose}>
     <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-t-3xl px-5 py-6 max-h-[92dvh] overflow-y-auto" onClick={e => e.stopPropagation()}>
       <div className="w-10 h-1 bg-slate-200 dark:bg-slate-600 rounded-full mx-auto mb-5" />
       {children}
@@ -92,7 +92,7 @@ const OV_QUICK = [
   { id:"airtime",     label:"Airtime",     g1:"#ef4444", g2:"#b91c1c", icon:"M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 8.81 19.79 19.79 0 01.25 2.18 2 2 0 012.22 0h3a2 2 0 012 1.72c.122.966.356 1.916.7 2.81a2 2 0 01-.45 2.11L6.95 7.91a16 16 0 006.29 6.29l1.27-.56a2 2 0 012.11-.45c.894.344 1.844.578 2.81.7A2 2 0 0122 16.92z" },
   { id:"data",        label:"Data",        g1:"#3b82f6", g2:"#1d4ed8", icon:"M1.05 5l4.95-3 4.95 3 4.95-3L21 5|M1.05 11l4.95-3 4.95 3 4.95-3L21 11|M1.05 17l4.95-3 4.95 3 4.95-3L21 17" },
   { id:"electricity", label:"Electricity", g1:"#f59e0b", g2:"#b45309", icon:"M13 2L3 14h9l-1 8 10-12h-9l1-8z" },
-  { id:"cable",       label:"Cable TV",    g1:"#8b5cf6", g2:"#6d28d9", icon:"M2 7a2 2 0 012-2h16a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V7z|M12 19v3|M8 22h8" },
+  { id:"cable",       label:"Cable TV",    g1:"#3DA829", g2:"#246618", icon:"M2 7a2 2 0 012-2h16a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V7z|M12 19v3|M8 22h8" },
 ];
 
 function OverviewTab({ org, wallet, programs, announcements, members = [], loans = [], wdRequests = [], onQuickService = null, onNavigate = null, adminEmail = null }) {
@@ -148,7 +148,7 @@ function OverviewTab({ org, wallet, programs, announcements, members = [], loans
       <AnnouncementBarSlot campaigns={annBars} loading={camLoading} recordEvent={recordCamEvent} />
 
       {/* ── Hero Balance Card ── */}
-      <div className="mx-4 mt-5 rounded-3xl px-6 py-6 text-white relative overflow-hidden shadow-hero bg-[linear-gradient(145deg,#3DA829_0%,#2E8020_55%,#1E5514_100%)]">
+      <div className="mx-4 mt-5 rounded-3xl px-6 py-6 text-white relative overflow-hidden shadow-hero bg-gradient-to-br from-brand-500 via-brand-600 to-brand-700">
         <div className="absolute -top-12 -right-12 w-40 h-40 rounded-full bg-white/5 pointer-events-none" />
         <div className="absolute -bottom-14 -left-10 w-48 h-48 rounded-full bg-white/5 pointer-events-none" />
         <div className="absolute top-6 right-24 w-14 h-14 rounded-full bg-white/5 pointer-events-none" />
@@ -1821,16 +1821,16 @@ function BroadcastTab({ org, members }) {
     { id: "poll",         label: "Polls"         },
   ];
   const TYPE_OPTIONS = [
-    { id: "meeting",      label: "Meeting",      icon: "📅", desc: "Schedule a meeting"    },
-    { id: "announcement", label: "Announcement", icon: "📢", desc: "Send an announcement"  },
-    { id: "event",        label: "Event",        icon: "🎉", desc: "Create an event"       },
-    { id: "poll",         label: "Poll",         icon: "📊", desc: "Run a poll"            },
+    { id: "meeting",      label: "Meeting",      icon: "M8 2v3|M16 2v3|M3.5 8h17|M5 4h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z", desc: "Schedule a meeting"    },
+    { id: "announcement", label: "Announcement", icon: "M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9|M13.73 21a2 2 0 01-3.46 0",                          desc: "Send an announcement"  },
+    { id: "event",        label: "Event",        icon: "M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z",     desc: "Create an event"       },
+    { id: "poll",         label: "Poll",         icon: "M18 20V10|M12 20V4|M6 20v-6",                                                                  desc: "Run a poll"            },
   ];
   const TYPE_COLORS = {
-    meeting:      { bg: "bg-[#0D2040]", text: "text-white", label: "Meeting"      },
+    meeting:      { bg: "bg-navy-700",   text: "text-white", label: "Meeting"      },
     announcement: { bg: "bg-amber-500",  text: "text-white", label: "Announcement" },
-    event:        { bg: "bg-[#3DA829]",  text: "text-white", label: "Event"        },
-    poll:         { bg: "bg-purple-600", text: "text-white", label: "Poll"         },
+    event:        { bg: "bg-brand-500",  text: "text-white", label: "Event"        },
+    poll:         { bg: "bg-blue-600",   text: "text-white", label: "Poll"         },
   };
 
   const openCreate = (type) => {
@@ -1886,14 +1886,14 @@ function BroadcastTab({ org, members }) {
       {/* Header */}
       <div className="px-4 pt-4 pb-2 flex justify-between items-center">
         <p className="text-xs font-bold text-slate-500 dark:text-slate-400">{visible.length} item{visible.length !== 1 ? "s" : ""}</p>
-        <button onClick={() => setShowTypePicker(true)} className="px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-[#3DA829]">+ Broadcast</button>
+        <button onClick={() => setShowTypePicker(true)} className="px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-brand-500">+ Broadcast</button>
       </div>
 
       {/* Filter tabs */}
       <div className="px-4 pb-2 flex gap-2 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
         {FILTER_TABS.map(f => (
           <button key={f.id} onClick={() => setFilter(f.id)}
-            className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-bold transition ${filter === f.id ? "bg-[#0D2040] text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"}`}
+            className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-bold transition ${filter === f.id ? "bg-navy-700 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"}`}
             >{f.label}</button>
         ))}
       </div>
@@ -1904,7 +1904,11 @@ function BroadcastTab({ org, members }) {
           <div className="flex justify-center py-10"><div className="w-6 h-6 border-[3px] border-t-transparent rounded-full animate-spin" style={{ borderColor: "#3DA829", borderTopColor: "transparent" }} /></div>
         ) : visible.length === 0 ? (
           <div className="flex flex-col items-center py-20 text-center">
-            <span className="text-5xl mb-4">📡</span>
+            <div className="w-16 h-16 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-4">
+              <svg viewBox="0 0 24 24" fill="none" className="w-7 h-7 text-slate-400 dark:text-slate-500" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4.5 9.5a9 9 0 0115 0" /><path d="M1.5 6.5a13.5 13.5 0 0121 0" /><path d="M7.5 12.5a4.5 4.5 0 019 0" /><line x1="12" y1="15" x2="12" y2="21" /><circle cx="12" cy="15" r="0.5" fill="currentColor" />
+              </svg>
+            </div>
             <p className="text-base font-extrabold text-slate-700 dark:text-slate-200 mb-2">No broadcasts yet</p>
             <p className="text-sm text-slate-400">Tap "+ Broadcast" to publish something.</p>
           </div>
@@ -1920,9 +1924,9 @@ function BroadcastTab({ org, members }) {
                   </div>
                   <p className="text-[10px] text-slate-400 mb-1.5">{fmtDT(item._date)}</p>
 
-                  {item._type === "meeting" && item.location    && <p className="text-[10px] text-slate-400">📍 {item.location}</p>}
-                  {item._type === "meeting" && item.meeting_link && <p className="text-[10px] text-green-500">🔗 Virtual link</p>}
-                  {item._type === "event"   && item.location    && <p className="text-[10px] text-slate-400">📍 {item.location}</p>}
+                  {item._type === "meeting" && item.location    && <p className="text-[10px] text-slate-400 flex items-center gap-1"><svg viewBox="0 0 24 24" fill="none" className="w-2.5 h-2.5 flex-shrink-0" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a7 7 0 00-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 00-7-7z" /><circle cx="12" cy="9" r="2" /></svg>{item.location}</p>}
+                  {item._type === "meeting" && item.meeting_link && <p className="text-[10px] text-green-500 flex items-center gap-1"><svg viewBox="0 0 24 24" fill="none" className="w-2.5 h-2.5 flex-shrink-0" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" /></svg>Virtual link</p>}
+                  {item._type === "event"   && item.location    && <p className="text-[10px] text-slate-400 flex items-center gap-1"><svg viewBox="0 0 24 24" fill="none" className="w-2.5 h-2.5 flex-shrink-0" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a7 7 0 00-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 00-7-7z" /><circle cx="12" cy="9" r="2" /></svg>{item.location}</p>}
                   {item._type === "event"   && item.end_date    && <p className="text-[10px] text-slate-400">Until {fmtDT(item.end_date)}</p>}
                   {item._type === "announcement" && item.body && (
                     <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">{item.body}</p>
@@ -1951,12 +1955,12 @@ function BroadcastTab({ org, members }) {
                   {item._type === "meeting" && (
                     <div className="mt-2.5 flex gap-2">
                       <button onClick={() => openAttendance(item)}
-                        className="flex-1 py-1.5 rounded-xl text-[10px] font-bold text-white bg-[#0D2040]">
+                        className="flex-1 py-1.5 rounded-xl text-[10px] font-bold text-white bg-navy-700">
                         Mark Attendance
                       </button>
                       {item.meeting_link && (
                         <a href={item.meeting_link} target="_blank" rel="noreferrer"
-                          className="px-3 py-1.5 rounded-xl text-[10px] font-bold text-white bg-[#3DA829]">Join</a>
+                          className="px-3 py-1.5 rounded-xl text-[10px] font-bold text-white bg-brand-500">Join</a>
                       )}
                     </div>
                   )}
@@ -1983,7 +1987,11 @@ function BroadcastTab({ org, members }) {
             {TYPE_OPTIONS.map(t => (
               <button key={t.id} onClick={() => openCreate(t.id)}
                 className="flex flex-col items-center gap-2 p-4 rounded-2xl border-2 border-slate-100 dark:border-slate-700 hover:border-green-400 transition">
-                <span className="text-3xl">{t.icon}</span>
+                <div className="w-10 h-10 rounded-xl bg-brand-100 dark:bg-brand-900/20 flex items-center justify-center">
+                  <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-brand-600 dark:text-brand-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                    {t.icon.split("|").map((p, i) => <path key={i} d={p} />)}
+                  </svg>
+                </div>
                 <p className="text-sm font-extrabold text-slate-800 dark:text-white">{t.label}</p>
                 <p className="text-[10px] text-slate-400 text-center">{t.desc}</p>
               </button>
@@ -2125,7 +2133,7 @@ function BroadcastTab({ org, members }) {
           </div>
           <div className="flex gap-2 mt-4">
             <button onClick={() => { setCreateType(null); setError(""); }} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Cancel</button>
-            <button onClick={handleCreate} disabled={saving} className="flex-1 py-3 text-white rounded-xl font-bold text-sm disabled:opacity-50 bg-[#3DA829]">
+            <button onClick={handleCreate} disabled={saving} className="flex-1 py-3 text-white rounded-xl font-bold text-sm disabled:opacity-50 bg-brand-500">
               {saving ? "Publishing…" : "Publish"}
             </button>
           </div>
@@ -2134,7 +2142,7 @@ function BroadcastTab({ org, members }) {
 
       {/* Attendance sheet */}
       {attendanceTarget && (
-        <div className="fixed inset-0 z-[75] bg-slate-900/80 flex items-end justify-center">
+        <div className="fixed inset-0 z-modal bg-slate-900/80 flex items-end justify-center">
           <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-t-3xl px-5 py-6 max-h-[90dvh] flex flex-col">
             <div className="w-10 h-1 bg-slate-200 rounded-full mx-auto mb-4" />
             <p className="text-base font-extrabold text-slate-800 dark:text-white mb-0.5">{attendanceTarget.title}</p>
@@ -2156,7 +2164,7 @@ function BroadcastTab({ org, members }) {
               <p className="text-xs text-slate-500">{present.size} present / {activeMembers.length - present.size} absent</p>
               <div className="flex gap-2">
                 <button onClick={() => setAttendanceTarget(null)} className="px-4 py-2.5 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Cancel</button>
-                <button onClick={submitAttendance} disabled={savingAttendance} className="px-4 py-2.5 text-white rounded-xl font-bold text-sm disabled:opacity-50 bg-[#0D2040]">
+                <button onClick={submitAttendance} disabled={savingAttendance} className="px-4 py-2.5 text-white rounded-xl font-bold text-sm disabled:opacity-50 bg-navy-700">
                   {savingAttendance ? "Saving…" : "Submit"}
                 </button>
               </div>
@@ -2203,11 +2211,11 @@ function CancelOrgArchiveButton({ org, onCancelled }) {
 //  REQUEST ORG ARCHIVE (Danger Zone)
 // ═══════════════════════════════════════════════════
 function RequestOrgArchiveSection({ org, onRequested }) {
-  const [phase,    setPhase]    = useState("idle"); // idle | checking | blocked | ready | submitting
-  const [blockers, setBlockers] = useState([]);
-  const [reason,   setReason]   = useState("");
-  const [pin,      setPin]      = useState("");
-  const [error,    setError]    = useState("");
+  const [phase,        setPhase]        = useState("idle"); // idle | checking | blocked | ready | submitting
+  const [blockers,     setBlockers]     = useState([]);
+  const [reason,       setReason]       = useState("");
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [error,        setError]        = useState("");
 
   const checkBlockers = async () => {
     setPhase("checking"); setError("");
@@ -2219,12 +2227,10 @@ function RequestOrgArchiveSection({ org, onRequested }) {
     } catch (e) { setError(e.message || "Check failed"); setPhase("idle"); }
   };
 
-  const doRequest = async () => {
-    if (!reason.trim()) { setError("Please provide a reason."); return; }
-    if (pin.length !== 4) { setError("Enter your 4-digit transaction PIN."); return; }
+  const doRequest = async (verifiedPin) => {
     setPhase("submitting"); setError("");
     try {
-      await coopFn("request_org_archive", { org_id: org.id, owner_id: org.owner_id, pin, reason: reason.trim() });
+      await coopFn("request_org_archive", { org_id: org.id, owner_id: org.owner_id, pin: verifiedPin, reason: reason.trim() });
       onRequested();
     } catch (e) { setError(e.message || "Request failed"); setPhase("ready"); }
   };
@@ -2280,19 +2286,23 @@ function RequestOrgArchiveSection({ org, onRequested }) {
       <textarea rows={3} placeholder="Reason for archiving this organisation (required)"
         value={reason} onChange={e => setReason(e.target.value)}
         className={input + " resize-none text-xs"} />
-      <input type="password" inputMode="numeric" maxLength={4}
-        placeholder="Transaction PIN"
-        value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
-        className={input + " text-center tracking-widest text-base"} />
+      {showPinModal && (
+        <TransactionPinModal
+          title="Confirm Archive Request"
+          description={`Archive "${org.name}"`}
+          onApprove={async (verifiedPin) => { setShowPinModal(false); await doRequest(verifiedPin); }}
+          onCancel={() => setShowPinModal(false)}
+        />
+      )}
       {error && <p className="text-xs text-red-500 dark:text-red-400">{error}</p>}
       <div className="flex gap-2">
-        <button onClick={() => { setPhase("idle"); setReason(""); setPin(""); setError(""); }}
+        <button onClick={() => { setPhase("idle"); setReason(""); setError(""); }}
           disabled={phase === "submitting"}
           className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-500 disabled:opacity-40">
           Cancel
         </button>
-        <button onClick={doRequest}
-          disabled={phase === "submitting" || !reason.trim() || pin.length !== 4}
+        <button onClick={() => { if (!reason.trim()) { setError("Please provide a reason."); return; } setShowPinModal(true); }}
+          disabled={phase === "submitting" || !reason.trim()}
           className="flex-1 py-2.5 rounded-xl bg-red-500 text-white text-xs font-bold disabled:opacity-50">
           {phase === "submitting" ? "Submitting…" : "Submit Request"}
         </button>
@@ -3453,7 +3463,7 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
                 {/* ── Twitter-style profile header ── */}
                 {/* Banner */}
                 <div className="relative flex-shrink-0" style={{ height: 88 }}>
-                  <div className="absolute inset-0 bg-[linear-gradient(135deg,#3DA829_0%,#065f46_55%,#0D2040_100%)]" />
+                  <div className="absolute inset-0 bg-gradient-to-br from-brand-500 via-brand-700 to-navy-700" />
                   {/* Avatar overlapping banner */}
                   <div className="absolute left-4" style={{ bottom: -22 }}>
                     {org.logo_url
@@ -3556,7 +3566,7 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
 
   // ─── ADMIN / NON-ORG PORTAL LAYOUT (Twitter-style text tabs) ───
   return (
-    <div className="fixed inset-0 z-[65] bg-white dark:bg-[#0f1117] flex justify-center" style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}>
+    <div className="fixed inset-0 z-sub-sheet bg-white dark:bg-[#0f1117] flex justify-center" style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}>
       <div className="w-full max-w-md flex flex-col h-full">
 
         {/* ── Twitter-style profile header ── */}

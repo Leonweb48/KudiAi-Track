@@ -411,7 +411,7 @@ export default function CoopList({ userId, onOpen, onClose, embedded }) {
 
       {/* ── Org reactivation request modal ── */}
       {reactivatingOrg && (
-        <div className="fixed inset-0 z-[75] bg-black/60 flex items-end justify-center" onClick={() => setReactivatingOrg(null)}>
+        <div className="fixed inset-0 z-sub-sheet bg-black/60 flex items-end justify-center" onClick={() => setReactivatingOrg(null)}>
           <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-t-3xl px-5 py-6" onClick={e => e.stopPropagation()}>
             <div className="w-10 h-1 bg-slate-200 dark:bg-slate-600 rounded-full mx-auto mb-5" />
             <p className="text-base font-extrabold text-slate-800 dark:text-white mb-1">Request Reactivation</p>

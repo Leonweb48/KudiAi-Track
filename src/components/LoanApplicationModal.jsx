@@ -63,7 +63,7 @@ export default function LoanApplicationModal({ session, profile, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-modal flex items-end justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
       <div
         className="bg-white dark:bg-slate-900 w-full max-w-md rounded-t-3xl max-h-[92dvh] flex flex-col"
         onClick={e => e.stopPropagation()}
