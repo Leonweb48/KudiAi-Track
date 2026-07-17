@@ -322,39 +322,43 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
   // ── Sync engine ────────────────────────────────────────────────
   const runSync = useCallback(async () => {
     if (syncRunning.current || !userId || !supabase) return;
-
-    // Refresh session so the JWT is valid (prevents RLS failures after being offline)
-    const { data: sessionData } = await supabase.auth.getSession().catch(() => ({ data: null }));
-    if (!sessionData?.session) {
-      setDbError("Session expired — please log out and back in, then sync.");
-      return;
-    }
-
-    const ops = await getPendingOps(userId).catch(() => []);
-    if (!ops.length) return;
-
+    // Claim the mutex immediately — before any await — so concurrent callers
+    // (reconnect timer + manual SyncBar tap) cannot both enter the flush loop.
     syncRunning.current = true;
-    setIsSyncing(true);
-
-    const result = await syncPending(supabase, userId, ({ synced, total, data, op }) => {
-      setPendingSync(Math.max(0, total - synced));
-      if (op?.table === "transactions" && data) {
-        setTransactions(prev => prev.map(t => t.id === `tmp-${op.local_id}` ? data : t));
-      }
-    }).catch(e => ({ synced: 0, failed: 1, total: 0, errors: [e?.message || String(e)] }));
 
     try {
-      const remaining = await getPendingCount(userId);
-      setPendingSync(remaining);
-      if (result?.failed > 0 && result?.errors?.length) {
-        setDbError(`Sync failed (${result.failed} record${result.failed !== 1 ? "s" : ""}): ${result.errors[0]}`);
-      } else if (remaining === 0 && result?.synced > 0) {
-        setDbError(null);
+      // Refresh session so the JWT is valid (prevents RLS failures after being offline)
+      const { data: sessionData } = await supabase.auth.getSession().catch(() => ({ data: null }));
+      if (!sessionData?.session) {
+        setDbError("Session expired — please log out and back in, then sync.");
+        return;
       }
-    } catch { /**/ }
 
-    syncRunning.current = false;
-    setIsSyncing(false);
+      const ops = await getPendingOps(userId).catch(() => []);
+      if (!ops.length) return;
+
+      setIsSyncing(true);
+
+      const result = await syncPending(supabase, userId, ({ synced, total, data, op }) => {
+        setPendingSync(Math.max(0, total - synced));
+        if (op?.table === "transactions" && data) {
+          setTransactions(prev => prev.map(t => t.id === `tmp-${op.local_id}` ? data : t));
+        }
+      }).catch(e => ({ synced: 0, failed: 1, total: 0, errors: [e?.message || String(e)] }));
+
+      try {
+        const remaining = await getPendingCount(userId);
+        setPendingSync(remaining);
+        if (result?.failed > 0 && result?.errors?.length) {
+          setDbError(`Sync failed (${result.failed} record${result.failed !== 1 ? "s" : ""}): ${result.errors[0]}`);
+        } else if (remaining === 0 && result?.synced > 0) {
+          setDbError(null);
+        }
+      } catch { /**/ }
+    } finally {
+      syncRunning.current = false;
+      setIsSyncing(false);
+    }
   }, [userId]);
 
   // Auto-sync when coming back online (skip initial mount)
@@ -384,6 +388,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
       note:             t.note              || "",
       transaction_date: t.transaction_date  || today(),
       bill_status:      t.bill_status       !== undefined ? t.bill_status : null,
+      client_txn_id:    localId,
     };
 
     setTransactions(p => [{ ...payload, id: tempId, _pending: true }, ...p]);

@@ -21,14 +21,18 @@ export async function syncPending(supabase, userId, onProgress) {
         continue;
       }
 
-      const { data, error } = await supabase
-        .from(op.table)
-        .insert(op.data)
-        .select()
-        .single();
+      // Use upsert when the payload carries a client_txn_id so retries are
+      // idempotent by construction — the unique index on the server prevents
+      // a second row; the upsert returns the existing row so we get its id.
+      const hasKey = !!op.data?.client_txn_id;
+      const query = hasKey
+        ? supabase.from(op.table).upsert(op.data, { onConflict: "client_txn_id" })
+        : supabase.from(op.table).insert(op.data);
+
+      const { data, error } = await query.select().single();
 
       if (error) {
-        // Unique constraint → already inserted, mark clean
+        // Unique constraint (legacy rows without client_txn_id) → already inserted
         if (error.code === "23505") {
           await markOpSynced(op.local_id, "dedup");
           synced++;
