@@ -58,6 +58,15 @@ export default function AIChatWidget({
   const posRef  = useRef(loadPos() ?? { side: "right", bottom: 72 });
   const [fabPos, setFabPos] = useState(posRef.current);
 
+  // Column-relative edge offset — keeps FAB inside the max-w-md column on desktop
+  const COL_W = 448;
+  const [colOffset, setColOffset] = useState(() => Math.max(0, (window.innerWidth - COL_W) / 2));
+  useEffect(() => {
+    const update = () => setColOffset(Math.max(0, (window.innerWidth - COL_W) / 2));
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+
   // Drag tracking — all in a ref so handlers are stable
   const dragRef = useRef({ active: false, startX: 0, startY: 0, startBottom: 0, moved: false });
 
@@ -227,7 +236,7 @@ export default function AIChatWidget({
     position: "fixed",
     zIndex: 55,
     bottom: fabPos.bottom,
-    ...(fabPos.side === "right" ? { right: 16 } : { left: 16 }),
+    ...(fabPos.side === "right" ? { right: colOffset + 16 } : { left: colOffset + 16 }),
   };
 
   // ── Restore tab (shown when hidden) ──────────────────────────────────────
@@ -236,7 +245,7 @@ export default function AIChatWidget({
     return (
       <button
         onClick={showWidget}
-        style={{ position: "fixed", zIndex: 55, bottom: fabPos.bottom, ...(fabPos.side === "right" ? { right: 0 } : { left: 0 }) }}
+        style={{ position: "fixed", zIndex: 55, bottom: fabPos.bottom, ...(fabPos.side === "right" ? { right: colOffset } : { left: colOffset }) }}
         className={`w-6 h-12 bg-gradient-to-b from-brand-500 to-brand-700 text-white flex items-center justify-center shadow-lg ${fabPos.side === "right" ? "rounded-l-xl" : "rounded-r-xl"}`}
         aria-label="Show AI Assistant"
       >
