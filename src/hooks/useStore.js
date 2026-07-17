@@ -263,11 +263,15 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "transactions", filter: `user_id=eq.${userId}` },
         (payload) => {
           if (!payload.new) return;
+          const t = payload.new;
           setTransactions(prev => {
-            if (prev.some(t => t.id === payload.new.id)) return prev;
-            // Only notify for transactions recorded by another device/staff;
-            // own local mutations already call onNotify at the mutation site.
-            const t = payload.new;
+            if (prev.some(r => r.id === t.id || (t.client_txn_id && r.client_txn_id === t.client_txn_id))) return prev;
+            return [t, ...prev];
+          });
+          // Notify only owner sessions about staff-originated transactions.
+          // Own-session recordings (staffId null, t.staff_id null) are suppressed.
+          // Staff sessions (staffId set) never self-notify.
+          if (!staffId && t.staff_id) {
             const label = t.item_name || t.category || "Transaction";
             const fmt = (n) => `₦${(+n || 0).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
             if (t.payment_type === "bill_payment") {
@@ -277,9 +281,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
             } else {
               onNotifyRef.current?.("sales", "Expense Recorded", `${fmt(t.amount)} · ${label}`);
             }
-            return [t, ...prev];
-          });
-          // kt-new-transaction custom event removed — onNotifyRef above is the single dispatch path.
+          }
         })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "transactions", filter: `user_id=eq.${userId}` },
         (payload) => {
@@ -424,31 +426,27 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
       });
     } else {
       setTransactions(p => p.map(tx => tx.id === tempId ? data : tx));
-      const label = t.item_name || t.category || "Transaction";
-      if (t.payment_type === "bill_payment") {
-        onNotify?.("bills", "Bill Payment", `${fmt(parseFloat(t.amount))} · ${label}`);
-      } else if (t.type === "in") {
-        onNotify?.("sales", "Sale Recorded", `${fmt(parseFloat(t.amount))} · ${label}`);
-      } else {
-        onNotify?.("sales", "Expense Recorded", `${fmt(parseFloat(t.amount))} · ${label}`);
+      // Notification delivered via realtime channel (staff-originated only).
+      // Email sent only when a staff member records — owner self-recordings are silent.
+      if (staffId) {
+        fireEmailTrigger(t.type === "in" ? "transaction_credit" : "transaction_debit", {
+          owner_id:       userId,
+          user_email:     authEmailRef.current || profile.email || "",
+          business_name:  profile.business_name || "",
+          business_phone: profile.phone || "",
+          amount:         String(parseFloat(t.amount) || 0),
+          description:    t.item_name || t.category || "Transaction",
+          date:           t.transaction_date || today(),
+          payment_method: t.payment_type || "cash",
+          note:           t.note || "",
+          quantity:       t.quantity || "",
+          category:       t.category || "",
+          customer_name:  t.customer_name || "",
+          staff_id:       staffId || "",
+          staff_name:     staffName || "",
+          staff_email:    profile._staff_email || "",
+        });
       }
-      fireEmailTrigger(t.type === "in" ? "transaction_credit" : "transaction_debit", {
-        owner_id:       userId,
-        user_email:     authEmailRef.current || profile.email || "",
-        business_name:  profile.business_name || "",
-        business_phone: profile.phone || "",
-        amount:         String(parseFloat(t.amount) || 0),
-        description:    t.item_name || t.category || "Transaction",
-        date:           t.transaction_date || today(),
-        payment_method: t.payment_type || "cash",
-        note:           t.note || "",
-        quantity:       t.quantity || "",
-        category:       t.category || "",
-        customer_name:  t.customer_name || "",
-        staff_id:       staffId || "",
-        staff_name:     staffName || "",
-        staff_email:    profile._staff_email || "",
-      });
       if (staffId) {
         const amt   = `${t.type === "in" ? "+" : "-"}₦${parseFloat(t.amount).toLocaleString()}`;
         const extra = [t.customer_name, t.payment_type].filter(Boolean).join(" · ");
