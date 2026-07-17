@@ -125,6 +125,119 @@ export function staffReportCSVFilename(from, to) {
   return `sales_by_staff${f}${t}.csv`;
 }
 
+// ── Payment-type formatter (mirrors Reports.jsx fmtPayType) ──────────────────
+function fmtPayType(pt) {
+  if (!pt) return "";
+  return pt.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+}
+
+// ── Sales report ──────────────────────────────────────────────────────────────
+export function buildSalesReportCSV(data, from, to) {
+  const { tx = [], cashIn, cashOut, profit } = data;
+  const summaryHeader = csvRow(["Summary", "Value"]);
+  const summaryRows = [
+    csvRow(["Total Cash In (₦)", cashIn != null ? Number(cashIn) : ""]),
+    csvRow(["Total Cash Out (₦)", cashOut != null ? Number(cashOut) : ""]),
+    csvRow(["Net Profit (₦)", profit != null ? Number(profit) : ""]),
+    csvRow(["Transaction Count", tx.length]),
+    csvRow([]),
+  ];
+  const txHeader = csvRow(["date", "item", "category", "type", "amount_ngn", "payment_method", "note"]);
+  const txRows = tx.map(t => csvRow([
+    toISO(t.transaction_date),
+    t.item_name || "",
+    t.category || "",
+    t.type === "in" ? "Income" : "Expense",
+    t.amount != null ? Number(t.amount) : "",
+    fmtPayType(t.payment_type),
+    t.note || "",
+  ]));
+  return BOM + [summaryHeader, ...summaryRows, txHeader, ...txRows].join("\r\n");
+}
+export function salesReportCSVFilename(from, to) {
+  const f = from ? `_${toISO(from)}` : "";
+  const t = to   ? `_${toISO(to)}`   : "";
+  return `sales_report${f}${t}.csv`;
+}
+
+// ── Credit report ─────────────────────────────────────────────────────────────
+export function buildCreditReportCSV(data) {
+  const { credits = [] } = data;
+  const header = csvRow(["customer", "phone", "total_amount_ngn", "amount_paid_ngn", "outstanding_ngn", "due_date", "status"]);
+  const rows = credits.map(c => csvRow([
+    c.customer_name || "",
+    c.phone || "",
+    c.total_amount  != null ? Number(c.total_amount)  : "",
+    c.amount_paid   != null ? Number(c.amount_paid)   : "",
+    c.outstanding   != null ? Number(c.outstanding)   : "",
+    toISO(c.due_date),
+    (c.status || "active").replace(/_/g, " ").toUpperCase(),
+  ]));
+  return BOM + [header, ...rows].join("\r\n");
+}
+export function creditReportCSVFilename() { return "credit_report.csv"; }
+
+// ── Bills report ──────────────────────────────────────────────────────────────
+export function buildBillsReportCSV(data, from, to) {
+  const { bills = [] } = data;
+  const header = csvRow(["date", "item", "category", "amount_ngn", "payment_method", "note"]);
+  const rows = bills.map(t => csvRow([
+    toISO(t.transaction_date),
+    t.item_name || "",
+    t.category || "Bills",
+    t.amount != null ? Number(t.amount) : "",
+    fmtPayType(t.payment_type),
+    t.note || "",
+  ]));
+  return BOM + [header, ...rows].join("\r\n");
+}
+export function billsReportCSVFilename(from, to) {
+  const f = from ? `_${toISO(from)}` : "";
+  const t = to   ? `_${toISO(to)}`   : "";
+  return `bills_report${f}${t}.csv`;
+}
+
+// ── Stock report ──────────────────────────────────────────────────────────────
+export function buildStockReportCSV(data, from, to) {
+  const { rows = [] } = data;
+  const header = csvRow(["item", "category", "qty_sold", "revenue_ngn", "qty_bought", "cost_ngn"]);
+  const dataRows = rows.map(r => csvRow([
+    r.item || "",
+    r.category || "",
+    r.qtySold   != null ? r.qtySold   : "",
+    r.revenue   != null ? Number(r.revenue)   : "",
+    r.qtyBought != null ? r.qtyBought : "",
+    r.cost      != null ? Number(r.cost)      : "",
+  ]));
+  return BOM + [header, ...dataRows].join("\r\n");
+}
+export function stockReportCSVFilename(from, to) {
+  const f = from ? `_${toISO(from)}` : "";
+  const t = to   ? `_${toISO(to)}`   : "";
+  return `stock_report${f}${t}.csv`;
+}
+
+// ── Aso report ────────────────────────────────────────────────────────────────
+export function buildAsoReportCSV(data, from, to) {
+  const { active = [] } = data;
+  const header = csvRow(["client", "period_contributions_ngn", "period_manual_dep_ngn", "period_withdrawals_ngn", "period_fees_ngn", "period_net_ngn", "balance_ngn"]);
+  const rows = active.map(c => csvRow([
+    c.full_name || "",
+    c.p_contribs    != null ? Number(c.p_contribs)    : "",
+    c.p_manual      != null ? Number(c.p_manual)      : "",
+    c.p_withdrawals != null ? Number(c.p_withdrawals) : "",
+    c.p_fees        != null ? Number(c.p_fees)        : "",
+    c.p_net         != null ? Number(c.p_net)         : "",
+    c.current_balance != null ? Number(c.current_balance) : "",
+  ]));
+  return BOM + [header, ...rows].join("\r\n");
+}
+export function asoReportCSVFilename(from, to) {
+  const f = from ? `_${toISO(from)}` : "";
+  const t = to   ? `_${toISO(to)}`   : "";
+  return `aso_report${f}${t}.csv`;
+}
+
 // ── Share / download ──────────────────────────────────────────────────────────
 
 export async function shareCSV(csvString, filename) {

@@ -2,7 +2,15 @@ import { useState, useMemo, useEffect } from "react";
 import { fmt }        from "../utils/helpers";
 import { useT }       from "../contexts/LanguageContext";
 import { createReportPdf } from "../utils/generateReportPdf";
-import { buildStaffReportCSV, staffReportCSVFilename, shareCSV } from "../utils/exportCSV";
+import {
+  buildStaffReportCSV, staffReportCSVFilename,
+  buildSalesReportCSV, salesReportCSVFilename,
+  buildCreditReportCSV, creditReportCSVFilename,
+  buildBillsReportCSV, billsReportCSVFilename,
+  buildStockReportCSV, stockReportCSVFilename,
+  buildAsoReportCSV, asoReportCSVFilename,
+  shareCSV,
+} from "../utils/exportCSV";
 import { useCampaigns }    from "../hooks/useCampaigns";
 import AnnouncementBarSlot from "../components/slots/AnnouncementBarSlot";
 import { supabase }        from "../utils/supabase";
@@ -31,6 +39,11 @@ function fmtD(s) {
   if (!s) return "—";
   return new Date(s+"T00:00:00").toLocaleDateString("en-NG",{day:"numeric",month:"short",year:"numeric"});
 }
+function fmtPayType(pt) {
+  if (!pt) return "—";
+  return pt.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+}
+
 function daysLate(due) {
   if (!due) return 0;
   const t = new Date(); t.setHours(0,0,0,0);
@@ -280,7 +293,7 @@ function buildAsoLedger(asoClients, contributions, from, to) {
   const active = enriched.filter(c => byClient[c.id]);
   const bars   = active.slice(0,20).map(c=>({
     label: (c.full_name||"?").split(" ")[0],
-    v: c.p_contribs+c.p_manual, color:"#7c3aed",
+    v: c.p_contribs+c.p_manual, color:"#3DA829",
   })).filter(b=>b.v>0);
 
   const totContribs    = active.reduce((s,c)=>s+c.p_contribs,0);
@@ -362,7 +375,7 @@ function SalesSection({ data }) {
     cat:  t.category||"—",
     type: t.type==="in"?"Income":"Expense",
     amount: fmt(t.amount),
-    pay: t.payment_type||"—",
+    pay: fmtPayType(t.payment_type),
     _type: t.type,
   }));
   return (
@@ -482,7 +495,7 @@ function AsoSection({ data }) {
   return (
     <div>
       <StatGrid stats={[
-        { label:"Savings Held",       value:fmt(totalBal),               color:"#7c3aed", bg:"#faf5ff", border:"#e9d5ff" },
+        { label:"Savings Held",       value:fmt(totalBal),               color:"#2E8020", bg:"#f0fdf4", border:"#bbf7d0" },
         { label:"Period Collections", value:fmt(totContribs+totManual),  color:"#16a34a", bg:"#f0fdf4", border:"#bbf7d0" },
         { label:"Period Withdrawals", value:fmt(totWithdrawals),         color:"#ef4444", bg:"#fef2f2", border:"#fecaca" },
         { label:"Fee Revenue",        value:fmt(totFeeRevenue),          color:"#d97706", bg:"#fffbeb", border:"#fde68a" },
@@ -502,7 +515,7 @@ function AsoSection({ data }) {
           {key:"manual",  label:"Manual Dep.",  right:true, w:"11%"},
           {key:"withdr",  label:"Withdrawals",  right:true, color:()=>"#ef4444", w:"13%"},
           {key:"fees",    label:"Fees",         right:true, color:r=>r._fees>0?"#d97706":"#94a3b8", w:"11%"},
-          {key:"net",     label:"Net",          right:true, bold:true, color:r=>r._net>=0?"#7c3aed":"#ef4444", w:"13%"},
+          {key:"net",     label:"Net",          right:true, bold:true, color:r=>r._net>=0?"#2E8020":"#ef4444", w:"13%"},
           {key:"balance", label:"Balance",      right:true, w:"18%"},
         ]}
         rows={rows}
@@ -518,8 +531,8 @@ function AsoSection({ data }) {
             <p style={S({fontSize:9,color:"#92400e",fontWeight:700,marginBottom:3,textTransform:"uppercase",letterSpacing:0.5})}>Withdrawal Fees</p>
             <p style={S({fontSize:15,fontWeight:900,color:"#d97706",margin:0})}>{fmt(totWdFees)}</p>
           </div>
-          <div style={S({background:"#7c3aed",borderRadius:10,padding:"8px 14px",flex:1,minWidth:100})}>
-            <p style={S({fontSize:9,color:"#e9d5ff",fontWeight:700,marginBottom:3,textTransform:"uppercase",letterSpacing:0.5})}>Total Fee Revenue</p>
+          <div style={S({background:"#2E8020",borderRadius:10,padding:"8px 14px",flex:1,minWidth:100})}>
+            <p style={S({fontSize:9,color:"#bbf7d0",fontWeight:700,marginBottom:3,textTransform:"uppercase",letterSpacing:0.5})}>Total Fee Revenue</p>
             <p style={S({fontSize:15,fontWeight:900,color:"#fff",margin:0})}>{fmt(totFeeRevenue)}</p>
           </div>
         </div>
@@ -537,7 +550,7 @@ function BillsSection({ data }) {
     item: t.item_name||"—",
     cat:  t.category||"—",
     amount: fmt(t.amount),
-    pay:  t.payment_type||"—",
+    pay:  fmtPayType(t.payment_type),
     note: t.note||"—",
   }));
   return (
@@ -546,7 +559,7 @@ function BillsSection({ data }) {
         { label:"Total Bills Paid", value:fmt(data.total),    color:"#dc2626", bg:"#fef2f2", border:"#fecaca" },
         { label:"Transactions",    value:data.bills.length,  color:"#64748b", bg:"#f8fafc", border:"#e2e8f0" },
         { label:"Avg per Bill",    value:fmt(data.bills.length?data.total/data.bills.length:0), color:"#0284c7", bg:"#eff6ff", border:"#bfdbfe" },
-        { label:"Categories",      value:Object.keys(data.byCat).length, color:"#7c3aed", bg:"#faf5ff", border:"#e9d5ff" },
+        { label:"Categories",      value:Object.keys(data.byCat).length, color:"#0284c7", bg:"#eff6ff", border:"#bfdbfe" },
       ]}/>
       <SectionTitle>By Category</SectionTitle>
       <Table
@@ -659,7 +672,7 @@ function ReportTemplate({ type, reportData, profile, from, to }) {
     <div style={S({width:794,background:"#ffffff",color:"#1e293b",overflow:"hidden"})}>
 
       {/* LETTERHEAD */}
-      <div style={{background:"linear-gradient(135deg,#064e3b 0%,#065f46 60%,#047857 100%)",padding:"28px 36px 22px",display:"flex",alignItems:"center",gap:16}}>
+      <div style={{background:"linear-gradient(135deg,#1a4d0f 0%,#2E8020 55%,#3DA829 100%)",padding:"28px 36px 22px",display:"flex",alignItems:"center",gap:16}}>
         <div style={{width:52,height:52,borderRadius:12,background:"white",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,overflow:"hidden",padding:4}}>
           <img src="/logo.png" alt="KudiAI" style={{width:"100%",height:"100%",objectFit:"contain"}} onError={e=>{e.target.style.display="none";}}/>
         </div>
@@ -679,8 +692,8 @@ function ReportTemplate({ type, reportData, profile, from, to }) {
       </div>
 
       {/* REPORT TITLE BAND */}
-      <div style={{background:"#f0fdf4",borderBottom:"3px solid #16a34a",padding:"14px 36px"}}>
-        <p style={S({color:"#16a34a",fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:2,margin:"0 0 3px"})}>{TITLES[type]}</p>
+      <div style={{background:"#f0fdf4",borderBottom:"3px solid #3DA829",padding:"14px 36px"}}>
+        <p style={S({color:"#2E8020",fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:2,margin:"0 0 3px"})}>{TITLES[type]}</p>
         <p style={S({color:"#64748b",fontSize:12,margin:0})}>Period: <strong style={{color:"#1e293b"}}>{period}</strong></p>
       </div>
 
@@ -708,7 +721,7 @@ function makeReportTypes(t) {
   return [
     { id:"sales",  label:t("report.sales"),  sub:"Revenue, expenses, profit & transactions",  icon:"📈", color:"bg-green-50 dark:bg-green-900/20",  border:"border-green-200 dark:border-green-800",  active:"bg-green-600" },
     { id:"credit", label:t("report.credit"), sub:"Debtors, outstanding & overdue accounts",   icon:"👥", color:"bg-amber-50 dark:bg-amber-900/20",  border:"border-amber-200 dark:border-amber-800",  active:"bg-amber-500" },
-    { id:"aso",    label:t("report.ajo"),    sub:"Savings clients, contributions & balance",  icon:"🏦", color:"bg-violet-50 dark:bg-violet-900/20",border:"border-violet-200 dark:border-violet-800",active:"bg-violet-600"},
+    { id:"aso",    label:t("report.ajo"),    sub:"Savings clients, contributions & balance",  icon:"🏦", color:"bg-brand-50 dark:bg-brand-900/20",  border:"border-brand-200 dark:border-brand-800",  active:"bg-brand-600" },
     { id:"bills",  label:t("report.bills"),  sub:"Bill payments by category & provider",      icon:"🧾", color:"bg-red-50 dark:bg-red-900/20",      border:"border-red-200 dark:border-red-800",      active:"bg-red-500"   },
     { id:"staff",  label:t("report.staff"),  sub:"Per-staff transactions & contributions",    icon:"👤", color:"bg-blue-50 dark:bg-blue-900/20",    border:"border-blue-200 dark:border-blue-800",    active:"bg-blue-600"  },
     { id:"stock",  label:t("report.stock"),  sub:"Items sold, revenue & inventory overview",  icon:"📦", color:"bg-orange-50 dark:bg-orange-900/20",border:"border-orange-200 dark:border-orange-800",active:"bg-orange-500"},
@@ -769,7 +782,7 @@ async function buildNativeReportPDF(type, data, profile, from, to) {
       tx.slice(0,80).map(t=>({
         date:fmtD(t.transaction_date), item:t.item_name||"—",
         type:t.type==="in"?"Income":"Expense", amount:fmtN(t.amount),
-        cat:t.category||"—", pay:t.payment_type||"—", _t:t.type
+        cat:t.category||"—", pay:fmtPayType(t.payment_type), _t:t.type
       }))
     );
   } else if (type === "credit") {
@@ -797,7 +810,7 @@ async function buildNativeReportPDF(type, data, profile, from, to) {
   } else if (type === "aso") {
     const { active=[], totalBal, totContribs=0, totManual=0, totWithdrawals=0, totFeeRevenue=0, totRegFees=0, totWdFees=0, bars=[] } = data;
     addStats([
-      { label:"Savings Held",       value:fmtN(totalBal),              color:"#7c3aed", bg:"#f5f3ff" },
+      { label:"Savings Held",       value:fmtN(totalBal),              color:"#2E8020", bg:"#f0fdf4" },
       { label:"Period Collections", value:fmtN(totContribs+totManual), color:"#16a34a", bg:"#f0fdf4" },
       { label:"Period Withdrawals", value:fmtN(totWithdrawals),        color:"#ef4444", bg:"#fef2f2" },
       { label:"Fee Revenue",        value:fmtN(totFeeRevenue),         color:"#d97706", bg:"#fffbeb" },
@@ -813,7 +826,7 @@ async function buildNativeReportPDF(type, data, profile, from, to) {
        { key:"manual",  label:"Manual Dep.",  right:true, w:0.12 },
        { key:"withdr",  label:"Withdrawals",  right:true, color:()=>[220,38,38], w:0.13 },
        { key:"fees",    label:"Fees",         right:true, color:r=>Number(r._fees)>0?[217,119,6]:null, w:0.11 },
-       { key:"net",     label:"Net",          right:true, bold:true, color:r=>Number(r._net)>=0?[124,58,237]:[220,38,38], w:0.13 },
+       { key:"net",     label:"Net",          right:true, bold:true, color:r=>Number(r._net)>=0?[46,128,32]:[220,38,38], w:0.13 },
        { key:"balance", label:"Balance",      right:true, w:0.15 }],
       active.map(c=>({
         name:c.full_name||"—",
@@ -912,23 +925,27 @@ export default function Reports({ store, onClose }) {
   const { slotMap: camSlots, loading: camLoading, recordEvent: recordCamEvent } = useCampaigns(["announcement_bar"], "business", "business.reports");
   const reportsAnnBars = camSlots.announcement_bar || [];
 
-  const [reportType, setReportType] = useState("sales");
-  const [period,     setPeriod]     = useState("month");
-  const [customFrom, setCustomFrom] = useState(todayStr());
-  const [customTo,   setCustomTo]   = useState(todayStr());
-  const [preview,    setPreview]    = useState(false);
-  const [exporting,  setExporting]  = useState(false);
+  const [reportType,       setReportType]       = useState("sales");
+  const [period,           setPeriod]           = useState("month");
+  const [customFrom,       setCustomFrom]       = useState(todayStr());
+  const [customTo,         setCustomTo]         = useState(todayStr());
+  const [preview,          setPreview]          = useState(false);
+  const [exporting,        setExporting]        = useState(false);
+  const [exportError,      setExportError]      = useState("");
   const [ajoContributions, setAjoContributions] = useState([]);
+  const [asoLoading,       setAsoLoading]       = useState(false);
 
   useEffect(() => {
     if (reportType !== "aso") return;
     const clientIds = asoClients.map(c => c.id);
     if (clientIds.length === 0) { setAjoContributions([]); return; }
+    setAsoLoading(true);
     supabase
       .from("ajo_contributions")
       .select("id, aso_client_id, type, amount, payment_method, created_at")
       .in("aso_client_id", clientIds)
-      .then(({ data }) => setAjoContributions(data || []));
+      .then(({ data }) => { setAjoContributions(data || []); setAsoLoading(false); })
+      .catch(() => setAsoLoading(false));
   // asoClients.length used intentionally to avoid refetch on array identity change
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reportType, asoClients.length]);
@@ -953,24 +970,55 @@ export default function Reports({ store, onClose }) {
   const exportPDF = async () => {
     if (exporting) return;
     setExporting(true);
+    setExportError("");
     try {
       await buildNativeReportPDF(reportType, reportData, profile, from, to);
     } catch(e) {
       console.error("PDF export:", e);
+      setExportError("Export failed — please try again.");
     }
     setExporting(false);
   };
 
   const exportCSV = async () => {
-    if (reportType !== "staff") return;
-    const rows = reportData?.rows || [];
-    const csv = buildStaffReportCSV(rows, from, to);
-    await shareCSV(csv, staffReportCSVFilename(from, to));
+    setExportError("");
+    try {
+      let csv, filename;
+      switch(reportType) {
+        case "sales":
+          csv = buildSalesReportCSV(reportData, from, to);
+          filename = salesReportCSVFilename(from, to);
+          break;
+        case "credit":
+          csv = buildCreditReportCSV(reportData);
+          filename = creditReportCSVFilename();
+          break;
+        case "bills":
+          csv = buildBillsReportCSV(reportData, from, to);
+          filename = billsReportCSVFilename(from, to);
+          break;
+        case "stock":
+          csv = buildStockReportCSV(reportData, from, to);
+          filename = stockReportCSVFilename(from, to);
+          break;
+        case "aso":
+          csv = buildAsoReportCSV(reportData, from, to);
+          filename = asoReportCSVFilename(from, to);
+          break;
+        default:
+          csv = buildStaffReportCSV(reportData?.rows || [], from, to);
+          filename = staffReportCSVFilename(from, to);
+      }
+      await shareCSV(csv, filename);
+    } catch(e) {
+      console.error("CSV export:", e);
+      setExportError("CSV export failed — please try again.");
+    }
   };
 
   if (preview) {
     return (
-      <div className="fixed inset-0 z-[60] bg-slate-100 dark:bg-slate-900 flex flex-col">
+      <div className="fixed inset-0 z-sheet bg-slate-100 dark:bg-slate-900 flex flex-col">
         {/* Preview header */}
         <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 px-4 pb-3 flex items-center gap-3 flex-shrink-0" style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
           <button onClick={() => setPreview(false)}
@@ -985,17 +1033,15 @@ export default function Reports({ store, onClose }) {
             </p>
             <p className="text-xs text-slate-400 dark:text-slate-500">{from===to?fmtD(from):`${fmtD(from)} — ${fmtD(to)}`}</p>
           </div>
-          {reportType === "staff" && (reportData?.rows?.length > 0) && (
-            <button onClick={exportCSV}
-              className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-xl font-bold text-sm transition active:scale-95 flex-shrink-0">
-              <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
-                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
-              </svg>
-              CSV
-            </button>
-          )}
-          <button onClick={exportPDF} disabled={exporting}
-            className="flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold text-sm transition active:scale-95 disabled:opacity-50 flex-shrink-0">
+          <button onClick={exportCSV}
+            className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-xl font-bold text-sm transition active:scale-95 flex-shrink-0">
+            <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+            </svg>
+            CSV
+          </button>
+          <button onClick={exportPDF} disabled={exporting || asoLoading}
+            className="flex items-center gap-2 px-4 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-bold text-sm transition active:scale-95 disabled:opacity-50 flex-shrink-0">
             {exporting ? (
               <>
                 <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin"/>
@@ -1012,8 +1058,25 @@ export default function Reports({ store, onClose }) {
           </button>
         </div>
 
+        {/* Aso loading overlay */}
+        {asoLoading && reportType === "aso" && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-100/80 dark:bg-slate-900/80">
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-8 h-8 border-[3px] border-brand-500 border-t-transparent rounded-full animate-spin"/>
+              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Loading Ajo data…</p>
+            </div>
+          </div>
+        )}
+
+        {/* Export error */}
+        {exportError && (
+          <div className="mx-4 mt-2 px-3 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 rounded-xl">
+            <p className="text-xs font-semibold text-red-600 dark:text-red-400">{exportError}</p>
+          </div>
+        )}
+
         {/* Report preview — always 794px wide, scaled to fit screen */}
-        <div className="flex-1 overflow-y-auto bg-slate-300 dark:bg-slate-700">
+        <div className="flex-1 overflow-y-auto bg-slate-300 dark:bg-slate-700 relative">
           <div className="py-4 flex justify-center">
             <div style={{
               zoom: Math.min(1, (window.innerWidth - 16) / 794),
@@ -1037,7 +1100,7 @@ export default function Reports({ store, onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 z-[60] bg-slate-50 dark:bg-slate-900 flex flex-col">
+    <div className="fixed inset-0 z-sheet bg-slate-50 dark:bg-slate-900 flex flex-col">
       {/* Header */}
       <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 px-4 pb-3 flex items-center gap-3 flex-shrink-0" style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
         <button onClick={onClose}
@@ -1117,9 +1180,25 @@ export default function Reports({ store, onClose }) {
           </div>
         )}
 
+        {/* New-business empty state */}
+        {transactions.length === 0 && credits.length === 0 && asoClients.length === 0 && (
+          <div className="mb-4 bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-800/40 rounded-2xl px-4 py-4 text-center">
+            <p className="text-sm font-bold text-brand-700 dark:text-brand-300">No data yet</p>
+            <p className="text-xs text-brand-600/70 dark:text-brand-400/70 mt-1 leading-relaxed">Add some transactions to generate your first report. The report will show zeroes until then.</p>
+          </div>
+        )}
+
+        {/* Aso loading indicator (in main screen) */}
+        {asoLoading && reportType === "aso" && (
+          <div className="mb-4 flex items-center gap-2 px-4 py-3 bg-slate-100 dark:bg-slate-800 rounded-xl">
+            <div className="w-4 h-4 border-2 border-brand-500 border-t-transparent rounded-full animate-spin flex-shrink-0"/>
+            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Loading Ajo contributions…</p>
+          </div>
+        )}
+
         {/* Generate button */}
-        <button onClick={() => setPreview(true)}
-          className="w-full py-4 bg-green-600 hover:bg-green-700 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.98] shadow-lg flex items-center justify-center gap-2">
+        <button onClick={() => setPreview(true)} disabled={asoLoading && reportType === "aso"}
+          className="w-full py-4 bg-brand-600 hover:bg-brand-700 disabled:opacity-60 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.98] shadow-lg flex items-center justify-center gap-2">
           <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
             <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>
           </svg>

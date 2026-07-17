@@ -1,11 +1,14 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import Modal           from "../components/shared/Modal";
+import Modal              from "../components/shared/Modal";
 import ProfilePreviewModal from "../components/shared/ProfilePreviewModal";
-import Field           from "../components/shared/Field";
-import StaffManagement from "./StaffManagement";
-import LegalScreen      from "./LegalScreen";
-import { supabase }    from "../utils/supabase";
+import Field              from "../components/shared/Field";
+import StaffManagement    from "./StaffManagement";
+import LegalScreen        from "./LegalScreen";
+import PinDots            from "../components/PinDots";
+import TransactionPinModal from "../components/TransactionPinModal";
+import ForgotPinFlow      from "../components/ForgotPinFlow";
+import { supabase }       from "../utils/supabase";
 import { canDo, planAvailableText, hasHigherPlanAvailable, getPlanInfo } from "../utils/plans";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import { LANGUAGES, getLangMeta } from "../utils/i18n";
@@ -15,109 +18,35 @@ import { useCampaigns } from "../hooks/useCampaigns";
 import AnnouncementBarSlot from "../components/slots/AnnouncementBarSlot";
 import UpsellInlineSlot from "../components/slots/UpsellInlineSlot";
 
-/* ── Txn PIN gate (one-step verify before changing app lock PIN) ────────── */
-function TxnPinGate({ onSuccess, onClose }) {
-  const [pin,      setPin]      = useState("");
-  const [error,    setError]    = useState("");
-  const [checking, setChecking] = useState(false);
-
-  const handleDigit = async (d) => {
-    if (pin.length >= 4 || checking) return;
-    const next = pin + d;
-    setPin(next);
-    setError("");
-    if (next.length < 4) return;
-    setTimeout(async () => {
-      setChecking(true);
-      try {
-        const { data } = await (supabase?.functions.invoke("pin-manager", {
-          body: { action: "verify_txn_pin", pin: next },
-        }) ?? Promise.resolve({ data: null }));
-        if (data?.success) {
-          onSuccess();
-        } else {
-          setPin("");
-          setError(data?.locked ? "Too many attempts — try later" : "Incorrect transaction PIN.");
-        }
-      } catch {
-        setPin("");
-        setError("Something went wrong. Try again.");
-      } finally {
-        setChecking(false);
-      }
-    }, 150);
-  };
-
-  const handleDelete = () => { setPin(p => p.slice(0, -1)); setError(""); };
-
-  return (
-    <Modal title="Confirm Transaction PIN" onClose={onClose}>
-      <div className="flex flex-col items-center gap-6 py-2">
-        <div className="text-center">
-          <p className="text-sm font-bold text-slate-700 dark:text-slate-200">Verify your identity</p>
-          <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Enter your 4-digit transaction PIN to continue</p>
-        </div>
-        <div className="flex gap-4 justify-center">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all ${
-              pin.length > i ? "bg-brand-500 border-brand-500 scale-110" : "border-slate-300 dark:border-slate-600"
-            }`} />
-          ))}
-        </div>
-        {error && <p className="text-xs text-red-500 font-semibold -mt-2 text-center">{error}</p>}
-        {checking && <p className="text-xs text-slate-400 -mt-2">Checking…</p>}
-        <div className="grid grid-cols-3 gap-3 w-full max-w-[240px]">
-          {[1,2,3,4,5,6,7,8,9].map(n => (
-            <button key={n} onClick={() => handleDigit(String(n))} disabled={checking}
-              className="h-14 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-800 dark:text-white text-lg font-bold transition active:scale-95 disabled:opacity-50">
-              {n}
-            </button>
-          ))}
-          <div />
-          <button onClick={() => handleDigit("0")} disabled={checking}
-            className="h-14 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-800 dark:text-white text-lg font-bold transition active:scale-95 disabled:opacity-50">
-            0
-          </button>
-          <button onClick={handleDelete} disabled={checking}
-            className="h-14 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 flex items-center justify-center transition active:scale-95 disabled:opacity-50">
-            <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-              <path d="M21 4H8l-7 8 7 8h13a2 2 0 002-2V6a2 2 0 00-2-2z" />
-              <line x1="18" y1="9" x2="13" y2="14" />
-              <line x1="13" y1="9" x2="18" y2="14" />
-            </svg>
-          </button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
 /* ── Change PIN Modal (3-step: verify current → enter new → confirm new) ── */
-function ChangePinModal({ pinLength = 6, title, onVerifyCurrent, onSetNew, onClose }) {
-  // pinLength: 6 for app lock, 4 for transaction
-  const [step,        setStep]       = useState("current");  // "current" | "new" | "confirm"
-  const [verifiedPin, setVerifiedPin] = useState("");         // current PIN after it passed verification
+const PinBsIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 4H8l-7 8 7 8h13a2 2 0 002-2V6a2 2 0 00-2-2z" />
+    <line x1="18" y1="9" x2="13" y2="14" /><line x1="13" y1="9" x2="18" y2="14" />
+  </svg>
+);
+
+function ChangePinModal({ pinLength = 6, title, onVerifyCurrent, onSetNew, onClose, onForgotPin }) {
+  const [step,        setStep]       = useState("current");
+  const [verifiedPin, setVerifiedPin] = useState("");
   const [newPin,      setNewPin]      = useState("");
-  const [pin,         setPin]         = useState("");         // active input
+  const [pin,         setPin]         = useState("");
   const [error,       setError]       = useState("");
   const [checking,    setChecking]    = useState(false);
 
   const maxLen = pinLength;
-  const stepTitle = step === "current" ? `Enter current PIN`
-    : step === "new"     ? `Enter new PIN`
-    : `Confirm new PIN`;
-  const stepSub = step === "current"
+  const stepTitle = step === "current" ? "Enter current PIN" : step === "new" ? "Enter new PIN" : "Confirm new PIN";
+  const stepSub   = step === "current"
     ? `Your ${pinLength}-digit PIN`
     : step === "new"
     ? `Choose a new ${pinLength}-digit PIN`
-    : `Re-enter your new PIN to confirm`;
+    : "Re-enter your new PIN to confirm";
 
   const handleDigit = async (d) => {
     if (pin.length >= maxLen || checking) return;
     const next = pin + d;
     setPin(next);
     setError("");
-
     if (next.length < maxLen) return;
 
     setTimeout(async () => {
@@ -125,32 +54,13 @@ function ChangePinModal({ pinLength = 6, title, onVerifyCurrent, onSetNew, onClo
         setChecking(true);
         const result = await onVerifyCurrent(next);
         setChecking(false);
-        if (result.success) {
-          setVerifiedPin(next);
-          setPin("");
-          setStep("new");
-        } else {
-          setPin("");
-          setError(result.error || "Incorrect PIN.");
-        }
+        if (result.success) { setVerifiedPin(next); setPin(""); setStep("new"); }
+        else { setPin(""); setError(result.error || "Incorrect PIN."); }
         return;
       }
-
-      if (step === "new") {
-        setNewPin(next);
-        setPin("");
-        setStep("confirm");
-        return;
-      }
-
+      if (step === "new") { setNewPin(next); setPin(""); setStep("confirm"); return; }
       if (step === "confirm") {
-        if (next !== newPin) {
-          setPin("");
-          setError("PINs don't match. Try again.");
-          setStep("new");
-          setNewPin("");
-          return;
-        }
+        if (next !== newPin) { setPin(""); setError("PINs don't match. Try again."); setStep("new"); setNewPin(""); return; }
         setChecking(true);
         await onSetNew(verifiedPin, next);
         setChecking(false);
@@ -159,10 +69,7 @@ function ChangePinModal({ pinLength = 6, title, onVerifyCurrent, onSetNew, onClo
     }, 150);
   };
 
-  const handleDelete = () => {
-    setPin(p => p.slice(0, -1));
-    setError("");
-  };
+  const handleDelete = () => { setPin(p => p.slice(0, -1)); setError(""); };
 
   return (
     <Modal title={title} onClose={onClose}>
@@ -187,44 +94,39 @@ function ChangePinModal({ pinLength = 6, title, onVerifyCurrent, onSetNew, onClo
           <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{stepSub}</p>
         </div>
 
-        {/* dots */}
-        <div className="flex gap-4 justify-center">
-          {Array.from({ length: maxLen }).map((_, i) => (
-            <div key={i} className={`rounded-full border-2 transition-all ${
-              maxLen === 6 ? "w-3 h-3" : "w-4 h-4"
-            } ${
-              pin.length > i
-                ? "bg-brand-500 border-brand-500 scale-110"
-                : "border-slate-300 dark:border-slate-600"
-            }`} />
-          ))}
+        <PinDots filled={pin.length} count={maxLen} />
+
+        <div className="h-4 -mt-2">
+          {error   && <p className="text-xs text-red-500 font-semibold text-center">{error}</p>}
+          {checking && <p className="text-xs text-slate-400 text-center">Checking…</p>}
         </div>
 
-        {error && <p className="text-xs text-red-500 font-semibold -mt-2 text-center">{error}</p>}
-        {checking && <p className="text-xs text-slate-400 -mt-2">Checking…</p>}
-
-        {/* numpad */}
-        <div className="grid grid-cols-3 gap-3 w-full max-w-[240px]">
+        {/* Shared numpad */}
+        <div className="grid grid-cols-3 gap-3 w-full max-w-[280px]">
           {[1,2,3,4,5,6,7,8,9].map(n => (
             <button key={n} onClick={() => handleDigit(String(n))} disabled={checking}
-              className="h-14 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-800 dark:text-white text-lg font-bold transition active:scale-95 disabled:opacity-50">
+              className="h-14 rounded-[14px] bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 text-slate-900 dark:text-slate-100 text-[19px] font-bold cursor-pointer transition-all duration-100 disabled:opacity-50">
               {n}
             </button>
           ))}
-          <div />
+          <div className="h-14" />
           <button onClick={() => handleDigit("0")} disabled={checking}
-            className="h-14 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-800 dark:text-white text-lg font-bold transition active:scale-95 disabled:opacity-50">
+            className="h-14 rounded-[14px] bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 text-slate-900 dark:text-slate-100 text-[19px] font-bold cursor-pointer transition-all duration-100 disabled:opacity-50">
             0
           </button>
           <button onClick={handleDelete} disabled={checking}
-            className="h-14 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 flex items-center justify-center transition active:scale-95 disabled:opacity-50">
-            <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-              <path d="M21 4H8l-7 8 7 8h13a2 2 0 002-2V6a2 2 0 00-2-2z" />
-              <line x1="18" y1="9" x2="13" y2="14" />
-              <line x1="13" y1="9" x2="18" y2="14" />
-            </svg>
+            className="h-14 rounded-[14px] bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 text-slate-600 dark:text-slate-400 flex items-center justify-center cursor-pointer transition-all duration-100 disabled:opacity-50">
+            <PinBsIcon />
           </button>
         </div>
+
+        {/* Forgot PIN — only on the verify-current step */}
+        {step === "current" && onForgotPin && (
+          <button onClick={onForgotPin}
+            className="text-xs text-slate-400 dark:text-slate-500 underline underline-offset-2 py-1">
+            Forgot PIN?
+          </button>
+        )}
       </div>
     </Modal>
   );
@@ -366,106 +268,6 @@ function LanguageModal({ current, onClose }) {
   );
 }
 
-/* ── Support Ticket Modal ─────────────────────────────────────────── */
-const SUPPORT_ADMIN_URL = "https://admin.kudiai.app";
-const TICKET_TYPES = [
-  { value: "account",      label: "Account / Login" },
-  { value: "payment",      label: "Payment / Billing" },
-  { value: "transaction",  label: "Transaction Issue" },
-  { value: "subscription", label: "Subscription / Plans" },
-  { value: "technical",    label: "Technical Problem" },
-  { value: "ajo",          label: "Ajo / Savings Group" },
-  { value: "general",      label: "General Enquiry" },
-];
-
-function SupportModal({ onClose, session, userType = "business" }) {
-  const [form, setForm] = useState({
-    subject: "", description: "", type: "general", priority: "medium",
-    user_name: session?.business_name || session?.owner_name || session?.full_name || "",
-    user_email: session?.email || "",
-  });
-  const [submitting, setSubmitting] = useState(false);
-  const [done, setDone]             = useState(null);
-  const [error, setError]           = useState("");
-
-  const submit = async (e) => {
-    e.preventDefault();
-    if (!form.subject.trim() || !form.user_email.trim()) { setError("Subject and email are required."); return; }
-    setSubmitting(true); setError("");
-    try {
-      const res = await fetch(`${SUPPORT_ADMIN_URL}/api/public/support`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, source: "business", submitter_type: userType }),
-      });
-      const d = await res.json();
-      if (!res.ok) { setError(d.error || "Failed to submit ticket"); return; }
-      setDone(d.ticket_no);
-    } catch { setError("Network error. Please try again."); }
-    finally { setSubmitting(false); }
-  };
-
-  return (
-    <Modal title="Help & Support" onClose={onClose}>
-      {done ? (
-        <div className="flex flex-col items-center gap-4 py-4 text-center">
-          <div className="w-14 h-14 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
-            <svg viewBox="0 0 24 24" className="w-7 h-7 text-emerald-500" fill="none" stroke="currentColor" strokeWidth={2.5}><polyline points="20 6 9 17 4 12" /></svg>
-          </div>
-          <div>
-            <p className="text-base font-bold text-slate-800 dark:text-slate-100">Ticket Submitted!</p>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Your ticket number is <span className="font-bold text-indigo-600 dark:text-indigo-400">#{done}</span></p>
-            <p className="text-xs text-slate-400 mt-2">A confirmation has been sent to {form.user_email}. Our team will respond shortly.</p>
-          </div>
-          <button onClick={onClose} className="mt-2 w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold text-sm transition-colors">Close</button>
-        </div>
-      ) : (
-        <form onSubmit={submit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">Your Name</label>
-              <input className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30" value={form.user_name} onChange={e => setForm(f => ({...f, user_name: e.target.value}))} placeholder="Your name" />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">Email *</label>
-              <input type="email" className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30" value={form.user_email} onChange={e => setForm(f => ({...f, user_email: e.target.value}))} placeholder="your@email.com" required />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">Category</label>
-              <select className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 focus:outline-none" value={form.type} onChange={e => setForm(f => ({...f, type: e.target.value}))}>
-                {TICKET_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">Priority</label>
-              <select className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 focus:outline-none" value={form.priority} onChange={e => setForm(f => ({...f, priority: e.target.value}))}>
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="critical">Critical</option>
-              </select>
-            </div>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">Subject *</label>
-            <input className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30" value={form.subject} onChange={e => setForm(f => ({...f, subject: e.target.value}))} placeholder="Brief summary of your issue" required />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">Description</label>
-            <textarea className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 resize-none h-24" value={form.description} onChange={e => setForm(f => ({...f, description: e.target.value}))} placeholder="Describe the problem in detail…" />
-          </div>
-          {error && <p className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 px-3 py-2 rounded-xl">⚠ {error}</p>}
-          <button type="submit" disabled={submitting} className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2">
-            {submitting ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : null}
-            {submitting ? "Submitting…" : "Submit Ticket"}
-          </button>
-        </form>
-      )}
-    </Modal>
-  );
-}
 
 /* ── Main component ───────────────────────────────────────────────── */
 export default function Settings({ store, session, plan = "starter", onUpgrade, onStaffManagement, lock, onNotifications, onLoyalty, onBranches, onCoops }) {
@@ -485,7 +287,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
   const [showTxnGate,   setShowTxnGate]   = useState(false);
   const [changePinType, setChangePinType] = useState("app");  // "app" | "txn"
   const [showAutoLock,  setShowAutoLock]  = useState(false);
-  const [showSupport,   setShowSupport]   = useState(false);
+  const [showForgotPin, setShowForgotPin] = useState(false);
   const [showLangPick,  setShowLangPick]  = useState(false);
   const [legalScreen,        setLegalScreen]        = useState(null); // "terms" | "privacy"
   const [acceptedConsent,    setAcceptedConsent]    = useState(null);
@@ -560,11 +362,11 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
   const avatarSrc = photoPreview || profile.profile_image_url;
 
   const { name: planName, sortOrder: planTier } = getPlanInfo(plan);
-  const planBadgeStyle = planTier >= 2
-    ? { background: "#1B2A5E18", color: "#1B2A5E" }
+  const planBadgeClass = planTier >= 2
+    ? "bg-navy/10 text-navy dark:bg-navy/20 dark:text-blue-300"
     : planTier >= 1
-    ? { background: "#1d4ed818", color: "#1d4ed8" }
-    : { background: "#64748b12", color: "#64748b" };
+    ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+    : "bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400";
 
   // ── Subscription management ────────────────────────────────────
   const [sub,           setSub]           = useState(null);
@@ -645,8 +447,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
           {profile.business_name && profile.owner_name && (
             <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{profile.owner_name}</p>
           )}
-          <span className="inline-block mt-1 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full"
-            style={planBadgeStyle}>
+          <span className={`inline-block mt-1 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${planBadgeClass}`}>
             {planName}
           </span>
         </div>
@@ -696,8 +497,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
                 : "Free forever"}
             </p>
           </div>
-          <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full flex-shrink-0"
-            style={planBadgeStyle}>
+          <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full flex-shrink-0 ${planBadgeClass}`}>
             {planTier === 0 ? "Free" : sub?.billing_cycle === "yearly" ? "Yearly" : "Monthly"}
           </span>
         </div>
@@ -717,7 +517,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
           {/* Upgrade / Change Plan */}
           <button
             onClick={onUpgrade}
-            className={`flex-1 py-2.5 rounded-2xl text-sm font-bold text-white active:scale-95 transition ${planTier >= 2 ? "bg-navy" : planTier >= 1 ? "bg-blue-700" : "bg-emerald-600"}`}>
+            className={`flex-1 py-2.5 rounded-2xl text-sm font-bold text-white active:scale-95 transition ${planTier >= 2 ? "bg-navy" : planTier >= 1 ? "bg-blue-700" : "bg-brand-600"}`}>
             {planTier === 0 ? "Upgrade Plan" : hasHigherPlanAvailable(plan) ? "Upgrade Plan" : "Change Plan"}
           </button>
 
@@ -734,8 +534,9 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
 
       {/* Cancel confirmation modal */}
       {showCancelModal && (
-        <div className="fixed inset-0 z-[80] bg-black/50 backdrop-blur-sm flex items-end justify-center p-4">
-          <div className="bg-white dark:bg-slate-800 rounded-3xl w-full max-w-sm p-6 shadow-2xl">
+        <div className="fixed inset-0 z-modal bg-black/50 backdrop-blur-sm flex items-end justify-center px-4">
+          <div className="bg-white dark:bg-slate-800 rounded-3xl w-full max-w-sm px-6 pt-6 shadow-2xl"
+               style={{ paddingBottom: "max(24px, env(safe-area-inset-bottom, 24px))" }}>
             <div className="w-14 h-14 bg-red-100 dark:bg-red-900/30 rounded-2xl flex items-center justify-center mx-auto mb-4">
               <svg viewBox="0 0 24 24" fill="none" className="w-7 h-7 text-red-500" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
             </div>
@@ -934,9 +735,10 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
 
       {/* ── Txn PIN gate (before changing app lock PIN) ────────────── */}
       {showTxnGate && (
-        <TxnPinGate
-          onSuccess={() => { setShowTxnGate(false); setShowChangePin(true); }}
-          onClose={() => setShowTxnGate(false)}
+        <TransactionPinModal
+          title="Confirm Transaction PIN"
+          onApprove={() => { setShowTxnGate(false); setShowChangePin(true); }}
+          onCancel={() => setShowTxnGate(false)}
         />
       )}
 
@@ -963,6 +765,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
             await lock?.refetch?.();
           }}
           onClose={() => setShowChangePin(false)}
+          onForgotPin={() => { setShowChangePin(false); setShowForgotPin(true); }}
         />
       )}
 
@@ -1015,12 +818,11 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
         </Modal>
       )}
 
-      {/* ── Support ticket modal ───────────────────────────────────── */}
-      {showSupport && (
-        <SupportModal
-          onClose={() => setShowSupport(false)}
-          session={{ ...profile, email: session?.user?.email }}
-          userType="business"
+      {/* ── Forgot PIN flow ────────────────────────────────────────── */}
+      {showForgotPin && (
+        <ForgotPinFlow
+          pinLock={lock}
+          onCancel={() => setShowForgotPin(false)}
         />
       )}
 
@@ -1118,7 +920,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
 
       {/* ── Staff Management full-screen overlay ───────────────────── */}
       {staffMgmt && (
-        <div className="fixed inset-0 z-[60] bg-slate-50 dark:bg-slate-900">
+        <div className="fixed inset-0 z-sheet bg-slate-50 dark:bg-slate-900">
           <StaffManagement session={session} plan={plan} onBack={() => setStaffMgmt(false)} onUpgrade={() => { setStaffMgmt(false); onUpgrade?.(); }} />
         </div>
       )}

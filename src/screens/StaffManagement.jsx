@@ -393,6 +393,11 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
           module:     m.id,
           can_view:   perms[m.id]?.can_view   || false,
           can_create: perms[m.id]?.can_create || false,
+          ...(m.id === "aso" ? {
+            ajo_confirm_deposits:   perms["aso"]?.ajo_confirm_deposits   || false,
+            ajo_record_withdrawals: perms["aso"]?.ajo_record_withdrawals || false,
+            ajo_manage_clients:     perms["aso"]?.ajo_manage_clients     || false,
+          } : {}),
         })),
         { staff_id: staffRow.id, module: "print-airtime", can_view: perms["print-airtime"]?.can_view || false, can_create: false },
         { staff_id: staffRow.id, module: "print-data",    can_view: perms["print-data"]?.can_view    || false, can_create: false },
@@ -769,7 +774,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
 
       {/* ── Add Staff Sheet ─────────────────────────────────────── */}
       {showAdd && (
-        <div className="fixed inset-0 z-[60] flex flex-col justify-end bg-black/40">
+        <div className="fixed inset-0 z-sheet flex flex-col justify-end bg-black/40">
           <div className="bg-white dark:bg-slate-900 rounded-t-3xl max-h-[92dvh] flex flex-col">
             <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-800">
               <h2 className="text-base font-bold text-slate-800 dark:text-white">Add Staff Member</h2>
@@ -933,7 +938,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
 
       {/* ── Staff Added Success Banner ──────────────────────────── */}
       {addedStaffEmail && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-5">
+        <div className="fixed inset-0 z-sheet flex items-center justify-center bg-black/50 px-5">
           <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-sm shadow-2xl p-6">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-11 h-11 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center flex-shrink-0">
@@ -964,7 +969,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
 
       {/* ── Staff Detail Sheet ──────────────────────────────────── */}
       {selected && (
-        <div className="fixed inset-0 z-[60] flex flex-col justify-end bg-black/40">
+        <div className="fixed inset-0 z-sheet flex flex-col justify-end bg-black/40">
           <div className="bg-white dark:bg-slate-900 rounded-t-3xl max-h-[92dvh] flex flex-col">
             <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-800">
               <h2 className="text-base font-bold text-slate-800 dark:text-white">Staff Details</h2>
@@ -1188,7 +1193,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
 
       {/* ── Performance Report Full Page ──────────────────────── */}
       {reportStaff && (
-        <div className="fixed inset-0 z-[70] bg-slate-50 dark:bg-slate-900 flex flex-col">
+        <div className="fixed inset-0 z-sub-sheet bg-slate-50 dark:bg-slate-900 flex flex-col">
           <div className="bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 px-4 pb-3 flex items-center gap-3" style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
             <button onClick={() => { setReportStaff(null); setReportData(null); }}
               className="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-700">
@@ -1270,8 +1275,8 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
 
       {/* D6: Disburse Payment Modal */}
       {disburseTarget && (
-        <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/40">
-          <div className="bg-white dark:bg-slate-900 rounded-t-3xl w-full max-w-md p-6 space-y-4">
+        <div className="fixed inset-0 z-sub-sheet flex items-end justify-center bg-black/40">
+          <div className="bg-white dark:bg-slate-900 rounded-t-3xl w-full max-w-md px-6 pt-6 space-y-4" style={{ paddingBottom: "max(24px, env(safe-area-inset-bottom, 24px))" }}>
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-base font-bold text-slate-800 dark:text-white">
                 Pay {disburseTarget.full_name}
