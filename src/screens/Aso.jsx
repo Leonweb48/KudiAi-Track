@@ -42,6 +42,23 @@ const BLANK_GROUP = {
 
 const FREQ_DAYS = { daily: 1, weekly: 7, monthly: 30 };
 
+const TX_TYPE_LABEL = {
+  contribution:    "Contribution",
+  withdrawal:      "Withdrawal",
+  reversal:        "Reversal",
+  disbursement:    "Disbursement",
+  withdrawal_fee:  "Withdrawal Fee",
+  registration_fee:"Registration Fee",
+  commission:      "Commission",
+};
+const METHOD_LABEL = {
+  cash:            "Cash",
+  manual_transfer: "Bank Transfer",
+  bank_transfer:   "Bank Transfer",
+  paystack:        "Paystack",
+  online:          "Online",
+};
+
 function SectionLabel({ children }) {
   return (
     <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-5 mb-2">
@@ -183,7 +200,7 @@ function AsoClientHistoryModal({ client, contributions, cycle, businessName, sta
   ];
 
   return (
-    <div className="fixed inset-0 z-[60] bg-black/60 flex flex-col">
+    <div className="fixed inset-0 z-sheet bg-black/60 flex flex-col">
       {receipt && (
         <TransactionDetailModal
           data={buildAsoContributionReceipt(receipt, client.full_name, businessName)}
@@ -193,7 +210,7 @@ function AsoClientHistoryModal({ client, contributions, cycle, businessName, sta
 
       {/* Reverse entry — reason step */}
       {reverseFor && reverseStep === "reason" && (
-        <div className="fixed inset-0 z-[70] bg-black/60 flex items-end justify-center">
+        <div className="fixed inset-0 z-sub-sheet bg-black/60 flex items-end justify-center">
           <div className="bg-white dark:bg-slate-900 rounded-t-2xl w-full max-w-lg p-5 pb-8">
             <h3 className="text-base font-black text-slate-800 dark:text-white mb-1">Reverse Entry</h3>
             <p className="text-xs text-slate-400 mb-4">
@@ -287,7 +304,7 @@ function AsoClientHistoryModal({ client, contributions, cycle, businessName, sta
         <div className="flex border-b border-slate-100 dark:border-slate-800 px-4 gap-4">
           <button
             onClick={() => setTab("card")}
-            className={`pb-2 pt-2 text-xs font-bold transition-colors border-b-2 ${tab === "card" ? "border-violet-600 text-violet-600" : "border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"}`}
+            className={`pb-2 pt-2 text-xs font-bold transition-colors border-b-2 ${tab === "card" ? "border-brand-600 text-brand-600" : "border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"}`}
           >
             Card
           </button>
@@ -359,12 +376,12 @@ function AsoClientHistoryModal({ client, contributions, cycle, businessName, sta
                       </span>
                       <Badge status={tx.status || "completed"} />
                     </div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 capitalize">
-                      {tx.type} · {tx.payment_method || "cash"}
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      {TX_TYPE_LABEL[tx.type] ?? tx.type} · {METHOD_LABEL[tx.payment_method] ?? "Cash"}
                     </p>
                     <p className="text-[10px] text-slate-400 mt-0.5">{dateStr}</p>
                     {tx.recorded_by && staffMap[tx.recorded_by] && (
-                      <p className="text-[10px] text-violet-500 dark:text-violet-400 mt-0.5">by: {staffMap[tx.recorded_by]}</p>
+                      <p className="text-[10px] text-brand-600 dark:text-brand-400 mt-0.5">by: {staffMap[tx.recorded_by]}</p>
                     )}
                     {tx.notes && <p className="text-[10px] text-slate-400 italic mt-0.5">"{tx.notes}"</p>}
                     {onReverseContrib && tx.type === "contribution" && (tx.status === "completed" || tx.status === "approved") && (
@@ -381,14 +398,17 @@ function AsoClientHistoryModal({ client, contributions, cycle, businessName, sta
                     )}
                     {tx.dispute_ticket_no && !clearedIds.has(tx.id) && (
                       <div className="flex items-center justify-between mt-1">
-                        <p className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">⚠ {tx.dispute_ticket_no}</p>
+                        <span className="flex items-center gap-0.5 text-[10px] text-amber-600 dark:text-amber-400 font-semibold">
+                          <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3 flex-shrink-0" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0zM12 9v4M12 17h.01"/></svg>
+                          {tx.dispute_ticket_no}
+                        </span>
                         <button onClick={async e => {
                           e.stopPropagation();
                           const { error } = await supabase.functions.invoke("ajo-write", {
                             body: { action: "resolve_dispute", contribution_id: tx.id },
                           });
                           if (!error) setClearedIds(prev => new Set([...prev, tx.id]));
-                        }} className="text-[10px] text-slate-400 hover:text-violet-600 dark:hover:text-violet-400 underline ml-2 flex-shrink-0">
+                        }} className="text-[10px] text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 underline ml-2 flex-shrink-0">
                           Clear flag
                         </button>
                       </div>
@@ -415,6 +435,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [receipt,      setReceipt]      = useState(null);
   const [historyFor,   setHistoryFor]   = useState(null); // { client, contributions, cycle }
   const [historyErr,   setHistoryErr]   = useState("");
+  const [cycleConfirm, setCycleConfirm] = useState(null); // { title, msg, confirmLabel, onConfirm }
   const [histLoading,  setHistLoading]  = useState(false);
   const [clientProf,   setClientProf]   = useState(null);
   const [photoFile,    setPhotoFile]    = useState(null);
@@ -598,6 +619,9 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     }
   };
 
+  // AJ-PIN-01: Group financial edits/deletes require admin approval via submit_approval_request RPC
+  // (stronger than PIN — async external gate). Non-financial fields (name/description/privacy) go
+  // through submitDirectEdit — no approval needed. PIN boundary is satisfied; no PIN change required.
   const loadGroupApprovals = async () => {
     try {
       const { data } = await supabase
@@ -1299,8 +1323,8 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   if (!canDo(plan, "aso")) {
     return (
       <div className="px-4 pt-20 pb-28 flex flex-col items-center text-center screen-enter">
-        <div className="w-24 h-24 bg-violet-50 dark:bg-violet-900/20 rounded-full flex items-center justify-center mb-5">
-          <svg viewBox="0 0 24 24" fill="none" className="w-10 h-10 text-violet-400" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round">
+        <div className="w-24 h-24 bg-brand-50 dark:bg-brand-900/20 rounded-full flex items-center justify-center mb-5">
+          <svg viewBox="0 0 24 24" fill="none" className="w-10 h-10 text-brand-400" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round">
             <rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0110 0v4" />
           </svg>
         </div>
@@ -1325,7 +1349,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         <div className="flex items-center gap-2">
           <h1 className="text-xl font-extrabold text-slate-800 dark:text-white tracking-tight">{t("aso.title")}</h1>
           {pendingDeposits.length > 0 && (
-            <span className="bg-violet-600 text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded-full leading-none">
+            <span className="bg-brand-600 text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded-full leading-none">
               {pendingDeposits.length}
             </span>
           )}
@@ -1337,7 +1361,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             title="Today's Collection"
             className={`w-11 h-11 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-all ${
               showCollection
-                ? "bg-violet-600 text-white"
+                ? "bg-brand-600 text-white"
                 : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
             }`}>
             <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
@@ -1354,7 +1378,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           </button>
           {canManageClients && (
             <button onClick={() => setShowAdd(true)}
-              className="w-11 h-11 bg-violet-600 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform">
+              className="w-11 h-11 bg-brand-600 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform">
               <Icon name="plus" size={18} className="text-white" />
             </button>
           )}
@@ -1362,7 +1386,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       </div>
 
       {/* Hero */}
-      <div className="rounded-3xl px-5 py-5 mb-4 text-white relative overflow-hidden shadow-hero bg-gradient-to-br from-violet-600 via-violet-900 to-violet-950">
+      <div className="rounded-3xl px-5 py-5 mb-4 text-white relative overflow-hidden shadow-hero bg-gradient-to-br from-navy-400 via-navy-600 to-navy-800">
         <div className="absolute -top-10 -right-10 w-36 h-36 rounded-full bg-white/5 pointer-events-none" />
         <div className="absolute -bottom-12 -left-8 w-44 h-44 rounded-full bg-white/5 pointer-events-none" />
         <div className="relative">
@@ -1378,7 +1402,9 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
               <p className="text-sm font-extrabold tabular">
                 {asoClients.length}
                 {overdueList.length > 0 && (
-                  <span className="ml-1 text-red-200"> · ⚠{overdueList.length}</span>
+                  <span className="ml-1 text-red-200 inline-flex items-center gap-0.5">
+                    · <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3 inline" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0zM12 9v4M12 17h.01"/></svg>{overdueList.length}
+                  </span>
                 )}
               </p>
             </div>
@@ -1453,7 +1479,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                       </span>
                     )}
                   </div>
-                  <p className="text-[10px] text-slate-400 mt-0.5">{req.requested_at?.slice(0, 10)}</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">{req.requested_at ? new Date(req.requested_at).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" }) : ""}</p>
                 </div>
               </div>
               {(cl.account_number || cl.account_name) && (
@@ -1529,7 +1555,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
               <div>
                 <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2">
                   Withdrawal Requests
-                  <span className="ml-2 bg-amber-500 text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded-full">{pendingReqs.length}</span>
+                  <span className="ml-2 bg-brand-500 text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded-full">{pendingReqs.length}</span>
                 </p>
                 <div className="space-y-2">{pendingReqs.map(r => <WithdrawCard key={r.id} req={r} isHeld={false} />)}</div>
               </div>
@@ -1541,7 +1567,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       {/* Pending deposits panel */}
       {depError && (
         <button onClick={reloadPendingDeposits}
-          className="w-full flex items-center justify-between px-3 py-2 mb-2 rounded-xl text-xs text-violet-700 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800/30 active:opacity-60">
+          className="w-full flex items-center justify-between px-3 py-2 mb-2 rounded-xl text-xs text-brand-700 dark:text-brand-400 bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-800/30 active:opacity-60">
           <span>{depError}</span>
           <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 flex-shrink-0 ml-2" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
             <path d="M1 4v6h6M23 20v-6h-6M20.49 9A9 9 0 005.64 5.64L1 10M23 14l-4.64 4.36A9 9 0 013.51 15" />
@@ -1562,7 +1588,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         <div className="mb-4">
           <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2">
             Reactivation Requests
-            <span className="ml-2 bg-amber-500 text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded-full">{reactivationRequests.length}</span>
+            <span className="ml-2 bg-brand-500 text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded-full">{reactivationRequests.length}</span>
           </p>
           <div className="space-y-3">
             {reactivationRequests.map(req => {
@@ -1695,7 +1721,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         <div className="mb-4">
           <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2">
             Pending Deposits
-            <span className="ml-2 bg-violet-600 text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded-full">{pendingDeposits.length}</span>
+            <span className="ml-2 bg-brand-600 text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded-full">{pendingDeposits.length}</span>
           </p>
           <div className="space-y-2">
             {pendingDeposits.map(dep => {
@@ -1712,20 +1738,20 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                                    : dep.contribution_context === "group_savings"  ? "Group Savings"
                                    : "Personal Savings";
               return (
-                <div key={dep.id} className={`bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 border shadow-sm ${isStale ? "border-red-200 dark:border-red-800/60" : "border-violet-200 dark:border-violet-800/60"}`}>
+                <div key={dep.id} className={`bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 border shadow-sm ${isStale ? "border-red-200 dark:border-red-800/60" : "border-brand-200 dark:border-brand-800/60"}`}>
                   {isStale && (
                     <p className="text-[10px] font-bold text-red-500 dark:text-red-400 mb-2">Awaiting confirmation for {daysOld}+ days</p>
                   )}
                   <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center flex-shrink-0">
-                      <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-violet-600 dark:text-violet-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                    <div className="w-10 h-10 rounded-xl bg-brand-50 dark:bg-brand-900/30 flex items-center justify-center flex-shrink-0">
+                      <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-brand-600 dark:text-brand-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                         <path d="M12 5v14M5 12l7-7 7 7" />
                       </svg>
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-extrabold text-slate-800 dark:text-white truncate">{cl.full_name || "—"}</p>
                       <p className="text-[10px] text-slate-400 font-mono">{cl.membership_number || ""}</p>
-                      <p className="text-xs font-bold text-violet-700 dark:text-violet-300 mt-1">
+                      <p className="text-xs font-bold text-brand-700 dark:text-brand-300 mt-1">
                         {isManualClaim ? "Claims" : "Recorded"} ₦{Number(dep.amount).toLocaleString("en-NG")}
                         <span className="ml-1.5 font-normal text-slate-400 text-[10px]">{methodLabel} · {ctxLabel}</span>
                       </p>
@@ -1750,12 +1776,19 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                           }
                         };
                         return (
-                          <button onClick={openProof}
-                            className="inline-flex items-center gap-1 text-[10px] font-bold text-violet-600 dark:text-violet-400 mt-1 hover:underline">
-                            <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-                              <path d="M14.5 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7.5L14.5 2z" /><polyline points="14 2 14 8 20 8" />
-                            </svg>
-                            View Proof
+                          <button onClick={openProof} className="mt-2 block w-full active:opacity-75 transition rounded-xl overflow-hidden border border-slate-200 dark:border-slate-600">
+                            <img
+                              src={proofHref}
+                              alt="Payment proof"
+                              className="w-full max-h-36 object-cover"
+                              onError={e => { e.currentTarget.style.display = "none"; e.currentTarget.nextElementSibling.style.display = "flex"; }}
+                            />
+                            <span style={{display:"none"}} className="items-center gap-1.5 px-3 py-2 text-[10px] font-bold text-brand-600 dark:text-brand-400">
+                              <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3 flex-shrink-0" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                                <path d="M14.5 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7.5L14.5 2z" /><polyline points="14 2 14 8 20 8" />
+                              </svg>
+                              View Proof
+                            </span>
                           </button>
                         );
                       })()}
@@ -1776,7 +1809,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                           },
                         })}
                         disabled={isProc}
-                        className="flex-1 py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-bold text-xs transition active:scale-[0.99] disabled:opacity-50">
+                        className="flex-1 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-bold text-xs transition active:scale-[0.99] disabled:opacity-50">
                         {isProc && processingDepositId === dep.id && !rejectingDeposit ? "…" : isManualClaim ? "Confirm" : "Approve"}
                       </button>
                       <button
@@ -1826,7 +1859,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         </div>
         <input type="text" value={search} onChange={e => setSearch(e.target.value)}
           placeholder="Search by name or phone…"
-          className="w-full pl-9 pr-9 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-400/60 transition" />
+          className="w-full pl-9 pr-9 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500/60 transition" />
         {search && (
           <button onClick={() => setSearch("")}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
@@ -1841,11 +1874,11 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       <div className="flex items-center gap-1.5 mb-2 flex-wrap">
         {CHIPS.map(({ key, label, count }) => (
           <button key={key} onClick={() => setFilter(key)}
-            className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold transition-all active:scale-95 ${
+            className={`flex items-center gap-1 px-3 min-h-[44px] rounded-full text-xs font-bold transition-all active:scale-95 ${
               filter === key
                 ? key === "overdue"  ? "bg-red-500 text-white shadow-sm"
                   : key === "groups" ? "bg-blue-500 text-white shadow-sm"
-                  : "bg-violet-600 text-white shadow-sm"
+                  : "bg-brand-600 text-white shadow-sm"
                 : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
             }`}>
             {label}
@@ -1893,8 +1926,8 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       {/* Empty states */}
       {asoClients.length === 0 ? (
         <div className="text-center py-14 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700/50">
-          <div className="w-16 h-16 bg-violet-50 dark:bg-violet-900/20 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg viewBox="0 0 24 24" fill="none" className="w-7 h-7 text-violet-400" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round">
+          <div className="w-16 h-16 bg-brand-50 dark:bg-brand-900/20 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg viewBox="0 0 24 24" fill="none" className="w-7 h-7 text-brand-400" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round">
               <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" /><polyline points="9 22 9 12 15 12 15 22" />
             </svg>
           </div>
@@ -1953,7 +1986,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                     className="w-10 h-10 rounded-xl overflow-hidden flex-shrink-0 active:scale-95 transition-transform">
                     {c.profile_image_url
                       ? <img src={c.profile_image_url} alt={c.full_name} className="w-full h-full object-cover" />
-                      : <div className="w-full h-full bg-gradient-to-br from-violet-500 to-violet-700 flex items-center justify-center text-white font-black text-base">{initials}</div>
+                      : <div className="w-full h-full bg-gradient-to-br from-navy-400 to-navy-700 flex items-center justify-center text-white font-black text-base">{initials}</div>
                     }
                   </button>
 
@@ -2021,7 +2054,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                 {/* Stats */}
                 <div className="flex gap-2 mb-3">
                   {[
-                    { label: "Balance",   value: c.current_balance, color: "text-violet-700 dark:text-violet-400", bg: "bg-violet-50 dark:bg-violet-900/20" },
+                    { label: "Balance",   value: c.current_balance, color: "text-brand-700 dark:text-brand-400", bg: "bg-brand-50 dark:bg-brand-900/20" },
                     { label: "Saved",     value: c.total_saved,     color: "text-green-700 dark:text-green-400",  bg: "bg-green-50 dark:bg-green-900/20"   },
                     { label: "Withdrawn", value: c.total_withdrawn,  color: "text-red-600 dark:text-red-400",      bg: "bg-red-50 dark:bg-red-900/20"       },
                   ].map(({ label, value, color, bg }) => (
@@ -2039,7 +2072,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                     <div className="flex items-center gap-2">
                       <div className="flex-1 h-1.5 bg-slate-200 dark:bg-slate-600 rounded-full overflow-hidden">
                         <div
-                          className={`h-full rounded-full transition-all ${missed > 0 ? "bg-red-400" : "bg-violet-500"}`}
+                          className={`h-full rounded-full transition-all ${missed > 0 ? "bg-red-400" : "bg-brand-500"}`}
                           style={{ width: expected > 0 ? `${Math.min(100, (made / expected) * 100)}%` : "0%" }}
                         />
                       </div>
@@ -2110,12 +2143,12 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
                   {/* Statement */}
                   <button onClick={() => setReceipt(c)}
-                    className="flex-1 flex flex-col items-center gap-1 py-2.5 bg-violet-50 dark:bg-violet-900/20 rounded-xl border border-violet-200 dark:border-violet-800 active:scale-95 transition"
+                    className="flex-1 flex flex-col items-center gap-1 py-2.5 bg-brand-50 dark:bg-brand-900/20 rounded-xl border border-brand-200 dark:border-brand-800 active:scale-95 transition"
                     title="View Statement">
-                    <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-violet-600 dark:text-violet-400" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                    <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-brand-600 dark:text-brand-400" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
                       <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
                     </svg>
-                    <span className="text-[9px] font-black text-violet-600 dark:text-violet-400 uppercase tracking-wide leading-none">Stmt</span>
+                    <span className="text-[9px] font-black text-brand-600 dark:text-brand-400 uppercase tracking-wide leading-none">Stmt</span>
                   </button>
 
                   {/* History + Card */}
@@ -2169,7 +2202,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
       {/* ── Add Aso Client Sheet ─────────────────────────────────────── */}
       {showAdd && (
-        <div className="fixed inset-0 z-[60] flex flex-col justify-end bg-black/40">
+        <div className="fixed inset-0 z-sheet flex flex-col justify-end bg-black/40">
           <div className="bg-white dark:bg-slate-900 rounded-t-3xl max-h-[92dvh] flex flex-col">
             <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-800">
               <h2 className="text-base font-bold text-slate-800 dark:text-white">New Ajo Client</h2>
@@ -2191,7 +2224,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                     </svg>
                 }
               </div>
-              <label className="absolute -bottom-2 -right-2 w-8 h-8 bg-violet-600 hover:bg-violet-700 rounded-full flex items-center justify-center cursor-pointer shadow-md transition active:scale-95">
+              <label className="absolute -bottom-2 -right-2 w-8 h-8 bg-brand-600 hover:bg-brand-700 rounded-full flex items-center justify-center cursor-pointer shadow-md transition active:scale-95">
                 <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-white" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
                   <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" /><circle cx="12" cy="13" r="4" />
                 </svg>
@@ -2267,7 +2300,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             </div>
             <button type="button" onClick={resolveClientAccount}
               disabled={clientBankResolving || f.account_number.length < 10 || !f.bank_code}
-              className="mb-0.5 px-3 py-2.5 rounded-xl bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 text-xs font-bold disabled:opacity-40 transition whitespace-nowrap active:scale-95">
+              className="mb-0.5 px-3 py-2.5 rounded-xl bg-brand-100 dark:bg-brand-900/30 text-brand-700 dark:text-brand-300 text-xs font-bold disabled:opacity-40 transition whitespace-nowrap active:scale-95">
               {clientBankResolving ? "Checking…" : "Verify"}
             </button>
           </div>
@@ -2355,7 +2388,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
               <div className="pb-6">
                 <button onClick={handleAdd}
                   disabled={!f.full_name || adding}
-                  className="w-full py-3.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-60 text-white rounded-2xl font-bold text-sm transition active:scale-[0.99]">
+                  className="w-full py-3.5 bg-brand-600 hover:bg-brand-700 disabled:opacity-60 text-white rounded-2xl font-bold text-sm transition active:scale-[0.99]">
                   {adding ? "Creating account…" : "Add Ajo Client"}
                 </button>
               </div>
@@ -2371,9 +2404,9 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           title={`${action === "contribute" ? "Record Contribution" : "Process Withdrawal"} — ${selected.full_name}`}
           onClose={() => { setSelected(null); setAction(null); setAmt(""); setContributeCtx("personal_savings"); }}>
 
-          <div className="bg-violet-50 dark:bg-violet-900/20 rounded-xl px-4 py-3 mb-3 border border-violet-100 dark:border-violet-800/60">
+          <div className="bg-brand-50 dark:bg-brand-900/20 rounded-xl px-4 py-3 mb-3 border border-brand-100 dark:border-brand-800/60">
             <p className="text-xs text-slate-500 dark:text-slate-400">Current balance</p>
-            <AmountDisplay amount={selected.current_balance} size="stat" align="left" className="text-violet-700 dark:text-violet-400" />
+            <AmountDisplay amount={selected.current_balance} size="stat" align="left" className="text-brand-700 dark:text-brand-400" />
           </div>
 
           {/* Contribution stats in modal */}
@@ -2415,7 +2448,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                     <button key={opt.key} type="button" onClick={() => setContributeCtx(opt.key)}
                       className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border-2 text-left transition ${
                         contributeCtx === opt.key
-                          ? "border-violet-500 bg-violet-50 dark:bg-violet-900/20"
+                          ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20"
                           : "border-slate-200 dark:border-slate-700"
                       }`}>
                       <div className="flex-1 min-w-0">
@@ -2423,7 +2456,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                         <p className="text-[10px] text-slate-400">{opt.desc}</p>
                       </div>
                       <div className={`flex-shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center ${
-                        contributeCtx === opt.key ? "border-violet-500 bg-violet-500" : "border-slate-300 dark:border-slate-600"
+                        contributeCtx === opt.key ? "border-brand-500 bg-brand-500" : "border-slate-300 dark:border-slate-600"
                       }`}>
                         {contributeCtx === opt.key && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                       </div>
@@ -2436,8 +2469,9 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
           {action === "withdraw" && (
             <div className="mb-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/60 rounded-xl px-3 py-2 space-y-0.5">
-              <p className="text-xs text-amber-600 dark:text-amber-400 font-semibold">
-                ⚠ Withdrawal fee: {selected.withdrawal_fee_percent}% will be deducted from balance
+              <p className="text-xs text-amber-600 dark:text-amber-400 font-semibold flex items-center gap-1.5">
+                <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 flex-shrink-0" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                Withdrawal fee: {selected.withdrawal_fee_percent}% will be deducted from balance
               </p>
               {amt && parseFloat(amt) > 0 && (
                 <p className="text-xs text-amber-500 dark:text-amber-400">
@@ -2453,7 +2487,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
           {action === "contribute" && selected.contribution_amount > 0 && (
             <button onClick={() => setAmt(String(selected.contribution_amount))}
-              className="text-xs text-violet-600 dark:text-violet-400 font-bold mb-3 -mt-1 block hover:underline">
+              className="text-xs text-brand-600 dark:text-brand-400 font-bold mb-3 -mt-1 block hover:underline">
               Use contribution amount ({fmt(selected.contribution_amount)})
             </button>
           )}
@@ -2500,18 +2534,18 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       {/* Reminder modal */}
       {reminderFor && (
         <Modal title="Send Payment Reminder" onClose={() => setReminderFor(null)}>
-          <div className="flex items-center gap-3 mb-4 p-3 bg-violet-50 dark:bg-violet-900/20 rounded-xl border border-violet-200 dark:border-violet-800/60">
+          <div className="flex items-center gap-3 mb-4 p-3 bg-brand-50 dark:bg-brand-900/20 rounded-xl border border-brand-200 dark:border-brand-800/60">
             <div className="w-10 h-10 rounded-xl overflow-hidden flex-shrink-0">
               {reminderFor.profile_image_url
                 ? <img src={reminderFor.profile_image_url} alt={reminderFor.full_name} className="w-full h-full object-cover" />
-                : <div className="w-full h-full bg-gradient-to-br from-violet-500 to-violet-700 flex items-center justify-center text-white font-black text-base">
+                : <div className="w-full h-full bg-gradient-to-br from-navy-400 to-navy-700 flex items-center justify-center text-white font-black text-base">
                     {(reminderFor.full_name || "?")[0].toUpperCase()}
                   </div>
               }
             </div>
             <div className="flex-1 min-w-0">
               <p className="font-bold text-slate-800 dark:text-white text-sm truncate">{reminderFor.full_name}</p>
-              <p className="text-xs text-violet-600 dark:text-violet-400 font-semibold capitalize">{reminderFor.contribution_frequency} · {fmt(reminderFor.contribution_amount)}</p>
+              <p className="text-xs text-brand-600 dark:text-brand-400 font-semibold capitalize">{reminderFor.contribution_frequency} · {fmt(reminderFor.contribution_amount)}</p>
             </div>
             {getMissedPayments(reminderFor) > 0 && (
               <span className="text-[10px] font-bold text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/40 px-2 py-1 rounded-full flex-shrink-0">
@@ -2592,8 +2626,8 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           );
         }
         return (
-          <div className="fixed inset-0 z-[60] bg-white dark:bg-slate-900 flex flex-col">
-            <div className="h-1 w-full bg-gradient-to-r from-violet-600 to-emerald-500" />
+          <div className="fixed inset-0 z-sheet bg-white dark:bg-slate-900 flex flex-col">
+            <div className="h-1 w-full bg-gradient-to-r from-brand-600 to-emerald-500" />
             <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
               <div className="w-20 h-20 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mb-5 shadow-md">
                 <svg viewBox="0 0 24 24" fill="none" className="w-10 h-10 text-green-500" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
@@ -2647,21 +2681,19 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
           // Conflict: first_period commission + reg fee
           if (!data?.ok && data?.conflict === "REG_FEE_AND_FIRST_PERIOD") {
-            const choice = window.confirm(
-              `⚠ Double-charge conflict\n\nThis client has a ₦${Number(data.reg_charge || 0).toLocaleString()} registration fee. ` +
-              `Opening with first-period commission may charge the client twice.\n\n` +
-              `Press OK to open WITHOUT commission for this cycle.\n` +
-              `Press Cancel to go back and change the commission model.`
-            );
-            if (choice) {
-              // Re-open with commission_model forced to none
-              const { data: d2, error: e2 } = await supabase.functions.invoke("ajo-write", {
-                body: { ...body, commission_model: "none", force: true },
-              });
-              if (e2 || !d2?.ok) { setHistoryErr(d2?.error || friendlyError(e2, "Failed to open cycle.")); return; }
-              const { data: newCycle } = await supabase.from("ajo_cycles").select("*").eq("id", d2.cycle_id).maybeSingle();
-              setHistoryFor(prev => ({ ...prev, cycle: newCycle || null }));
-            }
+            setCycleConfirm({
+              title: "Double-charge conflict",
+              msg: `This client has a ₦${Number(data.reg_charge || 0).toLocaleString()} registration fee. Opening with first-period commission may charge the client twice. Tap Confirm to open WITHOUT commission for this cycle, or Cancel to go back and change the commission model.`,
+              confirmLabel: "Open without commission",
+              onConfirm: async () => {
+                const { data: d2, error: e2 } = await supabase.functions.invoke("ajo-write", {
+                  body: { ...body, commission_model: "none", force: true },
+                });
+                if (e2 || !d2?.ok) { setHistoryErr(d2?.error || friendlyError(e2, "Failed to open cycle.")); return; }
+                const { data: newCycle } = await supabase.from("ajo_cycles").select("*").eq("id", d2.cycle_id).maybeSingle();
+                setHistoryFor(prev => ({ ...prev, cycle: newCycle || null }));
+              },
+            });
             return;
           }
 
@@ -2670,19 +2702,25 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           setHistoryFor(prev => ({ ...prev, cycle: newCycle || null }));
         };
 
-        const handleCloseCycle = async () => {
+        const handleCloseCycle = () => {
           if (!hcycle) return;
-          if (!window.confirm("Mark this cycle as completed?")) return;
-          const { data, error } = await supabase.functions.invoke("ajo-write", {
+          setCycleConfirm({
+            title: "Close Cycle",
+            msg: "Mark this contribution cycle as completed?",
+            confirmLabel: "Complete Cycle",
+            onConfirm: async () => {
+              const { data, error } = await supabase.functions.invoke("ajo-write", {
             body: { action: "close_cycle", cycle_id: hcycle.id, status: "completed" },
+              });
+              if (error || !data?.ok) {
+                setHistoryErr(data?.error || friendlyError(error, "Failed to close cycle."));
+                return;
+              }
+              // Reload cycle as completed (so commission execute button appears)
+              const { data: updatedCycle } = await supabase.from("ajo_cycles").select("*").eq("id", hcycle.id).maybeSingle();
+              setHistoryFor(prev => ({ ...prev, cycle: updatedCycle || null }));
+            },
           });
-          if (error || !data?.ok) {
-            setHistoryErr(data?.error || friendlyError(error, "Failed to close cycle."));
-            return;
-          }
-          // Reload cycle as completed (so commission execute button appears)
-          const { data: updatedCycle } = await supabase.from("ajo_cycles").select("*").eq("id", hcycle.id).maybeSingle();
-          setHistoryFor(prev => ({ ...prev, cycle: updatedCycle || null }));
         };
 
         const handleExecuteCommission = async (amount, pin) => {
@@ -2718,7 +2756,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         return (
           <>
             {historyErr && (
-              <div className="fixed inset-x-0 top-0 z-[70] flex justify-center pt-safe pointer-events-none">
+              <div className="fixed inset-x-0 top-0 z-sub-sheet flex justify-center pt-safe pointer-events-none">
                 <div className="pointer-events-auto bg-red-600 text-white text-xs font-semibold px-4 py-2 rounded-b-2xl shadow-lg flex items-center gap-2 max-w-xs">
                   <span>{historyErr}</span>
                   <button onClick={() => setHistoryErr("")} className="ml-auto font-bold">✕</button>
@@ -2758,11 +2796,11 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
       {/* ── Ajo Client Registration Success Banner ───────────────── */}
       {addedClientEmail && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-5">
+        <div className="fixed inset-0 z-sheet flex items-center justify-center bg-black/50 px-5">
           <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-sm shadow-2xl p-6">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-11 h-11 bg-violet-100 dark:bg-violet-900/30 rounded-full flex items-center justify-center flex-shrink-0">
-                <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-violet-600" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+              <div className="w-11 h-11 bg-brand-100 dark:bg-brand-900/30 rounded-full flex items-center justify-center flex-shrink-0">
+                <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-brand-600" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
                   <path d="M20 6L9 17l-5-5" />
                 </svg>
               </div>
@@ -2771,8 +2809,8 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                 <p className="text-xs text-slate-400 dark:text-slate-500">Login credentials sent automatically</p>
               </div>
             </div>
-            <div className="bg-violet-50 dark:bg-violet-950/20 border border-violet-200 dark:border-violet-900/40 rounded-2xl px-4 py-3 mb-5">
-              <p className="text-[11px] text-violet-800 dark:text-violet-300 font-medium leading-relaxed">
+            <div className="bg-brand-50 dark:bg-brand-950/20 border border-brand-200 dark:border-brand-900/40 rounded-2xl px-4 py-3 mb-5">
+              <p className="text-[11px] text-brand-800 dark:text-brand-300 font-medium leading-relaxed">
                 An email with login credentials has been sent to{" "}
                 <span className="font-bold">{addedClientEmail}</span>. The client can log in at kudiai.app and will set a permanent password on first login.
               </p>
@@ -2787,7 +2825,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             )}
             <button
               onClick={() => { setAddedClientEmail(""); setClientSubAcctErr(""); }}
-              className="w-full bg-violet-600 hover:bg-violet-700 text-white font-bold rounded-2xl py-3.5 text-sm transition-colors">
+              className="w-full bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-2xl py-3.5 text-sm transition-colors">
               Done
             </button>
           </div>
@@ -2796,14 +2834,14 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
       {/* ── Client Password Reset Modal ───────────────────────────── */}
       {createdClient && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-5">
+        <div className="fixed inset-0 z-sheet flex items-center justify-center bg-black/50 px-5">
           <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-sm shadow-2xl max-h-[90dvh] flex flex-col">
             <div className="overflow-y-auto flex-1 p-6">
 
               {/* Header */}
               <div className="flex items-center gap-3 mb-5">
-                <div className="w-11 h-11 bg-violet-100 dark:bg-violet-900/30 rounded-full flex items-center justify-center flex-shrink-0">
-                  <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-violet-600" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+                <div className="w-11 h-11 bg-brand-100 dark:bg-brand-900/30 rounded-full flex items-center justify-center flex-shrink-0">
+                  <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-brand-600" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
                     <path d="M20 6L9 17l-5-5" />
                   </svg>
                 </div>
@@ -2826,7 +2864,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                       <p className="text-sm font-bold text-slate-800 dark:text-white font-mono">{createdClient._password}</p>
                     </div>
                     <button onClick={() => copyField(createdClient._password, "password")}
-                      className="ml-3 text-[11px] font-bold text-violet-600 bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 px-2.5 py-1.5 rounded-lg flex-shrink-0">
+                      className="ml-3 text-[11px] font-bold text-brand-600 bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-800 px-2.5 py-1.5 rounded-lg flex-shrink-0">
                       {copiedField === "password" ? "Copied!" : "Copy"}
                     </button>
                   </div>
@@ -2844,7 +2882,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
               </div>
 
               <button onClick={closeClientCredentials}
-                className="w-full bg-violet-600 hover:bg-violet-700 text-white font-bold rounded-2xl py-3.5 text-sm transition">
+                className="w-full bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-2xl py-3.5 text-sm transition">
                 Done
               </button>
             </div>
@@ -2883,7 +2921,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         <Modal title="Reject Deposit Claim" onClose={() => { setRejectingDeposit(null); setRejectReason(""); }}>
           <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
             Rejecting <strong className="text-slate-700 dark:text-slate-200">{rejectingDeposit.aso_clients?.full_name || "client"}</strong>'s claim of{" "}
-            <strong className="text-violet-700 dark:text-violet-300">₦{Number(rejectingDeposit.amount).toLocaleString("en-NG")}</strong>.
+            <strong className="text-brand-700 dark:text-brand-300">₦{Number(rejectingDeposit.amount).toLocaleString("en-NG")}</strong>.
             The client will be notified with your reason.
           </p>
           <Field as="textarea" label="Reason (required)" value={rejectReason}
@@ -2900,7 +2938,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
       {/* ── Today's Collection overlay ──────────────────────────────────── */}
       {showCollection && (
-        <div className="fixed inset-0 z-[65] flex flex-col bg-white dark:bg-slate-900">
+        <div className="fixed inset-0 z-sub-sheet flex flex-col bg-white dark:bg-slate-900">
           {/* Header */}
           <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-100 dark:border-slate-700/60 bg-white dark:bg-slate-900 flex-shrink-0">
             <button
@@ -2931,12 +2969,12 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
       {/* ── Ajo Groups Management Modal ─────────────────────────────────── */}
       {showGroups && (
-        <div className="fixed inset-0 z-[70] bg-black/50 flex items-end justify-center" onClick={e => { if (e.target === e.currentTarget) setShowGroups(false); }}>
+        <div className="fixed inset-0 z-sub-sheet bg-black/50 flex items-end justify-center" onClick={e => { if (e.target === e.currentTarget) setShowGroups(false); }}>
           <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-t-3xl shadow-2xl flex flex-col" style={{ maxHeight: "90dvh" }}>
             {/* Header */}
             <div className="flex items-center gap-3 px-5 pt-5 pb-3 border-b border-slate-100 dark:border-slate-700 flex-shrink-0">
-              <div className="w-9 h-9 bg-violet-100 dark:bg-violet-900/40 rounded-xl flex items-center justify-center flex-shrink-0">
-                <svg viewBox="0 0 24 24" fill="none" className="w-4.5 h-4.5 text-violet-600 dark:text-violet-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+              <div className="w-9 h-9 bg-brand-100 dark:bg-brand-900/40 rounded-xl flex items-center justify-center flex-shrink-0">
+                <svg viewBox="0 0 24 24" fill="none" className="w-4.5 h-4.5 text-brand-600 dark:text-brand-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                   <rect x="2" y="5" width="20" height="14" rx="2" /><line x1="2" y1="10" x2="22" y2="10" />
                 </svg>
               </div>
@@ -2953,8 +2991,8 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
             <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
               {/* Explainer */}
-              <div className="bg-violet-50 dark:bg-violet-900/20 rounded-2xl px-4 py-3 border border-violet-100 dark:border-violet-800/60">
-                <p className="text-[11px] text-violet-700 dark:text-violet-300 font-medium leading-relaxed">
+              <div className="bg-brand-50 dark:bg-brand-900/20 rounded-2xl px-4 py-3 border border-brand-100 dark:border-brand-800/60">
+                <p className="text-[11px] text-brand-700 dark:text-brand-300 font-medium leading-relaxed">
                   Each group is linked to a <strong>Paystack Subaccount</strong>. When a client pays online, 100% of their contribution routes directly to that group's bank account — the platform holds no funds.
                 </p>
               </div>
@@ -2969,7 +3007,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
               {/* Groups list */}
               {groupsLoading ? (
                 <div className="flex justify-center py-8">
-                  <div className="w-7 h-7 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
+                  <div className="w-7 h-7 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
                 </div>
               ) : groups.length === 0 ? (
                 <div className="text-center py-8">
@@ -3006,7 +3044,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                               <span className="text-[10px] text-slate-400">{clientCount} client{clientCount !== 1 ? "s" : ""}</span>
                               {grp.contribution_frequency && <span className="text-[10px] text-slate-400">· {grp.contribution_frequency}</span>}
                               {grp.contribution_amount   && <span className="text-[10px] text-slate-400">· ₦{fmt(grp.contribution_amount)}</span>}
-                              {isRotating && <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300">Rotating</span>}
+                              {isRotating && <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-brand-100 dark:bg-brand-900/40 text-brand-700 dark:text-brand-300">Rotating</span>}
                             </div>
                             {grp.account_number && (
                               <p className="text-[10px] text-slate-400 mt-0.5 font-mono">
@@ -3039,7 +3077,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                         {isRotating && (
                           <button
                             onClick={() => { setShowGroups(false); openRotation(grp); }}
-                            className="w-full mt-2 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-bold text-xs transition active:scale-[0.99] flex items-center justify-center gap-1.5">
+                            className="w-full mt-2 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-bold text-xs transition active:scale-[0.99] flex items-center justify-center gap-1.5">
                             <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                               <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
                             </svg>
@@ -3300,7 +3338,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                         <button key={val} type="button" onClick={() => setG("group_mode", val)}
                           className={`py-2.5 rounded-xl text-xs font-bold border transition
                             ${gf.group_mode === val
-                              ? "bg-violet-600 border-violet-600 text-white"
+                              ? "bg-brand-600 border-brand-600 text-white"
                               : "bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-300"}`}>
                           {label}
                         </button>
@@ -3310,14 +3348,14 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
                   {/* Privacy toggles for rotating groups */}
                   {gf.group_mode === "rotating" && (
-                    <div className="bg-violet-50 dark:bg-violet-900/20 rounded-2xl p-3 space-y-2.5">
-                      <p className="text-[10px] font-bold text-violet-600 dark:text-violet-400 uppercase tracking-wider">Member Privacy</p>
+                    <div className="bg-brand-50 dark:bg-brand-900/20 rounded-2xl p-3 space-y-2.5">
+                      <p className="text-[10px] font-bold text-brand-600 dark:text-brand-400 uppercase tracking-wider">Member Privacy</p>
                       {[
                         { key: "privacy_show_names",   label: "Show full names to members" },
                         { key: "privacy_show_amounts", label: "Show others' amounts to members" },
                       ].map(({ key, label }) => (
                         <label key={key} className="flex items-center gap-3 cursor-pointer">
-                          <div className={`w-9 h-5 rounded-full transition-colors flex-shrink-0 relative ${gf[key] ? "bg-violet-600" : "bg-slate-300 dark:bg-slate-600"}`}
+                          <div className={`w-9 h-5 rounded-full transition-colors flex-shrink-0 relative ${gf[key] ? "bg-brand-600" : "bg-slate-300 dark:bg-slate-600"}`}
                             onClick={() => setG(key, !gf[key])}>
                             <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-all ${gf[key] ? "left-4" : "left-0.5"}`} />
                           </div>
@@ -3367,7 +3405,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                       Cancel
                     </button>
                     <button onClick={saveGroup} disabled={groupSaving || !gf.name}
-                      className="flex-1 py-2.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded-xl font-bold text-xs transition active:scale-[0.99]">
+                      className="flex-1 py-2.5 bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white rounded-xl font-bold text-xs transition active:scale-[0.99]">
                       {groupSaving ? "Saving…" : "Create Group"}
                     </button>
                   </div>
@@ -3375,7 +3413,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
               ) : (
                 <button
                   onClick={() => { setShowGroupAdd(true); setGroupError(""); setGf(BLANK_GROUP); setResolvedName(""); }}
-                  className="w-full py-3.5 border-2 border-dashed border-violet-200 dark:border-violet-800 text-violet-600 dark:text-violet-400 rounded-2xl font-bold text-sm transition hover:bg-violet-50 dark:hover:bg-violet-900/20 active:scale-[0.99]">
+                  className="w-full py-3.5 border-2 border-dashed border-brand-200 dark:border-brand-800 text-brand-600 dark:text-brand-400 rounded-2xl font-bold text-sm transition hover:bg-brand-50 dark:hover:bg-brand-900/20 active:scale-[0.99]">
                   + Create New Group
                 </button>
               )}
@@ -3387,14 +3425,36 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       )}
       {txnPin && <TransactionPinModal {...txnPin} onCancel={() => setTxnPin(null)} />}
 
+      {/* ── Cycle open/close confirm strip ──── */}
+      {cycleConfirm && (
+        <div className="fixed inset-0 z-modal bg-black/50 flex items-end justify-center px-4 pb-6">
+          <div className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-xl">
+            <p className="font-extrabold text-slate-800 dark:text-white text-sm mb-2">{cycleConfirm.title}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed mb-5">{cycleConfirm.msg}</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setCycleConfirm(null)}
+                className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl font-bold text-xs transition active:scale-95">
+                Cancel
+              </button>
+              <button
+                onClick={async () => { const fn = cycleConfirm.onConfirm; setCycleConfirm(null); await fn(); }}
+                className="flex-1 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-bold text-xs transition active:scale-95">
+                {cycleConfirm.confirmLabel}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Esusu Rotation Dashboard Modal ──────────────────────────────────── */}
       {showRotation && (
-        <div className="fixed inset-0 z-[80] bg-black/50 flex items-end justify-center" onClick={e => { if (e.target === e.currentTarget) setShowRotation(null); }}>
+        <div className="fixed inset-0 z-modal bg-black/50 flex items-end justify-center" onClick={e => { if (e.target === e.currentTarget) setShowRotation(null); }}>
           <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-t-3xl shadow-2xl flex flex-col" style={{ maxHeight: "92dvh" }}>
             {/* Header */}
             <div className="flex items-center gap-3 px-5 pt-5 pb-3 border-b border-slate-100 dark:border-slate-700 flex-shrink-0">
-              <div className="w-9 h-9 bg-violet-100 dark:bg-violet-900/40 rounded-xl flex items-center justify-center flex-shrink-0">
-                <svg viewBox="0 0 24 24" fill="none" className="w-4.5 h-4.5 text-violet-600 dark:text-violet-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+              <div className="w-9 h-9 bg-navy-100 dark:bg-navy-900/40 rounded-xl flex items-center justify-center flex-shrink-0">
+                <svg viewBox="0 0 24 24" fill="none" className="w-4.5 h-4.5 text-navy-600 dark:text-navy-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                   <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
                 </svg>
               </div>
