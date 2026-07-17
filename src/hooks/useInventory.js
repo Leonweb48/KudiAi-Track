@@ -103,6 +103,68 @@ export function useInventory(userId, staffId = null, branchId = null) {
     return true;
   }, []);
 
+  // Auto-stub: called fire-and-forget from AddTxnModal when a sale has an item_name
+  // that doesn't match any existing product. Creates a placeholder with no cost_price
+  // or quantity, flagged needs_costing=true for the owner to complete later.
+  const createAutoStub = useCallback(async (name, sellingPrice, saleQty) => {
+    if (!supabase || !userId || !name?.trim()) return;
+    const normName = name.trim();
+    if (products.some(p => p.product_name.toLowerCase().trim() === normName.toLowerCase())) return;
+
+    const prodId = uid();
+    const prod = {
+      id:                  prodId,
+      user_id:             userId,
+      branch_id:           branchId || null,
+      product_name:        normName,
+      sku:                 "",
+      category:            "",
+      cost_price:          null,
+      selling_price:       parseFloat(sellingPrice) || 0,
+      quantity:            null,
+      low_stock_threshold: 5,
+      source:              "auto_sale",
+      needs_costing:       true,
+    };
+    const mov = {
+      id:         uid(),
+      user_id:    userId,
+      branch_id:  branchId || null,
+      product_id: prodId,
+      type:       "sale",
+      quantity:   -Math.abs(parseInt(saleQty) || 1),
+      unit_price: parseFloat(sellingPrice) || 0,
+      notes:      "Auto-created from sale",
+      staff_id:   staffId || null,
+      created_at: new Date().toISOString(),
+    };
+
+    Promise.all([
+      supabase.from("products").insert(prod),
+      supabase.from("stock_movements").insert(mov),
+    ]).catch(() => {});
+
+    setProducts(prev => [...prev, prod].sort((a, b) => a.product_name.localeCompare(b.product_name)));
+    setMovements(prev => [mov, ...prev]);
+  }, [userId, staffId, branchId, products]);
+
+  // Owner completes a stub: sets cost_price + opening quantity, clears needs_costing flag.
+  // Past sales' margin is NOT retroactively computed — only future sales benefit from
+  // the cost price. The UI makes this explicit.
+  const completeCosting = useCallback(async (id, costPrice, openingQty) => {
+    if (!supabase) return false;
+    const upd = {
+      cost_price:    parseFloat(costPrice) || 0,
+      quantity:      parseInt(openingQty)  || 0,
+      needs_costing: false,
+      updated_at:    new Date().toISOString(),
+    };
+    const { error } = await supabase.from("products").update(upd).eq("id", id);
+    if (error) { setDbError(error.message); return false; }
+    setProducts(prev => prev.map(p => p.id === id ? { ...p, ...upd } : p));
+    return true;
+  }, []);
+
   const recordMovement = useCallback(async ({ product_id, type, quantity, unit_price, notes }) => {
     if (!supabase) return false;
     const product = products.find(p => p.id === product_id);
@@ -211,9 +273,22 @@ export function useInventory(userId, staffId = null, branchId = null) {
     totalRetail: products.reduce((s, p) => s + p.selling_price * p.quantity, 0),
   };
 
+  // Stub stats — products awaiting costing, enriched with sale count + revenue from movements
+  const stubStats = products
+    .filter(p => p.needs_costing)
+    .map(p => {
+      const saleMoves = movements.filter(m => m.product_id === p.id && m.type === "sale");
+      return {
+        ...p,
+        timesSold:    saleMoves.length,
+        totalRevenue: saleMoves.reduce((s, m) => s + (m.unit_price || 0) * Math.abs(m.quantity || 0), 0),
+      };
+    });
+
   return {
-    products, movements, loading, dbError, analytics,
+    products, movements, loading, dbError, analytics, stubStats,
     addProduct, updateProduct, deleteProduct, recordMovement,
+    createAutoStub, completeCosting,
     clearDbError: () => setDbError(null), reload: loadData,
   };
 }

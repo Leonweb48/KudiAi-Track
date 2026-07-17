@@ -583,6 +583,94 @@ function ProductCard({ product, onView, onSale, onRestock, isOwner, onEdit, staf
   );
 }
 
+/* ── Costing sheet — lets owner set cost_price + opening qty on an auto-stub ── */
+function CostingSheet({ prod, onSave, onClose, saving }) {
+  const [costPrice, setCostPrice] = useState("");
+  const [openQty,   setOpenQty]   = useState("");
+  const sp = (prod.selling_price || 0).toLocaleString("en-NG");
+  const m  = costPrice ? Math.round(((parseFloat(costPrice) > 0)
+    ? ((prod.selling_price - parseFloat(costPrice)) / parseFloat(costPrice)) * 100
+    : 0)) : null;
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/50" style={{ zIndex: "var(--z-sheet)" }} onClick={onClose} />
+      <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-900 rounded-t-3xl shadow-2xl"
+        style={{ zIndex: "calc(var(--z-sheet) + 1)", paddingBottom: "max(24px, env(safe-area-inset-bottom, 24px))" }}>
+        <div className="flex justify-center pt-3 pb-0.5">
+          <div className="w-10 h-1 rounded-full bg-slate-200 dark:bg-slate-700" />
+        </div>
+        <div className="px-5 pt-3 pb-2">
+          <div className="flex items-start justify-between mb-1">
+            <div className="flex-1 min-w-0 pr-3">
+              <p className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest mb-0.5">Set Cost Price</p>
+              <h3 className="text-base font-bold text-slate-800 dark:text-white truncate">{prod.product_name}</h3>
+            </div>
+            <div className="text-right flex-shrink-0">
+              <p className="text-[10px] text-slate-400 uppercase font-bold">Selling</p>
+              <p className="text-sm font-extrabold text-green-600 dark:text-green-400">₦{sp}</p>
+            </div>
+          </div>
+
+          {prod.timesSold > 0 && (
+            <div className="mt-1 mb-4 px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                <span className="font-bold text-slate-700 dark:text-slate-200">{prod.timesSold} sale{prod.timesSold !== 1 ? "s" : ""}</span>
+                {" · "}
+                ₦{(prod.totalRevenue || 0).toLocaleString("en-NG", { maximumFractionDigits: 0 })} revenue before costing
+              </p>
+            </div>
+          )}
+
+          <div className="space-y-4 mt-3">
+            <div>
+              <label className="block text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-1.5">
+                Cost Price per Unit (₦)
+              </label>
+              <input
+                type="number" inputMode="decimal" placeholder="0.00"
+                value={costPrice} onChange={e => setCostPrice(e.target.value)}
+                className="w-full h-11 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/30"
+              />
+              {m !== null && (
+                <p className={`text-[11px] mt-1 font-semibold ${m > 0 ? "text-green-600 dark:text-green-400" : "text-red-500"}`}>
+                  {m > 0 ? `${m}% margin on future sales` : "Selling below cost"}
+                </p>
+              )}
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-1.5">
+                Current Stock on Hand
+              </label>
+              <input
+                type="number" inputMode="numeric" placeholder="0"
+                value={openQty} onChange={e => setOpenQty(e.target.value)}
+                className="w-full h-11 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/30"
+              />
+            </div>
+          </div>
+
+          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-3 leading-relaxed">
+            Margin tracks on future sales only. Past sales without a cost price remain revenue-only — no retroactive adjustment.
+          </p>
+
+          <div className="flex gap-3 mt-5">
+            <button onClick={onClose}
+              className="flex-1 h-11 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-semibold text-sm active:scale-95 transition">
+              Cancel
+            </button>
+            <button onClick={() => onSave(costPrice, openQty)}
+              disabled={!costPrice || saving}
+              className="flex-1 h-11 rounded-xl bg-brand-500 text-white font-bold text-sm active:scale-95 transition disabled:opacity-40">
+              {saving ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 /* ── Main Screen ──────────────────────────────────────────────── */
 export default function Inventory({ inventory, isOwner = true, canAdd, plan = "starter", onUpgrade, branches = [], staffBranchId = null }) {
   // canAdd allows staff to add new products without full owner privileges
@@ -599,9 +687,11 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [confirmDel,  setConfirmDel]  = useState(null);
   const [saving,      setSaving]      = useState(false);
+  const [costingProd, setCostingProd] = useState(null);
 
-  const { products, movements, loading, dbError, analytics,
-          addProduct, updateProduct, deleteProduct, recordMovement, clearDbError } = inventory;
+  const { products, movements, loading, dbError, analytics, stubStats,
+          addProduct, updateProduct, deleteProduct, recordMovement,
+          completeCosting, clearDbError } = inventory;
   const { lowStock, totalCost, totalRetail } = analytics;
 
   if (!canDo(plan, "inventory")) {
@@ -677,6 +767,14 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
     setSaving(false);
     setConfirmDel(null);
     setDetailProd(null);
+  };
+
+  const handleCompleteCosting = async (costPrice, openQty) => {
+    if (!costingProd) return;
+    setSaving(true);
+    const ok = await completeCosting(costingProd.id, costPrice, openQty);
+    setSaving(false);
+    if (ok) setCostingProd(null);
   };
 
   return (
@@ -808,6 +906,39 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
           </div>
         )}
 
+        {/* Needs Costing queue — owner only, pinned above product list */}
+        {isOwner && catFilter === "all" && !loading && (stubStats || []).length > 0 && (
+          <div className="mb-5">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest">
+                Needs Costing ({stubStats.length})
+              </span>
+              <div className="flex-1 h-px bg-blue-100 dark:bg-blue-800/40" />
+            </div>
+            <div className="space-y-2">
+              {stubStats.map(p => (
+                <button key={p.id} onClick={() => setCostingProd(p)}
+                  className="w-full text-left bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-2xl px-4 py-3 flex items-center gap-3 active:scale-[0.99] transition-transform">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-slate-800 dark:text-white truncate">{p.product_name}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      {p.timesSold > 0
+                        ? `${p.timesSold} sale${p.timesSold !== 1 ? "s" : ""} · ₦${(p.totalRevenue || 0).toLocaleString("en-NG", { maximumFractionDigits: 0 })} revenue`
+                        : "No sales yet"}
+                    </p>
+                  </div>
+                  <div className="text-right flex-shrink-0 ml-2">
+                    <p className="text-sm font-extrabold text-green-600 dark:text-green-400">
+                      ₦{(p.selling_price || 0).toLocaleString("en-NG")}
+                    </p>
+                    <p className="text-[10px] text-blue-600 dark:text-blue-400 font-bold mt-0.5">Set cost →</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Product list — low-stock items pinned at top when showing all */}
         {!loading && filtered.length > 0 && (() => {
           const renderCard = p => (
@@ -822,11 +953,15 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
               onRestock={prod => setMovModal({ product: prod, type: "restock" })}
             />
           );
-          if (catFilter !== "all") return <div className="space-y-3">{filtered.map(renderCard)}</div>;
+          // When showing "all", stubs are already shown in the Needs Costing section above
+          const stubIds = isOwner ? new Set((stubStats || []).map(p => p.id)) : new Set();
+          const displayList = catFilter === "all" ? filtered.filter(p => !stubIds.has(p.id)) : filtered;
+          if (catFilter !== "all") return <div className="space-y-3">{displayList.map(renderCard)}</div>;
           const lowIds       = new Set(lowStock.map(p => p.id));
-          const lowFiltered  = filtered.filter(p => lowIds.has(p.id));
-          const restFiltered = filtered.filter(p => !lowIds.has(p.id));
-          if (!lowFiltered.length) return <div className="space-y-3">{filtered.map(renderCard)}</div>;
+          const lowFiltered  = displayList.filter(p => lowIds.has(p.id));
+          const restFiltered = displayList.filter(p => !lowIds.has(p.id));
+          if (!displayList.length) return null;
+          if (!lowFiltered.length) return <div className="space-y-3">{displayList.map(renderCard)}</div>;
           return (
             <div className="space-y-3">
               <div className="flex items-center gap-2 pt-1">
@@ -897,6 +1032,15 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
 
       {showAnalytics && (
         <AnalyticsView analytics={analytics} products={products} onClose={() => setShowAnalytics(false)} />
+      )}
+
+      {costingProd && (
+        <CostingSheet
+          prod={costingProd}
+          onSave={handleCompleteCosting}
+          onClose={() => setCostingProd(null)}
+          saving={saving}
+        />
       )}
 
       {/* Delete confirm */}

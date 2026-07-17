@@ -4,6 +4,16 @@ import { today } from "../../utils/helpers";
 import { speakEvent } from "../../utils/tts";
 import { getLang, speakConfirmation } from "../../utils/i18n";
 
+/* ── Fuzzy near-match: catches typos / plurals the autocomplete misses ── */
+function fuzzyMatch(query, target) {
+  const a = query.toLowerCase().replace(/\s+/g, " ").trim();
+  const b = target.toLowerCase().replace(/\s+/g, " ").trim();
+  if (a === b || a.length < 3) return false; // exact → autocomplete; too short → skip
+  if (b.includes(a) || a.includes(b)) return true;
+  const min = Math.min(a.length, b.length);
+  return min >= 4 && a.slice(0, 4) === b.slice(0, 4);
+}
+
 /* ── Category sets per direction ─────────────────────────────────── */
 const CATS_IN  = ["sale", "credit sale", "debt repayment"];
 const CATS_OUT = ["expense", "stock", "other"];
@@ -111,7 +121,8 @@ export function AddTxnModal({
   const [txDate,       setTxDate]       = useState(today());
   const [dueLabel,     setDueLabel]     = useState(null);
   const [customDue,    setCustomDue]    = useState("");
-  const [showSugs,     setShowSugs]     = useState(false);
+  const [showSugs,              setShowSugs]              = useState(false);
+  const [fuzzySugDismissed,     setFuzzySugDismissed]     = useState(false);
 
   /* ── UI state ── */
   const [showDetails,       setShowDetails]       = useState(() => {
@@ -157,11 +168,17 @@ export function AddTxnModal({
   const suggestions = itemName && itemName.length >= 1 && !matchedProduct && showSugs
     ? products.filter(p => p.product_name.toLowerCase().includes(itemName.toLowerCase())).slice(0, 5)
     : [];
+  // Fuzzy suggestion: fires only when no autocomplete match, only for sales
+  const fuzzySuggestion = (!itemName || matchedProduct || suggestions.length > 0 || fuzzySugDismissed || type !== "in")
+    ? null
+    : (products.find(p => fuzzyMatch(itemName, p.product_name)) || null);
+
   const stockAfter = matchedProduct && type === "in" ? matchedProduct.quantity - qtyNum : null;
   const overStock  = type === "in" && matchedProduct && qtyNum > matchedProduct.quantity;
   const isDirty    = amtStr !== "" || itemName !== "" || customerName !== "" || note !== "";
 
   useEffect(() => { isDirtyRef.current = isDirty; }, [isDirty]);
+  useEffect(() => { setFuzzySugDismissed(false); }, [itemName]);
 
   /* ── Animated close ── */
   const animClose = (thenClose) => {
@@ -306,6 +323,10 @@ export function AddTxnModal({
           unit_price: parseFloat(unitPrice) || (amtValue / qtyNum),
           notes:      customerName ? `Sale to ${customerName}` : "Auto-synced from transaction",
         });
+      }
+      // Auto-create stub for unrecognised item names — fire-and-forget, never blocks the save
+      if (type === "in" && itemName.trim() && !matchedProduct && inventory?.createAutoStub) {
+        inventory.createAutoStub(itemName.trim(), parseFloat(unitPrice) || (amtValue / qtyNum), qtyNum);
       }
       setSaving(false);
       setSaveSuccess(true);
@@ -496,6 +517,25 @@ export function AddTxnModal({
                   </div>
                 )}
               </div>
+
+              {/* Fuzzy near-match chip — suggests linking to an existing product */}
+              {fuzzySuggestion && (
+                <div className="flex items-center gap-2 mb-4 px-3.5 py-2.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl">
+                  <span className="text-xs text-amber-700 dark:text-amber-300 flex-1 leading-snug">
+                    Did you mean <strong>{fuzzySuggestion.product_name}</strong>?
+                  </span>
+                  <button
+                    onPointerDown={e => { e.preventDefault(); selectSuggestion(fuzzySuggestion); }}
+                    className="text-xs font-bold text-amber-700 dark:text-amber-300 underline active:opacity-70 flex-shrink-0 px-1">
+                    Link
+                  </button>
+                  <button
+                    onPointerDown={e => { e.preventDefault(); setFuzzySugDismissed(true); }}
+                    className="text-[11px] text-amber-500 dark:text-amber-400 active:opacity-70 flex-shrink-0 px-1">
+                    Ignore
+                  </button>
+                </div>
+              )}
 
               {/* Stock badge */}
               {matchedProduct && (
