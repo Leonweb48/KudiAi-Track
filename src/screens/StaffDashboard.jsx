@@ -194,13 +194,13 @@ If asked about business-wide figures (total business revenue, all staff performa
       <div className="w-full max-w-md flex flex-col h-full relative">
 
         {/* Header — matches business portal exactly */}
-        <header className="flex-none z-30 h-14 flex items-center justify-between px-4 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700/60 shadow-sm">
+        <header className="flex-none z-10 h-14 flex items-center justify-between px-4 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700/60 shadow-sm">
           <div className="flex items-center gap-2">
             <AppLogo className="h-7 w-7 flex-shrink-0" />
             <div className="flex items-baseline gap-0.5">
               <span className="text-[18px] font-black tracking-tight text-slate-800 dark:text-slate-100">Kudi</span>
               <span className="text-[18px] font-black tracking-tight"
-                style={{ background: "linear-gradient(135deg,#16a34a,#059669)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+                style={{ background: "linear-gradient(135deg,#3DA829,#2E8020)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
                 AI
               </span>
               <span className="text-[12px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Track</span>
@@ -209,7 +209,7 @@ If asked about business-wide figures (total business revenue, all staff performa
           <div className="flex items-center gap-2">
             <NotificationBell unreadCount={notif.unreadCount} onClick={() => notif.setOpen(true)} />
             <button onClick={() => goTo("me")}
-              className="w-9 h-9 rounded-full flex items-center justify-center border-2 border-slate-100 dark:border-slate-700 shadow-sm active:scale-90 transition-transform overflow-hidden bg-[linear-gradient(135deg,#059669,#047857)]">
+              className="w-9 h-9 rounded-full flex items-center justify-center border-2 border-slate-100 dark:border-slate-700 shadow-sm active:scale-90 transition-transform overflow-hidden bg-[linear-gradient(135deg,#3DA829,#2E8020)]">
               {staff?.profile_image_url
                 ? <img src={staff.profile_image_url} alt="" className="w-9 h-9 object-cover" />
                 : <span className="text-sm font-black text-white">{avatarInitial}</span>}
@@ -246,7 +246,7 @@ If asked about business-wide figures (total business revenue, all staff performa
         </main>
 
         {/* Bottom nav — business portal pill-background style */}
-        <nav className="flex-none z-40 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800">
+        <nav className="flex-none z-20 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800">
           <div className="flex items-stretch px-1 h-[64px]">
             {NAV.map(n => {
               const active = tab === n.id;

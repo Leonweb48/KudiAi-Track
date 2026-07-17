@@ -447,7 +447,7 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
         <SubHeader title="Close My Day" />
         <div className="flex-1 overflow-y-auto px-4 py-5 space-y-5 pb-6">
           <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 overflow-hidden">
-            <div className="h-1.5 bg-[linear-gradient(90deg,#059669,#047857)]" />
+            <div className="h-1.5 bg-[linear-gradient(90deg,#3DA829,#2E8020)]" />
             <div className="px-5 py-4 grid grid-cols-2 gap-4">
               <div>
                 <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Expected Cash</p>

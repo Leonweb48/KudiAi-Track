@@ -16,18 +16,21 @@ import {
   makeBillServices, fmtDate, greetingText,
 } from "./StaffShared";
 
-/* Gradient per service id — matches business portal action-button style */
+/* Brand gradient — canonical; green-drift + violet entries resolve here (Gate S3) */
+const BRAND_GRAD = "linear-gradient(135deg,#3DA829,#2E8020)";
+
+/* Gradient per service id — category-identity colors as named constants (SVCGRAD ruling) */
 const SVCGRAD = {
-  "cash-in":     "linear-gradient(135deg,#16a34a,#059669)",
+  "cash-in":     BRAND_GRAD,
   "cash-out":    "linear-gradient(135deg,#ef4444,#dc2626)",
   "credit":      "linear-gradient(135deg,#d97706,#b45309)",
   "bills":       "linear-gradient(135deg,#ec4899,#be185d)",
-  "mic":         "linear-gradient(135deg,#059669,#065f46)",
+  "mic":         BRAND_GRAD,
   "airtime":     "linear-gradient(135deg,#ef4444,#dc2626)",
   "data":        "linear-gradient(135deg,#3b82f6,#1d4ed8)",
   "electricity": "linear-gradient(135deg,#f59e0b,#d97706)",
-  "cable":       "linear-gradient(135deg,#8b5cf6,#6d28d9)",
-  "betting":     "linear-gradient(135deg,#10b981,#059669)",
+  "cable":       BRAND_GRAD,
+  "betting":     BRAND_GRAD,
   "ajo":         "linear-gradient(135deg,#6366f1,#4f46e5)",
   "report":      "linear-gradient(135deg,#64748b,#475569)",
 };
@@ -131,8 +134,8 @@ export default function StaffHome({ staff, store, inventory, plan, onGoTo, onVoi
         </button>
       )}
 
-      {/* Hero card — green gradient (matches business portal) */}
-      <div className="rounded-3xl px-5 pt-5 pb-6 text-white relative overflow-hidden shadow-hero bg-[linear-gradient(145deg,#059669_0%,#047857_55%,#065f46_100%)]">
+      {/* Hero card — brand gradient */}
+      <div className="rounded-3xl px-5 pt-5 pb-6 text-white relative overflow-hidden shadow-hero bg-[linear-gradient(145deg,#3DA829_0%,#2E8020_55%,#1a5c0e_100%)]">
         <div className="absolute -top-10 -right-10 w-36 h-36 rounded-full bg-white/5 pointer-events-none" />
         <div className="absolute -bottom-14 -left-10 w-48 h-48 rounded-full bg-white/5 pointer-events-none" />
         <div className="relative">
@@ -241,7 +244,7 @@ export default function StaffHome({ staff, store, inventory, plan, onGoTo, onVoi
             <button key={s.id} onClick={s.onClick}
               className="flex flex-col items-center gap-2 active:scale-90 transition-transform duration-150">
               <div className="w-[54px] h-[54px] rounded-2xl flex items-center justify-center shadow-sm"
-                style={{ background: SVCGRAD[s.id] || "linear-gradient(135deg,#059669,#047857)" }}>
+                style={{ background: SVCGRAD[s.id] || BRAND_GRAD }}>
                 <Svg d={s.icon} size={22} color="#fff" sw={2} />
               </div>
               <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400 text-center leading-tight w-full truncate px-0.5">

@@ -356,7 +356,7 @@ export function SupportModal({ onClose, staffName, staffEmail }) {
             <textarea placeholder="Describe the problem in detail…" value={form.description} onChange={e => setForm(f => ({...f, description: e.target.value}))} rows={3}
               className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 resize-none" />
           </div>
-          {err && <p className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 px-3 py-2 rounded-xl">⚠ {err}</p>}
+          {err && <p className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 px-3 py-2 rounded-xl">{err}</p>}
           <button type="submit" disabled={submitting}
             className="w-full py-3 disabled:opacity-50 text-white rounded-2xl font-bold text-sm flex items-center justify-center gap-2"
             style={{ backgroundColor: GK }}>
