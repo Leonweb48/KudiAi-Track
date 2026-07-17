@@ -8,9 +8,10 @@ import StaffHelp from "./StaffHelp";
 import {
   Svg, P, GK, YEAR,
   SectionLabel, SettingsCard, Row, RowIcon,
-  ChangePinModal, SupportModal,
+  ChangePinModal,
   uploadAvatar,
 } from "./StaffShared";
+import TransactionPinModal from "../../components/TransactionPinModal";
 
 /* ─ Inline profile display components — mirror business Profile.jsx */
 function SectionCard({ title, children }) {
@@ -50,8 +51,8 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
   const [changingPin,       setChangingPin]       = useState(null);
   const [bioLoading,        setBioLoading]        = useState(false);
   const [showTimeoutPicker, setShowTimeoutPicker] = useState(false);
-  const [showSupport,       setShowSupport]       = useState(false);
   const [showStatement,     setShowStatement]     = useState(false);
+  const [showReconcilePin,  setShowReconcilePin]  = useState(false);
   const [legalView,         setLegalView]         = useState(null); // "terms" | "privacy"
   const [acceptedConsent,   setAcceptedConsent]   = useState(null);
   const fileRef = useRef(null);
@@ -177,7 +178,8 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
     </div>
   );
 
-  /* ── Reports ── */
+  /* ── Reports — manager-only: row gated by insights.can_view (PERM-2);
+     only reachable from the menu when livePerms allows it ── */
   if (view === "reports") return (
     <div className="h-full flex flex-col">
       <SubHeader title="Reports & Insights" />
@@ -421,6 +423,9 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
                        - todayTx.filter(tx => tx.type === "out").reduce((s, tx) => s + tx.amount, 0);
     const discrepancy = Number(actualCash || 0) - expectedCash;
 
+    /* PIN boundary: transaction PIN required before writing reconciliation record —
+       attestation signature confirming the staff member's end-of-day declaration.
+       Flow: submit button → TransactionPinModal → onApprove → submitReconciliation() */
     const submitReconciliation = async () => {
       if (!ownerId || !staffId) return;
       setReconcileSaving(true); setReconcileMsg("");
@@ -477,13 +482,20 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
               <p className="text-sm font-semibold">{reconcileMsg}</p>
             </div>
           )}
-          <button onClick={submitReconciliation} disabled={reconcileSaving || !actualCash}
+          <button onClick={() => setShowReconcilePin(true)} disabled={reconcileSaving || !actualCash}
             className="w-full h-12 rounded-2xl text-white font-bold text-sm flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50"
             style={{ backgroundColor: GK }}>
             {reconcileSaving && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
             {reconcileSaving ? "Closing…" : "Close My Day"}
           </button>
         </div>
+        {showReconcilePin && (
+          <TransactionPinModal
+            title="Confirm Close My Day"
+            onApprove={() => { setShowReconcilePin(false); submitReconciliation(); }}
+            onCancel={() => setShowReconcilePin(false)}
+          />
+        )}
       </div>
     );
   }
@@ -524,7 +536,9 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
         <SectionLabel>Account</SectionLabel>
         <SettingsCard>
           <Row icon={<RowIcon d={P.person} />} label="My Profile"           sub="View and edit your profile"             onClick={() => setView("profile")} />
-          <Row icon={<RowIcon d={P.report} />} label="Reports & Insights"   sub="View your performance analytics"        onClick={() => setView("reports")} />
+          {livePerms.find(p => p.module === "insights")?.can_view && (
+            <Row icon={<RowIcon d={P.report} />} label="Reports & Insights" sub="View your performance analytics" onClick={() => setView("reports")} />
+          )}
           <Row icon={<RowIcon d={P.doc} />}    label="Activity Statement"   sub="Generate & share your statement"        onClick={() => setShowStatement(true)} />
           <Row icon={<RowIcon d={P.doc} />}    label="My Activity"          sub="Your action log and history"            onClick={() => setView("activity")} />
           <Row icon={<RowIcon d={P.credit} />} label="My Commissions"       sub="Commission earnings breakdown"          onClick={() => setView("commissions")} />
@@ -652,9 +666,6 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
             ))}
           </div>
         </Modal>
-      )}
-      {showSupport && (
-        <SupportModal onClose={() => setShowSupport(false)} staffName={staff?.full_name} staffEmail={staff?.email || session?.user?.email || ""} />
       )}
       {showStatement && (
         <StaffActivityStatement store={store} staffName={staff?.full_name} businessName={staff?.business_name || store.profile?.business_name} onClose={() => setShowStatement(false)} />

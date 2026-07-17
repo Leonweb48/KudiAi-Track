@@ -14,9 +14,12 @@ export default function StaffRecords({ store, staff, livePerms, initialSub, plan
   useEffect(() => { if (initialSub) setSub(initialSub); }, [initialSub]);
   const allowed = livePerms.filter(p => p.can_view).map(p => p.module);
 
+  // PERM-3: ajo tab requires both plan access and aso.can_view permission
+  const ajoAllowed = ajoOnPlan && allowed.includes("aso");
+
   const tabs = [
     ["credit",   "Credit",   true],
-    ["ajo",      "Ajo",      ajoOnPlan],
+    ["ajo",      "Ajo",      ajoAllowed],
     ["invoices", "Invoices", invOnPlan],
   ].filter(([,, show]) => show);
 
@@ -48,7 +51,10 @@ export default function StaffRecords({ store, staff, livePerms, initialSub, plan
         {sub === "ajo" && !ajoOnPlan && (
           <PermBlock msg="Plan upgrade required" hint={`Ajo / Savings management is ${planAvailableText("aso")} Ask the business owner to upgrade.`} />
         )}
-        {sub === "ajo" && ajoOnPlan && (
+        {sub === "ajo" && ajoOnPlan && !allowed.includes("aso") && (
+          <PermBlock msg="Ajo access not enabled" hint="Contact your manager to enable Ajo access for your account." />
+        )}
+        {sub === "ajo" && ajoOnPlan && allowed.includes("aso") && (
           <div className="h-full overflow-y-auto pb-4"><Aso store={store} plan={plan} staffId={staff?.id} /></div>
         )}
         {sub === "invoices" && !allowed.includes("invoices") && (

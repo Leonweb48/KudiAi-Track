@@ -51,7 +51,11 @@ export default function StaffDashboard({ session, staff: staffProp, pinLock }) {
   const [voiceOpen,  setVoiceOpen] = useState(false);
   const [showAddTxn, setShowAddTxn] = useState(false);
   const [addTxnType, setAddTxnType] = useState("in");
-  const openAddTxn = useCallback((type) => { setAddTxnType(type); setShowAddTxn(true); }, []);
+  // PERM-1: transactions.can_create gate — staff without create permission cannot open the add modal
+  const openAddTxn = useCallback((type) => {
+    if (!(livePerms.find(p => p.module === "transactions")?.can_create)) return;
+    setAddTxnType(type); setShowAddTxn(true);
+  }, [livePerms]);
 
   const staffId = staff?.id;
   const ownerId = staff?.owner_id;
@@ -211,6 +215,29 @@ If asked about business-wide figures (total business revenue, all staff performa
             </button>
           </div>
         </header>
+
+        {/* RES-3: Offline cached-data banner */}
+        {store.fromCache && !store.dbError && !store.loadError && (
+          <div className="flex-none flex items-center gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-100 dark:border-amber-800/30">
+            <svg className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-300">Offline — showing cached data</p>
+          </div>
+        )}
+        {/* RES-1: DB write error banner */}
+        {store.dbError && (
+          <div className="flex-none flex items-center gap-2 px-4 py-2 bg-red-50 dark:bg-red-900/20 border-b border-red-100 dark:border-red-800/30">
+            <svg className="w-3.5 h-3.5 text-red-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
+            <p className="text-[11px] font-semibold text-red-700 dark:text-red-300">Save failed — check connection</p>
+          </div>
+        )}
+        {/* RES-2: Load error banner */}
+        {store.loadError && (
+          <div className="flex-none flex items-center gap-2 px-4 py-2 bg-orange-50 dark:bg-orange-900/20 border-b border-orange-100 dark:border-orange-800/30">
+            <svg className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
+            <p className="text-[11px] font-semibold text-orange-700 dark:text-orange-300 flex-1">Couldn't load data</p>
+            <button onClick={() => window.location.reload()} className="text-[11px] font-bold text-orange-600 dark:text-orange-400 underline">Retry</button>
+          </div>
+        )}
 
         {/* Content */}
         <main className="flex-1 min-h-0 overflow-hidden">
