@@ -1,4 +1,4 @@
-import { compute, countUnnamedSales } from "./profitEngine";
+import { compute, computeCapital, countUnnamedSales } from "./profitEngine";
 
 const RANGE = {
   from: new Date("2026-07-01T00:00:00"),
@@ -190,6 +190,180 @@ test("mixed 20-transaction fixture: full reconciliation", () => {
   expect(r.cash.net.amount).toBe(-4950);
   expect(r.cash.byStream.stockInvestment.amount).toBe(8000);
   expect(r.cash.byStream.creditRepayments.amount).toBe(2000);
+});
+
+// ── A tests: computeCapital ───────────────────────────────────────────────────
+
+// A1: null when working_capital_amount is unset
+test("A1: computeCapital returns null when amount_kobo not set", () => {
+  expect(computeCapital({}, null)).toBeNull();
+  expect(computeCapital({}, {})).toBeNull();
+  expect(computeCapital({}, { amount_kobo: 0 })).toBeNull();
+});
+
+// A2: healthy status — cumulative profit ≥ 0 (no erosion)
+// Uses registration_fee (service income — always measured, zero COGS)
+test("A2: healthy status when net profit is positive", () => {
+  const ledger = {
+    transactions: [
+      { id: "t1", type: "in",  category: "registration_fee", amount: 50000, transaction_date: "2026-01-10" },
+      { id: "t2", type: "out", category: "expense",           amount: 10000, transaction_date: "2026-01-11" },
+    ],
+  };
+  const result = computeCapital(ledger, { amount_kobo: 100000 * 100 }); // ₦100,000 capital
+  // netProfit = 40000; position = 100000 + 40000 = 140000; cushion = 40000 ≥ 0
+  expect(result.status).toBe("healthy");
+  expect(result.cushion.amount).toBeCloseTo(40000);
+  expect(result.position.amount).toBeCloseTo(140000);
+  expect(result.capital.amount).toBe(100000);
+  expect(result.shortfall).toBe(0);
+});
+
+// A3: amber status — loss within 10% of declared capital
+// netProfit = 1000 - 9000 = -8000; threshold = 10000; amber ✓
+test("A3: amber status when loss is within 10% of capital", () => {
+  const ledger = {
+    transactions: [
+      { id: "t1", type: "in",  category: "registration_fee", amount: 1000, transaction_date: "2026-01-10" },
+      { id: "t2", type: "out", category: "expense",           amount: 9000, transaction_date: "2026-01-11" },
+    ],
+  };
+  // capital = ₦100,000; netProfit = -8000; threshold = 10,000; |cushion| = 8000 ≤ 10000
+  const result = computeCapital(ledger, { amount_kobo: 100000 * 100 });
+  expect(result.status).toBe("amber");
+  expect(result.cushion.amount).toBeCloseTo(-8000);
+  expect(result.shortfall).toBeCloseTo(8000);
+});
+
+// A4: red status — loss exceeds 10% threshold
+// netProfit = 5000 - 20000 = -15000; threshold = 10000; red ✓
+test("A4: red status when loss exceeds 10% of capital", () => {
+  const ledger = {
+    transactions: [
+      { id: "t1", type: "in",  category: "registration_fee", amount:  5000, transaction_date: "2026-01-10" },
+      { id: "t2", type: "out", category: "expense",           amount: 20000, transaction_date: "2026-01-11" },
+    ],
+  };
+  // capital = ₦100,000; netProfit = -15000; threshold = 10,000; |cushion| = 15000 > 10000
+  const result = computeCapital(ledger, { amount_kobo: 100000 * 100 });
+  expect(result.status).toBe("red");
+  expect(result.shortfall).toBeCloseTo(15000);
+});
+
+// A5: as_of_date filters transactions — only activity on or after that date counts
+test("A5: as_of_date excludes transactions before the cut-off date", () => {
+  const ledger = {
+    transactions: [
+      // Before as_of — should NOT count
+      { id: "old1", type: "out", category: "expense",          amount: 99000, transaction_date: "2025-12-31" },
+      // After as_of — should count (service income = always measured)
+      { id: "new1", type: "in",  category: "registration_fee", amount: 5000,  transaction_date: "2026-03-01" },
+    ],
+  };
+  // With ₦100k capital and as_of_date 2026-01-01, only the ₦5000 service income counts.
+  // netProfit = 5000; status = healthy
+  const result = computeCapital(ledger, {
+    amount_kobo:  100000 * 100,
+    as_of_date:   "2026-01-01",
+  });
+  expect(result.status).toBe("healthy");
+  expect(result.cushion.amount).toBeCloseTo(5000);
+});
+
+// ── B tests: credit interest ──────────────────────────────────────────────────
+
+// B1: principal-first allocation — full repayment of principal required before
+//     any interest is recognized.
+test("B1: interest NOT recognized until full principal repaid (principal-first)", () => {
+  const credits = [{
+    id: "c1", total_amount: 1000, interest_amount: 100, status: "active",
+  }];
+  // Payment 1: ₦600 — covers ₦600 of principal (₦400 principal remaining)
+  // Payment 2: ₦400 — pays remaining ₦400 principal → principal fully repaid
+  //   but no leftover amount for interest yet (₦600 + ₦400 = ₦1000 = total_amount exactly)
+  const debtPayments = [
+    { id: "dp1", credit_id: "c1", amount: 600, created_at: "2026-07-01T10:00:00" },
+    { id: "dp2", credit_id: "c1", amount: 400, created_at: "2026-07-02T10:00:00" },
+  ];
+  const ledger = { credits, debtPayments };
+  const r = compute(ledger, RANGE);
+  // No interest recognized — both payments absorbed entirely into principal
+  expect(r.profit.revenue.amount).toBe(0);
+  expect(r.cash.byStream.interestEarned.amount).toBe(0);
+});
+
+// B2: interest recognized at collection after principal fully repaid
+test("B2: interest recognized in-period once principal is fully recovered", () => {
+  const credits = [{
+    id: "c1", total_amount: 1000, interest_amount: 100, status: "active",
+  }];
+  // Payment 1: ₦1000 — covers full principal
+  // Payment 2: ₦100  — pure interest; recognized in-period
+  const debtPayments = [
+    { id: "dp1", credit_id: "c1", amount: 1000, created_at: "2026-07-01T10:00:00" },
+    { id: "dp2", credit_id: "c1", amount:  100, created_at: "2026-07-02T10:00:00" },
+  ];
+  const ledger = { credits, debtPayments };
+  const r = compute(ledger, RANGE);
+  expect(r.profit.revenue.amount).toBeCloseTo(100);
+  expect(r.cash.byStream.interestEarned.amount).toBeCloseTo(100);
+});
+
+// B3: interest is NOT added to cash.in (repayment transaction carries it; no double-count)
+test("B3: interest earned not double-counted in cash.in", () => {
+  // The repayment transactions are in the transactions array — already in cash.in.
+  // Interest items are profit-only; they must not inflate cash.in further.
+  const credits = [{
+    id: "c1", total_amount: 500, interest_amount: 50, status: "active",
+  }];
+  const debtPayments = [
+    { id: "dp1", credit_id: "c1", amount: 500, created_at: "2026-07-01T10:00:00" },
+    { id: "dp2", credit_id: "c1", amount:  50, created_at: "2026-07-02T10:00:00" },
+  ];
+  // Mirror repayments as actual transaction records (cash.in)
+  const transactions = [
+    { id: "dp1", type: "in", category: "debt repayment", amount: 500, transaction_date: "2026-07-01" },
+    { id: "dp2", type: "in", category: "debt repayment", amount:  50, transaction_date: "2026-07-02" },
+  ];
+  const ledger = { transactions, credits, debtPayments };
+  const r = compute(ledger, RANGE);
+  // cash.in = ₦550 (from transactions); interest adds ₦50 to PROFIT only
+  expect(r.cash.in.amount).toBeCloseTo(550);
+  expect(r.profit.revenue.amount).toBeCloseTo(50);  // interest in profit
+  expect(r.cash.byStream.interestEarned.amount).toBeCloseTo(50);
+});
+
+// B4: credits with null interest_amount are ignored
+test("B4: credit with null interest_amount produces zero interest revenue", () => {
+  const credits = [
+    { id: "c1", total_amount: 1000, interest_amount: null, status: "active" },
+    { id: "c2", total_amount: 500,  interest_amount: 0,    status: "active" },
+  ];
+  const debtPayments = [
+    { id: "dp1", credit_id: "c1", amount: 1500, created_at: "2026-07-01T10:00:00" },
+    { id: "dp2", credit_id: "c2", amount:  800, created_at: "2026-07-01T10:00:00" },
+  ];
+  const ledger = { credits, debtPayments };
+  const r = compute(ledger, RANGE);
+  expect(r.profit.revenue.amount).toBe(0);
+  expect(r.cash.byStream.interestEarned.amount).toBe(0);
+});
+
+// B5: out-of-range interest payment is excluded even if principal already repaid
+test("B5: interest payment outside range boundary excluded from period revenue", () => {
+  const credits = [{
+    id: "c1", total_amount: 1000, interest_amount: 200, status: "active",
+  }];
+  const debtPayments = [
+    // Principal paid before range starts (June)
+    { id: "dp1", credit_id: "c1", amount: 1000, created_at: "2026-06-15T10:00:00" },
+    // Interest payment also outside range (August)
+    { id: "dp2", credit_id: "c1", amount:  200, created_at: "2026-08-01T10:00:00" },
+  ];
+  const ledger = { credits, debtPayments };
+  const r = compute(ledger, RANGE); // RANGE = July
+  expect(r.profit.revenue.amount).toBe(0);
+  expect(r.cash.byStream.interestEarned.amount).toBe(0);
 });
 
 // ── countUnnamedSales helper ─────────────────────────────────────────────────

@@ -22,6 +22,7 @@ const BLANK = {
   phone: "", email: "", nin: "",
   address: "", state: "", lga: "", ward: "",
   next_of_kin: "", next_of_kin_phone: "", next_of_kin_email: "", next_of_kin_address: "",
+  interest_type: "", interest_value: "",
 };
 
 function SectionLabel({ children }) {
@@ -174,6 +175,9 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
     );
   }
 
+  // Owner vs staff: deleteTransaction is null when a staffId is in use (see useStore return)
+  const isOwner = !!store.deleteTransaction;
+
   // Voided records are excluded from all stats, totals, and overdue alerts
   const nonVoided   = credits.filter(c => c.status !== "voided");
   const totalDebt   = nonVoided.reduce((s, c) => s + (c.total_amount  || 0), 0);
@@ -181,6 +185,12 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
   const totalRecov  = nonVoided.reduce((s, c) => s + (c.amount_paid   || 0), 0);
   const overdueList = nonVoided.filter(c => c.status === "overdue");
   const voidedCount = credits.length - nonVoided.length;
+
+  // Interest decomposition (owner-only — staff see total-due only per spec)
+  const totalInterestDeclared = isOwner
+    ? nonVoided.reduce((s, c) => s + (c.interest_amount || 0), 0)
+    : 0;
+  const hasInterest = isOwner && totalInterestDeclared > 0;
 
   // Voided tab shows only voided; all other tabs exclude voided
   const filtered = credits
@@ -221,7 +231,21 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
   const handleAdd = async () => {
     if (!f.customer_name || !f.total_amount) return;
     setAdding(true);
-    const { data, error } = await addCredit({ ...f, total_amount: parseFloat(f.total_amount) });
+    const principal = parseFloat(f.total_amount) || 0;
+    const iVal      = parseFloat(f.interest_value) || 0;
+    let interestAmount = null;
+    if (f.interest_type === "percent" && iVal > 0) {
+      interestAmount = parseFloat((principal * iVal / 100).toFixed(2));
+    } else if (f.interest_type === "fixed" && iVal > 0) {
+      interestAmount = iVal;
+    }
+    const { data, error } = await addCredit({
+      ...f,
+      total_amount:    principal,
+      interest_amount: interestAmount,
+      interest_value:  iVal || null,
+      interest_type:   f.interest_type || null,
+    });
     if (!error && data && photoFile) {
       try {
         const url = await uploadPhoto(photoFile, data.id, "avatars", "credit");
@@ -289,6 +313,27 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
           </div>
         </div>
       </div>
+
+      {/* Interest breakdown — owner-only, shown only when any credit carries declared interest */}
+      {hasInterest && (
+        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-2xl px-4 py-3 mb-4">
+          <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider mb-2">Interest Earned (declared)</p>
+          <div className="grid grid-cols-3 divide-x divide-amber-200 dark:divide-amber-800/40">
+            <div className="pr-3 min-w-0">
+              <p className="text-[9px] font-bold text-amber-600 dark:text-amber-500 uppercase tracking-wider mb-0.5">Principal</p>
+              <AmountDisplay amount={totalDebt} size="small" align="left" className="text-slate-700 dark:text-slate-200" />
+            </div>
+            <div className="px-3 min-w-0">
+              <p className="text-[9px] font-bold text-amber-600 dark:text-amber-500 uppercase tracking-wider mb-0.5">Interest</p>
+              <AmountDisplay amount={totalInterestDeclared} size="small" align="left" className="text-amber-700 dark:text-amber-400" />
+            </div>
+            <div className="pl-3 min-w-0">
+              <p className="text-[9px] font-bold text-amber-600 dark:text-amber-500 uppercase tracking-wider mb-0.5">Total Due</p>
+              <AmountDisplay amount={totalDebt + totalInterestDeclared} size="small" align="left" className="text-slate-700 dark:text-slate-200" />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Overdue alert */}
       {overdueList.length > 0 && (
@@ -676,6 +721,42 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
             <Field label="Due Date" type="date" value={f.due_date}
               onChange={e => set("due_date", e.target.value)} />
           </div>
+
+          {/* Optional interest — owner sets at creation; immutable after saving */}
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Interest Type" as="select" value={f.interest_type}
+              onChange={e => { set("interest_type", e.target.value); set("interest_value", ""); }}>
+              <option value="">No interest</option>
+              <option value="percent">% of principal</option>
+              <option value="fixed">Fixed ₦ amount</option>
+            </Field>
+            {f.interest_type ? (
+              <Field
+                label={f.interest_type === "percent" ? "Interest %" : "Interest (₦)"}
+                type="number" inputMode="decimal"
+                value={f.interest_value}
+                onChange={e => set("interest_value", e.target.value)}
+                placeholder={f.interest_type === "percent" ? "e.g. 5" : "e.g. 2000"}
+              />
+            ) : <div />}
+          </div>
+          {f.interest_type && f.interest_value && parseFloat(f.interest_value) > 0 && parseFloat(f.total_amount) > 0 && (
+            <p className="text-[12px] text-slate-500 dark:text-slate-400 mb-1 -mt-1">
+              Interest:{" "}
+              {f.interest_type === "percent"
+                ? `₦${(parseFloat(f.total_amount) * parseFloat(f.interest_value) / 100).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                : `₦${parseFloat(f.interest_value).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+              }
+              {" "}· Total due:{" "}
+              ₦{(
+                parseFloat(f.total_amount) + (
+                  f.interest_type === "percent"
+                    ? parseFloat(f.total_amount) * parseFloat(f.interest_value) / 100
+                    : parseFloat(f.interest_value)
+                )
+              ).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+          )}
 
           <SectionLabel>Contact & Identity</SectionLabel>
           <div className="grid grid-cols-2 gap-2">

@@ -3,6 +3,7 @@ import { supabase } from "../utils/supabase";
 import { uid, today } from "../utils/helpers";
 import { logAudit } from "../utils/auditLog";
 import { sendEmailTrigger } from "../utils/emailTrigger";
+import { computeCapital } from "../lib/profitEngine";
 
 const fireEmailTrigger = sendEmailTrigger;
 
@@ -168,6 +169,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     // Daily summary email — owner only, fires at most once per calendar day on first load.
     // Sends yesterday's revenue + expense totals; includes costing coverage proxy so the
     // admin email template knows whether to show a profit line (≥50%) or a "set cost prices" CTA.
+    // Also includes capital status line if the feature is set on the owner's profile.
     if (!staffId && txRes.data) {
       const todayStr = new Date().toISOString().slice(0, 10);
       const summaryKey = `kt_daily_summary_${userId}_${todayStr}`;
@@ -194,17 +196,61 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
             .reduce((s, t) => s + (t.amount || 0), 0);
           const coverage  = totalRev > 0 ? namedRev / totalRev : 0;
           const hasProfit = coverage >= 0.5;
+
+          // Capital status for daily summary email (null = feature not set → omit)
+          const capitalSettings = profRes.data?.working_capital_amount
+            ? { amount_kobo: profRes.data.working_capital_amount, as_of_date: profRes.data.working_capital_as_of || null }
+            : null;
+          const capitalResult = capitalSettings
+            ? computeCapital(
+                { transactions: txRes.data, debtPayments: dpRes.data || [], credits: crRes.data || [] },
+                capitalSettings
+              )
+            : null;
+
           fireEmailTrigger("daily_summary", {
-            owner_id:      userId,
-            owner_email:   authEmailRef.current,
-            period_label:  ydDate,
-            revenue:       totalRev,
+            owner_id:         userId,
+            owner_email:      authEmailRef.current,
+            period_label:     ydDate,
+            revenue:          totalRev,
             expenses,
-            has_profit:    hasProfit,
-            net_approx:    hasProfit ? totalRev - expenses : null,
-            coverage_pct:  Math.round(coverage * 100),
-            tx_count:      dayTxs.length,
+            has_profit:       hasProfit,
+            net_approx:       hasProfit ? totalRev - expenses : null,
+            coverage_pct:     Math.round(coverage * 100),
+            tx_count:         dayTxs.length,
+            capital_status:   capitalResult?.status   || null,
+            capital_shortfall: capitalResult?.shortfall ?? null,
           });
+        }
+      }
+
+      // Capital state-transition notification — fires once per status transition.
+      // Deduped by storing last-seen status in localStorage; never fires more than
+      // once per transition even if multiple loads occur on the same day.
+      if (!staffId && profRes.data?.working_capital_amount) {
+        const capitalSettings = {
+          amount_kobo: profRes.data.working_capital_amount,
+          as_of_date:  profRes.data.working_capital_as_of || null,
+        };
+        const capitalResult = computeCapital(
+          { transactions: txRes.data, debtPayments: dpRes.data || [], credits: crRes.data || [] },
+          capitalSettings
+        );
+        if (capitalResult) {
+          const prevStatusKey = `kt_capital_status_${userId}`;
+          const prevStatus = localStorage.getItem(prevStatusKey);
+          const newStatus  = capitalResult.status;
+          if (prevStatus !== null && prevStatus !== newStatus) {
+            fireEmailTrigger("capital_status_change", {
+              owner_id:       userId,
+              owner_email:    authEmailRef.current,
+              prev_status:    prevStatus,
+              new_status:     newStatus,
+              shortfall:      capitalResult.shortfall || 0,
+              capital_amount: capitalResult.capital.amount,
+            });
+          }
+          localStorage.setItem(prevStatusKey, newStatus);
         }
       }
     }
@@ -243,6 +289,8 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
         store_image_url: p.store_image_url
           ? `${p.store_image_url.split("?")[0]}?v=${Date.now()}`
           : null,
+        working_capital_amount: p.working_capital_amount ?? null,
+        working_capital_as_of:  p.working_capital_as_of  ?? null,
       }));
     }
 
@@ -482,7 +530,10 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
       next_of_kin_address:  c.next_of_kin_address || "",
       total_amount:         parseFloat(c.total_amount) || 0,
       amount_paid:          0,
-      outstanding:          parseFloat(c.total_amount) || 0,
+      outstanding:          (parseFloat(c.total_amount) || 0) + (parseFloat(c.interest_amount) || 0),
+      interest_type:        c.interest_type   || null,
+      interest_value:       c.interest_value  ? parseFloat(c.interest_value)  : null,
+      interest_amount:      c.interest_amount ? parseFloat(c.interest_amount) : null,
       date_given:           today(),
       due_date:             c.due_date             || null,
       status:               "active",
@@ -798,6 +849,8 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
       business_registration_number: next.business_registration_number || null,
       business_phone:               next.business_phone               || null,
       business_email:               next.business_email               || null,
+      working_capital_amount:       next.working_capital_amount       ?? null,
+      working_capital_as_of:        next.working_capital_as_of        || null,
     }).eq("id", userId);
 
     if (error) {

@@ -9,7 +9,7 @@ import LoanApplicationModal from "../components/LoanApplicationModal";
 import { canDo, getLowestPlanWithFeature } from "../utils/plans";
 import { fmt }              from "../utils/helpers";
 import { AmountDisplay }    from "../components/shared/AmountDisplay";
-import { compute }          from "../lib/profitEngine";
+import { compute, computeCapital } from "../lib/profitEngine";
 
 /* ── Period config ───────────────────────────────────────────────────────────── */
 const PERIODS = [
@@ -664,11 +664,15 @@ function ProfitCard({ engine, loading, onDrill, onInfo }) {
   );
 
   const { revenue, cogs, grossProfit, expenses, netProfit, unmeasured } = engine.profit;
+  const { interestEarned } = engine.cash.byStream;
   const drill = (label, d) => d.txIds.length ? () => onDrill({ label, amount: d.amount, txIds: d.txIds }) : null;
 
   return (
     <div className="bg-white dark:bg-slate-800 rounded-3xl p-4 border border-slate-100 dark:border-slate-700/50 shadow-card">
       <PLRow label="Revenue" amount={revenue.amount} onDrill={drill("Revenue", revenue)} />
+      {interestEarned.amount > 0 && (
+        <PLRow label="Interest earned" amount={interestEarned.amount} onDrill={drill("Interest earned", interestEarned)} />
+      )}
       {cogs.amount > 0 && (
         <PLRow label="Cost of Goods" amount={cogs.amount} sign={-1} onDrill={drill("Cost of Goods", cogs)} />
       )}
@@ -868,6 +872,14 @@ function InfoSheet({ onClose }) {
       title: "Cash view",
       body: "Every actual money movement in the period: all money in (including debt repayments received) and all money out (including stock purchases and bill payments). Ajo contributions and payouts are shown separately as client savings held in trust — they are never mixed into business cash or income.",
     },
+    {
+      title: "Interest earned",
+      body: "When a credit record carries a declared interest charge, repayments are allocated principal-first. Once the full principal is recovered, any further repayment in the period is recognised as interest income in the Profit view — zero cost of goods, fully measured. Interest is never double-counted in Cash: the repayment transaction already captures the cash flow.",
+    },
+    {
+      title: "Working Capital",
+      body: "Working Capital position = your declared capital + cumulative net profit since the 'count from' date you set. Healthy means profit has not eroded your capital. Caution (amber) means losses are within 10% of declared capital. Shortfall (red) means losses have exceeded that threshold. Set your declared capital in Settings → Business.",
+    },
   ];
 
   return (
@@ -931,7 +943,7 @@ export default function Finance({
 
   /* ── Period-filtered P&L (client-side) ───────────────────────────────────── */
   const { netPL, cashNet,
-          trendPct, trendUp, sparkData, expenseBreakdown, engine } = useMemo(() => {
+          trendPct, trendUp, sparkData, expenseBreakdown, engine, capitalResult } = useMemo(() => {
     const transactions = store.transactions || [];
     const now          = new Date();
     const start        = getPeriodStart(period);
@@ -947,12 +959,19 @@ export default function Finance({
     // Gross profit = measuredRevenue − COGS (unmeasured items excluded intentionally).
     const ledger = {
       transactions,
-      invoices:   invoiceHook?.invoices     || [],
-      products:   inventory?.products       || [],
-      asoClients: store.asoClients          || [],
+      invoices:     invoiceHook?.invoices   || [],
+      products:     inventory?.products     || [],
+      asoClients:   store.asoClients        || [],
+      debtPayments: store.debtPayments      || [],
+      credits:      store.credits           || [],
     };
     const engine      = compute(ledger, { from: start,      to: now });
     const enginePrior = compute(ledger, { from: priorStart, to: priorEnd });
+
+    const capitalSettings = store.profile?.working_capital_amount
+      ? { amount_kobo: store.profile.working_capital_amount, as_of_date: store.profile.working_capital_as_of || null }
+      : null;
+    const capitalResult = capitalSettings ? computeCapital(ledger, capitalSettings) : null;
 
     const mIn    = engine.profit.revenue.amount;
     const mOut   = engine.profit.expenses.amount;
@@ -984,8 +1003,9 @@ export default function Finance({
       sparkData:        buildSparkData(transactions),
       expenseBreakdown: expBreak,
       engine,
+      capitalResult,
     };
-  }, [store.transactions, store.asoClients, inventory?.products, invoiceHook?.invoices, period]);
+  }, [store.transactions, store.asoClients, store.debtPayments, store.credits, store.profile, inventory?.products, invoiceHook?.invoices, period]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── Finance tools summary values ─────────────────────────────────────────── */
   const creditOutstanding = credits.reduce((s, c) => s + (c.outstanding || 0), 0);
@@ -1084,6 +1104,40 @@ export default function Finance({
           <Sparkline data={sparkData} />
         </div>
       </div>
+
+      {/* ── Working Capital status line (owner-only; hidden when feature not set) ── */}
+      {capitalResult && (
+        <div className={`rounded-2xl px-4 py-3 mb-3 flex items-center gap-3 border ${
+          capitalResult.status === "healthy"
+            ? "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/40"
+            : capitalResult.status === "amber"
+            ? "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800/40"
+            : "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800/40"
+        }`}>
+          <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+            capitalResult.status === "healthy" ? "bg-emerald-500"
+            : capitalResult.status === "amber"  ? "bg-amber-500"
+            : "bg-red-500"
+          }`} />
+          <div className="flex-1 min-w-0">
+            <p className={`text-[12px] font-bold ${
+              capitalResult.status === "healthy" ? "text-emerald-700 dark:text-emerald-400"
+              : capitalResult.status === "amber"  ? "text-amber-700 dark:text-amber-400"
+              : "text-red-700 dark:text-red-400"
+            }`}>
+              Working Capital · {capitalResult.status === "healthy" ? "Healthy" : capitalResult.status === "amber" ? "Caution" : "Shortfall"}
+            </p>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              {capitalResult.status === "healthy"
+                ? `Position ${fmt(capitalResult.position.amount)} · cushion ${fmt(capitalResult.cushion.amount)}`
+                : capitalResult.status === "amber"
+                ? `Capital erosion · ${fmt(capitalResult.shortfall)} below declared capital`
+                : `₦${fmt(capitalResult.shortfall)} shortfall vs declared ${fmt(capitalResult.capital.amount)}`
+              }
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* ── Lens toggle ── */}
       <LensToggle value={lens} onChange={setLens} />

@@ -1,5 +1,5 @@
 /**
- * Profit Engine — single derivation source for all income/profit/cash figures.
+ * Profit Engine — single derivation source for all income/profit/cash/capital figures.
  *
  * Inputs  (ledger object):
  *   transactions   — store.transactions (all-time; engine filters by range)
@@ -7,8 +7,9 @@
  *   products       — inventory.products (for COGS lookup)
  *   asoClients     — store.asoClients (for Ajo liability fallback)
  *   ajoEntries?    — optional [{ id, type, amount, date }] from an Ajo ledger table
- *                    type: "contribution" | "payout" (contributions/payouts only;
- *                    fees should appear as regular transactions)
+ *                    type: "contribution" | "payout"
+ *   debtPayments?  — optional store.debtPayments (for interest-earned recognition)
+ *   credits?       — optional store.credits (for interest allocation)
  *
  * Inputs  (range):
  *   from, to — Date objects (inclusive on both ends)
@@ -22,10 +23,12 @@
  * — decomposable to contributing transaction/entry IDs for audit.
  *
  * SCHEMA DIFF EVIDENCE — no new stored counters:
- *   All figures derive from transactions, products, invoice_payments, aso_clients.
- *   The migration 20260717100000_products_auto_stub.sql adds source + needs_costing
- *   to products — classification flags, not cached aggregates. Every figure here
- *   can be fully re-derived by replaying these rules over the raw ledger.
+ *   All figures derive from transactions, products, invoice_payments, aso_clients,
+ *   debt_payments, credits. Migration 20260717100000 adds source + needs_costing to
+ *   products — classification flags, not cached aggregates.
+ *   Migration 20260717400000 adds interest_type/value/amount to credits — immutable
+ *   at creation; never cached aggregates. Every figure is fully re-derivable by
+ *   replaying these rules over the raw ledger.
  *
  * DERIVATION RULES:
  *   R1  Revenue = "in" transactions where category ∈ REVENUE_CATS (excludes debt
@@ -42,17 +45,21 @@
  *       cash.in includes debt repayments + invoice payments.
  *       cash.out includes stock + bill payments + expenses.
  *       No double-count: credit sales in revenue once; repayments in cash only.
+ *   R7  Interest earned = interest portion of debt repayments, recognized at collection.
+ *       Repayments are allocated principal-first; interest portion enters profit.revenue
+ *       (zero COGS, fully measured) once the full principal is recovered.
+ *       Interest is already in cash.in via the repayment transaction — it is NOT
+ *       added to cash.in again. No compounding, no time-based accrual.
+ *       Bills invariant: credits and bills are structurally separate tables.
+ *       No bill path can carry interest_amount by construction.
  */
 
 // ── Category constants ────────────────────────────────────────────────────────
-// R1: categories that constitute business revenue at recording time
 const REVENUE_CATS = new Set([
   "sale", "credit sale",
-  "registration_fee", "withdrawal_fee", "commission",   // Ajo service income
+  "registration_fee", "withdrawal_fee", "commission",
 ]);
-// R2: zero-COGS service categories (sub-set of REVENUE_CATS)
 const SERVICE_CATS = new Set(["registration_fee", "withdrawal_fee", "commission"]);
-// R5: inventory investment — cash-out but not a P&L expense
 const STOCK_CATS   = new Set(["stock"]);
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -85,6 +92,8 @@ export function compute(ledger, range) {
     products     = [],
     asoClients   = [],
     ajoEntries   = [],
+    debtPayments = [],
+    credits      = [],
   } = ledger;
   const { from, to } = range;
 
@@ -105,14 +114,8 @@ export function compute(ledger, range) {
 
   // ── Revenue (R1 + R2) ─────────────────────────────────────────────────────
   const revTxs  = txsIn.filter(t => REVENUE_CATS.has(t.category) && !isBillPayment(t));
-  const revItems = [
-    ...revTxs.map(t => ({ id: t.id, amount: t.amount })),
-    ...invPmtItems,
-  ];
-  const revenue = pool(revItems);
 
   // ── COGS (R3) ─────────────────────────────────────────────────────────────
-  // Build product lookup keyed by normalised name — matches AddTxnModal's collision check
   const productByName = new Map(
     products.map(p => [p.product_name.toLowerCase().trim(), p])
   );
@@ -123,51 +126,97 @@ export function compute(ledger, range) {
   const unmeasItems = [];
 
   for (const t of revTxs) {
-    // Service income: zero COGS by definition → measured, full margin
     if (SERVICE_CATS.has(t.category)) {
       measuredRev += t.amount;
       continue;
     }
     const name = (t.item_name || "").toLowerCase().trim();
     if (!name) {
-      // Unnamed sale — margin unknown, tracked separately
       unmeasItems.push({ id: t.id, amount: t.amount });
       continue;
     }
     const prod = productByName.get(name);
     if (prod && !prod.needs_costing && (prod.cost_price || 0) > 0) {
-      // R3: costed product — COGS applies; cost is set and finalised
       measuredRev += t.amount;
       cogsAmount  += prod.cost_price * (t.quantity || 1);
       cogsTxIds.push(t.id);
     } else {
-      // Auto-stub (needs_costing=true) or no product match → unmeasured margin
       unmeasItems.push({ id: t.id, amount: t.amount });
     }
   }
 
-  // Invoice payments have zero COGS (service/B2B income)
   measuredRev += invPmtItems.reduce((s, x) => s + x.amount, 0);
 
-  const cogs        = { amount: cogsAmount, txIds: cogsTxIds };
-  const unmeasured  = {
+  const cogs       = { amount: cogsAmount, txIds: cogsTxIds };
+  const unmeasured = {
     count:   unmeasItems.length,
     revenue: unmeasItems.reduce((s, x) => s + x.amount, 0),
     txIds:   unmeasItems.map(x => x.id),
   };
-  // R4: gross profit = measuredRevenue − COGS (conservative: excludes unmeasured items)
   const grossProfit = { amount: measuredRev - cogsAmount, txIds: [] };
 
   // ── Expenses (R5) ─────────────────────────────────────────────────────────
   const expTxs  = txsOut.filter(t => !STOCK_CATS.has(t.category) && !isBillPayment(t));
   const expenses = pool(expTxs.map(t => ({ id: t.id, amount: t.amount })));
 
+  // ── Interest earned (R7) ──────────────────────────────────────────────────
+  // Principal-first allocation across all repayments for each interest-bearing credit.
+  // Interest portion is recognized in profit.revenue only when collected (in-range).
+  // The repayment transaction already captures the full cash flow in cash.in —
+  // interestItems are NOT added to cashIn (would double-count).
+  //
+  // Bills invariant: credits.interest_amount is NULL for all records created before
+  // migration 20260717400000. The bills system uses transactions.bill_status and
+  // payment_type='bill_payment' — it has no connection to the credits table.
+  // No bill path can carry interest by construction.
+  const interestItems = [];
+  const creditsWithInterest = credits.filter(c => (c.interest_amount || 0) > 0 && c.status !== "voided");
+
+  for (const credit of creditsWithInterest) {
+    const creditPmts = debtPayments
+      .filter(p => p.credit_id === credit.id)
+      .sort((a, b) => new Date(a.created_at || a.payment_date || 0) - new Date(b.created_at || b.payment_date || 0));
+
+    let principalRemaining = credit.total_amount;
+    let interestRemaining  = credit.interest_amount;
+
+    for (const pmt of creditPmts) {
+      const amt             = pmt.amount || 0;
+      const principalPortion = Math.min(amt, principalRemaining);
+      principalRemaining    -= principalPortion;
+      const interestPortion  = Math.min(amt - principalPortion, interestRemaining);
+      interestRemaining     -= interestPortion;
+
+      if (interestPortion > 0) {
+        const ds = pmt.created_at || pmt.payment_date;
+        const d  = ds ? (ds.includes("T") ? new Date(ds) : new Date(ds + "T00:00:00")) : null;
+        if (d && inRange(d, from, to)) {
+          interestItems.push({ id: `int-${pmt.id}`, amount: interestPortion });
+        }
+      }
+    }
+  }
+
+  const interestEarned = pool(interestItems);
+  // Interest: zero COGS, fully measured — contributes to gross profit
+  measuredRev += interestEarned.amount;
+  // Recalculate grossProfit with interest included
+  grossProfit.amount = measuredRev - cogsAmount;
+
+  // ── Revenue total (R1 + R2 + R7) ─────────────────────────────────────────
+  const revItems = [
+    ...revTxs.map(t => ({ id: t.id, amount: t.amount })),
+    ...invPmtItems,
+    ...interestItems,
+  ];
+  const revenue = pool(revItems);
+
   // ── Net profit ────────────────────────────────────────────────────────────
   const netProfit = { amount: grossProfit.amount - expenses.amount, txIds: [] };
 
   // ── Cash view (R6) ────────────────────────────────────────────────────────
-  const cashInItems  = [
-    ...txsIn.map(t => ({ id: t.id, amount: t.amount })),  // includes debt repayments
+  const cashInItems = [
+    ...txsIn.map(t => ({ id: t.id, amount: t.amount })),
     ...invPmtItems,
   ];
   const cashIn  = pool(cashInItems);
@@ -180,16 +229,13 @@ export function compute(ledger, range) {
     creditRepayments: pool(txsIn.filter(t => t.category === "debt repayment").map(t => ({ id: t.id, amount: t.amount }))),
     invoicePayments:  pool(invPmtItems),
     ajoFeeIncome:     pool(txsIn.filter(t => SERVICE_CATS.has(t.category)).map(t => ({ id: t.id, amount: t.amount }))),
+    interestEarned,
     expenses:         pool(expTxs.map(t => ({ id: t.id, amount: t.amount }))),
     stockInvestment:  pool(txsOut.filter(t => STOCK_CATS.has(t.category)).map(t => ({ id: t.id, amount: t.amount }))),
     billPayments:     pool(txsOut.filter(t => isBillPayment(t)).map(t => ({ id: t.id, amount: t.amount }))),
   };
 
   // ── Ajo liabilities ───────────────────────────────────────────────────────
-  // ajoEntries carry contribution/payout movements from the Ajo ledger.
-  // Contributions are money held in trust (liability, never income).
-  // Payouts are releases of that trust.
-  // Fallback: if no ajoEntries, sum current_balance from aso_clients.
   const ajoContrib = ajoEntries.filter(e => e.type === "contribution" && inRange(e.date, from, to));
   const ajoPayout  = ajoEntries.filter(e => e.type === "payout"       && inRange(e.date, from, to));
   const ajoHeldAmt = ajoContrib.length
@@ -209,8 +255,56 @@ export function compute(ledger, range) {
 }
 
 /**
+ * Compute working capital position.
+ * Returns null when working_capital_amount is unset (feature hidden).
+ *
+ * capitalPosition = declared_capital + cumulativeNetProfit(from as_of_date)
+ *
+ * Owner drawings: no "owner_draw" or equivalent disbursement category exists in
+ * the current transaction schema. Drawings are omitted from the formula;
+ * position tracks P&L health against declared capital only.
+ *
+ * Three states:
+ *   healthy — cushion ≥ 0 (profit has not eroded capital)
+ *   amber   — cushion < 0 but loss ≤ 10% of capital (default threshold)
+ *   red     — cushion < −threshold (meaningful capital erosion, shortfall figure shown)
+ */
+export function computeCapital(ledger, capitalSettings) {
+  if (!capitalSettings?.amount_kobo) return null;
+
+  const capitalNaira = capitalSettings.amount_kobo / 100;
+  const asOf = capitalSettings.as_of_date
+    ? new Date(capitalSettings.as_of_date + "T00:00:00")
+    : new Date("2000-01-01T00:00:00");
+  const to = new Date();
+  to.setHours(23, 59, 59, 999);
+
+  const engine = compute(ledger, { from: asOf, to });
+  const cumulativeNetProfit = engine.profit.netProfit.amount;
+  const position = capitalNaira + cumulativeNetProfit;
+  const cushion  = cumulativeNetProfit; // position − capital
+
+  const threshold = capitalNaira * 0.10;
+  let status;
+  if (cushion >= 0) {
+    status = "healthy";
+  } else if (Math.abs(cushion) <= threshold) {
+    status = "amber";
+  } else {
+    status = "red";
+  }
+
+  return {
+    capital:  { amount: capitalNaira, id: "capital"  },
+    position: { amount: position,     id: "position" },
+    cushion:  { amount: cushion,      id: "cushion"  },
+    status,
+    shortfall: cushion < 0 ? Math.abs(cushion) : 0,
+  };
+}
+
+/**
  * Count unnamed sales in a date range — used by the weekly nudge in useStore.js.
- * "Unnamed" = type="in", REVENUE_CATS, item_name blank/null.
  */
 export function countUnnamedSales(transactions, from, to) {
   return transactions.filter(t =>

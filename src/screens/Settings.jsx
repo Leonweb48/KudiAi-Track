@@ -291,6 +291,13 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
   const [legalScreen,        setLegalScreen]        = useState(null); // "terms" | "privacy"
   const [acceptedConsent,    setAcceptedConsent]    = useState(null);
   const [showProfilePreview, setShowProfilePreview] = useState(false);
+  const [wcAmountStr, setWcAmountStr] = useState(
+    profile.working_capital_amount ? String(Math.round(profile.working_capital_amount / 100)) : ""
+  );
+  const [wcAsOf,    setWcAsOf]    = useState(profile.working_capital_as_of  || "");
+  const [wcSaving,  setWcSaving]  = useState(false);
+  const [wcError,   setWcError]   = useState("");
+  const [wcSuccess, setWcSuccess] = useState(false);
   const { slotMap: camSlotMap, loading: camLoading, recordEvent } = useCampaigns(["announcement_bar","upsell_inline"]);
   const settingsAnnBars = camSlotMap.announcement_bar || [];
   const settingsUpsells = camSlotMap.upsell_inline   || [];
@@ -298,6 +305,11 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
   useEffect(() => {
     if (!editProfile) setFp({ ...profile });
   }, [profile]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    setWcAmountStr(profile.working_capital_amount ? String(Math.round(profile.working_capital_amount / 100)) : "");
+    setWcAsOf(profile.working_capital_as_of || "");
+  }, [profile.working_capital_amount, profile.working_capital_as_of]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch user's latest accepted consent for display in Settings
   useEffect(() => {
@@ -348,6 +360,26 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
     setSaving(false);
     if (error) { setSaveError(error.message || "Failed to save."); return; }
     setEditProfile(false);
+  };
+
+  const handleSaveWorkingCapital = async () => {
+    setWcError(""); setWcSuccess(false);
+    const nairaVal = parseFloat(wcAmountStr);
+    if (!wcAmountStr.trim() || isNaN(nairaVal) || nairaVal <= 0) {
+      setWcError("Enter a valid amount in ₦");
+      return;
+    }
+    const kobo = Math.round(nairaVal * 100);
+    setWcSaving(true);
+    const { error } = await setProfile({
+      ...profile,
+      working_capital_amount: kobo,
+      working_capital_as_of:  wcAsOf || null,
+    });
+    setWcSaving(false);
+    if (error) { setWcError(error.message || "Failed to save"); return; }
+    setWcSuccess(true);
+    setTimeout(() => setWcSuccess(false), 3000);
   };
 
   const handleSignOut = async () => {
@@ -613,6 +645,47 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
           sub={canDo(plan, "organisation") ? "Cooperatives, associations & groups" : planAvailableText("organisation")}
           onClick={canDo(plan, "organisation") ? onCoops : onUpgrade}
         />
+      </SettingsCard>
+
+      {/* ── BUSINESS ───────────────────────────────────────────────── */}
+      <SectionLabel>Business</SectionLabel>
+      <SettingsCard>
+        <div className="px-4 py-4">
+          <p className="font-semibold text-[15px] text-slate-800 dark:text-slate-100 mb-0.5">Working Capital</p>
+          <p className="text-[12px] text-slate-400 dark:text-slate-500 mb-4">
+            Set your declared capital so KudiAI can track how much of it your business has earned or lost.
+          </p>
+          <label className="block text-[12px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
+            Declared Capital (₦)
+          </label>
+          <input
+            type="number"
+            min="0"
+            inputMode="numeric"
+            placeholder="e.g. 500000"
+            value={wcAmountStr}
+            onChange={e => { setWcAmountStr(e.target.value); setWcError(""); setWcSuccess(false); }}
+            className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-3.5 py-2.5 text-sm font-medium text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-400 mb-3"
+          />
+          <label className="block text-[12px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
+            Count profit from (optional)
+          </label>
+          <input
+            type="date"
+            value={wcAsOf}
+            onChange={e => { setWcAsOf(e.target.value); setWcError(""); setWcSuccess(false); }}
+            className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-3.5 py-2.5 text-sm font-medium text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-400 mb-4"
+          />
+          {wcError && <p className="text-[12px] text-red-500 mb-3">{wcError}</p>}
+          {wcSuccess && <p className="text-[12px] text-emerald-600 dark:text-emerald-400 mb-3">Saved</p>}
+          <button
+            onClick={handleSaveWorkingCapital}
+            disabled={wcSaving}
+            className="w-full py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 active:scale-[0.98] text-white font-semibold text-sm transition-colors disabled:opacity-60"
+          >
+            {wcSaving ? "Saving…" : "Save"}
+          </button>
+        </div>
       </SettingsCard>
 
       {/* ── SECURITY ───────────────────────────────────────────────── */}
