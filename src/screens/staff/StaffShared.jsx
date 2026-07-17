@@ -3,6 +3,8 @@ import { supabase } from "../../utils/supabase";
 import { fmt, today } from "../../utils/helpers";
 import { useT } from "../../contexts/LanguageContext";
 import Modal from "../../components/shared/Modal";
+import PinDots from "../../components/PinDots";
+import { TxRow as _SharedTxRow } from "../../components/shared/TxRow";
 
 /* ─ Palette tokens — matches business portal (emerald-600) ─────── */
 export const NK  = "#059669"; // emerald-600 (primary, was navy)
@@ -179,48 +181,13 @@ export function StatCard({ label, value, icon, iconBg, iconColor, sub, onClick, 
   );
 }
 
-/* ─ Transaction row — green in, navy out ────────────────────────── */
+/* ─ Transaction row — adapter to shared canonical TxRow ─────────── */
 export function TxRow({ t, onClick }) {
-  const isIn   = t.type === "in";
-  const failed = t.bill_status === "failed";
-  return (
-    <button onClick={onClick}
-      className={`w-full flex items-center gap-3 rounded-2xl px-4 py-3.5 shadow-card border active:scale-[.98] transition-all text-left ${
-        failed ? "bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800/50"
-               : "bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700/50"
-      }`}>
-      <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
-        failed   ? "bg-red-100 dark:bg-red-900/30"
-        : isIn   ? "bg-green-100 dark:bg-green-900/30"
-                 : "bg-red-100 dark:bg-red-900/30"
-      }`}>
-        <Svg d={isIn ? P.in : P.out} size={16}
-          color={failed ? "#dc2626" : isIn ? "#059669" : "#ef4444"}
-          sw={2.5} />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5">
-          <p className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate">{t.item_name || "Transaction"}</p>
-          {failed && <span className="flex-shrink-0 text-[9px] font-black bg-red-500 text-white px-1.5 py-0.5 rounded-full">FAILED</span>}
-        </div>
-        <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 truncate">{t.category} · {t.payment_type}</p>
-      </div>
-      <div className="text-right flex-shrink-0">
-        <p className={`text-sm font-extrabold tabular ${
-          failed ? "text-red-400 line-through"
-          : isIn  ? "text-emerald-600 dark:text-emerald-400"
-                  : "text-red-500 dark:text-red-400"
-        }`}>
-          {isIn ? "+" : "−"}{fmt(t.amount)}
-        </p>
-        {onClick && <p className="text-[10px] text-slate-300 dark:text-slate-600 mt-0.5">view</p>}
-      </div>
-    </button>
-  );
+  return <_SharedTxRow tx={t} onClick={onClick} />;
 }
 
-/* ─ Change PIN modal ────────────────────────────────────────────── */
-export function ChangePinModal({ mode, onDone, onClose }) {
+/* ─ Change PIN modal — PinDots + shared numpad classes + ForgotPinFlow hook ─ */
+export function ChangePinModal({ mode, onDone, onClose, onForgotPin }) {
   const digits = mode === "app" ? 6 : 4;
   const label  = mode === "app" ? "App Lock PIN" : "Transaction PIN";
   const [step,    setStep]    = useState(0);
@@ -285,35 +252,35 @@ export function ChangePinModal({ mode, onDone, onClose }) {
         ) : (
           <>
             <p className="text-sm text-slate-500 dark:text-slate-400 text-center">{titles[step]}</p>
-            <div className="flex gap-3">
-              {Array.from({ length: digits }).map((_, i) => (
-                <div key={i}
-                  className={`w-3.5 h-3.5 rounded-full border-2 transition-all ${active.length > i ? "scale-110 border-transparent" : "border-slate-300 dark:border-slate-600"}`}
-                  style={{ backgroundColor: active.length > i ? GK : undefined }} />
-              ))}
-            </div>
+            <PinDots filled={active.length} count={digits} />
             {err  && <p className="text-xs text-red-500 font-semibold -mt-2 text-center">{err}</p>}
             {busy && <p className="text-xs text-slate-400">Verifying…</p>}
-            <div className="grid grid-cols-3 gap-3 w-full max-w-[240px]">
+            <div className="grid grid-cols-3 gap-3 w-full max-w-[280px]">
               {[1,2,3,4,5,6,7,8,9].map(n => (
-                <button key={n} onClick={() => handleDigit(String(n))}
-                  className="h-14 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-white text-lg font-bold transition active:scale-95">
+                <button key={n} onClick={() => handleDigit(String(n))} disabled={busy}
+                  className="h-14 rounded-[14px] bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 text-slate-900 dark:text-slate-100 text-[19px] font-bold cursor-pointer transition-all duration-100 disabled:opacity-50">
                   {n}
                 </button>
               ))}
               <div />
-              <button onClick={() => handleDigit("0")}
-                className="h-14 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-white text-lg font-bold transition active:scale-95">
+              <button onClick={() => handleDigit("0")} disabled={busy}
+                className="h-14 rounded-[14px] bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 text-slate-900 dark:text-slate-100 text-[19px] font-bold cursor-pointer transition-all duration-100 disabled:opacity-50">
                 0
               </button>
-              <button onClick={handleDel}
-                className="h-14 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center transition active:scale-95 text-slate-600 dark:text-slate-300">
-                <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+              <button onClick={handleDel} disabled={busy}
+                className="h-14 rounded-[14px] bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 flex items-center justify-center transition-all duration-100 disabled:opacity-50">
+                <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                   <path d="M21 4H8l-7 8 7 8h13a2 2 0 002-2V6a2 2 0 00-2-2z" />
                   <line x1="18" y1="9" x2="13" y2="14" /><line x1="13" y1="9" x2="18" y2="14" />
                 </svg>
               </button>
             </div>
+            {step === 0 && onForgotPin && (
+              <button onClick={onForgotPin}
+                className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 mt-1">
+                Forgot PIN?
+              </button>
+            )}
           </>
         )}
       </div>

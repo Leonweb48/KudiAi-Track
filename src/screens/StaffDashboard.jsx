@@ -56,6 +56,7 @@ export default function StaffDashboard({ session, staff: staffProp, pinLock }) {
     if (!(livePerms.find(p => p.module === "transactions")?.can_create)) return;
     setAddTxnType(type); setShowAddTxn(true);
   }, [livePerms]);
+  const canAddTxn = !!(livePerms.find(p => p.module === "transactions")?.can_create);
 
   const staffId = staff?.id;
   const ownerId = staff?.owner_id;
@@ -179,7 +180,7 @@ If asked about business-wide figures (total business revenue, all staff performa
 
   function renderContent() {
     switch (tab) {
-      case "home":    return <StaffHome    staff={staff} store={store} inventory={inventory} plan={plan} onGoTo={goTo} onVoiceOpen={() => setVoiceOpen(true)} onAddCash={openAddTxn} />;
+      case "home":    return <StaffHome    staff={staff} store={store} inventory={inventory} plan={plan} onGoTo={goTo} onVoiceOpen={() => setVoiceOpen(true)} onAddCash={openAddTxn} canAddTxn={canAddTxn} />;
       case "sales":   return <StaffSales   store={store} staff={staff} session={session} livePerms={livePerms} initialSub={subNav} initialData={subData} onVoiceOpen={() => setVoiceOpen(true)} inventory={inventory} onAddCash={openAddTxn} plan={plan} />;
       case "records": return <StaffRecords store={store} staff={staff} livePerms={livePerms} initialSub={subNav} plan={plan} invoiceHook={invoiceHook} inventory={inventory} ownerId={ownerId} />;
       case "stock":   return <StaffStock   inventory={inventory} staff={staff} livePerms={livePerms} plan={plan} />;
@@ -235,7 +236,7 @@ If asked about business-wide figures (total business revenue, all staff performa
           <div className="flex-none flex items-center gap-2 px-4 py-2 bg-orange-50 dark:bg-orange-900/20 border-b border-orange-100 dark:border-orange-800/30">
             <svg className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
             <p className="text-[11px] font-semibold text-orange-700 dark:text-orange-300 flex-1">Couldn't load data</p>
-            <button onClick={() => window.location.reload()} className="text-[11px] font-bold text-orange-600 dark:text-orange-400 underline">Retry</button>
+            <button onClick={() => store.reloadData()} className="text-[11px] font-bold text-orange-600 dark:text-orange-400 underline">Retry</button>
           </div>
         )}
 

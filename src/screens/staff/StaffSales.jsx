@@ -23,6 +23,7 @@ export default function StaffSales({ store, staff, session, livePerms, initialSu
   const allowed      = livePerms.filter(p => p.can_view).map(p => p.module);
   const canRefund    = livePerms.find(p => p.module === "refunds")?.can_create || false;
   const canDiscount  = livePerms.find(p => p.module === "discounts")?.can_create || false;
+  const canCreate    = livePerms.find(p => p.module === "transactions")?.can_create || false;
 
   const submitApproval = async () => {
     const staffId = staff?.id;
@@ -123,11 +124,11 @@ export default function StaffSales({ store, staff, session, livePerms, initialSu
                 className="w-full h-10 pl-9 pr-4 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30" />
             </div>
 
-            {/* Period chips */}
+            {/* Period chips — min-h-[44px] for accessibility */}
             <div className="flex gap-2 overflow-x-auto no-scrollbar">
               {[["all","All time"],["today","Today"],["week","7 Days"],["month","30 Days"]].map(([v, l]) => (
                 <button key={v} onClick={() => setPeriod(v)}
-                  className={`flex-shrink-0 px-3 py-1.5 rounded-xl text-[11px] font-bold transition ${
+                  className={`flex-shrink-0 min-h-[44px] px-3 rounded-xl text-[11px] font-bold transition flex items-center ${
                     period === v
                       ? "text-white"
                       : "bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400"
@@ -137,7 +138,7 @@ export default function StaffSales({ store, staff, session, livePerms, initialSu
                 </button>
               ))}
               <button onClick={onVoiceOpen}
-                className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold text-white"
+                className="flex-shrink-0 min-h-[44px] flex items-center gap-1.5 px-3 rounded-xl text-[11px] font-bold text-white"
                 style={{ backgroundColor: GK }}>
                 <Svg d={P.mic} size={12} color="white" />
                 Mic Sale
@@ -149,7 +150,7 @@ export default function StaffSales({ store, staff, session, livePerms, initialSu
               <div className="flex gap-2 overflow-x-auto no-scrollbar">
                 {[["all","All"],["in","Cash In"],["out","Cash Out"],["bills","Bills"]].map(([v, l]) => (
                   <button key={v} onClick={() => setTypeFilter(v)}
-                    className={`flex-shrink-0 px-3 py-1.5 rounded-xl text-[11px] font-bold transition ${
+                    className={`flex-shrink-0 min-h-[44px] px-3 rounded-xl text-[11px] font-bold transition flex items-center ${
                       typeFilter === v
                         ? "bg-emerald-600 dark:bg-slate-200 text-white dark:text-slate-900"
                         : "bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400"
@@ -160,20 +161,22 @@ export default function StaffSales({ store, staff, session, livePerms, initialSu
               </div>
             )}
 
-            {/* Cash In / Cash Out add buttons */}
-            <div className="flex gap-2">
-              <button onClick={() => onAddCash("in")}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-2xl text-white text-xs font-bold active:scale-[0.97] transition"
-                style={{ backgroundColor: GK }}>
-                <Svg d="M12 5v14|M5 12h14" size={14} color="white" sw={2.5} />
-                Cash In
-              </button>
-              <button onClick={() => onAddCash("out")}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-2xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 text-red-600 dark:text-red-400 text-xs font-bold active:scale-[0.97] transition">
-                <Svg d="M5 12h14" size={14} color="currentColor" sw={2.5} />
-                Cash Out
-              </button>
-            </div>
+            {/* Cash In / Cash Out add buttons — hidden when transactions.can_create is off (PERM-1) */}
+            {canCreate && (
+              <div className="flex gap-2">
+                <button onClick={() => onAddCash("in")}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-2xl text-white text-xs font-bold active:scale-[0.97] transition"
+                  style={{ backgroundColor: GK }}>
+                  <Svg d="M12 5v14|M5 12h14" size={14} color="white" sw={2.5} />
+                  Cash In
+                </button>
+                <button onClick={() => onAddCash("out")}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-2xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 text-red-600 dark:text-red-400 text-xs font-bold active:scale-[0.97] transition">
+                  <Svg d="M5 12h14" size={14} color="currentColor" sw={2.5} />
+                  Cash Out
+                </button>
+              </div>
+            )}
             {/* D5: Request approval for refund/discount if no permission */}
             {(!canRefund || !canDiscount) && (
               <button onClick={() => {

@@ -15,6 +15,9 @@ function Svg({ d, size = 18, color = "currentColor", sw = 2 }) {
 /* ── Capitalise first character ─────────────────────────────────────── */
 function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ""; }
 
+/* ── Format payment_type enum → human label (e.g. bill_payment → Bill Payment) ── */
+function fmtPT(pt) { return pt ? pt.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()) : ""; }
+
 /* ── Sensible title when item_name is absent ─────────────────────────── */
 const CAT_LABEL = {
   sale:             "Sale",
@@ -78,8 +81,8 @@ function TxRowHome({ tx, hidden, onClick }) {
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate">{catTitle(tx)}</p>
-        <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 truncate capitalize">
-          {tx.category} · {tx.payment_type}
+        <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 truncate">
+          {cap(tx.category)} · {fmtPT(tx.payment_type)}
         </p>
       </div>
       <div className="text-right flex-shrink-0">
@@ -162,7 +165,7 @@ function TxRowTransactions({ tx, hidden, onClick, staffName, onSwipeReceipt, onS
     onClick?.();
   };
 
-  const parts = [tx.customer_name, cap(tx.category), tx.payment_type].filter(Boolean);
+  const parts = [tx.customer_name, cap(tx.category), fmtPT(tx.payment_type)].filter(Boolean);
 
   return (
     <div

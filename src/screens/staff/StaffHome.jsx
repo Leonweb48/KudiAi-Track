@@ -35,7 +35,7 @@ const SVCGRAD = {
 /* ═══════════════════════════════════════════════════════════════════
    HOME TAB — redesigned to match business portal look and feel
 ═══════════════════════════════════════════════════════════════════ */
-export default function StaffHome({ staff, store, inventory, plan, onGoTo, onVoiceOpen, onAddCash }) {
+export default function StaffHome({ staff, store, inventory, plan, onGoTo, onVoiceOpen, onAddCash, canAddTxn }) {
   const t = useT();
   const { lang } = useLanguage();
   const BILL_SERVICES = useMemo(() => makeBillServices(t), [t]);
@@ -75,8 +75,10 @@ export default function StaffHome({ staff, store, inventory, plan, onGoTo, onVoi
 
   /* 8 service buttons (4-col × 2 rows), gradient rounded-2xl */
   const services = useMemo(() => [
-    { id: "cash-in",  label: "Cash In",   icon: P.in,     onClick: () => onAddCash("in") },
-    { id: "cash-out", label: "Cash Out",  icon: P.out,    onClick: () => onAddCash("out") },
+    ...(canAddTxn ? [
+      { id: "cash-in",  label: "Cash In",  icon: P.in,  onClick: () => onAddCash("in")  },
+      { id: "cash-out", label: "Cash Out", icon: P.out, onClick: () => onAddCash("out") },
+    ] : []),
     { id: "credit",   label: "Credit",    icon: P.credit, onClick: () => onGoTo("records","credit") },
     { id: "bills",    label: "Pay Bills", icon: P.bills,  onClick: () => onGoTo("sales","bills") },
     ...BILL_SERVICES.slice(0, 3).map(s => ({
@@ -88,7 +90,7 @@ export default function StaffHome({ staff, store, inventory, plan, onGoTo, onVoi
     canDo(plan, "aso")
       ? { id: "ajo",    label: "Ajo",     icon: P.bank,   onClick: () => onGoTo("records","ajo") }
       : { id: "report", label: "Reports", icon: P.report, onClick: () => onGoTo("me","reports") },
-  ], [BILL_SERVICES, plan, onAddCash, onVoiceOpen, onGoTo]);
+  ], [BILL_SERVICES, plan, onAddCash, onVoiceOpen, onGoTo, canAddTxn]);
 
   return (
     <div className="overflow-y-auto h-full pb-6 space-y-4 screen-enter">

@@ -12,6 +12,8 @@ import {
   uploadAvatar,
 } from "./StaffShared";
 import TransactionPinModal from "../../components/TransactionPinModal";
+import ForgotPinFlow from "../../components/ForgotPinFlow";
+import Field from "../../components/shared/Field";
 
 /* ─ Inline profile display components — mirror business Profile.jsx */
 function SectionCard({ title, children }) {
@@ -53,6 +55,7 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
   const [showTimeoutPicker, setShowTimeoutPicker] = useState(false);
   const [showStatement,     setShowStatement]     = useState(false);
   const [showReconcilePin,  setShowReconcilePin]  = useState(false);
+  const [showForgotPin,     setShowForgotPin]     = useState(false);
   const [legalView,         setLegalView]         = useState(null); // "terms" | "privacy"
   const [acceptedConsent,   setAcceptedConsent]   = useState(null);
   const fileRef = useRef(null);
@@ -270,18 +273,13 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
         </div>
 
         {/* Fields */}
-        <div className="space-y-3">
-          {[["Full Name","full_name","text"],["Phone","phone","tel"]].map(([l, k, tp]) => (
-            <div key={k}>
-              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">{l}</p>
-              <input type={tp} value={editForm[k]} onChange={e => setEditForm(p => ({...p, [k]: e.target.value}))}
-                className="w-full h-12 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-            </div>
-          ))}
-          <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Email</p>
+        <div>
+          <Field label="Full Name" type="text" value={editForm.full_name} onChange={e => setEditForm(p => ({...p, full_name: e.target.value}))} />
+          <Field label="Phone" type="tel" value={editForm.phone} onChange={e => setEditForm(p => ({...p, phone: e.target.value}))} />
+          <div className="mb-3">
+            <label className="block mb-1 text-xs font-semibold text-slate-500 dark:text-slate-400 tracking-wide uppercase">Email</label>
             <input disabled value={staff?.email || session?.user?.email || "—"}
-              className="w-full h-12 rounded-xl border border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-4 text-sm text-slate-400 cursor-not-allowed" />
+              className="w-full border rounded-xl px-3 py-2 text-sm bg-slate-50 dark:bg-slate-900 border-slate-100 dark:border-slate-700 text-slate-400 cursor-not-allowed" />
           </div>
         </div>
 
@@ -645,10 +643,14 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
         <ChangePinModal
           mode={changingPin}
           onClose={() => setChangingPin(null)}
+          onForgotPin={() => { setChangingPin(null); setShowForgotPin(true); }}
           onDone={async (current, newP) => {
             await (changingPin === "app" ? pinLock.changeAppPin : pinLock.changeTxnPin)(current, newP);
           }}
         />
+      )}
+      {showForgotPin && (
+        <ForgotPinFlow pinLock={pinLock} onCancel={() => setShowForgotPin(false)} />
       )}
       {showTimeoutPicker && (
         <Modal title="Auto-lock Timeout" onClose={() => setShowTimeoutPicker(false)}>
