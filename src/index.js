@@ -5,11 +5,26 @@ import "./index.css";
 import App from "./App";
 import { LanguageProvider } from "./contexts/LanguageContext";
 import { CapacitorUpdater } from "@capgo/capacitor-updater";
+import { App } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
 
-// Tell Capgo this bundle loaded successfully — prevents auto-rollback
 if (Capacitor.isNativePlatform()) {
+  // Tell Capgo this bundle loaded successfully — prevents auto-rollback
   CapacitorUpdater.notifyAppReady().catch(() => {});
+
+  // Apply downloaded updates on next app foreground rather than next cold launch.
+  // Without this, clearing app data requires two full restarts to get current code.
+  let pendingBundle = null;
+  CapacitorUpdater.addListener("updateAvailable", (info) => {
+    pendingBundle = info.bundle;
+  });
+  App.addListener("appStateChange", ({ isActive }) => {
+    if (isActive && pendingBundle) {
+      const b = pendingBundle;
+      pendingBundle = null;
+      CapacitorUpdater.set(b).catch(() => {});
+    }
+  });
 }
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
