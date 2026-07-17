@@ -11,9 +11,12 @@ export function useInventory(userId, staffId = null, branchId = null) {
 
   const loadData = useCallback(async () => {
     if (!userId || !supabase) { setLoading(false); return; }
-    let pQ = supabase.from("products").select("*").eq("user_id", userId).order("product_name");
-    // Branch staff see their branch stock + main business stock (no branch), so they can sell from either
-    if (branchId) pQ = pQ.or(`branch_id.eq.${branchId},branch_id.is.null`);
+    // Staff reads go through get_products_safe() (SECURITY DEFINER) which returns
+    // cost_price = NULL. Dropping staff_read_products blocks direct table access.
+    // Owner reads use the table directly and receive all columns including cost_price.
+    const pQ = staffId
+      ? supabase.rpc("get_products_safe", { p_owner_id: userId, p_branch_id: branchId || null })
+      : supabase.from("products").select("*").eq("user_id", userId).order("product_name");
     const [pRes, mRes] = await Promise.all([
       pQ,
       supabase.from("stock_movements").select("*").eq("user_id", userId)
@@ -22,7 +25,7 @@ export function useInventory(userId, staffId = null, branchId = null) {
     if (pRes.data)  setProducts(pRes.data);
     if (mRes.data)  setMovements(mRes.data);
     setLoading(false);
-  }, [userId, branchId]);
+  }, [userId, staffId, branchId]);
 
   useEffect(() => { loadData(); }, [loadData]);
 

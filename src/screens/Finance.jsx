@@ -551,6 +551,350 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
 /* ── Expense category label map ──────────────────────────────────────────────── */
 const CAT_LABEL = { expense: "Expense", stock: "Stock Purchase", other: "Other" };
 
+/* ── Business Position lens sub-components ───────────────────────────────────── */
+
+function LensToggle({ value, onChange }) {
+  return (
+    <div className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-slate-100 dark:bg-slate-800">
+      {["profit", "cash"].map(k => (
+        <button
+          key={k}
+          onClick={() => onChange(k)}
+          className={`py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition min-h-[44px] ${
+            value === k
+              ? "bg-white dark:bg-slate-700 text-brand-600 dark:text-brand-400 shadow-sm"
+              : "text-slate-400 dark:text-slate-500"
+          }`}
+        >
+          {k === "profit" ? "Profit & Loss" : "Cash Flow"}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function PLRow({ label, amount, sign = 1, isSub = false, onDrill, note }) {
+  const displayAmt = sign < 0 && amount > 0 ? -amount : amount;
+  return (
+    <div
+      role={onDrill ? "button" : undefined}
+      tabIndex={onDrill ? 0 : undefined}
+      onClick={onDrill}
+      className={[
+        "flex items-center gap-2 py-2.5 min-h-[44px]",
+        isSub ? "border-t border-slate-100 dark:border-slate-700/60 mt-1 pt-3" : "",
+        onDrill ? "cursor-pointer active:bg-slate-50 dark:active:bg-slate-700/30 rounded-xl px-2 -mx-2 transition-colors" : "",
+      ].filter(Boolean).join(" ")}
+    >
+      <div className="flex-1 min-w-0">
+        <p className={`text-sm truncate leading-tight ${
+          isSub
+            ? "font-extrabold text-slate-800 dark:text-white"
+            : "font-semibold text-slate-600 dark:text-slate-300"
+        }`}>{label}</p>
+        {note && <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5 leading-tight">{note}</p>}
+      </div>
+      <span className={`text-sm tabular-nums flex-shrink-0 ${
+        isSub ? "font-extrabold" : "font-bold"
+      } ${
+        displayAmt < 0 ? "text-red-500 dark:text-red-400" :
+        displayAmt > 0 ? "text-slate-800 dark:text-white" :
+        "text-slate-400 dark:text-slate-500"
+      }`}>
+        {displayAmt < 0 && "−"}{fmt(Math.abs(displayAmt))}
+      </span>
+      {onDrill && (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-300 dark:text-slate-600 flex-shrink-0">
+          <polyline points="9 18 15 12 9 6" />
+        </svg>
+      )}
+    </div>
+  );
+}
+
+function StreamRow({ label, amount, sign = 1, isLiability = false, isSub = false, onDrill }) {
+  const displayAmt = sign < 0 ? -amount : amount;
+  return (
+    <div
+      role={onDrill ? "button" : undefined}
+      tabIndex={onDrill ? 0 : undefined}
+      onClick={onDrill}
+      className={[
+        "flex items-center gap-2 py-2.5 min-h-[44px]",
+        isSub ? "border-t border-slate-100 dark:border-slate-700/60 mt-1 pt-3" : "",
+        onDrill ? "cursor-pointer active:bg-slate-50 dark:active:bg-slate-700/30 rounded-xl px-2 -mx-2 transition-colors" : "",
+      ].filter(Boolean).join(" ")}
+    >
+      {isLiability && <div className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" />}
+      <p className={`flex-1 min-w-0 text-sm truncate ${
+        isSub
+          ? "font-extrabold text-slate-800 dark:text-white"
+          : "font-semibold text-slate-600 dark:text-slate-300"
+      }`}>{label}</p>
+      <span className={`text-sm tabular-nums flex-shrink-0 ${
+        isSub ? "font-extrabold" : "font-bold"
+      } ${
+        isLiability ? "text-amber-600 dark:text-amber-400" :
+        displayAmt < 0 ? "text-red-500 dark:text-red-400" :
+        "text-slate-800 dark:text-white"
+      }`}>
+        {displayAmt < 0 && "−"}{fmt(Math.abs(displayAmt))}
+      </span>
+      {onDrill && (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-300 dark:text-slate-600 flex-shrink-0">
+          <polyline points="9 18 15 12 9 6" />
+        </svg>
+      )}
+    </div>
+  );
+}
+
+const SkeletonRow = () => (
+  <div className="flex items-center justify-between py-2.5 min-h-[44px]">
+    <div className="h-3.5 rounded-full bg-slate-200 dark:bg-slate-700 animate-pulse" style={{ width: "80px" }} />
+    <div className="h-3.5 w-20 rounded-full bg-slate-200 dark:bg-slate-700 animate-pulse" />
+  </div>
+);
+
+function ProfitCard({ engine, loading, onDrill, onInfo }) {
+  if (loading) return (
+    <div className="bg-white dark:bg-slate-800 rounded-3xl p-4 border border-slate-100 dark:border-slate-700/50 shadow-card">
+      {[...Array(5)].map((_, i) => <SkeletonRow key={i} />)}
+    </div>
+  );
+
+  const { revenue, cogs, grossProfit, expenses, netProfit, unmeasured } = engine.profit;
+  const drill = (label, d) => d.txIds.length ? () => onDrill({ label, amount: d.amount, txIds: d.txIds }) : null;
+
+  return (
+    <div className="bg-white dark:bg-slate-800 rounded-3xl p-4 border border-slate-100 dark:border-slate-700/50 shadow-card">
+      <PLRow label="Revenue" amount={revenue.amount} onDrill={drill("Revenue", revenue)} />
+      {cogs.amount > 0 && (
+        <PLRow label="Cost of Goods" amount={cogs.amount} sign={-1} onDrill={drill("Cost of Goods", cogs)} />
+      )}
+      {cogs.amount > 0 && (
+        <PLRow label="Gross Profit" amount={grossProfit.amount} isSub />
+      )}
+      {expenses.amount > 0 && (
+        <PLRow label="Expenses" amount={expenses.amount} sign={-1} onDrill={drill("Expenses", expenses)} />
+      )}
+      <PLRow label="Net Profit" amount={netProfit.amount} isSub />
+
+      {unmeasured.count > 0 && (
+        <div className="mt-3 pt-3 border-t border-dashed border-amber-200 dark:border-amber-700/40">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1 min-w-0">
+              <p className="text-[11px] font-bold text-amber-700 dark:text-amber-400 leading-tight">
+                {unmeasured.count} sale{unmeasured.count !== 1 ? "s" : ""} — margin unknown
+              </p>
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 leading-tight">
+                Set cost prices in Inventory to measure profit
+              </p>
+            </div>
+            <div className="flex-shrink-0 text-right">
+              <p className="text-sm font-bold text-amber-600 dark:text-amber-400 tabular-nums">{fmt(unmeasured.revenue)}</p>
+              <p className="text-[10px] text-slate-400 dark:text-slate-500">revenue only</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <button
+        onClick={onInfo}
+        className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-700/60 w-full text-left flex items-center gap-1 text-[11px] text-brand-600 dark:text-brand-400 font-semibold"
+      >
+        How is this calculated?
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="9 18 15 12 9 6" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
+function CashCard({ engine, loading, onDrill }) {
+  if (loading) return (
+    <div className="bg-white dark:bg-slate-800 rounded-3xl p-4 border border-slate-100 dark:border-slate-700/50 shadow-card">
+      {[...Array(8)].map((_, i) => <SkeletonRow key={i} />)}
+    </div>
+  );
+
+  const { in: cashIn, out: cashOut, net: cashNet, byStream } = engine.cash;
+  const { ajoHeld, ajoReleased } = engine.liabilities;
+  const drill = (label, d) => d.txIds.length ? () => onDrill({ label, amount: d.amount, txIds: d.txIds }) : null;
+  const hasAjo = ajoHeld.amount > 0 || ajoReleased.amount > 0;
+
+  const inflows = [
+    ["Sales",             byStream.sales],
+    ["Credit sales",      byStream.creditSales],
+    ["Debt repayments",   byStream.creditRepayments],
+    ["Invoice payments",  byStream.invoicePayments],
+    ["Ajo fee income",    byStream.ajoFeeIncome],
+  ].filter(([, d]) => d.amount > 0);
+
+  const outflows = [
+    ["Expenses",          byStream.expenses,      -1],
+    ["Stock purchases",   byStream.stockInvestment,-1],
+    ["Bill payments",     byStream.billPayments,  -1],
+  ].filter(([, d]) => d.amount > 0);
+
+  return (
+    <div className="bg-white dark:bg-slate-800 rounded-3xl p-4 border border-slate-100 dark:border-slate-700/50 shadow-card">
+      {inflows.length > 0 && (
+        <>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-1">Money in</p>
+          {inflows.map(([label, d]) => (
+            <StreamRow key={label} label={label} amount={d.amount} onDrill={drill(label, d)} />
+          ))}
+          <StreamRow label="Total in" amount={cashIn.amount} isSub />
+        </>
+      )}
+
+      {outflows.length > 0 && (
+        <>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 mt-4 mb-1">Money out</p>
+          {outflows.map(([label, d, sign]) => (
+            <StreamRow key={label} label={label} amount={d.amount} sign={sign} onDrill={drill(label, d)} />
+          ))}
+          <StreamRow label="Total out" amount={cashOut.amount} sign={-1} isSub />
+        </>
+      )}
+
+      <StreamRow label="Net cash flow" amount={cashNet.amount} isSub />
+
+      {hasAjo && (
+        <>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-amber-500 dark:text-amber-400 mt-4 mb-1">
+            Client savings (not business income)
+          </p>
+          {ajoHeld.amount > 0 && <StreamRow label="Held in trust" amount={ajoHeld.amount} isLiability />}
+          {ajoReleased.amount > 0 && <StreamRow label="Released to clients" amount={ajoReleased.amount} isLiability />}
+        </>
+      )}
+    </div>
+  );
+}
+
+function DrillDownSheet({ label, txIds, transactions, invoices, onClose }) {
+  const txMap = useMemo(
+    () => new Map((transactions || []).map(t => [t.id, t])),
+    [transactions],
+  );
+  const invPmtMap = useMemo(() => {
+    const m = new Map();
+    (invoices || []).forEach(inv => {
+      (inv.invoice_payments || []).forEach(p => {
+        m.set(`inv-${p.id}`, { amount: (p.amount_kobo || 0) / 100, date: (p.payment_date || p.created_at || "").slice(0, 10), ref: inv.invoice_number || inv.id?.slice(0, 8) });
+      });
+    });
+    return m;
+  }, [invoices]);
+
+  const items = useMemo(() =>
+    txIds.map(id => {
+      if (txMap.has(id)) {
+        const t = txMap.get(id);
+        return { id, label: t.item_name?.trim() || t.customer_name?.trim() || t.category || "Transaction", amount: t.amount, date: t.transaction_date || t.created_at?.slice(0, 10) };
+      }
+      if (invPmtMap.has(id)) {
+        const p = invPmtMap.get(id);
+        return { id, label: `Invoice ${p.ref}`, amount: p.amount, date: p.date };
+      }
+      return null;
+    }).filter(Boolean),
+  [txIds, txMap, invPmtMap]);
+
+  const total = items.reduce((s, x) => s + x.amount, 0);
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col justify-end">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white dark:bg-slate-900 rounded-t-3xl max-h-[80vh] flex flex-col shadow-2xl">
+        <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-slate-100 dark:border-slate-800">
+          <div>
+            <p className="text-sm font-extrabold text-slate-900 dark:text-white">{label}</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              {items.length} item{items.length !== 1 ? "s" : ""} · sum {fmt(total)}
+            </p>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 min-w-[32px]">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+        <div className="overflow-y-auto flex-1 px-4 py-2 pb-[calc(env(safe-area-inset-bottom,0px)+16px)]">
+          {items.length === 0 && (
+            <p className="text-sm text-slate-400 py-6 text-center">No items to show</p>
+          )}
+          {items.map(item => (
+            <div key={item.id} className="flex items-center gap-3 py-3 border-b border-slate-100 dark:border-slate-800/60 last:border-0">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-slate-800 dark:text-white truncate">{item.label}</p>
+                {item.date && <p className="text-[10px] text-slate-400 mt-0.5">{item.date}</p>}
+              </div>
+              <p className="text-sm font-bold text-slate-700 dark:text-slate-200 tabular-nums flex-shrink-0">{fmt(item.amount)}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InfoSheet({ onClose }) {
+  const rules = [
+    {
+      title: "Revenue",
+      body: "Every money-in transaction with category 'sale' or 'credit sale'. Credit sales count at recording time — when the sale happens, not when the customer pays. Debt repayments received count as cash movement only; they don't create new revenue.",
+    },
+    {
+      title: "Service income",
+      body: "Ajo registration fees, withdrawal fees, and commissions are business service income — they appear in revenue with zero cost of goods (service work, no stock consumed).",
+    },
+    {
+      title: "Cost of Goods (COGS)",
+      body: "Cost price × quantity for each named sale where the product has a known cost price set in Inventory. Items in the Needs-Costing queue (no cost price yet) contribute to revenue but not to gross profit — their margin is unknown until cost prices are set.",
+    },
+    {
+      title: "Gross Profit",
+      body: "Revenue from measurable sales (products with known cost prices) minus the cost of those goods. Unmeasured sales sit in a separate row — their revenue is tracked but margin is unknown.",
+    },
+    {
+      title: "Expenses",
+      body: "All money-out transactions except stock purchases (which are inventory investment, not a P&L expense) and bill payments (pass-through for utilities, data, etc.).",
+    },
+    {
+      title: "Cash view",
+      body: "Every actual money movement in the period: all money in (including debt repayments received) and all money out (including stock purchases and bill payments). Ajo contributions and payouts are shown separately as client savings held in trust — they are never mixed into business cash or income.",
+    },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col justify-end">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white dark:bg-slate-900 rounded-t-3xl max-h-[85vh] flex flex-col shadow-2xl">
+        <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-slate-100 dark:border-slate-800">
+          <p className="text-sm font-extrabold text-slate-900 dark:text-white">How is this calculated?</p>
+          <button onClick={onClose} className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 min-w-[32px]">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+        <div className="overflow-y-auto flex-1 px-4 py-4 pb-[calc(env(safe-area-inset-bottom,0px)+24px)] space-y-5">
+          {rules.map(r => (
+            <div key={r.title}>
+              <p className="text-xs font-extrabold text-slate-900 dark:text-white mb-1">{r.title}</p>
+              <p className="text-[13px] text-slate-600 dark:text-slate-400 leading-relaxed">{r.body}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Main Finance component ──────────────────────────────────────────────────── */
 export default function Finance({
   store, plan, onUpgrade,
@@ -560,9 +904,12 @@ export default function Finance({
   inventory,
   invoiceHook,
 }) {
-  const [section,  setSection]  = useState(autoOpenTab || null);
-  const [showLoan, setShowLoan] = useState(false);
-  const [period,   setPeriod]   = useState("month");
+  const [section,   setSection]   = useState(autoOpenTab || null);
+  const [showLoan,  setShowLoan]  = useState(false);
+  const [period,    setPeriod]    = useState("month");
+  const [lens,      setLens]      = useState("profit");
+  const [drillDown, setDrillDown] = useState(null);
+  const [showInfo,  setShowInfo]  = useState(false);
 
   const { slotMap: camSlots, loading: camLoading, recordEvent: recordCamEvent } =
     useCampaigns(["announcement_bar", "upsell_inline"], "business", "business.finance");
@@ -583,8 +930,8 @@ export default function Finance({
   const openSection = (id) => { setSection(id); onAutoOpened?.(); };
 
   /* ── Period-filtered P&L (client-side) ───────────────────────────────────── */
-  const { moneyIn, moneyOut, netPL, inCount, outCount,
-          trendPct, trendUp, sparkData, expenseBreakdown } = useMemo(() => {
+  const { netPL, cashNet,
+          trendPct, trendUp, sparkData, expenseBreakdown, engine } = useMemo(() => {
     const transactions = store.transactions || [];
     const now          = new Date();
     const start        = getPeriodStart(period);
@@ -629,12 +976,14 @@ export default function Finance({
       moneyIn:          mIn,
       moneyOut:         mOut,
       netPL:            netNow,
+      cashNet:          engine.cash.net.amount,
       inCount:          curr.filter(t => t.type === "in").length,
       outCount:         curr.filter(t => t.type === "out").length,
       trendPct:         tPct,
       trendUp:          tUp,
       sparkData:        buildSparkData(transactions),
       expenseBreakdown: expBreak,
+      engine,
     };
   }, [store.transactions, store.asoClients, inventory?.products, invoiceHook?.invoices, period]);
 
@@ -700,14 +1049,23 @@ export default function Finance({
           ))}
         </div>
 
-        {/* Net P&L */}
+        {/* Net P&L or Net Cash — lens-aware */}
         <div className="relative mb-1">
-          <p className="text-[9px] font-bold uppercase tracking-widest opacity-60 mb-1">Net P&amp;L</p>
-          <AmountDisplay
-            amount={Math.abs(netPL)} size="hero" align="left"
-            className={netPL >= 0 ? "text-green-400" : "text-red-400"}
-          />
-          {netPL < 0 && <span className="text-red-400 text-lg font-black absolute left-0 -top-0.5">−</span>}
+          {(() => {
+            const lensNet = lens === "profit" ? netPL : cashNet;
+            return (
+              <>
+                <p className="text-[9px] font-bold uppercase tracking-widest opacity-60 mb-1">
+                  {lens === "profit" ? "Net P&L" : "Net Cash"}
+                </p>
+                <AmountDisplay
+                  amount={Math.abs(lensNet)} size="hero" align="left"
+                  className={lensNet >= 0 ? "text-green-400" : "text-red-400"}
+                />
+                {lensNet < 0 && <span className="text-red-400 text-lg font-black absolute left-0 -top-0.5">−</span>}
+              </>
+            );
+          })()}
         </div>
 
         {/* Trend badge */}
@@ -727,26 +1085,27 @@ export default function Finance({
         </div>
       </div>
 
-      {/* ── Money In / Money Out paired cards ── */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="bg-green-50 dark:bg-green-900/20 rounded-2xl p-4 border border-green-100 dark:border-green-800/40">
-          <p className="text-[9px] font-bold uppercase tracking-widest text-green-700 dark:text-green-400 opacity-70 mb-1.5">Revenue</p>
-          <AmountDisplay amount={moneyIn} size="stat" colorBy="in" align="left" />
-          <p className="text-[10px] text-green-700/50 dark:text-green-400/50 mt-1.5 font-semibold">
-            {inCount} {inCount === 1 ? "entry" : "entries"}
-          </p>
-        </div>
-        <div className="bg-red-50 dark:bg-red-900/20 rounded-2xl p-4 border border-red-100 dark:border-red-800/40">
-          <p className="text-[9px] font-bold uppercase tracking-widest text-red-700 dark:text-red-400 opacity-70 mb-1.5">Expenses</p>
-          <AmountDisplay amount={moneyOut} size="stat" colorBy="out" align="left" />
-          <p className="text-[10px] text-red-700/50 dark:text-red-400/50 mt-1.5 font-semibold">
-            {outCount} {outCount === 1 ? "entry" : "entries"}
-          </p>
-        </div>
-      </div>
+      {/* ── Lens toggle ── */}
+      <LensToggle value={lens} onChange={setLens} />
+
+      {/* ── Business Position breakdown ── */}
+      {lens === "profit" ? (
+        <ProfitCard
+          engine={engine}
+          loading={store.loading}
+          onDrill={setDrillDown}
+          onInfo={() => setShowInfo(true)}
+        />
+      ) : (
+        <CashCard
+          engine={engine}
+          loading={store.loading}
+          onDrill={setDrillDown}
+        />
+      )}
 
       {/* ── Empty state — no transactions for this period ── */}
-      {moneyIn === 0 && moneyOut === 0 && (
+      {!store.loading && engine.profit.revenue.amount === 0 && engine.cash.in.amount === 0 && (
         <div className="flex flex-col items-center gap-2.5 py-7 px-4 bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700/50 shadow-card">
           <div className="w-12 h-12 rounded-2xl bg-brand-50 dark:bg-brand-900/20 flex items-center justify-center flex-shrink-0">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3DA829" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -758,8 +1117,8 @@ export default function Finance({
         </div>
       )}
 
-      {/* ── Expense category breakdown ── */}
-      {expenseBreakdown.length > 0 && (
+      {/* ── Expense category breakdown (profit lens only) ── */}
+      {lens === "profit" && expenseBreakdown.length > 0 && (
         <div className="bg-white dark:bg-slate-800 rounded-3xl p-4 border border-slate-100 dark:border-slate-700/50 shadow-card">
           <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3.5">Where it went</p>
           <div className="space-y-3">
@@ -907,6 +1266,21 @@ export default function Finance({
           })}
         </div>
       )}
+
+      {/* ── Drill-down sheet ── */}
+      {drillDown && (
+        <DrillDownSheet
+          label={drillDown.label}
+          amount={drillDown.amount}
+          txIds={drillDown.txIds}
+          transactions={store.transactions || []}
+          invoices={invoiceHook?.invoices || []}
+          onClose={() => setDrillDown(null)}
+        />
+      )}
+
+      {/* ── "How is this calculated?" sheet ── */}
+      {showInfo && <InfoSheet onClose={() => setShowInfo(false)} />}
     </div>
   );
 }

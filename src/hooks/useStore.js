@@ -165,6 +165,50 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
       }
     }
 
+    // Daily summary email — owner only, fires at most once per calendar day on first load.
+    // Sends yesterday's revenue + expense totals; includes costing coverage proxy so the
+    // admin email template knows whether to show a profit line (≥50%) or a "set cost prices" CTA.
+    if (!staffId && txRes.data) {
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const summaryKey = `kt_daily_summary_${userId}_${todayStr}`;
+      if (!localStorage.getItem(summaryKey)) {
+        localStorage.setItem(summaryKey, "1");
+        // Compute yesterday's window
+        const yd = new Date();
+        yd.setDate(yd.getDate() - 1);
+        const ydDate = yd.toISOString().slice(0, 10);
+        const ydStart = new Date(ydDate + "T00:00:00");
+        const ydEnd   = new Date(ydDate + "T23:59:59.999");
+        const dayTxs  = txRes.data.filter(t => {
+          const d = t.transaction_date
+            ? new Date(t.transaction_date + "T00:00:00")
+            : new Date(t.created_at);
+          return d >= ydStart && d <= ydEnd;
+        });
+        if (dayTxs.length > 0) {
+          const saleCats = new Set(["sale", "credit sale"]);
+          const saleTxs  = dayTxs.filter(t => t.type === "in" && saleCats.has(t.category));
+          const totalRev = saleTxs.reduce((s, t) => s + (t.amount || 0), 0);
+          const namedRev = saleTxs.filter(t => t.item_name?.trim()).reduce((s, t) => s + (t.amount || 0), 0);
+          const expenses = dayTxs.filter(t => t.type === "out" && t.category !== "stock" && !t.bill_status)
+            .reduce((s, t) => s + (t.amount || 0), 0);
+          const coverage  = totalRev > 0 ? namedRev / totalRev : 0;
+          const hasProfit = coverage >= 0.5;
+          fireEmailTrigger("daily_summary", {
+            owner_id:      userId,
+            owner_email:   authEmailRef.current,
+            period_label:  ydDate,
+            revenue:       totalRev,
+            expenses,
+            has_profit:    hasProfit,
+            net_approx:    hasProfit ? totalRev - expenses : null,
+            coverage_pct:  Math.round(coverage * 100),
+            tx_count:      dayTxs.length,
+          });
+        }
+      }
+    }
+
     if (staffRes.data) {
       const map = {};
       staffRes.data.forEach(s => { map[s.id] = s.full_name; });
