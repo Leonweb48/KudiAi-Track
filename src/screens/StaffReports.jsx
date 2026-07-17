@@ -2,6 +2,8 @@ import { useState } from "react";
 import { createReportPdf } from "../utils/generateReportPdf";
 import { fmt }              from "../utils/helpers";
 
+/* ── MANAGER-ONLY: rendered only under Reports & Insights in ManagerDashboard ─ */
+
 /* ── date helpers ───────────────────────────────────────────────────── */
 const todayStr = () => new Date().toISOString().split("T")[0];
 function addDays(d, n) { const dt = new Date(d); dt.setDate(dt.getDate()+n); return dt.toISOString().split("T")[0]; }
@@ -42,7 +44,7 @@ function BarChart({ bars, maxH=130 }) {
           const h1=Math.max(2,(b.v1/maxV)*H), h2=Math.max(2,(b.v2/maxV)*H);
           return (
             <g key={i}>
-              <rect x={cx-BW-1} y={H-h1} width={BW} height={h1} fill="#16a34a" rx={3} opacity={.85}/>
+              <rect x={cx-BW-1} y={H-h1} width={BW} height={h1} fill="#3DA829" rx={3} opacity={.85}/>
               <rect x={cx+1}    y={H-h2} width={BW} height={h2} fill="#ef4444" rx={3} opacity={.85}/>
               <text x={cx} y={H+17} textAnchor="middle" fontSize={9} fill="#64748b">{b.label}</text>
             </g>
@@ -51,7 +53,7 @@ function BarChart({ bars, maxH=130 }) {
         const h=Math.max(2,((b.v||0)/maxV)*H);
         return (
           <g key={i}>
-            <rect x={cx-BW/2} y={H-h} width={BW} height={h} fill={b.color||"#16a34a"} rx={3} opacity={.85}/>
+            <rect x={cx-BW/2} y={H-h} width={BW} height={h} fill={b.color||"#3DA829"} rx={3} opacity={.85}/>
             <text x={cx} y={H+17} textAnchor="middle" fontSize={9} fill="#64748b">{b.label}</text>
           </g>
         );
@@ -232,18 +234,18 @@ function SalesSection({ data }) {
   return (
     <div>
       <StatGrid stats={[
-        {label:"Cash In",     value:fmt(data.cashIn),  color:"#16a34a", bg:"#f0fdf4", border:"#bbf7d0"},
+        {label:"Cash In",     value:fmt(data.cashIn),  color:"#3DA829", bg:"#f0fdf4", border:"#bbf7d0"},
         {label:"Cash Out",    value:fmt(data.cashOut), color:"#ef4444", bg:"#fef2f2", border:"#fecaca"},
-        {label:"Net Profit",  value:fmt(data.profit),  color:data.profit>=0?"#16a34a":"#ef4444", bg:"#f8fafc", border:"#e2e8f0"},
+        {label:"Net Profit",  value:fmt(data.profit),  color:data.profit>=0?"#3DA829":"#ef4444", bg:"#f8fafc", border:"#e2e8f0"},
         {label:"Transactions",value:data.tx.length,    color:"#0284c7", bg:"#eff6ff", border:"#bfdbfe"},
       ]}/>
       <SectionTitle>Income vs Expenses</SectionTitle>
-      <ChartLegend items={[{color:"#16a34a",label:"Income"},{color:"#ef4444",label:"Expenses"}]}/>
+      <ChartLegend items={[{color:"#3DA829",label:"Income"},{color:"#ef4444",label:"Expenses"}]}/>
       <BarChart bars={data.bars}/>
       <SectionTitle>Category Breakdown</SectionTitle>
-      <Table cols={[{key:"cat",label:"Category",bold:true,w:"35%"},{key:"in_",label:"Income",right:true,color:()=>"#16a34a",w:"18%"},{key:"out_",label:"Expenses",right:true,color:()=>"#ef4444",w:"18%"},{key:"net",label:"Net",right:true,w:"18%"},{key:"count",label:"Count",right:true,w:"11%"}]} rows={catRows}/>
+      <Table cols={[{key:"cat",label:"Category",bold:true,w:"35%"},{key:"in_",label:"Income",right:true,color:()=>"#3DA829",w:"18%"},{key:"out_",label:"Expenses",right:true,color:()=>"#ef4444",w:"18%"},{key:"net",label:"Net",right:true,w:"18%"},{key:"count",label:"Count",right:true,w:"11%"}]} rows={catRows}/>
       <SectionTitle>Transaction Log</SectionTitle>
-      <Table cols={[{key:"date",label:"Date",w:"13%"},{key:"item",label:"Item",bold:true,w:"26%"},{key:"cat",label:"Category",w:"16%"},{key:"type",label:"Type",color:r=>r._type==="in"?"#16a34a":"#ef4444",bold:true,w:"10%"},{key:"amount",label:"Amount",right:true,bold:true,w:"15%"},{key:"pay",label:"Payment",w:"20%"}]} rows={txRows} highlight={r=>r._type==="out"?"#fff5f5":undefined}/>
+      <Table cols={[{key:"date",label:"Date",w:"13%"},{key:"item",label:"Item",bold:true,w:"26%"},{key:"cat",label:"Category",w:"16%"},{key:"type",label:"Type",color:r=>r._type==="in"?"#3DA829":"#ef4444",bold:true,w:"10%"},{key:"amount",label:"Amount",right:true,bold:true,w:"15%"},{key:"pay",label:"Payment",w:"20%"}]} rows={txRows} highlight={r=>r._type==="out"?"#fff5f5":undefined}/>
       {data.tx.length>50 && <p style={S({fontSize:10,color:"#94a3b8",fontStyle:"italic",marginTop:-8})}>Showing first 50 of {data.tx.length} transactions</p>}
     </div>
   );
@@ -251,13 +253,13 @@ function SalesSection({ data }) {
 
 function CreditSection({ data }) {
   const rows=data.credits.map(c=>({name:c.customer_name,phone:c.phone||"—",total:fmt(c.total_amount||0),paid:fmt(c.amount_paid||0),owed:fmt(c.outstanding||0),due:fmtD(c.due_date),status:c.status?.replace(/_/g," ")?.toUpperCase()||"ACTIVE",late:c.status==="overdue"?`${daysLate(c.due_date)}d`:"—",_s:c.status}));
-  const pieData=[{label:"Outstanding",v:data.totalOut,color:"#ef4444"},{label:"Paid",v:data.totalPaid,color:"#16a34a"}];
+  const pieData=[{label:"Outstanding",v:data.totalOut,color:"#ef4444"},{label:"Paid",v:data.totalPaid,color:"#3DA829"}];
   return (
     <div>
       <StatGrid stats={[
         {label:"Total Debt",   value:fmt(data.totalDebt),   color:"#334155",bg:"#f8fafc",  border:"#e2e8f0"},
         {label:"Outstanding",  value:fmt(data.totalOut),    color:"#ef4444",bg:"#fef2f2",  border:"#fecaca"},
-        {label:"Recovered",    value:fmt(data.totalPaid),   color:"#16a34a",bg:"#f0fdf4",  border:"#bbf7d0"},
+        {label:"Recovered",    value:fmt(data.totalPaid),   color:"#3DA829",bg:"#f0fdf4",  border:"#bbf7d0"},
         {label:"Overdue Accs", value:data.overdueCount,     color:"#dc2626",bg:"#fff1f2",  border:"#fecdd3"},
       ]}/>
       <div style={{display:"flex",gap:16,alignItems:"flex-start",marginBottom:14}}>
@@ -269,7 +271,7 @@ function CreditSection({ data }) {
         <div style={{flex:1,minWidth:0}}>
           <SectionTitle>Overdue Summary</SectionTitle>
           {data.overdueCount===0
-            ? <p style={S({color:"#16a34a",fontSize:11,fontStyle:"italic"})}>✓ No overdue accounts</p>
+            ? <p style={S({color:"#3DA829",fontSize:11,fontStyle:"italic"})}>✓ No overdue accounts</p>
             : <div style={S({background:"#fef2f2",border:"1px solid #fecaca",borderRadius:10,padding:"10px 14px"})}>
                 <p style={S({fontSize:12,fontWeight:700,color:"#dc2626",margin:0})}>⚠ {data.overdueCount} overdue account{data.overdueCount>1?"s":""}</p>
                 <p style={S({fontSize:11,color:"#ef4444",margin:"4px 0 0"})}>{fmt(data.overdueDue)} outstanding on overdue accounts</p>
@@ -278,7 +280,7 @@ function CreditSection({ data }) {
         </div>
       </div>
       <SectionTitle>Debtor Records</SectionTitle>
-      <Table cols={[{key:"name",label:"Customer",bold:true,w:"19%"},{key:"phone",label:"Phone",w:"12%"},{key:"total",label:"Total",right:true,w:"11%"},{key:"paid",label:"Paid",right:true,color:()=>"#16a34a",w:"11%"},{key:"owed",label:"Owed",right:true,bold:true,color:r=>r._s==="overdue"?"#dc2626":"#ef4444",w:"12%"},{key:"due",label:"Due Date",w:"13%"},{key:"status",label:"Status",color:r=>r._s==="overdue"?"#dc2626":r._s==="paid"?"#16a34a":"#64748b",bold:true,w:"14%"},{key:"late",label:"Late",right:true,color:r=>r.late!=="—"?"#dc2626":"#94a3b8",w:"8%"}]} rows={rows} highlight={r=>r._s==="overdue"?"#fff5f5":undefined}/>
+      <Table cols={[{key:"name",label:"Customer",bold:true,w:"19%"},{key:"phone",label:"Phone",w:"12%"},{key:"total",label:"Total",right:true,w:"11%"},{key:"paid",label:"Paid",right:true,color:()=>"#3DA829",w:"11%"},{key:"owed",label:"Owed",right:true,bold:true,color:r=>r._s==="overdue"?"#dc2626":"#ef4444",w:"12%"},{key:"due",label:"Due Date",w:"13%"},{key:"status",label:"Status",color:r=>r._s==="overdue"?"#dc2626":r._s==="paid"?"#3DA829":"#64748b",bold:true,w:"14%"},{key:"late",label:"Late",right:true,color:r=>r.late!=="—"?"#dc2626":"#94a3b8",w:"8%"}]} rows={rows} highlight={r=>r._s==="overdue"?"#fff5f5":undefined}/>
     </div>
   );
 }
@@ -289,13 +291,13 @@ function AsoSection({ data }) {
     <div>
       <StatGrid stats={[
         {label:"Total Balance",   value:fmt(data.totalBal),    color:"#7c3aed",bg:"#faf5ff",border:"#e9d5ff"},
-        {label:"Total Saved",     value:fmt(data.totalSaved),  color:"#16a34a",bg:"#f0fdf4",border:"#bbf7d0"},
+        {label:"Total Saved",     value:fmt(data.totalSaved),  color:"#3DA829",bg:"#f0fdf4",border:"#bbf7d0"},
         {label:"Total Withdrawn", value:fmt(data.totalWithdr), color:"#ef4444",bg:"#fef2f2",border:"#fecaca"},
         {label:"Clients",         value:data.enriched.length,  color:"#0284c7",bg:"#eff6ff",border:"#bfdbfe"},
       ]}/>
       {data.bars.length>0 && (<><SectionTitle>Balance by Client</SectionTitle><BarChart bars={data.bars} maxH={110}/></>)}
       <SectionTitle>Client Details</SectionTitle>
-      <Table cols={[{key:"name",label:"Name",bold:true,w:"20%"},{key:"freq",label:"Frequency",w:"11%"},{key:"contrib",label:"Contrib",right:true,w:"13%"},{key:"saved",label:"Saved",right:true,color:()=>"#16a34a",w:"13%"},{key:"balance",label:"Balance",right:true,bold:true,color:()=>"#7c3aed",w:"13%"},{key:"made",label:"Paid",right:true,w:"8%"},{key:"missed",label:"Missed",right:true,color:r=>r._m>0?"#dc2626":"#94a3b8",bold:true,w:"8%"},{key:"next",label:"Next Due",w:"14%"}]} rows={rows} highlight={r=>r._m>0?"#fff5f5":undefined}/>
+      <Table cols={[{key:"name",label:"Name",bold:true,w:"20%"},{key:"freq",label:"Frequency",w:"11%"},{key:"contrib",label:"Contrib",right:true,w:"13%"},{key:"saved",label:"Saved",right:true,color:()=>"#3DA829",w:"13%"},{key:"balance",label:"Balance",right:true,bold:true,color:()=>"#7c3aed",w:"13%"},{key:"made",label:"Paid",right:true,w:"8%"},{key:"missed",label:"Missed",right:true,color:r=>r._m>0?"#dc2626":"#94a3b8",bold:true,w:"8%"},{key:"next",label:"Next Due",w:"14%"}]} rows={rows} highlight={r=>r._m>0?"#fff5f5":undefined}/>
     </div>
   );
 }
@@ -325,26 +327,26 @@ function MyPerformanceSection({ data, staffName }) {
   return (
     <div>
       <div style={S({background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:10,padding:"10px 14px",marginBottom:18})}>
-        <p style={S({fontSize:11,fontWeight:700,color:"#15803d",margin:0})}>Performance Report for: {staffName}</p>
-        <p style={S({fontSize:10,color:"#4ade80",margin:"3px 0 0"})}>Data shows records entered by this staff member only</p>
+        <p style={S({fontSize:11,fontWeight:700,color:"#2E8020",margin:0})}>Performance Report for: {staffName}</p>
+        <p style={S({fontSize:10,color:"#3DA829",margin:"3px 0 0"})}>Data shows records entered by this staff member only</p>
       </div>
       <StatGrid stats={[
         {label:"Transactions",value:data.tx.length,          color:"#0284c7",bg:"#eff6ff",border:"#bfdbfe"},
-        {label:"Sales (In)",  value:fmt(data.cashIn),        color:"#16a34a",bg:"#f0fdf4",border:"#bbf7d0"},
+        {label:"Sales (In)",  value:fmt(data.cashIn),        color:"#3DA829",bg:"#f0fdf4",border:"#bbf7d0"},
         {label:"Cash Out",    value:fmt(data.cashOut),       color:"#ef4444",bg:"#fef2f2",border:"#fecaca"},
-        {label:"Net",         value:fmt(data.profit),        color:data.profit>=0?"#16a34a":"#ef4444",bg:"#f8fafc",border:"#e2e8f0"},
+        {label:"Net",         value:fmt(data.profit),        color:data.profit>=0?"#3DA829":"#ef4444",bg:"#f8fafc",border:"#e2e8f0"},
       ]}/>
       {(data.cashIn+data.cashOut)>0 && (<>
         <SectionTitle>Sales vs Expenses</SectionTitle>
-        <ChartLegend items={[{color:"#16a34a",label:"Income"},{color:"#ef4444",label:"Expenses"}]}/>
+        <ChartLegend items={[{color:"#3DA829",label:"Income"},{color:"#ef4444",label:"Expenses"}]}/>
         <BarChart bars={data.bars}/>
       </>)}
       {catRows.length>0 && (<>
         <SectionTitle>Category Breakdown</SectionTitle>
-        <Table cols={[{key:"cat",label:"Category",bold:true,w:"38%"},{key:"in_",label:"Income",right:true,color:()=>"#16a34a",w:"18%"},{key:"out_",label:"Expenses",right:true,color:()=>"#ef4444",w:"18%"},{key:"net",label:"Net",right:true,w:"15%"},{key:"count",label:"Count",right:true,w:"11%"}]} rows={catRows}/>
+        <Table cols={[{key:"cat",label:"Category",bold:true,w:"38%"},{key:"in_",label:"Income",right:true,color:()=>"#3DA829",w:"18%"},{key:"out_",label:"Expenses",right:true,color:()=>"#ef4444",w:"18%"},{key:"net",label:"Net",right:true,w:"15%"},{key:"count",label:"Count",right:true,w:"11%"}]} rows={catRows}/>
       </>)}
       <SectionTitle>Transaction Log</SectionTitle>
-      <Table cols={[{key:"date",label:"Date",w:"15%"},{key:"item",label:"Item",bold:true,w:"28%"},{key:"cat",label:"Category",w:"18%"},{key:"type",label:"Type",color:r=>r._type==="in"?"#16a34a":"#ef4444",bold:true,w:"13%"},{key:"amount",label:"Amount",right:true,bold:true,w:"16%"},{key:"_type",label:"",w:"10%"}]} rows={txRows.map(r=>({...r,"_type":""}))} highlight={r=>r.type==="Expense"?"#fff5f5":undefined}/>
+      <Table cols={[{key:"date",label:"Date",w:"15%"},{key:"item",label:"Item",bold:true,w:"28%"},{key:"cat",label:"Category",w:"18%"},{key:"type",label:"Type",color:r=>r._type==="in"?"#3DA829":"#ef4444",bold:true,w:"13%"},{key:"amount",label:"Amount",right:true,bold:true,w:"16%"},{key:"_type",label:"",w:"10%"}]} rows={txRows.map(r=>({...r,"_type":""}))} highlight={r=>r.type==="Expense"?"#fff5f5":undefined}/>
       {data.tx.length>40 && <p style={S({fontSize:10,color:"#94a3b8",fontStyle:"italic",marginTop:-8})}>Showing first 40 of {data.tx.length} transactions</p>}
       {data.credits.length>0 && (<>
         <SectionTitle>Credit Records Managed</SectionTitle>
@@ -370,13 +372,13 @@ function StockSection({ data }) {
     <div>
       <StatGrid stats={[
         {label:"Unique Items",  value:data.rows.length,                                   color:"#0284c7",bg:"#eff6ff",border:"#bfdbfe"},
-        {label:"Total Revenue", value:fmt(data.totalRevenue),                             color:"#16a34a",bg:"#f0fdf4",border:"#bbf7d0"},
+        {label:"Total Revenue", value:fmt(data.totalRevenue),                             color:"#3DA829",bg:"#f0fdf4",border:"#bbf7d0"},
         {label:"Items Tracked", value:data.rows.reduce((s,r)=>s+r.qtySold,0),            color:"#334155",bg:"#f8fafc",border:"#e2e8f0"},
         {label:"Top Item",      value:data.rows[0]?.item?.slice(0,12)||"—",              color:"#7c3aed",bg:"#faf5ff",border:"#e9d5ff"},
       ]}/>
       {data.bars.length>0 && (<><SectionTitle>Revenue by Item</SectionTitle><BarChart bars={data.bars} maxH={110}/></>)}
       <SectionTitle>Item Performance</SectionTitle>
-      <Table cols={[{key:"item",label:"Item",bold:true,w:"24%"},{key:"category",label:"Category",w:"15%"},{key:"qtySold",label:"Qty Sold",right:true,w:"10%"},{key:"revenue",label:"Revenue",right:true,bold:true,color:()=>"#16a34a",w:"15%"},{key:"qtyBought",label:"Qty Bought",right:true,w:"11%"},{key:"cost",label:"Cost",right:true,color:()=>"#ef4444",w:"13%"},{key:"margin",label:"Margin",right:true,bold:true,w:"12%"}]} rows={data.rows.map(r=>({...r,revenue:fmt(r.revenue),cost:fmt(r.cost),margin:fmt(r.revenue-r.cost)}))}/>
+      <Table cols={[{key:"item",label:"Item",bold:true,w:"24%"},{key:"category",label:"Category",w:"15%"},{key:"qtySold",label:"Qty Sold",right:true,w:"10%"},{key:"revenue",label:"Revenue",right:true,bold:true,color:()=>"#3DA829",w:"15%"},{key:"qtyBought",label:"Qty Bought",right:true,w:"11%"},{key:"cost",label:"Cost",right:true,color:()=>"#ef4444",w:"13%"},{key:"margin",label:"Margin",right:true,bold:true,w:"12%"}]} rows={data.rows.map(r=>({...r,revenue:fmt(r.revenue),cost:fmt(r.cost),margin:fmt(r.revenue-r.cost)}))}/>
     </div>
   );
 }
@@ -397,7 +399,7 @@ function StaffReportTemplate({ type, reportData, staffName, businessName, from, 
   return (
     <div style={S({width:794,background:"#ffffff",color:"#1e293b",overflow:"hidden"})}>
       {/* LETTERHEAD */}
-      <div style={{background:"linear-gradient(135deg,#064e3b 0%,#065f46 60%,#047857 100%)",padding:"28px 36px 22px",display:"flex",alignItems:"center",gap:16}}>
+      <div style={{background:"linear-gradient(135deg,#3DA829 0%,#2E8020 60%,#246618 100%)",padding:"28px 36px 22px",display:"flex",alignItems:"center",gap:16}}>
         <div style={{width:52,height:52,borderRadius:12,background:"white",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,overflow:"hidden",padding:4}}>
           <img src="/logo.png" alt="KudiAI" style={{width:"100%",height:"100%",objectFit:"contain"}} onError={e=>{e.target.style.display="none";}}/>
         </div>
@@ -417,8 +419,8 @@ function StaffReportTemplate({ type, reportData, staffName, businessName, from, 
       </div>
 
       {/* REPORT TITLE BAND */}
-      <div style={{background:"#f0fdf4",borderBottom:"3px solid #16a34a",padding:"14px 36px"}}>
-        <p style={S({color:"#16a34a",fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:2,margin:"0 0 3px"})}>STAFF {TITLES[type]}</p>
+      <div style={{background:"#f0fdf4",borderBottom:"3px solid #3DA829",padding:"14px 36px"}}>
+        <p style={S({color:"#3DA829",fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:2,margin:"0 0 3px"})}>STAFF {TITLES[type]}</p>
         <p style={S({color:"#64748b",fontSize:12,margin:0})}>Period: <strong style={{color:"#1e293b"}}>{period}</strong></p>
       </div>
 
@@ -462,9 +464,9 @@ async function buildNativeStaffReportPDF(type, data, staffName, businessName, fr
   if (type === "sales") {
     const { cashIn, cashOut, profit, tx, bars, byCat } = data;
     addStats([
-      { label:"Cash In",      value:fmtN(cashIn),  color:"#16a34a", bg:"#f0fdf4" },
+      { label:"Cash In",      value:fmtN(cashIn),  color:"#3DA829", bg:"#f0fdf4" },
       { label:"Cash Out",     value:fmtN(cashOut), color:"#ef4444", bg:"#fef2f2" },
-      { label:"Net Profit",   value:fmtN(profit),  color:profit>=0?"#16a34a":"#ef4444", bg:"#f8fafc" },
+      { label:"Net Profit",   value:fmtN(profit),  color:profit>=0?"#3DA829":"#ef4444", bg:"#f8fafc" },
       { label:"Transactions", value:tx.length,     color:"#0284c7", bg:"#eff6ff" },
     ]);
     addSectionTitle("Income vs Expenses");
@@ -472,7 +474,7 @@ async function buildNativeStaffReportPDF(type, data, staffName, businessName, fr
     addSectionTitle("Category Breakdown");
     addTable(
       [{ key:"cat",   label:"Category", bold:true, w:0.35 },
-       { key:"in_",   label:"Income",   right:true, color:()=>[22,163,74], w:0.20 },
+       { key:"in_",   label:"Income",   right:true, color:()=>[61,168,41], w:0.20 },
        { key:"out_",  label:"Expenses", right:true, color:()=>[220,38,38], w:0.20 },
        { key:"net",   label:"Net",      right:true, w:0.14 },
        { key:"count", label:"Count",    right:true, w:0.11 }],
@@ -484,7 +486,7 @@ async function buildNativeStaffReportPDF(type, data, staffName, businessName, fr
     addTable(
       [{ key:"date",   label:"Date",     w:0.14 },
        { key:"item",   label:"Item",     bold:true, w:0.24 },
-       { key:"type",   label:"Type",     bold:true, color:r=>r._t==="in"?[22,163,74]:[220,38,38], w:0.11 },
+       { key:"type",   label:"Type",     bold:true, color:r=>r._t==="in"?[61,168,41]:[220,38,38], w:0.11 },
        { key:"amount", label:"Amount",   right:true, bold:true, w:0.17 },
        { key:"cat",    label:"Category", w:0.17 },
        { key:"pay",    label:"Payment",  w:0.17 }],
@@ -499,17 +501,17 @@ async function buildNativeStaffReportPDF(type, data, staffName, businessName, fr
     addStats([
       { label:"Total Debt",   value:fmtN(totalDebt), color:"#334155", bg:"#f8fafc" },
       { label:"Outstanding",  value:fmtN(totalOut),  color:"#ef4444", bg:"#fef2f2" },
-      { label:"Recovered",    value:fmtN(totalPaid), color:"#16a34a", bg:"#f0fdf4" },
+      { label:"Recovered",    value:fmtN(totalPaid), color:"#3DA829", bg:"#f0fdf4" },
       { label:"Overdue Accs", value:overdueCount,    color:"#dc2626", bg:"#fff1f2" },
     ]);
     addSectionTitle("Credit Accounts");
     addTable(
       [{ key:"name",   label:"Customer", bold:true, w:0.24 },
        { key:"total",  label:"Total",    right:true, w:0.16 },
-       { key:"paid",   label:"Paid",     right:true, color:()=>[22,163,74], w:0.16 },
+       { key:"paid",   label:"Paid",     right:true, color:()=>[61,168,41], w:0.16 },
        { key:"owed",   label:"Owed",     right:true, color:r=>r._s==="overdue"?[220,38,38]:null, w:0.16 },
        { key:"due",    label:"Due Date", w:0.14 },
-       { key:"status", label:"Status",   bold:true, color:r=>r._s==="overdue"?[220,38,38]:r._s==="paid"?[22,163,74]:null, w:0.14 }],
+       { key:"status", label:"Status",   bold:true, color:r=>r._s==="overdue"?[220,38,38]:r._s==="paid"?[61,168,41]:null, w:0.14 }],
       credits.map(c=>({
         name:c.customer_name, total:fmtN(c.total_amount||0), paid:fmtN(c.amount_paid||0),
         owed:fmtN(c.outstanding||0), due:fmtD(c.due_date),
@@ -520,7 +522,7 @@ async function buildNativeStaffReportPDF(type, data, staffName, businessName, fr
     const { enriched, totalBal, totalSaved, totalWithdr, bars } = data;
     addStats([
       { label:"Total Balance",   value:fmtN(totalBal),   color:"#7c3aed", bg:"#f5f3ff" },
-      { label:"Total Saved",     value:fmtN(totalSaved), color:"#16a34a", bg:"#f0fdf4" },
+      { label:"Total Saved",     value:fmtN(totalSaved), color:"#3DA829", bg:"#f0fdf4" },
       { label:"Total Withdrawn", value:fmtN(totalWithdr),color:"#334155", bg:"#f8fafc" },
       { label:"Total Clients",   value:enriched.length,  color:"#0284c7", bg:"#eff6ff" },
     ]);
@@ -570,9 +572,9 @@ async function buildNativeStaffReportPDF(type, data, staffName, businessName, fr
     const { cashIn, cashOut, profit, tx, bars, byCat, credits, totalCreditOut, overdueCount, asoClients, ajoBalance } = data;
     addStats([
       { label:"Transactions", value:tx.length,     color:"#0284c7", bg:"#eff6ff" },
-      { label:"Sales (In)",   value:fmtN(cashIn),  color:"#16a34a", bg:"#f0fdf4" },
+      { label:"Sales (In)",   value:fmtN(cashIn),  color:"#3DA829", bg:"#f0fdf4" },
       { label:"Cash Out",     value:fmtN(cashOut), color:"#ef4444", bg:"#fef2f2" },
-      { label:"Net",          value:fmtN(profit),  color:profit>=0?"#16a34a":"#ef4444", bg:"#f8fafc" },
+      { label:"Net",          value:fmtN(profit),  color:profit>=0?"#3DA829":"#ef4444", bg:"#f8fafc" },
     ]);
     if ((cashIn + cashOut) > 0) {
       addSectionTitle("Sales vs Expenses");
@@ -582,7 +584,7 @@ async function buildNativeStaffReportPDF(type, data, staffName, businessName, fr
       addSectionTitle("Category Breakdown");
       addTable(
         [{ key:"cat",   label:"Category", bold:true, w:0.38 },
-         { key:"in_",   label:"Income",   right:true, color:()=>[22,163,74], w:0.18 },
+         { key:"in_",   label:"Income",   right:true, color:()=>[61,168,41], w:0.18 },
          { key:"out_",  label:"Expenses", right:true, color:()=>[220,38,38], w:0.18 },
          { key:"net",   label:"Net",      right:true, w:0.15 },
          { key:"count", label:"Count",    right:true, w:0.11 }],
@@ -596,7 +598,7 @@ async function buildNativeStaffReportPDF(type, data, staffName, businessName, fr
       [{ key:"date",   label:"Date",     w:0.15 },
        { key:"item",   label:"Item",     bold:true, w:0.28 },
        { key:"cat",    label:"Category", w:0.18 },
-       { key:"type",   label:"Type",     bold:true, color:r=>r._t==="in"?[22,163,74]:[220,38,38], w:0.14 },
+       { key:"type",   label:"Type",     bold:true, color:r=>r._t==="in"?[61,168,41]:[220,38,38], w:0.14 },
        { key:"amount", label:"Amount",   right:true, bold:true, w:0.25 }],
       tx.slice(0,80).map(t=>({
         date:fmtD(t.transaction_date), item:t.item_name||"—", cat:t.category||"—",
@@ -631,7 +633,7 @@ async function buildNativeStaffReportPDF(type, data, staffName, businessName, fr
       [{ key:"item",      label:"Item",     bold:true, w:0.28 },
        { key:"cat",       label:"Category", w:0.18 },
        { key:"qtySold",   label:"Qty Sold", right:true, w:0.13 },
-       { key:"revenue",   label:"Revenue",  right:true, bold:true, color:()=>[22,163,74], w:0.17 },
+       { key:"revenue",   label:"Revenue",  right:true, bold:true, color:()=>[61,168,41], w:0.17 },
        { key:"qtyBought", label:"Bought",   right:true, w:0.13 },
        { key:"cost",      label:"Cost",     right:true, color:()=>[220,38,38], w:0.11 }],
       rows.map(r=>({
@@ -706,7 +708,7 @@ export default function StaffReports({ store, inventory, staffName, businessName
   /* ── Preview screen ── */
   if (preview) {
     return (
-      <div className="fixed inset-0 z-[70] bg-slate-100 dark:bg-slate-900 flex flex-col relative">
+      <div className="fixed inset-0 z-sub-sheet bg-slate-100 dark:bg-slate-900 flex flex-col relative">
         {pdfErr && (
           <div className="absolute bottom-4 left-4 right-4 z-10 bg-red-600 text-white text-sm font-semibold px-4 py-3 rounded-xl shadow-lg text-center pointer-events-none">
             {pdfErr}
@@ -724,7 +726,7 @@ export default function StaffReports({ store, inventory, staffName, businessName
             <p className="text-xs text-slate-400 dark:text-slate-500">{from===to?fmtD(from):`${fmtD(from)} — ${fmtD(to)}`}</p>
           </div>
           <button onClick={exportPDF} disabled={exporting}
-            className="flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold text-sm transition active:scale-95 disabled:opacity-50 flex-shrink-0">
+            className="flex items-center gap-2 px-4 py-2.5 bg-brand-500 hover:bg-brand-600 text-white rounded-xl font-bold text-sm transition active:scale-95 disabled:opacity-50 flex-shrink-0">
             {exporting ? (
               <><div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin"/>Exporting…</>
             ) : (
@@ -754,7 +756,7 @@ export default function StaffReports({ store, inventory, staffName, businessName
 
   /* ── Selector screen ── */
   return (
-    <div className="fixed inset-0 z-[70] bg-slate-50 dark:bg-slate-900 flex flex-col">
+    <div className="fixed inset-0 z-sub-sheet bg-slate-50 dark:bg-slate-900 flex flex-col">
       {/* Header */}
       <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 px-4 pb-3 flex items-center gap-3 flex-shrink-0" style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
         <button onClick={onClose}
@@ -778,11 +780,11 @@ export default function StaffReports({ store, inventory, staffName, businessName
             <button key={rt.id} onClick={() => setReportType(rt.id)}
               className={`text-left p-3.5 rounded-2xl border-2 transition-all active:scale-[0.97] ${
                 reportType===rt.id
-                  ? "border-green-500 bg-green-50 dark:bg-green-900/20 shadow-md"
+                  ? "border-brand-500 bg-brand-50 dark:bg-brand-500/10 shadow-md"
                   : `${rt.color} ${rt.border}`
               }`}>
               <span className="text-2xl leading-none block mb-2">{rt.icon}</span>
-              <p className={`text-xs font-extrabold leading-tight ${reportType===rt.id?"text-green-700 dark:text-green-400":"text-slate-700 dark:text-slate-200"}`}>{rt.label}</p>
+              <p className={`text-xs font-extrabold leading-tight ${reportType===rt.id?"text-brand-600 dark:text-brand-500":"text-slate-700 dark:text-slate-200"}`}>{rt.label}</p>
               <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 leading-tight">{rt.sub}</p>
             </button>
           ))}
@@ -834,7 +836,7 @@ export default function StaffReports({ store, inventory, staffName, businessName
 
         {/* Generate button */}
         <button onClick={() => setPreview(true)}
-          className="w-full py-4 bg-green-600 hover:bg-green-700 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.98] shadow-lg flex items-center justify-center gap-2">
+          className="w-full py-4 bg-brand-500 hover:bg-brand-600 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.98] shadow-lg flex items-center justify-center gap-2">
           <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
             <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>
           </svg>
