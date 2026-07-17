@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { supabase } from "../../utils/supabase";
-import { fmt, today } from "../../utils/helpers";
+import { today } from "../../utils/helpers";
 import { useT } from "../../contexts/LanguageContext";
 import Modal from "../../components/shared/Modal";
 import PinDots from "../../components/PinDots";
-import { TxRow as _SharedTxRow } from "../../components/shared/TxRow";
+import { TxRow as SharedTxRow } from "../../components/shared/TxRow";
 
 /* ─ Palette tokens — matches business portal (emerald-600) ─────── */
 export const NK  = "#059669"; // emerald-600 (primary, was navy)
@@ -183,7 +183,7 @@ export function StatCard({ label, value, icon, iconBg, iconColor, sub, onClick, 
 
 /* ─ Transaction row — adapter to shared canonical TxRow ─────────── */
 export function TxRow({ t, onClick }) {
-  return <_SharedTxRow tx={t} onClick={onClick} />;
+  return <SharedTxRow tx={t} onClick={onClick} />;
 }
 
 /* ─ Change PIN modal — PinDots + shared numpad classes + ForgotPinFlow hook ─ */
