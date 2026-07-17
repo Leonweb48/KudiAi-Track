@@ -2,8 +2,6 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../utils/supabase";
 import { uid, today, fmt } from "../utils/helpers";
 import { logAudit } from "../utils/auditLog";
-import { savePendingOp, getPendingOps, getPendingCount } from "../utils/offlineDb";
-import { syncPending } from "../utils/syncManager";
 import { sendEmailTrigger } from "../utils/emailTrigger";
 
 const fireEmailTrigger = sendEmailTrigger;
@@ -35,12 +33,8 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
   const [dbError,     setDbError]     = useState(null);
   const [loadError,   setLoadError]   = useState(null);
   const [fromCache,   setFromCache]   = useState(false);
-  const [pendingSync, setPendingSync] = useState(0);
-  const [isSyncing,   setIsSyncing]   = useState(false);
   const [rtConnected, setRtConnected] = useState(false);
 
-  const syncRunning  = useRef(false);
-  const hasMounted   = useRef(false);
   const authEmailRef = useRef("");
   const onNotifyRef  = useRef(onNotify);
   useEffect(() => { onNotifyRef.current = onNotify; }, [onNotify]);
@@ -70,20 +64,6 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
         // Offline and no cache — nothing to show; surface the error banner
         setLoadError("Couldn't load your data — check your connection");
       }
-      // Merge pending (unsaved) transactions into the list
-      try {
-        const ops = await getPendingOps(userId);
-        setPendingSync(ops.length);
-        const pendingTxns = ops
-          .filter(op => op.table === "transactions")
-          .map(op => ({ ...op.data, id: `tmp-${op.local_id}`, _pending: true }));
-        if (pendingTxns.length) {
-          setTransactions(prev => {
-            const ids = new Set(prev.map(t => t.id));
-            return [...pendingTxns.filter(t => !ids.has(t.id)), ...prev];
-          });
-        }
-      } catch { /**/ }
       setLoading(false);
       return;
     }
@@ -200,11 +180,6 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
         : null,
     });
     setFromCache(false);
-
-    try {
-      const count = await getPendingCount(userId);
-      setPendingSync(count);
-    } catch { /**/ }
 
     } catch {
       const cached = loadCacheLS(`kt_store_${userId}`);
@@ -324,55 +299,8 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
   }, []);
 
   // ── Sync engine ────────────────────────────────────────────────
-  const runSync = useCallback(async () => {
-    if (syncRunning.current || !userId || !supabase) return;
-    // Claim the mutex immediately — before any await — so concurrent callers
-    // (reconnect timer + manual SyncBar tap) cannot both enter the flush loop.
-    syncRunning.current = true;
-
-    try {
-      // Refresh session so the JWT is valid (prevents RLS failures after being offline)
-      const { data: sessionData } = await supabase.auth.getSession().catch(() => ({ data: null }));
-      if (!sessionData?.session) {
-        setDbError("Session expired — please log out and back in, then sync.");
-        return;
-      }
-
-      const ops = await getPendingOps(userId).catch(() => []);
-      if (!ops.length) return;
-
-      setIsSyncing(true);
-
-      const result = await syncPending(supabase, userId, ({ synced, total, data, op }) => {
-        setPendingSync(Math.max(0, total - synced));
-        if (op?.table === "transactions" && data) {
-          setTransactions(prev => prev.map(t => t.id === `tmp-${op.local_id}` ? data : t));
-        }
-      }).catch(e => ({ synced: 0, failed: 1, total: 0, errors: [e?.message || String(e)] }));
-
-      try {
-        const remaining = await getPendingCount(userId);
-        setPendingSync(remaining);
-        if (result?.failed > 0 && result?.errors?.length) {
-          setDbError(`Sync failed (${result.failed} record${result.failed !== 1 ? "s" : ""}): ${result.errors[0]}`);
-        } else if (remaining === 0 && result?.synced > 0) {
-          setDbError(null);
-        }
-      } catch { /**/ }
-    } finally {
-      syncRunning.current = false;
-      setIsSyncing(false);
-    }
-  }, [userId]);
-
-  // Auto-sync when coming back online (skip initial mount)
-  useEffect(() => {
-    if (!hasMounted.current) { hasMounted.current = true; return; }
-    if (isOnline && userId) {
-      const t = setTimeout(() => runSync(), 800);
-      return () => clearTimeout(t);
-    }
-  }, [isOnline, userId, runSync]);
+  // Offline sync removed — transactions require a live connection.
+  // When network is unavailable, the UI shows a banner and writes are blocked.
 
   // ── Transactions ───────────────────────────────────────────────
   const addTransaction = async (t) => {
@@ -398,21 +326,12 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
     setTransactions(p => [{ ...payload, id: tempId, _pending: true }, ...p]);
     setDbError(null);
 
-    // Offline: queue locally and show pending indicator
-    if (!navigator.onLine) {
-      await savePendingOp({ local_id: localId, table: "transactions", data: payload, user_id: userId });
-      setPendingSync(c => c + 1);
-      return;
-    }
-
     const { data, error } = await supabase
       .from("transactions").insert(payload).select().single();
 
     if (error) {
-      // Online but request failed — queue for retry
-      await savePendingOp({ local_id: localId, table: "transactions", data: payload, user_id: userId });
-      setPendingSync(c => c + 1);
-      setDbError("Saved locally — will sync when connection improves");
+      setTransactions(p => p.filter(tx => tx.id !== tempId));
+      setDbError("Couldn't save — check your connection and try again.");
       fireEmailTrigger("transaction_failed", {
         owner_id:      userId,
         business_name: profile.business_name || "",
@@ -837,7 +756,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
 
   return {
     transactions, credits, asoClients, profile, staffMap,
-    setProfile, isOnline, loading, pendingSync, isSyncing, runSync, rtConnected,
+    setProfile, isOnline, loading, rtConnected,
     dbError, clearDbError: () => setDbError(null),
     loadError, clearLoadError: () => setLoadError(null), reloadData: loadData, silentRefresh: () => loadData(true),
     fromCache,

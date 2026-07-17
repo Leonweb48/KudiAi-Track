@@ -525,7 +525,7 @@ export default function App() {
     <div className={isDark ? "dark" : ""}>
       <div className="h-[100dvh] bg-slate-50 dark:bg-slate-900 md:bg-slate-200 dark:md:bg-slate-950 flex justify-center transition-colors duration-200">
         <div className="w-full max-w-md relative flex flex-col h-[100dvh] safe-top md:shadow-2xl md:shadow-black/20 dark:md:shadow-black/60 md:border-x md:border-slate-300/50 dark:md:border-slate-700/50">
-          <SyncBar isOnline={store.isOnline} pending={store.pendingSync} isSyncing={store.isSyncing} onSync={store.runSync} />
+          <SyncBar isOnline={store.isOnline} />
 
           {upgradeAvailable && !upgradeBannerDismissed && (
             <div className="flex items-center gap-2 bg-gradient-to-r from-indigo-500 to-violet-500 text-white text-xs px-3 py-2">

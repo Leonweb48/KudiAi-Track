@@ -216,7 +216,7 @@ export default function BranchManagerDashboard({ session, staff }) {
     <div className={isDark ? "dark" : ""}>
       <div className="h-[100dvh] bg-slate-50 dark:bg-slate-900 flex justify-center">
         <div className="w-full max-w-md relative flex flex-col h-[100dvh]">
-          <SyncBar isOnline={store.isOnline} pending={store.pendingSync} isSyncing={store.isSyncing} onSync={store.runSync} />
+          <SyncBar isOnline={store.isOnline} />
 
           {/* Header */}
           <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 pb-3 flex items-center gap-2.5" style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
