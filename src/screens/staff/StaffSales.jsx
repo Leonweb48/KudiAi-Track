@@ -227,7 +227,7 @@ export default function StaffSales({ store, staff, session, livePerms, initialSu
 
       {/* D5: Approval request modal */}
       {showApprReq && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40">
+        <div className="fixed inset-0 z-sheet flex items-end justify-center bg-black/40">
           <div className="bg-white dark:bg-slate-900 rounded-t-3xl w-full max-w-md p-6 space-y-4">
             <div className="flex items-center justify-between mb-1">
               <p className="text-base font-bold text-slate-800 dark:text-white">Request Manager Approval</p>

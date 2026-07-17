@@ -102,9 +102,14 @@ const SendIcon   = () => <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4
 const TicketIcon = () => <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round"><path d="M2 9a1 1 0 010-2v-1a2 2 0 012-2h16a2 2 0 012 2v1a1 1 0 010 2v1a1 1 0 010 2v1a2 2 0 01-2 2H4a2 2 0 01-2-2v-1a1 1 0 010-2z"/></svg>;
 const ThumbUp    = () => <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14z"/><path d="M7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3"/></svg>;
 const ThumbDown  = () => <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M10 15v4a3 3 0 003 3l4-9V2H5.72a2 2 0 00-2 1.7l-1.38 9a2 2 0 002 2.3H10z"/><path d="M17 2h2.67A2.31 2.31 0 0122 4v7a2.31 2.31 0 01-2.33 2H17"/></svg>;
-const ChevDown   = () => <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round"><path d="M6 9l6 6 6-6"/></svg>;
-const ChevUp     = () => <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round"><path d="M18 15l-6-6-6 6"/></svg>;
-const SearchIco  = () => <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>;
+const ChevDown      = () => <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round"><path d="M6 9l6 6 6-6"/></svg>;
+const ChevUp        = () => <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round"><path d="M18 15l-6-6-6 6"/></svg>;
+const SearchIco     = () => <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>;
+const SparkIcon     = () => <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 text-white"><path d="M12 2l1.5 5.5L19 9l-5.5 1.5L12 16l-1.5-5.5L5 9l5.5-1.5z"/></svg>;
+const StarFilled    = ({ cls = "w-5 h-5" }) => <svg viewBox="0 0 24 24" fill="currentColor" className={cls}><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>;
+const StarEmpty     = ({ cls = "w-5 h-5" }) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className={cls}><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>;
+const CheckIcon     = () => <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>;
+const BigTicketIcon = () => <svg viewBox="0 0 24 24" fill="none" className="w-12 h-12" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round"><path d="M2 9a1 1 0 010-2v-1a2 2 0 012-2h16a2 2 0 012 2v1a1 1 0 010 2v1a1 1 0 010 2v1a2 2 0 01-2 2H4a2 2 0 01-2-2v-1a1 1 0 010-2z"/></svg>;
 
 /* ── Status badge ─────────────────────────────────────────────────── */
 const STATUS_META = {
@@ -142,7 +147,7 @@ function KudiAICard({ loading, answer, onContactSupport }) {
   return (
     <div className="mb-4 rounded-2xl overflow-hidden border border-emerald-200 dark:border-emerald-700/50 shadow-sm">
       <div className="flex items-center gap-2 px-4 py-2.5" style={{ backgroundColor: GK }}>
-        <span className="text-sm">✨</span>
+        <SparkIcon />
         <span className="text-xs font-extrabold tracking-widest text-white uppercase">KudiAI</span>
         <span className="ml-auto text-[10px] text-white/70 font-medium">AI answer</span>
       </div>
@@ -314,7 +319,9 @@ function TicketDetail({ ticket, userId, staffName, onBack, onUpdate }) {
             <div className="flex gap-1">
               {[1,2,3,4,5].map(n => (
                 <button key={n} onClick={() => setRating(n)}
-                  className={`text-2xl transition-transform active:scale-110 ${n <= rating ? "text-amber-400" : "text-slate-300 dark:text-slate-600"}`}>★</button>
+                  className={`transition-transform active:scale-110 ${n <= rating ? "text-amber-400" : "text-slate-300 dark:text-slate-600"}`}>
+                  {n <= rating ? <StarFilled cls="w-6 h-6" /> : <StarEmpty cls="w-6 h-6" />}
+                </button>
               ))}
             </div>
             {rating > 0 && (
@@ -324,7 +331,7 @@ function TicketDetail({ ticket, userId, staffName, onBack, onUpdate }) {
             )}
           </div>
         )}
-        {ratingDone && <p className="text-center text-xs text-emerald-600 dark:text-emerald-400 font-semibold">Thanks for your rating! ⭐</p>}
+        {ratingDone && <p className="text-center text-xs text-emerald-600 dark:text-emerald-400 font-semibold">Thanks for your rating!</p>}
 
         <div ref={bottomRef} />
       </div>
@@ -613,7 +620,7 @@ export default function StaffHelp({ session, staff, onBack }) {
           )}
 
           {/* Still need help banner */}
-          <div className="mt-6 rounded-3xl px-5 py-5 text-white bg-[linear-gradient(135deg,#059669,#065f46)]">
+          <div className="mt-6 rounded-3xl px-5 py-5 text-white bg-[linear-gradient(135deg,#3DA829,#2E8020)]">
             <p className="font-extrabold text-base mb-1">Still need help?</p>
             <p className="text-sm text-white/75 mb-4 leading-relaxed">
               Our support team is ready. Create a ticket and we'll get back to you within 24 hours.
@@ -632,7 +639,7 @@ export default function StaffHelp({ session, staff, onBack }) {
         <div className="flex-1 overflow-y-auto px-4 pt-4 pb-6">
           {successTicket && (
             <div className="mb-4 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700/40 rounded-2xl px-4 py-3 flex items-start gap-3">
-              <span className="text-emerald-600 dark:text-emerald-400 font-bold text-lg">✓</span>
+              <span className="text-emerald-600 dark:text-emerald-400 flex-shrink-0"><CheckIcon /></span>
               <div className="flex-1">
                 <p className="text-sm font-bold text-emerald-800 dark:text-emerald-300">Ticket submitted!</p>
                 <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-0.5">
@@ -653,7 +660,7 @@ export default function StaffHelp({ session, staff, onBack }) {
             ? [1, 2, 3].map(i => <div key={i} className="h-20 bg-slate-100 dark:bg-slate-800 rounded-2xl animate-pulse mb-3" />)
             : tickets.length === 0
               ? <div className="text-center py-16">
-                  <p className="text-5xl mb-4">🎟️</p>
+                  <div className="flex justify-center mb-4 text-slate-400 dark:text-slate-500"><BigTicketIcon /></div>
                   <p className="text-base font-bold text-slate-700 dark:text-slate-200 mb-1">No tickets yet</p>
                   <p className="text-sm text-slate-400 dark:text-slate-500">Your support tickets will appear here.</p>
                 </div>
@@ -668,7 +675,7 @@ export default function StaffHelp({ session, staff, onBack }) {
                       </div>
                       <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-1 line-clamp-2">{t.subject}</p>
                       <p className="text-xs text-slate-400 dark:text-slate-500">{fmtDate(t.created_at)}</p>
-                      {t.rating && <p className="text-xs text-amber-500 mt-1">{"★".repeat(t.rating)}{"☆".repeat(5 - t.rating)}</p>}
+                      {t.rating && <div className="flex gap-0.5 mt-1">{[1,2,3,4,5].map(n => <span key={n} className={n <= t.rating ? "text-amber-400" : "text-slate-300 dark:text-slate-600"}>{n <= t.rating ? <StarFilled cls="w-3 h-3" /> : <StarEmpty cls="w-3 h-3" />}</span>)}</div>}
                     </button>
                   ))}
                 </div>

@@ -185,7 +185,7 @@ export default function StaffHome({ staff, store, inventory, plan, onGoTo, onVoi
           <button onClick={() => onGoTo("sales","cash")}
             className="flex-shrink-0 flex items-center gap-2.5 rounded-2xl px-3.5 py-2.5 border bg-green-50 dark:bg-green-900/20 border-green-100 dark:border-green-800/40 active:scale-95 transition">
             <div className="w-8 h-8 rounded-xl bg-green-100 dark:bg-green-900/40 flex items-center justify-center">
-              <Svg d={P.in} size={14} color="#059669" sw={2.5} />
+              <Svg d={P.in} size={14} color="#3DA829" sw={2.5} />
             </div>
             <div>
               <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Cash In</p>

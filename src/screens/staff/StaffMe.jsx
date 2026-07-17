@@ -661,7 +661,7 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
                 className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition text-sm font-semibold ${
                   pinLock.autoLockTimeout === v ? "text-white" : "bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200"
                 }`}
-                style={pinLock.autoLockTimeout === v ? { backgroundColor: "#059669" } : {}}>
+                style={pinLock.autoLockTimeout === v ? { backgroundColor: "#3DA829" } : {}}>
                 {l}
                 {pinLock.autoLockTimeout === v && <Svg d={P.check} size={16} color="#fff" sw={2.5} />}
               </button>

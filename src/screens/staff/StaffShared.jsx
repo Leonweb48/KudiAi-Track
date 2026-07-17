@@ -1,29 +1,16 @@
 import { useState } from "react";
 import { supabase } from "../../utils/supabase";
 import { today } from "../../utils/helpers";
-import { useT } from "../../contexts/LanguageContext";
 import Modal from "../../components/shared/Modal";
 import PinDots from "../../components/PinDots";
 import { TxRow as SharedTxRow } from "../../components/shared/TxRow";
 
-/* ─ Palette tokens — matches business portal (emerald-600) ─────── */
-export const NK  = "#059669"; // emerald-600 (primary, was navy)
-export const GK  = "#059669"; // emerald-600 (accent, was lime)
-export const GKL = "#ecfdf5"; // emerald-50 tint (was lime tint)
+/* ─ Palette tokens ─────────────────────────────────────────────── */
+export const NK  = "#3DA829"; // brand-500
+export const GK  = "#3DA829"; // brand-500
+export const GKL = "#f0fdf4"; // brand-50 tint
 
-export const ADMIN_URL = "https://admin.kudiai.app";
-export const YEAR      = new Date().getFullYear();
-
-/* ─ Data helpers ────────────────────────────────────────────────── */
-export function makeTicketTypes(t) {
-  return [
-    { value: "account",     label: t("ticket.account")     },
-    { value: "transaction", label: t("ticket.transaction") },
-    { value: "technical",   label: t("ticket.technical")   },
-    { value: "ajo",         label: t("ticket.ajo")         },
-    { value: "general",     label: t("ticket.general")     },
-  ];
-}
+export const YEAR = new Date().getFullYear();
 
 export function makeNav(t) {
   return [
@@ -285,116 +272,5 @@ export function ChangePinModal({ mode, onDone, onClose, onForgotPin }) {
         )}
       </div>
     </Modal>
-  );
-}
-
-/* ─ Support ticket modal ────────────────────────────────────────── */
-export function SupportModal({ onClose, staffName, staffEmail }) {
-  const t = useT();
-  const TICKET_TYPES = makeTicketTypes(t);
-  const [form, setForm]      = useState({ subject: "", description: "", type: "general", priority: "medium", user_name: staffName || "", user_email: staffEmail || "" });
-  const [submitting, setSub] = useState(false);
-  const [done, setDone]      = useState(null);
-  const [err, setErr]        = useState("");
-
-  const submit = async (e) => {
-    e.preventDefault();
-    if (!form.subject.trim() || !form.user_email.trim()) { setErr("Subject and email are required."); return; }
-    setSub(true); setErr("");
-    try {
-      const res = await fetch(`${ADMIN_URL}/api/public/support`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, source: "staff", submitter_type: "staff" }),
-      });
-      const d = await res.json();
-      if (!res.ok) { setErr(d.error || "Failed to submit ticket"); return; }
-      setDone(d.ticket_no);
-    } catch { setErr("Network error. Please try again."); }
-    finally { setSub(false); }
-  };
-
-  return (
-    <Modal title="Help & Support" onClose={onClose}>
-      {done ? (
-        <div className="flex flex-col items-center gap-4 py-4 text-center">
-          <div className="w-14 h-14 rounded-full bg-emerald-50 flex items-center justify-center">
-            <Svg d={P.check} size={24} color={GK} sw={2.5} />
-          </div>
-          <div>
-            <p className="text-base font-bold text-slate-800 dark:text-slate-100">Ticket Submitted!</p>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Ticket <span className="font-bold text-brand-600 dark:text-brand-400">#{done}</span></p>
-            <p className="text-xs text-slate-400 mt-2">We'll respond to {form.user_email} shortly.</p>
-          </div>
-          <button onClick={onClose} className="mt-2 w-full py-3 text-white rounded-2xl font-bold text-sm" style={{ backgroundColor: GK }}>Close</button>
-        </div>
-      ) : (
-        <form onSubmit={submit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            {[["Your Name","user_name","text","Your name"],["Email *","user_email","email","your@email.com"]].map(([l, k, tp, ph]) => (
-              <div key={k}>
-                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">{l}</label>
-                <input type={tp} placeholder={ph} value={form[k]} onChange={e => setForm(f => ({...f, [k]: e.target.value}))}
-                  className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30" />
-              </div>
-            ))}
-          </div>
-          <div>
-            <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Category</label>
-            <select value={form.type} onChange={e => setForm(f => ({...f, type: e.target.value}))}
-              className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 focus:outline-none">
-              {TICKET_TYPES.map(tt => <option key={tt.value} value={tt.value}>{tt.label}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Subject *</label>
-            <input placeholder="Brief summary of your issue" value={form.subject} onChange={e => setForm(f => ({...f, subject: e.target.value}))} required
-              className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30" />
-          </div>
-          <div>
-            <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Description</label>
-            <textarea placeholder="Describe the problem in detail…" value={form.description} onChange={e => setForm(f => ({...f, description: e.target.value}))} rows={3}
-              className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 resize-none" />
-          </div>
-          {err && <p className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 px-3 py-2 rounded-xl">{err}</p>}
-          <button type="submit" disabled={submitting}
-            className="w-full py-3 disabled:opacity-50 text-white rounded-2xl font-bold text-sm flex items-center justify-center gap-2"
-            style={{ backgroundColor: GK }}>
-            {submitting && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-            {submitting ? "Submitting…" : "Submit Ticket"}
-          </button>
-        </form>
-      )}
-    </Modal>
-  );
-}
-
-/* ─ FAQ ─────────────────────────────────────────────────────────── */
-export const FAQS = [
-  { q: "How do I record a sale?",            a: "Go to the Sales tab, then tap + New Transaction. Fill in the item, amount, category and payment type." },
-  { q: "How do I use the mic to record?",    a: "On the Home tab, tap the Mic Sale tile. Speak naturally — e.g. 'I sold 3 bags of rice for ₦4,500 cash'." },
-  { q: "How do I view and share a receipt?", a: "In the Sales tab, tap any transaction row. A receipt appears with a Share button." },
-  { q: "How do I pay a bill?",               a: "On the Home tab tap a service tile, or go to Sales → Bill Payments." },
-  { q: "How do I generate my statement?",    a: "Go to Me → Activity Statement. Choose a period and tap Share Statement." },
-  { q: "What is the PIN lock for?",          a: "The PIN locks the portal when you step away. Go to Me → Security to set it up." },
-  { q: "Why can't I see some features?",     a: "Your manager controls your access. Contact them if you think something is missing." },
-  { q: "How do I change my profile photo?",  a: "Go to Me → Edit Profile, then tap the camera icon on your avatar." },
-];
-
-export function FAQ() {
-  const [open, setOpen] = useState(null);
-  return (
-    <div className="space-y-2">
-      {FAQS.map((f, i) => (
-        <div key={i} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700/50 shadow-card overflow-hidden">
-          <button onClick={() => setOpen(open === i ? null : i)}
-            className="w-full flex items-center justify-between px-4 py-4 text-left gap-3">
-            <span className="text-sm font-semibold text-slate-700 dark:text-slate-200 flex-1">{f.q}</span>
-            <Svg d={open === i ? "M18 15l-6-6-6 6" : "M6 9l6 6 6-6"} size={16} color="#94a3b8" />
-          </button>
-          {open === i && <div className="px-4 pb-4"><p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">{f.a}</p></div>}
-        </div>
-      ))}
-    </div>
   );
 }
