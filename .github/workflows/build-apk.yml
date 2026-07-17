@@ -113,16 +113,28 @@ jobs:
       - name: Make Gradle executable
         run: chmod +x android/gradlew
 
-      # ── Release signing (when ANDROID_KEYSTORE_BASE64 secret is set) ──────────
-      - name: Decode release keystore
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+      # ── Release signing (uses ANDROID_KEYSTORE_BASE64 secret when set) ─────────
+      # Always runs; writes keystore only if secret is non-empty.
+      # Gradle falls back to debug signing automatically when ANDROID_KEYSTORE_FILE is unset.
+      - name: Setup release signing
+        env:
+          KS_BASE64:    ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PASSWORD:  ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KS_ALIAS:     ${{ secrets.ANDROID_KEY_ALIAS }}
+          KS_KEY_PASS:  ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/app/kuditrack-release.keystore
-          echo "ANDROID_KEYSTORE_FILE=${{ github.workspace }}/android/app/kuditrack-release.keystore" >> $GITHUB_ENV
-          echo "ANDROID_KEYSTORE_PASSWORD=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" >> $GITHUB_ENV
-          echo "ANDROID_KEY_ALIAS=${{ secrets.ANDROID_KEY_ALIAS }}" >> $GITHUB_ENV
-          echo "ANDROID_KEY_PASSWORD=${{ secrets.ANDROID_KEY_PASSWORD }}" >> $GITHUB_ENV
-          echo "SIGNED=release" >> $GITHUB_ENV
+          if [ -n "$KS_BASE64" ]; then
+            echo "$KS_BASE64" | base64 --decode > android/app/kuditrack-release.keystore
+            echo "ANDROID_KEYSTORE_FILE=${{ github.workspace }}/android/app/kuditrack-release.keystore" >> $GITHUB_ENV
+            echo "ANDROID_KEYSTORE_PASSWORD=$KS_PASSWORD" >> $GITHUB_ENV
+            echo "ANDROID_KEY_ALIAS=$KS_ALIAS"            >> $GITHUB_ENV
+            echo "ANDROID_KEY_PASSWORD=$KS_KEY_PASS"      >> $GITHUB_ENV
+            echo "SIGNING_TYPE=RELEASE"                   >> $GITHUB_ENV
+            echo "Keystore decoded — will sign with release keystore"
+          else
+            echo "SIGNING_TYPE=DEBUG" >> $GITHUB_ENV
+            echo "No ANDROID_KEYSTORE_BASE64 secret — will use debug signing"
+          fi
 
       - name: Build release APK
         run: |
