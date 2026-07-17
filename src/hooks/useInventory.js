@@ -109,7 +109,8 @@ export function useInventory(userId, staffId = null, branchId = null) {
   const createAutoStub = useCallback(async (name, sellingPrice, saleQty) => {
     if (!supabase || !userId || !name?.trim()) return;
     const normName = name.trim();
-    if (products.some(p => p.product_name.toLowerCase().trim() === normName.toLowerCase())) return;
+    const normLow  = normName.toLowerCase();
+    if (products.some(p => p.product_name.toLowerCase().trim() === normLow)) return;
 
     const prodId = uid();
     const prod = {
