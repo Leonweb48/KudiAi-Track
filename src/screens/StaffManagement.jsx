@@ -389,18 +389,16 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
       // Insert permissions
       const permRows = [
         ...MODULES.map(m => ({
-          staff_id:   staffRow.id,
-          module:     m.id,
-          can_view:   perms[m.id]?.can_view   || false,
-          can_create: perms[m.id]?.can_create || false,
-          ...(m.id === "aso" ? {
-            ajo_confirm_deposits:   perms["aso"]?.ajo_confirm_deposits   || false,
-            ajo_record_withdrawals: perms["aso"]?.ajo_record_withdrawals || false,
-            ajo_manage_clients:     perms["aso"]?.ajo_manage_clients     || false,
-          } : {}),
+          staff_id:               staffRow.id,
+          module:                 m.id,
+          can_view:               perms[m.id]?.can_view   || false,
+          can_create:             perms[m.id]?.can_create || false,
+          ajo_confirm_deposits:   m.id === "aso" ? (perms["aso"]?.ajo_confirm_deposits   || false) : false,
+          ajo_record_withdrawals: m.id === "aso" ? (perms["aso"]?.ajo_record_withdrawals || false) : false,
+          ajo_manage_clients:     m.id === "aso" ? (perms["aso"]?.ajo_manage_clients     || false) : false,
         })),
-        { staff_id: staffRow.id, module: "print-airtime", can_view: perms["print-airtime"]?.can_view || false, can_create: false },
-        { staff_id: staffRow.id, module: "print-data",    can_view: perms["print-data"]?.can_view    || false, can_create: false },
+        { staff_id: staffRow.id, module: "print-airtime", can_view: perms["print-airtime"]?.can_view || false, can_create: false, ajo_confirm_deposits: false, ajo_record_withdrawals: false, ajo_manage_clients: false },
+        { staff_id: staffRow.id, module: "print-data",    can_view: perms["print-data"]?.can_view    || false, can_create: false, ajo_confirm_deposits: false, ajo_record_withdrawals: false, ajo_manage_clients: false },
       ];
       const { error: permError } = await supabase.from("staff_permissions").insert(permRows);
       if (permError) throw permError;
@@ -425,18 +423,16 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
   const updatePermissions = async (staffId) => {
     const permRows = [
       ...MODULES.map(m => ({
-        staff_id:   staffId,
-        module:     m.id,
-        can_view:   perms[m.id]?.can_view   || false,
-        can_create: perms[m.id]?.can_create || false,
-        ...(m.id === "aso" ? {
-          ajo_confirm_deposits:   perms["aso"]?.ajo_confirm_deposits   || false,
-          ajo_record_withdrawals: perms["aso"]?.ajo_record_withdrawals || false,
-          ajo_manage_clients:     perms["aso"]?.ajo_manage_clients     || false,
-        } : {}),
+        staff_id:               staffId,
+        module:                 m.id,
+        can_view:               perms[m.id]?.can_view   || false,
+        can_create:             perms[m.id]?.can_create || false,
+        ajo_confirm_deposits:   m.id === "aso" ? (perms["aso"]?.ajo_confirm_deposits   || false) : false,
+        ajo_record_withdrawals: m.id === "aso" ? (perms["aso"]?.ajo_record_withdrawals || false) : false,
+        ajo_manage_clients:     m.id === "aso" ? (perms["aso"]?.ajo_manage_clients     || false) : false,
       })),
-      { staff_id: staffId, module: "print-airtime", can_view: perms["print-airtime"]?.can_view || false, can_create: false },
-      { staff_id: staffId, module: "print-data",    can_view: perms["print-data"]?.can_view    || false, can_create: false },
+      { staff_id: staffId, module: "print-airtime", can_view: perms["print-airtime"]?.can_view || false, can_create: false, ajo_confirm_deposits: false, ajo_record_withdrawals: false, ajo_manage_clients: false },
+      { staff_id: staffId, module: "print-data",    can_view: perms["print-data"]?.can_view    || false, can_create: false, ajo_confirm_deposits: false, ajo_record_withdrawals: false, ajo_manage_clients: false },
     ];
 
     // Delete then re-insert — works without a unique constraint and surfaces errors
