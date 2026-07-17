@@ -6,7 +6,7 @@
  * @returns {string}  e.g. "₦12,345.67"
  */
 export function formatNGN(amount, { decimals = 2 } = {}) {
-  return `₦${Number(amount).toLocaleString("en-NG", {
+  return `₦${Number(amount ?? 0).toLocaleString("en-NG", {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   })}`;

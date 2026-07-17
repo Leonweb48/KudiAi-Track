@@ -70,7 +70,7 @@ const FALLBACK_PLANS = {
     description: "Everything your business needs to grow",
     price_monthly: 7000, price_yearly: 75600, sort_order: 1,
     max_transactions: 999999, max_organizations: 5, max_org_members: 50, max_ajo_groups: 10,
-    feature_keys: ["credit", "aso", "pdfExport", "staffManagement", "inventory", "loyalty", "aiInsights", "aiChatbot", "branches", "invoices", "organisation"],
+    feature_keys: ["credit", "aso", "pdfExport", "staffManagement", "inventory", "loyalty", "aiInsights", "aiChatbot", "branches", "invoices"],
     feature_limits: { aso: 10, staffManagement: 10, branches: 3, inventory: 500, loyalty: 1000 },
     features: [
       "Unlimited transactions",
