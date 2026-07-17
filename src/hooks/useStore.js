@@ -37,6 +37,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
   const [fromCache,   setFromCache]   = useState(false);
   const [pendingSync, setPendingSync] = useState(0);
   const [isSyncing,   setIsSyncing]   = useState(false);
+  const [rtConnected, setRtConnected] = useState(false);
 
   const syncRunning  = useRef(false);
   const hasMounted   = useRef(false);
@@ -278,7 +279,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
             }
             return [t, ...prev];
           });
-          window.dispatchEvent(new CustomEvent("kt-new-transaction", { detail: payload.new }));
+          // kt-new-transaction custom event removed — onNotifyRef above is the single dispatch path.
         })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "transactions", filter: `user_id=eq.${userId}` },
         (payload) => {
@@ -302,12 +303,13 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
           setCredits(prev => prev.map(c => c.id === payload.new.id ? { ...c, ...payload.new } : c));
         })
       .subscribe((status) => {
+        setRtConnected(status === "SUBSCRIBED");
         if (status === "SUBSCRIBED") {
           if (rtReady) loadData(true);
           else rtReady = true;
         }
       });
-    return () => { supabase.removeChannel(channel); };
+    return () => { supabase.removeChannel(channel); setRtConnected(false); };
   }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Online / offline detection ─────────────────────────────────
@@ -837,7 +839,7 @@ export function useStore(userId, staffId = null, staffName = null, onNotify = nu
 
   return {
     transactions, credits, asoClients, profile, staffMap,
-    setProfile, isOnline, loading, pendingSync, isSyncing, runSync,
+    setProfile, isOnline, loading, pendingSync, isSyncing, runSync, rtConnected,
     dbError, clearDbError: () => setDbError(null),
     loadError, clearLoadError: () => setLoadError(null), reloadData: loadData, silentRefresh: () => loadData(true),
     fromCache,

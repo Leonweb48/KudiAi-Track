@@ -491,10 +491,6 @@ function AuditLog({ session }) {
 function Broadcasts({ session }) {
   const [broadcasts, setBroadcasts] = useState([]);
   const [loading, setLoading]       = useState(true);
-  const [showForm, setShowForm]     = useState(false);
-  const [form, setForm]             = useState({ title: "", message: "", segment: "all", channel: "in_app" });
-  const [sending, setSending]       = useState(false);
-  const [sendErr, setSendErr]       = useState("");
 
   const load = () => {
     setLoading(true);
@@ -506,71 +502,13 @@ function Broadcasts({ session }) {
 
   useEffect(() => { load(); }, [session]); // eslint-disable-line
 
-  const send = async () => {
-    if (!form.title || !form.message) { setSendErr("Title and message are required."); return; }
-    setSendErr(""); setSending(true);
-    try {
-      await callPortal(session, "send-broadcast", form);
-      setShowForm(false);
-      setForm({ title: "", message: "", segment: "all", channel: "in_app" });
-      load();
-    } catch (e) { setSendErr(friendlyError(e)); }
-    finally { setSending(false); }
-  };
-
   return (
     <div className="space-y-4">
+      {/* DORMANT: send-broadcast action hidden — delivery pipeline not wired post-pilot.
+          Re-enable once push/email dispatch is confirmed end-to-end. */}
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold text-slate-800">Broadcasts</h2>
-        <button
-          onClick={() => setShowForm(v => !v)}
-          className="bg-blue-600 text-white px-3 py-1.5 rounded-xl text-xs font-medium hover:bg-blue-700"
-        >+ New Broadcast</button>
       </div>
-
-      {showForm && (
-        <div className="bg-white rounded-2xl p-5 border border-blue-100 shadow-sm space-y-3">
-          <input
-            className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="Title"
-            value={form.title}
-            onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-          />
-          <textarea
-            className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[80px] resize-none"
-            placeholder="Message"
-            value={form.message}
-            onChange={e => setForm(f => ({ ...f, message: e.target.value }))}
-          />
-          <div className="flex gap-2">
-            <select
-              className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none"
-              value={form.segment}
-              onChange={e => setForm(f => ({ ...f, segment: e.target.value }))}
-            >
-              <option value="all">All Users</option>
-              <option value="basic">Basic Plan</option>
-              <option value="professional">Pro Plan</option>
-              <option value="enterprise">Enterprise</option>
-            </select>
-            <select
-              className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none"
-              value={form.channel}
-              onChange={e => setForm(f => ({ ...f, channel: e.target.value }))}
-            >
-              <option value="in_app">In-App</option>
-              <option value="email">Email</option>
-              <option value="sms">SMS</option>
-            </select>
-          </div>
-          <button
-            onClick={send}
-            disabled={sending}
-            className="w-full bg-blue-600 text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-blue-700 disabled:opacity-50"
-          >{sending ? "Sending…" : "Send Broadcast"}</button>
-          {sendErr && <p className="text-sm text-red-600">{sendErr}</p>}
-        </div>
-      )}
 
       {loading ? (
         <div className="flex justify-center py-12"><Spin /></div>

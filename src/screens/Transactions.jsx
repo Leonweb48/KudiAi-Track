@@ -458,29 +458,12 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* ── 15s background poll — never when hidden/offline/modal open ── */
-  const pendingPollRef = useRef(false);
-
+  /* ── 30s backup poll — only fires when realtime channel is not SUBSCRIBED ── */
   useEffect(() => {
-    const tick = () => {
-      if (document.hidden || !navigator.onLine) return;
-      if (showAdd || !!receipt || !!confirmDeleteId) return;
-      if (window.scrollY > 200) { pendingPollRef.current = true; return; }
-      storeRef.current.silentRefresh?.().catch(() => {});
-    };
-    const id = setInterval(tick, 15_000);
+    const id = setInterval(() => {
+      if (!storeRef.current.rtConnected) storeRef.current.silentRefresh?.().catch(() => {});
+    }, 30_000);
     return () => clearInterval(id);
-  }, [showAdd, receipt, confirmDeleteId]);
-
-  /* ── Deferred merge: fire pending poll when user scrolls near top ── */
-  useEffect(() => {
-    const onScroll = () => {
-      if (!pendingPollRef.current || window.scrollY > 100) return;
-      pendingPollRef.current = false;
-      storeRef.current.silentRefresh?.().catch(() => {});
-    };
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
   /* ── Filter chip definitions ── */
