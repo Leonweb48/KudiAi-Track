@@ -5,7 +5,7 @@ import "./index.css";
 import App from "./App";
 import { LanguageProvider } from "./contexts/LanguageContext";
 import { CapacitorUpdater } from "@capgo/capacitor-updater";
-import { App } from "@capacitor/app";
+import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
 
 if (Capacitor.isNativePlatform()) {
@@ -18,7 +18,7 @@ if (Capacitor.isNativePlatform()) {
   CapacitorUpdater.addListener("updateAvailable", (info) => {
     pendingBundle = info.bundle;
   });
-  App.addListener("appStateChange", ({ isActive }) => {
+  CapacitorApp.addListener("appStateChange", ({ isActive }) => {
     if (isActive && pendingBundle) {
       const b = pendingBundle;
       pendingBundle = null;
