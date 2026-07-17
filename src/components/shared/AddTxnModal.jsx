@@ -163,10 +163,10 @@ export function AddTxnModal({
   const canSave   = amtValue > 0;
 
   const matchedProduct = itemName
-    ? products.find(p => p.product_name.toLowerCase() === itemName.toLowerCase())
+    ? products.find(p => p.product_name.toLowerCase().trim() === itemName.toLowerCase().trim())
     : null;
   const suggestions = itemName && itemName.length >= 1 && !matchedProduct && showSugs
-    ? products.filter(p => p.product_name.toLowerCase().includes(itemName.toLowerCase())).slice(0, 5)
+    ? products.filter(p => p.product_name.toLowerCase().includes(itemName.toLowerCase().trim())).slice(0, 5)
     : [];
   // Fuzzy suggestion: fires only when no autocomplete match, only for sales
   const fuzzySuggestion = (!itemName || matchedProduct || suggestions.length > 0 || fuzzySugDismissed || type !== "in")

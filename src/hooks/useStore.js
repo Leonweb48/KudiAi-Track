@@ -131,6 +131,40 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
       }
     }
 
+    // Weekly unnamed-sales nudge — owner only, fires at most once per calendar week.
+    // Counts "in" sales with no item_name in the last 7 days; if ≥5, sends a prompt
+    // email so the owner knows profit tracking is incomplete for those records.
+    if (!staffId && txRes.data) {
+      const sevenAgo = new Date();
+      sevenAgo.setDate(sevenAgo.getDate() - 6);
+      sevenAgo.setHours(0, 0, 0, 0);
+      const unnamedCount = txRes.data.filter(t => {
+        const d = t.transaction_date
+          ? new Date(t.transaction_date + "T00:00:00")
+          : new Date(t.created_at);
+        return (
+          t.type === "in" &&
+          (t.category === "sale" || t.category === "credit sale") &&
+          (!t.item_name || !t.item_name.trim()) &&
+          d >= sevenAgo
+        );
+      }).length;
+      if (unnamedCount >= 5) {
+        const mon = new Date();
+        mon.setDate(mon.getDate() - ((mon.getDay() + 6) % 7));
+        const weekBucket = mon.toISOString().slice(0, 10);
+        const nudgeKey = `kt_unnamed_nudge_${userId}_${weekBucket}`;
+        if (!localStorage.getItem(nudgeKey)) {
+          localStorage.setItem(nudgeKey, "1");
+          fireEmailTrigger("weekly_unnamed_sales_nudge", {
+            owner_id:      userId,
+            owner_email:   authEmailRef.current,
+            unnamed_count: unnamedCount,
+          });
+        }
+      }
+    }
+
     if (staffRes.data) {
       const map = {};
       staffRes.data.forEach(s => { map[s.id] = s.full_name; });

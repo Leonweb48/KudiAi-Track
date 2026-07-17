@@ -8,7 +8,8 @@ import Invoices             from "./Invoices";
 import LoanApplicationModal from "../components/LoanApplicationModal";
 import { canDo, getLowestPlanWithFeature } from "../utils/plans";
 import { fmt }              from "../utils/helpers";
-import { AmountDisplay }   from "../components/shared/AmountDisplay";
+import { AmountDisplay }    from "../components/shared/AmountDisplay";
+import { compute }          from "../lib/profitEngine";
 
 /* ── Period config ───────────────────────────────────────────────────────────── */
 const PERIODS = [
@@ -585,21 +586,31 @@ export default function Finance({
   const { moneyIn, moneyOut, netPL, inCount, outCount,
           trendPct, trendUp, sparkData, expenseBreakdown } = useMemo(() => {
     const transactions = store.transactions || [];
-    const now       = new Date();
-    const start     = getPeriodStart(period);
-    const diffMs    = now - start;
-    const priorStart = new Date(start - diffMs);
-    const priorEnd  = start;
+    const now          = new Date();
+    const start        = getPeriodStart(period);
+    const diffMs       = now - start;
+    const priorStart   = new Date(start - diffMs);
+    const priorEnd     = new Date(start - 1); // exclusive boundary for prior period
 
     const curr  = filterByRange(transactions, start, now);
-    const prior = filterByRange(transactions, priorStart, priorEnd);
 
-    const mIn    = curr.filter(t => t.type === "in").reduce((s, t) => s + t.amount, 0);
-    const mOut   = curr.filter(t => t.type === "out").reduce((s, t) => s + t.amount, 0);
-    const pIn    = prior.filter(t => t.type === "in").reduce((s, t) => s + t.amount, 0);
-    const pOut   = prior.filter(t => t.type === "out").reduce((s, t) => s + t.amount, 0);
-    const netNow  = mIn - mOut;
-    const netPrev = pIn - pOut;
+    // Use profitEngine as the single source of truth for all P&L figures.
+    // Revenue excludes debt repayments (those are Cash-only).
+    // Expenses exclude stock purchases (inventory investment, not P&L cost).
+    // Gross profit = measuredRevenue − COGS (unmeasured items excluded intentionally).
+    const ledger = {
+      transactions,
+      invoices:   invoiceHook?.invoices     || [],
+      products:   inventory?.products       || [],
+      asoClients: store.asoClients          || [],
+    };
+    const engine      = compute(ledger, { from: start,      to: now });
+    const enginePrior = compute(ledger, { from: priorStart, to: priorEnd });
+
+    const mIn    = engine.profit.revenue.amount;
+    const mOut   = engine.profit.expenses.amount;
+    const netNow  = engine.profit.netProfit.amount;
+    const netPrev = enginePrior.profit.netProfit.amount;
 
     let tPct = null, tUp = null;
     if (netPrev !== 0) {
@@ -625,7 +636,7 @@ export default function Finance({
       sparkData:        buildSparkData(transactions),
       expenseBreakdown: expBreak,
     };
-  }, [store.transactions, period]);
+  }, [store.transactions, store.asoClients, inventory?.products, invoiceHook?.invoices, period]);
 
   /* ── Finance tools summary values ─────────────────────────────────────────── */
   const creditOutstanding = credits.reduce((s, c) => s + (c.outstanding || 0), 0);
@@ -691,7 +702,7 @@ export default function Finance({
 
         {/* Net P&L */}
         <div className="relative mb-1">
-          <p className="text-[9px] font-bold uppercase tracking-widest opacity-60 mb-1">Net Cash Flow</p>
+          <p className="text-[9px] font-bold uppercase tracking-widest opacity-60 mb-1">Net P&amp;L</p>
           <AmountDisplay
             amount={Math.abs(netPL)} size="hero" align="left"
             className={netPL >= 0 ? "text-green-400" : "text-red-400"}
@@ -719,14 +730,14 @@ export default function Finance({
       {/* ── Money In / Money Out paired cards ── */}
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-green-50 dark:bg-green-900/20 rounded-2xl p-4 border border-green-100 dark:border-green-800/40">
-          <p className="text-[9px] font-bold uppercase tracking-widest text-green-700 dark:text-green-400 opacity-70 mb-1.5">Money In</p>
+          <p className="text-[9px] font-bold uppercase tracking-widest text-green-700 dark:text-green-400 opacity-70 mb-1.5">Revenue</p>
           <AmountDisplay amount={moneyIn} size="stat" colorBy="in" align="left" />
           <p className="text-[10px] text-green-700/50 dark:text-green-400/50 mt-1.5 font-semibold">
             {inCount} {inCount === 1 ? "entry" : "entries"}
           </p>
         </div>
         <div className="bg-red-50 dark:bg-red-900/20 rounded-2xl p-4 border border-red-100 dark:border-red-800/40">
-          <p className="text-[9px] font-bold uppercase tracking-widest text-red-700 dark:text-red-400 opacity-70 mb-1.5">Money Out</p>
+          <p className="text-[9px] font-bold uppercase tracking-widest text-red-700 dark:text-red-400 opacity-70 mb-1.5">Expenses</p>
           <AmountDisplay amount={moneyOut} size="stat" colorBy="out" align="left" />
           <p className="text-[10px] text-red-700/50 dark:text-red-400/50 mt-1.5 font-semibold">
             {outCount} {outCount === 1 ? "entry" : "entries"}

@@ -142,7 +142,9 @@ export function useInventory(userId, staffId = null, branchId = null) {
     Promise.all([
       supabase.from("products").insert(prod),
       supabase.from("stock_movements").insert(mov),
-    ]).catch(() => {});
+    ]).then(([pr, mr]) => {
+      if (pr.error || mr.error) console.warn("[auto-stub] insert failed:", (pr.error || mr.error).message);
+    }).catch(e => console.warn("[auto-stub] error:", e?.message || e));
 
     setProducts(prev => [...prev, prod].sort((a, b) => a.product_name.localeCompare(b.product_name)));
     setMovements(prev => [mov, ...prev]);
