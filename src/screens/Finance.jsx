@@ -207,7 +207,7 @@ const ENCOURAGE_MSGS = [
 /* ── Loan sub-screen ─────────────────────────────────────────────────────────── */
 function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) {
   const [showTC,     setShowTC]    = useState(false);
-  const [tcAccepted, setTcAccepted] = useState(() => localStorage.getItem(LOAN_TC_KEY) === "1");
+  const [, setTcAccepted] = useState(() => localStorage.getItem(LOAN_TC_KEY) === "1");
   const [msgIdx,     setMsgIdx]    = useState(0);
   const [countdown,  setCountdown] = useState({ days: 0, hours: 0, mins: 0, secs: 0 });
   const timerR = useRef(null);
