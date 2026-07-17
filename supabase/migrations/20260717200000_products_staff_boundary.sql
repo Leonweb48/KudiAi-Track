@@ -71,10 +71,10 @@ BEGIN
   caller_is_owner := (auth.uid() = p_owner_id);
 
   SELECT EXISTS (
-    SELECT 1 FROM public.staff
-    WHERE user_id  = auth.uid()   -- auth.uid() only — never p_owner_id
-      AND owner_id = p_owner_id
-      AND status   = 'active'
+    SELECT 1 FROM public.staff s
+    WHERE s.user_id  = auth.uid()  -- auth.uid() only — never p_owner_id
+      AND s.owner_id = p_owner_id
+      AND s.status   = 'active'
   ) INTO caller_is_staff;
 
   -- Authorization gate: unauthorized callers receive 0 rows, not an error.
