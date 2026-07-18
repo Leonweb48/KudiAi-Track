@@ -217,7 +217,7 @@ function ReceiptTypeIcon({ iconType, direction, status }) {
 
 // ── Provider logo image or colored initials badge ─────────────────────────────
 function ProviderBadge({ provider, category }) {
-  const logoPath = getProviderLogo(provider);
+  const logoPath = getProviderLogo(provider, category);
   const badge    = getProviderBadge(provider, category);
 
   return (

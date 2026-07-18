@@ -447,7 +447,7 @@ function VerifyBadge({ status, name }) {
 /* ─── Visual provider selectors (logoMap + fallback chain) ─────────────────── */
 
 function ProviderTile({ name, category, size = 36, radius = 10 }) {
-  const logo  = getProviderLogo(name);
+  const logo  = getProviderLogo(name, category);
   const badge = getProviderBadge(name, category);
   const [imgFailed, setImgFailed] = useState(false);
   const tileStyle = { width: size, height: size, borderRadius: radius, background: badge.bg,

@@ -1,17 +1,56 @@
 // Provider logo paths and brand colors.
-// getProviderLogo(provider) → path string or null (use <img>)
+// getProviderLogo(provider, category?) → path string or null (use <img>)
 // getProviderBadge(provider, category) → { bg, fg, initials } (use colored badge)
 
 const LOGO_PATHS = {
-  MTN:       '/mtn.png',
-  mtn:       '/mtn.png',
-  Airtel:    '/Airtel.png',
-  airtel:    '/Airtel.png',
-  Glo:       '/glo.jpg',
-  glo:       '/glo.jpg',
-  '9mobile': '/9mobile.png',
-  '9Mobile': '/9mobile.png',
-  etisalat:  '/9mobile.png',
+  // Networks
+  MTN:          '/mtn.png',
+  mtn:          '/mtn.png',
+  Airtel:       '/Airtel.png',
+  airtel:       '/Airtel.png',
+  Glo:          '/glo.jpg',
+  glo:          '/glo.jpg',
+  '9mobile':    '/9mobile.png',
+  '9Mobile':    '/9mobile.png',
+  etisalat:     '/9mobile.png',
+  // Cable TV
+  DSTV:         '/logos/dstv.svg',
+  DStv:         '/logos/dstv.svg',
+  GOtv:         '/logos/gotv.svg',
+  StarTimes:    '/logos/startimes.svg',
+  Showmax:      '/logos/showmax.svg',
+  // Electricity
+  EKEDC:        '/logos/ekedc.svg',
+  IKEDC:        '/logos/ikedc.svg',
+  AEDC:         '/logos/aedc.svg',
+  KEDC:         '/logos/kedc.svg',
+  PHEDC:        '/logos/phedc.svg',
+  JEDC:         '/logos/jedc.svg',
+  IBEDC:        '/logos/ibedc.svg',
+  KAEDC:        '/logos/kaedc.svg',
+  EEDC:         '/logos/eedc.svg',
+  BEDC:         '/logos/bedc.svg',
+  YEDC:         '/logos/yedc.svg',
+  APLE:         '/logos/aple.svg',
+  // Betting
+  NairaBet:     '/logos/nairabet.svg',
+  Betway:       '/logos/betway.svg',
+  SportyBet:    '/logos/sportybet.svg',
+  BetKing:      '/logos/betking.svg',
+  '1xBet':      '/logos/1xbet.svg',
+  MerryBet:     '/logos/merrybet.svg',
+  BangBet:      '/logos/bangbet.svg',
+  NaijaBet:     '/logos/naijabet.svg',
+  BetLand:      '/logos/betland.svg',
+  // Category-level (used when providerName is null but category is known)
+  WAEC:         '/logos/waec.svg',
+  waec:         '/logos/waec.svg',
+  JAMB:         '/logos/jamb.svg',
+  jamb:         '/logos/jamb.svg',
+  Spectranet:   '/logos/spectranet.svg',
+  spectranet:   '/logos/spectranet.svg',
+  Smile:        '/logos/smile.svg',
+  smile:        '/logos/smile.svg',
 };
 
 const BRAND_COLORS = {
@@ -58,9 +97,22 @@ const CATEGORY_COLORS = {
   smile:       { bg: '#ec4899', fg: '#fff' },
 };
 
-export function getProviderLogo(provider) {
-  if (!provider) return null;
-  return LOGO_PATHS[provider] || null;
+// Fuzzy-matches provider name against LOGO_PATHS keys, then falls back to category.
+export function getProviderLogo(provider, category) {
+  if (provider) {
+    const exact = LOGO_PATHS[provider];
+    if (exact) return exact;
+    const key = Object.keys(LOGO_PATHS).find(k =>
+      provider.toLowerCase().includes(k.toLowerCase()) ||
+      k.toLowerCase().includes(provider.toLowerCase())
+    );
+    if (key) return LOGO_PATHS[key];
+  }
+  if (category) {
+    const c = LOGO_PATHS[category];
+    if (c) return c;
+  }
+  return null;
 }
 
 export function getProviderBadge(provider, category) {

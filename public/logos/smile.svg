@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80">
+  <rect width="80" height="80" rx="14" fill="#db2777"/>
+  <path d="M22,40 Q40,58 58,40" fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="28" cy="32" r="4" fill="rgba(255,255,255,0.7)"/>
+  <circle cx="52" cy="32" r="4" fill="rgba(255,255,255,0.7)"/>
+  <text x="40" y="22" text-anchor="middle" font-family="Arial Black,Arial,Helvetica,sans-serif" font-weight="900" font-size="13" fill="white">Smile</text>
+  <text x="40" y="74" text-anchor="middle" font-family="Arial Black,Arial,Helvetica,sans-serif" font-weight="900" font-size="10" fill="rgba(255,255,255,0.85)">4G LTE</text>
+</svg>

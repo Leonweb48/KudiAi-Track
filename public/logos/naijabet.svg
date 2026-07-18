@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80">
+  <rect width="80" height="80" rx="14" fill="#006600"/>
+  <text x="40" y="34" text-anchor="middle" font-family="Arial Black,Arial,Helvetica,sans-serif" font-weight="900" font-size="13" fill="rgba(255,255,255,0.85)" letter-spacing="0.5">NAIJA</text>
+  <text x="40" y="56" text-anchor="middle" font-family="Arial Black,Arial,Helvetica,sans-serif" font-weight="900" font-size="22" fill="white" letter-spacing="-0.5">Bet</text>
+  <rect x="15" y="59" width="50" height="2" rx="1" fill="rgba(255,255,255,0.25)"/>
+  <text x="40" y="72" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="8" fill="rgba(255,255,255,0.6)">SPORTS BETTING</text>
+</svg>

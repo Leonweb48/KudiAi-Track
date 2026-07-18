@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80">
+  <rect width="80" height="80" rx="14" fill="#00a651"/>
+  <text x="40" y="38" text-anchor="middle" font-family="Arial Black,Arial,Helvetica,sans-serif" font-weight="900" font-size="18" fill="white" letter-spacing="-0.5">Sporty</text>
+  <text x="40" y="59" text-anchor="middle" font-family="Arial Black,Arial,Helvetica,sans-serif" font-weight="900" font-size="18" fill="white" letter-spacing="-0.5">Bet</text>
+  <rect x="20" y="41" width="40" height="2.5" rx="1.25" fill="rgba(0,0,0,0.2)"/>
+</svg>

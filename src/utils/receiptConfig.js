@@ -308,7 +308,7 @@ export function buildBillReceipt(bill) {
     fees:         0,
     receiptRef:   ref,
     filenames:    { image, pdf },
-    provider:      bill.network || bill.providerName || null,
+    provider:      bill.network || bill.providerName || bill.platformName || null,
     category:      bill.category || null,
     processorName: PROCESSOR_NAME,
     iconType:      null,

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80">
+  <rect width="80" height="80" rx="14" fill="#005500"/>
+  <text x="40" y="34" text-anchor="middle" font-family="Arial Black,Arial,Helvetica,sans-serif" font-weight="900" font-size="24" fill="#FFD700">₦</text>
+  <text x="40" y="57" text-anchor="middle" font-family="Arial Black,Arial,Helvetica,sans-serif" font-weight="900" font-size="16" fill="white" letter-spacing="-0.3">NairaBet</text>
+  <text x="40" y="72" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="8" fill="rgba(255,255,255,0.6)">SPORTS BETTING</text>
+</svg>

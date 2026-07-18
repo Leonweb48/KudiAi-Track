@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80">
+  <rect width="80" height="80" rx="14" fill="#007a33"/>
+  <polygon points="46,10 33,44 43,44 38,70 54,36 44,36 50,10" fill="rgba(255,255,255,0.22)"/>
+  <text x="40" y="46" text-anchor="middle" font-family="Arial Black,Arial,Helvetica,sans-serif" font-weight="900" font-size="20" fill="white">EKEDC</text>
+  <text x="40" y="60" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="7.5" fill="rgba(255,255,255,0.7)">Eko Electricity</text>
+  <text x="40" y="71" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="7.5" fill="rgba(255,255,255,0.7)">Distribution Co.</text>
+</svg>
