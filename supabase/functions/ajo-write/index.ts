@@ -265,15 +265,20 @@ serve(async (req: Request) => {
       return json({ ok: false, error: "Permission denied: Ajo contribution recording not enabled for your account" }, 403);
     }
 
-    // Scoping: staff can only record for clients assigned to them or created by them
+    // Scoping: staff can only record for clients assigned to them or created by them.
+    // Legacy clients (staff_id IS NULL AND created_by IS NULL) are accessible to all
+    // can_view staff until the owner assigns scope.
     if (ajoPerms !== null) {
       const { data: clientScope } = await sb
         .from("aso_clients")
         .select("staff_id, created_by")
         .eq("id", client_id)
         .maybeSingle();
-      if (!clientScope ||
-          (clientScope.staff_id !== ajoPerms.staffId && clientScope.created_by !== ajoPerms.staffId)) {
+      if (!clientScope) return json({ ok: false, error: "Client not found" }, 404);
+      const isLegacy = !clientScope.staff_id && !clientScope.created_by;
+      if (!isLegacy &&
+          clientScope.staff_id !== ajoPerms.staffId &&
+          clientScope.created_by !== ajoPerms.staffId) {
         return json({ ok: false, error: "You are not assigned to this client" }, 403);
       }
     }
@@ -1412,7 +1417,7 @@ serve(async (req: Request) => {
 
     const { data: rcRow } = await sb
       .from("ajo_contributions")
-      .select("owner_id, status, contribution_source")
+      .select("owner_id, aso_client_id, amount, status, contribution_source")
       .eq("id", rcId)
       .maybeSingle();
     if (!rcRow) return json({ ok: false, error: "Contribution not found" }, 404);
@@ -1429,6 +1434,18 @@ serve(async (req: Request) => {
       .update({ status: "rejected", reject_reason: rcReason?.trim() || null })
       .eq("id", rcId);
     if (rcErr) return json({ ok: false, error: rcErr.message });
+
+    // Notify client that their staff-recorded contribution was rejected by the owner
+    const rcCtx = await fetchEmailContext(sb, rcRow.aso_client_id as string, rcRow.owner_id as string, user.id);
+    await fireAjoEmail("ajo_contribution_rejected", {
+      client_email:  rcCtx.clientEmail,
+      client_name:   rcCtx.clientName,
+      owner_email:   rcCtx.ownerEmail,
+      business_name: rcCtx.businessName,
+      amount:        (rcRow as Record<string, unknown>).amount,
+      reason:        rcReason?.trim() || "",
+      date:          new Date().toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" }),
+    });
 
     return json({ ok: true });
   }

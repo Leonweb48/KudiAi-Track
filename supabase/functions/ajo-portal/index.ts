@@ -78,21 +78,31 @@ serve(async (req) => {
   async function requireClientAccess(client_id: string): Promise<Response | null> {
     if (!client_id) return json({ error: "client_id required" }, 400);
     const { data: cl } = await sb.from("aso_clients")
-      .select("id, client_user_id, user_id, staff_id, created_by").eq("id", client_id).maybeSingle();
+      .select("id, client_user_id, user_id, staff_id, created_by, branch_id")
+      .eq("id", client_id).maybeSingle();
     if (!cl) return json({ error: "Client not found" }, 404);
-    // Owner or client
+    // Owner or client portal user
     if (cl.client_user_id === callerId || cl.user_id === callerId) return null;
-    // Staff path: must be active, have can_view, and be manager OR assigned/creator
+    // Staff path: must be active, have can_view
     const { data: st } = await sb.from("staff")
-      .select("id, role")
+      .select("id, role, branch_id")
       .eq("user_id", callerId).eq("owner_id", cl.user_id).eq("status", "active")
       .maybeSingle();
     if (!st) return json({ error: "Forbidden" }, 403);
     const { data: sp } = await sb.from("staff_permissions")
-      .select("can_view").eq("staff_id", st.id).eq("module", "aso").maybeSingle();
+      .select("can_view").eq("staff_id", (st as Record<string, unknown>).id).eq("module", "aso").maybeSingle();
     if (!sp?.can_view) return json({ error: "Forbidden: Ajo access not enabled" }, 403);
-    if ((st as Record<string, unknown>).role === "manager") return null;
-    const isScoped = cl.staff_id === (st as Record<string, unknown>).id || cl.created_by === (st as Record<string, unknown>).id;
+    if ((st as Record<string, unknown>).role === "manager") {
+      // Manager scope: branch-scoped. Null branch_id on manager = owner-wide fallback.
+      const mBranch = (st as Record<string, unknown>).branch_id;
+      if (!mBranch) return null; // legacy manager with no branch assigned
+      return mBranch === cl.branch_id ? null : json({ error: "Forbidden: client not in your branch" }, 403);
+    }
+    // Regular staff:
+    // Legacy clients (no scope assignment) are readable by all can_view staff.
+    if (!cl.staff_id && !cl.created_by) return null;
+    const sId = (st as Record<string, unknown>).id;
+    const isScoped = cl.staff_id === sId || cl.created_by === sId;
     return isScoped ? null : json({ error: "Forbidden: client not in your scope" }, 403);
   }
 
