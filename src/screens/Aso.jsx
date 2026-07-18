@@ -125,10 +125,12 @@ function isGroupAccount(c) {
 }
 
 /* ── Per-client Ajo Contribution History Modal ─────────────────────────── */
-function AsoClientHistoryModal({ client, contributions, cycle, businessName, staffMap = {}, onClose, onOpenCycle, onCloseCycle, onExecuteCommission, onReverseContrib }) {
-  const [tab,           setTab]           = useState(cycle ? "card" : "history");
-  // Auto-switch to card tab when a cycle is opened/created
-  useEffect(() => { if (cycle) setTab("card"); }, [cycle]);
+function AsoClientHistoryModal({ client, contributions, cycles = [], businessName, staffMap = {}, onClose, onOpenCycle, onCloseCycle, onExecuteCommission, onReverseContrib }) {
+  const [tab,           setTab]           = useState(cycles.length > 0 ? "card" : "history");
+  const [newCycleLabel, setNewCycleLabel] = useState("");
+  const [showNewCycle,  setShowNewCycle]  = useState(false);
+  // Auto-switch to card tab when a cycle is added
+  useEffect(() => { if (cycles.length > 0) setTab("card"); }, [cycles.length]);
   const [typeFilter,    setTypeFilter]    = useState("all");
   const [period,        setPeriod]        = useState("all");
   const [dateFrom,      setDateFrom]      = useState("");
@@ -324,17 +326,61 @@ function AsoClientHistoryModal({ client, contributions, cycle, businessName, sta
 
         {/* Card tab */}
         {tab === "card" && (
-          <div className="flex-1 overflow-y-auto px-4 py-4">
-            <ContributionCard
-              cycle={cycle}
-              contributions={contributions}
-              frequency={client.contribution_frequency}
-              clientName={client.full_name}
-              businessName={businessName}
-              onOpenCycle={onOpenCycle}
-              onCloseCycle={cycle ? onCloseCycle : undefined}
-              onExecuteCommission={cycle && cycle.status !== "active" ? onExecuteCommission : undefined}
-            />
+          <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+            {cycles.map(cyc => (
+              <ContributionCard
+                key={cyc.id}
+                cycle={cyc}
+                contributions={contributions}
+                frequency={client.contribution_frequency}
+                clientName={client.full_name}
+                businessName={businessName}
+                onCloseCycle={onCloseCycle ? () => onCloseCycle(cyc) : undefined}
+                onExecuteCommission={cyc.status !== "active" ? ((amt, pin) => onExecuteCommission(amt, pin, cyc)) : undefined}
+              />
+            ))}
+            {cycles.length === 0 && (
+              <ContributionCard
+                cycle={null}
+                contributions={contributions}
+                frequency={client.contribution_frequency}
+                clientName={client.full_name}
+                businessName={businessName}
+              />
+            )}
+            {onOpenCycle && (
+              showNewCycle ? (
+                <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-4 space-y-3">
+                  <p className="text-sm font-bold text-slate-700 dark:text-white">New Saving Cycle</p>
+                  <input
+                    type="text"
+                    placeholder="Label (e.g. House Savings)"
+                    value={newCycleLabel}
+                    onChange={e => setNewCycleLabel(e.target.value)}
+                    className="w-full border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-900 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => { setShowNewCycle(false); setNewCycleLabel(""); }}
+                      className="flex-1 py-2.5 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl text-sm font-bold">
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => { onOpenCycle(false, newCycleLabel.trim() || undefined); setShowNewCycle(false); setNewCycleLabel(""); }}
+                      className="flex-1 py-2.5 bg-brand-600 text-white rounded-xl text-sm font-bold">
+                      Open Cycle
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowNewCycle(true)}
+                  className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-brand-300 dark:border-brand-700 text-brand-600 dark:text-brand-400 rounded-2xl text-sm font-bold active:scale-[0.98] transition">
+                  <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  Open New Saving Cycle
+                </button>
+              )
+            )}
           </div>
         )}
 
@@ -2367,9 +2413,9 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                         .select("*")
                         .eq("client_id", c.id)
                         .eq("status", "active")
-                        .maybeSingle(),
+                        .order("created_at", { ascending: true }),
                     ]);
-                    setHistoryFor({ client: c, contributions: contribRes.data || [], cycle: cycleRes.data || null });
+                    setHistoryFor({ client: c, contributions: contribRes.data || [], cycles: cycleRes.data || [] });
                     setHistLoading(false);
                   }}
                     className="flex-1 flex flex-col items-center gap-1 py-2.5 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-200 dark:border-blue-800 active:scale-95 transition"
@@ -2883,10 +2929,10 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
       {/* ── Per-client Contribution History Modal ────────────────── */}
       {historyFor && (() => {
-        const { client: hc, contributions: hcons, cycle: hcycle } = historyFor;
+        const { client: hc, contributions: hcons, cycles: hcycles } = historyFor;
         const bizName = profile?.business_name || profile?.owner_name || "My Business";
 
-        const handleOpenCycle = async (force = false) => {
+        const handleOpenCycle = async (force = false, label = undefined) => {
           const body = {
             action: "open_cycle",
             client_id: hc.id,
@@ -2894,6 +2940,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             expected_amount_per_period: hc.contribution_amount,
             commission_model: hc.commission_model || "none",
             commission_percent: hc.commission_percent || null,
+            label: label || undefined,
             force,
           };
           const { data, error } = await supabase.functions.invoke("ajo-write", { body });
@@ -2911,7 +2958,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                 });
                 if (e2 || !d2?.ok) { setHistoryErr(d2?.error || friendlyError(e2, "Failed to open cycle.")); return; }
                 const { data: newCycle } = await supabase.from("ajo_cycles").select("*").eq("id", d2.cycle_id).maybeSingle();
-                setHistoryFor(prev => ({ ...prev, cycle: newCycle || null }));
+                if (newCycle) setHistoryFor(prev => ({ ...prev, cycles: [...(prev.cycles || []), newCycle] }));
               },
             });
             return;
@@ -2919,40 +2966,41 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
           if (!data?.ok) { setHistoryErr(data?.error || "Failed to open cycle. Please try again."); return; }
           const { data: newCycle } = await supabase.from("ajo_cycles").select("*").eq("id", data.cycle_id).maybeSingle();
-          setHistoryFor(prev => ({ ...prev, cycle: newCycle || null }));
+          if (newCycle) setHistoryFor(prev => ({ ...prev, cycles: [...(prev.cycles || []), newCycle] }));
         };
 
-        const handleCloseCycle = () => {
-          if (!hcycle) return;
+        const handleCloseCycle = (cyc) => {
+          if (!cyc) return;
           setCycleConfirm({
             title: "Close Cycle",
-            msg: "Mark this contribution cycle as completed?",
+            msg: `Mark "${cyc.label || "this cycle"}" as completed?`,
             confirmLabel: "Complete Cycle",
             onConfirm: async () => {
               const { data, error } = await supabase.functions.invoke("ajo-write", {
-            body: { action: "close_cycle", cycle_id: hcycle.id, status: "completed" },
+                body: { action: "close_cycle", cycle_id: cyc.id, status: "completed" },
               });
               if (error || !data?.ok) {
                 setHistoryErr(data?.error || friendlyError(error, "Failed to close cycle."));
                 return;
               }
-              // Reload cycle as completed (so commission execute button appears)
-              const { data: updatedCycle } = await supabase.from("ajo_cycles").select("*").eq("id", hcycle.id).maybeSingle();
-              setHistoryFor(prev => ({ ...prev, cycle: updatedCycle || null }));
+              const { data: updatedCycle } = await supabase.from("ajo_cycles").select("*").eq("id", cyc.id).maybeSingle();
+              setHistoryFor(prev => ({
+                ...prev,
+                cycles: (prev.cycles || []).map(c => c.id === cyc.id ? (updatedCycle || c) : c),
+              }));
             },
           });
         };
 
-        const handleExecuteCommission = async (amount, pin) => {
-          if (!hcycle) return;
+        const handleExecuteCommission = async (amount, pin, cyc) => {
+          if (!cyc) return;
           const { data, error } = await supabase.functions.invoke("ajo-write", {
-            body: { action: "execute_commission", cycle_id: hcycle.id, amount, pin },
+            body: { action: "execute_commission", cycle_id: cyc.id, amount, pin },
           });
           if (error || !data?.ok) {
             setHistoryErr(data?.error || friendlyError(error, "Commission execution failed."));
             return;
           }
-          // Refresh contributions so commission entry appears and button hides
           const { data: freshContribs } = await supabase
             .from("ajo_contributions")
             .select("*")
@@ -2986,7 +3034,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             <AsoClientHistoryModal
               client={hc}
               contributions={hcons}
-              cycle={hcycle}
+              cycles={hcycles}
               businessName={bizName}
               staffMap={store.staffMap || {}}
               onClose={() => { setHistoryFor(null); setHistoryErr(""); }}
