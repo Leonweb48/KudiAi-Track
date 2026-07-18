@@ -4,21 +4,32 @@ import Icon from "../Icon";
 export default function Modal({ title, onClose, children, id = "modal-panel" }) {
   const panelRef = useRef(null);
 
+  // Focus the first focusable element once on open — runs only on mount so typing
+  // in an input never re-triggers focus and closes the mobile keyboard.
   useEffect(() => {
     const panel = panelRef.current;
     if (!panel) return;
-
-    // Focus the first focusable element
     const focusable = Array.from(
       panel.querySelectorAll(
         'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
       )
     ).filter(el => !el.disabled);
     focusable[0]?.focus();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Keyboard trap — re-registers when onClose changes but never steals focus.
+  useEffect(() => {
+    const panel = panelRef.current;
+    if (!panel) return;
     const handleKey = (e) => {
       if (e.key === "Escape") { onClose(); return; }
-      if (e.key !== "Tab" || focusable.length === 0) return;
+      if (e.key !== "Tab") return;
+      const focusable = Array.from(
+        panel.querySelectorAll(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        )
+      ).filter(el => !el.disabled);
+      if (focusable.length === 0) return;
       const first = focusable[0];
       const last  = focusable[focusable.length - 1];
       if (e.shiftKey) {
@@ -27,7 +38,6 @@ export default function Modal({ title, onClose, children, id = "modal-panel" }) 
         if (document.activeElement === last) { e.preventDefault(); first.focus(); }
       }
     };
-
     document.addEventListener("keydown", handleKey);
     return () => document.removeEventListener("keydown", handleKey);
   }, [onClose]);

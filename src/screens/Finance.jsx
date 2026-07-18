@@ -665,7 +665,7 @@ function ProfitCard({ engine, loading, onDrill, onInfo }) {
 
   const { revenue, cogs, grossProfit, expenses, netProfit, unmeasured } = engine.profit;
   const { interestEarned } = engine.cash.byStream;
-  const drill = (label, d) => d.txIds.length ? () => onDrill({ label, amount: d.amount, txIds: d.txIds }) : null;
+  const drill = (label, d) => d.txIds.length ? () => onDrill({ label, amount: d.amount, txIds: d.txIds, meta: d.meta }) : null;
 
   return (
     <div className="bg-white dark:bg-slate-800 rounded-3xl p-4 border border-slate-100 dark:border-slate-700/50 shadow-card">
@@ -725,7 +725,7 @@ function CashCard({ engine, loading, onDrill }) {
 
   const { in: cashIn, out: cashOut, net: cashNet, byStream } = engine.cash;
   const { ajoHeld, ajoReleased } = engine.liabilities;
-  const drill = (label, d) => d.txIds.length ? () => onDrill({ label, amount: d.amount, txIds: d.txIds }) : null;
+  const drill = (label, d) => d.txIds.length ? () => onDrill({ label, amount: d.amount, txIds: d.txIds, meta: d.meta }) : null;
   const hasAjo = ajoHeld.amount > 0 || ajoReleased.amount > 0;
 
   const inflows = [
@@ -779,7 +779,7 @@ function CashCard({ engine, loading, onDrill }) {
   );
 }
 
-function DrillDownSheet({ label, txIds, transactions, invoices, onClose }) {
+function DrillDownSheet({ label, txIds, transactions, invoices, meta, onClose }) {
   const txMap = useMemo(
     () => new Map((transactions || []).map(t => [t.id, t])),
     [transactions],
@@ -804,9 +804,13 @@ function DrillDownSheet({ label, txIds, transactions, invoices, onClose }) {
         const p = invPmtMap.get(id);
         return { id, label: `Invoice ${p.ref}`, amount: p.amount, date: p.date };
       }
+      if (meta?.has(id)) {
+        const m = meta.get(id);
+        return { id, label: m.label, amount: m.amount, date: m.date };
+      }
       return null;
     }).filter(Boolean),
-  [txIds, txMap, invPmtMap]);
+  [txIds, txMap, invPmtMap, meta]);
 
   const total = items.reduce((s, x) => s + x.amount, 0);
 
@@ -1327,6 +1331,7 @@ export default function Finance({
           label={drillDown.label}
           amount={drillDown.amount}
           txIds={drillDown.txIds}
+          meta={drillDown.meta}
           transactions={store.transactions || []}
           invoices={invoiceHook?.invoices || []}
           onClose={() => setDrillDown(null)}

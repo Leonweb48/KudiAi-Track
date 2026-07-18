@@ -170,6 +170,7 @@ export function compute(ledger, range) {
   // payment_type='bill_payment' — it has no connection to the credits table.
   // No bill path can carry interest by construction.
   const interestItems = [];
+  const interestMeta  = new Map(); // id -> { label, amount, date } for drill-down resolution
   const creditsWithInterest = credits.filter(c => (c.interest_amount || 0) > 0 && c.status !== "voided");
 
   for (const credit of creditsWithInterest) {
@@ -191,13 +192,19 @@ export function compute(ledger, range) {
         const ds = pmt.created_at || pmt.payment_date;
         const d  = ds ? (ds.includes("T") ? new Date(ds) : new Date(ds + "T00:00:00")) : null;
         if (d && inRange(d, from, to)) {
-          interestItems.push({ id: `int-${pmt.id}`, amount: interestPortion });
+          const id = `int-${pmt.id}`;
+          interestItems.push({ id, amount: interestPortion });
+          interestMeta.set(id, {
+            label:  `Interest — ${credit.customer_name || "Customer"}`,
+            amount: interestPortion,
+            date:   ds ? ds.slice(0, 10) : "",
+          });
         }
       }
     }
   }
 
-  const interestEarned = pool(interestItems);
+  const interestEarned = { ...pool(interestItems), meta: interestMeta };
   // Interest: zero COGS, fully measured — contributes to gross profit
   measuredRev += interestEarned.amount;
   // Recalculate grossProfit with interest included
