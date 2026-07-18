@@ -27,7 +27,7 @@ const CLIENT_SELECT = `
   next_contribution_date, contribution_frequency, contribution_amount,
   registration_date, membership_number, portal_active, status,
   address, state, lga, ward, notes,
-  registration_charge, withdrawal_fee_percent,
+  registration_charge, withdrawal_fee_percent, commission_model, commission_percent,
   nin, next_of_kin_name, next_of_kin_phone, next_of_kin_email, next_of_kin_address,
   bank_code, bank_name, account_number, account_name,
   withdrawal_bank_code, withdrawal_bank_name, withdrawal_account_number, withdrawal_account_name,

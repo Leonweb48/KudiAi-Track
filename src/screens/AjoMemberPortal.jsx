@@ -1614,7 +1614,7 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
 }
 
 // ── Overview tab ──────────────────────────────────────────────────────────
-function OverviewTab({ client, contributions, cycle, rotationData, rotationLoading, onWithdrawClick, onPayClick, onDepositClick, ownerInfo, withdrawRequests = [], onBillsClick, userEmail }) {
+function OverviewTab({ client, contributions, cycle, rotationData, rotationLoading, onWithdrawClick, onPayClick, onDepositClick, ownerInfo, withdrawRequests = [], onBillsClick, userEmail, onGoToMe }) {
   const t = useT();
   const { lang } = useLanguage();
 
@@ -1626,6 +1626,13 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
   const [balanceHidden, setBalanceHidden] = useState(() =>
     sessionStorage.getItem("ajo_balance_hidden") === "1"
   );
+  const [feeCardDismissed, setFeeCardDismissed] = useState(() =>
+    !client?.id || localStorage.getItem("ajo_fee_intro_" + client.id) === "1"
+  );
+  const dismissFeeCard = () => {
+    if (client?.id) localStorage.setItem("ajo_fee_intro_" + client.id, "1");
+    setFeeCardDismissed(true);
+  };
   const toggleBalance = () => {
     setBalanceHidden(h => {
       const next = !h;
@@ -1909,7 +1916,7 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
       )}
 
       {/* Fee info card */}
-      {((client.registration_charge > 0) || (client.withdrawal_fee_percent > 0)) && (
+      {((client.registration_charge > 0) || (client.commission_model && client.commission_model !== "none")) && (
         <div className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3 border border-slate-100 dark:border-slate-700 flex items-center gap-3 shadow-sm">
           <div className="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-900/30 flex items-center justify-center flex-shrink-0">
             <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-brand-500" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
@@ -1917,17 +1924,46 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
             </svg>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Withdrawal Fees</p>
+            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Fees</p>
             {(client.total_withdrawn || 0) === 0 && client.registration_charge > 0 ? (
               <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                 First withdrawal: <span className="text-brand-500 dark:text-brand-400 font-bold">{fmt(client.registration_charge)} registration fee</span>
               </p>
-            ) : client.withdrawal_fee_percent > 0 ? (
+            ) : client.commission_model === "percent" ? (
               <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                Withdrawal fee: <span className="text-brand-500 dark:text-brand-400 font-bold">{client.withdrawal_fee_percent}% of amount</span>
+                {client.ajo_group_id ? "Group withdrawal fee:" : "Withdrawal fee:"} <span className="text-brand-500 dark:text-brand-400 font-bold">{client.commission_percent || 0}% of amount</span>
+              </p>
+            ) : client.commission_model === "first_period" ? (
+              <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                Fee: <span className="text-brand-500 dark:text-brand-400 font-bold">first contribution period per cycle</span>
               </p>
             ) : null}
           </div>
+        </div>
+      )}
+
+      {/* One-time fee intro card — shown once per client, dismissed to localStorage */}
+      {!feeCardDismissed && (
+        <div className="bg-brand-500 rounded-2xl px-4 py-4 shadow-sm">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
+              <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="white" strokeWidth={2} strokeLinecap="round">
+                <circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/>
+              </svg>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-extrabold text-white leading-tight">Here's how fees work on your savings</p>
+              <p className="text-[11px] text-white/75 mt-0.5 leading-relaxed">See your registration fee, withdrawal charges, and full breakdown in My Fees.</p>
+            </div>
+            <button onClick={dismissFeeCard}
+              className="w-7 h-7 flex items-center justify-center rounded-full bg-white/20 flex-shrink-0 text-white font-bold text-base leading-none active:bg-white/30">
+              ×
+            </button>
+          </div>
+          <button onClick={() => { dismissFeeCard(); onGoToMe?.(); }}
+            className="mt-3 w-full py-2 bg-white/20 rounded-xl text-sm font-bold text-white active:bg-white/30 transition">
+            View My Fees →
+          </button>
         </div>
       )}
 
@@ -2866,6 +2902,89 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
   );
 
   /* ── Profile preview ─────────────────────────────────────────────── */
+  if (view === "fees") {
+    const regFeeRow = contributions.find(c => c.type === "registration_fee");
+    const isGroup   = !!client?.ajo_group_id;
+    return (
+      <div className="h-full flex flex-col">
+        <div className="flex items-center gap-3 px-4 py-4 border-b border-slate-100 dark:border-slate-700/50 flex-shrink-0 bg-white dark:bg-slate-900">
+          <button onClick={() => setView("menu")} className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center active:scale-90 transition">
+            <Svg d={P.back} size={18} color="#64748b" />
+          </button>
+          <p className="text-base font-extrabold text-slate-800 dark:text-slate-100 flex-1">My Fees</p>
+        </div>
+        <div className="flex-1 overflow-y-auto pb-10 px-4 pt-4 space-y-4">
+
+          {/* Registration Fee */}
+          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 overflow-hidden">
+            <p className="px-4 pt-3 pb-2 text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest border-b border-slate-50 dark:border-slate-700/30">Registration Fee</p>
+            <div className="px-4 py-4">
+              {(client?.registration_charge || 0) > 0 ? (
+                <>
+                  <p className="text-2xl font-extrabold text-slate-800 dark:text-white tabular-nums">{fmt(client.registration_charge)}</p>
+                  <div className="flex items-center gap-2 mt-2">
+                    {regFeeRow ? (
+                      <>
+                        <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
+                        <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">Paid on {fmtDate(regFeeRow.created_at)}</p>
+                      </>
+                    ) : (
+                      <>
+                        <span className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" />
+                        <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">Will be deducted from your first withdrawal</p>
+                      </>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <p className="text-sm font-semibold text-green-600 dark:text-green-400">No registration fee on your account</p>
+              )}
+            </div>
+          </div>
+
+          {/* Withdrawal / Commission Fee */}
+          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 overflow-hidden">
+            <p className="px-4 pt-3 pb-2 text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest border-b border-slate-50 dark:border-slate-700/30">
+              {isGroup ? "Group Withdrawal Fee" : "Withdrawal Fee"}
+            </p>
+            <div className="px-4 py-4">
+              {isGroup ? (
+                client?.commission_model === "percent" ? (
+                  <>
+                    <p className="text-2xl font-extrabold text-slate-800 dark:text-white tabular-nums">{client.commission_percent || 0}%</p>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Your group's withdrawal fee: {client.commission_percent || 0}%</p>
+                  </>
+                ) : (
+                  <p className="text-sm font-semibold text-green-600 dark:text-green-400">No withdrawal fees</p>
+                )
+              ) : client?.commission_model === "percent" ? (
+                <>
+                  <p className="text-2xl font-extrabold text-slate-800 dark:text-white tabular-nums">{client.commission_percent || 0}%</p>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{client.commission_percent || 0}% is deducted from each withdrawal</p>
+                </>
+              ) : client?.commission_model === "first_period" ? (
+                <>
+                  <p className="text-sm font-bold text-slate-700 dark:text-slate-200">One contribution period per cycle goes to your collector</p>
+                  {(client.contribution_amount || 0) > 0 && (
+                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+                      That's {fmt(client.contribution_amount)} per cycle based on your contribution amount
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className="text-sm font-semibold text-green-600 dark:text-green-400">No withdrawal fees</p>
+              )}
+            </div>
+          </div>
+
+          <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center px-2 leading-relaxed">
+            Fees are set by your savings collector. Contact them for questions about your fee structure.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (view === "profile") {
     const avatarSrc = photoPreview || client?.profile_image_url;
     const InfoRow = ({ label, value }) => (
@@ -3184,7 +3303,7 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
                 ["Frequency", client?.contribution_frequency],
                 ["Amount", client?.contribution_amount ? `₦${Number(client.contribution_amount).toLocaleString("en-NG")}` : null],
                 ["Reg. Fee", client?.registration_charge != null ? `₦${Number(client.registration_charge).toLocaleString("en-NG")}` : null],
-                ["Withdrawal Fee", client?.withdrawal_fee_percent != null ? `${client.withdrawal_fee_percent}%` : null],
+                ["Withdrawal Fee", client?.commission_model === "percent" ? `${client.commission_percent || 0}%` : client?.commission_model === "first_period" ? "First period/cycle" : client?.commission_model === "none" ? "None" : null],
               ].map(([lbl, val]) => (
                 <div key={lbl} className="flex items-center px-4 py-3">
                   <p className="text-[12px] text-slate-400 dark:text-slate-500 w-28 flex-shrink-0">{lbl}</p>
@@ -3224,9 +3343,16 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
         <SectionLabel>Account</SectionLabel>
         <SettingsCard>
           {/* Profile summary row — full row taps to open profile preview */}
+          <Row
+            iconCls="bg-green-50 dark:bg-green-900/20"
+            icon={<RowIcon d={P.doc} color="#16a34a" />}
+            label="My Fees"
+            sub="Registration fee, withdrawal charges"
+            onClick={() => setView("fees")}
+          />
           <button onClick={() => setView("profile")}
             className="w-full flex items-center gap-4 px-4 py-4 text-left active:bg-slate-50 dark:active:bg-slate-700/40 transition-colors">
-            <div className="w-12 h-12 rounded-full bg-brand-500 relative flex items-center justify-center flex-shrink-0 overflow-hidden shadow-sm ring-2 ring-brand-100 dark:ring-brand-900/40">
+<div className="w-12 h-12 rounded-full bg-brand-500 relative flex items-center justify-center flex-shrink-0 overflow-hidden shadow-sm ring-2 ring-brand-100 dark:ring-brand-900/40">
               <span className="text-base font-black text-white">{initials}</span>
               {(photoPreview || client?.profile_image_url) && <img src={photoPreview || client.profile_image_url} alt="" className="absolute inset-0 w-full h-full object-cover" onError={(e) => e.currentTarget.style.display = "none"} />}
             </div>
@@ -3924,6 +4050,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
               ownerInfo={ownerInfo}
               withdrawRequests={withdrawRequests}
               onBillsClick={() => setTab("bills")}
+              onGoToMe={() => setTab("me")}
             />
           )}
           {tab === "bills" && client && (
