@@ -133,12 +133,16 @@ export function AddTxnModal({
   const [saveError,          setSaveError]          = useState("");
   const [saveSuccess,        setSaveSuccess]        = useState(false);
 
+  /* ── Keyboard-aware sizing (Android/Capacitor) ── */
+  const [vvHeight, setVvHeight] = useState(null);
+
   /* ── Sheet animation ── */
   const [sheetY,  setSheetY]  = useState("100%");   // "0px" when open
   const [sheetTx, setSheetTx] = useState("transform 0.3s cubic-bezier(0.34,1.56,0.64,1)");
-  const sheetRef   = useRef(null);
-  const dragRef    = useRef({ startY: 0, curDy: 0, active: false });
-  const isDirtyRef = useRef(false);
+  const sheetRef    = useRef(null);
+  const detailsRef  = useRef(null);
+  const dragRef     = useRef({ startY: 0, curDy: 0, active: false });
+  const isDirtyRef  = useRef(false);
 
   /* Entry animation */
   useEffect(() => {
@@ -149,6 +153,23 @@ export function AddTxnModal({
   useEffect(() => {
     try { sessionStorage.setItem("kt_add_details_open", showDetails ? "1" : "0"); } catch {}
   }, [showDetails]);
+
+  /* Keyboard-aware sizing: shrink sheet above the software keyboard */
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv || !showDetails) { setVvHeight(null); return; }
+    const update = () => setVvHeight(vv.height);
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    update();
+    return () => { vv.removeEventListener("resize", update); vv.removeEventListener("scroll", update); };
+  }, [showDetails]);
+
+  /* Scroll focused input into view after keyboard animation */
+  const scrollIntoViewDelayed = (e) => {
+    const el = e.target;
+    setTimeout(() => el.scrollIntoView({ behavior: "smooth", block: "nearest" }), 320);
+  };
 
   /* Reset category when type changes if current cat doesn't fit */
   useEffect(() => {
@@ -362,13 +383,16 @@ export function AddTxnModal({
         ref={sheetRef}
         className="fixed left-0 right-0 bottom-0 bg-white dark:bg-slate-900 shadow-2xl flex flex-col"
         style={{
-          zIndex:       "calc(var(--z-sheet) + 1)",
-          borderRadius: "24px 24px 0 0",
-          maxHeight:    "calc(100dvh - env(safe-area-inset-top, 20px))",
-          paddingBottom:"max(24px, env(safe-area-inset-bottom, 24px))",
-          transform:    `translateY(${sheetY})`,
-          transition:   sheetTx,
-          contain:      "layout",
+          zIndex:        "calc(var(--z-sheet) + 1)",
+          borderRadius:  "24px 24px 0 0",
+          maxHeight:     vvHeight != null
+            ? `calc(${vvHeight}px - env(safe-area-inset-top, 20px))`
+            : "calc(100dvh - env(safe-area-inset-top, 20px))",
+          paddingBottom: vvHeight != null && vvHeight < (window.innerHeight * 0.85)
+            ? "8px"
+            : "max(24px, env(safe-area-inset-bottom, 24px))",
+          transform:     `translateY(${sheetY})`,
+          transition:    sheetTx,
         }}>
 
         {/* ── Drag handle + close row (drag-handle zone) ── */}
@@ -389,52 +413,80 @@ export function AddTxnModal({
           </div>
         </div>
 
-        {/* ── Body: fixed core (numpad) + scrollable details ── */}
+        {/* ── Body: numpad view ↔ details view ── */}
         <div className="flex-1 flex flex-col min-h-0">
 
-          {/* ─── Step 1: type + amount + numpad (never scrolls) ──── */}
-          <div className="flex-shrink-0 px-5">
+          {/* ─── Numpad view (hidden when details open) ─────────── */}
+          {!showDetails && (
+            <>
+              <div className="flex-shrink-0 px-5">
+                {/* Type toggle */}
+                <div className="flex gap-2 mb-3">
+                  {[
+                    { id: "in",  label: "Money In",  activeStyle: { background: "var(--brand-green)" }, activeCls: "text-white" },
+                    { id: "out", label: "Money Out",  activeStyle: { background: "var(--navy)"        }, activeCls: "text-white" },
+                  ].map(btn => (
+                    <button key={btn.id} onClick={() => setType(btn.id)}
+                      className={`flex-1 min-h-[44px] py-3 rounded-xl font-bold text-sm transition-colors ${
+                        type === btn.id ? btn.activeCls : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
+                      }`}
+                      style={type === btn.id ? btn.activeStyle : undefined}>
+                      {btn.label}
+                    </button>
+                  ))}
+                </div>
 
-            {/* Type toggle */}
-            <div className="flex gap-2 mb-3">
-              {[
-                { id: "in",  label: "Money In",  activeStyle: { background: "var(--brand-green)" }, activeCls: "text-white" },
-                { id: "out", label: "Money Out",  activeStyle: { background: "var(--navy)"        }, activeCls: "text-white" },
-              ].map(btn => (
-                <button key={btn.id} onClick={() => setType(btn.id)}
-                  className={`flex-1 min-h-[44px] py-3 rounded-xl font-bold text-sm transition-colors ${
-                    type === btn.id ? btn.activeCls : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
-                  }`}
-                  style={type === btn.id ? btn.activeStyle : undefined}>
-                  {btn.label}
-                </button>
-              ))}
-            </div>
+                {/* Amount hero */}
+                <div className="text-center mb-3 py-1">
+                  <div className={`flex items-baseline justify-center gap-1 ${
+                    type === "in"
+                      ? "text-green-600 dark:text-green-400"
+                      : "text-navy dark:text-blue-300"
+                  }`}>
+                    <span className="text-2xl font-bold leading-none">₦</span>
+                    <span
+                      className="font-extrabold leading-none tracking-tight"
+                      style={{ fontSize: heroFontSize, fontVariantNumeric: "tabular-nums" }}>
+                      {fmtHero(amtStr)}
+                    </span>
+                  </div>
+                  {(parseInt(amtStr) || 0) > 999_999_999 && (
+                    <p className="text-[10px] text-slate-400 mt-1">Max amount</p>
+                  )}
+                </div>
+              </div>
 
-            {/* Amount hero */}
-            <div className="text-center mb-3 py-1">
-              <div className={`flex items-baseline justify-center gap-1 ${
-                type === "in"
-                  ? "text-green-600 dark:text-green-400"
-                  : "text-navy dark:text-blue-300"
-              }`}>
-                <span className="text-2xl font-bold leading-none">₦</span>
+              {/* Numpad */}
+              <div className="flex-shrink-0 px-4 mb-3">
+                <BigNumpad onKey={handleNumKey} />
+              </div>
+            </>
+          )}
+
+          {/* ─── Compact amount bar (shown when details open) ────── */}
+          {showDetails && (
+            <div className="flex-shrink-0 flex items-center justify-between gap-3 px-5 py-3 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2.5">
                 <span
-                  className="font-extrabold leading-none tracking-tight"
-                  style={{ fontSize: heroFontSize, fontVariantNumeric: "tabular-nums" }}>
-                  {fmtHero(amtStr)}
+                  className="text-[10px] font-black px-2 py-1 rounded-md text-white leading-none"
+                  style={{ background: type === "in" ? "var(--brand-green)" : "var(--navy)" }}>
+                  {type === "in" ? "IN" : "OUT"}
+                </span>
+                <span
+                  className={`text-xl font-extrabold leading-none tracking-tight ${
+                    type === "in" ? "text-green-600 dark:text-green-400" : "text-navy dark:text-blue-300"
+                  }`}
+                  style={{ fontVariantNumeric: "tabular-nums" }}>
+                  ₦{fmtHero(amtStr)}
                 </span>
               </div>
-              {(parseInt(amtStr) || 0) > 999_999_999 && (
-                <p className="text-[10px] text-slate-400 mt-1">Max amount</p>
-              )}
+              <button
+                onClick={() => setShowDetails(false)}
+                className="text-[11px] font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1 py-1.5 px-2.5 rounded-lg bg-slate-200 dark:bg-slate-700 active:scale-95 transition-transform">
+                ← Edit
+              </button>
             </div>
-          </div>
-
-          {/* Numpad */}
-          <div className="flex-shrink-0 px-4 mb-3">
-            <BigNumpad onKey={handleNumKey} />
-          </div>
+          )}
 
           {/* Error/success banners */}
           {(saveError || saveSuccess) && (
@@ -483,9 +535,9 @@ export function AddTxnModal({
             </button>
           </div>
 
-          {/* ─── Step 2: details (collapsible, scrolls when open) ── */}
+          {/* ─── Details panel (full height when open, keyboard-aware) */}
           {showDetails && (
-            <div className="flex-1 overflow-y-auto overscroll-contain min-h-0 px-5 pt-3 border-t border-slate-100 dark:border-slate-800">
+            <div ref={detailsRef} className="flex-1 overflow-y-auto overscroll-contain min-h-0 px-5 pt-4">
 
               {/* Description + autocomplete */}
               <div className="relative mb-4">
@@ -497,6 +549,7 @@ export function AddTxnModal({
                   placeholder="Item or description"
                   value={itemName}
                   onChange={e => { setItemName(e.target.value); setShowSugs(true); }}
+                  onFocus={scrollIntoViewDelayed}
                   className="w-full h-11 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-700 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-green-500/30"
                 />
                 {suggestions.length > 0 && (
@@ -621,6 +674,7 @@ export function AddTxnModal({
                   placeholder={category === "credit sale" ? "Customer name" : "Customer name (optional)"}
                   value={customerName}
                   onChange={e => setCustomerName(e.target.value)}
+                  onFocus={scrollIntoViewDelayed}
                   className="w-full h-11 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-700 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-green-500/30"
                 />
               </div>
@@ -672,6 +726,7 @@ export function AddTxnModal({
                     min="1"
                     value={qty}
                     onChange={e => handleQty(e.target.value)}
+                    onFocus={scrollIntoViewDelayed}
                     className="flex-1 h-11 text-center rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-bold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-green-500/30"
                   />
                   <button
@@ -697,6 +752,7 @@ export function AddTxnModal({
                   placeholder="Any extra notes…"
                   value={note}
                   onChange={e => setNote(e.target.value)}
+                  onFocus={scrollIntoViewDelayed}
                   rows={2}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-700 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-green-500/30 resize-none"
                 />
@@ -715,11 +771,11 @@ export function AddTxnModal({
                 />
               </div>
 
-              {/* Repeat Save CTA at bottom of Step 2 — KB-ADD-01 reachability */}
+              {/* Repeat Save CTA at bottom of details — reachability when keyboard is open */}
               <button
                 onClick={handleSubmit}
                 disabled={!canSave || saving || saveSuccess || overStock}
-                className="w-full h-12 rounded-xl text-white font-bold text-sm active:scale-[0.98] transition-transform disabled:opacity-40 flex items-center justify-center gap-2 mb-3"
+                className="w-full h-12 rounded-xl text-white font-bold text-sm active:scale-[0.98] transition-transform disabled:opacity-40 flex items-center justify-center gap-2 mb-5"
                 style={{ background: "var(--brand-green)" }}>
                 {saving && (
                   <div className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
@@ -729,8 +785,7 @@ export function AddTxnModal({
             </div>
           )}
 
-          {/* Bottom breathing room */}
-          <div className="h-3" />
+          {!showDetails && <div className="h-3" />}
         </div>
       </div>
 

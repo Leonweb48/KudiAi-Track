@@ -22,7 +22,16 @@ export function useInventory(userId, staffId = null, branchId = null) {
       supabase.from("stock_movements").select("*").eq("user_id", userId)
         .order("created_at", { ascending: false }).limit(500),
     ]);
-    if (pRes.data)  setProducts(pRes.data);
+    if (pRes.data) {
+      let prods = pRes.data;
+      // Staff with no branch: the RPC returns all products (p_branch_id=null = no filter).
+      // Apply client-side filter so staff only see products explicitly on their branch
+      // or auto-stubs/products they personally created (staff_id matches).
+      if (staffId && !branchId) {
+        prods = prods.filter(p => p.staff_id === staffId);
+      }
+      setProducts(prods);
+    }
     if (mRes.data)  setMovements(mRes.data);
     setLoading(false);
   }, [userId, staffId, branchId]);
