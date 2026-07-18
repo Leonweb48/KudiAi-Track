@@ -245,13 +245,10 @@ serve(async (req) => {
         : false;
       const isHighValue = amount >= HIGH_VALUE_HOLD_THRESHOLD;
 
-      // First withdrawal uses flat registration_charge; subsequent use unified fee model.
-      const isFirst    = (cl.total_withdrawn || 0) === 0;
-      const feeType    = isFirst ? "registration_fee" : "withdrawal_fee";
+      // Withdrawal fee uses commission_model only. Registration fee is charged at first deposit via contribution RPCs.
       const feePercent = cl.commission_model === "percent" ? (cl.commission_percent || 0) : 0;
-      const feeAmount  = isFirst
-        ? (cl.registration_charge || 0)
-        : (amount * feePercent) / 100;
+      const feeType    = "withdrawal_fee";
+      const feeAmount  = (amount * feePercent) / 100;
       const netAmount  = amount - feeAmount;
 
       if (netAmount <= 0) return json({ error: "Amount too small after fee deduction" }, 400);

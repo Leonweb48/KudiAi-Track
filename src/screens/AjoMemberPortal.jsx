@@ -1418,11 +1418,9 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
     finally { setAcctVerifying(false); }
   };
 
-  const isFirst  = (client.total_withdrawn || 0) === 0;
-  const regFee   = client.registration_charge || 0;
-  const pctFee   = client.withdrawal_fee_percent || 0;
+  const pctFee   = client.commission_model === "percent" ? (client.commission_percent || 0) : 0;
   const amtNum   = parseFloat(amount) || 0;
-  const feeAmt   = isFirst ? regFee : (amtNum * pctFee / 100);
+  const feeAmt   = (amtNum * pctFee) / 100;
   const netAmt   = amtNum - feeAmt;
 
   const handleSubmit = async () => {
@@ -1515,8 +1513,8 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
             {/* Fee breakdown card — always visible, shows rule and live calculation */}
             <div className="bg-slate-50 dark:bg-slate-700/40 border border-slate-200 dark:border-slate-600 rounded-2xl px-4 py-3 mb-3 space-y-2">
               <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                {isFirst && regFee > 0 ? `First withdrawal · flat fee ${fmt(regFee)}`
-                  : pctFee > 0 ? `Withdrawal fee · ${pctFee}%`
+                {pctFee > 0 ? `Withdrawal fee · ${pctFee}%`
+                  : client.commission_model === "first_period" ? "Fee: first period per cycle"
                   : "No withdrawal fee"}
               </p>
               <div className="flex justify-between text-xs">
@@ -1525,7 +1523,7 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
               </div>
               {feeAmt > 0 && amtNum > 0 && (
                 <div className="flex justify-between text-xs">
-                  <span className="text-slate-500 dark:text-slate-400">{isFirst ? "Registration fee" : `Fee (${pctFee}%)`}</span>
+                  <span className="text-slate-500 dark:text-slate-400">{`Fee (${pctFee}%)`}</span>
                   <span className="font-bold text-red-500">−{fmt(feeAmt)}</span>
                 </div>
               )}
@@ -1925,11 +1923,7 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Fees</p>
-            {(client.total_withdrawn || 0) === 0 && client.registration_charge > 0 ? (
-              <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                First withdrawal: <span className="text-brand-500 dark:text-brand-400 font-bold">{fmt(client.registration_charge)} registration fee</span>
-              </p>
-            ) : client.commission_model === "percent" ? (
+            {client.commission_model === "percent" ? (
               <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                 {client.ajo_group_id ? "Group withdrawal fee:" : "Withdrawal fee:"} <span className="text-brand-500 dark:text-brand-400 font-bold">{client.commission_percent || 0}% of amount</span>
               </p>
