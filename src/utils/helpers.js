@@ -19,7 +19,7 @@ export const LEDGER_LABELS = {
 export const ledgerTypeLabel = (typeOrRow) => {
   if (!typeOrRow) return "Transaction";
   if (typeof typeOrRow === "object") {
-    const { type, cycle_id, notes } = typeOrRow;
+    const { type, cycle_id } = typeOrRow;
     // first_period cycle fee: commission row linked to a cycle
     if (type === "commission" && cycle_id) return "Cycle fee — first deposit";
     return ledgerTypeLabel(type);
