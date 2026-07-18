@@ -288,8 +288,16 @@ export function computeCapital(ledger, capitalSettings) {
 
   const engine = compute(ledger, { from: asOf, to });
   const cumulativeNetProfit = engine.profit.netProfit.amount;
-  const position = capitalNaira + cumulativeNetProfit;
-  const cushion  = cumulativeNetProfit; // position − capital
+
+  // Stock investment reduces cash working capital. Subtract any stock cost that
+  // hasn't been recouped yet via COGS (i.e. inventory still on the shelf).
+  // unsoldStockCost = total purchased − cost already matched to sales.
+  const stockInvested    = engine.cash.byStream.stockInvestment.amount;
+  const cogsRecognized   = engine.profit.cogs.amount;
+  const unsoldStockCost  = Math.max(0, stockInvested - cogsRecognized);
+
+  const position = capitalNaira + cumulativeNetProfit - unsoldStockCost;
+  const cushion  = position - capitalNaira; // = netProfit - unsoldStockCost
 
   const threshold = capitalNaira * 0.10;
   let status;
@@ -302,9 +310,12 @@ export function computeCapital(ledger, capitalSettings) {
   }
 
   return {
-    capital:  { amount: capitalNaira, id: "capital"  },
-    position: { amount: position,     id: "position" },
-    cushion:  { amount: cushion,      id: "cushion"  },
+    capital:       { amount: capitalNaira  },
+    position:      { amount: position      },
+    cushion:       { amount: cushion       },
+    netProfit:     { amount: cumulativeNetProfit },
+    stockInvested: { amount: stockInvested  },
+    unsoldStock:   { amount: unsoldStockCost },
     status,
     shortfall: cushion < 0 ? Math.abs(cushion) : 0,
   };

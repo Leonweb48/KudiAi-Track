@@ -1111,19 +1111,20 @@ export default function Finance({
 
       {/* ── Working Capital status line (owner-only; hidden when feature not set) ── */}
       {capitalResult && (
-        <div className={`rounded-2xl px-4 py-3 mb-3 flex items-center gap-3 border ${
+        <div className={`rounded-2xl px-4 py-3 mb-3 border ${
           capitalResult.status === "healthy"
             ? "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/40"
             : capitalResult.status === "amber"
             ? "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800/40"
             : "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800/40"
         }`}>
-          <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
-            capitalResult.status === "healthy" ? "bg-emerald-500"
-            : capitalResult.status === "amber"  ? "bg-amber-500"
-            : "bg-red-500"
-          }`} />
-          <div className="flex-1 min-w-0">
+          {/* Status header */}
+          <div className="flex items-center gap-3 mb-2">
+            <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+              capitalResult.status === "healthy" ? "bg-emerald-500"
+              : capitalResult.status === "amber"  ? "bg-amber-500"
+              : "bg-red-500"
+            }`} />
             <p className={`text-[12px] font-bold ${
               capitalResult.status === "healthy" ? "text-emerald-700 dark:text-emerald-400"
               : capitalResult.status === "amber"  ? "text-amber-700 dark:text-amber-400"
@@ -1131,15 +1132,43 @@ export default function Finance({
             }`}>
               Working Capital · {capitalResult.status === "healthy" ? "Healthy" : capitalResult.status === "amber" ? "Caution" : "Shortfall"}
             </p>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              {capitalResult.status === "healthy"
-                ? `Position ${fmt(capitalResult.position.amount)} · cushion ${fmt(capitalResult.cushion.amount)}`
-                : capitalResult.status === "amber"
-                ? `Capital erosion · ${fmt(capitalResult.shortfall)} below declared capital`
-                : `₦${fmt(capitalResult.shortfall)} shortfall vs declared ${fmt(capitalResult.capital.amount)}`
-              }
-            </p>
           </div>
+          {/* Breakdown rows */}
+          <div className="space-y-1">
+            <div className="flex justify-between text-[11px]">
+              <span className="text-slate-500 dark:text-slate-400">Declared capital</span>
+              <span className="font-semibold text-slate-700 dark:text-slate-200 tabular-nums">{fmt(capitalResult.capital.amount)}</span>
+            </div>
+            <div className="flex justify-between text-[11px]">
+              <span className="text-slate-500 dark:text-slate-400">Net profit / loss</span>
+              <span className={`font-semibold tabular-nums ${capitalResult.netProfit.amount >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-500"}`}>
+                {capitalResult.netProfit.amount >= 0 ? "+" : "−"}{fmt(Math.abs(capitalResult.netProfit.amount))}
+              </span>
+            </div>
+            {capitalResult.stockInvested.amount > 0 && (
+              <div className="flex justify-between text-[11px]">
+                <span className="text-slate-500 dark:text-slate-400">Stock purchased</span>
+                <span className="font-semibold text-slate-600 dark:text-slate-300 tabular-nums">−{fmt(capitalResult.stockInvested.amount)}</span>
+              </div>
+            )}
+            {capitalResult.unsoldStock.amount > 0 && (
+              <div className="flex justify-between text-[11px]">
+                <span className="text-slate-500 dark:text-slate-400">Stock sold (COGS back)</span>
+                <span className="font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums">+{fmt(capitalResult.stockInvested.amount - capitalResult.unsoldStock.amount)}</span>
+              </div>
+            )}
+            <div className="flex justify-between text-[11px] pt-1 mt-1 border-t border-slate-200 dark:border-slate-700">
+              <span className="font-bold text-slate-700 dark:text-slate-200">Cash position</span>
+              <span className={`font-extrabold tabular-nums ${capitalResult.position.amount >= capitalResult.capital.amount ? "text-emerald-600 dark:text-emerald-400" : "text-red-500"}`}>
+                {fmt(capitalResult.position.amount)}
+              </span>
+            </div>
+          </div>
+          {capitalResult.unsoldStock.amount > 0 && (
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1.5">
+              {fmt(capitalResult.unsoldStock.amount)} locked in unsold inventory
+            </p>
+          )}
         </div>
       )}
 

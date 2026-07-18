@@ -84,6 +84,28 @@ export function useInventory(userId, staffId = null, branchId = null) {
         category: prod.category || null,
         entry_type: "new_product",
       });
+      // Auto-record opening stock cost as a financial transaction so it flows
+      // into cash flow and working capital without manual entry.
+      if (prod.cost_price > 0) {
+        const stockCost = prod.cost_price * prod.quantity;
+        await supabase.from("transactions").insert({
+          id:               uid(),
+          user_id:          userId,
+          staff_id:         staffId || null,
+          branch_id:        effectiveBranch,
+          type:             "out",
+          category:         "stock",
+          amount:           stockCost,
+          item_name:        prod.product_name,
+          quantity:         prod.quantity,
+          customer_name:    "",
+          payment_type:     "cash",
+          note:             "Opening stock (auto)",
+          transaction_date: new Date().toISOString().slice(0, 10),
+          bill_status:      null,
+          client_txn_id:    uid(),
+        });
+      }
     }
     setProducts(prev => [...prev, prod].sort((a, b) => a.product_name.localeCompare(b.product_name)));
     return true;
@@ -203,6 +225,9 @@ export function useInventory(userId, staffId = null, branchId = null) {
 
     const newQty = Math.max(0, product.quantity + delta);
 
+    const unitPrice = parseFloat(unit_price) || 0;
+    const absQty    = Math.abs(inputQty);
+
     const mov = {
       id:         uid(),
       user_id:    userId,
@@ -210,33 +235,62 @@ export function useInventory(userId, staffId = null, branchId = null) {
       product_id,
       type,
       quantity:   delta,
-      unit_price: parseFloat(unit_price) || 0,
+      unit_price: unitPrice,
       notes:      String(notes || "").trim(),
       staff_id:   staffId || null,
       created_at: new Date().toISOString(),
     };
 
+    // On restock, auto-update cost_price so profitEngine always has accurate COGS.
+    const costUpdates = (type === "restock" && unitPrice > 0)
+      ? { quantity: newQty, cost_price: unitPrice, needs_costing: false, updated_at: new Date().toISOString() }
+      : { quantity: newQty, updated_at: new Date().toISOString() };
+
     const [{ error: me }, { error: pe }] = await Promise.all([
       supabase.from("stock_movements").insert(mov),
-      supabase.from("products").update({ quantity: newQty, updated_at: new Date().toISOString() }).eq("id", product_id),
+      supabase.from("products").update(costUpdates).eq("id", product_id),
     ]);
 
     if (me || pe) { setDbError((me || pe).message); return false; }
 
-    if (type === "restock") {
+    // Auto-record stock purchase cost as a financial transaction so it flows
+    // into cash flow and working capital without the owner needing to enter it manually.
+    if (type === "restock" && unitPrice > 0) {
+      await supabase.from("transactions").insert({
+        id:               uid(),
+        user_id:          userId,
+        staff_id:         staffId || null,
+        branch_id:        branchId || null,
+        type:             "out",
+        category:         "stock",
+        amount:           unitPrice * absQty,
+        item_name:        product.product_name,
+        quantity:         absQty,
+        customer_name:    "",
+        payment_type:     "cash",
+        note:             "Stock restock (auto)",
+        transaction_date: new Date().toISOString().slice(0, 10),
+        bill_status:      null,
+        client_txn_id:    uid(),
+      });
+
       sendEmailTrigger("stock_entry", {
-        owner_id: userId,
-        staff_id: staffId || null,
-        branch_id: branchId || null,
+        owner_id:     userId,
+        staff_id:     staffId || null,
+        branch_id:    branchId || null,
         product_name: product.product_name,
-        quantity: Math.abs(inputQty),
-        category: product.category || null,
-        entry_type: "restock",
+        quantity:     absQty,
+        category:     product.category || null,
+        entry_type:   "restock",
       });
     }
 
     setMovements(prev => [mov, ...prev]);
-    setProducts(prev => prev.map(p => p.id === product_id ? { ...p, quantity: newQty } : p));
+    setProducts(prev => prev.map(p =>
+      p.id === product_id
+        ? { ...p, quantity: newQty, ...(type === "restock" && unitPrice > 0 ? { cost_price: unitPrice, needs_costing: false } : {}) }
+        : p
+    ));
 
     if (newQty <= product.low_stock_threshold) {
       // Email only when crossing below threshold (not on every subsequent sale)
