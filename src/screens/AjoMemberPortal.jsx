@@ -666,7 +666,7 @@ function ContribTypeSelector({ clientGroups = [], value, selectedGroupId, onChan
             <div className={`flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center ${
               value === opt.key && selectedGroupId === opt.groupId ? "border-brand-500 bg-brand-500" : "border-slate-300 dark:border-slate-600"
             }`}>
-              {value === opt.key && selectedGroupId === opt.groupId && <div className="w-2 h-2 rounded-full bg-white" />
+              {value === opt.key && selectedGroupId === opt.groupId && <div className="w-2 h-2 rounded-full bg-white" />}
             </div>
           </button>
         ))}
