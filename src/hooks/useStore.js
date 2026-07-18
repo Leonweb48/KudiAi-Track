@@ -38,7 +38,8 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
   const [fromCache,   setFromCache]   = useState(false);
   const [rtConnected, setRtConnected] = useState(false);
 
-  const authEmailRef = useRef("");
+  const authEmailRef    = useRef("");
+  const pendingRepayRef = useRef(new Set()); // credit IDs with an in-flight repayment call
 
   // ── Load all data ──────────────────────────────────────────────
   const loadData = useCallback(async (silent = false) => {
@@ -607,16 +608,27 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
   };
 
   const repayCredit = async (id, amount, paymentMethod = "cash", notes = "", pin = "") => {
-    const { data, error } = await supabase.functions.invoke("ajo-write", {
-      body: {
-        action:         "record_credit_repayment",
-        credit_id:      id,
-        amount,
-        payment_method: paymentMethod,
-        notes:          notes || null,
-        pin,
-      },
-    });
+    // Guard: if a payment for this credit is already in-flight, silently drop the
+    // duplicate call. This handles double-tap and slow-network re-submission.
+    if (pendingRepayRef.current.has(id)) return;
+    pendingRepayRef.current.add(id);
+
+    let data, error;
+    try {
+      ({ data, error } = await supabase.functions.invoke("ajo-write", {
+        body: {
+          action:         "record_credit_repayment",
+          credit_id:      id,
+          amount,
+          payment_method: paymentMethod,
+          notes:          notes || null,
+          pin,
+        },
+      }));
+    } finally {
+      pendingRepayRef.current.delete(id);
+    }
+
     if (error || data?.error) {
       console.error("repayCredit:", data?.error || error?.message);
       loadData();
@@ -629,7 +641,8 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
       updated = { ...c, amount_paid: c.amount_paid + amount, outstanding: newOutstanding, status: newStatus };
       return updated;
     }));
-    if (dp) setDebtPayments(prev => [dp, ...prev]);
+    // Dedup guard: same pattern as setTransactions — only prepend if not already present
+    if (dp) setDebtPayments(prev => prev.some(p => p.id === dp.id) ? prev : [dp, ...prev]);
     if (updated) {
 
         fireEmailTrigger("credit_repayment", {

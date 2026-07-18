@@ -38,9 +38,10 @@ export default function TransactionPinModal({
   onApprove,
   onCancel,
 }) {
-  const [pin,   setPin]   = useState("");
-  const [error, setError] = useState("");
-  const [shake, setShake] = useState(false);
+  const [pin,       setPin]       = useState("");
+  const [error,     setError]     = useState("");
+  const [shake,     setShake]     = useState(false);
+  const [verifying, setVerifying] = useState(false);
 
   const triggerShake = useCallback(() => {
     setShake(true);
@@ -48,6 +49,7 @@ export default function TransactionPinModal({
   }, []);
 
   const handleVerify = useCallback(async (enteredPin) => {
+    setVerifying(true);
     try {
       const { data, error: fnError } = await (supabase?.functions.invoke("pin-manager", {
         body: { action: "verify_txn_pin", pin: enteredPin },
@@ -57,11 +59,12 @@ export default function TransactionPinModal({
 
       if (data?.success) {
         onApprove?.(enteredPin);
-        return;
+        return; // modal closes — no need to reset verifying
       }
 
       triggerShake();
       setPin("");
+      setVerifying(false);
 
       if (data?.locked) {
         setError(computeLockedMsg(data));
@@ -72,24 +75,28 @@ export default function TransactionPinModal({
     } catch {
       triggerShake();
       setPin("");
+      setVerifying(false);
       setError("Something went wrong. Try again.");
     }
   }, [onApprove, triggerShake]);
 
   const handleDigit = useCallback((d) => {
-    if (pin.length >= 4) return;
+    // Block input while a verification call is in-flight to prevent a second
+    // handleVerify from being scheduled before the first one completes.
+    if (verifying || pin.length >= 4) return;
     const next = pin + d;
     setPin(next);
     setError("");
     if (next.length === 4) {
       setTimeout(() => handleVerify(next), 150);
     }
-  }, [pin, handleVerify]);
+  }, [verifying, pin, handleVerify]);
 
   const handleDelete = useCallback(() => {
+    if (verifying) return; // block backspace during verification
     setPin(p => p.slice(0, -1));
     setError("");
-  }, []);
+  }, [verifying]);
 
   return (
     <>
@@ -157,8 +164,15 @@ export default function TransactionPinModal({
             Enter your transaction PIN to confirm
           </p>
 
-          {/* Dots */}
-          <PinDots filled={pin.length} className={shake ? "txn-pin-shake" : ""} />
+          {/* Dots / verifying spinner */}
+          {verifying ? (
+            <div style={{ height: 24, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <div style={{ width: 22, height: 22, border: "3px solid #e2e8f0", borderTopColor: "#3DA829", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+              <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+            </div>
+          ) : (
+            <PinDots filled={pin.length} className={shake ? "txn-pin-shake" : ""} />
+          )}
 
           {/* Error */}
           <div style={{ height: 16, marginTop: -8 }}>
