@@ -18,6 +18,10 @@
 --    PostgreSQL cannot add parameters to an existing function; drop then recreate.
 --    The RLS policy is also dropped and recreated to pass aso_clients.branch_id.
 
+-- Must drop the dependent policy BEFORE dropping the function,
+-- otherwise PostgreSQL raises "cannot drop function because other objects depend on it".
+DROP POLICY IF EXISTS "staff scoped read aso_clients" ON public.aso_clients;
+
 -- Drop old 3-arg function (replacing with 4-arg below)
 DROP FUNCTION IF EXISTS public.ajo_staff_client_visible(uuid, uuid, uuid);
 
@@ -70,9 +74,7 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.ajo_staff_client_visible(uuid, uuid, uuid, uuid) TO authenticated;
 
--- Drop old policy (it called the now-dropped 3-arg function) and recreate
-DROP POLICY IF EXISTS "staff scoped read aso_clients" ON public.aso_clients;
-
+-- Recreate policy calling the new 4-arg function
 CREATE POLICY "staff scoped read aso_clients"
 ON public.aso_clients
 FOR SELECT
