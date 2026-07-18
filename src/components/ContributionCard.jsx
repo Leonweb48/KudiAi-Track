@@ -112,7 +112,7 @@ const MARK_CLS = {
   missed:    "border-2 border-red-300 dark:border-red-700 text-red-400 dark:text-red-500 bg-transparent",
   current:   "bg-brand-500 text-white ring-2 ring-brand-300 dark:ring-brand-600 animate-pulse",
   upcoming:  "bg-slate-100 text-slate-400 dark:bg-slate-700 dark:text-slate-500",
-  collector: "bg-purple-600 text-white",
+  collector: "bg-[#16255A] text-white dark:bg-[#1E3A6E]",
 };
 
 const MARK_ICON = {
@@ -478,12 +478,12 @@ export default function ContributionCard({
                   : selected.status === "missed"    ? "text-red-500"
                   : selected.status === "partial"   ? "text-amber-500"
                   : selected.status === "current"   ? "text-brand-500"
-                  : selected.status === "collector" ? "text-purple-600"
+                  : selected.status === "collector" ? "text-[#16255A] dark:text-[#8EA3D4]"
                   : "text-slate-400"
                 }`}>{MARK_LABEL[selected.status]}</span>
               </div>
               {selected.status === "collector" && (
-                <p className="text-xs text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20 rounded-lg px-3 py-2">
+                <p className="text-xs text-[#16255A] dark:text-[#8EA3D4] bg-[#EEF1F9] dark:bg-[#16255A]/20 rounded-lg px-3 py-2">
                   This deposit went to your collector as the cycle fee. Your savings start from period 2.
                 </p>
               )}
