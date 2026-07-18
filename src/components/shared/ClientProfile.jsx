@@ -91,23 +91,50 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
   const [archiveReason, setArchiveReason] = useState("");
   const [archiveReqSent, setArchiveReqSent] = useState(false);
 
-  // Bank account editing state (owner-only, Aso only)
-  const [banks,             setBanks]             = useState([]);
-  const [bankResolving,     setBankResolving]     = useState(false);
-  const [bankResolvedName,  setBankResolvedName]  = useState("");
-  const [bankErr,           setBankErr]           = useState("");
+  // Deposit subaccount editing state (owner-only)
+  const [banks,                      setBanks]                      = useState([]);
+  const [bankResolving,              setBankResolving]              = useState(false);
+  const [bankResolvedName,           setBankResolvedName]           = useState("");
+  const [bankErr,                    setBankErr]                    = useState("");
+
+  // Withdrawal (payout) account editing state
+  const [withdrawalBankResolving,    setWithdrawalBankResolving]    = useState(false);
+  const [withdrawalBankResolvedName, setWithdrawalBankResolvedName] = useState("");
+  const [withdrawalBankErr,          setWithdrawalBankErr]          = useState("");
 
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
   const isCredit = type === "credit";
 
-  // Load bank list when entering edit mode (owner + Aso only)
+  // Load bank list when entering edit mode for any Aso client
+  // (needed for both deposit subaccount and withdrawal account sections)
   useEffect(() => {
-    if (!editing || !canEditBank || isCredit || banks.length > 0) return;
+    if (!editing || isCredit || banks.length > 0) return;
     supabase.functions.invoke("paystack", { body: { action: "list-banks" } })
       .then(({ data }) => { if (data?.data) setBanks(data.data); })
       .catch(() => {});
-  }, [editing, canEditBank, isCredit, banks.length]);
+  }, [editing, isCredit, banks.length]);
+
+  const resolveWithdrawalBank = async () => {
+    const acctNo = String(form.withdrawal_account_number || "");
+    if (!form.withdrawal_bank_code || acctNo.length < 10) return;
+    setWithdrawalBankResolving(true); setWithdrawalBankErr(""); setWithdrawalBankResolvedName("");
+    try {
+      const { data, error } = await supabase.functions.invoke("paystack", {
+        body: { action: "resolve-account", account_number: acctNo, bank_code: form.withdrawal_bank_code },
+      });
+      if (error || !data?.status) throw new Error(data?.message || "Could not verify account");
+      const name = data.data?.account_name || "";
+      setWithdrawalBankResolvedName(name);
+      set("withdrawal_account_name", name);
+      const b = banks.find(bk => bk.code === form.withdrawal_bank_code);
+      if (b) set("withdrawal_bank_name", b.name);
+    } catch (e) {
+      setWithdrawalBankErr(e.message || "Could not verify account number");
+    } finally {
+      setWithdrawalBankResolving(false);
+    }
+  };
 
   const resolveBank = async () => {
     if (!form.bank_code || !form.account_number || String(form.account_number).length < 10) return;
@@ -455,13 +482,13 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                 </div>
               )}
 
-              {/* Payment Account — Aso owner only */}
+              {/* Deposit Subaccount — owner-only, routes Paystack contributions */}
               {!isCredit && canEditBank && (
                 <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-100 dark:border-slate-700 shadow-card">
-                  <div className="px-4 pt-4 pb-2"><SectionHead title="Payment Account (Paystack)" icon="🏦" /></div>
+                  <div className="px-4 pt-4 pb-2"><SectionHead title="Deposit Subaccount" icon="🏦" /></div>
                   <div className="px-4 pb-4 space-y-3.5">
                     <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed -mt-1">
-                      Link a bank account so this client has a dedicated account for savings. Clients will see these details when making a manual deposit.
+                      Owner-set dedicated account for this client — all manual and Paystack contributions route here. Only the owner can change this.
                     </p>
                     <FormField label="Bank">
                       <select
@@ -513,6 +540,62 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                         Subaccount active · {record.paystack_subaccount_code}
                       </p>
                     )}
+                  </div>
+                </div>
+              )}
+
+              {/* Payout (Withdrawal) Account — client-set, optional, verifiable */}
+              {!isCredit && (
+                <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-100 dark:border-slate-700 shadow-card">
+                  <div className="px-4 pt-4 pb-2"><SectionHead title="Payout Account" icon="💸" /></div>
+                  <div className="px-4 pb-4 space-y-3.5">
+                    <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed -mt-1">
+                      The account where withdrawal payouts are sent. Optional — client can also set or update this from their portal or at the point of withdrawal.
+                    </p>
+                    <FormField label="Bank">
+                      <select
+                        value={form.withdrawal_bank_code || ""}
+                        onChange={e => {
+                          const b = banks.find(bk => bk.code === e.target.value);
+                          set("withdrawal_bank_code", e.target.value);
+                          set("withdrawal_bank_name", b?.name || "");
+                          set("withdrawal_account_name", "");
+                          setWithdrawalBankResolvedName(""); setWithdrawalBankErr("");
+                        }}
+                        className={inputCls}>
+                        <option value="">{banks.length === 0 ? "Loading banks…" : "Select bank…"}</option>
+                        {banks.map(b => <option key={b.code} value={b.code}>{b.name}</option>)}
+                      </select>
+                    </FormField>
+                    <div className="flex gap-2 items-end">
+                      <div className="flex-1">
+                        <FormField label="Account Number">
+                          <input
+                            type="text" inputMode="numeric"
+                            value={form.withdrawal_account_number || ""}
+                            onChange={e => {
+                              set("withdrawal_account_number", e.target.value.replace(/\D/g, "").slice(0, 10));
+                              set("withdrawal_account_name", "");
+                              setWithdrawalBankResolvedName(""); setWithdrawalBankErr("");
+                            }}
+                            placeholder="10-digit NUBAN"
+                            className={inputCls}
+                          />
+                        </FormField>
+                      </div>
+                      <button type="button" onClick={resolveWithdrawalBank}
+                        disabled={withdrawalBankResolving || !form.withdrawal_bank_code || String(form.withdrawal_account_number || "").length < 10}
+                        className="mb-0.5 px-3 py-[11px] rounded-xl bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-xs font-bold disabled:opacity-40 transition whitespace-nowrap active:scale-95">
+                        {withdrawalBankResolving ? "Checking…" : "Verify"}
+                      </button>
+                    </div>
+                    {(withdrawalBankResolvedName || form.withdrawal_account_name) && (
+                      <p className="text-xs text-green-600 dark:text-green-400 font-semibold -mt-1 flex items-center gap-1">
+                        <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                        {withdrawalBankResolvedName || form.withdrawal_account_name}
+                      </p>
+                    )}
+                    {withdrawalBankErr && <p className="text-xs text-red-500 -mt-1">{withdrawalBankErr}</p>}
                   </div>
                 </div>
               )}
@@ -657,12 +740,25 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                     <InfoRow label="Notes"        value={record.notes} />
                     {record.account_number && (
                       <>
-                        <InfoRow label="Bank"          value={record.bank_name} />
-                        <InfoRow label="Account No."   value={record.account_number} />
-                        <InfoRow label="Account Name"  value={record.account_name} />
+                        <div className="pt-1 pb-0.5">
+                          <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Deposit Subaccount</p>
+                        </div>
+                        <InfoRow label="Bank"         value={record.bank_name} />
+                        <InfoRow label="Account No."  value={record.account_number} />
+                        <InfoRow label="Account Name" value={record.account_name} />
                         {record.paystack_subaccount_code && (
-                          <InfoRow label="Subaccount" value={record.paystack_subaccount_code} />
+                          <InfoRow label="Subaccount Code" value={record.paystack_subaccount_code} />
                         )}
+                      </>
+                    )}
+                    {record.withdrawal_account_number && (
+                      <>
+                        <div className="pt-2 pb-0.5">
+                          <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Payout Account</p>
+                        </div>
+                        <InfoRow label="Bank"         value={record.withdrawal_bank_name} />
+                        <InfoRow label="Account No."  value={record.withdrawal_account_number} />
+                        <InfoRow label="Account Name" value={record.withdrawal_account_name} />
                       </>
                     )}
                   </div>

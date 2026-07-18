@@ -34,7 +34,7 @@ console.log('══════════════════════�
 // ── Fetch active clients ──────────────────────────────────────────────────────
 const clients = await q(
   db.from('aso_clients')
-    .select('id, full_name, withdrawal_fee_percent, commission_model, commission_percent, registration_charge, ajo_group_id')
+    .select('id, full_name, withdrawal_fee_percent, commission_model, commission_percent, registration_charge, ajo_group_id, current_balance')
     .is('archived_at', null)
 );
 

@@ -591,7 +591,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     try {
       const { data, error } = await supabase
         .from("ajo_withdrawal_requests")
-        .select("*, aso_clients(full_name, email, membership_number, current_balance, total_withdrawn, account_number, account_name, bank_name, bank_code, commission_model, commission_percent)")
+        .select("*, aso_clients(full_name, email, membership_number, current_balance, total_withdrawn, bank_code, account_number, account_name, bank_name, withdrawal_bank_code, withdrawal_account_number, withdrawal_bank_name, withdrawal_account_name, commission_model, commission_percent)")
         .in("status", ["pending", "held_24h"])
         .order("requested_at", { ascending: false });
       if (error) throw error;
@@ -1474,11 +1474,11 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           const [acctVerifying, setAcctVerifying] = useState(false);
           const [acctResult,    setAcctResult]    = useState(null); // null | { ok, name?, err? }
           const verifyAcct = async () => {
-            if (!cl.account_number || !cl.bank_code) return;
+            if (!cl.withdrawal_account_number || !cl.withdrawal_bank_code) return;
             setAcctVerifying(true); setAcctResult(null);
             try {
               const { data, error } = await supabase.functions.invoke("paystack", {
-                body: { action: "resolve-account", account_number: cl.account_number, bank_code: cl.bank_code },
+                body: { action: "resolve-account", account_number: cl.withdrawal_account_number, bank_code: cl.withdrawal_bank_code },
               });
               if (error || !data?.status) throw new Error(data?.message || "Could not verify account");
               setAcctResult({ ok: true, name: data.data?.account_name || "" });
@@ -1530,33 +1530,37 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                   )}
                 </div>
               </div>
-              {(cl.account_number || cl.account_name) && (
-                <div className="mt-3 bg-slate-50 dark:bg-slate-700/40 rounded-xl px-3 py-2">
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Pay to</p>
-                    {cl.account_number && cl.bank_code && (
-                      <button
-                        onClick={verifyAcct}
-                        disabled={acctVerifying}
-                        className="text-[9px] font-bold text-blue-600 dark:text-blue-400 disabled:opacity-50 transition">
-                        {acctVerifying ? "Verifying…" : acctResult ? "Re-verify" : "Verify"}
-                      </button>
-                    )}
-                  </div>
-                  {cl.bank_name && <p className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">{cl.bank_name}</p>}
-                  {cl.account_number && <p className="text-[11px] font-mono text-slate-700 dark:text-slate-200 tracking-widest">{cl.account_number}</p>}
-                  {cl.account_name && <p className="text-[10px] text-slate-500 dark:text-slate-400">{cl.account_name}</p>}
-                  {acctResult?.ok && (
-                    <div className="flex items-center gap-1 mt-1.5">
-                      <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3 text-green-600 dark:text-green-400 flex-shrink-0" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                      <p className="text-[10px] font-bold text-green-700 dark:text-green-400">{acctResult.name}</p>
-                    </div>
-                  )}
-                  {acctResult?.ok === false && (
-                    <p className="text-[10px] font-bold text-red-600 dark:text-red-400 mt-1.5">{acctResult.err}</p>
+              <div className="mt-3 bg-slate-50 dark:bg-slate-700/40 rounded-xl px-3 py-2">
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Pay to</p>
+                  {cl.withdrawal_account_number && cl.withdrawal_bank_code && (
+                    <button
+                      onClick={verifyAcct}
+                      disabled={acctVerifying}
+                      className="text-[9px] font-bold text-blue-600 dark:text-blue-400 disabled:opacity-50 transition">
+                      {acctVerifying ? "Verifying…" : acctResult ? "Re-verify" : "Verify"}
+                    </button>
                   )}
                 </div>
-              )}
+                {(cl.withdrawal_account_number || cl.withdrawal_account_name) ? (
+                  <>
+                    {cl.withdrawal_bank_name && <p className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">{cl.withdrawal_bank_name}</p>}
+                    {cl.withdrawal_account_number && <p className="text-[11px] font-mono text-slate-700 dark:text-slate-200 tracking-widest">{cl.withdrawal_account_number}</p>}
+                    {cl.withdrawal_account_name && <p className="text-[10px] text-slate-500 dark:text-slate-400">{cl.withdrawal_account_name}</p>}
+                    {acctResult?.ok && (
+                      <div className="flex items-center gap-1 mt-1.5">
+                        <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3 text-green-600 dark:text-green-400 flex-shrink-0" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                        <p className="text-[10px] font-bold text-green-700 dark:text-green-400">{acctResult.name}</p>
+                      </div>
+                    )}
+                    {acctResult?.ok === false && (
+                      <p className="text-[10px] font-bold text-red-600 dark:text-red-400 mt-1.5">{acctResult.err}</p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500 italic">No payout account on file — set one in client profile.</p>
+                )}
+              </div>
               <div className="flex gap-2 mt-3">
                 <button
                   onClick={() => setTxnPin({
@@ -2460,9 +2464,9 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
               onChange={e => set("email", e.target.value)} placeholder="client@email.com" />
           </div>
 
-          <SectionLabel>Payment Account (Paystack)</SectionLabel>
+          <SectionLabel>Deposit Subaccount (Owner Only)</SectionLabel>
           <p className="text-[10px] text-slate-400 dark:text-slate-500 -mt-1 mb-1">
-            Link a bank account so this client can pay contributions directly via Paystack.
+            A dedicated account the owner sets for this client — all manual and Paystack contributions route here. Only the owner can set or change this.
           </p>
           <Field label="Bank" as="select" value={f.bank_code}
             onChange={e => {

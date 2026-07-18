@@ -30,6 +30,7 @@ const CLIENT_SELECT = `
   registration_charge, withdrawal_fee_percent,
   nin, next_of_kin_name, next_of_kin_phone, next_of_kin_email, next_of_kin_address,
   bank_code, bank_name, account_number, account_name,
+  withdrawal_bank_code, withdrawal_bank_name, withdrawal_account_number, withdrawal_account_name,
   portal_pin_changed_at, created_at,
   ajo_groups(name)
 `;
@@ -792,12 +793,15 @@ serve(async (req) => {
       const { client_id, fields } = body as { client_id: string; fields: Record<string, unknown> };
       if (!client_id || !fields) return json({ error: "client_id and fields required" }, 400);
 
-      // Allowlist — clients may never touch balance, owner, PIN, or status fields
+      // Allowlist — clients may never touch balance, owner, PIN, or status fields.
+      // Deposit subaccount fields (bank_code/account_number/account_name/bank_name) are
+      // owner-only and deliberately excluded here.
       const ALLOWED = new Set([
         "full_name", "phone", "address", "state", "lga", "ward", "nin",
         "next_of_kin_name", "next_of_kin_phone", "next_of_kin_email",
         "next_of_kin_address", "profile_image_url", "email",
-        "bank_code", "bank_name", "account_number", "account_name",
+        "withdrawal_bank_code", "withdrawal_bank_name",
+        "withdrawal_account_number", "withdrawal_account_name",
       ]);
       const safePayload: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(fields)) {
@@ -811,6 +815,36 @@ serve(async (req) => {
         return json({ error: upErr.message }, 500);
       }
       return json({ ok: true });
+    }
+
+    // ── Verify & save client's withdrawal (payout) account ────────────────
+    if (action === "verify-withdrawal-account") {
+      const { client_id, account_number, bank_code, bank_name } =
+        body as { client_id: string; account_number: string; bank_code: string; bank_name?: string };
+      if (!client_id || !account_number || !bank_code)
+        return json({ error: "client_id, account_number, and bank_code required" }, 400);
+      if (!/^\d{10}$/.test(account_number))
+        return json({ error: "Account number must be exactly 10 digits" }, 400);
+      if (!PAYSTACK_SECRET) return json({ error: "Paystack not configured" }, 500);
+
+      const psRes  = await fetch(
+        `https://api.paystack.co/bank/resolve?account_number=${account_number}&bank_code=${bank_code}`,
+        { headers: { Authorization: `Bearer ${PAYSTACK_SECRET}` } },
+      );
+      const psData = await psRes.json();
+      if (!psData.status || !psData.data?.account_name)
+        return json({ error: psData.message || "Could not verify account" }, 422);
+
+      const accountName = psData.data.account_name as string;
+      const { error: upErr } = await sb.from("aso_clients").update({
+        withdrawal_bank_code:      bank_code,
+        withdrawal_account_number: account_number,
+        withdrawal_account_name:   accountName,
+        withdrawal_bank_name:      bank_name || null,
+      }).eq("id", client_id);
+      if (upErr) return json({ error: upErr.message }, 500);
+
+      return json({ ok: true, account_name: accountName });
     }
 
     // ── Profile audit log ──────────────────────────────────────────────────
