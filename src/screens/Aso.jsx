@@ -2956,10 +2956,10 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
               businessName={bizName}
               staffMap={store.staffMap || {}}
               onClose={() => { setHistoryFor(null); setHistoryErr(""); }}
-              onOpenCycle={handleOpenCycle}
-              onCloseCycle={handleCloseCycle}
-              onExecuteCommission={handleExecuteCommission}
-              onReverseContrib={handleReverseContrib}
+              onOpenCycle={isOwner ? handleOpenCycle : undefined}
+              onCloseCycle={isOwner ? handleCloseCycle : undefined}
+              onExecuteCommission={isOwner ? handleExecuteCommission : undefined}
+              onReverseContrib={isOwner ? handleReverseContrib : undefined}
             />
           </>
         );
