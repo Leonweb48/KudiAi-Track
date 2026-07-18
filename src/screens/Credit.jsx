@@ -10,7 +10,8 @@ import { buildCreditPaymentReceipt, buildCreditStatementReceipt } from "../utils
 import { ClientProfile }  from "../components/shared/ClientProfile";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import { supabase } from "../utils/supabase";
-import { fmt } from "../utils/helpers";
+import { fmt, applyPeriodFilter } from "../utils/helpers";
+import PeriodFilter from "../components/shared/PeriodFilter";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
 import { createReportPdf, fmtCurrency as pdfFmt, fmtDate as pdfFmtDate } from "../utils/generateReportPdf";
 import { buildCreditPaymentsCSV, creditCSVFilename, shareCSV } from "../utils/exportCSV";
@@ -86,6 +87,9 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
   const [filter,         setFilter]         = useState("all");
   const [dueBefore,      setDueBefore]      = useState("");
   const [showDateFilter, setShowDateFilter] = useState(false);
+  const [period,         setPeriod]         = useState("all");
+  const [dateFrom,       setDateFrom]       = useState("");
+  const [dateTo,         setDateTo]         = useState("");
 
   const { credits, addCredit, repayCredit, updateCredit, profile, staffMap = {}, debtPayments = [] } = store;
 
@@ -195,20 +199,23 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
   const hasInterest = isOwner && totalInterestDeclared > 0;
 
   // Voided tab shows only voided; all other tabs exclude voided
-  const filtered = credits
-    .filter(c => filter === "voided" ? c.status === "voided" : c.status !== "voided")
-    .filter(c => {
-      if (!search) return true;
-      const q = search.toLowerCase();
-      return (c.customer_name || "").toLowerCase().includes(q) || (c.phone || "").includes(q);
-    })
-    .filter(c => {
-      if (filter === "active")  return c.status === "active";
-      if (filter === "overdue") return c.status === "overdue";
-      if (filter === "paid")    return c.status === "paid";
-      return true;
-    })
-    .filter(c => filter === "voided" || !dueBefore || (c.due_date && c.due_date <= dueBefore));
+  const filtered = applyPeriodFilter(
+    credits
+      .filter(c => filter === "voided" ? c.status === "voided" : c.status !== "voided")
+      .filter(c => {
+        if (!search) return true;
+        const q = search.toLowerCase();
+        return (c.customer_name || "").toLowerCase().includes(q) || (c.phone || "").includes(q);
+      })
+      .filter(c => {
+        if (filter === "active")  return c.status === "active";
+        if (filter === "overdue") return c.status === "overdue";
+        if (filter === "paid")    return c.status === "paid";
+        return true;
+      })
+      .filter(c => filter === "voided" || !dueBefore || (c.due_date && c.due_date <= dueBefore)),
+    period, dateFrom, dateTo, c => c.created_at
+  );
 
   const CHIPS = [
     { key: "all",     label: "All",     count: nonVoided.length },
@@ -417,7 +424,12 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
         </button>
       </div>
 
-      {/* Date filter panel */}
+      {/* Period filter (by created date) */}
+      <div className="mb-2">
+        <PeriodFilter period={period} setPeriod={setPeriod} dateFrom={dateFrom} setDateFrom={setDateFrom} dateTo={dateTo} setDateTo={setDateTo} />
+      </div>
+
+      {/* Date filter panel (due date) */}
       {showDateFilter && (
         <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-3 mb-2 flex items-center gap-3">
           <div className="flex-1">
@@ -435,7 +447,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
       )}
 
       {/* Result count */}
-      {(search || filter !== "all" || dueBefore) && credits.length > 0 && (
+      {(search || filter !== "all" || dueBefore || period !== "all") && credits.length > 0 && (
         <p className="text-xs text-slate-400 dark:text-slate-500 mb-3 font-medium">
           {filtered.length} {filtered.length === 1 ? "result" : "results"}
           {search && ` for "${search}"`}

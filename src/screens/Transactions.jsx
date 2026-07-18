@@ -6,7 +6,8 @@ import { useCampaigns }        from "../hooks/useCampaigns";
 import AnnouncementBarSlot     from "../components/slots/AnnouncementBarSlot";
 import TransactionDetailModal from "../components/shared/TransactionDetailModal";
 import { buildTransactionReceipt } from "../utils/receiptConfig";
-import { fmt } from "../utils/helpers";
+import { fmt, applyPeriodFilter } from "../utils/helpers";
+import PeriodFilter from "../components/shared/PeriodFilter";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
 import { TxRow } from "../components/shared/TxRow";
 import { canDo, planLimits } from "../utils/plans";
@@ -177,6 +178,9 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [displayCount,    setDisplayCount]    = useState(50);
   const [isRefreshing,    setIsRefreshing]    = useState(false);
+  const [period,          setPeriod]          = useState("all");
+  const [dateFrom,        setDateFrom]        = useState("");
+  const [dateTo,          setDateTo]          = useState("");
   const searchRef = useRef(null);
 
   const { transactions, addTransaction, deleteTransaction, profile, staffMap = {}, asoClients = [] } = store;
@@ -221,22 +225,23 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
     }
   }, [autoOpen, autoType, autoCategory, onAutoOpened, txLimitReached]);
 
-  /* Reset display count when filter / search changes */
-  useEffect(() => { setDisplayCount(50); }, [filter, search]);
+  /* Reset display count when filter / search / period changes */
+  useEffect(() => { setDisplayCount(50); }, [filter, search, period, dateFrom, dateTo]);
 
   const isAjoMode = filter === "ajo";
 
   /* ── Memoised filter (without search) — grouping source ── */
   const filterBase = useMemo(() => {
     if (isAjoMode) return [];
-    return transactions.filter(tx => {
+    const byType = transactions.filter(tx => {
       if (filter === "in")     { if (tx.type !== "in"  || tx.payment_type === "bill_payment") return false; }
       else if (filter === "out")   { if (tx.type !== "out" || tx.payment_type === "bill_payment") return false; }
       else if (filter === "bills") { if (tx.payment_type !== "bill_payment") return false; }
       else if (filter === "credit"){ if (tx.category !== "credit sale" && tx.category !== "debt repayment") return false; }
       return true;
     });
-  }, [transactions, filter, isAjoMode]);
+    return applyPeriodFilter(byType, period, dateFrom, dateTo, tx => tx.transaction_date);
+  }, [transactions, filter, isAjoMode, period, dateFrom, dateTo]);
 
   /* ── Date grouping — never recomputes per search keystroke ── */
   const groupedSections = useMemo(() => groupByDate(filterBase), [filterBase]);
@@ -597,6 +602,11 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
             </div>
           )}
         </div>
+      </div>
+
+      {/* Period filter */}
+      <div className="px-4 pb-2.5 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800">
+        <PeriodFilter period={period} setPeriod={setPeriod} dateFrom={dateFrom} setDateFrom={setDateFrom} dateTo={dateTo} setDateTo={setDateTo} />
       </div>
 
       {/* ── Summary header — BX-NET-01 fixed ────────────────────── */}

@@ -3,7 +3,8 @@ import { supabase }           from "../utils/supabase";
 import { useStore }           from "../hooks/useStore";
 import { useInventory }       from "../hooks/useInventory";
 import { useBiometricLock }   from "../hooks/useBiometricLock";
-import { fmt, today }         from "../utils/helpers";
+import { fmt, today, applyPeriodFilter } from "../utils/helpers";
+import PeriodFilter from "../components/shared/PeriodFilter";
 import { AmountDisplay }      from "../components/shared/AmountDisplay";
 import { canDo, normalizeSlug, planAvailableText } from "../utils/plans";
 import AppLogo                from "../components/AppLogo";
@@ -580,6 +581,8 @@ function ManagerSales({ store, staff, session, livePerms, initialSub, initialDat
   const [receipt,    setReceipt]   = useState(initialData);
   const [search,     setSearch]    = useState("");
   const [period,     setPeriod]    = useState("all");
+  const [dateFrom,   setDateFrom]  = useState("");
+  const [dateTo,     setDateTo]    = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const { transactions = [], loading } = store;
   const allowed = livePerms.filter(p => p.can_view).map(p => p.module);
@@ -588,12 +591,12 @@ function ManagerSales({ store, staff, session, livePerms, initialSub, initialDat
   useEffect(() => { if (initialData) setReceipt(initialData); }, [initialData]);
   useEffect(() => { setTypeFilter("all"); }, [sub]);
 
-  const cutoff   = dateRange(period);
-  const filtered = transactions.filter(t => {
-    const inPeriod = !cutoff || t.transaction_date >= cutoff;
-    const inSearch = !search || [t.item_name, t.customer_name, t.category].some(v => (v || "").toLowerCase().includes(search.toLowerCase()));
-    return inPeriod && inSearch;
-  });
+  const filtered = applyPeriodFilter(
+    transactions.filter(t =>
+      !search || [t.item_name, t.customer_name, t.category].some(v => (v || "").toLowerCase().includes(search.toLowerCase()))
+    ),
+    period, dateFrom, dateTo, t => t.transaction_date
+  );
   const cashOnly = filtered.filter(t => t.payment_type !== "bill_payment");
   const cashIn   = cashOnly.filter(t => t.type === "in").reduce((s, t) => s + t.amount, 0);
   const cashOut  = cashOnly.filter(t => t.type === "out").reduce((s, t) => s + t.amount, 0);
@@ -650,19 +653,14 @@ function ManagerSales({ store, staff, session, livePerms, initialSub, initialDat
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search sales…"
                 className="w-full h-10 pl-9 pr-4 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30" />
             </div>
-            <div className="flex gap-2 overflow-x-auto no-scrollbar">
-              {[["all","All time"],["today","Today"],["week","7 Days"],["month","30 Days"]].map(([v, l]) => (
-                <button key={v} onClick={() => setPeriod(v)}
-                  className={`flex-shrink-0 px-3 py-1.5 rounded-xl text-[11px] font-bold transition ${period === v ? "bg-brand-600 text-white" : "bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400"}`}>
-                  {l}
-                </button>
-              ))}
+            <div className="flex gap-2 mb-1.5">
               <button onClick={onVoiceOpen}
                 className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold bg-green-500 text-white">
                 <Svg d={P.mic} size={12} color="white" />
                 Mic Sale
               </button>
             </div>
+            <PeriodFilter period={period} setPeriod={setPeriod} dateFrom={dateFrom} setDateFrom={setDateFrom} dateTo={dateTo} setDateTo={setDateTo} />
             {sub === "all" && (
               <div className="flex gap-2 overflow-x-auto no-scrollbar">
                 {[["all","All"],["in","Cash In"],["out","Cash Out"],["bills","Bills"]].map(([v, l]) => (

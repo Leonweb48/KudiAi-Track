@@ -5,7 +5,8 @@ import { Browser }               from "@capacitor/browser";
 import { Share }                 from "@capacitor/share";
 import { canDo, planAvailableText } from "../utils/plans";
 import { sendEmailTrigger }          from "../utils/emailTrigger";
-import { fmt, today }            from "../utils/helpers";
+import { fmt, today, applyPeriodFilter } from "../utils/helpers";
+import PeriodFilter from "../components/shared/PeriodFilter";
 import { AmountDisplay }         from "../components/shared/AmountDisplay";
 import { exportInvoicePdf }      from "../utils/generateInvoicePdf";
 import InvoiceBuilder            from "../components/InvoiceBuilder";
@@ -625,6 +626,9 @@ function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCance
 export default function Invoices({ invoiceHook, plan, onUpgrade, profile, inventory, addTransaction, userId }) {
   const { invoices, customers, loading, reload, createDraft, updateDraft, markSent, cancelInvoice, deleteInvoice, recordInvoicePayment } = invoiceHook;
   const [filter,       setFilter]      = useState("all");
+  const [period,       setPeriod]      = useState("all");
+  const [dateFrom,     setDateFrom]    = useState("");
+  const [dateTo,       setDateTo]      = useState("");
   const [showBuilder,  setShowBuilder] = useState(false);
   const [editInv,      setEditInv]     = useState(null);
   const [detailInv,    setDetailInv]   = useState(null);
@@ -650,7 +654,10 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
     );
   }
 
-  const filtered = filter === "all" ? invoices : invoices.filter(i => i.status === filter);
+  const filtered = applyPeriodFilter(
+    filter === "all" ? invoices : invoices.filter(i => i.status === filter),
+    period, dateFrom, dateTo, i => i.created_at
+  );
 
   const handleBuilderSave = async (data) => {
     const { _saveAs, _editId, ...rest } = data;
@@ -755,6 +762,13 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
               })}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Period filter */}
+      {invoices.length > 0 && (
+        <div className="mx-4 mb-3">
+          <PeriodFilter period={period} setPeriod={setPeriod} dateFrom={dateFrom} setDateFrom={setDateFrom} dateTo={dateTo} setDateTo={setDateTo} />
         </div>
       )}
 

@@ -9,7 +9,8 @@ import { ClientProfile } from "../components/shared/ClientProfile";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import { supabase } from "../utils/supabase";
 import { canDo, featureLimit, upgradeLabel, planRequiredLabel, planAvailableText } from "../utils/plans";
-import { fmt, today } from "../utils/helpers";
+import { fmt, today, applyPeriodFilter } from "../utils/helpers";
+import PeriodFilter from "../components/shared/PeriodFilter";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
 import { createReportPdf, fmtCurrency as pdfFmt, fmtDate as pdfFmtDate } from "../utils/generateReportPdf";
 import { buildAjoStatementCSV, ajoCSVFilename, shareCSV } from "../utils/exportCSV";
@@ -129,6 +130,9 @@ function AsoClientHistoryModal({ client, contributions, cycle, businessName, sta
   // Auto-switch to card tab when a cycle is opened/created
   useEffect(() => { if (cycle) setTab("card"); }, [cycle]);
   const [typeFilter,    setTypeFilter]    = useState("all");
+  const [period,        setPeriod]        = useState("all");
+  const [dateFrom,      setDateFrom]      = useState("");
+  const [dateTo,        setDateTo]        = useState("");
   const [receipt,       setReceipt]       = useState(null);
   const [clearedIds,    setClearedIds]    = useState(() => new Set());
   const [reverseFor,    setReverseFor]    = useState(null);   // tx being reversed
@@ -136,9 +140,10 @@ function AsoClientHistoryModal({ client, contributions, cycle, businessName, sta
   const [reverseStep,   setReverseStep]   = useState("reason"); // "reason" | "pin"
   const [reverseError,  setReverseError]  = useState("");
 
-  const filtered = typeFilter === "all"
-    ? contributions
-    : contributions.filter(c => c.type === typeFilter);
+  const filtered = applyPeriodFilter(
+    typeFilter === "all" ? contributions : contributions.filter(c => c.type === typeFilter),
+    period, dateFrom, dateTo, c => c.created_at
+  );
 
   const handleExportPdf = async () => {
     const sorted = [...contributions].sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
@@ -335,18 +340,21 @@ function AsoClientHistoryModal({ client, contributions, cycle, businessName, sta
 
         {/* History tab */}
         {tab === "history" && <>
-        {/* Filter chips */}
-        <div className="flex gap-2 px-4 py-3 overflow-x-auto no-scrollbar">
-          {FILTERS.map(f => (
-            <button key={f.id}
-              onClick={() => setTypeFilter(f.id)}
-              className={`px-4 py-1.5 rounded-full text-xs font-bold flex-shrink-0 transition-colors
-                ${typeFilter === f.id
-                  ? "bg-blue-600 text-white shadow-sm"
-                  : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300"}`}>
-              {f.label}
-            </button>
-          ))}
+        {/* Type + date filters */}
+        <div className="px-4 pt-3 pb-1 space-y-2">
+          <div className="flex gap-2 overflow-x-auto no-scrollbar">
+            {FILTERS.map(f => (
+              <button key={f.id}
+                onClick={() => setTypeFilter(f.id)}
+                className={`px-4 py-1.5 rounded-full text-xs font-bold flex-shrink-0 transition-colors
+                  ${typeFilter === f.id
+                    ? "bg-blue-600 text-white shadow-sm"
+                    : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300"}`}>
+                {f.label}
+              </button>
+            ))}
+          </div>
+          <PeriodFilter period={period} setPeriod={setPeriod} dateFrom={dateFrom} setDateFrom={setDateFrom} dateTo={dateTo} setDateTo={setDateTo} />
         </div>
 
         {/* List */}

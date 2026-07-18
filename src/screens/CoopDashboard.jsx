@@ -21,6 +21,8 @@ import AnnouncementBarSlot from "../components/slots/AnnouncementBarSlot";
 import TabCardQuadSlot from "../components/slots/TabCardQuadSlot";
 import TabCardDuoSlot from "../components/slots/TabCardDuoSlot";
 import OffersSection from "../components/slots/OffersSection";
+import { applyPeriodFilter } from "../utils/helpers";
+import PeriodFilter from "../components/shared/PeriodFilter";
 
 const coopFn = async (action, body = {}) => {
   const r = await supabase.functions.invoke("coop-portal", { body: { action, ...body } });
@@ -1030,6 +1032,9 @@ function FinanceTab({ org, members, programs, onRefresh }) {
   const [subTab,       setSubTab]       = useState("contributions");
   const [savings,      setSavings]      = useState([]);
   const [withdrawals,  setWithdrawals]  = useState([]);
+  const [period,       setPeriod]       = useState("all");
+  const [dateFrom,     setDateFrom]     = useState("");
+  const [dateTo,       setDateTo]       = useState("");
   const [wdRequests,   setWdRequests]   = useState([]);
   const [loading,      setLoading]      = useState(true);
   const [showRecord,   setShowRecord]   = useState(false);
@@ -1069,8 +1074,10 @@ function FinanceTab({ org, members, programs, onRefresh }) {
     finally { setHandlingReq(null); }
   };
 
-  const activeMembers  = members.filter(m => m.status === "active");
-  const activePrograms = programs.filter(p => p.status === "active");
+  const activeMembers      = members.filter(m => m.status === "active");
+  const activePrograms     = programs.filter(p => p.status === "active");
+  const visibleSavings     = applyPeriodFilter(savings,      period, dateFrom, dateTo, s => s.created_at);
+  const visibleWithdrawals = applyPeriodFilter(withdrawals,  period, dateFrom, dateTo, w => w.created_at);
 
   const handleExportSavingsPdf = async () => {
     const sorted = [...savings].sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
@@ -1154,6 +1161,12 @@ function FinanceTab({ org, members, programs, onRefresh }) {
         })}
       </div>
 
+      {(subTab === "contributions" || subTab === "withdrawals") && (
+        <div className="px-4 pb-2">
+          <PeriodFilter period={period} setPeriod={setPeriod} dateFrom={dateFrom} setDateFrom={setDateFrom} dateTo={dateTo} setDateTo={setDateTo} />
+        </div>
+      )}
+
       {subTab === "contributions" && (
         <>
           <div className="px-4 pb-2 flex justify-end gap-2">
@@ -1171,11 +1184,11 @@ function FinanceTab({ org, members, programs, onRefresh }) {
           <div className="flex-1 overflow-y-auto px-4 pb-24">
             {loading ? (
               <div className="flex justify-center py-10"><div className="w-6 h-6 border-[3px] border-green-500 border-t-transparent rounded-full animate-spin" /></div>
-            ) : savings.length === 0 ? (
-              <div className="text-center py-12 text-slate-400 text-sm">No contributions recorded yet</div>
+            ) : visibleSavings.length === 0 ? (
+              <div className="text-center py-12 text-slate-400 text-sm">{savings.length === 0 ? "No contributions recorded yet" : "No contributions in this period"}</div>
             ) : (
               <div className="flex flex-col gap-2">
-                {savings.map(s => (
+                {visibleSavings.map(s => (
                   <button key={s.id} onClick={() => setViewSaving(s)}
                     className="bg-white dark:bg-slate-800 rounded-xl p-3 border border-slate-100 dark:border-slate-700 flex justify-between items-start w-full text-left active:scale-[0.98] transition-transform">
                     <div>
@@ -1205,11 +1218,11 @@ function FinanceTab({ org, members, programs, onRefresh }) {
           <div className="flex-1 overflow-y-auto px-4 pb-24">
             {loading ? (
               <div className="flex justify-center py-10"><div className="w-6 h-6 border-[3px] border-red-500 border-t-transparent rounded-full animate-spin" /></div>
-            ) : withdrawals.length === 0 ? (
-              <div className="text-center py-12 text-slate-400 text-sm">No withdrawals recorded yet</div>
+            ) : visibleWithdrawals.length === 0 ? (
+              <div className="text-center py-12 text-slate-400 text-sm">{withdrawals.length === 0 ? "No withdrawals recorded yet" : "No withdrawals in this period"}</div>
             ) : (
               <div className="flex flex-col gap-2">
-                {withdrawals.map(w => (
+                {visibleWithdrawals.map(w => (
                   <button key={w.id} onClick={() => setViewWd(w)}
                     className="bg-white dark:bg-slate-800 rounded-xl p-3 border border-slate-100 dark:border-slate-700 w-full text-left active:scale-[0.98] transition-transform">
                     <div className="flex justify-between items-start">

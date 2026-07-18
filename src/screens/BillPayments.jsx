@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { jsPDF } from "jspdf";
-import { fmt, today } from "../utils/helpers";
+import { fmt, today, applyPeriodFilter } from "../utils/helpers";
+import PeriodFilter from "../components/shared/PeriodFilter";
 import { useCampaigns }    from "../hooks/useCampaigns";
 import AnnouncementBarSlot from "../components/slots/AnnouncementBarSlot";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
@@ -1919,6 +1920,9 @@ export default function BillPayments({ store, plan, session = null, staffName = 
   const [useCashback,     setUseCashback]     = useState(false);
   const [histCat,         setHistCat]         = useState("all");
   const [histStatus,      setHistStatus]      = useState("all");
+  const [histPeriod,      setHistPeriod]      = useState("all");
+  const [histDateFrom,    setHistDateFrom]    = useState("");
+  const [histDateTo,      setHistDateTo]      = useState("");
   const [billCouponCode,     setBillCouponCode]     = useState("");
   const [billAppliedCoupon,  setBillAppliedCoupon]  = useState(null);
   const [billCouponMsg,      setBillCouponMsg]      = useState(null);
@@ -1987,8 +1991,8 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     if (histStatus !== "all") r = histStatus === "failed"
       ? r.filter(b => b.bill_status === "failed")
       : r.filter(b => b.bill_status !== "failed");
-    return r;
-  }, [bills, histCat, histStatus]);
+    return applyPeriodFilter(r, histPeriod, histDateFrom, histDateTo, b => b.created_at || b.transaction_date);
+  }, [bills, histCat, histStatus, histPeriod, histDateFrom, histDateTo]);
 
   const resetVerify = () => { setVerifyStatus("idle"); setVerifyName(""); };
 
@@ -3248,6 +3252,9 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
           {bills.length > 0 && (
             <>
+              <div className="mb-3">
+                <PeriodFilter period={histPeriod} setPeriod={setHistPeriod} dateFrom={histDateFrom} setDateFrom={setHistDateFrom} dateTo={histDateTo} setDateTo={setHistDateTo} />
+              </div>
               <div className="flex gap-2 mb-2.5 overflow-x-auto no-scrollbar">
                 {[["all","All"],["ok","Successful"],["failed","Failed"]].map(([v,l]) => (
                   <button key={v} onClick={() => setHistStatus(v)}
@@ -3288,7 +3295,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
           ) : filteredBills.length === 0 ? (
             <div className="text-center py-10 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700/50">
               <p className="text-slate-500 dark:text-slate-400 text-sm font-semibold">No matching transactions</p>
-              <button onClick={() => { setHistCat("all"); setHistStatus("all"); }}
+              <button onClick={() => { setHistCat("all"); setHistStatus("all"); setHistPeriod("all"); setHistDateFrom(""); setHistDateTo(""); }}
                 className="text-xs font-bold text-brand-600 dark:text-brand-400 mt-1.5">
                 Clear filters
               </button>

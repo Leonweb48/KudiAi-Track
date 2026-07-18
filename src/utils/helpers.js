@@ -55,3 +55,36 @@ export const filterByPeriod = (transactions, period) => {
     return now - d <= 30 * 86400000;
   });
 };
+
+// Calendar-relative period filter used across Sales, Bills, Credit, Ajo, Invoices, Coop.
+// getDateStr(item) must return an ISO string or YYYY-MM-DD; sliced to 10 chars for comparison.
+export function applyPeriodFilter(items, period, dateFrom, dateTo, getDateStr) {
+  if (!period || period === "all") return items;
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0, 10);
+  let from, to;
+  if (period === "today") {
+    from = to = todayStr;
+  } else if (period === "week") {
+    const d = new Date(now);
+    d.setDate(d.getDate() - d.getDay()); // Sunday of current week
+    from = d.toISOString().slice(0, 10);
+    to = todayStr;
+  } else if (period === "month") {
+    from = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+    to = todayStr;
+  } else if (period === "custom") {
+    from = dateFrom || null;
+    to = dateTo || todayStr;
+  } else {
+    return items;
+  }
+  return items.filter(item => {
+    const raw = getDateStr(item);
+    if (!raw) return false;
+    const d = String(raw).slice(0, 10);
+    if (from && d < from) return false;
+    if (to && d > to) return false;
+    return true;
+  });
+}

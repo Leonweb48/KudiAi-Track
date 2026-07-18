@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { fmt } from "../../utils/helpers";
+import { fmt, applyPeriodFilter } from "../../utils/helpers";
+import PeriodFilter from "../../components/shared/PeriodFilter";
 import { supabase } from "../../utils/supabase";
 import { Svg, P, GK, NK, TxRow, dateRange } from "./StaffShared";
 import TransactionDetailModal from "../../components/shared/TransactionDetailModal";
@@ -15,6 +16,8 @@ export default function StaffSales({ store, staff, session, livePerms, initialSu
   const [search,       setSearch]       = useState("");
   const [period,       setPeriod]       = useState("all");
   const [typeFilter,   setTypeFilter]   = useState("all");
+  const [dateFrom,     setDateFrom]     = useState("");
+  const [dateTo,       setDateTo]       = useState("");
   const [showApprReq,  setShowApprReq]  = useState(false);
   const [apprForm,     setApprForm]     = useState({ type: "refund", amount: "", reason: "" });
   const [apprSaving,   setApprSaving]   = useState(false);
@@ -50,12 +53,12 @@ export default function StaffSales({ store, staff, session, livePerms, initialSu
   useEffect(() => { if (initialData) setReceipt(initialData);  }, [initialData]);
   useEffect(() => { setTypeFilter("all"); },                      [sub]);
 
-  const cutoff   = dateRange(period);
-  const filtered = transactions.filter(tx => {
-    const inPeriod = !cutoff || tx.transaction_date >= cutoff;
-    const inSearch = !search || [tx.item_name, tx.customer_name, tx.category].some(v => (v || "").toLowerCase().includes(search.toLowerCase()));
-    return inPeriod && inSearch;
-  });
+  const filtered = applyPeriodFilter(
+    transactions.filter(tx =>
+      !search || [tx.item_name, tx.customer_name, tx.category].some(v => (v || "").toLowerCase().includes(search.toLowerCase()))
+    ),
+    period, dateFrom, dateTo, tx => tx.transaction_date
+  );
   const cashOnly = filtered.filter(tx => tx.payment_type !== "bill_payment");
 
   const allHistory = (() => {
@@ -124,26 +127,16 @@ export default function StaffSales({ store, staff, session, livePerms, initialSu
                 className="w-full h-10 pl-9 pr-4 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30" />
             </div>
 
-            {/* Period chips — min-h-[44px] for accessibility */}
-            <div className="flex gap-2 overflow-x-auto no-scrollbar">
-              {[["all","All time"],["today","Today"],["week","7 Days"],["month","30 Days"]].map(([v, l]) => (
-                <button key={v} onClick={() => setPeriod(v)}
-                  className={`flex-shrink-0 min-h-[44px] px-3 rounded-xl text-[11px] font-bold transition flex items-center ${
-                    period === v
-                      ? "text-white"
-                      : "bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400"
-                  }`}
-                  style={period === v ? { backgroundColor: GK } : {}}>
-                  {l}
-                </button>
-              ))}
+            {/* Period + type filters */}
+            <div className="flex gap-2 overflow-x-auto no-scrollbar mb-0.5">
               <button onClick={onVoiceOpen}
-                className="flex-shrink-0 min-h-[44px] flex items-center gap-1.5 px-3 rounded-xl text-[11px] font-bold text-white"
+                className="flex-shrink-0 min-h-[36px] flex items-center gap-1.5 px-3 rounded-xl text-[11px] font-bold text-white"
                 style={{ backgroundColor: GK }}>
                 <Svg d={P.mic} size={12} color="white" />
                 Mic Sale
               </button>
             </div>
+            <PeriodFilter period={period} setPeriod={setPeriod} dateFrom={dateFrom} setDateFrom={setDateFrom} dateTo={dateTo} setDateTo={setDateTo} />
 
             {/* Type filter (All History only) */}
             {sub === "all" && (
