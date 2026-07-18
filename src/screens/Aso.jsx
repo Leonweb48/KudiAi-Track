@@ -493,6 +493,13 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [staffAjoPerms, setStaffAjoPerms] = useState(null);
   const [assigningClient, setAssigningClient] = useState(null);
 
+  // Staff Collections queue (owner-only review of staff-recorded pending contributions)
+  const [pendingStaffContribs,     setPendingStaffContribs]     = useState([]);
+  const [rejectingStaffContrib,    setRejectingStaffContrib]    = useState(null);
+  const [staffContribRejectReason, setStaffContribRejectReason] = useState("");
+  const [processingStaffContribId, setProcessingStaffContribId] = useState(null);
+  const [staffContribFeedback,     setStaffContribFeedback]     = useState(null);
+
 
   // Ajo Groups management
   const [showGroups,           setShowGroups]           = useState(false);
@@ -584,7 +591,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     try {
       const { data, error } = await supabase
         .from("ajo_withdrawal_requests")
-        .select("*, aso_clients(full_name, email, membership_number, current_balance, total_withdrawn, account_number, account_name, bank_name, bank_code)")
+        .select("*, aso_clients(full_name, email, membership_number, current_balance, total_withdrawn, account_number, account_name, bank_name, bank_code, withdrawal_fee_percent)")
         .in("status", ["pending", "held_24h"])
         .order("requested_at", { ascending: false });
       if (error) throw error;
@@ -602,6 +609,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         .select("*, aso_clients(full_name, email, membership_number)")
         .eq("status", "pending")
         .eq("type", "contribution")
+        .neq("contribution_source", "staff_collection")
         .order("created_at", { ascending: false });
       if (error) throw error;
       setPendingDeposits(data || []);
@@ -609,6 +617,18 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     } catch {
       setDepError("Couldn't refresh — tap to retry");
     }
+  };
+
+  const reloadPendingStaffContribs = async () => {
+    if (!profile?.id) return;
+    const { data } = await supabase
+      .from("ajo_contributions")
+      .select("id, aso_client_id, amount, created_at, recorded_by, contribution_context, aso_clients(full_name, membership_number)")
+      .eq("owner_id", profile.id)
+      .eq("status", "pending")
+      .eq("contribution_source", "staff_collection")
+      .order("created_at", { ascending: true });
+    setPendingStaffContribs(data || []);
   };
 
   const loadGroups = async () => {
@@ -976,14 +996,18 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
   // Load granular ajo permissions when rendering in a staff context
   useEffect(() => {
-    if (!staffId) { setStaffAjoPerms(null); return; }
+    if (!staffId) {
+      setStaffAjoPerms(null);
+      reloadPendingStaffContribs();
+      return;
+    }
     supabase
       .from("staff_permissions")
-      .select("can_view, can_create, ajo_confirm_deposits, ajo_record_withdrawals, ajo_manage_clients")
+      .select("can_view, can_create, ajo_manage_clients")
       .eq("staff_id", staffId)
       .eq("module", "aso")
       .maybeSingle()
-      .then(({ data }) => setStaffAjoPerms(data || { can_view: false, can_create: false, ajo_confirm_deposits: false, ajo_record_withdrawals: false, ajo_manage_clients: false }));
+      .then(({ data }) => setStaffAjoPerms(data || { can_view: false, can_create: false, ajo_manage_clients: false }));
   }, [staffId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Realtime: new withdrawal requests from clients ─────────────────────
@@ -1022,9 +1046,10 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
   // Per-action capability flags (null staffAjoPerms = owner = all true)
   const canContribute     = !staffAjoPerms || staffAjoPerms.can_create;
-  const canWithdraw       = !staffAjoPerms || staffAjoPerms.ajo_record_withdrawals;
-  const canConfirmDeposit = !staffAjoPerms || staffAjoPerms.ajo_confirm_deposits;
+  const canWithdraw       = !staffAjoPerms;  // owner-only
+  const canConfirmDeposit = !staffAjoPerms;  // owner-only
   const canManageClients  = !staffAjoPerms || staffAjoPerms.ajo_manage_clients;
+  const isOwner           = !staffAjoPerms;
 
   // Aggregate stats
   const totalBal      = asoClients.reduce((s, c) => s + (c.current_balance || 0), 0);
@@ -1378,14 +1403,16 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
               <path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" />
             </svg>
           </button>
-          <button
-            onClick={() => { loadGroups(); setShowGroups(true); }}
-            title="Manage Ajo Groups & Paystack Subaccounts"
-            className="w-11 h-11 bg-slate-100 dark:bg-slate-700 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform">
-            <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-              <rect x="2" y="5" width="20" height="14" rx="2" /><line x1="2" y1="10" x2="22" y2="10" />
-            </svg>
-          </button>
+          {isOwner && (
+            <button
+              onClick={() => { loadGroups(); setShowGroups(true); }}
+              title="Manage Ajo Groups & Paystack Subaccounts"
+              className="w-11 h-11 bg-slate-100 dark:bg-slate-700 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform">
+              <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                <rect x="2" y="5" width="20" height="14" rx="2" /><line x1="2" y1="10" x2="22" y2="10" />
+              </svg>
+            </button>
+          )}
           {canManageClients && (
             <button onClick={() => setShowAdd(true)}
               className="w-11 h-11 bg-brand-600 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform">
@@ -1490,6 +1517,17 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                     )}
                   </div>
                   <p className="text-[10px] text-slate-400 mt-0.5">{req.requested_at ? new Date(req.requested_at).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" }) : ""}</p>
+                  {req.fee_type !== "registration_fee" &&
+                   cl.withdrawal_fee_percent !== undefined &&
+                   req.withdrawal_fee_percent !== undefined &&
+                   Number(req.withdrawal_fee_percent) !== Number(cl.withdrawal_fee_percent) && (
+                    <div className="mt-1.5 flex items-center gap-1.5 text-[10px] bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 px-2 py-1 rounded-lg">
+                      <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3 flex-shrink-0" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+                      <span>Fee at request: {req.withdrawal_fee_percent}%</span>
+                      <span>·</span>
+                      <span className="font-bold">Current fee: {cl.withdrawal_fee_percent}%</span>
+                    </div>
+                  )}
                 </div>
               </div>
               {(cl.account_number || cl.account_name) && (
@@ -1716,6 +1754,132 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                         onClick={() => { setRejectingReactivation(req.id); setRejectReactivationNote(""); }}
                         className="flex-1 py-1.5 text-xs font-bold rounded-lg border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 disabled:opacity-50"
                       >
+                        Reject
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Staff Collections Queue (owner-only) ──────────────────────────── */}
+      {isOwner && pendingStaffContribs.length > 0 && (
+        <div className="mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-2">
+              Staff Collections
+              <span className="bg-orange-500 text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded-full">{pendingStaffContribs.length}</span>
+            </p>
+            <button
+              onClick={() => setTxnPin({
+                title: `Approve All ${pendingStaffContribs.length} Collections`,
+                amount: pendingStaffContribs.reduce((s, c) => s + (c.amount || 0), 0) * 100,
+                recipient: "Staff Collections",
+                description: "Batch approve all pending staff-recorded contributions",
+                onApprove: async (pin) => {
+                  setTxnPin(null);
+                  const { data, error } = await supabase.functions.invoke("ajo-write", {
+                    body: { action: "batch_approve_contributions", pin, contribution_ids: pendingStaffContribs.map(c => c.id) },
+                  });
+                  if (error || !data?.ok) {
+                    setStaffContribFeedback({ ok: false, msg: `Partial: ${data?.failed || 0} failed` });
+                  } else {
+                    setStaffContribFeedback({ ok: true, msg: `All ${data.approved} approved` });
+                  }
+                  reloadPendingStaffContribs();
+                  setTimeout(() => setStaffContribFeedback(null), 3000);
+                },
+              })}
+              className="text-[10px] font-bold text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2.5 py-1 rounded-lg active:scale-95 transition">
+              Approve All
+            </button>
+          </div>
+          {staffContribFeedback && (
+            <div className={`mb-2 px-3 py-2 rounded-xl text-xs font-bold ${staffContribFeedback.ok ? "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400" : "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400"}`}>
+              {staffContribFeedback.msg}
+            </div>
+          )}
+          <div className="flex flex-col gap-2">
+            {pendingStaffContribs.map(item => {
+              const isStale = Date.now() - new Date(item.created_at).getTime() > 48 * 3600 * 1000;
+              const isProc  = processingStaffContribId === item.id;
+              const cl      = item.aso_clients || {};
+              return (
+                <div key={item.id} className={`bg-white dark:bg-slate-800 rounded-2xl px-4 py-3 border shadow-sm ${isStale ? "border-orange-300 dark:border-orange-700/60" : "border-indigo-200 dark:border-indigo-800/60"}`}>
+                  <div className="flex items-start gap-3">
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${isStale ? "bg-orange-100 dark:bg-orange-900/40" : "bg-indigo-100 dark:bg-indigo-900/40"}`}>
+                      <svg viewBox="0 0 24 24" fill="none" className={`w-4 h-4 ${isStale ? "text-orange-600 dark:text-orange-400" : "text-indigo-600 dark:text-indigo-400"}`} stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                        <path d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><circle cx="12" cy="12" r="2"/>
+                      </svg>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-extrabold text-slate-800 dark:text-white truncate">{cl.full_name || "—"}</p>
+                      <p className="text-[10px] text-slate-400 font-mono">{cl.membership_number || ""}</p>
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        <span className="text-xs font-bold text-indigo-700 dark:text-indigo-300">{fmt(item.amount)}</span>
+                        {item.contribution_context && item.contribution_context !== "personal_savings" && (
+                          <span className="text-[10px] text-slate-400 capitalize">{item.contribution_context.replace(/_/g, " ")}</span>
+                        )}
+                        {isStale && <span className="text-[10px] font-bold text-orange-600 dark:text-orange-400">Stale &gt;48h</span>}
+                      </div>
+                      <p className="text-[10px] text-slate-400 mt-0.5">{item.created_at ? new Date(item.created_at).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" }) : ""}</p>
+                    </div>
+                  </div>
+                  {rejectingStaffContrib === item.id ? (
+                    <div className="mt-3">
+                      <input
+                        autoFocus
+                        value={staffContribRejectReason}
+                        onChange={e => setStaffContribRejectReason(e.target.value)}
+                        placeholder="Rejection reason…"
+                        className="w-full text-xs rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-slate-800 dark:text-white mb-2 outline-none"
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          disabled={isProc || !staffContribRejectReason.trim()}
+                          onClick={async () => {
+                            setProcessingStaffContribId(item.id);
+                            const { data } = await supabase.functions.invoke("ajo-write", { body: { action: "reject_contribution", contribution_id: item.id, reason: staffContribRejectReason } });
+                            setProcessingStaffContribId(null);
+                            if (data?.ok) { setRejectingStaffContrib(null); setStaffContribRejectReason(""); reloadPendingStaffContribs(); }
+                          }}
+                          className="flex-1 py-2 bg-red-600 text-white rounded-xl font-bold text-xs disabled:opacity-50 active:scale-[0.99] transition">
+                          {isProc ? "…" : "Confirm Reject"}
+                        </button>
+                        <button onClick={() => { setRejectingStaffContrib(null); setStaffContribRejectReason(""); }}
+                          className="flex-1 py-2 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl font-bold text-xs active:scale-[0.99] transition">
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2 mt-3">
+                      <button
+                        disabled={isProc}
+                        onClick={() => setTxnPin({
+                          title: "Approve Collection",
+                          amount: Math.round((item.amount || 0) * 100),
+                          recipient: cl.full_name || "Client",
+                          description: "Staff-recorded savings contribution",
+                          onApprove: async (pin) => {
+                            setTxnPin(null);
+                            setProcessingStaffContribId(item.id);
+                            const { data } = await supabase.functions.invoke("ajo-write", { body: { action: "approve_contribution", contribution_id: item.id, owner_id: profile?.id, pin } });
+                            setProcessingStaffContribId(null);
+                            reloadPendingStaffContribs();
+                            if (!data?.ok) setStaffContribFeedback({ ok: false, msg: data?.error || "Approve failed" });
+                          },
+                        })}
+                        className="flex-1 py-2.5 bg-green-600 text-white rounded-xl font-bold text-xs disabled:opacity-50 active:scale-[0.99] transition">
+                        {isProc ? "…" : "Approve"}
+                      </button>
+                      <button
+                        disabled={isProc}
+                        onClick={() => { setRejectingStaffContrib(item.id); setStaffContribRejectReason(""); }}
+                        className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl font-bold text-xs active:scale-[0.99] transition">
                         Reject
                       </button>
                     </div>
@@ -2982,7 +3146,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             <TodaysCollection
               clients={asoClients}
               groups={groups}
-              onRecord={asoCollectionRecord}
+              onRecord={isOwner ? asoCollectionRecord : (clientId, amount, context) => asoContribute(clientId, amount, context)}
               staffCanRecord={canContribute}
             />
           </div>
@@ -2990,7 +3154,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       )}
 
       {/* ── Ajo Groups Management Modal ─────────────────────────────────── */}
-      {showGroups && (
+      {showGroups && isOwner && (
         <div className="fixed inset-0 z-sub-sheet bg-black/50 flex items-end justify-center" onClick={e => { if (e.target === e.currentTarget) setShowGroups(false); }}>
           <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-t-3xl shadow-2xl flex flex-col" style={{ maxHeight: "90dvh" }}>
             {/* Header */}
@@ -3495,7 +3659,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
               <EsusuRotationDashboard
                 data={rotationData}
                 loading={rotationLoading}
-                isOwner={true}
+                isOwner={isOwner}
                 myClientId={null}
                 onRefresh={() => loadRotation(showRotation.id)}
                 onStartRound={handleStartRound}

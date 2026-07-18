@@ -78,12 +78,22 @@ serve(async (req) => {
   async function requireClientAccess(client_id: string): Promise<Response | null> {
     if (!client_id) return json({ error: "client_id required" }, 400);
     const { data: cl } = await sb.from("aso_clients")
-      .select("id, client_user_id, user_id").eq("id", client_id).maybeSingle();
+      .select("id, client_user_id, user_id, staff_id, created_by").eq("id", client_id).maybeSingle();
     if (!cl) return json({ error: "Client not found" }, 404);
+    // Owner or client
     if (cl.client_user_id === callerId || cl.user_id === callerId) return null;
-    const { data: st } = await sb.from("staff").select("id")
-      .eq("user_id", callerId).eq("owner_id", cl.user_id).eq("status", "active").maybeSingle();
-    return st ? null : json({ error: "Forbidden" }, 403);
+    // Staff path: must be active, have can_view, and be manager OR assigned/creator
+    const { data: st } = await sb.from("staff")
+      .select("id, role")
+      .eq("user_id", callerId).eq("owner_id", cl.user_id).eq("status", "active")
+      .maybeSingle();
+    if (!st) return json({ error: "Forbidden" }, 403);
+    const { data: sp } = await sb.from("staff_permissions")
+      .select("can_view").eq("staff_id", st.id).eq("module", "aso").maybeSingle();
+    if (!sp?.can_view) return json({ error: "Forbidden: Ajo access not enabled" }, 403);
+    if ((st as Record<string, unknown>).role === "manager") return null;
+    const isScoped = cl.staff_id === (st as Record<string, unknown>).id || cl.created_by === (st as Record<string, unknown>).id;
+    return isScoped ? null : json({ error: "Forbidden: client not in your scope" }, 403);
   }
 
   try {

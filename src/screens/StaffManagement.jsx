@@ -855,7 +855,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
                           onChange={v => setPerms(p => ({
                             ...p,
                             [m.id]: { ...p[m.id], can_view: v, can_create: v ? p[m.id]?.can_create : false,
-                              ...(m.id === "aso" && !v ? { ajo_confirm_deposits: false, ajo_record_withdrawals: false, ajo_manage_clients: false } : {}),
+                              ...(m.id === "aso" && !v ? { ajo_manage_clients: false } : {}),
                             },
                             ...(m.id === "bills" && !v ? { "print-airtime": { can_view: false, can_create: false }, "print-data": { can_view: false, can_create: false } } : {}),
                           }))}
@@ -876,16 +876,6 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
                             checked={perms["aso"]?.can_create || false}
                             onChange={v => setPerms(p => ({ ...p, aso: { ...p.aso, can_create: v } }))}
                             label="Record Contributions"
-                          />
-                          <PermToggle
-                            checked={perms["aso"]?.ajo_confirm_deposits || false}
-                            onChange={v => setPerms(p => ({ ...p, aso: { ...p.aso, ajo_confirm_deposits: v } }))}
-                            label="Confirm Bank Deposits"
-                          />
-                          <PermToggle
-                            checked={perms["aso"]?.ajo_record_withdrawals || false}
-                            onChange={v => setPerms(p => ({ ...p, aso: { ...p.aso, ajo_record_withdrawals: v } }))}
-                            label="Record Withdrawals"
                           />
                           <PermToggle
                             checked={perms["aso"]?.ajo_manage_clients || false}
@@ -1101,7 +1091,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
                           onChange={v => setPerms(p => ({
                             ...p,
                             [m.id]: { ...p[m.id], can_view: v, can_create: v ? p[m.id]?.can_create : false,
-                              ...(m.id === "aso" && !v ? { ajo_confirm_deposits: false, ajo_record_withdrawals: false, ajo_manage_clients: false } : {}),
+                              ...(m.id === "aso" && !v ? { ajo_manage_clients: false } : {}),
                             },
                             ...(m.id === "bills" && !v ? { "print-airtime": { can_view: false, can_create: false }, "print-data": { can_view: false, can_create: false } } : {}),
                           }))}
@@ -1122,16 +1112,6 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
                             checked={perms["aso"]?.can_create || false}
                             onChange={v => setPerms(p => ({ ...p, aso: { ...p.aso, can_create: v } }))}
                             label="Record Contributions"
-                          />
-                          <PermToggle
-                            checked={perms["aso"]?.ajo_confirm_deposits || false}
-                            onChange={v => setPerms(p => ({ ...p, aso: { ...p.aso, ajo_confirm_deposits: v } }))}
-                            label="Confirm Bank Deposits"
-                          />
-                          <PermToggle
-                            checked={perms["aso"]?.ajo_record_withdrawals || false}
-                            onChange={v => setPerms(p => ({ ...p, aso: { ...p.aso, ajo_record_withdrawals: v } }))}
-                            label="Record Withdrawals"
                           />
                           <PermToggle
                             checked={perms["aso"]?.ajo_manage_clients || false}

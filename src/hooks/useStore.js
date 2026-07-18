@@ -691,6 +691,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     const payload = {
       user_id:                userId,
       staff_id:               staffId  || null,
+      created_by:             staffId  || null,
       branch_id:              branchId || null,
       full_name:              cl.full_name,
       phone:                  cl.phone               || "",
