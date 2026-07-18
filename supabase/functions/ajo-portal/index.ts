@@ -32,14 +32,25 @@ const CLIENT_SELECT = `
   bank_code, bank_name, account_number, account_name,
   withdrawal_bank_code, withdrawal_bank_name, withdrawal_account_number, withdrawal_account_name,
   portal_pin_changed_at, created_at,
-  ajo_groups(name)
+  ajo_groups(name),
+  aso_client_group_memberships(id, group_id, status, joined_at, ajo_groups(id, name, group_mode, contribution_amount, contribution_frequency))
 `;
 
 function normalizeClient(client: Record<string, unknown> | null) {
   if (!client) return null;
   const grp = client.ajo_groups as { name?: string } | null;
-  const out = { ...client, group_name: grp?.name ?? "" };
+  const rawMems = (client.aso_client_group_memberships as Array<Record<string, unknown>>) || [];
+  const group_memberships = rawMems.map(m => {
+    const mg = m.ajo_groups as Record<string, unknown> | null;
+    return {
+      id: m.id, group_id: m.group_id, status: m.status, joined_at: m.joined_at,
+      group: mg ? { id: mg.id, name: mg.name, group_mode: mg.group_mode,
+        contribution_amount: mg.contribution_amount, contribution_frequency: mg.contribution_frequency } : null,
+    };
+  });
+  const out = { ...client, group_name: grp?.name ?? "", group_memberships };
   delete out.ajo_groups;
+  delete out.aso_client_group_memberships;
   return out;
 }
 
@@ -124,7 +135,7 @@ serve(async (req) => {
       const denied = await requireClientAccess(client_id);
       if (denied) return denied;
     }
-    if (action === "create-group") {
+    if (action === "create-group" || action === "join-group" || action === "leave-group") {
       const { owner_id: _oid } = body as { owner_id: string };
       if (!_oid || callerId !== _oid) return json({ error: "Forbidden" }, 403);
     }
@@ -180,17 +191,17 @@ serve(async (req) => {
       return json({ contributions: data || [] });
     }
 
-    // ── Active cycle for card view ────────────────────────────────
+    // ── Active cycles for card view (returns array — clients can have multiple) ─
     if (action === "get-active-cycle") {
       const { client_id } = body as { client_id: string };
       if (!client_id) return json({ error: "client_id required" }, 400);
-      const { data: cycle } = await sb
+      const { data: cycles } = await sb
         .from("ajo_cycles")
         .select("*")
         .eq("client_id", client_id)
         .eq("status", "active")
-        .maybeSingle();
-      return json({ cycle: cycle || null });
+        .order("created_at", { ascending: true });
+      return json({ cycles: cycles || [] });
     }
 
     // ── Owner + assigned-staff info ───────────────────────────────
@@ -358,8 +369,8 @@ serve(async (req) => {
 
     // ── Initialize a Paystack contribution payment (client self-pay) ─────
     if (action === "initialize-payment") {
-      const { client_id, amount: requestedAmount, contribution_context = "personal_savings" } = body as {
-        client_id: string; amount?: number; contribution_context?: string;
+      const { client_id, amount: requestedAmount, contribution_context = "personal_savings", group_id: payGroupId } = body as {
+        client_id: string; amount?: number; contribution_context?: string; group_id?: string;
       };
       if (!client_id) return json({ error: "client_id required" }, 400);
       if (!PAYSTACK_SECRET) return json({ error: "Payments are temporarily unavailable — please try again later" }, 503);
@@ -386,13 +397,14 @@ serve(async (req) => {
       const ref = genRef("AJO");
 
       // Route to group subaccount for group_savings / esusu_rotation;
-      // fall back to the client's personal subaccount for personal_savings.
+      // prefer explicit group_id from request (multi-group), fallback to client's ajo_group_id.
       let subaccountCode: string | undefined = cl.paystack_subaccount_code ?? undefined;
-      if ((contribution_context === "group_savings" || contribution_context === "esusu_rotation") && cl.ajo_group_id) {
+      const resolvedGroupId = payGroupId || cl.ajo_group_id;
+      if ((contribution_context === "group_savings" || contribution_context === "esusu_rotation") && resolvedGroupId) {
         const { data: grp } = await sb
           .from("ajo_groups")
           .select("paystack_subaccount_code")
-          .eq("id", cl.ajo_group_id)
+          .eq("id", resolvedGroupId)
           .maybeSingle();
         if (grp?.paystack_subaccount_code) subaccountCode = grp.paystack_subaccount_code;
       }
@@ -552,6 +564,37 @@ serve(async (req) => {
       return json({ group: grp });
     }
 
+    // ── Add a client to a group (owner only) ─────────────────────────────
+    if (action === "join-group") {
+      const { client_id: jcCid, group_id: jcGid, owner_id: jcOid } =
+        body as { client_id: string; group_id: string; owner_id: string };
+      if (!jcCid || !jcGid || !jcOid) return json({ error: "client_id, group_id, owner_id required" }, 400);
+      // Verify group belongs to this owner
+      const { data: jcGrp } = await sb.from("ajo_groups").select("owner_id").eq("id", jcGid).maybeSingle();
+      if (!jcGrp || jcGrp.owner_id !== jcOid) return json({ error: "Group not found" }, 404);
+      // Verify client belongs to this owner
+      const { data: jcCl } = await sb.from("aso_clients").select("user_id").eq("id", jcCid).maybeSingle();
+      if (!jcCl || jcCl.user_id !== jcOid) return json({ error: "Client not found" }, 404);
+      const { data: mem, error: memErr } = await sb.from("aso_client_group_memberships").upsert(
+        { client_id: jcCid, group_id: jcGid, owner_id: jcOid, status: "active", left_at: null },
+        { onConflict: "client_id,group_id" }
+      ).select().single();
+      if (memErr) return json({ error: "Couldn't add client to group — please try again" }, 500);
+      return json({ membership: mem });
+    }
+
+    // ── Remove a client from a group (owner only) ─────────────────────────
+    if (action === "leave-group") {
+      const { client_id: lcCid, group_id: lcGid, owner_id: lcOid } =
+        body as { client_id: string; group_id: string; owner_id: string };
+      if (!lcCid || !lcGid || !lcOid) return json({ error: "client_id, group_id, owner_id required" }, 400);
+      const { error: lcErr } = await sb.from("aso_client_group_memberships")
+        .update({ status: "left", left_at: new Date().toISOString() })
+        .eq("client_id", lcCid).eq("group_id", lcGid).eq("owner_id", lcOid);
+      if (lcErr) return json({ error: "Couldn't remove client from group" }, 500);
+      return json({ ok: true });
+    }
+
     // ── Get group rotation data (owner + member portal) ──────────────────
     if (action === "get-rotation") {
       const { group_id: grGroupId, client_id: grClientId } =
@@ -565,15 +608,25 @@ serve(async (req) => {
       // If client_id provided, validate the client belongs to this group
       const isOwnerRequest = !grClientId;
       if (grClientId) {
-        const { data: grCl } = await sb.from("aso_clients").select("ajo_group_id").eq("id", grClientId).maybeSingle();
-        if (!grCl || grCl.ajo_group_id !== grGroupId) return json({ error: "Access denied" }, 403);
+        // Check junction table first (multi-membership); fallback to legacy ajo_group_id
+        const { data: jMem } = await sb.from("aso_client_group_memberships")
+          .select("id").eq("client_id", grClientId).eq("group_id", grGroupId).eq("status", "active").maybeSingle();
+        if (!jMem) {
+          const { data: grCl } = await sb.from("aso_clients").select("ajo_group_id").eq("id", grClientId).maybeSingle();
+          if (!grCl || grCl.ajo_group_id !== grGroupId) return json({ error: "Access denied" }, 403);
+        }
       }
 
-      // Group members
-      const { data: grMembers } = await sb.from("aso_clients")
-        .select("id, full_name")
-        .eq("ajo_group_id", grGroupId)
-        .eq("status", "active");
+      // Group members via junction table (source of truth after migration)
+      const { data: grMemRows } = await sb.from("aso_client_group_memberships")
+        .select("client_id").eq("group_id", grGroupId).eq("status", "active");
+      const grMemberIds = (grMemRows || []).map((m: { client_id: string }) => m.client_id);
+      let grMembers: Array<{ id: string; full_name: string }> = [];
+      if (grMemberIds.length > 0) {
+        const { data: mData } = await sb.from("aso_clients")
+          .select("id, full_name").in("id", grMemberIds).eq("status", "active");
+        grMembers = (mData || []) as Array<{ id: string; full_name: string }>;
+      }
 
       const showFull = isOwnerRequest || (grGroup.privacy_show_names !== false);
 

@@ -437,10 +437,12 @@ function AsoClientHistoryModal({ client, contributions, cycle, businessName, sta
 export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, onUpgrade, staffId = null, embedded }) {
   const t = useT();
   const [showAdd,      setShowAdd]      = useState(false);
-  const [selected,     setSelected]     = useState(null);
-  const [action,       setAction]       = useState(null);
-  const [amt,          setAmt]          = useState("");
-  const [contributeCtx, setContributeCtx] = useState("personal_savings");
+  const [selected,              setSelected]             = useState(null);
+  const [action,                setAction]               = useState(null);
+  const [amt,                   setAmt]                  = useState("");
+  const [contributeCtx,         setContributeCtx]        = useState("personal_savings");
+  const [contributeGroupId,     setContributeGroupId]    = useState(null);
+  const [selectedClientMems,    setSelectedClientMems]   = useState([]); // group memberships for selected client
   const [receipt,      setReceipt]      = useState(null);
   const [historyFor,   setHistoryFor]   = useState(null); // { client, contributions, cycle }
   const [historyErr,   setHistoryErr]   = useState("");
@@ -568,6 +570,29 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       .then(({ data }) => { if (data?.data) setBanks(data.data); })
       .catch(() => {});
   }, [showAdd, showGroupAdd, editingGroup]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch group memberships for the selected client when contribute modal opens
+  useEffect(() => {
+    if (!selected?.id || action !== "contribute") { setSelectedClientMems([]); setContributeGroupId(null); return; }
+    supabase.from("aso_client_group_memberships")
+      .select("group_id, status, ajo_groups(id, name, group_mode)")
+      .eq("client_id", selected.id)
+      .eq("status", "active")
+      .then(({ data }) => {
+        setSelectedClientMems(data || []);
+        // Backwards compat: if junction table is empty, fall back to ajo_group_id
+        if ((!data || data.length === 0) && selected.ajo_group_id) {
+          const sg = groups.find(g => g.id === selected.ajo_group_id);
+          if (sg) setSelectedClientMems([{ group_id: sg.id, status: "active", ajo_groups: sg }]);
+        }
+      })
+      .catch(() => {
+        if (selected.ajo_group_id) {
+          const sg = groups.find(g => g.id === selected.ajo_group_id);
+          if (sg) setSelectedClientMems([{ group_id: sg.id, status: "active", ajo_groups: sg }]);
+        }
+      });
+  }, [selected?.id, action]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const resolveClientAccount = async () => {
     if (!f.account_number || !f.bank_code) return;
@@ -2621,23 +2646,25 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             </p>
           )}
 
-          {action === "contribute" && (() => {
-            const sg = groups.find(g => g.id === selected.ajo_group_id);
-            if (!sg) return null;
+          {action === "contribute" && selectedClientMems.length > 0 && (() => {
             const opts = [
-              { key: "personal_savings", label: "Personal Savings", desc: "Add to client's personal savings" },
-              sg.group_mode === "rotating"
-                ? { key: "esusu_rotation", label: sg.name, desc: "Esusu Rotation — add to the pot" }
-                : { key: "group_savings",  label: sg.name, desc: "Savings Group — add to group pool" },
+              { key: "personal_savings", label: "Personal Savings", desc: "Add to client's personal savings", gid: null },
+              ...selectedClientMems.map(m => {
+                const sg = m.ajo_groups;
+                return sg?.group_mode === "rotating"
+                  ? { key: "esusu_rotation", label: sg.name, desc: "Esusu Rotation — add to the pot", gid: sg.id }
+                  : { key: "group_savings",  label: sg?.name || "Savings Group", desc: "Savings Group — add to group pool", gid: sg?.id };
+              }),
             ];
             return (
               <div className="mb-3">
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Contributing to</p>
                 <div className="space-y-1.5">
                   {opts.map(opt => (
-                    <button key={opt.key} type="button" onClick={() => setContributeCtx(opt.key)}
+                    <button key={`${opt.key}:${opt.gid || "personal"}`} type="button"
+                      onClick={() => { setContributeCtx(opt.key); setContributeGroupId(opt.gid); }}
                       className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border-2 text-left transition ${
-                        contributeCtx === opt.key
+                        contributeCtx === opt.key && contributeGroupId === opt.gid
                           ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20"
                           : "border-slate-200 dark:border-slate-700"
                       }`}>
@@ -2646,9 +2673,9 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                         <p className="text-[10px] text-slate-400">{opt.desc}</p>
                       </div>
                       <div className={`flex-shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center ${
-                        contributeCtx === opt.key ? "border-brand-500 bg-brand-500" : "border-slate-300 dark:border-slate-600"
+                        contributeCtx === opt.key && contributeGroupId === opt.gid ? "border-brand-500 bg-brand-500" : "border-slate-300 dark:border-slate-600"
                       }`}>
-                        {contributeCtx === opt.key && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                        {contributeCtx === opt.key && contributeGroupId === opt.gid && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                       </div>
                     </button>
                   ))}

@@ -637,22 +637,25 @@ function SupportInline({ client, session }) {
 
 // ── Pay Contribution modal ────────────────────────────────────────────────
 // Contribution type selector — shown only when client is in a group (2 options)
-function ContribTypeSelector({ clientGroup, value, onChange }) {
-  if (!clientGroup) return null;
+function ContribTypeSelector({ clientGroups = [], value, selectedGroupId, onChange }) {
+  if (!clientGroups.length) return null;
   const opts = [
-    { key: "personal_savings", label: "Personal Savings", desc: "Add to your personal savings balance" },
-    clientGroup.group_mode === "rotating"
-      ? { key: "esusu_rotation", label: clientGroup.name, desc: "Esusu Rotation — contribute to the pot" }
-      : { key: "group_savings",  label: clientGroup.name, desc: "Savings Group — contribute to the pool" },
+    { key: "personal_savings", label: "Personal Savings", desc: "Add to your personal savings balance", groupId: null },
+    ...clientGroups.map(g =>
+      g.group_mode === "rotating"
+        ? { key: "esusu_rotation", label: g.name, desc: "Esusu Rotation — contribute to the pot", groupId: g.id }
+        : { key: "group_savings",  label: g.name, desc: "Savings Group — contribute to the pool",  groupId: g.id }
+    ),
   ];
   return (
     <div className="mb-5">
       <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">Contributing to</p>
       <div className="space-y-2">
         {opts.map(opt => (
-          <button key={opt.key} type="button" onClick={() => onChange(opt.key)}
+          <button key={`${opt.key}:${opt.groupId || "personal"}`} type="button"
+            onClick={() => onChange(opt.key, opt.groupId)}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl border-2 text-left transition ${
-              value === opt.key
+              value === opt.key && selectedGroupId === opt.groupId
                 ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20"
                 : "border-slate-200 dark:border-slate-700"
             }`}>
@@ -661,9 +664,9 @@ function ContribTypeSelector({ clientGroup, value, onChange }) {
               <p className="text-[11px] text-slate-400 dark:text-slate-500">{opt.desc}</p>
             </div>
             <div className={`flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-              value === opt.key ? "border-brand-500 bg-brand-500" : "border-slate-300 dark:border-slate-600"
+              value === opt.key && selectedGroupId === opt.groupId ? "border-brand-500 bg-brand-500" : "border-slate-300 dark:border-slate-600"
             }`}>
-              {value === opt.key && <div className="w-2 h-2 rounded-full bg-white" />}
+              {value === opt.key && selectedGroupId === opt.groupId && <div className="w-2 h-2 rounded-full bg-white" />
             </div>
           </button>
         ))}
@@ -672,15 +675,16 @@ function ContribTypeSelector({ clientGroup, value, onChange }) {
   );
 }
 
-function PayContributionModal({ client, clientGroup, onClose, onSuccess }) {
-  const [status,     setStatus]    = useState("idle"); // idle | loading | awaiting | verifying | done | error
-  const [message,    setMessage]   = useState("");
-  const [pendingRef, setPendingRef] = useState(null);
-  const [paidAmt,    setPaidAmt]   = useState(0);
-  const [customAmt,  setCustomAmt] = useState(String(client?.contribution_amount || ""));
-  const [txnPin,     setTxnPin]    = useState(null);
-  const [showShare,  setShowShare] = useState(false);
-  const [contribCtx, setContribCtx] = useState("personal_savings");
+function PayContributionModal({ client, clientGroups = [], onClose, onSuccess }) {
+  const [status,          setStatus]         = useState("idle"); // idle | loading | awaiting | verifying | done | error
+  const [message,         setMessage]        = useState("");
+  const [pendingRef,      setPendingRef]     = useState(null);
+  const [paidAmt,         setPaidAmt]        = useState(0);
+  const [customAmt,       setCustomAmt]      = useState(String(client?.contribution_amount || ""));
+  const [txnPin,          setTxnPin]         = useState(null);
+  const [showShare,       setShowShare]      = useState(false);
+  const [contribCtx,      setContribCtx]     = useState("personal_savings");
+  const [contribGroupId,  setContribGroupId] = useState(null);
   const popupCleanup = useRef(null);
   useEffect(() => () => popupCleanup.current?.(), []);
 
@@ -706,7 +710,7 @@ function PayContributionModal({ client, clientGroup, onClose, onSuccess }) {
     setPaidAmt(amt);
 
     try {
-      const res = await ajoFn("initialize-payment", { client_id: client.id, amount: amt, contribution_context: contribCtx });
+      const res = await ajoFn("initialize-payment", { client_id: client.id, amount: amt, contribution_context: contribCtx, group_id: contribGroupId || undefined });
       if (!res.authorization_url) throw new Error("Payment initialization failed");
 
       const ref = res.reference;
@@ -842,7 +846,8 @@ function PayContributionModal({ client, clientGroup, onClose, onSuccess }) {
           </div>
         )}
 
-        <ContribTypeSelector clientGroup={clientGroup} value={contribCtx} onChange={setContribCtx} />
+        <ContribTypeSelector clientGroups={clientGroups.map(m => m.group).filter(Boolean)} value={contribCtx} selectedGroupId={contribGroupId}
+          onChange={(ctx, gid) => { setContribCtx(ctx); setContribGroupId(gid || null); }} />
 
         {/* Amount */}
         <div className="bg-brand-50 dark:bg-brand-900/20 rounded-2xl px-4 py-4 mb-5">
@@ -1123,18 +1128,19 @@ function ChangePasswordModal({ onClose }) {
 }
 
 // ── Manual deposit modal ──────────────────────────────────────────────────
-function ManualDepositModal({ client, clientGroup, ownerInfo, onClose, onSuccess }) {
-  const [amount,      setAmount]      = useState("");
-  const [payerName,   setPayerName]   = useState("");
-  const [notes,       setNotes]       = useState("");
-  const [proofFile,   setProofFile]   = useState(null);
-  const [proofPrev,   setProofPrev]   = useState(null);
-  const [uploading,   setUploading]   = useState(false);
-  const [saving,      setSaving]      = useState(false);
-  const [error,       setError]       = useState("");
-  const [done,        setDone]        = useState(false);
-  const [contribCtx,  setContribCtx]  = useState("personal_savings");
-  const [copiedField, setCopiedField] = useState(null);
+function ManualDepositModal({ client, clientGroups = [], ownerInfo, onClose, onSuccess }) {
+  const [amount,         setAmount]        = useState("");
+  const [payerName,      setPayerName]     = useState("");
+  const [notes,          setNotes]         = useState("");
+  const [proofFile,      setProofFile]     = useState(null);
+  const [proofPrev,      setProofPrev]     = useState(null);
+  const [uploading,      setUploading]     = useState(false);
+  const [saving,         setSaving]        = useState(false);
+  const [error,          setError]         = useState("");
+  const [done,           setDone]          = useState(false);
+  const [contribCtx,     setContribCtx]    = useState("personal_savings");
+  const [contribGroupId, setContribGroupId] = useState(null);
+  const [copiedField,    setCopiedField]   = useState(null);
   const fileRef = useRef(null);
 
   // Prefer the client's own dedicated account; fall back to the owner's business account
@@ -1229,7 +1235,8 @@ function ManualDepositModal({ client, clientGroup, ownerInfo, onClose, onSuccess
               </div>
             </div>
 
-            <ContribTypeSelector clientGroup={clientGroup} value={contribCtx} onChange={setContribCtx} />
+            <ContribTypeSelector clientGroups={clientGroups.map(m => m.group).filter(Boolean)} value={contribCtx} selectedGroupId={contribGroupId}
+              onChange={(ctx, gid) => { setContribCtx(ctx); setContribGroupId(gid || null); }} />
 
             {/* Bank details */}
             {hasBank ? (() => {
@@ -1612,7 +1619,7 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
 }
 
 // ── Overview tab ──────────────────────────────────────────────────────────
-function OverviewTab({ client, contributions, cycle, rotationData, rotationLoading, onWithdrawClick, onPayClick, onDepositClick, ownerInfo, withdrawRequests = [], onBillsClick, userEmail, onGoToMe }) {
+function OverviewTab({ client, contributions, cycles = [], rotationsData = [], rotationLoading, onWithdrawClick, onPayClick, onDepositClick, ownerInfo, withdrawRequests = [], onBillsClick, userEmail, onGoToMe }) {
   const t = useT();
   const { lang } = useLanguage();
 
@@ -1857,16 +1864,17 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
         </div>
       </div>
 
-      {/* Contribution card — surfaced here for ≤2 taps access (AJ-M01) */}
-      {cycle && (
+      {/* Saving cycle cards — one per active cycle (AJ-M01) */}
+      {cycles.map(cyc => (
         <ContributionCard
-          cycle={cycle}
+          key={cyc.id}
+          cycle={cyc}
           contributions={contributions}
           frequency={client?.contribution_frequency}
           clientName={client?.full_name || ""}
           businessName={ownerInfo?.owner?.business_name || ""}
         />
-      )}
+      ))}
 
       {/* Cashback Balance */}
       <CashbackCard userEmail={userEmail} />
@@ -2085,19 +2093,32 @@ function OverviewTab({ client, contributions, cycle, rotationData, rotationLoadi
         </div>
       )}
 
-      {/* Esusu rotation dashboard (shown when member is in a rotating group with an active round) */}
-      {(rotationData?.round || rotationLoading) && (
-        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4 space-y-4">
-          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Ajo Rotation</p>
-          <EsusuRotationDashboard
-            data={rotationData}
-            loading={rotationLoading}
-            isOwner={false}
-            myClientId={client?.id}
-            onRefresh={null}
-          />
-        </div>
+      {/* Group membership cards — one per group (savings or esusu rotation) */}
+      {rotationLoading && rotationsData.length === 0 && (
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4 animate-pulse h-24" />
       )}
+      {rotationsData.map(rd => (
+        <div key={rd.group?.id} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4 space-y-4">
+          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+            {rd.group?.group_mode === "rotating" ? "Ajo Rotation" : "Savings Group"} — {rd.group?.name}
+          </p>
+          {rd.round ? (
+            <EsusuRotationDashboard
+              data={rd}
+              loading={false}
+              isOwner={false}
+              myClientId={client?.id}
+              onRefresh={null}
+            />
+          ) : (
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              {rd.group?.group_mode === "rotating"
+                ? "No active rotation round yet."
+                : `Contribution: ₦${Number(rd.group?.contribution_amount || 0).toLocaleString("en-NG")} / ${rd.group?.contribution_frequency || "period"}`}
+            </p>
+          )}
+        </div>
+      ))}
 
       {/* Activity calendar (always shown) */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-4 border border-slate-100 dark:border-slate-700">
@@ -3810,8 +3831,8 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
 
   const [client,           setClient]           = useState(ajoClient || null);
   const [contributions,    setContributions]    = useState([]);
-  const [cycle,            setCycle]            = useState(null);
-  const [rotationData,     setRotationData]     = useState(null);
+  const [cycles,           setCycles]           = useState([]);
+  const [rotationsData,    setRotationsData]    = useState([]); // one entry per group membership
   const [rotationLoading,  setRotationLoading]  = useState(false);
   const [ownerInfo,        setOwnerInfo]        = useState(null);
   const [loadingData,      setLoadingData]      = useState(false);
@@ -3890,21 +3911,30 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
       if (reqRes.status === "fulfilled" && reqRes.value?.requests)
         setWithdrawRequests(reqRes.value.requests);
       if (cycleRes.status === "fulfilled")
-        setCycle(cycleRes.value?.cycle || null);
+        setCycles(cycleRes.value?.cycles || []);
       if (!silent) {
         const allRejected = [clientRes, contribRes, ownerRes, reqRes, cycleRes]
           .every(r => r.status === "rejected");
         if (allRejected && ajoClient?.current_balance == null) setPortalLoadError(true);
       }
-      const groupId = (resolvedClient || ajoClient)?.ajo_group_id;
-      if (groupId) {
+      // Load rotation data for every active group membership
+      const memberships = ((resolvedClient || ajoClient)?.group_memberships || [])
+        .filter(m => m.status === "active" && m.group_id);
+      // Fallback: if group_memberships not yet hydrated but ajo_group_id exists, use it
+      const legacyGroupId = (resolvedClient || ajoClient)?.ajo_group_id;
+      const groupIds = memberships.length > 0
+        ? memberships.map(m => m.group_id)
+        : legacyGroupId ? [legacyGroupId] : [];
+      if (groupIds.length > 0) {
         if (!silent) setRotationLoading(true);
-        ajoFn("get-rotation", { group_id: groupId, client_id: ajoClient.id })
-          .then(rd => {
-            if (rd?.group) setRotationData(rd);
-            else console.warn("[rotation] response missing group:", rd);
-          })
-          .catch(e => console.error("[rotation] fetch failed:", e?.message))
+        Promise.all(
+          groupIds.map(gid =>
+            ajoFn("get-rotation", { group_id: gid, client_id: ajoClient.id })
+              .then(rd => (rd?.group ? rd : null))
+              .catch(() => null)
+          )
+        )
+          .then(results => setRotationsData(results.filter(Boolean)))
           .finally(() => { if (!silent) setRotationLoading(false); });
       }
     } catch (e) {
@@ -4035,8 +4065,8 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
               client={client}
               userEmail={client?.email || session?.user?.email}
               contributions={contributions}
-              cycle={cycle}
-              rotationData={rotationData}
+              cycles={cycles}
+              rotationsData={rotationsData}
               rotationLoading={rotationLoading}
               onWithdrawClick={() => setShowWithdraw(true)}
               onPayClick={() => setShowPay(true)}
@@ -4156,7 +4186,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
       {showPay && client && (
         <PayContributionModal
           client={client}
-          clientGroup={rotationData?.group || null}
+          clientGroups={client?.group_memberships?.filter(m => m.status === "active") || []}
           onClose={() => setShowPay(false)}
           onSuccess={(ref, updatedClient) => {
             if (updatedClient) setClient(prev => ({ ...prev, ...updatedClient }));
@@ -4173,7 +4203,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
       {showDeposit && client && (
         <ManualDepositModal
           client={client}
-          clientGroup={rotationData?.group || null}
+          clientGroups={client?.group_memberships?.filter(m => m.status === "active") || []}
           ownerInfo={ownerInfo}
           onClose={() => setShowDeposit(false)}
           onSuccess={() => setShowDeposit(false)}

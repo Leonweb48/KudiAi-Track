@@ -102,18 +102,60 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
   const [withdrawalBankResolvedName, setWithdrawalBankResolvedName] = useState("");
   const [withdrawalBankErr,          setWithdrawalBankErr]          = useState("");
 
+  // Multi-group membership state (aso clients only)
+  const [groupMemberships, setGroupMemberships] = useState([]);
+  const [addGroupId,       setAddGroupId]       = useState("");
+  const [groupOpBusy,      setGroupOpBusy]      = useState(false);
+  const [groupOpErr,       setGroupOpErr]       = useState("");
+
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
   const isCredit = type === "credit";
 
   // Load bank list when entering edit mode for any Aso client
-  // (needed for both deposit subaccount and withdrawal account sections)
   useEffect(() => {
     if (!editing || isCredit || banks.length > 0) return;
     supabase.functions.invoke("paystack", { body: { action: "list-banks" } })
       .then(({ data }) => { if (data?.data) setBanks(data.data); })
       .catch(() => {});
   }, [editing, isCredit, banks.length]);
+
+  // Load group memberships for aso clients
+  useEffect(() => {
+    if (isCredit || !record?.id) return;
+    supabase.from("aso_client_group_memberships")
+      .select("group_id, status, ajo_groups(id, name, group_mode)")
+      .eq("client_id", record.id)
+      .eq("status", "active")
+      .then(({ data }) => setGroupMemberships(data || []))
+      .catch(() => {});
+  }, [record?.id, isCredit]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleJoinGroup = async () => {
+    if (!addGroupId || groupOpBusy) return;
+    setGroupOpBusy(true); setGroupOpErr("");
+    const { error } = await supabase.functions.invoke("ajo-portal", {
+      body: { action: "join-group", client_id: record.id, group_id: addGroupId, owner_id: record.user_id },
+    });
+    if (error) { setGroupOpErr("Couldn't add to group — try again."); }
+    else {
+      const grp = groups.find(g => g.id === addGroupId);
+      if (grp) setGroupMemberships(prev => [...prev, { group_id: grp.id, status: "active", ajo_groups: grp }]);
+      setAddGroupId("");
+    }
+    setGroupOpBusy(false);
+  };
+
+  const handleLeaveGroup = async (groupId) => {
+    if (groupOpBusy) return;
+    setGroupOpBusy(true); setGroupOpErr("");
+    const { error } = await supabase.functions.invoke("ajo-portal", {
+      body: { action: "leave-group", client_id: record.id, group_id: groupId, owner_id: record.user_id },
+    });
+    if (error) { setGroupOpErr("Couldn't remove from group — try again."); }
+    else setGroupMemberships(prev => prev.filter(m => m.group_id !== groupId));
+    setGroupOpBusy(false);
+  };
 
   const resolveWithdrawalBank = async () => {
     const acctNo = String(form.withdrawal_account_number || "");
@@ -462,17 +504,55 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                         </select>
                       </FormField>
                     )}
-                    {groups.length > 0 && (
-                      <FormField label="Ajo Group">
-                        <select value={form.ajo_group_id || ""} onChange={e => set("ajo_group_id", e.target.value || null)} className={inputCls}>
-                          <option value="">No group</option>
-                          {groups.map(g => (
-                            <option key={g.id} value={g.id}>
-                              {g.name}{g.group_mode === "rotating" ? " (Rotating)" : ""}
-                            </option>
+                    {/* Group Memberships — multi-group support */}
+                    {!isCredit && (
+                      <div>
+                        <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-2">Group Memberships</p>
+                        {groupMemberships.length === 0 && (
+                          <p className="text-[11px] text-slate-400 dark:text-slate-500 italic mb-2">Not enrolled in any group.</p>
+                        )}
+                        <div className="space-y-1.5 mb-2">
+                          {groupMemberships.map(m => (
+                            <div key={m.group_id} className="flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-slate-700/60 rounded-xl border border-slate-200 dark:border-slate-600">
+                              <div className="min-w-0 flex-1">
+                                <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate">{m.ajo_groups?.name || "Unknown group"}</p>
+                                <p className="text-[10px] text-slate-400">{m.ajo_groups?.group_mode === "rotating" ? "Esusu (rotating)" : "Savings group"}</p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleLeaveGroup(m.group_id)}
+                                disabled={groupOpBusy}
+                                className="ml-2 text-[10px] font-bold text-red-500 dark:text-red-400 disabled:opacity-40 flex-shrink-0 active:opacity-60"
+                              >
+                                Remove
+                              </button>
+                            </div>
                           ))}
-                        </select>
-                      </FormField>
+                        </div>
+                        {groups.filter(g => !groupMemberships.some(m => m.group_id === g.id)).length > 0 && (
+                          <div className="flex gap-2 items-center">
+                            <select
+                              value={addGroupId}
+                              onChange={e => setAddGroupId(e.target.value)}
+                              className={inputCls + " text-xs py-2"}
+                            >
+                              <option value="">Add to a group…</option>
+                              {groups.filter(g => !groupMemberships.some(m => m.group_id === g.id)).map(g => (
+                                <option key={g.id} value={g.id}>{g.name}{g.group_mode === "rotating" ? " (Esusu)" : ""}</option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              onClick={handleJoinGroup}
+                              disabled={!addGroupId || groupOpBusy}
+                              className="px-3 py-2 bg-brand-500 text-white rounded-xl text-xs font-bold disabled:opacity-40 whitespace-nowrap active:scale-95 transition-transform"
+                            >
+                              {groupOpBusy ? "…" : "Add"}
+                            </button>
+                          </div>
+                        )}
+                        {groupOpErr && <p className="text-[11px] text-red-500 mt-1">{groupOpErr}</p>}
+                      </div>
                     )}
                     <FormField label="Notes">
                       <textarea value={form.notes || ""} onChange={e => set("notes", e.target.value)} rows={2}
