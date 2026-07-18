@@ -47,7 +47,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
 
     // ── Offline: serve from local cache ───────────────────────
     if (!navigator.onLine) {
-      const cached = loadCacheLS(`kt_store_${userId}`);
+      const cached = loadCacheLS(`kt_store_${userId}${staffId ? `_${staffId}` : ""}`);
       if (cached) {
         if (cached.transactions) setTransactions(cached.transactions);
         if (cached.credits)      setCredits(cached.credits);
@@ -313,7 +313,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     }
 
     // Cache up to 300 transactions for offline access
-    saveCacheLS(`kt_store_${userId}`, {
+    saveCacheLS(`kt_store_${userId}${staffId ? `_${staffId}` : ""}`, {
       transactions: (txRes.data || []).slice(0, 300),
       credits:    crRes.data  || [],
       asoClients: asoRes.data || [],
@@ -324,7 +324,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     setFromCache(false);
 
     } catch {
-      const cached = loadCacheLS(`kt_store_${userId}`);
+      const cached = loadCacheLS(`kt_store_${userId}${staffId ? `_${staffId}` : ""}`);
       if (cached) {
         if (cached.transactions) setTransactions(cached.transactions);
         if (cached.credits)      setCredits(cached.credits);
@@ -355,12 +355,14 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     const channel = supabase.channel(`aso_clients_rt_${userId}`)
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "aso_clients", filter: `user_id=eq.${userId}` },
         (payload) => {
-          if (payload.new) {
-            if (payload.new.portal_active === false) {
-              setAsoClients(prev => prev.filter(c => c.id !== payload.new.id));
-            } else {
-              setAsoClients(prev => prev.map(c => c.id === payload.new.id ? { ...c, ...payload.new } : c));
-            }
+          if (!payload.new) return;
+          const c = payload.new;
+          // For staff: only react to updates on clients already in their scoped state.
+          // The map() below will no-op for items not in state, so no extra guard needed.
+          if (c.portal_active === false) {
+            setAsoClients(prev => prev.filter(r => r.id !== c.id));
+          } else {
+            setAsoClients(prev => prev.map(r => r.id === c.id ? { ...r, ...c } : r));
           }
         })
       .subscribe((status) => {
@@ -370,7 +372,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
         }
       });
     return () => { supabase.removeChannel(channel); };
-  }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [userId, staffId, branchId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Realtime: live sync for transactions (staff adds, other devices) ──
   useEffect(() => {
@@ -381,6 +383,9 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
         (payload) => {
           if (!payload.new) return;
           const t = payload.new;
+          // Mirror the same staff/branch filter applied in loadData — without this,
+          // staff would accumulate every owner/peer transaction during the session.
+          if (staffId && t.staff_id !== staffId && !(branchId && t.branch_id === branchId)) return;
           setTransactions(prev => {
             if (prev.some(r => r.id === t.id || (t.client_txn_id && r.client_txn_id === t.client_txn_id))) return prev;
             return [t, ...prev];
@@ -389,14 +394,16 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "transactions", filter: `user_id=eq.${userId}` },
         (payload) => {
           if (!payload.new) return;
+          // UPDATE: only mutates items already in state — safe without extra filter
           setTransactions(prev => prev.map(t => t.id === payload.new.id ? { ...t, ...payload.new } : t));
         })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "credits", filter: `user_id=eq.${userId}` },
         (payload) => {
           if (!payload.new) return;
+          const c = payload.new;
+          if (staffId && c.staff_id !== staffId && !(branchId && c.branch_id === branchId)) return;
           setCredits(prev => {
-            if (prev.some(c => c.id === payload.new.id)) return prev;
-            const c = payload.new;
+            if (prev.some(r => r.id === c.id)) return prev;
             return [c, ...prev];
           });
         })
@@ -413,7 +420,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
         }
       });
     return () => { supabase.removeChannel(channel); setRtConnected(false); };
-  }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [userId, staffId, branchId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Online / offline detection ─────────────────────────────────
   useEffect(() => {
