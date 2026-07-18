@@ -454,7 +454,7 @@ const FAQS = [
   { q: "What is the contribution calendar?",
     a: "The green squares on the Home tab show your activity for the last 90 days — each square is a day you contributed." },
   { q: "What fees apply?",
-    a: "A registration fee may apply on your first withdrawal. Subsequent ones may carry a percentage fee. The breakdown is shown before you confirm any withdrawal." },
+    a: "A registration fee may apply when you make your first deposit. Subsequent withdrawals may carry a percentage fee. The full breakdown is shown in My Fees." },
   { q: "What is Esusu rotation?",
     a: "If your group uses Esusu mode, each member takes turns collecting the full pot. Check the Rotation section on your Home tab to see the current turn and schedule." },
   { q: "How do I set a savings goal?",
@@ -2931,7 +2931,7 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
                     ) : (
                       <>
                         <span className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" />
-                        <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">Will be deducted from your first withdrawal</p>
+                        <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">Will be deducted from your first deposit</p>
                       </>
                     )}
                   </div>
