@@ -69,7 +69,7 @@ function BigNumpad({ onKey }) {
           key={n}
           onPointerDown={e => { e.preventDefault(); onKey(String(n)); }}
           className="flex items-center justify-center rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 text-slate-800 dark:text-slate-100 font-bold text-xl active:scale-95 active:bg-slate-100 dark:active:bg-slate-700 transition-transform select-none touch-manipulation"
-          style={{ minHeight: 64 }}>
+          style={{ minHeight: 50 }}>
           {n}
         </button>
       ))}
@@ -389,14 +389,14 @@ export function AddTxnModal({
           </div>
         </div>
 
-        {/* ── Scrollable body ── */}
-        <div className="flex-1 overflow-y-auto overscroll-contain">
+        {/* ── Body: fixed core (numpad) + scrollable details ── */}
+        <div className="flex-1 flex flex-col min-h-0">
 
-          {/* ─── Step 1: type + amount + numpad ─────────────────── */}
-          <div className="px-5">
+          {/* ─── Step 1: type + amount + numpad (never scrolls) ──── */}
+          <div className="flex-shrink-0 px-5">
 
             {/* Type toggle */}
-            <div className="flex gap-2 mb-4">
+            <div className="flex gap-2 mb-3">
               {[
                 { id: "in",  label: "Money In",  activeStyle: { background: "var(--brand-green)" }, activeCls: "text-white" },
                 { id: "out", label: "Money Out",  activeStyle: { background: "var(--navy)"        }, activeCls: "text-white" },
@@ -412,7 +412,7 @@ export function AddTxnModal({
             </div>
 
             {/* Amount hero */}
-            <div className="text-center mb-4 py-1">
+            <div className="text-center mb-3 py-1">
               <div className={`flex items-baseline justify-center gap-1 ${
                 type === "in"
                   ? "text-green-600 dark:text-green-400"
@@ -432,36 +432,40 @@ export function AddTxnModal({
           </div>
 
           {/* Numpad */}
-          <div className="px-4 mb-4">
+          <div className="flex-shrink-0 px-4 mb-3">
             <BigNumpad onKey={handleNumKey} />
           </div>
 
           {/* Error/success banners */}
-          {saveError && (
-            <div className="mx-5 mb-3 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
-              <p className="text-sm font-semibold text-red-600 dark:text-red-400">{saveError}</p>
-            </div>
-          )}
-          {saveSuccess && (
-            <div className="mx-5 mb-3 px-4 py-3 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-green-100 dark:bg-green-800/40 flex items-center justify-center flex-shrink-0">
-                <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor"
-                  strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M20 6L9 17l-5-5" className="text-green-600 dark:text-green-400"/>
-                </svg>
-              </div>
-              <div>
-                <p className="text-sm font-bold text-green-700 dark:text-green-400">Saved</p>
-                <p className="text-xs text-green-600 dark:text-green-500">
-                  ₦{amtValue.toLocaleString("en-NG", { minimumFractionDigits: 2 })}
-                  {type === "in" ? " recorded as income" : " recorded as expense"}
-                </p>
-              </div>
+          {(saveError || saveSuccess) && (
+            <div className="flex-shrink-0">
+              {saveError && (
+                <div className="mx-5 mb-2 px-4 py-2.5 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+                  <p className="text-sm font-semibold text-red-600 dark:text-red-400">{saveError}</p>
+                </div>
+              )}
+              {saveSuccess && (
+                <div className="mx-5 mb-2 px-4 py-2.5 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 flex items-center gap-3">
+                  <div className="w-7 h-7 rounded-full bg-green-100 dark:bg-green-800/40 flex items-center justify-center flex-shrink-0">
+                    <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor"
+                      strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M20 6L9 17l-5-5" className="text-green-600 dark:text-green-400"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-green-700 dark:text-green-400">Saved</p>
+                    <p className="text-xs text-green-600 dark:text-green-500">
+                      ₦{amtValue.toLocaleString("en-NG", { minimumFractionDigits: 2 })}
+                      {type === "in" ? " recorded as income" : " recorded as expense"}
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
           {/* ─── Step 1 CTAs ─────────────────────────────────────── */}
-          <div className="px-5 pb-3 flex gap-2">
+          <div className="flex-shrink-0 px-5 pb-3 flex gap-2">
             <button
               onClick={() => setShowDetails(v => !v)}
               className="flex-1 h-11 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-semibold text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 active:scale-95 transition-transform">
@@ -479,9 +483,9 @@ export function AddTxnModal({
             </button>
           </div>
 
-          {/* ─── Step 2: details (collapsible) ───────────────────── */}
+          {/* ─── Step 2: details (collapsible, scrolls when open) ── */}
           {showDetails && (
-            <div className="px-5 pt-3 border-t border-slate-100 dark:border-slate-800">
+            <div className="flex-1 overflow-y-auto overscroll-contain min-h-0 px-5 pt-3 border-t border-slate-100 dark:border-slate-800">
 
               {/* Description + autocomplete */}
               <div className="relative mb-4">
