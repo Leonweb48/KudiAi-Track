@@ -2997,9 +2997,10 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
                 </>
               ) : client?.commission_model === "first_period" ? (
                 <>
-                  <p className="text-sm font-bold text-slate-700 dark:text-slate-200">One contribution period per cycle goes to your collector</p>
+                  <p className="text-sm font-bold text-slate-700 dark:text-slate-200">Your first deposit of each savings cycle goes to your collector</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Your savings start from deposit 2 of each cycle</p>
                   {(client.contribution_amount || 0) > 0 && (
-                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
                       That's {fmt(client.contribution_amount)} per cycle based on your contribution amount
                     </p>
                   )}
@@ -3009,6 +3010,21 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
               )}
             </div>
           </div>
+
+          {/* Combined first-deposit disclosure: reg fee + first_period cycle fee */}
+          {client?.commission_model === "first_period" &&
+           (client?.registration_charge || 0) > 0 &&
+           !regFeeRow && (
+            <div className="bg-amber-50 dark:bg-amber-900/20 rounded-2xl border border-amber-200 dark:border-amber-800 px-4 py-4">
+              <p className="text-[11px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-widest mb-1.5">First Deposit Note</p>
+              <p className="text-sm text-amber-700 dark:text-amber-300 leading-relaxed">
+                From your first deposit of{" "}
+                <span className="font-bold">{fmt(client.contribution_amount || 0)}</span>:{" "}
+                <span className="font-semibold">{fmt(client.registration_charge)}</span> registration fee +
+                the deposit itself goes to your collector. Your savings start from deposit 2.
+              </p>
+            </div>
+          )}
 
           <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center px-2 leading-relaxed">
             Fees are set by your savings collector. Contact them for questions about your fee structure.

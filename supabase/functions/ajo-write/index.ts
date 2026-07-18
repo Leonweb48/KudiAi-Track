@@ -294,31 +294,24 @@ serve(async (req: Request) => {
     // Staff contributions are tagged staff_collection so the owner queue can filter them
     const contribSource = ajoPerms !== null ? "staff_collection" : undefined;
 
-    const { data, error } = await sb.rpc("ajo_record_contribution", {
-      p_client_id:             client_id,
-      p_owner_id:              ownerId,
-      p_amount:                amount,
-      p_method:                method || "cash",
-      p_ref:                   ref    || null,
-      p_notes:                 notes  || null,
-      p_recorded_by:           recordedBy,
-      p_contribution_context:  contribution_context || "personal_savings",
-      ...(contribSource ? { p_source: contribSource } : {}),
-    });
-    if (error) return json({ ok: false, error: error.message });
-
-    // Auto-open a cycle the instant the first personal-savings contribution lands
+    // Ensure a cycle exists for personal_savings contributions; capture cycle_id for
+    // first_period fee detection at approve time. Auto-open happens BEFORE record so
+    // the pending row carries the cycle_id from day 1.
+    let cycleId: string | null = null;
     if (!contribution_context || contribution_context === "personal_savings") {
       const { data: existingCycle } = await sb
-        .from("ajo_cycles").select("id").eq("client_id", client_id).eq("status", "active").maybeSingle();
-      if (!existingCycle) {
+        .from("ajo_cycles").select("id").eq("client_id", client_id).eq("status", "active")
+        .order("created_at", { ascending: true }).limit(1).maybeSingle();
+      if (existingCycle) {
+        cycleId = existingCycle.id as string;
+      } else {
         const { data: clientRow } = await sb
           .from("aso_clients")
           .select("contribution_amount, registration_date, commission_model, commission_percent")
           .eq("id", client_id).maybeSingle();
         if ((clientRow as Record<string, unknown>)?.contribution_amount) {
           const cr = clientRow as Record<string, unknown>;
-          await sb.rpc("ajo_open_cycle", {
+          const { data: openData } = await sb.rpc("ajo_open_cycle", {
             p_client_id:        client_id,
             p_owner_id:         ownerId,
             p_start:            (cr.registration_date as string) || new Date().toISOString().slice(0, 10),
@@ -328,10 +321,25 @@ serve(async (req: Request) => {
             p_commission_model: (cr.commission_model as string) || null,
             p_commission_pct:   (cr.commission_percent as number) || null,
             p_force:            false,
-          }); // best-effort — errors are silently discarded; cycle creation never fails the contribution
+          }); // best-effort — cycle creation never blocks the contribution
+          cycleId = (openData as Record<string, unknown>)?.cycle_id as string || null;
         }
       }
     }
+
+    const { data, error } = await sb.rpc("ajo_record_contribution", {
+      p_client_id:             client_id,
+      p_owner_id:              ownerId,
+      p_amount:                amount,
+      p_method:                method || "cash",
+      p_ref:                   ref    || null,
+      p_notes:                 notes  || null,
+      p_recorded_by:           recordedBy,
+      p_contribution_context:  contribution_context || "personal_savings",
+      p_cycle_id:              cycleId,
+      ...(contribSource ? { p_source: contribSource } : {}),
+    });
+    if (error) return json({ ok: false, error: error.message });
 
     // Notify client that a contribution was recorded and is awaiting approval
     const ctx = await fetchEmailContext(sb, client_id, ownerId, user.id);
@@ -419,6 +427,37 @@ serve(async (req: Request) => {
     const context    = contribution_context || "personal_savings";
     const dateStr    = new Date().toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" });
 
+    // Resolve cycle_id for first_period fee detection; auto-open if no active cycle yet.
+    let collCycleId: string | null = null;
+    if (context === "personal_savings") {
+      const { data: existingCollCycle } = await sb
+        .from("ajo_cycles").select("id").eq("client_id", client_id).eq("status", "active")
+        .order("created_at", { ascending: true }).limit(1).maybeSingle();
+      if (existingCollCycle) {
+        collCycleId = existingCollCycle.id as string;
+      } else {
+        const { data: collClientRow } = await sb
+          .from("aso_clients")
+          .select("contribution_amount, registration_date, commission_model, commission_percent")
+          .eq("id", client_id).maybeSingle();
+        if ((collClientRow as Record<string, unknown>)?.contribution_amount) {
+          const cr = collClientRow as Record<string, unknown>;
+          const { data: openData } = await sb.rpc("ajo_open_cycle", {
+            p_client_id:        client_id,
+            p_owner_id:         ownerId,
+            p_start:            (cr.registration_date as string) || new Date().toISOString().slice(0, 10),
+            p_length:           null,
+            p_amount:           cr.contribution_amount as number,
+            p_label:            null,
+            p_commission_model: (cr.commission_model as string) || null,
+            p_commission_pct:   (cr.commission_percent as number) || null,
+            p_force:            false,
+          });
+          collCycleId = (openData as Record<string, unknown>)?.cycle_id as string || null;
+        }
+      }
+    }
+
     // Check for orphaned pending row left by a prior collection attempt for this client+amount
     const { data: orphan } = await sb
       .from("ajo_contributions")
@@ -449,6 +488,7 @@ serve(async (req: Request) => {
         p_recorded_by:          recordedBy,
         p_contribution_context: context,
         p_source:               "collection",
+        p_cycle_id:             collCycleId,
       });
       if (recErr || !(recData as Record<string, unknown>)?.ok) {
         return json({

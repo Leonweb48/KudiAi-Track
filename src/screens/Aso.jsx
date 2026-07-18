@@ -492,6 +492,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [receipt,      setReceipt]      = useState(null);
   const [historyFor,   setHistoryFor]   = useState(null); // { client, contributions, cycle }
   const [historyErr,   setHistoryErr]   = useState("");
+  const [historyNote,  setHistoryNote]  = useState("");
   const [cycleConfirm, setCycleConfirm] = useState(null); // { title, msg, confirmLabel, onConfirm }
   const [histLoading,  setHistLoading]  = useState(false);
   const [clientProf,   setClientProf]   = useState(null);
@@ -2946,27 +2947,18 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           const { data, error } = await supabase.functions.invoke("ajo-write", { body });
           if (error) { setHistoryErr(friendlyError(error, "Failed to open cycle.")); return; }
 
-          // Conflict: first_period commission + reg fee
-          if (!data?.ok && data?.conflict === "REG_FEE_AND_FIRST_PERIOD") {
-            setCycleConfirm({
-              title: "Double-charge conflict",
-              msg: `This client has a ₦${Number(data.reg_charge || 0).toLocaleString()} registration fee. Opening with first-period commission may charge the client twice. Tap Confirm to open WITHOUT commission for this cycle, or Cancel to go back and change the commission model.`,
-              confirmLabel: "Open without commission",
-              onConfirm: async () => {
-                const { data: d2, error: e2 } = await supabase.functions.invoke("ajo-write", {
-                  body: { ...body, commission_model: "none", force: true },
-                });
-                if (e2 || !d2?.ok) { setHistoryErr(d2?.error || friendlyError(e2, "Failed to open cycle.")); return; }
-                const { data: newCycle } = await supabase.from("ajo_cycles").select("*").eq("id", d2.cycle_id).maybeSingle();
-                if (newCycle) setHistoryFor(prev => ({ ...prev, cycles: [...(prev.cycles || []), newCycle] }));
-              },
-            });
-            return;
-          }
-
           if (!data?.ok) { setHistoryErr(data?.error || "Failed to open cycle. Please try again."); return; }
           const { data: newCycle } = await supabase.from("ajo_cycles").select("*").eq("id", data.cycle_id).maybeSingle();
           if (newCycle) setHistoryFor(prev => ({ ...prev, cycles: [...(prev.cycles || []), newCycle] }));
+
+          // Informational notice: first_period + reg fee both apply — client will carry both on day 1.
+          // This is allowed by design; no action required from the owner.
+          if (data?.conflict_notice === "REG_FEE_AND_FIRST_PERIOD") {
+            setHistoryNote(
+              "Cycle opened. Note: this client has a registration fee + first-period commission — " +
+              "their first deposit covers both. Savings start from deposit 2."
+            );
+          }
         };
 
         const handleCloseCycle = (cyc) => {
@@ -3031,13 +3023,21 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                 </div>
               </div>
             )}
+            {historyNote && (
+              <div className="fixed inset-x-0 top-0 z-sub-sheet flex justify-center pt-safe pointer-events-none">
+                <div className="pointer-events-auto bg-blue-600 text-white text-xs font-semibold px-4 py-2 rounded-b-2xl shadow-lg flex items-center gap-2 max-w-sm">
+                  <span>{historyNote}</span>
+                  <button onClick={() => setHistoryNote("")} className="ml-auto font-bold flex-shrink-0">✕</button>
+                </div>
+              </div>
+            )}
             <AsoClientHistoryModal
               client={hc}
               contributions={hcons}
               cycles={hcycles}
               businessName={bizName}
               staffMap={store.staffMap || {}}
-              onClose={() => { setHistoryFor(null); setHistoryErr(""); }}
+              onClose={() => { setHistoryFor(null); setHistoryErr(""); setHistoryNote(""); }}
               onOpenCycle={isOwner ? handleOpenCycle : undefined}
               onCloseCycle={isOwner ? handleCloseCycle : undefined}
               onExecuteCommission={isOwner ? handleExecuteCommission : undefined}

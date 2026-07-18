@@ -391,7 +391,7 @@ serve(async (req) => {
 
       const { data: cl, error: clErr } = await sb
         .from("aso_clients")
-        .select("id, email, contribution_amount, contribution_frequency, user_id, paystack_subaccount_code, full_name, next_contribution_date, ajo_group_id")
+        .select("id, email, contribution_amount, contribution_frequency, user_id, paystack_subaccount_code, full_name, next_contribution_date, ajo_group_id, commission_model")
         .eq("id", client_id)
         .maybeSingle();
 
@@ -452,6 +452,22 @@ serve(async (req) => {
         return json({ error: "Payment couldn't be started — please try again" }, 422);
       }
 
+      // For first_period clients: look up the active personal-savings cycle so the
+      // cycle_id is stored on the pending row. ajo_confirm_payment reads it to apply
+      // the cycle fee without a second lookup on the hot path.
+      let psCycleId: string | null = null;
+      if (cl.commission_model === "first_period" && contribution_context === "personal_savings") {
+        const { data: psCycle } = await sb
+          .from("ajo_cycles")
+          .select("id")
+          .eq("client_id", client_id)
+          .eq("status", "active")
+          .order("created_at", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        psCycleId = psCycle?.id || null;
+      }
+
       const { error: insErr } = await sb.from("ajo_contributions").insert({
         aso_client_id:        client_id,
         owner_id:             ownerId,
@@ -464,6 +480,7 @@ serve(async (req) => {
         status:               "pending",
         subaccount_code:      subaccountCode || null,
         contribution_context,
+        cycle_id:             psCycleId,
         notes:                `Self-pay (${contribution_context}) initiated by client · ref: ${ref}`,
       });
       if (insErr) return json({ error: "Something went wrong — please try again" }, 500);

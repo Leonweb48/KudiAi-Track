@@ -16,8 +16,15 @@ export const LEDGER_LABELS = {
   reversal_registration_fee: "Reversal · Registration Fee",
 };
 
-export const ledgerTypeLabel = (type) => {
-  if (!type) return "Transaction";
+export const ledgerTypeLabel = (typeOrRow) => {
+  if (!typeOrRow) return "Transaction";
+  if (typeof typeOrRow === "object") {
+    const { type, cycle_id, notes } = typeOrRow;
+    // first_period cycle fee: commission row linked to a cycle
+    if (type === "commission" && cycle_id) return "Cycle fee — first deposit";
+    return ledgerTypeLabel(type);
+  }
+  const type = typeOrRow;
   if (LEDGER_LABELS[type]) return LEDGER_LABELS[type];
   if (type.startsWith("reversal_")) {
     const base = LEDGER_LABELS[type.slice(9)];

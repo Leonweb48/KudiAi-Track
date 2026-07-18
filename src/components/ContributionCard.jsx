@@ -53,9 +53,10 @@ function buildPeriods(cycle, contributions) {
     periods.push({ idx: i, from, to, paid: 0 });
   }
 
-  // Assign each contribution to a period by its created_at
+  // Assign each contribution to a period by its created_at (type='contribution' rows only)
   for (const c of contributions) {
     if (!c.created_at) continue;
+    if (c.type && c.type !== "contribution") continue;
     const dt = new Date(c.created_at);
     for (const p of periods) {
       if (dt >= p.from && dt < p.to) {
@@ -65,8 +66,22 @@ function buildPeriods(cycle, contributions) {
     }
   }
 
+  // Detect whether a first_period cycle fee was collected (commission row with this cycle_id)
+  const cycleCommissionCollected =
+    cycle.commission_model === "first_period" && cycle.id
+      ? contributions.some(
+          (c) => c.type === "commission" && c.status === "completed" &&
+                 (c.cycle_id === cycle.id || (!c.cycle_id && c.type === "commission"))
+        )
+      : false;
+
   // Score each period
   return periods.map((p) => {
+    // first_period: period 0 belongs to the collector once the fee is collected
+    if (cycle.commission_model === "first_period" && p.idx === 0 && cycleCommissionCollected) {
+      return { ...p, status: "collector" };
+    }
+
     let status;
     const expected = Number(expected_amount_per_period);
     const isFuture = p.from > today;
@@ -92,27 +107,30 @@ function buildPeriods(cycle, contributions) {
 // ── Visual maps ───────────────────────────────────────────────────────────────
 
 const MARK_CLS = {
-  paid:     "bg-emerald-500 text-white",
-  partial:  "bg-amber-400 text-white",
-  missed:   "border-2 border-red-300 dark:border-red-700 text-red-400 dark:text-red-500 bg-transparent",
-  current:  "bg-brand-500 text-white ring-2 ring-brand-300 dark:ring-brand-600 animate-pulse",
-  upcoming: "bg-slate-100 text-slate-400 dark:bg-slate-700 dark:text-slate-500",
+  paid:      "bg-emerald-500 text-white",
+  partial:   "bg-amber-400 text-white",
+  missed:    "border-2 border-red-300 dark:border-red-700 text-red-400 dark:text-red-500 bg-transparent",
+  current:   "bg-brand-500 text-white ring-2 ring-brand-300 dark:ring-brand-600 animate-pulse",
+  upcoming:  "bg-slate-100 text-slate-400 dark:bg-slate-700 dark:text-slate-500",
+  collector: "bg-purple-600 text-white",
 };
 
 const MARK_ICON = {
-  paid:     "✓",
-  partial:  "~",
-  missed:   "✗",
-  current:  "→",
-  upcoming: "·",
+  paid:      "✓",
+  partial:   "~",
+  missed:    "✗",
+  current:   "→",
+  upcoming:  "·",
+  collector: "₦",
 };
 
 const MARK_LABEL = {
-  paid:     "Paid",
-  partial:  "Partial",
-  missed:   "Missed",
-  current:  "Current",
-  upcoming: "Upcoming",
+  paid:      "Paid",
+  partial:   "Partial",
+  missed:    "Missed",
+  current:   "Current",
+  upcoming:  "Upcoming",
+  collector: "Collector's",
 };
 
 const COLS_BY_FREQ = { daily: 7, weekly: 5, monthly: 4 };
@@ -264,7 +282,8 @@ export default function ContributionCard({
   const commission        = useMemo(() => computeCommission(cycle, contributions), [cycle, contributions]);
   const commissionDone    = useMemo(() => commissionAlreadyExecuted(contributions), [contributions]);
   const canExecCommission = !compact && onExecuteCommission && cycle &&
-    cycle.status !== "active" && commission.amount > 0 && !commissionDone;
+    cycle.status !== "active" && commission.amount > 0 && !commissionDone &&
+    cycle.commission_model !== "first_period";
   const totalExp     = cycle ? Number(cycle.expected_amount_per_period) * cycle.length_periods : 0;
 
   if (!cycle) {
@@ -455,13 +474,19 @@ export default function ContributionCard({
               <div className="flex justify-between">
                 <span className="text-slate-500 dark:text-slate-400">Status</span>
                 <span className={`font-semibold ${
-                  selected.status === "paid" ? "text-emerald-600"
-                  : selected.status === "missed" ? "text-red-500"
-                  : selected.status === "partial" ? "text-amber-500"
-                  : selected.status === "current" ? "text-brand-500"
+                  selected.status === "paid"      ? "text-emerald-600"
+                  : selected.status === "missed"    ? "text-red-500"
+                  : selected.status === "partial"   ? "text-amber-500"
+                  : selected.status === "current"   ? "text-brand-500"
+                  : selected.status === "collector" ? "text-purple-600"
                   : "text-slate-400"
                 }`}>{MARK_LABEL[selected.status]}</span>
               </div>
+              {selected.status === "collector" && (
+                <p className="text-xs text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20 rounded-lg px-3 py-2">
+                  This deposit went to your collector as the cycle fee. Your savings start from period 2.
+                </p>
+              )}
               <div className="flex justify-between">
                 <span className="text-slate-500 dark:text-slate-400">Range</span>
                 <span className="font-medium text-slate-900 dark:text-white">{fmtPeriodRange(selected, freq)}</span>
