@@ -739,7 +739,7 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
                         {s.icon.split("|").map((d, i) => <path key={i} d={d} />)}
                       </svg>
                       {counts[s.id] > 0 && (
-                        <span className={`absolute -top-1 -right-1 text-[9px] font-black px-1.5 py-0.5 rounded-full leading-none tabular-nums ${
+                        <span className={`absolute -top-2 -right-2 min-w-[18px] text-center text-[10px] font-black px-1.5 py-0.5 rounded-full leading-none tabular-nums ring-2 ring-white dark:ring-slate-800 ${
                           active ? "bg-white text-slate-800" : "text-white"
                         }`} style={active ? {} : { background: s.iconColor }}>
                           {counts[s.id]}

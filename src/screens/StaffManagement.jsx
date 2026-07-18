@@ -21,6 +21,7 @@ function makeModules(t) {
     { id: "aso",          label: t("staff.ajoSavings")    },
     { id: "inventory",    label: t("staff.stockInventory")},
     { id: "insights",     label: t("staff.insights")      },
+    { id: "invoices",     label: "Invoices"                },
     { id: "refunds",      label: "Refunds"                 },
     { id: "discounts",    label: "Discounts"               },
   ];
@@ -28,10 +29,10 @@ function makeModules(t) {
 
 const ROLE_DEFAULTS = {
   cashier:        ["transactions", "bills"],
-  sales_officer:  ["transactions", "bills", "credit", "inventory", "refunds"],
+  sales_officer:  ["transactions", "bills", "credit", "inventory", "invoices", "refunds"],
   credit_officer: ["credit"],
   aso_collector:  ["aso"],
-  manager:        ["transactions", "bills", "credit", "aso", "inventory", "insights", "refunds", "discounts"],
+  manager:        ["transactions", "bills", "credit", "aso", "inventory", "insights", "invoices", "refunds", "discounts"],
 };
 
 const ROLE_COLOR_MAP = {

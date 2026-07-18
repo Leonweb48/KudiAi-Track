@@ -2,14 +2,15 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../utils/supabase";
 
 const DEFAULTS = {
-  logo_url:      "",
-  reg_number:    "",
-  contact_email: "",
-  contact_phone: "",
-  address:       "",
-  bank_name:     "",
+  logo_url:       "",
+  reg_number:     "",
+  contact_email:  "",
+  contact_phone:  "",
+  address:        "",
+  bank_name:      "",
+  bank_code:      "",
   account_number: "",
-  account_name:  "",
+  account_name:   "",
   thank_you_note: "Thank you for your business. We truly value your patronage.",
 };
 
