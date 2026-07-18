@@ -456,16 +456,17 @@ export default function TodaysCollection({ clients, groups, onRecord, staffCanRe
         </div>
       )}
 
-      <TransactionPinModal
-        isOpen={!!pinFor}
-        onApprove={handlePin}
-        onClose={() => setPinFor(null)}
-        title={
-          pinFor?.mode === "batch"
-            ? `Record ${pinFor?.items?.length} contribution${pinFor?.items?.length !== 1 ? "s" : ""}`
-            : "Record contribution"
-        }
-      />
+      {pinFor && (
+        <TransactionPinModal
+          onApprove={handlePin}
+          onCancel={() => setPinFor(null)}
+          title={
+            pinFor.mode === "batch"
+              ? `Record ${pinFor.items?.length} contribution${pinFor.items?.length !== 1 ? "s" : ""}`
+              : "Record contribution"
+          }
+        />
+      )}
     </div>
   );
 }
