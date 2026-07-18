@@ -268,16 +268,17 @@ export default function ContributionCard({
   const totalExp     = cycle ? Number(cycle.expected_amount_per_period) * cycle.length_periods : 0;
 
   if (!cycle) {
-    if (!onOpenCycle) return null;
     return (
       <div className="rounded-xl border border-dashed border-slate-300 dark:border-slate-600 p-6 text-center">
-        <p className="text-sm text-slate-500 dark:text-slate-400 mb-3">No active cycle. Start one to track contributions.</p>
-        <button
-          onClick={() => onOpenCycle()}
-          className="px-4 py-2 bg-brand-500 text-white text-sm font-semibold rounded-lg hover:bg-brand-600 transition-colors"
-        >
-          Open Cycle
-        </button>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mb-3">No active cycle.</p>
+        {onOpenCycle && (
+          <button
+            onClick={() => onOpenCycle()}
+            className="px-4 py-2 bg-brand-500 text-white text-sm font-semibold rounded-lg hover:bg-brand-600 transition-colors"
+          >
+            Open Cycle
+          </button>
+        )}
       </div>
     );
   }
