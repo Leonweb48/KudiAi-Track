@@ -3126,7 +3126,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       {showCollection && (
         <div className="fixed inset-0 z-sub-sheet flex flex-col bg-white dark:bg-slate-900">
           {/* Header */}
-          <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-100 dark:border-slate-700/60 bg-white dark:bg-slate-900 flex-shrink-0">
+          <div className="flex items-center gap-3 px-4 pb-3 border-b border-slate-100 dark:border-slate-700/60 bg-white dark:bg-slate-900 flex-shrink-0" style={{ paddingTop: "calc(12px + env(safe-area-inset-top))" }}>
             <button
               onClick={() => setShowCollection(false)}
               className="w-11 h-11 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-500 dark:text-slate-400 active:scale-95 transition-transform">
