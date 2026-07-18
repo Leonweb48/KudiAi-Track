@@ -1231,7 +1231,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
                     <div className="grid grid-cols-2 gap-2">
                       {[
                         { label: "Clients",       value: reportData.aso.length },
-                        { label: "Total Saved",   value: `₦${reportData.aso.reduce((s, c) => s + Number(c.total_saved || 0), 0).toLocaleString()}` },
+                        { label: "Total Deposited", value: `₦${reportData.aso.reduce((s, c) => s + Number(c.total_saved || 0), 0).toLocaleString()}` },
                       ].map(stat => (
                         <div key={stat.label} className="bg-violet-50 dark:bg-violet-900/20 rounded-2xl p-3">
                           <p className="text-[10px] font-bold text-violet-600 dark:text-violet-400 opacity-70 uppercase">{stat.label}</p>

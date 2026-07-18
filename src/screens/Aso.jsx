@@ -2304,7 +2304,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                 <div className="flex gap-2 mb-3">
                   {[
                     { label: "Balance",   value: c.current_balance, color: "text-brand-700 dark:text-brand-400", bg: "bg-brand-50 dark:bg-brand-900/20" },
-                    { label: "Saved",     value: c.total_saved,     color: "text-green-700 dark:text-green-400",  bg: "bg-green-50 dark:bg-green-900/20"   },
+                    { label: "Deposited", value: c.total_saved,     color: "text-green-700 dark:text-green-400",  bg: "bg-green-50 dark:bg-green-900/20"   },
                     { label: "Withdrawn", value: c.total_withdrawn,  color: "text-red-600 dark:text-red-400",      bg: "bg-red-50 dark:bg-red-900/20"       },
                   ].map(({ label, value, color, bg }) => (
                     <div key={label} className={`flex-1 ${bg} rounded-xl p-2.5`}>

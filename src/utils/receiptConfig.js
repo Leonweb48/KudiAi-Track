@@ -365,7 +365,7 @@ export function buildAsoClientReceipt(client, businessName) {
       { label: 'Transaction Type', value: 'Ajo Member Statement' },
       client.full_name && { label: 'Member', value: client.full_name },
       client.phone     && { label: 'Phone',  value: client.phone },
-      { label: 'Total Saved',      value: fmtAmt(client.total_saved || 0) },
+      { label: 'Total Deposited',   value: fmtAmt(client.total_saved || 0) },
       { label: 'Total Withdrawn',  value: fmtAmt(client.total_withdrawn || 0) },
       { label: 'Current Balance',  value: fmtAmt(client.current_balance || 0) },
       client.contribution_amount && {

@@ -86,7 +86,7 @@ export async function exportAsoStatement(client, profile) {
 
   addStats([
     { label:"Current Balance",  value:fmtN(client.current_balance),   color:"#7c3aed", bg:"#f5f3ff" },
-    { label:"Total Saved",      value:fmtN(client.total_saved),       color:"#16a34a", bg:"#f0fdf4" },
+    { label:"Total Deposited",   value:fmtN(client.total_saved),       color:"#16a34a", bg:"#f0fdf4" },
     { label:"Total Withdrawn",  value:fmtN(client.total_withdrawn),   color:"#334155", bg:"#f8fafc" },
     { label:"Contribution",     value:fmtN(client.contribution_amount),color:"#0284c7", bg:"#eff6ff" },
   ]);
@@ -100,7 +100,7 @@ export async function exportAsoStatement(client, profile) {
     { label:"Registered",      value:client.registration_date || "—" },
     { label:"Next Due",        value:client.next_contribution_date || "—" },
     { sep: true },
-    { label:"Total Saved",     value:fmtN(client.total_saved),     green:true },
+    { label:"Total Deposited",  value:fmtN(client.total_saved),     green:true },
     { label:"Total Withdrawn", value:fmtN(client.total_withdrawn), red:true },
     { sep: true },
     { label:"Current Balance", value:fmtN(client.current_balance), bold:true, highlight:true },

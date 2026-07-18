@@ -416,7 +416,7 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
             <div className="grid grid-cols-3 divide-x divide-slate-100 dark:divide-slate-700 border-t border-slate-100 dark:border-slate-700">
               {[
                 { label: "Balance",   amount: record.current_balance, color: '#7c3aed' },
-                { label: "Saved",     amount: record.total_saved,     color: '#16a34a' },
+                { label: "Deposited", amount: record.total_saved,     color: '#16a34a' },
                 { label: "Withdrawn", amount: record.total_withdrawn,  color: '#475569' },
               ].map(({ label, amount, color }) => (
                 <div key={label} className="px-2 py-3 text-center min-w-0">
@@ -899,7 +899,7 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                           <div className="bg-white dark:bg-slate-800 rounded-xl px-3 py-2.5 space-y-1 border border-amber-100 dark:border-amber-900/40">
                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Client summary</p>
                             {record.membership_number && <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">{record.membership_number}</p>}
-                            <p className="text-[11px] text-slate-600 dark:text-slate-300">Total saved: <span className="font-bold text-green-600 dark:text-green-400">{fmt(record.total_saved)}</span></p>
+                            <p className="text-[11px] text-slate-600 dark:text-slate-300">Total deposited: <span className="font-bold text-green-600 dark:text-green-400">{fmt(record.total_saved)}</span></p>
                             <p className="text-[11px] text-slate-600 dark:text-slate-300">Total withdrawn: <span className="font-bold">{fmt(record.total_withdrawn)}</span></p>
                             <p className="text-[11px] font-bold text-green-700 dark:text-green-400 flex items-center gap-1">
                               <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>

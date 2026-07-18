@@ -291,7 +291,7 @@ function AsoSection({ data }) {
     <div>
       <StatGrid stats={[
         {label:"Total Balance",   value:fmt(data.totalBal),    color:"#7c3aed",bg:"#faf5ff",border:"#e9d5ff"},
-        {label:"Total Saved",     value:fmt(data.totalSaved),  color:"#3DA829",bg:"#f0fdf4",border:"#bbf7d0"},
+        {label:"Total Deposited",  value:fmt(data.totalSaved),  color:"#3DA829",bg:"#f0fdf4",border:"#bbf7d0"},
         {label:"Total Withdrawn", value:fmt(data.totalWithdr), color:"#ef4444",bg:"#fef2f2",border:"#fecaca"},
         {label:"Clients",         value:data.enriched.length,  color:"#0284c7",bg:"#eff6ff",border:"#bfdbfe"},
       ]}/>
@@ -534,7 +534,7 @@ async function buildNativeStaffReportPDF(type, data, staffName, businessName, fr
        { key:"freq",  label:"Frequency",    w:0.15 },
        { key:"amt",   label:"Contribution", right:true, w:0.18 },
        { key:"bal",   label:"Balance",      right:true, bold:true, color:()=>[124,58,237], w:0.18 },
-       { key:"saved", label:"Total Saved",  right:true, w:0.14 },
+       { key:"saved", label:"Deposited",     right:true, w:0.14 },
        { key:"miss",  label:"Missed",       right:true, color:r=>Number(r.miss)>0?[220,38,38]:null, w:0.11 }],
       enriched.map(c=>({
         name:c.full_name||"—", freq:c.contribution_frequency||"—",

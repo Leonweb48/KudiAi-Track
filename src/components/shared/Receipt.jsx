@@ -476,7 +476,7 @@ async function buildNativeActivityStatementPDF(staffName, businessName, from, to
   addStats([
     { label:"Ajo Balance",  value:fmtN(ajoBal),                                                color:"#7c3aed", bg:"#faf5ff" },
     { label:"Ajo Clients",  value:asoClients.length,                                           color:"#0284c7", bg:"#eff6ff" },
-    { label:"Total Saved",  value:fmtN(asoClients.reduce((s,c)=>s+(c.total_saved||0),0)),     color:"#16a34a", bg:"#f0fdf4" },
+    { label:"Total Deposited", value:fmtN(asoClients.reduce((s,c)=>s+(c.total_saved||0),0)), color:"#16a34a", bg:"#f0fdf4" },
     { label:"Withdrawn",    value:fmtN(asoClients.reduce((s,c)=>s+(c.total_withdrawn||0),0)), color:"#ef4444", bg:"#fef2f2" },
   ]);
   if (asoClients.length > 0) {
@@ -485,7 +485,7 @@ async function buildNativeActivityStatementPDF(staffName, businessName, from, to
       [{ key:"name",    label:"Client",       bold:true, w:0.26 },
        { key:"freq",    label:"Frequency",    w:0.16 },
        { key:"contrib", label:"Contribution", right:true, w:0.18 },
-       { key:"saved",   label:"Total Saved",  right:true, color:()=>[22,163,74], w:0.18 },
+       { key:"saved",   label:"Deposited",    right:true, color:()=>[22,163,74], w:0.18 },
        { key:"balance", label:"Balance",      right:true, bold:true, color:()=>[124,58,237], w:0.22 }],
       asoClients.map(c=>({
         name:c.full_name||"—", freq:c.contribution_frequency||"—",

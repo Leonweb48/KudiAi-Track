@@ -80,7 +80,7 @@ export function buildAjoMemberContext(client = {}, contributions = [], ownerInfo
 
   return [
     `AJO SAVINGS MEMBER PORTAL | Member: ${client.full_name} | Today: ${today()}`,
-    `SAVINGS BALANCE: ₦${fmt(client.current_balance || 0)} | Total Saved: ₦${fmt(client.total_saved || 0)} | Total Withdrawn: ₦${fmt(client.total_withdrawn || 0)}`,
+    `SAVINGS BALANCE: ₦${fmt(client.current_balance || 0)} | Total Deposited: ₦${fmt(client.total_saved || 0)} | Total Withdrawn: ₦${fmt(client.total_withdrawn || 0)}`,
     `CONTRIBUTION PLAN: ₦${fmt(client.contribution_amount || 0)} ${client.contribution_frequency || ""} | Next Due: ${client.next_contribution_date || "N/A"}${isOverdue ? " [OVERDUE]" : ""}`,
     `STATUS: ${client.status || "active"} | Group: ${client.group_name || client.ajo_group || "No group"}`,
     `THIS MONTH: ₦${fmt(monthlyTotal)} contributed across ${mContribs.length} transaction(s)`,
@@ -177,7 +177,7 @@ export function buildContext(store, products, branches = [], invoices = []) {
 
   const ajoClientLines = asoClients.slice(0, 30).map(c => {
     const isOverdue = c.next_contribution_date && new Date() > new Date(c.next_contribution_date);
-    return `  • ${c.full_name || "Unknown"}: Balance ₦${fmt(c.current_balance || 0)}, Saved ₦${fmt(c.total_saved || 0)}, Withdrawn ₦${fmt(c.total_withdrawn || 0)}, Freq: ${c.contribution_frequency || "N/A"}, NextDue: ${c.next_contribution_date || "N/A"}${isOverdue ? " [OVERDUE]" : ""}`;
+    return `  • ${c.full_name || "Unknown"}: Balance ₦${fmt(c.current_balance || 0)}, Deposited ₦${fmt(c.total_saved || 0)}, Withdrawn ₦${fmt(c.total_withdrawn || 0)}, Freq: ${c.contribution_frequency || "N/A"}, NextDue: ${c.next_contribution_date || "N/A"}${isOverdue ? " [OVERDUE]" : ""}`;
   });
 
   const staffNames = Object.values(staffMap || {});

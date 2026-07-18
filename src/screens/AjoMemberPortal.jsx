@@ -1715,7 +1715,7 @@ function OverviewTab({ client, contributions, cycles = [], rotationsData = [], r
       ? { type: "up",   text: `You saved ${Math.round(((totalThisMonth - totalLastMonth) / totalLastMonth) * 100)}% more than last month!` }
       : healthScore >= 80
         ? { type: "star", text: `Your savings health score is ${healthScore}/100 — excellent!` }
-        : { type: "tip",  text: `${fmt(client.total_saved || 0)} saved so far. Keep it up!` };
+        : { type: "tip",  text: `${fmt(client.total_saved || 0)} deposited so far. Keep it up!` };
 
   const _now = new Date();
   const _todayStr = `${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,"0")}-${String(_now.getDate()).padStart(2,"0")}`;
@@ -1802,7 +1802,7 @@ function OverviewTab({ client, contributions, cycles = [], rotationsData = [], r
           </div>
           <div className="grid grid-cols-3 divide-x divide-white/20">
             <div className="pr-3 min-w-0">
-              <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">Total Saved</p>
+              <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">Deposited</p>
               {balanceHidden
                 ? <p className="text-sm font-black text-white/40 tracking-widest select-none">• • •</p>
                 : <AmountDisplay amount={client.total_saved || 0} size="small" align="left" className="text-green-200" />
@@ -2330,7 +2330,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
       entityDetails: [
         { label: "Member",          value: client?.full_name || "—" },
         { label: "Current Balance", value: pdfFmt(client?.current_balance || 0) },
-        { label: "Total Saved",     value: pdfFmt(client?.total_saved || totC) },
+        { label: "Total Deposited",  value: pdfFmt(client?.total_saved || totC) },
         { label: "Records",         value: String(allItems.length) },
       ],
     });
@@ -2758,7 +2758,7 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
         `Balance: ₦${(client?.current_balance || 0).toLocaleString("en-NG")}`,
         `Group: ${client?.group_name || "N/A"}`,
         `Frequency: ${client?.contribution_frequency || "N/A"}`,
-        `Total saved: ₦${(client?.total_saved || 0).toLocaleString("en-NG")}`,
+        `Total deposited: ₦${(client?.total_saved || 0).toLocaleString("en-NG")}`,
         `Recent contributions: ${contributions.slice(0, 5).map(c => `${c.type} ₦${c.amount} (${c.status})`).join("; ") || "none"}`,
       ].join(". ");
       const res = await fetch(`${ADMIN_URL}/api/public/chat`, {
