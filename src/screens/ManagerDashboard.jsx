@@ -72,13 +72,7 @@ function fmtDate(lang) {
   const locale = lang === "ha" ? "ha" : lang === "yo" ? "yo" : lang === "ig" ? "ig" : "en-NG";
   return new Date().toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 }
-function dateRange(period) {
-  const now = new Date();
-  if (period === "today") return today();
-  if (period === "week")  { const d = new Date(now); d.setDate(d.getDate() - 7);  return d.toISOString().split("T")[0]; }
-  if (period === "month") { const d = new Date(now); d.setDate(d.getDate() - 30); return d.toISOString().split("T")[0]; }
-  return null;
-}
+
 async function uploadAvatar(file, staffId) {
   const ext  = file.name.split(".").pop();
   const path = `staff/${staffId}/avatar.${ext}`;

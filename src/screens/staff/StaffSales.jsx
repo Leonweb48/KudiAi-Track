@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { fmt, applyPeriodFilter } from "../../utils/helpers";
 import PeriodFilter from "../../components/shared/PeriodFilter";
 import { supabase } from "../../utils/supabase";
-import { Svg, P, GK, NK, TxRow, dateRange } from "./StaffShared";
+import { Svg, P, GK, NK, TxRow } from "./StaffShared";
 import TransactionDetailModal from "../../components/shared/TransactionDetailModal";
 import { buildTransactionReceipt } from "../../utils/receiptConfig";
 import BillPayments from "../BillPayments";
