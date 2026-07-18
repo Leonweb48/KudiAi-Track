@@ -5,11 +5,11 @@ export default function AssignRecordModal({ type, record, branchList = [], staff
   const [staffId,  setStaffId]  = useState(record?.staff_id  || "");
   const [saving,   setSaving]   = useState(false);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     setBranchId(record?.branch_id || "");
     setStaffId(record?.staff_id   || "");
-  }, [record?.id]); // intentional: only reset form when the record identity changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [record?.id]); // only reset when the record identity changes, not on every field update
 
   const filteredStaff = staffList.filter(s =>
     !branchId || !s.branch_id || s.branch_id === branchId
