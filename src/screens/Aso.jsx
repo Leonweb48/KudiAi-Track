@@ -609,7 +609,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         .select("*, aso_clients(full_name, email, membership_number)")
         .eq("status", "pending")
         .eq("type", "contribution")
-        .neq("contribution_source", "staff_collection")
+        .or("contribution_source.neq.staff_collection,contribution_source.is.null")
         .order("created_at", { ascending: false });
       if (error) throw error;
       setPendingDeposits(data || []);
@@ -1026,14 +1026,13 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     return () => { supabase.removeChannel(channel); };
   }, [plan]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Realtime: new manual deposit claims from clients ────────────────────
+  // ── Realtime: new deposit claims / owner-recorded pending contributions ──
   useEffect(() => {
     if (!canDo(plan, "aso")) return;
     let rtReady = false;
-    const channel = supabase.channel("ajo_manual_claims_rt")
+    const channel = supabase.channel("ajo_pending_deposits_rt")
       .on("postgres_changes", {
         event: "INSERT", schema: "public", table: "ajo_contributions",
-        filter: "payment_method=eq.manual_transfer",
       }, () => reloadPendingDeposits())
       .subscribe((status) => {
         if (status === "SUBSCRIBED") {
