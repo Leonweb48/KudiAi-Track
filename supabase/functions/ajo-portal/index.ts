@@ -249,6 +249,20 @@ serve(async (req) => {
       if (!cl) return json({ error: "Client not found" }, 404);
       if (amount > (cl.current_balance || 0)) return json({ error: "Insufficient balance" }, 400);
 
+      // Locked-funds ceiling: esusu contributions in an active round are not withdrawable.
+      const { data: lockedRaw } = await sb.rpc("ajo_locked_esusu_amount", { p_client_id: client_id });
+      const lockedAmount = Number(lockedRaw || 0);
+      const withdrawable = (cl.current_balance || 0) - lockedAmount;
+      if (amount > withdrawable) {
+        return json({
+          error: lockedAmount > 0
+            ? `Insufficient withdrawable balance — ₦${lockedAmount.toLocaleString("en-NG")} is locked in your active esusu round`
+            : "Insufficient balance",
+          locked_amount: lockedAmount,
+          withdrawable: Math.max(withdrawable, 0),
+        }, 400);
+      }
+
       // 24h security hold: high-value withdrawals after a PIN reset get status "held_24h"
       const pinChangedAt = (cl as Record<string, unknown>).portal_pin_changed_at as string | null;
       const withinPinHold = pinChangedAt

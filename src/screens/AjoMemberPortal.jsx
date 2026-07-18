@@ -1385,6 +1385,13 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
   const [error,        setError]        = useState("");
   const [done,         setDone]         = useState(false);
   const [txnPin,       setTxnPin]       = useState(null);
+  const [lockedAmount, setLockedAmount] = useState(0);
+
+  useEffect(() => {
+    supabase.rpc("ajo_locked_esusu_amount", { p_client_id: client.id })
+      .then(({ data }) => setLockedAmount(Number(data || 0)))
+      .catch(() => {});
+  }, [client.id]);
 
   // Bank account state
   const [banks,        setBanks]        = useState([]);
@@ -1425,15 +1432,21 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
     finally { setAcctVerifying(false); }
   };
 
-  const pctFee   = client.commission_model === "percent" ? (client.commission_percent || 0) : 0;
-  const amtNum   = parseFloat(amount) || 0;
-  const feeAmt   = (amtNum * pctFee) / 100;
-  const netAmt   = amtNum - feeAmt;
+  const pctFee      = client.commission_model === "percent" ? (client.commission_percent || 0) : 0;
+  const amtNum      = parseFloat(amount) || 0;
+  const feeAmt      = (amtNum * pctFee) / 100;
+  const netAmt      = amtNum - feeAmt;
+  const withdrawable = Math.max((client.current_balance || 0) - lockedAmount, 0);
 
   const handleSubmit = async () => {
-    if (!amtNum || amtNum <= 0)                 { setError("Enter a valid amount"); return; }
-    if (amtNum > (client.current_balance || 0)) { setError("Amount exceeds your balance"); return; }
-    if (netAmt <= 0)                            { setError("Amount too small after fee deduction"); return; }
+    if (!amtNum || amtNum <= 0)   { setError("Enter a valid amount"); return; }
+    if (amtNum > withdrawable) {
+      setError(lockedAmount > 0
+        ? `Only ${fmt(withdrawable)} is available — ${fmt(lockedAmount)} is locked in your active esusu round`
+        : "Amount exceeds your balance");
+      return;
+    }
+    if (netAmt <= 0)              { setError("Amount too small after fee deduction"); return; }
     if (!acctForm.account_name || !acctForm.account_number || !acctForm.bank_code) {
       setError("Add and verify your bank account before requesting a withdrawal"); return;
     }
@@ -1496,7 +1509,12 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-extrabold text-slate-800 dark:text-white">Request Withdrawal</p>
-                <p className="text-[11px] text-slate-400">Available: <strong className="text-slate-600 dark:text-slate-300">{fmt(client.current_balance || 0)}</strong></p>
+                <p className="text-[11px] text-slate-400">
+                  Available: <strong className="text-slate-600 dark:text-slate-300">{fmt(withdrawable)}</strong>
+                  {lockedAmount > 0 && (
+                    <span className="ml-1 text-amber-500">· {fmt(lockedAmount)} locked (esusu round)</span>
+                  )}
+                </p>
               </div>
             </div>
 

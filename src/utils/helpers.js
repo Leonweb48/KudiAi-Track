@@ -9,6 +9,7 @@ export const LEDGER_LABELS = {
   registration_fee:          "Registration Fee",
   commission:                "Commission",
   esusu_payout:              "Esusu Payout",
+  esusu_pot_sweep:           "Esusu Pot Sweep",
   reversal_contribution:     "Reversal · Contribution",
   reversal_withdrawal:       "Reversal · Withdrawal",
   reversal_withdrawal_fee:   "Reversal · Withdrawal Fee",
