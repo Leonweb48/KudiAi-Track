@@ -2464,41 +2464,45 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
               onChange={e => set("email", e.target.value)} placeholder="client@email.com" />
           </div>
 
-          <SectionLabel>Deposit Subaccount (Owner Only)</SectionLabel>
-          <p className="text-[10px] text-slate-400 dark:text-slate-500 -mt-1 mb-1">
-            A dedicated account the owner sets for this client — all manual and Paystack contributions route here. Only the owner can set or change this.
-          </p>
-          <Field label="Bank" as="select" value={f.bank_code}
-            onChange={e => {
-              const b = banks.find(bk => bk.code === e.target.value);
-              set("bank_code", e.target.value);
-              set("bank_name", b?.name || "");
-              set("account_name", "");
-              setClientResolvedName(""); setClientBankErr("");
-            }}>
-            <option value="">Select bank…</option>
-            {banks.map(b => <option key={b.code} value={b.code}>{b.name}</option>)}
-          </Field>
-          <div className="flex gap-2 items-end">
-            <div className="flex-1">
-              <Field label="Account Number" inputMode="numeric" value={f.account_number}
-                onChange={e => { set("account_number", e.target.value.replace(/\D/g, "").slice(0, 10)); set("account_name", ""); setClientResolvedName(""); setClientBankErr(""); }}
-                placeholder="10-digit NUBAN" />
-            </div>
-            <button type="button" onClick={resolveClientAccount}
-              disabled={clientBankResolving || f.account_number.length < 10 || !f.bank_code}
-              className="mb-0.5 px-3 py-2.5 rounded-xl bg-brand-100 dark:bg-brand-900/30 text-brand-700 dark:text-brand-300 text-xs font-bold disabled:opacity-40 transition whitespace-nowrap active:scale-95">
-              {clientBankResolving ? "Checking…" : "Verify"}
-            </button>
-          </div>
-          {clientResolvedName && (
-            <p className="text-xs text-green-600 dark:text-green-400 font-semibold -mt-1 flex items-center gap-1">
-              <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
-              {clientResolvedName}
-            </p>
-          )}
-          {clientBankErr && (
-            <p className="text-xs text-red-500 -mt-1">{clientBankErr}</p>
+          {!staffId && (
+            <>
+              <SectionLabel>Deposit Subaccount (Owner Only)</SectionLabel>
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 -mt-1 mb-1">
+                A dedicated account the owner sets for this client — all manual and Paystack contributions route here. Only the owner can set or change this.
+              </p>
+              <Field label="Bank" as="select" value={f.bank_code}
+                onChange={e => {
+                  const b = banks.find(bk => bk.code === e.target.value);
+                  set("bank_code", e.target.value);
+                  set("bank_name", b?.name || "");
+                  set("account_name", "");
+                  setClientResolvedName(""); setClientBankErr("");
+                }}>
+                <option value="">Select bank…</option>
+                {banks.map(b => <option key={b.code} value={b.code}>{b.name}</option>)}
+              </Field>
+              <div className="flex gap-2 items-end">
+                <div className="flex-1">
+                  <Field label="Account Number" inputMode="numeric" value={f.account_number}
+                    onChange={e => { set("account_number", e.target.value.replace(/\D/g, "").slice(0, 10)); set("account_name", ""); setClientResolvedName(""); setClientBankErr(""); }}
+                    placeholder="10-digit NUBAN" />
+                </div>
+                <button type="button" onClick={resolveClientAccount}
+                  disabled={clientBankResolving || f.account_number.length < 10 || !f.bank_code}
+                  className="mb-0.5 px-3 py-2.5 rounded-xl bg-brand-100 dark:bg-brand-900/30 text-brand-700 dark:text-brand-300 text-xs font-bold disabled:opacity-40 transition whitespace-nowrap active:scale-95">
+                  {clientBankResolving ? "Checking…" : "Verify"}
+                </button>
+              </div>
+              {clientResolvedName && (
+                <p className="text-xs text-green-600 dark:text-green-400 font-semibold -mt-1 flex items-center gap-1">
+                  <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                  {clientResolvedName}
+                </p>
+              )}
+              {clientBankErr && (
+                <p className="text-xs text-red-500 -mt-1">{clientBankErr}</p>
+              )}
+            </>
           )}
 
           <Field label="NIN" inputMode="numeric" value={f.nin}
