@@ -32,7 +32,11 @@ export function useInvoiceSettings(userId) {
   useEffect(() => { load(); }, [load]);
 
   const save = async (values) => {
-    const payload = { user_id: userId, ...values, updated_at: new Date().toISOString() };
+    // Only persist columns that exist in the DB schema
+    const DB_COLS = ["logo_url", "reg_number", "contact_email", "contact_phone",
+                     "address", "bank_name", "bank_code", "account_number", "account_name", "thank_you_note"];
+    const dbValues = Object.fromEntries(DB_COLS.filter(k => k in values).map(k => [k, values[k]]));
+    const payload = { user_id: userId, ...dbValues, updated_at: new Date().toISOString() };
     const { error } = await supabase
       .from("invoice_settings")
       .upsert(payload, { onConflict: "user_id" });

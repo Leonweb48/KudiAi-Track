@@ -729,8 +729,8 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
                 const active = filter === s.id;
                 return (
                   <button key={s.id} onClick={() => setFilter(s.id)}
-                    className="flex flex-col items-center gap-1.5 active:scale-90 transition-transform duration-150 overflow-visible">
-                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm relative transition-colors ${
+                    className="flex flex-col items-center gap-1 active:scale-90 transition-transform duration-150">
+                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm transition-colors ${
                       active ? "" : "bg-transparent border-2 border-slate-200 dark:border-slate-600"
                     }`}
                       style={active ? { background: s.grad } : {}}>
@@ -738,19 +738,18 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
                         stroke={active ? "white" : s.iconColor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         {s.icon.split("|").map((d, i) => <path key={i} d={d} />)}
                       </svg>
-                      {counts[s.id] > 0 && (
-                        <span className={`absolute -top-2 -right-2 min-w-[18px] text-center text-[10px] font-black px-1.5 py-0.5 rounded-full leading-none tabular-nums ring-2 ring-white dark:ring-slate-800 ${
-                          active ? "bg-white text-slate-800" : "text-white"
-                        }`} style={active ? {} : { background: s.iconColor }}>
-                          {counts[s.id]}
-                        </span>
-                      )}
                     </div>
                     <span className={`text-[11px] font-semibold text-center leading-tight ${
                       active ? "text-slate-900 dark:text-white" : "text-slate-500 dark:text-slate-400"
                     }`}>
                       {s.label}
                     </span>
+                    {counts[s.id] > 0 && (
+                      <span className="text-[11px] font-black tabular-nums leading-none"
+                        style={{ color: s.iconColor }}>
+                        {counts[s.id]}
+                      </span>
+                    )}
                   </button>
                 );
               })}

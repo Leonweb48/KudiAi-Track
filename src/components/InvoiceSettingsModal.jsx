@@ -28,7 +28,16 @@ export default function InvoiceSettingsModal({ settings, onSave, onClose, userId
 
   useEffect(() => {
     supabase.functions.invoke("paystack", { body: { action: "list-banks" } })
-      .then(({ data }) => { if (data?.data) setBanks(data.data); })
+      .then(({ data }) => {
+        if (!data?.data) return;
+        setBanks(data.data);
+        // If bank_code not saved but bank_name is, auto-match so the dropdown shows correctly
+        setForm(prev => {
+          if (prev.bank_code || !prev.bank_name) return prev;
+          const match = data.data.find(b => b.name.toLowerCase() === prev.bank_name.toLowerCase());
+          return match ? { ...prev, bank_code: match.code } : prev;
+        });
+      })
       .catch(() => {});
   }, []);
 
