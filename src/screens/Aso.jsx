@@ -27,7 +27,7 @@ import { friendlyError } from "../utils/errorMessage";
 
 const BLANK = {
   full_name: "", contribution_frequency: "daily", contribution_amount: "",
-  registration_charge: "", withdrawal_fee_percent: 5, notes: "",
+  registration_charge: "", notes: "",
   phone: "", email: "", nin: "",
   address: "", state: "", lga: "", ward: "",
   next_of_kin: "", next_of_kin_phone: "", next_of_kin_email: "", next_of_kin_address: "",
@@ -591,7 +591,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     try {
       const { data, error } = await supabase
         .from("ajo_withdrawal_requests")
-        .select("*, aso_clients(full_name, email, membership_number, current_balance, total_withdrawn, account_number, account_name, bank_name, bank_code, withdrawal_fee_percent)")
+        .select("*, aso_clients(full_name, email, membership_number, current_balance, total_withdrawn, account_number, account_name, bank_name, bank_code, commission_model, commission_percent)")
         .in("status", ["pending", "held_24h"])
         .order("requested_at", { ascending: false });
       if (error) throw error;
@@ -1168,7 +1168,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       ...f,
       contribution_amount:    parseFloat(f.contribution_amount    || 0),
       registration_charge:    parseFloat(f.registration_charge    || 0),
-      withdrawal_fee_percent: parseFloat(f.withdrawal_fee_percent || 5),
+      withdrawal_fee_percent: 0,
       commission_model:       f.commission_model   || "none",
       commission_percent:     f.commission_model === "percent" ? parseFloat(f.commission_percent || 0) || null : null,
       status:                 "active",
@@ -1469,7 +1469,8 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         const WithdrawCard = ({ req, isHeld }) => {
           const cl       = req.aso_clients || {};
           const isProc   = processingId === req.id;
-          const feeLabel = req.fee_type === "registration_fee" ? "Reg fee" : `${req.withdrawal_fee_percent || ""}% fee`;
+          const effectivePct = req.fee_amount > 0 && req.amount > 0 ? ((req.fee_amount / req.amount) * 100).toFixed(1) : null;
+          const feeLabel = req.fee_type === "registration_fee" ? "Reg fee" : effectivePct ? `${effectivePct}% fee` : "fee";
           const [acctVerifying, setAcctVerifying] = useState(false);
           const [acctResult,    setAcctResult]    = useState(null); // null | { ok, name?, err? }
           const verifyAcct = async () => {
@@ -1517,15 +1518,14 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                     )}
                   </div>
                   <p className="text-[10px] text-slate-400 mt-0.5">{req.requested_at ? new Date(req.requested_at).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" }) : ""}</p>
-                  {req.fee_type !== "registration_fee" &&
-                   cl.withdrawal_fee_percent !== undefined &&
-                   req.withdrawal_fee_percent !== undefined &&
-                   Number(req.withdrawal_fee_percent) !== Number(cl.withdrawal_fee_percent) && (
+                  {req.fee_type !== "registration_fee" && req.fee_amount > 0 && cl.commission_model === "percent" &&
+                   cl.commission_percent !== undefined && effectivePct !== null &&
+                   Math.abs(parseFloat(effectivePct) - (cl.commission_percent || 0)) > 0.05 && (
                     <div className="mt-1.5 flex items-center gap-1.5 text-[10px] bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 px-2 py-1 rounded-lg">
                       <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3 flex-shrink-0" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
-                      <span>Fee at request: {req.withdrawal_fee_percent}%</span>
+                      <span>Fee at request: {effectivePct}%</span>
                       <span>·</span>
-                      <span className="font-bold">Current fee: {cl.withdrawal_fee_percent}%</span>
+                      <span className="font-bold">Current fee: {cl.commission_percent}%</span>
                     </div>
                   )}
                 </div>
@@ -2435,23 +2435,20 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             <Field label="Reg. Fee (₦)" type="number" value={f.registration_charge}
               onChange={e => set("registration_charge", e.target.value)} placeholder="0.00" />
           </div>
-          <Field label="Withdrawal Fee %" type="number" value={f.withdrawal_fee_percent}
-            onChange={e => set("withdrawal_fee_percent", e.target.value)} placeholder="5" />
-
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">Commission Model</p>
-              <select value={f.commission_model}
-                onChange={e => set("commission_model", e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm text-slate-800 dark:text-white">
-                <option value="none">None</option>
-                <option value="first_period">First Period</option>
-                <option value="percent">Percent</option>
-              </select>
-            </div>
+          <div>
+            <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">Withdrawal Fee / Commission</p>
+            <select value={f.commission_model}
+              onChange={e => set("commission_model", e.target.value)}
+              className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm text-slate-800 dark:text-white">
+              <option value="none">No fee</option>
+              {!f.ajo_group_id && <option value="first_period">First period — owner keeps first cycle contribution</option>}
+              <option value="percent">Percentage of each withdrawal</option>
+            </select>
             {f.commission_model === "percent" && (
-              <Field label="Commission %" type="number" value={f.commission_percent}
-                onChange={e => set("commission_percent", e.target.value)} placeholder="e.g. 5" />
+              <div className="mt-2">
+                <Field label="Fee %" type="number" value={f.commission_percent}
+                  onChange={e => set("commission_percent", e.target.value)} placeholder="e.g. 5" />
+              </div>
             )}
           </div>
 
@@ -2653,19 +2650,22 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             );
           })()}
 
-          {action === "withdraw" && (
-            <div className="mb-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/60 rounded-xl px-3 py-2 space-y-0.5">
-              <p className="text-xs text-amber-600 dark:text-amber-400 font-semibold flex items-center gap-1.5">
-                <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 flex-shrink-0" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                Withdrawal fee: {selected.withdrawal_fee_percent}% will be deducted from balance
-              </p>
-              {amt && parseFloat(amt) > 0 && (
-                <p className="text-xs text-amber-500 dark:text-amber-400">
-                  Fee: {fmt(parseFloat(amt) * (selected.withdrawal_fee_percent / 100))} · Client receives: {fmt(parseFloat(amt) * (1 - selected.withdrawal_fee_percent / 100))}
+          {action === "withdraw" && (() => {
+            const wFeePercent = selected.commission_model === "percent" ? (selected.commission_percent || 0) : 0;
+            return (
+              <div className="mb-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/60 rounded-xl px-3 py-2 space-y-0.5">
+                <p className="text-xs text-amber-600 dark:text-amber-400 font-semibold flex items-center gap-1.5">
+                  <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 flex-shrink-0" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                  {wFeePercent > 0 ? `Withdrawal fee: ${wFeePercent}% will be deducted from balance` : "No withdrawal fee"}
                 </p>
-              )}
-            </div>
-          )}
+                {wFeePercent > 0 && amt && parseFloat(amt) > 0 && (
+                  <p className="text-xs text-amber-500 dark:text-amber-400">
+                    Fee: {fmt(parseFloat(amt) * (wFeePercent / 100))} · Client receives: {fmt(parseFloat(amt) * (1 - wFeePercent / 100))}
+                  </p>
+                )}
+              </div>
+            );
+          })()}
 
           <Field label={`Amount (₦) — suggested: ${fmt(selected.contribution_amount)}`}
             type="number" inputMode="decimal" value={amt}

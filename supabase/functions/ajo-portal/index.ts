@@ -230,7 +230,7 @@ serve(async (req) => {
       if (!client_id || !amount || amount <= 0) return json({ error: "client_id and amount are required" }, 400);
 
       const { data: cl } = await sb.from("aso_clients")
-        .select("full_name, email, user_id, current_balance, total_withdrawn, registration_charge, withdrawal_fee_percent, portal_pin_changed_at")
+        .select("full_name, email, user_id, current_balance, total_withdrawn, registration_charge, commission_model, commission_percent, portal_pin_changed_at")
         .eq("id", client_id)
         .maybeSingle();
 
@@ -244,12 +244,13 @@ serve(async (req) => {
         : false;
       const isHighValue = amount >= HIGH_VALUE_HOLD_THRESHOLD;
 
-      // First withdrawal uses flat registration_charge; subsequent use withdrawal_fee_percent
+      // First withdrawal uses flat registration_charge; subsequent use unified fee model.
       const isFirst    = (cl.total_withdrawn || 0) === 0;
       const feeType    = isFirst ? "registration_fee" : "withdrawal_fee";
+      const feePercent = cl.commission_model === "percent" ? (cl.commission_percent || 0) : 0;
       const feeAmount  = isFirst
         ? (cl.registration_charge || 0)
-        : (amount * (cl.withdrawal_fee_percent || 0)) / 100;
+        : (amount * feePercent) / 100;
       const netAmount  = amount - feeAmount;
 
       if (netAmount <= 0) return json({ error: "Amount too small after fee deduction" }, 400);

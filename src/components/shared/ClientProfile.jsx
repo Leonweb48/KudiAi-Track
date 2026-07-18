@@ -411,15 +411,15 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                       </FormField>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
-                      <FormField label="Commission Model">
+                      <FormField label="Withdrawal Fee">
                         <select value={form.commission_model || "none"} onChange={e => set("commission_model", e.target.value)} className={inputCls}>
-                          <option value="none">None</option>
-                          <option value="first_period">First Period</option>
-                          <option value="percent">Percent</option>
+                          <option value="none">No fee</option>
+                          {!form.ajo_group_id && <option value="first_period">First period</option>}
+                          <option value="percent">Percentage</option>
                         </select>
                       </FormField>
                       {form.commission_model === "percent" && (
-                        <FormField label="Commission %">
+                        <FormField label="Fee %">
                           <input type="number" value={form.commission_percent || ""} onChange={e => set("commission_percent", parseFloat(e.target.value) || null)} className={inputCls} placeholder="e.g. 5" min="0.01" max="100" step="0.01" />
                         </FormField>
                       )}
