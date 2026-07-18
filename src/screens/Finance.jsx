@@ -731,16 +731,15 @@ function CashCard({ engine, loading, onDrill }) {
   const inflows = [
     ["Sales",             byStream.sales],
     ["Credit sales",      byStream.creditSales],
-    ["Credit repayments", byStream.creditRepayments],
+    ["Debt repayments",   byStream.creditRepayments],
     ["Invoice payments",  byStream.invoicePayments],
     ["Ajo fee income",    byStream.ajoFeeIncome],
   ].filter(([, d]) => d.amount > 0);
 
   const outflows = [
-    ["Expenses",          byStream.expenses,       -1],
-    ["Stock purchases",   byStream.stockInvestment, -1],
-    ["Bill payments",     byStream.billPayments,    -1],
-    ["Credit advanced",   byStream.creditAdvances,  -1],
+    ["Expenses",          byStream.expenses,      -1],
+    ["Stock purchases",   byStream.stockInvestment,-1],
+    ["Bill payments",     byStream.billPayments,  -1],
   ].filter(([, d]) => d.amount > 0);
 
   return (

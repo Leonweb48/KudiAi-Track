@@ -159,44 +159,39 @@ export function compute(ledger, range) {
   const expTxs  = txsOut.filter(t => !STOCK_CATS.has(t.category) && !isBillPayment(t));
   const expenses = pool(expTxs.map(t => ({ id: t.id, amount: t.amount })));
 
-  // ── Credit repayment allocation — principal + interest (R7 + R8) ─────────
-  // All non-voided credits. Principal-first allocation across all payments.
-  // Principal recovered → revenue when collected (cash-basis recognition, R8).
-  // Interest earned    → revenue when collected (R7).
-  // Credit advances    → cash outflow when credit is given (goods out, no cash in yet).
+  // ── Interest earned (R7) ──────────────────────────────────────────────────
+  // Principal-first allocation across all repayments for each interest-bearing credit.
+  // Interest portion is recognized in profit.revenue only when collected (in-range).
+  // The repayment transaction already captures the full cash flow in cash.in —
+  // interestItems are NOT added to cashIn (would double-count).
   //
-  // Bills invariant: credits and bills are structurally separate tables.
-  // No bill path can carry interest_amount by construction.
-  const repayPrincipalItems = [];
-  const interestItems       = [];
-  const interestMeta        = new Map();
-  const allRepaymentItems   = []; // full cash received (principal + interest combined)
+  // Bills invariant: credits.interest_amount is NULL for all records created before
+  // migration 20260717400000. The bills system uses transactions.bill_status and
+  // payment_type='bill_payment' — it has no connection to the credits table.
+  // No bill path can carry interest by construction.
+  const interestItems = [];
+  const interestMeta  = new Map(); // id -> { label, amount, date } for drill-down resolution
+  const creditsWithInterest = credits.filter(c => (c.interest_amount || 0) > 0 && c.status !== "voided");
 
-  for (const credit of credits.filter(c => c.status !== "voided")) {
+  for (const credit of creditsWithInterest) {
     const creditPmts = debtPayments
       .filter(p => p.credit_id === credit.id)
       .sort((a, b) => new Date(a.created_at || a.payment_date || 0) - new Date(b.created_at || b.payment_date || 0));
 
     let principalRemaining = credit.total_amount;
-    let interestRemaining  = credit.interest_amount || 0;
+    let interestRemaining  = credit.interest_amount;
 
     for (const pmt of creditPmts) {
-      const amt              = pmt.amount || 0;
+      const amt             = pmt.amount || 0;
       const principalPortion = Math.min(amt, principalRemaining);
       principalRemaining    -= principalPortion;
       const interestPortion  = Math.min(amt - principalPortion, interestRemaining);
       interestRemaining     -= interestPortion;
 
-      const ds = pmt.created_at || pmt.payment_date;
-      const d  = ds ? (ds.includes("T") ? new Date(ds) : new Date(ds + "T00:00:00")) : null;
-
-      if (d && inRange(d, from, to)) {
-        allRepaymentItems.push({ id: `repay-${pmt.id}`, amount: amt });
-
-        if (principalPortion > 0) {
-          repayPrincipalItems.push({ id: `prin-${pmt.id}`, amount: principalPortion });
-        }
-        if (interestPortion > 0) {
+      if (interestPortion > 0) {
+        const ds = pmt.created_at || pmt.payment_date;
+        const d  = ds ? (ds.includes("T") ? new Date(ds) : new Date(ds + "T00:00:00")) : null;
+        if (d && inRange(d, from, to)) {
           const id = `int-${pmt.id}`;
           interestItems.push({ id, amount: interestPortion });
           interestMeta.set(id, {
@@ -209,56 +204,36 @@ export function compute(ledger, range) {
     }
   }
 
-  // Credits given in this period — cash advanced to customers (goods delivered, no cash received yet)
-  const creditAdvanceItems = credits
-    .filter(c => c.status !== "voided")
-    .filter(c => {
-      const d = c.date_given ? new Date(c.date_given + "T00:00:00") : null;
-      return d && inRange(d, from, to);
-    })
-    .map(c => ({ id: `cadv-${c.id}`, amount: c.total_amount }));
-
-  const debtRepaymentPrincipal = pool(repayPrincipalItems);
-  const interestEarned         = { ...pool(interestItems), meta: interestMeta };
-
-  // Principal + interest: both fully measured (zero COGS at collection — goods cost was
-  // incurred at point of credit sale; interest is pure income).
-  measuredRev       += debtRepaymentPrincipal.amount + interestEarned.amount;
+  const interestEarned = { ...pool(interestItems), meta: interestMeta };
+  // Interest: zero COGS, fully measured — contributes to gross profit
+  measuredRev += interestEarned.amount;
+  // Recalculate grossProfit with interest included
   grossProfit.amount = measuredRev - cogsAmount;
 
-  // ── Revenue total (R1 + R2 + R7 + R8) ────────────────────────────────────
+  // ── Revenue total (R1 + R2 + R7) ─────────────────────────────────────────
   const revItems = [
     ...revTxs.map(t => ({ id: t.id, amount: t.amount })),
     ...invPmtItems,
     ...interestItems,
-    ...repayPrincipalItems,
   ];
   const revenue = pool(revItems);
 
   // ── Net profit ────────────────────────────────────────────────────────────
   const netProfit = { amount: grossProfit.amount - expenses.amount, txIds: [] };
 
-  // ── Cash view (R6 + credit flows) ─────────────────────────────────────────
-  // cashIn  += repayments received (actual cash collected from credit customers)
-  // cashOut += credit advances given (goods delivered before cash is received)
+  // ── Cash view (R6) ────────────────────────────────────────────────────────
   const cashInItems = [
     ...txsIn.map(t => ({ id: t.id, amount: t.amount })),
     ...invPmtItems,
-    ...allRepaymentItems,
-  ];
-  const cashOutItems = [
-    ...txsOut.map(t => ({ id: t.id, amount: t.amount })),
-    ...creditAdvanceItems,
   ];
   const cashIn  = pool(cashInItems);
-  const cashOut = pool(cashOutItems);
+  const cashOut = pool(txsOut.map(t => ({ id: t.id, amount: t.amount })));
 
   // ── Cash by stream ────────────────────────────────────────────────────────
   const byStream = {
     sales:            pool(txsIn.filter(t => t.category === "sale" && !isBillPayment(t)).map(t => ({ id: t.id, amount: t.amount }))),
     creditSales:      pool(txsIn.filter(t => t.category === "credit sale").map(t => ({ id: t.id, amount: t.amount }))),
-    creditRepayments: pool(allRepaymentItems),
-    creditAdvances:   pool(creditAdvanceItems),
+    creditRepayments: pool(txsIn.filter(t => t.category === "debt repayment").map(t => ({ id: t.id, amount: t.amount }))),
     invoicePayments:  pool(invPmtItems),
     ajoFeeIncome:     pool(txsIn.filter(t => SERVICE_CATS.has(t.category)).map(t => ({ id: t.id, amount: t.amount }))),
     interestEarned,

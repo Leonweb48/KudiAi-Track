@@ -422,15 +422,11 @@ function ManagerHome({ staff, store, inventory, plan, onGoTo, onVoiceOpen, onAdd
   const { lang } = useLanguage();
   const BILL_SERVICES = makeBillServices(t);
 
-  const { transactions = [], credits = [], debtPayments = [], asoClients = [], loading } = store;
+  const { transactions = [], credits = [], asoClients = [], loading } = store;
   const todayStr     = today();
   const todayTx      = transactions.filter(t => t.transaction_date === todayStr);
-  const txCashIn     = todayTx.filter(t => t.type === "in").reduce((s, t) => s + t.amount, 0);
+  const cashIn       = todayTx.filter(t => t.type === "in").reduce((s, t) => s + t.amount, 0);
   const cashOut      = todayTx.filter(t => t.type === "out").reduce((s, t) => s + t.amount, 0);
-  // Repayments collected today add to cash; credit advances given today deduct from cash
-  const todayRepaid  = debtPayments.filter(p => p.payment_date === todayStr).reduce((s, p) => s + p.amount, 0);
-  const todayCredit  = credits.filter(c => c.date_given === todayStr && c.status !== "voided").reduce((s, c) => s + c.total_amount, 0);
-  const cashIn       = txCashIn + todayRepaid - todayCredit;
   const profit       = cashIn - cashOut;
   const totalCredit  = credits.reduce((s, c) => s + (c.outstanding || 0), 0);
   const overdueCount = credits.filter(c => c.status === "overdue").length;
