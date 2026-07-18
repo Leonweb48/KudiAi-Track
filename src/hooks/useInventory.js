@@ -98,6 +98,15 @@ export function useInventory(userId, staffId = null, branchId = null) {
     return true;
   }, []);
 
+  const assignProduct = useCallback(async (id, newBranchId) => {
+    if (!supabase) return false;
+    const upd = { branch_id: newBranchId, updated_at: new Date().toISOString() };
+    const { error } = await supabase.from("products").update(upd).eq("id", id);
+    if (error) { setDbError(error.message); return false; }
+    setProducts(prev => prev.map(p => p.id === id ? { ...p, ...upd } : p));
+    return true;
+  }, []);
+
   const deleteProduct = useCallback(async (id) => {
     if (!supabase) return false;
     const { error } = await supabase.from("products").delete().eq("id", id);
@@ -293,7 +302,7 @@ export function useInventory(userId, staffId = null, branchId = null) {
 
   return {
     products, movements, loading, dbError, analytics, stubStats,
-    addProduct, updateProduct, deleteProduct, recordMovement,
+    addProduct, updateProduct, assignProduct, deleteProduct, recordMovement,
     createAutoStub, completeCosting,
     clearDbError: () => setDbError(null), reload: loadData,
   };

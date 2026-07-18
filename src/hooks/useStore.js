@@ -29,6 +29,8 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     profile_image_url: null, store_image_url: null,
   });
   const [staffMap,    setStaffMap]    = useState({});
+  const [staffList,   setStaffList]   = useState([]);
+  const [branchList,  setBranchList]  = useState([]);
   const [loading,     setLoading]     = useState(true);
   const [isOnline,    setIsOnline]    = useState(navigator.onLine);
   const [dbError,     setDbError]     = useState(null);
@@ -73,19 +75,26 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     let asoQ = supabase.from("aso_clients").select("*").eq("user_id", userId).eq("portal_active", true);
     let dpQ  = supabase.from("debt_payments").select("*").eq("owner_id", userId);
     if (staffId) {
-      txQ  = txQ.eq("staff_id",  staffId);
-      crQ  = crQ.eq("staff_id",  staffId);
-      asoQ = asoQ.eq("staff_id", staffId);
-      dpQ  = dpQ.eq("staff_id",  staffId);
-    }
-    if (branchId) {
+      if (branchId) {
+        // Show records the staff member created OR records assigned to their branch
+        txQ  = txQ.or(`staff_id.eq.${staffId},branch_id.eq.${branchId}`);
+        crQ  = crQ.or(`staff_id.eq.${staffId},branch_id.eq.${branchId}`);
+        asoQ = asoQ.or(`staff_id.eq.${staffId},branch_id.eq.${branchId}`);
+        dpQ  = dpQ.eq("staff_id", staffId);
+      } else {
+        txQ  = txQ.eq("staff_id",  staffId);
+        crQ  = crQ.eq("staff_id",  staffId);
+        asoQ = asoQ.eq("staff_id", staffId);
+        dpQ  = dpQ.eq("staff_id",  staffId);
+      }
+    } else if (branchId) {
       txQ  = txQ.eq("branch_id", branchId);
       crQ  = crQ.eq("branch_id", branchId);
       asoQ = asoQ.eq("branch_id", branchId);
     }
 
     try {
-    const [txRes, crRes, asoRes, profRes, staffRes, sessRes, dpRes] = await Promise.all([
+    const [txRes, crRes, asoRes, profRes, staffRes, sessRes, dpRes, brRes] = await Promise.all([
       txQ.order("created_at",  { ascending: false }),
       crQ.order("created_at",  { ascending: false }),
       asoQ.order("created_at", { ascending: false }),
@@ -95,10 +104,13 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
           : "*")
         .eq("id", userId).maybeSingle(),
       !staffId
-        ? supabase.from("staff").select("id, full_name").eq("owner_id", userId)
+        ? supabase.from("staff").select("id, full_name, branch_id, role").eq("owner_id", userId)
         : Promise.resolve({ data: null }),
       supabase.auth.getSession(),
       dpQ.order("created_at", { ascending: false }),
+      !staffId
+        ? supabase.from("branches").select("id, name").eq("owner_id", userId).order("name")
+        : Promise.resolve({ data: [] }),
     ]);
     authEmailRef.current = sessRes?.data?.session?.user?.email || "";
 
@@ -256,10 +268,16 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     }
 
     if (staffRes.data) {
-      const map = {};
-      staffRes.data.forEach(s => { map[s.id] = s.full_name; });
+      const map  = {};
+      const list = [];
+      staffRes.data.forEach(s => {
+        map[s.id] = s.full_name;
+        list.push({ id: s.id, full_name: s.full_name, branch_id: s.branch_id || null });
+      });
       setStaffMap(map);
+      setStaffList(list);
     }
+    if (brRes.data) setBranchList(brRes.data);
 
     if (profRes.data) {
       const p = profRes.data;
@@ -866,7 +884,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
   };
 
   return {
-    transactions, credits, asoClients, profile, staffMap,
+    transactions, credits, asoClients, profile, staffMap, staffList, branchList,
     setProfile, isOnline, loading, rtConnected,
     dbError, clearDbError: () => setDbError(null),
     loadError, clearLoadError: () => setLoadError(null), reloadData: loadData, silentRefresh: () => loadData(true),

@@ -16,6 +16,7 @@ import { createReportPdf, fmtCurrency as pdfFmt, fmtDate as pdfFmtDate } from ".
 import { buildCreditPaymentsCSV, creditCSVFilename, shareCSV } from "../utils/exportCSV";
 import { getLang, speakConfirmation } from "../utils/i18n";
 import { useT } from "../contexts/LanguageContext";
+import AssignRecordModal from "../components/AssignRecordModal";
 
 const BLANK = {
   customer_name: "", total_amount: "", due_date: "", notes: "",
@@ -59,6 +60,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
   const t = useT();
   const [showAdd,      setShowAdd]      = useState(false);
   const [repaying,     setRepaying]     = useState(null);
+  const [assigningCredit, setAssigningCredit] = useState(null);
   const [txnPin,       setTxnPin]       = useState(null);
   const [repayAmt,     setRepayAmt]     = useState("");
   const [repayMethod,  setRepayMethod]  = useState("cash");
@@ -606,6 +608,16 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                         Void
                       </button>
                     )}
+                    {isOwner && (
+                      <button
+                        onClick={() => setAssigningCredit(c)}
+                        className="flex-1 py-2 min-h-[44px] bg-violet-50 dark:bg-violet-900/20 text-violet-600 dark:text-violet-400 rounded-xl font-bold text-xs border border-violet-200 dark:border-violet-800 hover:bg-violet-100 dark:hover:bg-violet-900/30 transition flex items-center justify-center gap-1 active:scale-[0.99]">
+                        <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 flex-shrink-0" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                          <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
+                        </svg>
+                        Assign
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -1089,6 +1101,18 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
         <ClientProfile record={profile_} type="credit" onSave={updateCredit} onClose={() => setProfile_(null)} />
       )}
       {txnPin && <TransactionPinModal {...txnPin} onCancel={() => setTxnPin(null)} />}
+      {assigningCredit && (
+        <AssignRecordModal
+          type="credit"
+          record={assigningCredit}
+          branchList={store.branchList || []}
+          staffList={store.staffList  || []}
+          onSave={async (brId, stId) => {
+            await store.updateCredit(assigningCredit.id, { branch_id: brId, staff_id: stId });
+          }}
+          onClose={() => setAssigningCredit(null)}
+        />
+      )}
     </div>
   );
 }

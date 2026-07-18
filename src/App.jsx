@@ -415,7 +415,8 @@ export default function App() {
                     isOwner={true}
                     plan={plan}
                     onUpgrade={openUpgrade}
-                    branches={branchesHook.branches} />,
+                    branches={branchesHook.branches}
+                    staffList={store.staffList || []} />,
     bills:        <BillPayments store={store} plan={plan} session={session}
                     markup={canDo(plan, "apiAccess") ? 1.05 : 1.098}
                     pointsEnabled

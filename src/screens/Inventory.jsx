@@ -8,6 +8,7 @@ import AnnouncementBarSlot from "../components/slots/AnnouncementBarSlot";
 import { canDo, featureLimit, upgradeLabel, planAvailableText } from "../utils/plans";
 import { useT } from "../contexts/LanguageContext";
 import { getLang, speakConfirmation } from "../utils/i18n";
+import AssignRecordModal from "../components/AssignRecordModal";
 
 const CATEGORIES = [
   "Electronics", "Clothing", "Food & Beverages", "Cosmetics",
@@ -490,7 +491,7 @@ function AnalyticsView({ analytics, products, onClose }) {
 }
 
 /* ── Product Card ─────────────────────────────────────────────── */
-function ProductCard({ product, onView, onSale, onRestock, isOwner, onEdit, staffBranchId }) {
+function ProductCard({ product, onView, onSale, onRestock, isOwner, onEdit, onAssign, staffBranchId }) {
   const m    = margin(product.cost_price, product.selling_price);
   const low  = product.quantity <= product.low_stock_threshold;
   const zero = product.quantity === 0;
@@ -572,9 +573,15 @@ function ProductCard({ product, onView, onSale, onRestock, isOwner, onEdit, staf
           <>
             <div className="w-px bg-slate-100 dark:bg-slate-700"/>
             <button onClick={e => { e.stopPropagation(); onEdit(product); }}
-              className="flex-1 py-2.5 text-xs font-bold text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 transition rounded-br-2xl flex items-center justify-center gap-1.5 min-h-[44px] active:scale-95">
+              className="flex-1 py-2.5 text-xs font-bold text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 transition flex items-center justify-center gap-1.5 min-h-[44px] active:scale-95">
               <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
               Edit
+            </button>
+            <div className="w-px bg-slate-100 dark:bg-slate-700"/>
+            <button onClick={e => { e.stopPropagation(); onAssign(product); }}
+              className="flex-1 py-2.5 text-xs font-bold text-violet-500 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20 transition rounded-br-2xl flex items-center justify-center gap-1.5 min-h-[44px] active:scale-95">
+              <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+              Assign
             </button>
           </>
         )}
@@ -672,7 +679,7 @@ function CostingSheet({ prod, onSave, onClose, saving }) {
 }
 
 /* ── Main Screen ──────────────────────────────────────────────── */
-export default function Inventory({ inventory, isOwner = true, canAdd, plan = "starter", onUpgrade, branches = [], staffBranchId = null }) {
+export default function Inventory({ inventory, isOwner = true, canAdd, plan = "starter", onUpgrade, branches = [], staffBranchId = null, staffList = [] }) {
   // canAdd allows staff to add new products without full owner privileges
   const canAddStock = canAdd !== undefined ? canAdd : isOwner;
   const t = useT();
@@ -688,6 +695,7 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
   const [confirmDel,  setConfirmDel]  = useState(null);
   const [saving,      setSaving]      = useState(false);
   const [costingProd, setCostingProd] = useState(null);
+  const [assigningProduct, setAssigningProduct] = useState(null);
 
   const { products, movements, loading, dbError, analytics, stubStats,
           addProduct, updateProduct, deleteProduct, recordMovement,
@@ -951,6 +959,7 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
               onEdit={prod => { setEditProd(prod); setShowForm(true); }}
               onSale={prod => setMovModal({ product: prod, type: "sale" })}
               onRestock={prod => setMovModal({ product: prod, type: "restock" })}
+              onAssign={setAssigningProduct}
             />
           );
           // When showing "all", stubs are already shown in the Needs Costing section above
@@ -1060,6 +1069,19 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
             </div>
           </div>
         </div>
+      )}
+
+      {assigningProduct && (
+        <AssignRecordModal
+          type="product"
+          record={{ ...assigningProduct, full_name: assigningProduct.product_name }}
+          branchList={branches}
+          staffList={staffList}
+          onSave={async (brId) => {
+            await inventory.assignProduct(assigningProduct.id, brId);
+          }}
+          onClose={() => setAssigningProduct(null)}
+        />
       )}
 
     </div>
