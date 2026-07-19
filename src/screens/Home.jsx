@@ -214,17 +214,17 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
             </button>
           </div>
 
-          {/* TODAY'S SALES — dominant amount via AmountDisplay */}
+          {/* TODAY'S SALES — total inflows for the day */}
           <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest">TODAY'S SALES</p>
           {loading ? (
             <div className="h-11 w-40 bg-white/20 rounded-xl animate-pulse mt-2 mb-4" />
           ) : (
             <AmountDisplay
-              amount={Math.abs(profit)}
+              amount={cashIn}
               size="hero"
               align="left"
               hidden={balanceHidden}
-              className={`mt-1.5 mb-4 ${profit < 0 ? "text-red-300" : "text-white"}`}
+              className="mt-1.5 mb-4 text-white"
             />
           )}
 
@@ -259,6 +259,48 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
           )}
         </div>
       </div>
+
+      {/* ── Today's Profit / Deficit card ───────────────────────── */}
+      {!loading && (
+        <div className={`rounded-2xl px-4 py-3.5 flex items-center justify-between shadow-card border ${
+          profit > 0
+            ? "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-100 dark:border-emerald-800/40"
+            : profit < 0
+              ? "bg-red-50 dark:bg-red-900/20 border-red-100 dark:border-red-800/40"
+              : "bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700/50"
+        }`}>
+          <div className="min-w-0">
+            <p className={`text-[10px] font-bold uppercase tracking-widest mb-0.5 ${
+              profit > 0 ? "text-emerald-500 dark:text-emerald-400"
+                : profit < 0 ? "text-red-500 dark:text-red-400"
+                  : "text-slate-400 dark:text-slate-500"
+            }`}>
+              {profit > 0 ? "Today's Profit" : profit < 0 ? "Today's Deficit" : "Break Even"}
+            </p>
+            <AmountDisplay
+              amount={Math.abs(profit)}
+              size="stat"
+              align="left"
+              hidden={balanceHidden}
+              className={profit > 0 ? "text-emerald-700 dark:text-emerald-300" : profit < 0 ? "text-red-600 dark:text-red-400" : "text-slate-600 dark:text-slate-300"}
+            />
+          </div>
+          <div className="flex flex-col items-end gap-0.5 flex-shrink-0 ml-3">
+            <span className={`text-[10px] font-semibold ${
+              profit > 0 ? "text-emerald-500 dark:text-emerald-400" : profit < 0 ? "text-red-400" : "text-slate-400"
+            }`}>
+              {profit > 0 ? "▲" : profit < 0 ? "▼" : "—"}
+              {cashIn > 0 ? ` ${Math.round(Math.abs(profit) / cashIn * 100)}%` : ""}
+            </span>
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 whitespace-nowrap">
+              {balanceHidden ? "••••" : `Expenses: ${fmt(cashOut)}`}
+            </p>
+          </div>
+        </div>
+      )}
+      {loading && (
+        <div className="h-[62px] rounded-2xl bg-slate-100 dark:bg-slate-800 animate-pulse" />
+      )}
 
       {/* ── Ajo chip — today's collections (separate from profit) ─── */}
       {todayAjo > 0 && (
