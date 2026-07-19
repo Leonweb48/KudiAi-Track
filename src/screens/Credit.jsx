@@ -73,6 +73,11 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
   const [photoFile,    setPhotoFile]    = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
   const [adding,       setAdding]       = useState(false);
+  const [addCreditFor, setAddCreditFor] = useState(null);  // existing record to add credit to
+  const [addingExtra,  setAddingExtra]  = useState(false);
+  const EF_BLANK = { total_amount: "", due_date: "", notes: "", interest_type: "", interest_value: "" };
+  const [ef, setEf] = useState(EF_BLANK);
+  const setE = (k, v) => setEf(p => ({ ...p, [k]: v }));
   const [reminderFor,           setReminderFor]           = useState(null);
   const [copied,                setCopied]                = useState(false);
   // Credit void (admin-approval) state
@@ -237,11 +242,21 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
     setPhotoFile(null); setPhotoPreview(null);
   };
 
-  const openNewCreditForCustomer = (c) => {
-    setPhotoFile(null);
-    setPhotoPreview(null);
-    setF({
-      ...BLANK,
+  const closeAddCreditFor = () => { setAddCreditFor(null); setEf(EF_BLANK); };
+
+  const handleAddExtraCredit = async () => {
+    if (!ef.total_amount || !addCreditFor) return;
+    setAddingExtra(true);
+    const c = addCreditFor;
+    const principal = parseFloat(ef.total_amount) || 0;
+    const iVal      = parseFloat(ef.interest_value) || 0;
+    let interestAmount = null;
+    if (ef.interest_type === "percent" && iVal > 0) {
+      interestAmount = parseFloat((principal * iVal / 100).toFixed(2));
+    } else if (ef.interest_type === "fixed" && iVal > 0) {
+      interestAmount = iVal;
+    }
+    const { error } = await addCredit({
       customer_name:       c.customer_name        || "",
       phone:               c.phone                || "",
       email:               c.email                || "",
@@ -254,8 +269,15 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
       next_of_kin_phone:   c.next_of_kin_phone    || "",
       next_of_kin_email:   c.next_of_kin_email    || "",
       next_of_kin_address: c.next_of_kin_address  || "",
+      total_amount:    principal,
+      due_date:        ef.due_date       || null,
+      notes:           ef.notes         || "",
+      interest_type:   ef.interest_type  || null,
+      interest_value:  iVal              || null,
+      interest_amount: interestAmount,
     });
-    setShowAdd(true);
+    setAddingExtra(false);
+    if (!error) closeAddCreditFor();
   };
 
   const handleAdd = async () => {
@@ -606,7 +628,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                   <div className="grid grid-cols-2 gap-1.5">
                     {!isVoided && (
                       <button
-                        onClick={() => openNewCreditForCustomer(c)}
+                        onClick={() => { setAddCreditFor(c); setEf(EF_BLANK); }}
                         className="py-2.5 min-h-[40px] bg-[#16255A]/5 dark:bg-blue-900/20 text-[#16255A] dark:text-blue-300 rounded-xl font-semibold text-xs border border-[#16255A]/20 dark:border-blue-700/50 hover:bg-[#16255A]/10 transition flex items-center justify-center gap-1 active:scale-[0.99]">
                         <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 flex-shrink-0" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
                           <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
@@ -744,6 +766,83 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
             );
           })}
         </div>
+      )}
+
+      {/* ── Add Credit to Existing Customer ──────────────────────────── */}
+      {addCreditFor && (
+        <Modal title={`New Credit — ${addCreditFor.customer_name}`} onClose={closeAddCreditFor}>
+          {/* Customer identity strip — read-only */}
+          <div className="flex items-center gap-3 bg-slate-50 dark:bg-slate-700/60 rounded-xl px-3 py-2.5 mb-1">
+            <div className="w-9 h-9 rounded-xl overflow-hidden flex-shrink-0">
+              {addCreditFor.profile_image_url
+                ? <img src={addCreditFor.profile_image_url} alt="" className="w-full h-full object-cover" />
+                : <div className="w-full h-full bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-white font-black text-sm">
+                    {(addCreditFor.customer_name || "?").slice(0, 2).toUpperCase()}
+                  </div>
+              }
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-bold text-slate-800 dark:text-white truncate">{addCreditFor.customer_name}</p>
+              {addCreditFor.phone && <p className="text-xs text-slate-400 dark:text-slate-500">{addCreditFor.phone}</p>}
+            </div>
+            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold">Profile reused</span>
+          </div>
+
+          <SectionLabel>New Credit Terms</SectionLabel>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Amount (₦) *" type="number" inputMode="decimal" value={ef.total_amount}
+              onChange={e => setE("total_amount", e.target.value)} placeholder="0.00" />
+            <Field label="Due Date" type="date" value={ef.due_date}
+              onChange={e => setE("due_date", e.target.value)} />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Interest Type" as="select" value={ef.interest_type}
+              onChange={e => { setE("interest_type", e.target.value); setE("interest_value", ""); }}>
+              <option value="">No interest</option>
+              <option value="percent">% of principal</option>
+              <option value="fixed">Fixed ₦ amount</option>
+            </Field>
+            {ef.interest_type
+              ? <Field
+                  label={ef.interest_type === "percent" ? "Interest %" : "Interest (₦)"}
+                  type="number" inputMode="decimal"
+                  value={ef.interest_value}
+                  onChange={e => setE("interest_value", e.target.value)}
+                  placeholder={ef.interest_type === "percent" ? "e.g. 5" : "e.g. 2000"}
+                />
+              : <div />
+            }
+          </div>
+          {ef.interest_type && ef.interest_value && parseFloat(ef.interest_value) > 0 && parseFloat(ef.total_amount) > 0 && (
+            <p className="text-[12px] text-slate-500 dark:text-slate-400 -mt-1 mb-2">
+              Interest: ₦{(
+                ef.interest_type === "percent"
+                  ? parseFloat(ef.total_amount) * parseFloat(ef.interest_value) / 100
+                  : parseFloat(ef.interest_value)
+              ).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              {" "}· Total due: ₦{(
+                parseFloat(ef.total_amount) + (
+                  ef.interest_type === "percent"
+                    ? parseFloat(ef.total_amount) * parseFloat(ef.interest_value) / 100
+                    : parseFloat(ef.interest_value)
+                )
+              ).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+          )}
+          <Field label="Notes (optional)" value={ef.notes}
+            onChange={e => setE("notes", e.target.value)}
+            placeholder="e.g. Second loan — school fees" />
+
+          <button
+            onClick={handleAddExtraCredit}
+            disabled={!ef.total_amount || addingExtra}
+            className="w-full mt-2 py-3 min-h-[48px] bg-[#16255A] hover:bg-[#1e3575] disabled:opacity-40 text-white rounded-2xl font-bold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2">
+            {addingExtra
+              ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Recording…</>
+              : "Record New Credit"
+            }
+          </button>
+        </Modal>
       )}
 
       {/* ── Add Credit Modal ─────────────────────────────────────────── */}
