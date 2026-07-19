@@ -119,6 +119,7 @@ export function compute(ledger, range) {
   const productByName = new Map(
     products.map(p => [p.product_name.toLowerCase().trim(), p])
   );
+  const productById = new Map(products.map(p => [p.id, p]));
 
   let cogsAmount  = 0;
   const cogsTxIds = [];
@@ -145,7 +146,66 @@ export function compute(ledger, range) {
     }
   }
 
-  measuredRev += invPmtItems.reduce((s, x) => s + x.amount, 0);
+  // ── Invoice COGS (catalog-linked items) ──────────────────────────────────
+  // Each invoice payment is split by the fraction of the invoice's line-item
+  // value that comes from fully-costed catalog products (product_id present,
+  // !needs_costing, cost_price > 0).
+  //   Costed fraction  → measuredRev + proportional COGS
+  //   Uncosted fraction → unmeasured (revenue known, margin unknown)
+  // COGS per payment = totalItemCogs × (paymentAmount / invoiceTotal)
+  // so partial payments recognize partial COGS (cash-basis, matching revenue).
+  for (const inv of invoices) {
+    const pmtsInRange = (inv.invoice_payments || []).filter(p => {
+      const d = p.payment_date || p.created_at || "";
+      return inRange(d.includes("T") ? new Date(d) : new Date(d + "T00:00:00"), from, to);
+    });
+    if (!pmtsInRange.length) continue;
+
+    const topItems = (inv.invoice_items || []).filter(item => !item.parent_item_id);
+    const invTotal  = (inv.total_kobo || 0) / 100; // naira
+
+    if (!topItems.length || invTotal <= 0) {
+      // No item data — revenue known but margin unknown
+      pmtsInRange.forEach(p =>
+        unmeasItems.push({ id: `inv-${p.id}`, amount: (p.amount_kobo || 0) / 100 })
+      );
+      continue;
+    }
+
+    // Classify each top-level item as costed-catalog vs other
+    let costedLineValue = 0; // line total (naira) for fully-costed catalog items
+    let invItemCogs     = 0; // total COGS for those items (at their quantities)
+    let otherLineValue  = 0;
+
+    for (const item of topItems) {
+      const lineNaira = (item.line_total_kobo || 0) / 100;
+      const prod = item.product_id ? productById.get(item.product_id) : null;
+      if (prod && !prod.needs_costing && (prod.cost_price || 0) > 0) {
+        costedLineValue += lineNaira;
+        invItemCogs     += prod.cost_price * (parseFloat(item.quantity) || 1);
+      } else {
+        otherLineValue  += lineNaira;
+      }
+    }
+
+    const lineSubtotal = costedLineValue + otherLineValue;
+    const costedFrac   = lineSubtotal > 0 ? costedLineValue / lineSubtotal : 0;
+
+    for (const p of pmtsInRange) {
+      const payNaira       = (p.amount_kobo || 0) / 100;
+      const measuredPart   = payNaira * costedFrac;
+      const unmeasuredPart = payNaira - measuredPart;
+
+      if (measuredPart > 0) {
+        measuredRev += measuredPart;
+        cogsAmount  += invItemCogs * (payNaira / invTotal);
+        cogsTxIds.push(`inv-${p.id}`);
+      }
+      if (unmeasuredPart > 0) {
+        unmeasItems.push({ id: `inv-${p.id}`, amount: unmeasuredPart });
+      }
+    }
+  }
 
   const cogs       = { amount: cogsAmount, txIds: cogsTxIds };
   const unmeasured = {

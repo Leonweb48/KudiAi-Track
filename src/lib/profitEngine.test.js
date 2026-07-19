@@ -366,6 +366,135 @@ test("B5: interest payment outside range boundary excluded from period revenue",
   expect(r.cash.byStream.interestEarned.amount).toBe(0);
 });
 
+// ── C tests: invoice COGS — catalog-linked line items ───────────────────────
+
+// C1: Invoice with all catalog-costed items — full COGS deducted
+// Invoice total ₦10,000; one item: Widget ×10 @ ₦1,000; cost ₦700 each.
+// Full payment → measuredRev = ₦10,000; COGS = ₦7,000; grossProfit = ₦3,000.
+test("C1: invoice fully from costed catalog → COGS deducted, measured revenue", () => {
+  const products = [
+    { id: "p1", product_name: "Widget", cost_price: 700, selling_price: 1000, needs_costing: false },
+  ];
+  const invoices = [{
+    id: "inv1",
+    status: "paid",
+    total_kobo: 1000000, // ₦10,000
+    invoice_items: [
+      { id: "ii1", parent_item_id: null, product_id: "p1", quantity: "10", line_total_kobo: 1000000 },
+    ],
+    invoice_payments: [
+      { id: "p1", amount_kobo: 1000000, payment_date: "2026-07-15" },
+    ],
+  }];
+  const r = compute({ invoices, products }, RANGE);
+
+  expect(r.profit.revenue.amount).toBeCloseTo(10000);
+  expect(r.profit.cogs.amount).toBeCloseTo(7000);       // 700 × 10
+  expect(r.profit.grossProfit.amount).toBeCloseTo(3000); // 10000 − 7000
+  expect(r.profit.unmeasured.count).toBe(0);
+  expect(r.cash.in.amount).toBeCloseTo(10000);
+});
+
+// C2: Invoice with all manual items (no product_id) → all payment unmeasured
+test("C2: invoice with all manual items → payment goes to unmeasured", () => {
+  const invoices = [{
+    id: "inv1",
+    status: "sent",
+    total_kobo: 500000, // ₦5,000
+    invoice_items: [
+      { id: "ii1", parent_item_id: null, product_id: null, quantity: "1", line_total_kobo: 500000 },
+    ],
+    invoice_payments: [
+      { id: "p1", amount_kobo: 500000, payment_date: "2026-07-10" },
+    ],
+  }];
+  const r = compute({ invoices }, RANGE);
+
+  expect(r.profit.revenue.amount).toBeCloseTo(5000);       // still revenue
+  expect(r.profit.cogs.amount).toBe(0);
+  expect(r.profit.grossProfit.amount).toBe(0);             // excluded from gross (unmeasured)
+  expect(r.profit.unmeasured.revenue).toBeCloseTo(5000);
+  expect(r.cash.in.amount).toBeCloseTo(5000);
+});
+
+// C3: Invoice mixed — 60% catalog-costed, 40% manual
+// Invoice ₦10,000: Widget ×6 @ ₦1,000 (₦6,000 costed), service ₦4,000 (manual)
+// Payment ₦10,000 → measured = ₦6,000, COGS = ₦4,200 (700×6), unmeasured = ₦4,000
+test("C3: mixed invoice — costed items get COGS, manual items go to unmeasured", () => {
+  const products = [
+    { id: "p1", product_name: "Widget", cost_price: 700, selling_price: 1000, needs_costing: false },
+  ];
+  const invoices = [{
+    id: "inv1",
+    status: "paid",
+    total_kobo: 1000000, // ₦10,000
+    invoice_items: [
+      { id: "ii1", parent_item_id: null, product_id: "p1", quantity: "6", line_total_kobo: 600000 }, // ₦6,000 costed
+      { id: "ii2", parent_item_id: null, product_id: null, quantity: "1", line_total_kobo: 400000 }, // ₦4,000 manual
+    ],
+    invoice_payments: [
+      { id: "p1", amount_kobo: 1000000, payment_date: "2026-07-15" },
+    ],
+  }];
+  const r = compute({ invoices, products }, RANGE);
+
+  expect(r.profit.revenue.amount).toBeCloseTo(10000);
+  // Costed fraction = 6000/10000 = 0.6; measured = 10000 × 0.6 = 6000
+  expect(r.profit.cogs.amount).toBeCloseTo(4200);        // 700 × 6
+  expect(r.profit.grossProfit.amount).toBeCloseTo(1800); // 6000 − 4200
+  expect(r.profit.unmeasured.revenue).toBeCloseTo(4000); // manual portion
+  expect(r.cash.in.amount).toBeCloseTo(10000);
+});
+
+// C4: Partial payment — COGS recognized proportionally
+// Invoice ₦10,000 all costed; COGS = ₦7,000. Payment = ₦5,000 (50%).
+// COGS recognized = 7000 × (5000/10000) = ₦3,500; measuredRev = ₦5,000.
+test("C4: partial payment recognizes proportional COGS", () => {
+  const products = [
+    { id: "p1", product_name: "Widget", cost_price: 700, selling_price: 1000, needs_costing: false },
+  ];
+  const invoices = [{
+    id: "inv1",
+    status: "partially_paid",
+    total_kobo: 1000000,
+    invoice_items: [
+      { id: "ii1", parent_item_id: null, product_id: "p1", quantity: "10", line_total_kobo: 1000000 },
+    ],
+    invoice_payments: [
+      { id: "p1", amount_kobo: 500000, payment_date: "2026-07-15" }, // 50%
+    ],
+  }];
+  const r = compute({ invoices, products }, RANGE);
+
+  expect(r.profit.revenue.amount).toBeCloseTo(5000);
+  expect(r.profit.cogs.amount).toBeCloseTo(3500);        // 7000 × 0.5
+  expect(r.profit.grossProfit.amount).toBeCloseTo(1500); // 5000 − 3500
+  expect(r.profit.unmeasured.count).toBe(0);
+});
+
+// C5: Invoice with uncosted catalog item (needs_costing=true) → unmeasured
+test("C5: catalog item with needs_costing=true goes to unmeasured", () => {
+  const products = [
+    { id: "p1", product_name: "Mystery", cost_price: null, selling_price: 500, needs_costing: true },
+  ];
+  const invoices = [{
+    id: "inv1",
+    status: "paid",
+    total_kobo: 500000,
+    invoice_items: [
+      { id: "ii1", parent_item_id: null, product_id: "p1", quantity: "1", line_total_kobo: 500000 },
+    ],
+    invoice_payments: [
+      { id: "p1", amount_kobo: 500000, payment_date: "2026-07-10" },
+    ],
+  }];
+  const r = compute({ invoices, products }, RANGE);
+
+  expect(r.profit.revenue.amount).toBeCloseTo(5000);
+  expect(r.profit.cogs.amount).toBe(0);
+  expect(r.profit.unmeasured.revenue).toBeCloseTo(5000);
+});
+
 // ── countUnnamedSales helper ─────────────────────────────────────────────────
 test("countUnnamedSales counts only blank item_name revenue transactions", () => {
   const txs = [
