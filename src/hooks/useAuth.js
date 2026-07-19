@@ -641,7 +641,7 @@ export function useAuth() {
       return;
     }
 
-    const { data: sub } = await supabase
+    const { data: sub, error: subQueryErr } = await supabase
       .from("subscriptions")
       .select("id, plan, expires_at, cancel_at_period_end, billing_cycle")
       .eq("user_id", uid)
@@ -693,17 +693,23 @@ export function useAuth() {
       return;
     }
 
-    // RPC also returned nothing — check localStorage cache as last resort.
-    // Covers transient network failures; cleared only when a real "kobo" is confirmed.
-    const cached = localStorage.getItem(CACHE_KEY);
-    if (cached) {
-      const cachedPlan = normalizeSlug(cached);
-      setPlan(cachedPlan);
-      subVerified.current = true;
-      await fetchAndCachePlans(supabase).catch(() => {});
-      setUpgradeAvailable(hasHigherPlanAvailable(cachedPlan));
-      setStatus("ready");
-      return;
+    // localStorage cache — only as a network-failure fallback.
+    // Only trust the cache when the subscription query itself failed with a network
+    // error (subQueryErr != null). When the query succeeded and returned null (sub=null,
+    // subQueryErr=null), the DB definitively confirmed no subscription — never use the
+    // cache in that case, as it would let new users bypass the subscription page entirely
+    // (the cache may contain a stale plan from a different account on the same device).
+    if (isNetErr(subQueryErr)) {
+      const cached = localStorage.getItem(CACHE_KEY);
+      if (cached) {
+        const cachedPlan = normalizeSlug(cached);
+        setPlan(cachedPlan);
+        subVerified.current = true;
+        await fetchAndCachePlans(supabase).catch(() => {});
+        setUpgradeAvailable(hasHigherPlanAvailable(cachedPlan));
+        setStatus("ready");
+        return;
+      }
     }
 
     // Genuinely no subscription found
