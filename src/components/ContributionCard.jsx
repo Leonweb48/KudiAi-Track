@@ -292,6 +292,7 @@ export default function ContributionCard({
   onCloseCycle,
   onExecuteCommission,
   compact = false,
+  isLegacyCycle = false,
 }) {
   const [selected, setSelected] = useState(null);
   const [exporting, setExporting] = useState(false);
@@ -301,9 +302,18 @@ export default function ContributionCard({
   const freq = frequency || cycle?.frequency || cycle?.contribution_frequency || "monthly";
   const cols = COLS_BY_FREQ[freq] || 4;
 
+  // Isolate this cycle's contributions: explicit cycle_id match, or NULL cycle_id
+  // rows attributed to the oldest active cycle (legacy pre-attribution rule).
+  const cycleContribs = useMemo(() => {
+    if (!cycle?.id) return contributions;
+    return contributions.filter(c =>
+      c.cycle_id === cycle.id || (!c.cycle_id && isLegacyCycle)
+    );
+  }, [contributions, cycle?.id, isLegacyCycle]);
+
   const { periods, cycleStarted } = useMemo(
-    () => (cycle ? buildPeriods({ ...cycle, frequency: freq }, contributions) : { periods: [], cycleStarted: false }),
-    [cycle, contributions, freq]
+    () => (cycle ? buildPeriods({ ...cycle, frequency: freq }, cycleContribs) : { periods: [], cycleStarted: false }),
+    [cycle, cycleContribs, freq]
   );
 
   const paidCount    = periods.filter((p) => p.status === "paid").length;
@@ -313,8 +323,8 @@ export default function ContributionCard({
   const totalPaid    = periods.reduce((s, p) => s + p.paid, 0);
   const pendingTotal = periods.reduce((s, p) => s + (p.pendingAmount || 0), 0);
 
-  const commission        = useMemo(() => computeCommission(cycle, contributions), [cycle, contributions]);
-  const commissionDone    = useMemo(() => commissionAlreadyExecuted(contributions), [contributions]);
+  const commission        = useMemo(() => computeCommission(cycle, cycleContribs), [cycle, cycleContribs]);
+  const commissionDone    = useMemo(() => commissionAlreadyExecuted(cycleContribs), [cycleContribs]);
   const canExecCommission = !compact && onExecuteCommission && cycle &&
     cycle.status !== "active" && commission.amount > 0 && !commissionDone &&
     cycle.commission_model !== "first_period";
@@ -338,7 +348,7 @@ export default function ContributionCard({
 
   const handleExport = async () => {
     setExporting(true);
-    try { await exportCardPdf({ cycle: { ...cycle, frequency: freq }, periods, contributions, clientName, businessName }); }
+    try { await exportCardPdf({ cycle: { ...cycle, frequency: freq }, periods, contributions: cycleContribs, clientName, businessName }); }
     finally { setExporting(false); }
   };
 

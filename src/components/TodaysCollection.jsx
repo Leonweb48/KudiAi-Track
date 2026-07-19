@@ -18,11 +18,12 @@ function OverduePill({ days }) {
   );
 }
 
-export default function TodaysCollection({ clients, groups, onRecord, staffCanRecord }) {
+export default function TodaysCollection({ clients, groups, onRecord, staffCanRecord, clientCycles = {} }) {
   const [todayContribs, setTodayContribs] = useState([]);
   const [selected,      setSelected]       = useState(new Set());
   const [batchMode,     setBatchMode]       = useState(false);
   const [customAmounts, setCustomAmounts]   = useState({});
+  const [cyclePicks,    setCyclePicks]      = useState({}); // clientId → selectedCycleId
   const [adjustFor,     setAdjustFor]       = useState(null); // {client, defaultAmount}
   const [adjustAmt,     setAdjustAmt]       = useState("");
   const [pinFor,        setPinFor]          = useState(null); // {mode:'single'|'batch', client?, items?}
@@ -138,9 +139,11 @@ export default function TodaysCollection({ clients, groups, onRecord, staffCanRe
 
     if (pinFor.mode === "single") {
       const { client, amount } = pinFor;
+      const ctx = getContext(client);
+      const cycleId = ctx === "personal_savings" ? (cyclePicks[client.id] || null) : null;
       setPinFor(null);
       setRecording(prev => new Set(prev).add(client.id));
-      const result = await onRecord(client.id, amount, getContext(client), pin);
+      const result = await onRecord(client.id, amount, ctx, pin, cycleId);
       setRecording(prev => { const s = new Set(prev); s.delete(client.id); return s; });
       if (result?.error) {
         setSingleErr(p => ({ ...p, [client.id]: result.error }));
@@ -321,6 +324,23 @@ export default function TodaysCollection({ clients, groups, onRecord, staffCanRe
                     ? "border-amber-200 dark:border-amber-800/40"
                     : "border-slate-100 dark:border-slate-700/60"
                 }`}>
+
+                {/* Cycle picker — only when client has >1 active personal_savings cycles */}
+                {!client.ajo_group_id && (clientCycles[client.id] || []).length > 1 && !batchMode && (
+                  <div className="mb-2.5 flex gap-1.5 flex-wrap">
+                    {(clientCycles[client.id] || []).map(cyc => (
+                      <button key={cyc.id} type="button"
+                        onClick={() => setCyclePicks(p => ({ ...p, [client.id]: cyc.id }))}
+                        className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition ${
+                          (cyclePicks[client.id] || (clientCycles[client.id] || [])[0]?.id) === cyc.id
+                            ? "border-violet-500 bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-300"
+                            : "border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400"
+                        }`}>
+                        {cyc.label || "Savings"}
+                      </button>
+                    ))}
+                  </div>
+                )}
 
                 <div className="flex items-center gap-3">
                   {/* Batch checkbox */}

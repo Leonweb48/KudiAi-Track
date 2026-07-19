@@ -355,9 +355,9 @@ serve(async (req) => {
 
     // ── Client submits a manual bank-transfer claim ───────────────
     if (action === "submit-manual-claim") {
-      const { client_id, owner_id, amount, payer_name, notes, proof_url, contribution_context = "personal_savings" } = body as {
+      const { client_id, owner_id, amount, payer_name, notes, proof_url, contribution_context = "personal_savings", cycle_id: callerCycleId } = body as {
         client_id: string; owner_id: string; amount: number;
-        payer_name?: string; notes?: string; proof_url?: string; contribution_context?: string;
+        payer_name?: string; notes?: string; proof_url?: string; contribution_context?: string; cycle_id?: string;
       };
 
       if (!client_id || !owner_id) return json({ error: "client_id and owner_id required" }, 400);
@@ -372,6 +372,7 @@ serve(async (req) => {
         p_notes:                 notes                  || null,
         p_proof_url:             proof_url              || null,
         p_contribution_context:  contribution_context,
+        p_cycle_id:              callerCycleId          || null,
       });
 
       if (!rpcResult?.ok) return json({ error: rpcResult?.error || "Failed to submit claim" }, 400);
@@ -404,8 +405,8 @@ serve(async (req) => {
 
     // ── Initialize a Paystack contribution payment (client self-pay) ─────
     if (action === "initialize-payment") {
-      const { client_id, amount: requestedAmount, contribution_context = "personal_savings", group_id: payGroupId } = body as {
-        client_id: string; amount?: number; contribution_context?: string; group_id?: string;
+      const { client_id, amount: requestedAmount, contribution_context = "personal_savings", group_id: payGroupId, cycle_id: callerPayCycleId } = body as {
+        client_id: string; amount?: number; contribution_context?: string; group_id?: string; cycle_id?: string;
       };
       if (!client_id) return json({ error: "client_id required" }, 400);
       if (!PAYSTACK_SECRET) return json({ error: "Payments are temporarily unavailable — please try again later" }, 503);
@@ -473,20 +474,23 @@ serve(async (req) => {
         return json({ error: "Payment couldn't be started — please try again" }, 422);
       }
 
-      // For first_period clients: look up the active personal-savings cycle so the
-      // cycle_id is stored on the pending row. ajo_confirm_payment reads it to apply
-      // the cycle fee without a second lookup on the hot path.
+      // Always resolve cycle_id for personal_savings so ajo_confirm_payment can apply
+      // the correct per-cycle fee. Caller-provided cycle_id wins; fall back to oldest active.
       let psCycleId: string | null = null;
-      if (cl.commission_model === "first_period" && contribution_context === "personal_savings") {
-        const { data: psCycle } = await sb
-          .from("ajo_cycles")
-          .select("id")
-          .eq("client_id", client_id)
-          .eq("status", "active")
-          .order("created_at", { ascending: true })
-          .limit(1)
-          .maybeSingle();
-        psCycleId = psCycle?.id || null;
+      if (contribution_context === "personal_savings") {
+        if (callerPayCycleId) {
+          psCycleId = callerPayCycleId;
+        } else {
+          const { data: psCycle } = await sb
+            .from("ajo_cycles")
+            .select("id")
+            .eq("client_id", client_id)
+            .eq("status", "active")
+            .order("created_at", { ascending: true })
+            .limit(1)
+            .maybeSingle();
+          psCycleId = psCycle?.id || null;
+        }
       }
 
       const { error: insErr } = await sb.from("ajo_contributions").insert({

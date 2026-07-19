@@ -675,7 +675,7 @@ function ContribTypeSelector({ clientGroups = [], value, selectedGroupId, onChan
   );
 }
 
-function PayContributionModal({ client, clientGroups = [], onClose, onSuccess }) {
+function PayContributionModal({ client, clientGroups = [], cycles = [], onClose, onSuccess }) {
   const [status,          setStatus]         = useState("idle"); // idle | loading | awaiting | verifying | done | error
   const [message,         setMessage]        = useState("");
   const [pendingRef,      setPendingRef]     = useState(null);
@@ -685,6 +685,8 @@ function PayContributionModal({ client, clientGroups = [], onClose, onSuccess })
   const [showShare,       setShowShare]      = useState(false);
   const [contribCtx,      setContribCtx]     = useState("personal_savings");
   const [contribGroupId,  setContribGroupId] = useState(null);
+  const activePsCycles = cycles.filter(cy => cy.status === "active");
+  const [selectedCycleId, setSelectedCycleId] = useState(() => activePsCycles.length === 1 ? activePsCycles[0].id : null);
   const popupCleanup = useRef(null);
   useEffect(() => () => popupCleanup.current?.(), []);
 
@@ -710,7 +712,7 @@ function PayContributionModal({ client, clientGroups = [], onClose, onSuccess })
     setPaidAmt(amt);
 
     try {
-      const res = await ajoFn("initialize-payment", { client_id: client.id, amount: amt, contribution_context: contribCtx, group_id: contribGroupId || undefined });
+      const res = await ajoFn("initialize-payment", { client_id: client.id, amount: amt, contribution_context: contribCtx, group_id: contribGroupId || undefined, ...(contribCtx === "personal_savings" && selectedCycleId ? { cycle_id: selectedCycleId } : {}) });
       if (!res.authorization_url) throw new Error("Payment initialization failed");
 
       const ref = res.reference;
@@ -848,6 +850,26 @@ function PayContributionModal({ client, clientGroups = [], onClose, onSuccess })
 
         <ContribTypeSelector clientGroups={clientGroups.map(m => m.group).filter(Boolean)} value={contribCtx} selectedGroupId={contribGroupId}
           onChange={(ctx, gid) => { setContribCtx(ctx); setContribGroupId(gid || null); }} />
+
+        {contribCtx === "personal_savings" && activePsCycles.length > 1 && (
+          <div className="mb-4">
+            <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Which savings cycle?</p>
+            <div className="space-y-1.5">
+              {activePsCycles.map(cyc => (
+                <button key={cyc.id} type="button"
+                  onClick={() => setSelectedCycleId(cyc.id)}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-xl border-2 text-left text-sm transition ${
+                    selectedCycleId === cyc.id
+                      ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20 text-brand-700 dark:text-brand-300"
+                      : "border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200"
+                  }`}>
+                  <span className="font-semibold">{cyc.label || "Savings"}</span>
+                  {selectedCycleId === cyc.id && <div className="w-3.5 h-3.5 rounded-full bg-brand-500 flex-shrink-0" />}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Amount */}
         <div className="bg-brand-50 dark:bg-brand-900/20 rounded-2xl px-4 py-4 mb-5">
@@ -1128,7 +1150,7 @@ function ChangePasswordModal({ onClose }) {
 }
 
 // ── Manual deposit modal ──────────────────────────────────────────────────
-function ManualDepositModal({ client, clientGroups = [], ownerInfo, onClose, onSuccess }) {
+function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo, onClose, onSuccess }) {
   const [amount,         setAmount]        = useState("");
   const [payerName,      setPayerName]     = useState("");
   const [notes,          setNotes]         = useState("");
@@ -1140,6 +1162,8 @@ function ManualDepositModal({ client, clientGroups = [], ownerInfo, onClose, onS
   const [done,           setDone]          = useState(false);
   const [contribCtx,     setContribCtx]    = useState("personal_savings");
   const [contribGroupId, setContribGroupId] = useState(null);
+  const activePsCyclesMd = cycles.filter(cy => cy.status === "active");
+  const [selectedMdCycleId, setSelectedMdCycleId] = useState(() => activePsCyclesMd.length === 1 ? activePsCyclesMd[0].id : null);
   const [copiedField,    setCopiedField]   = useState(null);
   const fileRef = useRef(null);
 
@@ -1186,6 +1210,7 @@ function ManualDepositModal({ client, clientGroups = [], ownerInfo, onClose, onS
         notes:                notes.trim()        || null,
         proof_url:            proofUrl,
         contribution_context: contribCtx,
+        ...(contribCtx === "personal_savings" && selectedMdCycleId ? { cycle_id: selectedMdCycleId } : {}),
       });
       setDone(true);
       onSuccess?.();
@@ -1237,6 +1262,26 @@ function ManualDepositModal({ client, clientGroups = [], ownerInfo, onClose, onS
 
             <ContribTypeSelector clientGroups={clientGroups.map(m => m.group).filter(Boolean)} value={contribCtx} selectedGroupId={contribGroupId}
               onChange={(ctx, gid) => { setContribCtx(ctx); setContribGroupId(gid || null); }} />
+
+            {contribCtx === "personal_savings" && activePsCyclesMd.length > 1 && (
+              <div className="mb-4">
+                <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Which savings cycle?</p>
+                <div className="space-y-1.5">
+                  {activePsCyclesMd.map(cyc => (
+                    <button key={cyc.id} type="button"
+                      onClick={() => setSelectedMdCycleId(cyc.id)}
+                      className={`w-full flex items-center justify-between px-3 py-2 rounded-xl border-2 text-left text-sm transition ${
+                        selectedMdCycleId === cyc.id
+                          ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20 text-brand-700 dark:text-brand-300"
+                          : "border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200"
+                      }`}>
+                      <span className="font-semibold">{cyc.label || "Savings"}</span>
+                      {selectedMdCycleId === cyc.id && <div className="w-3.5 h-3.5 rounded-full bg-brand-500 flex-shrink-0" />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Bank details */}
             {hasBank ? (() => {
@@ -1525,12 +1570,36 @@ function WithdrawRequestModal({ client, cycles = [], onClose, onSuccess }) {
                 <p className="font-extrabold text-slate-800 dark:text-white">Request Withdrawal</p>
                 <p className="text-[11px] text-slate-400">
                   Available: <strong className="text-slate-600 dark:text-slate-300">{fmt(withdrawable)}</strong>
-                  {lockedAmount > 0 && (
-                    <span className="ml-1 text-amber-500">· {fmt(lockedAmount)} locked (esusu round)</span>
-                  )}
+                  {esusuLocked > 0 && <span className="ml-1 text-amber-500">· {fmt(esusuLocked)} in esusu</span>}
+                  {cycleLocked > 0 && <span className="ml-1 text-amber-500">· {fmt(cycleLocked)} locked in savings cycle</span>}
                 </p>
               </div>
             </div>
+
+            {/* Per-cycle status cards */}
+            {cycles.filter(cy => cy.status === "active").length > 0 && (
+              <div className="space-y-2 mb-4">
+                {cycles.filter(cy => cy.status === "active").map(cy => {
+                  const isLocked = cy.commission_model === "first_period";
+                  return (
+                    <div key={cy.id} className={`px-3.5 py-2.5 rounded-xl border ${isLocked ? "border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-900/10" : "border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/30"}`}>
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{cy.label || "Savings"}</p>
+                        {isLocked
+                          ? <span className="text-[9px] font-extrabold bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full uppercase tracking-wide">Locked</span>
+                          : <span className="text-[9px] font-extrabold bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full uppercase tracking-wide">Available</span>
+                        }
+                      </div>
+                      {isLocked && (
+                        <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">
+                          Locked with your collector — contact your savings agent to discuss early access
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
             {/* Amount input */}
             <div className="bg-slate-50 dark:bg-slate-700/50 rounded-2xl px-4 py-4 mb-3">
@@ -1897,7 +1966,7 @@ function OverviewTab({ client, contributions, cycles = [], rotationsData = [], r
       </div>
 
       {/* Saving cycle cards — one per active cycle (AJ-M01) */}
-      {cycles.map(cyc => (
+      {cycles.map((cyc, idx) => (
         <ContributionCard
           key={cyc.id}
           cycle={cyc}
@@ -1905,6 +1974,7 @@ function OverviewTab({ client, contributions, cycles = [], rotationsData = [], r
           frequency={client?.contribution_frequency}
           clientName={client?.full_name || ""}
           businessName={ownerInfo?.owner?.business_name || ""}
+          isLegacyCycle={idx === 0}
         />
       ))}
 
@@ -4248,6 +4318,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
         <PayContributionModal
           client={client}
           clientGroups={client?.group_memberships?.filter(m => m.status === "active") || []}
+          cycles={cycles}
           onClose={() => setShowPay(false)}
           onSuccess={(ref, updatedClient) => {
             if (updatedClient) setClient(prev => ({ ...prev, ...updatedClient }));
@@ -4266,6 +4337,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
         <ManualDepositModal
           client={client}
           clientGroups={client?.group_memberships?.filter(m => m.status === "active") || []}
+          cycles={cycles}
           ownerInfo={ownerInfo}
           onClose={() => setShowDeposit(false)}
           onSuccess={() => setShowDeposit(false)}

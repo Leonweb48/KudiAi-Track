@@ -334,7 +334,7 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
         {/* Card tab */}
         {tab === "card" && (
           <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-            {cycles.map(cyc => (
+            {cycles.map((cyc, idx) => (
               <ContributionCard
                 key={cyc.id}
                 cycle={cyc}
@@ -342,6 +342,7 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
                 frequency={client.contribution_frequency}
                 clientName={client.full_name}
                 businessName={businessName}
+                isLegacyCycle={idx === 0}
                 onCloseCycle={onCloseCycle ? () => onCloseCycle(cyc) : undefined}
                 onExecuteCommission={cyc.status !== "active" ? ((amt, pin) => onExecuteCommission(amt, pin, cyc)) : undefined}
               />
@@ -353,6 +354,7 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
                 frequency={client.contribution_frequency}
                 clientName={client.full_name}
                 businessName={businessName}
+                isLegacyCycle={true}
               />
             )}
             {onOpenCycle && (
@@ -575,6 +577,8 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [amt,                   setAmt]                  = useState("");
   const [contributeCtx,         setContributeCtx]        = useState("personal_savings");
   const [contributeGroupId,     setContributeGroupId]    = useState(null);
+  const [contributeCycleId,     setContributeCycleId]    = useState(null);
+  const [selectedCycles,        setSelectedCycles]       = useState([]); // active personal_savings cycles for selected client
   const [selectedClientMems,    setSelectedClientMems]   = useState([]); // group memberships for selected client
   const [receipt,      setReceipt]      = useState(null);
   const [historyFor,   setHistoryFor]   = useState(null); // { client, contributions, cycle }
@@ -603,6 +607,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [showDateFilter,  setShowDateFilter]  = useState(false);
   const [dueBefore,       setDueBefore]       = useState("");
   const [showCollection,  setShowCollection]  = useState(false);
+  const [collectionCycles, setCollectionCycles] = useState({}); // clientId → cycles[]
 
   const { asoClients, addAsoClient, asoContribute, asoCollectionRecord, asoWithdraw, asoReverseContribution, updateAsoClient, requestAsoClientArchive, cancelAsoClientArchive, profile, staffMap = {} } = store;
   const staffOptions = Object.entries(staffMap).map(([id, name]) => ({ id, name }));
@@ -705,9 +710,34 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       .catch(() => {});
   }, [showAdd, showGroupAdd, editingGroup]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Fetch group memberships for the selected client when contribute modal opens
+  // Fetch active cycles for all clients when Today's Collection opens
   useEffect(() => {
-    if (!selected?.id || action !== "contribute") { setSelectedClientMems([]); setContributeGroupId(null); return; }
+    if (!showCollection || asoClients.length === 0) return;
+    const activeClientIds = asoClients.filter(c => c.status === "active").map(c => c.id);
+    if (activeClientIds.length === 0) return;
+    supabase.from("ajo_cycles")
+      .select("id, client_id, label, commission_model")
+      .in("client_id", activeClientIds)
+      .eq("status", "active")
+      .order("created_at", { ascending: true })
+      .then(({ data }) => {
+        const map = {};
+        for (const cyc of (data || [])) {
+          if (!map[cyc.client_id]) map[cyc.client_id] = [];
+          map[cyc.client_id].push(cyc);
+        }
+        setCollectionCycles(map);
+      })
+      .catch(() => {});
+  }, [showCollection]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch group memberships and active cycles for the selected client when contribute modal opens
+  useEffect(() => {
+    if (!selected?.id || action !== "contribute") {
+      setSelectedClientMems([]); setContributeGroupId(null);
+      setSelectedCycles([]); setContributeCycleId(null);
+      return;
+    }
     supabase.from("aso_client_group_memberships")
       .select("group_id, status, ajo_groups(id, name, group_mode)")
       .eq("client_id", selected.id)
@@ -726,6 +756,17 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           if (sg) setSelectedClientMems([{ group_id: sg.id, status: "active", ajo_groups: sg }]);
         }
       });
+    supabase.from("ajo_cycles")
+      .select("id, label, commission_model")
+      .eq("client_id", selected.id)
+      .eq("status", "active")
+      .order("created_at", { ascending: true })
+      .then(({ data }) => {
+        const cycs = data || [];
+        setSelectedCycles(cycs);
+        setContributeCycleId(cycs.length === 1 ? cycs[0].id : null);
+      })
+      .catch(() => {});
   }, [selected?.id, action]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const resolveClientAccount = async () => {
@@ -2818,6 +2859,26 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             );
           })()}
 
+          {action === "contribute" && contributeCtx === "personal_savings" && selectedCycles.length > 1 && (
+            <div className="mb-3">
+              <p className="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">Which savings cycle?</p>
+              <div className="space-y-1.5">
+                {selectedCycles.map(cyc => (
+                  <button key={cyc.id} type="button"
+                    onClick={() => setContributeCycleId(cyc.id)}
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl border-2 text-left text-sm transition ${
+                      contributeCycleId === cyc.id
+                        ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20 text-brand-700 dark:text-brand-300"
+                        : "border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200"
+                    }`}>
+                    <span>{cyc.label || "Savings"}</span>
+                    {contributeCycleId === cyc.id && <div className="w-3.5 h-3.5 rounded-full bg-brand-500 flex-shrink-0" />}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {action === "withdraw" && (() => {
             const wFeePercent = selected.commission_model === "percent" ? (selected.commission_percent || 0) : 0;
             return (
@@ -2851,10 +2912,12 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
               if (!amt) return;
               const a = parseFloat(amt);
               if (action === "contribute") {
+                if (contributeCtx === "personal_savings" && selectedCycles.length > 1 && !contributeCycleId) return;
                 const savedClient = selected;
                 const savedCtx = contributeCtx;
-                setSelected(null); setAction(null); setAmt(""); setContributeCtx("personal_savings");
-                const result = await asoContribute(savedClient.id, a, savedCtx);
+                const savedCycleId = contributeCycleId;
+                setSelected(null); setAction(null); setAmt(""); setContributeCtx("personal_savings"); setContributeCycleId(null);
+                const result = await asoContribute(savedClient.id, a, savedCtx, savedCtx === "personal_savings" ? savedCycleId : null);
                 if (!result?.error) {
                   speakConfirmation("ajoDeposit", getLang());
                   setContribSuccess({ client: savedClient, amount: a, showShare: false });
@@ -3317,8 +3380,11 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             <TodaysCollection
               clients={asoClients}
               groups={groups}
-              onRecord={isOwner ? asoCollectionRecord : (clientId, amount, context) => asoContribute(clientId, amount, context)}
+              onRecord={isOwner
+                ? asoCollectionRecord
+                : (clientId, amount, context, pin, cycleId) => asoContribute(clientId, amount, context, cycleId)}
               staffCanRecord={canContribute}
+              clientCycles={collectionCycles}
             />
           </div>
         </div>

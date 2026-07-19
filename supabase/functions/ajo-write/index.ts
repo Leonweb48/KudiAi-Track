@@ -251,9 +251,9 @@ serve(async (req: Request) => {
   // ── Route to SQL RPC ──────────────────────────────────────────────────────
 
   if (action === "record_contribution") {
-    const { client_id, amount, method, ref, notes, contribution_context } = params as {
+    const { client_id, amount, method, ref, notes, contribution_context, cycle_id: callerCycleId } = params as {
       client_id: string; amount: number;
-      method?: string; ref?: string; notes?: string; contribution_context?: string;
+      method?: string; ref?: string; notes?: string; contribution_context?: string; cycle_id?: string;
     };
 
     const ownerId = await resolveClientOwner(sb, client_id);
@@ -294,11 +294,10 @@ serve(async (req: Request) => {
     // Staff contributions are tagged staff_collection so the owner queue can filter them
     const contribSource = ajoPerms !== null ? "staff_collection" : undefined;
 
-    // Ensure a cycle exists for personal_savings contributions; capture cycle_id for
-    // first_period fee detection at approve time. Auto-open happens BEFORE record so
-    // the pending row carries the cycle_id from day 1.
-    let cycleId: string | null = null;
-    if (!contribution_context || contribution_context === "personal_savings") {
+    // Resolve cycle_id: caller's explicit choice wins; fall back to auto-pick/auto-open
+    // for personal_savings contributions so the pending row always carries an attribution.
+    let cycleId: string | null = callerCycleId || null;
+    if (!cycleId && (!contribution_context || contribution_context === "personal_savings")) {
       const { data: existingCycle } = await sb
         .from("ajo_cycles").select("id").eq("client_id", client_id).eq("status", "active")
         .order("created_at", { ascending: true }).limit(1).maybeSingle();
@@ -414,8 +413,8 @@ serve(async (req: Request) => {
   // manual-deposit claims (those use initiated_by='client'), which must always wait
   // for explicit owner confirmation and must never be auto-approved by a collection retry.
   if (action === "collection_record") {
-    const { client_id, amount, contribution_context } = params as {
-      client_id: string; amount: number; contribution_context?: string;
+    const { client_id, amount, contribution_context, cycle_id: callerCollCycleId } = params as {
+      client_id: string; amount: number; contribution_context?: string; cycle_id?: string;
     };
 
     const ownerId = await resolveClientOwner(sb, client_id);
@@ -428,9 +427,9 @@ serve(async (req: Request) => {
     const context    = contribution_context || "personal_savings";
     const dateStr    = new Date().toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" });
 
-    // Resolve cycle_id for first_period fee detection; auto-open if no active cycle yet.
-    let collCycleId: string | null = null;
-    if (context === "personal_savings") {
+    // Resolve cycle_id: caller's explicit choice wins; fall back to auto-pick/auto-open.
+    let collCycleId: string | null = callerCollCycleId || null;
+    if (!collCycleId && context === "personal_savings") {
       const { data: existingCollCycle } = await sb
         .from("ajo_cycles").select("id").eq("client_id", client_id).eq("status", "active")
         .order("created_at", { ascending: true }).limit(1).maybeSingle();
