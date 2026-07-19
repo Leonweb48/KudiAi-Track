@@ -470,7 +470,7 @@ export function useAuth() {
     // ── Onboarding check (business owners) ───────────────────────────
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("id")
+      .select("id, business_name")
       .eq("id", uid)
       .maybeSingle();
 
@@ -489,7 +489,7 @@ export function useAuth() {
       profileRetryRef.current = 0; // Reset on successful DB response.
     }
 
-    if (!profile) {
+    if (!profile || !profile.business_name) {
       // Block OAuth logins for staff / ajo_client emails — they must use email+password
       const isOAuth = !!(sess.user.app_metadata?.provider && sess.user.app_metadata.provider !== "email");
       if (isOAuth && email) {
