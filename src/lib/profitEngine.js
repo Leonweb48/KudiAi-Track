@@ -122,13 +122,15 @@ export function compute(ledger, range) {
   const productById = new Map(products.map(p => [p.id, p]));
 
   let cogsAmount  = 0;
-  const cogsTxIds = [];
+  const cogsTxIds    = [];
+  const measuredTxIds = []; // all IDs contributing to measuredRev (for grossProfit drill)
   let measuredRev = 0;
   const unmeasItems = [];
 
   for (const t of revTxs) {
     if (SERVICE_CATS.has(t.category)) {
       measuredRev += t.amount;
+      measuredTxIds.push(t.id);
       continue;
     }
     const name = (t.item_name || "").toLowerCase().trim();
@@ -141,6 +143,7 @@ export function compute(ledger, range) {
       measuredRev += t.amount;
       cogsAmount  += prod.cost_price * (t.quantity || 1);
       cogsTxIds.push(t.id);
+      measuredTxIds.push(t.id);
     } else {
       unmeasItems.push({ id: t.id, amount: t.amount });
     }
@@ -203,6 +206,7 @@ export function compute(ledger, range) {
         measuredRev += measuredPart;
         cogsAmount  += invItemCogs * (payNaira / invTotal);
         cogsTxIds.push(`inv-${p.id}`);
+        measuredTxIds.push(`inv-${p.id}`);
       }
       if (unmeasuredPart > 0) {
         unmeasItems.push({ id: `inv-${p.id}`, amount: unmeasuredPart });
@@ -216,7 +220,8 @@ export function compute(ledger, range) {
     revenue: unmeasItems.reduce((s, x) => s + x.amount, 0),
     txIds:   unmeasItems.map(x => x.id),
   };
-  const grossProfit = { amount: measuredRev - cogsAmount, txIds: [] };
+  // grossProfit.txIds = measuredTxIds (by reference; interest IDs pushed in below)
+  const grossProfit = { amount: measuredRev - cogsAmount, txIds: measuredTxIds };
 
   // ── Expenses (R5) ─────────────────────────────────────────────────────────
   const expTxs  = txsOut.filter(t => !STOCK_CATS.has(t.category) && !isBillPayment(t));
@@ -270,6 +275,7 @@ export function compute(ledger, range) {
   const interestEarned = { ...pool(interestItems), meta: interestMeta };
   // Interest: zero COGS, fully measured — contributes to gross profit
   measuredRev += interestEarned.amount;
+  interestItems.forEach(x => measuredTxIds.push(x.id)); // grossProfit.txIds shares this array
   // Recalculate grossProfit with interest included
   grossProfit.amount = measuredRev - cogsAmount;
 
@@ -282,7 +288,8 @@ export function compute(ledger, range) {
   const revenue = pool(revItems);
 
   // ── Net profit ────────────────────────────────────────────────────────────
-  const netProfit = { amount: grossProfit.amount - expenses.amount, txIds: [] };
+  // txIds = expense IDs — drilling net profit shows what was deducted from gross profit
+  const netProfit = { amount: grossProfit.amount - expenses.amount, txIds: expenses.txIds };
 
   // ── Cash view (R6) ────────────────────────────────────────────────────────
   const cashInItems = [

@@ -677,12 +677,12 @@ function ProfitCard({ engine, loading, onDrill, onInfo }) {
         <PLRow label="Cost of Goods" amount={cogs.amount} sign={-1} onDrill={drill("Cost of Goods", cogs)} />
       )}
       {cogs.amount > 0 && (
-        <PLRow label="Gross Profit" amount={grossProfit.amount} isSub />
+        <PLRow label="Gross Profit" amount={grossProfit.amount} isSub onDrill={drill("Gross Profit — measured sales", grossProfit)} />
       )}
       {expenses.amount > 0 && (
         <PLRow label="Expenses" amount={expenses.amount} sign={-1} onDrill={drill("Expenses", expenses)} />
       )}
-      <PLRow label="Net Profit" amount={netProfit.amount} isSub />
+      <PLRow label="Net Profit" amount={netProfit.amount} isSub onDrill={drill("Net Profit — expenses deducted", { amount: expenses.amount, txIds: netProfit.txIds })} />
 
       {unmeasured.count > 0 && (
         <div className="mt-3 pt-3 border-t border-dashed border-amber-200 dark:border-amber-700/40">
