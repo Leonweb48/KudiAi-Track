@@ -495,6 +495,31 @@ test("C5: catalog item with needs_costing=true goes to unmeasured", () => {
   expect(r.profit.unmeasured.revenue).toBeCloseTo(5000);
 });
 
+// C6: Manual invoice item with cost_price_kobo → costed, not unmeasured
+// Invoice ₦8,000: "Web Design" ₦5,000 (cost ₦2,000), "Domain" ₦3,000 (no cost).
+// Payment ₦8,000 → costedFrac = 5/8; measured = ₦5,000; COGS = ₦2,000; unmeas = ₦3,000.
+test("C6: manual item with cost_price_kobo is measured; item without goes to unmeasured", () => {
+  const invoices = [{
+    id: "inv1",
+    status: "paid",
+    total_kobo: 800000,
+    invoice_items: [
+      { id: "ii1", parent_item_id: null, product_id: null, quantity: "1", line_total_kobo: 500000, cost_price_kobo: 200000 },
+      { id: "ii2", parent_item_id: null, product_id: null, quantity: "1", line_total_kobo: 300000, cost_price_kobo: null },
+    ],
+    invoice_payments: [
+      { id: "p1", amount_kobo: 800000, payment_date: "2026-07-15" },
+    ],
+  }];
+  const r = compute({ invoices }, RANGE);
+
+  expect(r.profit.revenue.amount).toBeCloseTo(8000);
+  expect(r.profit.cogs.amount).toBeCloseTo(2000);         // cost ₦2,000 × 1 qty
+  expect(r.profit.grossProfit.amount).toBeCloseTo(3000);  // ₦5,000 − ₦2,000
+  expect(r.profit.unmeasured.revenue).toBeCloseTo(3000);  // domain portion
+  expect(r.cash.in.amount).toBeCloseTo(8000);
+});
+
 // ── countUnnamedSales helper ─────────────────────────────────────────────────
 test("countUnnamedSales counts only blank item_name revenue transactions", () => {
   const txs = [

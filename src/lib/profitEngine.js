@@ -183,6 +183,9 @@ export function compute(ledger, range) {
       if (prod && !prod.needs_costing && (prod.cost_price || 0) > 0) {
         costedLineValue += lineNaira;
         invItemCogs     += prod.cost_price * (parseFloat(item.quantity) || 1);
+      } else if (!item.product_id && (item.cost_price_kobo || 0) > 0) {
+        costedLineValue += lineNaira;
+        invItemCogs     += (item.cost_price_kobo / 100) * (parseFloat(item.quantity) || 1);
       } else {
         otherLineValue  += lineNaira;
       }

@@ -1,8 +1,6 @@
 import { useState } from "react";
 import TransactionPinModal from "../components/TransactionPinModal";
 import { Capacitor }             from "@capacitor/core";
-import { Browser }               from "@capacitor/browser";
-import { Share }                 from "@capacitor/share";
 import { canDo, planAvailableText } from "../utils/plans";
 import { sendEmailTrigger }          from "../utils/emailTrigger";
 import { fmt, today, applyPeriodFilter } from "../utils/helpers";
@@ -63,37 +61,7 @@ const STATUS_TILES = [
   { id: "cancelled", label: "Cancelled", grad: GRAD.grey,  iconColor: "#94a3b8", icon: "M18 6L6 18|M6 6l12 12" },
 ];
 
-// ── Share helpers ──────────────────────────────────────────────────────────
-function buildWhatsAppUrl(inv, profile) {
-  const raw = (inv.customer_phone || "").replace(/[^0-9]/g, "");
-  const waPhone = raw.startsWith("0") ? "234" + raw.slice(1) : raw.startsWith("234") ? raw : raw ? "234" + raw : "";
-  const outstanding = inv.total_kobo - inv.amount_paid_kobo;
-  const lines = [
-    `Hello ${inv.customer_name},`,
-    ``,
-    `Here is your invoice from ${profile?.business_name || "us"}:`,
-    ``,
-    `Invoice No: ${inv.invoice_number}`,
-    `Total:      ${fmtK(inv.total_kobo)}`,
-    outstanding > 0 ? `Outstanding: ${fmtK(outstanding)}` : "Status: FULLY PAID",
-    inv.due_date ? `Due Date:   ${new Date(inv.due_date + "T00:00:00").toLocaleDateString("en-NG")}` : "",
-    ``,
-    inv.payment_instructions || "",
-    ``,
-    "Thank you!",
-  ].filter(l => l !== undefined).join("\n");
-
-  const base = waPhone ? `https://wa.me/${waPhone}` : "https://wa.me/";
-  return `${base}?text=${encodeURIComponent(lines)}`;
-}
-
-function openWhatsApp(url) {
-  if (Capacitor.isNativePlatform()) {
-    Browser.open({ url });
-  } else {
-    window.open(url, "_blank", "noopener");
-  }
-}
+// (Share helpers removed — all sharing now goes through sharePdfNow in InvoiceDetail)
 
 // ── Empty state ────────────────────────────────────────────────────────────
 function EmptyInvoices({ onNew }) {
@@ -331,43 +299,36 @@ function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCance
     setPdfLoading(false);
   };
 
-  const handleEmail = () => {
-    if (!inv.customer_email) return;
-    const out = inv.total_kobo - inv.amount_paid_kobo;
-    const subject = encodeURIComponent(`Invoice ${inv.invoice_number}`);
-    const body = encodeURIComponent(
-      `Hello ${inv.customer_name},\n\nPlease find your invoice details below.\n\n` +
-      `Invoice No: ${inv.invoice_number}\nTotal: ${fmtK(inv.total_kobo)}\n` +
-      (out > 0 ? `Outstanding: ${fmtK(out)}\n` : "Status: FULLY PAID\n") +
-      (inv.due_date ? `Due Date: ${new Date(inv.due_date + "T00:00:00").toLocaleDateString("en-NG")}\n` : "") +
-      (inv.payment_instructions ? `\n${inv.payment_instructions}\n` : "") +
-      `\nThank you!`
-    );
-    window.open(`mailto:${inv.customer_email}?subject=${subject}&body=${body}`, "_system");
-  };
-
-  const handleShare = async () => {
-    const out = inv.total_kobo - inv.amount_paid_kobo;
-    const text = [
-      `Invoice: ${inv.invoice_number}`,
-      `Customer: ${inv.customer_name}`,
-      `Total: ${fmtK(inv.total_kobo)}`,
-      out > 0 ? `Outstanding: ${fmtK(out)}` : "Status: FULLY PAID",
-      inv.due_date ? `Due: ${new Date(inv.due_date + "T00:00:00").toLocaleDateString("en-NG")}` : "",
-      inv.payment_instructions || "",
-    ].filter(Boolean).join("\n");
+  const sharePdfNow = async (isReceipt = false) => {
+    setPdfLoading(true);
     try {
+      const fname = (isReceipt ? "receipt_" : "invoice_") +
+        (inv.invoice_number || "").replace(/\//g, "-") + ".pdf";
       if (Capacitor.isNativePlatform()) {
-        await Share.share({ title: `Invoice ${inv.invoice_number}`, text, dialogTitle: "Share Invoice" });
-      } else if (navigator.share) {
-        await navigator.share({ title: `Invoice ${inv.invoice_number}`, text });
+        // savePdf already writes to cache + fires Share.share (OS sheet)
+        await exportInvoicePdf(inv, profile, invoiceSettings || {}, { isReceipt });
       } else {
-        await navigator.clipboard?.writeText(text);
+        const b64 = await exportInvoicePdf(inv, profile, invoiceSettings || {}, { isReceipt, returnBase64: true });
+        const bin = atob(b64);
+        const arr = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+        const file = new File([arr], fname, { type: "application/pdf" });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: fname });
+        } else {
+          const url = URL.createObjectURL(file);
+          const a = document.createElement("a");
+          a.href = url; a.download = fname; a.click();
+          setTimeout(() => URL.revokeObjectURL(url), 5000);
+        }
       }
-    } catch {}
+    } catch (e) { console.error("[PDF share]", e); }
+    setPdfLoading(false);
   };
 
-  const handleWhatsApp = () => openWhatsApp(buildWhatsAppUrl(inv, profile));
+  const handleEmail     = () => sharePdfNow(false);
+  const handleShare     = () => sharePdfNow(false);
+  const handleWhatsApp  = () => sharePdfNow(false);
   const handleResend   = () => onResend && onResend(inv);
   const handleEdit     = () => { onEdit && onEdit(inv); onClose(); };
 

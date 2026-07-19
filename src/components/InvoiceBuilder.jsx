@@ -132,6 +132,7 @@ function StepItems({ items, onChange, products }) {
   const addBlank = () => onChange([...items, {
     description: "", quantity: "1", unit_price: "", unit_price_kobo: 0,
     line_total_kobo: 0, pricing_mode: "manual", sub_items: [],
+    cost_price: "", cost_price_kobo: null,
   }]);
 
   const addFromProduct = (p) => {
@@ -149,7 +150,8 @@ function StepItems({ items, onChange, products }) {
     const next = items.map((item, idx) => {
       if (idx !== i) return item;
       const updated = { ...item, [field]: val };
-      if (field === "unit_price") updated.unit_price_kobo = nairaToKobo(val);
+      if (field === "unit_price")  updated.unit_price_kobo  = nairaToKobo(val);
+      if (field === "cost_price")  updated.cost_price_kobo  = nairaToKobo(val) || null;
       return recalcItem(updated);
     });
     onChange(next);
@@ -254,6 +256,17 @@ function StepItems({ items, onChange, products }) {
                 </div>
               </div>
             </div>
+
+            {/* Cost price — only for manual (non-catalog) items */}
+            {!item.product_id && (
+              <div className="mt-1">
+                <Field label="Cost Price (₦) — optional, for profit tracking"
+                  type="number" inputMode="decimal"
+                  value={item.cost_price || ""}
+                  onChange={e => update(i, "cost_price", e.target.value)}
+                  placeholder="Your actual cost per unit" />
+              </div>
+            )}
 
             {/* Sub-items — indented with left connector */}
             {subs.length > 0 && (
@@ -659,6 +672,9 @@ export default function InvoiceBuilder({
         unit_price_kobo: i.unit_price_kobo || 0,
         line_total_kobo: i.line_total_kobo || 0,
         pricing_mode:    i.pricing_mode    || "manual",
+        product_id:      i.product_id      || null,
+        cost_price:      i.cost_price_kobo ? String(i.cost_price_kobo / 100) : "",
+        cost_price_kobo: i.cost_price_kobo || null,
         sub_items:       children
           .filter(c => c.parent_item_id === i.id)
           .sort((a, b) => (a.sort_order||0) - (b.sort_order||0))
