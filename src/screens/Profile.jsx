@@ -475,6 +475,7 @@ export default function Profile({ store, session, plan }) {
             <ProfileRow label="Home Address"  value={profile.address} />
             <ProfileRow label="State"         value={profile.state} />
             <ProfileRow label="LGA"           value={profile.lga} />
+            <ProfileRow label="Ward"          value={profile.ward} />
           </SectionCard>
 
           {/* Business Information */}
@@ -489,6 +490,7 @@ export default function Profile({ store, session, plan }) {
             <ProfileRow label="Country"        value={profile.business_country} />
             <ProfileRow label="Business State" value={profile.business_state} />
             <ProfileRow label="Business LGA"   value={profile.business_lga} />
+            <ProfileRow label="Business Ward"  value={profile.business_ward} />
             <ProfileRow label="Business Addr"  value={profile.business_address} />
 
             {/* Invoice Logo */}
@@ -687,6 +689,14 @@ export default function Profile({ store, session, plan }) {
                 {lgas.map(l => <option key={l} value={l}>{l}</option>)}
               </select>
             </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Ward</label>
+              <select value={fp.ward || ""} onChange={e => setFp(p => ({ ...p, ward: e.target.value }))} disabled={!fp.lga} className={inputCls}>
+                <option value="">{fp.lga ? "Select Ward…" : "Select LGA first"}</option>
+                {wards.map(w => <option key={w} value={w}>{w}</option>)}
+              </select>
+            </div>
           </div>
         </div>
 
@@ -774,6 +784,14 @@ export default function Profile({ store, session, plan }) {
               <select value={fp.business_lga || ""} onChange={e => setFp(p => ({ ...p, business_lga: e.target.value, business_ward: "" }))} disabled={!fp.business_state} className={inputCls}>
                 <option value="">{fp.business_state ? "Select LGA…" : "Select state first"}</option>
                 {bizLgas.map(l => <option key={l} value={l}>{l}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Business Ward</label>
+              <select value={fp.business_ward || ""} onChange={e => setFp(p => ({ ...p, business_ward: e.target.value }))} disabled={!fp.business_lga} className={inputCls}>
+                <option value="">{fp.business_lga ? "Select Ward…" : "Select LGA first"}</option>
+                {bizWards.map(w => <option key={w} value={w}>{w}</option>)}
               </select>
             </div>
           </div>
