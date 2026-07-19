@@ -869,7 +869,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     }
 
     const { error } = await supabase.from("profiles").update({
-      full_name:         next.owner_name        || null,
+      full_name:         next.full_name         || null,
       business_name:     next.business_name     || null,
       email:             next.email             || null,
       gender:            next.gender            || null,
@@ -890,6 +890,14 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
       business_email:               next.business_email               || null,
       working_capital_amount:       next.working_capital_amount       ?? null,
       working_capital_as_of:        next.working_capital_as_of        || null,
+      industry:                     next.industry                     || null,
+      business_type:                next.business_type                || null,
+      reg_status:                   next.reg_status                   || null,
+      business_country:             next.business_country             || null,
+      business_state:               next.business_state               || null,
+      business_lga:                 next.business_lga                 || null,
+      business_ward:                next.business_ward                || null,
+      business_address:             next.business_address             || null,
     }).eq("id", userId);
 
     if (error) {

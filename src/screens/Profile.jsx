@@ -236,11 +236,13 @@ export default function Profile({ store, session, plan }) {
   const photoRef = useRef();
   const logoRef  = useRef();
 
-  const lgas  = getLGAs(fp.state || "");
-  const wards = getWards(fp.state || "", fp.lga || "");
+  const lgas     = getLGAs(fp.state || "");
+  const wards    = getWards(fp.state || "", fp.lga || "");
+  const bizLgas  = getLGAs(fp.business_state || "");
+  const bizWards = getWards(fp.business_state || "", fp.business_lga || "");
 
   const initials = (() => {
-    const n = profile.owner_name || profile.business_name || "";
+    const n = profile.full_name || profile.business_name || "";
     return n.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase() || "?";
   })();
 
@@ -451,8 +453,8 @@ export default function Profile({ store, session, plan }) {
           <p className="text-lg font-extrabold text-slate-800 dark:text-white">
             {profile.business_name || profile.owner_name || "Your Business"}
           </p>
-          {profile.business_name && profile.owner_name && (
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">{profile.owner_name}</p>
+          {profile.business_name && profile.full_name && (
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">{profile.full_name}</p>
           )}
           {profile.business_category && (
             <span className="mt-2 text-[11px] font-semibold text-brand-700 dark:text-brand-400 bg-brand-50 dark:bg-brand-900/20 px-2.5 py-1 rounded-full">
@@ -464,25 +466,30 @@ export default function Profile({ store, session, plan }) {
         <div className="px-4">
           {/* Personal Information */}
           <SectionCard title="Personal Information">
-            <ProfileRow label="Full Name"     value={profile.owner_name} />
+            <ProfileRow label="Full Name"     value={profile.full_name} />
             <ProfileRow label="Email"         value={email} />
             <ProfileRow label="Phone"         value={profile.phone} />
             <ProfileRow label="Gender"        value={profile.gender} />
             <ProfileRow label="Date of Birth" value={fmtDate(profile.date_of_birth)} />
             <ProfileRow label="NIN"           value={profile.nin ? `${profile.nin.slice(0, 4)}·····${profile.nin.slice(-2)}` : null} mono />
+            <ProfileRow label="Home Address"  value={profile.address} />
+            <ProfileRow label="State"         value={profile.state} />
+            <ProfileRow label="LGA"           value={profile.lga} />
           </SectionCard>
 
           {/* Business Information */}
           <SectionCard title="Business Information">
             <ProfileRow label="Business Name"  value={profile.business_name} />
-            <ProfileRow label="Category"       value={profile.business_category} />
+            <ProfileRow label="Industry"       value={profile.industry || profile.business_category} />
+            <ProfileRow label="Business Type"  value={profile.business_type} />
+            <ProfileRow label="Reg. Status"    value={profile.reg_status} />
             <ProfileRow label="Reg. Number"    value={profile.business_registration_number} />
             <ProfileRow label="Business Phone" value={profile.business_phone} />
             <ProfileRow label="Business Email" value={profile.business_email} />
-            <ProfileRow label="Address"        value={profile.address} />
-            <ProfileRow label="State"          value={profile.state} />
-            <ProfileRow label="LGA"            value={profile.lga} />
-            <ProfileRow label="Ward"           value={profile.ward} />
+            <ProfileRow label="Country"        value={profile.business_country} />
+            <ProfileRow label="Business State" value={profile.business_state} />
+            <ProfileRow label="Business LGA"   value={profile.business_lga} />
+            <ProfileRow label="Business Addr"  value={profile.business_address} />
 
             {/* Invoice Logo */}
             <div className="px-4 py-3 flex items-center gap-3">
@@ -602,7 +609,7 @@ export default function Profile({ store, session, plan }) {
           <div className="space-y-3">
             <div>
               <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Full Name</label>
-              <input value={fp.owner_name || ""} onChange={e => setFp(p => ({ ...p, owner_name: e.target.value }))} placeholder="Your full name" className={inputCls} />
+              <input value={fp.full_name || ""} onChange={e => setFp(p => ({ ...p, full_name: e.target.value }))} placeholder="Your full name" className={inputCls} />
             </div>
 
             <div>
@@ -659,6 +666,27 @@ export default function Profile({ store, session, plan }) {
               <input value={fp.nin || ""} inputMode="numeric" placeholder="11-digit NIN"
                 onChange={e => setFp(p => ({ ...p, nin: e.target.value.replace(/\D/g, "").slice(0, 11) }))} className={inputCls} />
             </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Home Address</label>
+              <input value={fp.address || ""} onChange={e => setFp(p => ({ ...p, address: e.target.value }))} placeholder="12 Street Name, Town" className={inputCls} />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">State</label>
+              <select value={fp.state || ""} onChange={e => setFp(p => ({ ...p, state: e.target.value, lga: "", ward: "" }))} className={inputCls}>
+                <option value="">Select State…</option>
+                {STATES.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">LGA</label>
+              <select value={fp.lga || ""} onChange={e => setFp(p => ({ ...p, lga: e.target.value, ward: "" }))} disabled={!fp.state} className={inputCls}>
+                <option value="">{fp.state ? "Select LGA…" : "Select state first"}</option>
+                {lgas.map(l => <option key={l} value={l}>{l}</option>)}
+              </select>
+            </div>
           </div>
         </div>
 
@@ -694,9 +722,25 @@ export default function Profile({ store, session, plan }) {
 
             <div>
               <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Industry / Category</label>
-              <select value={fp.business_category || ""} onChange={e => setFp(p => ({ ...p, business_category: e.target.value }))} className={inputCls}>
+              <select value={fp.industry || fp.business_category || ""} onChange={e => setFp(p => ({ ...p, industry: e.target.value, business_category: e.target.value }))} className={inputCls}>
                 <option value="">Select category…</option>
                 {BUSINESS_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Business Type</label>
+              <select value={fp.business_type || ""} onChange={e => setFp(p => ({ ...p, business_type: e.target.value }))} className={inputCls}>
+                <option value="">Select type…</option>
+                {["Sole Proprietorship","Partnership","Limited Liability Company (LLC)","Non-Governmental Organization (NGO)","Cooperative","Startup","Other"].map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Registration Status</label>
+              <select value={fp.reg_status || ""} onChange={e => setFp(p => ({ ...p, reg_status: e.target.value }))} className={inputCls}>
+                <option value="">Select status…</option>
+                {["Registered","Unregistered","In Process"].map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
 
@@ -714,30 +758,22 @@ export default function Profile({ store, session, plan }) {
 
             <div>
               <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Business Address</label>
-              <input value={fp.address || ""} onChange={e => setFp(p => ({ ...p, address: e.target.value }))} placeholder="12 Market Road, Onitsha" className={inputCls} />
+              <input value={fp.business_address || ""} onChange={e => setFp(p => ({ ...p, business_address: e.target.value }))} placeholder="12 Market Road, Onitsha" className={inputCls} />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">State</label>
-              <select value={fp.state || ""} onChange={e => setFp(p => ({ ...p, state: e.target.value, lga: "", ward: "" }))} className={inputCls}>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Business State</label>
+              <select value={fp.business_state || ""} onChange={e => setFp(p => ({ ...p, business_state: e.target.value, business_lga: "", business_ward: "" }))} className={inputCls}>
                 <option value="">Select State…</option>
                 {STATES.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">LGA</label>
-              <select value={fp.lga || ""} onChange={e => setFp(p => ({ ...p, lga: e.target.value, ward: "" }))} disabled={!fp.state} className={inputCls}>
-                <option value="">{fp.state ? "Select LGA…" : "Select state first"}</option>
-                {lgas.map(l => <option key={l} value={l}>{l}</option>)}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Ward</label>
-              <select value={fp.ward || ""} onChange={e => setFp(p => ({ ...p, ward: e.target.value }))} disabled={!fp.lga} className={inputCls}>
-                <option value="">{fp.lga ? "Select Ward…" : "Select LGA first"}</option>
-                {wards.map(w => <option key={w} value={w}>{w}</option>)}
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Business LGA</label>
+              <select value={fp.business_lga || ""} onChange={e => setFp(p => ({ ...p, business_lga: e.target.value, business_ward: "" }))} disabled={!fp.business_state} className={inputCls}>
+                <option value="">{fp.business_state ? "Select LGA…" : "Select state first"}</option>
+                {bizLgas.map(l => <option key={l} value={l}>{l}</option>)}
               </select>
             </div>
           </div>
