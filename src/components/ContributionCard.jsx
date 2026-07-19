@@ -39,7 +39,8 @@ function periodEnd(startDate, idx, freq) {
   return addDays(s, 1);
 }
 
-// Returns array of { idx, from, to, paid, status }
+// Returns { periods, cycleStarted }
+// p.paid = completed contributions only; p.pendingAmount/pendingRow for provisional display.
 function buildPeriods(cycle, contributions) {
   const { start_date, length_periods, expected_amount_per_period, status: cycleStatus } = cycle;
   const freq = cycle.frequency || cycle.contribution_frequency || "monthly";
@@ -50,17 +51,24 @@ function buildPeriods(cycle, contributions) {
   for (let i = 0; i < length_periods; i++) {
     const from = periodStart(start_date, i, freq);
     const to   = periodEnd(start_date, i, freq);
-    periods.push({ idx: i, from, to, paid: 0 });
+    periods.push({ idx: i, from, to, paid: 0, pendingAmount: 0, pendingRow: null, rejectedRow: null });
   }
 
-  // Assign each contribution to a period by its created_at (type='contribution' rows only)
+  // Status-split: pending never inflates paid.
   for (const c of contributions) {
     if (!c.created_at) continue;
     if (c.type && c.type !== "contribution") continue;
     const dt = new Date(c.created_at);
     for (const p of periods) {
       if (dt >= p.from && dt < p.to) {
-        p.paid += Number(c.amount || 0);
+        if (c.status === "completed") {
+          p.paid += Number(c.amount || 0);
+        } else if (c.status === "pending") {
+          p.pendingAmount += Number(c.amount || 0);
+          if (!p.pendingRow) p.pendingRow = c;
+        } else if (c.status === "rejected" || c.status === "failed") {
+          if (!p.rejectedRow) p.rejectedRow = c;
+        }
         break;
       }
     }
@@ -75,33 +83,46 @@ function buildPeriods(cycle, contributions) {
         )
       : false;
 
-  // Score each period
-  return periods.map((p) => {
-    // first_period: period 0 belongs to the collector once the fee is collected
-    if (cycle.commission_model === "first_period" && p.idx === 0 && cycleCommissionCollected) {
-      return { ...p, status: "collector" };
-    }
+  // Cycle is "started" only once at least one completed contribution exists.
+  const cycleStarted = contributions.some(
+    (c) => c.type === "contribution" && c.status === "completed"
+  );
 
-    let status;
-    const expected = Number(expected_amount_per_period);
-    const isFuture = p.from > today;
-    const isCurrent = p.from <= today && today < p.to;
+  return {
+    cycleStarted,
+    periods: periods.map((p) => {
+      if (cycle.commission_model === "first_period" && p.idx === 0 && cycleCommissionCollected) {
+        return { ...p, status: "collector" };
+      }
 
-    if (cycleStatus !== "active" && !p.paid) {
-      status = "missed";
-    } else if (isFuture) {
-      status = "upcoming";
-    } else if (p.paid >= expected) {
-      status = "paid";
-    } else if (p.paid > 0) {
-      status = "partial";
-    } else if (isCurrent) {
-      status = "current";
-    } else {
-      status = "missed";
-    }
-    return { ...p, status };
-  });
+      const expected  = Number(expected_amount_per_period);
+      const isFuture  = p.from > today;
+      const isCurrent = p.from <= today && today < p.to;
+
+      let status;
+      if (cycleStatus !== "active") {
+        // Closed cycle: only completed counts — pending/rejected revert to missed.
+        if (p.paid >= expected) status = "paid";
+        else if (p.paid > 0)   status = "partial";
+        else                   status = "missed";
+      } else if (p.paid >= expected) {
+        status = "paid";
+      } else if (p.pendingAmount > 0) {
+        status = "pending"; // supersedes partial/current — provisional
+      } else if (isFuture) {
+        status = "upcoming";
+      } else if (p.paid > 0) {
+        status = "partial";
+      } else if (isCurrent && cycleStarted) {
+        status = "current";
+      } else if (isCurrent) {
+        status = "upcoming"; // not-started: suppress pulsing active state
+      } else {
+        status = "missed";
+      }
+      return { ...p, status };
+    }),
+  };
 }
 
 // ── Visual maps ───────────────────────────────────────────────────────────────
@@ -109,6 +130,7 @@ function buildPeriods(cycle, contributions) {
 const MARK_CLS = {
   paid:      "bg-emerald-500 text-white",
   partial:   "bg-amber-400 text-white",
+  pending:   "border-2 border-dashed border-amber-400 dark:border-amber-500 text-amber-500 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20",
   missed:    "border-2 border-red-300 dark:border-red-700 text-red-400 dark:text-red-500 bg-transparent",
   current:   "bg-brand-500 text-white ring-2 ring-brand-300 dark:ring-brand-600 animate-pulse",
   upcoming:  "bg-slate-100 text-slate-400 dark:bg-slate-700 dark:text-slate-500",
@@ -118,6 +140,7 @@ const MARK_CLS = {
 const MARK_ICON = {
   paid:      "✓",
   partial:   "~",
+  pending:   "?",
   missed:    "✗",
   current:   "→",
   upcoming:  "·",
@@ -127,6 +150,7 @@ const MARK_ICON = {
 const MARK_LABEL = {
   paid:      "Paid",
   partial:   "Partial",
+  pending:   "Pending",
   missed:    "Missed",
   current:   "Current",
   upcoming:  "Upcoming",
@@ -154,7 +178,7 @@ function computeCommission(cycle, contributions) {
     return { amount: 0, label: null };
   }
   const ledgerContribs = contributions.filter(
-    (c) => c.type === "contribution" || c.type === undefined
+    (c) => (c.type === "contribution" || c.type === undefined) && c.status === "completed"
   );
   if (cycle.commission_model === "first_period") {
     return {
@@ -174,17 +198,19 @@ function computeCommission(cycle, contributions) {
 }
 
 function commissionAlreadyExecuted(contributions) {
-  return contributions.some((c) => c.type === "commission");
+  return contributions.some((c) => c.type === "commission" && c.status === "completed");
 }
 
 // ── PDF export ────────────────────────────────────────────────────────────────
 
 async function exportCardPdf({ cycle, periods, contributions, clientName, businessName }) {
   const freq = cycle.frequency || cycle.contribution_frequency || "monthly";
-  const paid    = periods.filter((p) => p.status === "paid").length;
-  const partial = periods.filter((p) => p.status === "partial").length;
-  const missed  = periods.filter((p) => p.status === "missed").length;
-  const totalPaid = periods.reduce((s, p) => s + p.paid, 0);
+  const paid         = periods.filter((p) => p.status === "paid").length;
+  const partial      = periods.filter((p) => p.status === "partial").length;
+  const pending      = periods.filter((p) => p.status === "pending").length;
+  const missed       = periods.filter((p) => p.status === "missed").length;
+  const totalPaid    = periods.reduce((s, p) => s + p.paid, 0);
+  const pendingTotal = periods.reduce((s, p) => s + (p.pendingAmount || 0), 0);
   const commission = computeCommission(cycle, contributions || []);
 
   const pdf = await createReportPdf({
@@ -205,6 +231,9 @@ async function exportCardPdf({ cycle, periods, contributions, clientName, busine
     { label: "Missed",          value: String(missed),                       color: "#dc2626" },
     { label: "Total Collected", value: fmtCurrency(totalPaid),               color: "#0f1c45" },
   ];
+  if (pending > 0) {
+    stats.push({ label: "Pending (unconfirmed)", value: `${pending} — ${fmtCurrency(pendingTotal)}`, color: "#d97706" });
+  }
   if (commission.amount > 0) {
     stats.push({ label: "Commission Earned", value: fmtCurrency(commission.amount), color: "#3DA829" });
   }
@@ -230,7 +259,7 @@ async function exportCardPdf({ cycle, periods, contributions, clientName, busine
     from:   fmtDate(p.from),
     to:     fmtDate(new Date(p.to.getTime() - 86400000)),
     paid:   fmtCurrency(p.paid),
-    status: MARK_LABEL[p.status],
+    status: p.status === "pending" ? "Pending (unconfirmed)" : MARK_LABEL[p.status],
   }));
 
   pdf.addTable(cols, rows);
@@ -239,6 +268,9 @@ async function exportCardPdf({ cycle, periods, contributions, clientName, busine
     { label: "Total Collected", value: fmtCurrency(totalPaid), bold: true, green: totalPaid >= Number(cycle.expected_amount_per_period) * cycle.length_periods },
     { label: "Outstanding",     value: fmtCurrency(Math.max(0, Number(cycle.expected_amount_per_period) * cycle.length_periods - totalPaid)), red: true },
   ];
+  if (pendingTotal > 0) {
+    totalsRows.push({ label: "Pending (awaiting confirmation)", value: fmtCurrency(pendingTotal) });
+  }
   if (commission.amount > 0) {
     totalsRows.push({ sep: true });
     totalsRows.push({ label: `Commission (${cycle.commission_model === "first_period" ? "Period 1" : `${cycle.commission_percent}%`})`, value: fmtCurrency(commission.amount), bold: true });
@@ -269,15 +301,17 @@ export default function ContributionCard({
   const freq = frequency || cycle?.frequency || cycle?.contribution_frequency || "monthly";
   const cols = COLS_BY_FREQ[freq] || 4;
 
-  const periods = useMemo(
-    () => (cycle ? buildPeriods({ ...cycle, frequency: freq }, contributions) : []),
+  const { periods, cycleStarted } = useMemo(
+    () => (cycle ? buildPeriods({ ...cycle, frequency: freq }, contributions) : { periods: [], cycleStarted: false }),
     [cycle, contributions, freq]
   );
 
   const paidCount    = periods.filter((p) => p.status === "paid").length;
   const missedCount  = periods.filter((p) => p.status === "missed").length;
   const partialCount = periods.filter((p) => p.status === "partial").length;
+  const pendingCount = periods.filter((p) => p.status === "pending").length;
   const totalPaid    = periods.reduce((s, p) => s + p.paid, 0);
+  const pendingTotal = periods.reduce((s, p) => s + (p.pendingAmount || 0), 0);
 
   const commission        = useMemo(() => computeCommission(cycle, contributions), [cycle, contributions]);
   const commissionDone    = useMemo(() => commissionAlreadyExecuted(contributions), [contributions]);
@@ -358,13 +392,26 @@ export default function ContributionCard({
       </div>
 
       {/* Stats strip */}
-      <div className="px-4 pb-3 flex gap-4 text-[11px]">
-        <span className="text-emerald-600 font-semibold">{paidCount} paid</span>
-        {partialCount > 0 && <span className="text-amber-500 font-semibold">{partialCount} partial</span>}
-        {missedCount > 0 && <span className="text-red-500 font-semibold">{missedCount} missed</span>}
-        <span className="ml-auto text-slate-500 dark:text-slate-400">
-          {fmtCurrency(totalPaid)} / {fmtCurrency(totalExp)}
-        </span>
+      <div className="px-4 pb-3 flex flex-col gap-1">
+        <div className="flex gap-4 text-[11px]">
+          <span className="text-emerald-600 font-semibold">{paidCount} paid</span>
+          {partialCount > 0 && <span className="text-amber-500 font-semibold">{partialCount} partial</span>}
+          {pendingCount > 0 && <span className="text-amber-400 font-semibold">{pendingCount} pending</span>}
+          {missedCount > 0 && <span className="text-red-500 font-semibold">{missedCount} missed</span>}
+          <span className="ml-auto text-slate-500 dark:text-slate-400">
+            {fmtCurrency(totalPaid)} / {fmtCurrency(totalExp)}
+          </span>
+        </div>
+        {pendingTotal > 0 && (
+          <p className="text-[10px] text-amber-500 font-medium">
+            {fmtCurrency(pendingTotal)} awaiting confirmation
+          </p>
+        )}
+        {!cycleStarted && pendingTotal > 0 && (
+          <p className="text-[10px] text-slate-400 dark:text-slate-500">
+            Cycle not yet started — first payment pending confirmation
+          </p>
+        )}
       </div>
 
       {/* Grid — CC-11: max-height + internal scroll for long cycles */}
@@ -477,6 +524,7 @@ export default function ContributionCard({
                   selected.status === "paid"      ? "text-emerald-600"
                   : selected.status === "missed"    ? "text-red-500"
                   : selected.status === "partial"   ? "text-amber-500"
+                  : selected.status === "pending"   ? "text-amber-400"
                   : selected.status === "current"   ? "text-brand-500"
                   : selected.status === "collector" ? "text-[#16255A] dark:text-[#8EA3D4]"
                   : "text-slate-400"
@@ -485,6 +533,18 @@ export default function ContributionCard({
               {selected.status === "collector" && (
                 <p className="text-xs text-[#16255A] dark:text-[#8EA3D4] bg-[#EEF1F9] dark:bg-[#16255A]/20 rounded-lg px-3 py-2">
                   This deposit went to your collector as the cycle fee. Your savings start from period 2.
+                </p>
+              )}
+              {selected.status === "pending" && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-lg px-3 py-2">
+                  Awaiting your collector's confirmation
+                </p>
+              )}
+              {selected.status === "missed" && selected.rejectedRow && (
+                <p className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">
+                  {selected.rejectedRow.reject_reason
+                    ? `Rejected: ${selected.rejectedRow.reject_reason}`
+                    : "A previous submission was rejected by your collector."}
                 </p>
               )}
               <div className="flex justify-between">
@@ -501,7 +561,13 @@ export default function ContributionCard({
                   {fmtCurrency(selected.paid)}
                 </span>
               </div>
-              {selected.paid < Number(cycle.expected_amount_per_period) && (
+              {selected.status === "pending" && (selected.pendingAmount || 0) > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-slate-500 dark:text-slate-400">Pending</span>
+                  <span className="font-semibold text-amber-500">{fmtCurrency(selected.pendingAmount)}</span>
+                </div>
+              )}
+              {selected.paid < Number(cycle.expected_amount_per_period) && selected.status !== "pending" && (
                 <div className="flex justify-between">
                   <span className="text-slate-500 dark:text-slate-400">Shortfall</span>
                   <span className="font-semibold text-red-500">
