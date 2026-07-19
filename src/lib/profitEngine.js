@@ -77,6 +77,10 @@ function isBillPayment(t) {
   return (t.bill_status != null && t.bill_status !== "") || t.payment_type === "bill_payment";
 }
 
+function isFailedBill(t) {
+  return isBillPayment(t) && t.bill_status === "failed";
+}
+
 function pool(items) {
   return {
     amount: items.reduce((s, x) => s + (x.amount || 0), 0),
@@ -290,7 +294,8 @@ export function compute(ledger, range) {
     ...invPmtItems,
   ];
   const cashIn  = pool(cashInItems);
-  const cashOut = pool(txsOut.map(t => ({ id: t.id, amount: t.amount })));
+  // Failed bills are excluded — payment never completed so no money left the account
+  const cashOut = pool(txsOut.filter(t => !isFailedBill(t)).map(t => ({ id: t.id, amount: t.amount })));
 
   // ── Cash by stream ────────────────────────────────────────────────────────
   const byStream = {
@@ -302,7 +307,7 @@ export function compute(ledger, range) {
     interestEarned,
     expenses:         pool(expTxs.map(t => ({ id: t.id, amount: t.amount }))),
     stockInvestment:  pool(txsOut.filter(t => STOCK_CATS.has(t.category)).map(t => ({ id: t.id, amount: t.amount }))),
-    billPayments:     pool(txsOut.filter(t => isBillPayment(t)).map(t => ({ id: t.id, amount: t.amount }))),
+    billPayments:     pool(txsOut.filter(t => isBillPayment(t) && !isFailedBill(t)).map(t => ({ id: t.id, amount: t.amount }))),
   };
 
   // ── Ajo liabilities ───────────────────────────────────────────────────────

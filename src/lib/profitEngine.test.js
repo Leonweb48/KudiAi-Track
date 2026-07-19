@@ -520,6 +520,21 @@ test("C6: manual item with cost_price_kobo is measured; item without goes to unm
   expect(r.cash.in.amount).toBeCloseTo(8000);
 });
 
+test("C7: failed bill transactions excluded from cash-out and byStream.billPayments", () => {
+  const transactions = [
+    { id: "t1", type: "out", amount: 1000, bill_status: "failed",  payment_type: "bill_payment", category: "expense", transaction_date: "2026-07-10" },
+    { id: "t2", type: "out", amount: 2000, bill_status: "success", payment_type: "bill_payment", category: "expense", transaction_date: "2026-07-10" },
+  ];
+  const r = compute({ transactions }, RANGE);
+
+  // Only the successful bill should appear in cash out
+  expect(r.cash.out.amount).toBeCloseTo(2000);
+  // byStream.billPayments excludes the failed one
+  expect(r.cash.byStream.billPayments.amount).toBeCloseTo(2000);
+  // P&L is unaffected (bills are never in revenue/expenses)
+  expect(r.profit.expenses.amount).toBeCloseTo(0);
+});
+
 // ── countUnnamedSales helper ─────────────────────────────────────────────────
 test("countUnnamedSales counts only blank item_name revenue transactions", () => {
   const txs = [
