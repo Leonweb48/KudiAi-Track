@@ -250,15 +250,23 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
     const c         = addCreditFor;
     const principal = parseFloat(ef.total_amount) || 0;
     const iVal      = parseFloat(ef.interest_value) || 0;
-    let extra = principal;
+
+    // Interest on this addition only — kept separate from principal
+    let addedInterest = 0;
     if (ef.interest_type === "percent" && iVal > 0)
-      extra += parseFloat((principal * iVal / 100).toFixed(2));
+      addedInterest = parseFloat((principal * iVal / 100).toFixed(2));
     else if (ef.interest_type === "fixed" && iVal > 0)
-      extra += iVal;
+      addedInterest = iVal;
+
+    const totalAddition = principal + addedInterest;
 
     const updates = {
-      total_amount: (c.total_amount || 0) + extra,
-      outstanding:  (c.outstanding  || 0) + extra,
+      // principal only — profitEngine uses total_amount as principalRemaining
+      total_amount:    (c.total_amount    || 0) + principal,
+      // interest pool accumulates — profitEngine uses interest_amount as interestRemaining
+      interest_amount: (c.interest_amount || 0) + addedInterest,
+      // outstanding grows by full amount owed (principal + interest)
+      outstanding:     (c.outstanding     || 0) + totalAddition,
       ...(ef.due_date ? { due_date: ef.due_date } : {}),
       ...(c.status === "paid" ? { status: "active" } : {}),
       ...(ef.notes ? { notes: [c.notes, ef.notes].filter(Boolean).join(" | ") } : {}),
@@ -826,14 +834,17 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
               {(() => {
                 const principal = parseFloat(ef.total_amount) || 0;
                 const iVal = parseFloat(ef.interest_value) || 0;
-                let extra = principal;
-                if (ef.interest_type === "percent" && iVal > 0) extra += principal * iVal / 100;
-                else if (ef.interest_type === "fixed" && iVal > 0) extra += iVal;
+                let addedInterest = 0;
+                if (ef.interest_type === "percent" && iVal > 0) addedInterest = principal * iVal / 100;
+                else if (ef.interest_type === "fixed" && iVal > 0) addedInterest = iVal;
+                const totalAddition = principal + addedInterest;
                 return (
                   <>
-                    <p>Adding: <strong className="text-slate-700 dark:text-slate-200">₦{extra.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
-                    <p>New total: <strong className="text-slate-700 dark:text-slate-200">₦{((addCreditFor.total_amount || 0) + extra).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
-                    <p>New outstanding: <strong className="text-red-500 dark:text-red-400">₦{((addCreditFor.outstanding || 0) + extra).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
+                    <p>Principal added: <strong className="text-slate-700 dark:text-slate-200">₦{principal.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
+                    {addedInterest > 0 && (
+                      <p>Interest added: <strong className="text-slate-700 dark:text-slate-200">₦{addedInterest.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
+                    )}
+                    <p>New outstanding: <strong className="text-red-500 dark:text-red-400">₦{((addCreditFor.outstanding || 0) + totalAddition).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
                   </>
                 );
               })()}
