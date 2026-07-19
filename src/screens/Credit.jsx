@@ -247,35 +247,23 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
   const handleAddExtraCredit = async () => {
     if (!ef.total_amount || !addCreditFor) return;
     setAddingExtra(true);
-    const c = addCreditFor;
+    const c         = addCreditFor;
     const principal = parseFloat(ef.total_amount) || 0;
     const iVal      = parseFloat(ef.interest_value) || 0;
-    let interestAmount = null;
-    if (ef.interest_type === "percent" && iVal > 0) {
-      interestAmount = parseFloat((principal * iVal / 100).toFixed(2));
-    } else if (ef.interest_type === "fixed" && iVal > 0) {
-      interestAmount = iVal;
-    }
-    const { error } = await addCredit({
-      customer_name:       c.customer_name        || "",
-      phone:               c.phone                || "",
-      email:               c.email                || "",
-      nin:                 c.nin                  || "",
-      address:             c.address              || "",
-      state:               c.state                || "",
-      lga:                 c.lga                  || "",
-      ward:                c.ward                 || "",
-      next_of_kin:         c.next_of_kin          || "",
-      next_of_kin_phone:   c.next_of_kin_phone    || "",
-      next_of_kin_email:   c.next_of_kin_email    || "",
-      next_of_kin_address: c.next_of_kin_address  || "",
-      total_amount:    principal,
-      due_date:        ef.due_date       || null,
-      notes:           ef.notes         || "",
-      interest_type:   ef.interest_type  || null,
-      interest_value:  iVal              || null,
-      interest_amount: interestAmount,
-    });
+    let extra = principal;
+    if (ef.interest_type === "percent" && iVal > 0)
+      extra += parseFloat((principal * iVal / 100).toFixed(2));
+    else if (ef.interest_type === "fixed" && iVal > 0)
+      extra += iVal;
+
+    const updates = {
+      total_amount: (c.total_amount || 0) + extra,
+      outstanding:  (c.outstanding  || 0) + extra,
+      ...(ef.due_date ? { due_date: ef.due_date } : {}),
+      ...(c.status === "paid" ? { status: "active" } : {}),
+      ...(ef.notes ? { notes: [c.notes, ef.notes].filter(Boolean).join(" | ") } : {}),
+    };
+    const { error } = await updateCredit(c.id, updates);
     setAddingExtra(false);
     if (!error) closeAddCreditFor();
   };
@@ -770,7 +758,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
 
       {/* ── Add Credit to Existing Customer ──────────────────────────── */}
       {addCreditFor && (
-        <Modal title={`New Credit — ${addCreditFor.customer_name}`} onClose={closeAddCreditFor}>
+        <Modal title={`Add Credit — ${addCreditFor.customer_name}`} onClose={closeAddCreditFor}>
           {/* Customer identity strip — read-only */}
           <div className="flex items-center gap-3 bg-slate-50 dark:bg-slate-700/60 rounded-xl px-3 py-2.5 mb-1">
             <div className="w-9 h-9 rounded-xl overflow-hidden flex-shrink-0">
@@ -788,9 +776,9 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
             <span className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold">Profile reused</span>
           </div>
 
-          <SectionLabel>New Credit Terms</SectionLabel>
+          <SectionLabel>Additional Credit</SectionLabel>
           <div className="grid grid-cols-2 gap-2">
-            <Field label="Amount (₦) *" type="number" inputMode="decimal" value={ef.total_amount}
+            <Field label="Amount to Add (₦) *" type="number" inputMode="decimal" value={ef.total_amount}
               onChange={e => setE("total_amount", e.target.value)} placeholder="0.00" />
             <Field label="Due Date" type="date" value={ef.due_date}
               onChange={e => setE("due_date", e.target.value)} />
@@ -831,7 +819,26 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
           )}
           <Field label="Notes (optional)" value={ef.notes}
             onChange={e => setE("notes", e.target.value)}
-            placeholder="e.g. Second loan — school fees" />
+            placeholder="e.g. Top-up for school fees" />
+
+          {ef.total_amount && parseFloat(ef.total_amount) > 0 && (
+            <div className="bg-slate-50 dark:bg-slate-700/60 rounded-xl px-3 py-2.5 text-[12px] text-slate-500 dark:text-slate-400 space-y-0.5">
+              {(() => {
+                const principal = parseFloat(ef.total_amount) || 0;
+                const iVal = parseFloat(ef.interest_value) || 0;
+                let extra = principal;
+                if (ef.interest_type === "percent" && iVal > 0) extra += principal * iVal / 100;
+                else if (ef.interest_type === "fixed" && iVal > 0) extra += iVal;
+                return (
+                  <>
+                    <p>Adding: <strong className="text-slate-700 dark:text-slate-200">₦{extra.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
+                    <p>New total: <strong className="text-slate-700 dark:text-slate-200">₦{((addCreditFor.total_amount || 0) + extra).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
+                    <p>New outstanding: <strong className="text-red-500 dark:text-red-400">₦{((addCreditFor.outstanding || 0) + extra).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
+                  </>
+                );
+              })()}
+            </div>
+          )}
 
           <button
             onClick={handleAddExtraCredit}
@@ -839,7 +846,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
             className="w-full mt-2 py-3 min-h-[48px] bg-[#16255A] hover:bg-[#1e3575] disabled:opacity-40 text-white rounded-2xl font-bold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2">
             {addingExtra
               ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Recording…</>
-              : "Record New Credit"
+              : "Add to Credit"
             }
           </button>
         </Modal>
