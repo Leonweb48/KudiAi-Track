@@ -160,12 +160,9 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
     return compute({ transactions, asoClients, credits }, { from: s, to: e });
   }, [transactions, asoClients, credits]);
 
-  // revenue.amount covers ALL sales categories (excl. debt repayments).
-  // Without product cost data here, cogs=0; use revenue−cogs−expenses so
-  // uncosted sales still show up (netProfit.amount excludes unmeasured items).
+  const profit       = todayEngine.profit.netProfit.amount;
   const todayExpenses = todayEngine.profit.expenses.amount;
   const todayRevenue  = todayEngine.profit.revenue.amount;
-  const profit        = todayRevenue - todayEngine.profit.cogs.amount - todayExpenses;
   const totalCredit  = credits.reduce((s, c) => s + c.outstanding, 0);
   const overdueCount = credits.filter(c => c.status === "overdue").length;
   const totalAso     = asoClients.reduce((s, c) => s + c.current_balance, 0);
