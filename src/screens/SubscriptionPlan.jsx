@@ -106,22 +106,18 @@ function PaidButton({ plan, session, disabled, yearly = false, appliedCoupon, on
 
     try {
       if (isNative) {
-        const baseUrl = supabase.supabaseUrl;
-        const anonKey = supabase.supabaseKey;
-        const res = await fetch(`${baseUrl}/functions/v1/initialize-payment`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${anonKey}`, "apikey": anonKey },
-          body: JSON.stringify({
+        const { data, error: fnErr } = await supabase.functions.invoke("initialize-payment", {
+          body: {
             email:     session.user.email,
             amount:    finalAmount * 100,
             reference: ref,
             planId:    plan.slug,
             userId:    session.user.id,
             yearly,
-          }),
+          },
         });
-        const data = await res.json();
-        if (!res.ok || !data.authorization_url) throw new Error(data.error || `Server error ${res.status}`);
+        if (fnErr) throw new Error(fnErr.message || "Server error");
+        if (!data?.authorization_url) throw new Error(data?.error || "Failed to initialize payment");
         localStorage.setItem("pendingPayment", JSON.stringify({ planId: plan.slug, reference: data.reference || ref, yearly, ...(couponMeta || {}) }));
         await Browser.open({ url: data.authorization_url });
       } else {
