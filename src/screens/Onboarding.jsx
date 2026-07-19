@@ -173,6 +173,10 @@ export default function Onboarding({ session, onComplete }) {
   const [profileFile,    setProfileFile]    = useState(null);
   const [profilePreview, setProfilePreview] = useState(null);
 
+  /* ── Step 2 — Business Logo (optional) ─────────── */
+  const [logoFile,    setLogoFile]    = useState(null);
+  const [logoPreview, setLogoPreview] = useState(null);
+
   /* ── Step 2 — Business Identity ────────────────── */
   const [bizName,            setBizName]            = useState("");
   const [bizType,            setBizType]            = useState("");
@@ -258,6 +262,14 @@ export default function Onboarding({ session, onComplete }) {
         } catch { photoFailed = true; }
       }
 
+      // Upload business logo (optional — ignore failure silently)
+      let storeImageUrl = null;
+      if (logoFile) {
+        try {
+          storeImageUrl = await uploadFile(logoFile, "avatars", `${uid}/store`);
+        } catch { /* silent — non-critical */ }
+      }
+
       // Upload business registration document (optional — ignore failure silently)
       let docUrl = null;
       const docTypeVal = actual(regDocType, regDocTypeOther);
@@ -283,6 +295,7 @@ export default function Onboarding({ session, onComplete }) {
         currency,
         dark_mode:               false,
         profile_image_url:       profileImageUrl,
+        store_image_url:         storeImageUrl,
         // Business identity
         business_name:           bizName,
         business_type:           actual(bizType, bizTypeOther)          || null,
@@ -467,6 +480,51 @@ export default function Onboarding({ session, onComplete }) {
 
             {/* ── Section 1: Business Identity ── */}
             <SectionHead emoji="🏢" title="Business Identity" />
+
+            {/* Business Logo — optional, used on invoices */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 dark:text-slate-300 mb-2">
+                Business Logo <span className="text-gray-400 dark:text-slate-500 font-normal">(optional · used on invoices)</span>
+              </label>
+              <label className="flex items-center gap-4 cursor-pointer group">
+                <div className="w-20 h-20 rounded-2xl border-2 border-dashed border-gray-300 dark:border-slate-600 group-hover:border-green-400 dark:group-hover:border-green-600 overflow-hidden flex-shrink-0 transition-colors bg-gray-50 dark:bg-slate-800 flex items-center justify-center">
+                  {logoPreview
+                    ? <img src={logoPreview} alt="Business logo" className="w-full h-full object-cover" />
+                    : <svg className="w-7 h-7 text-gray-300 dark:text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                  }
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-gray-700 dark:text-slate-200">
+                    {logoFile ? logoFile.name : "Tap to upload logo"}
+                  </p>
+                  <p className="text-xs text-gray-400 dark:text-slate-500 mt-0.5">JPG or PNG · max 2 MB</p>
+                  {logoPreview && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.preventDefault(); setLogoFile(null); setLogoPreview(null); }}
+                      className="text-xs text-red-500 mt-1 hover:text-red-700"
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files[0];
+                    if (!f) return;
+                    if (f.size > 2 * 1024 * 1024) { setError("Logo must be under 2 MB."); return; }
+                    setLogoFile(f);
+                    setLogoPreview(URL.createObjectURL(f));
+                    setError("");
+                  }}
+                />
+              </label>
+            </div>
 
             <Field label="Business Name" required
               placeholder="e.g. Adaeze Fabrics & Co."
