@@ -815,7 +815,14 @@ function DrillDownSheet({ label, txIds, transactions, invoices, meta, onClose })
     txIds.map(id => {
       if (txMap.has(id)) {
         const t = txMap.get(id);
-        return { id, label: t.item_name?.trim() || t.customer_name?.trim() || t.category || "Transaction", amount: t.amount, date: t.transaction_date || t.created_at?.slice(0, 10) };
+        return {
+          id,
+          label:  t.item_name?.trim() || t.customer_name?.trim() || t.category || "Transaction",
+          amount: t.amount,
+          date:   t.transaction_date || t.created_at?.slice(0, 10),
+          type:   t.type,
+          failed: t.bill_status === "failed",
+        };
       }
       if (invPmtMap.has(id)) {
         const p = invPmtMap.get(id);
@@ -855,10 +862,22 @@ function DrillDownSheet({ label, txIds, transactions, invoices, meta, onClose })
           {items.map(item => (
             <div key={item.id} className="flex items-center gap-3 py-3 border-b border-slate-100 dark:border-slate-800/60 last:border-0">
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-slate-800 dark:text-white truncate">{item.label}</p>
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <p className="text-sm font-semibold text-slate-800 dark:text-white truncate">{item.label}</p>
+                  {item.failed && (
+                    <span className="flex-shrink-0 text-[9px] bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded-full font-bold leading-none">
+                      Failed
+                    </span>
+                  )}
+                </div>
                 {item.date && <p className="text-[10px] text-slate-400 mt-0.5">{item.date}</p>}
               </div>
-              <p className="text-sm font-bold text-slate-700 dark:text-slate-200 tabular-nums flex-shrink-0">{fmt(item.amount)}</p>
+              <p className={`text-sm font-bold tabular-nums flex-shrink-0 ${
+                item.failed  ? "text-red-400 dark:text-red-500 line-through" :
+                item.type === "out" ? "text-red-500 dark:text-red-400" :
+                item.type === "in"  ? "text-green-600 dark:text-green-400" :
+                "text-slate-700 dark:text-slate-200"
+              }`}>{fmt(item.amount)}</p>
             </div>
           ))}
         </div>

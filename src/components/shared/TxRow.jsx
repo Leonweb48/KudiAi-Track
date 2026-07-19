@@ -31,6 +31,11 @@ function catTitle(tx) { return tx.item_name || CAT_LABEL[tx.category] || "Transa
 
 /* ── Icon / colour map — single source of truth for all six variants ── */
 export function getTxStyle(tx) {
+  if (tx.bill_status === "failed") return {
+    bg:    "bg-red-100 dark:bg-red-900/20",
+    color: "#dc2626",
+    icon:  "M18 6L6 18|M6 6l12 12",
+  };
   if (tx.payment_type === "bill_payment") return {
     bg:    "bg-cyan-100 dark:bg-cyan-900/30",
     color: "#0891b2",
@@ -70,8 +75,9 @@ const TRASH_ICON   = "M3 6h18|M8 6V4h8v2|M19 6l-1 14H6L5 6";
    Home variant — compact, no swipe
    ═══════════════════════════════════════════════════════════════════════ */
 function TxRowHome({ tx, hidden, onClick }) {
-  const isIn  = tx.type === "in";
-  const style = getTxStyle(tx);
+  const isIn     = tx.type === "in";
+  const isFailed = tx.bill_status === "failed";
+  const style    = getTxStyle(tx);
   return (
     <button
       onClick={onClick}
@@ -81,14 +87,25 @@ function TxRowHome({ tx, hidden, onClick }) {
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate">{catTitle(tx)}</p>
-        <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 truncate">
-          {cap(tx.category)} · {fmtPT(tx.payment_type)}
-        </p>
+        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+          <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">
+            {cap(tx.category)} · {fmtPT(tx.payment_type)}
+          </p>
+          {isFailed && (
+            <span className="text-[9px] bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded-full font-bold leading-none">
+              Failed
+            </span>
+          )}
+        </div>
       </div>
       <div className="text-right flex-shrink-0">
         <AmountDisplay
           amount={tx.amount} size="row" align="right" hidden={hidden}
-          className={isIn ? "text-green-600 dark:text-green-400" : "text-navy dark:text-blue-300"}
+          className={
+            isFailed ? "text-red-400 dark:text-red-500 line-through" :
+            isIn     ? "text-green-600 dark:text-green-400" :
+                       "text-red-500 dark:text-red-400"
+          }
         />
         <p className="text-[10px] text-slate-300 dark:text-slate-600 mt-0.5">{tx.transaction_date}</p>
       </div>
@@ -100,8 +117,9 @@ function TxRowHome({ tx, hidden, onClick }) {
    Transactions variant — richer subtitle, swipe-to-reveal Receipt+Delete
    ═══════════════════════════════════════════════════════════════════════ */
 function TxRowTransactions({ tx, hidden, onClick, staffName, onSwipeReceipt, onSwipeDelete }) {
-  const isIn   = tx.type === "in";
-  const style  = getTxStyle(tx);
+  const isIn     = tx.type === "in";
+  const isFailed = tx.bill_status === "failed";
+  const style    = getTxStyle(tx);
   const ACTION = 88; // 2 × 44 px buttons
 
   const [offset,  setOffset]  = useState(0);
@@ -213,7 +231,11 @@ function TxRowTransactions({ tx, hidden, onClick, staffName, onSwipeReceipt, onS
             <div className="text-right flex-shrink-0 ml-2">
               <AmountDisplay
                 amount={tx.amount} size="row" align="right" hidden={hidden}
-                className={isIn ? "text-green-600 dark:text-green-400" : "text-navy dark:text-blue-300"}
+                className={
+                  isFailed ? "text-red-400 dark:text-red-500 line-through" :
+                  isIn     ? "text-green-600 dark:text-green-400" :
+                             "text-red-500 dark:text-red-400"
+                }
               />
               <p className="text-[10px] text-slate-300 dark:text-slate-600 mt-0.5">{tx.transaction_date}</p>
             </div>
@@ -221,8 +243,13 @@ function TxRowTransactions({ tx, hidden, onClick, staffName, onSwipeReceipt, onS
           <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 truncate">
             {parts.join(" · ")}
           </p>
-          {(tx.quantity > 1 || staffName) && (
+          {(tx.quantity > 1 || staffName || isFailed) && (
             <div className="flex gap-1.5 mt-1.5 flex-wrap">
+              {isFailed && (
+                <span className="text-[9px] bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-2 py-0.5 rounded-full font-bold">
+                  Failed
+                </span>
+              )}
               {tx.quantity > 1 && (
                 <span className="text-[9px] bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-full font-semibold">
                   ×{tx.quantity}
