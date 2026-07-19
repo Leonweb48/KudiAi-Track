@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { fmt, today } from "../utils/helpers";
+import { compute } from "../lib/profitEngine";
 import { supabase } from "../utils/supabase";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
 import { TxRow } from "../components/shared/TxRow";
@@ -104,8 +105,8 @@ function SalesForecastCard({ prediction, t, balanceHidden }) {
 }
 
 /* ── Main ────────────────────────────────────────────────────────── */
-export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, onAIOpen }) {
-  const { transactions, credits, asoClients, profile, loading } = store;
+export default function Home({ store, inventory, invoiceHook, plan, setTab, onQuickAction, onVoiceOpen, onAIOpen }) {
+  const { transactions, credits, asoClients, debtPayments, profile, loading } = store;
   const t = useT();
   const [balanceHidden,      setBalanceHidden]      = useState(() => sessionStorage.getItem("kt_balance_hidden") === "1");
   const [search,             setSearch]             = useState("");
@@ -147,10 +148,27 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
   const annBars      = slotMap.announcement_bar || [];
   const tabCard = (slotMap.tab_card_quad || [])[0] ?? (slotMap.tab_card_duo || [])[0] ?? null;
 
-  const todayTx      = transactions.filter(tx => tx.transaction_date === today());
-  const cashIn       = todayTx.filter(tx => tx.type === "in" ).reduce((s, tx) => s + tx.amount, 0);
-  const cashOut      = todayTx.filter(tx => tx.type === "out").reduce((s, tx) => s + tx.amount, 0);
-  const profit       = cashIn - cashOut;
+  const todayTx = transactions.filter(tx => tx.transaction_date === today());
+  const cashIn  = todayTx.filter(tx => tx.type === "in" ).reduce((s, tx) => s + tx.amount, 0);
+  const cashOut = todayTx.filter(tx => tx.type === "out").reduce((s, tx) => s + tx.amount, 0);
+
+  // Same ledger + engine as Finance page so "Today's Profit" matches Finance Net P&L
+  const todayEngine = useMemo(() => {
+    const s = new Date(); s.setHours(0, 0, 0, 0);
+    const e = new Date(); e.setHours(23, 59, 59, 999);
+    return compute({
+      transactions,
+      invoices:     invoiceHook?.invoices  || [],
+      products:     inventory?.products    || [],
+      asoClients,
+      debtPayments: debtPayments           || [],
+      credits,
+    }, { from: s, to: e });
+  }, [transactions, invoiceHook?.invoices, inventory?.products, asoClients, debtPayments, credits]);
+
+  const profit        = todayEngine.profit.netProfit.amount;
+  const todayExpenses = todayEngine.profit.expenses.amount;
+  const todayRevenue  = todayEngine.profit.revenue.amount;
   const totalCredit  = credits.reduce((s, c) => s + c.outstanding, 0);
   const overdueCount = credits.filter(c => c.status === "overdue").length;
   const totalAso     = asoClients.reduce((s, c) => s + c.current_balance, 0);
@@ -290,10 +308,10 @@ export default function Home({ store, plan, setTab, onQuickAction, onVoiceOpen, 
               profit > 0 ? "text-emerald-500 dark:text-emerald-400" : profit < 0 ? "text-red-400" : "text-slate-400"
             }`}>
               {profit > 0 ? "▲" : profit < 0 ? "▼" : "—"}
-              {cashIn > 0 ? ` ${Math.round(Math.abs(profit) / cashIn * 100)}%` : ""}
+              {todayRevenue > 0 ? ` ${Math.round(Math.abs(profit) / todayRevenue * 100)}%` : ""}
             </span>
             <p className="text-[10px] text-slate-400 dark:text-slate-500 whitespace-nowrap">
-              {balanceHidden ? "••••" : `Expenses: ${fmt(cashOut)}`}
+              {balanceHidden ? "••••" : `Expenses: ${fmt(todayExpenses)}`}
             </p>
           </div>
         </div>

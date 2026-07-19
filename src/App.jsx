@@ -380,6 +380,8 @@ export default function App() {
   const SCREENS = {
     home:         <Home
                     store={store}
+                    inventory={inventory}
+                    invoiceHook={invoiceHook}
                     setTab={setTab}
                     onQuickAction={triggerQuickAction}
                     onVoiceOpen={() => setVoiceOpen(true)}
