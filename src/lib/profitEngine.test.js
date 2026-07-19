@@ -531,6 +531,8 @@ test("C7: failed bill transactions excluded from cash-out and byStream.billPayme
   expect(r.cash.out.amount).toBeCloseTo(2000);
   // byStream.billPayments excludes the failed one
   expect(r.cash.byStream.billPayments.amount).toBeCloseTo(2000);
+  // Failed bills tracked separately for Finance page display
+  expect(r.cash.byStream.failedBills.amount).toBeCloseTo(1000);
   // P&L is unaffected (bills are never in revenue/expenses)
   expect(r.profit.expenses.amount).toBeCloseTo(0);
 });

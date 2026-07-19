@@ -308,6 +308,7 @@ export function compute(ledger, range) {
     expenses:         pool(expTxs.map(t => ({ id: t.id, amount: t.amount }))),
     stockInvestment:  pool(txsOut.filter(t => STOCK_CATS.has(t.category)).map(t => ({ id: t.id, amount: t.amount }))),
     billPayments:     pool(txsOut.filter(t => isBillPayment(t) && !isFailedBill(t)).map(t => ({ id: t.id, amount: t.amount }))),
+    failedBills:      pool(txsOut.filter(t => isFailedBill(t)).map(t => ({ id: t.id, amount: t.amount }))),
   };
 
   // ── Ajo liabilities ───────────────────────────────────────────────────────

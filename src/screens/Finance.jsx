@@ -612,7 +612,7 @@ function PLRow({ label, amount, sign = 1, isSub = false, onDrill, note }) {
   );
 }
 
-function StreamRow({ label, amount, sign = 1, isLiability = false, isSub = false, onDrill }) {
+function StreamRow({ label, amount, sign = 1, isLiability = false, isWarning = false, isSub = false, onDrill }) {
   const displayAmt = sign < 0 ? -amount : amount;
   return (
     <div
@@ -626,6 +626,7 @@ function StreamRow({ label, amount, sign = 1, isLiability = false, isSub = false
       ].filter(Boolean).join(" ")}
     >
       {isLiability && <div className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" />}
+      {isWarning   && <div className="w-1.5 h-1.5 rounded-full bg-red-400 flex-shrink-0" />}
       <p className={`flex-1 min-w-0 text-sm truncate ${
         isSub
           ? "font-extrabold text-slate-800 dark:text-white"
@@ -634,6 +635,7 @@ function StreamRow({ label, amount, sign = 1, isLiability = false, isSub = false
       <span className={`text-sm tabular-nums flex-shrink-0 ${
         isSub ? "font-extrabold" : "font-bold"
       } ${
+        isWarning   ? "text-red-500 dark:text-red-400" :
         isLiability ? "text-amber-600 dark:text-amber-400" :
         displayAmt < 0 ? "text-red-500 dark:text-red-400" :
         "text-slate-800 dark:text-white"
@@ -725,8 +727,9 @@ function CashCard({ engine, loading, onDrill }) {
 
   const { in: cashIn, out: cashOut, net: cashNet, byStream } = engine.cash;
   const { ajoHeld, ajoReleased } = engine.liabilities;
-  const drill = (label, d) => d.txIds.length ? () => onDrill({ label, amount: d.amount, txIds: d.txIds, meta: d.meta }) : null;
-  const hasAjo = ajoHeld.amount > 0 || ajoReleased.amount > 0;
+  const drill = (label, d) => d?.txIds?.length ? () => onDrill({ label, amount: d.amount, txIds: d.txIds, meta: d.meta }) : null;
+  const hasAjo         = ajoHeld.amount > 0 || ajoReleased.amount > 0;
+  const hasFailedBills = (byStream.failedBills?.amount || 0) > 0;
 
   const inflows = [
     ["Sales",             byStream.sales],
@@ -765,6 +768,20 @@ function CashCard({ engine, loading, onDrill }) {
       )}
 
       <StreamRow label="Net cash flow" amount={cashNet.amount} isSub />
+
+      {hasFailedBills && (
+        <>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-red-500 dark:text-red-400 mt-4 mb-1">
+            Failed bill payments (not deducted from balance)
+          </p>
+          <StreamRow
+            label="Bills attempted but failed"
+            amount={byStream.failedBills.amount}
+            isWarning
+            onDrill={drill("Failed bill payments", byStream.failedBills)}
+          />
+        </>
+      )}
 
       {hasAjo && (
         <>
