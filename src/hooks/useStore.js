@@ -577,7 +577,11 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
       setDbError(`Failed to save credit: ${error.message}`);
       return { data: null, error };
     } else {
-      setCredits(p => p.map(cr => cr.id === tempId ? data : cr));
+      setCredits(p => {
+        // If realtime beat the await and already inserted the real record, just drop the temp
+        if (p.some(cr => cr.id === data.id)) return p.filter(cr => cr.id !== tempId);
+        return p.map(cr => cr.id === tempId ? data : cr);
+      });
       if (staffId) {
         const due = c.due_date ? ` · due ${c.due_date}` : "";
         logAudit({ ownerId: userId, staffId, staffName: staffName || "Staff",
