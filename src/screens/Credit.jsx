@@ -237,6 +237,27 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
     setPhotoFile(null); setPhotoPreview(null);
   };
 
+  const openNewCreditForCustomer = (c) => {
+    setPhotoFile(null);
+    setPhotoPreview(null);
+    setF({
+      ...BLANK,
+      customer_name:       c.customer_name        || "",
+      phone:               c.phone                || "",
+      email:               c.email                || "",
+      nin:                 c.nin                  || "",
+      address:             c.address              || "",
+      state:               c.state                || "",
+      lga:                 c.lga                  || "",
+      ward:                c.ward                 || "",
+      next_of_kin:         c.next_of_kin          || "",
+      next_of_kin_phone:   c.next_of_kin_phone    || "",
+      next_of_kin_email:   c.next_of_kin_email    || "",
+      next_of_kin_address: c.next_of_kin_address  || "",
+    });
+    setShowAdd(true);
+  };
+
   const handleAdd = async () => {
     if (!f.customer_name || !f.total_amount) return;
     setAdding(true);
@@ -583,6 +604,16 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                   )}
                   {/* Secondary — 2-column grid so each button always has half the width */}
                   <div className="grid grid-cols-2 gap-1.5">
+                    {!isVoided && (
+                      <button
+                        onClick={() => openNewCreditForCustomer(c)}
+                        className="py-2.5 min-h-[40px] bg-[#16255A]/5 dark:bg-blue-900/20 text-[#16255A] dark:text-blue-300 rounded-xl font-semibold text-xs border border-[#16255A]/20 dark:border-blue-700/50 hover:bg-[#16255A]/10 transition flex items-center justify-center gap-1 active:scale-[0.99]">
+                        <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 flex-shrink-0" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                        </svg>
+                        New Credit
+                      </button>
+                    )}
                     {c.outstanding > 0 && (
                       <button onClick={() => { setReminderFor(c); setCopied(false); }}
                         className={`py-2.5 min-h-[40px] rounded-xl font-semibold text-xs border transition flex items-center justify-center gap-1 active:scale-[0.99] ${
