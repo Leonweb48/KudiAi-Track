@@ -1424,14 +1424,16 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
 }
 
 // ── Withdrawal request modal ──────────────────────────────────────────────
-function WithdrawRequestModal({ client, cycles = [], onClose, onSuccess }) {
-  const [amount,      setAmount]      = useState("");
-  const [saving,      setSaving]      = useState(false);
-  const [error,       setError]       = useState("");
-  const [done,        setDone]        = useState(false);
-  const [txnPin,      setTxnPin]      = useState(null);
-  const [esusuLocked, setEsusuLocked] = useState(0);
-  const [cycleLocked, setCycleLocked] = useState(0);
+function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotationsData = [], onClose, onSuccess }) {
+  const [amount,        setAmount]        = useState("");
+  const [saving,        setSaving]        = useState(false);
+  const [error,         setError]         = useState("");
+  const [done,          setDone]          = useState(false);
+  const [txnPin,        setTxnPin]        = useState(null);
+  const [esusuLocked,   setEsusuLocked]   = useState(0);
+  const [cycleLocked,   setCycleLocked]   = useState(0);
+  const [activeTab,     setActiveTab]     = useState("personal");
+  const [selectedGrpId, setSelectedGrpId] = useState(null);
 
   useEffect(() => {
     Promise.all([
@@ -1482,6 +1484,15 @@ function WithdrawRequestModal({ client, cycles = [], onClose, onSuccess }) {
     finally { setAcctVerifying(false); }
   };
 
+  // Derived tab/group data
+  const savingsGroups = clientGroups
+    .filter(m => m.group?.group_mode === "savings")
+    .map(m => m.group)
+    .filter(Boolean);
+  const esusuRounds = rotationsData;
+  const hasTabs = savingsGroups.length > 0 || esusuRounds.length > 0;
+  const selectedGroup = savingsGroups.find(g => g.id === selectedGrpId) || savingsGroups[0] || null;
+
   // Fee from active percent cycle (not client row — cycle model is the truth after Cycles v2)
   const activePctCycle = cycles.find(cy => cy.status === "active" && cy.commission_model === "percent");
   const pctFee       = activePctCycle ? (activePctCycle.commission_percent || 0) : 0;
@@ -1511,7 +1522,6 @@ function WithdrawRequestModal({ client, cycles = [], onClose, onSuccess }) {
     }
     setSaving(true); setError("");
     try {
-      // Save bank details to profile if changed or newly added
       const bankChanged = acctForm.account_number !== (client.account_number || "") ||
                           acctForm.bank_code !== (client.bank_code || "");
       if (bankChanged && acctVerified) {
@@ -1525,10 +1535,14 @@ function WithdrawRequestModal({ client, cycles = [], onClose, onSuccess }) {
           },
         });
       }
+      const reqNotes = activeTab === "group" && selectedGroup
+        ? `Group savings — ${selectedGroup.name}`
+        : undefined;
       await ajoFn("request-withdrawal", {
         client_id: client.id,
         owner_id:  client.user_id,
         amount:    amtNum,
+        ...(reqNotes ? { notes: reqNotes } : {}),
       });
       setDone(true);
       onSuccess();
@@ -1538,6 +1552,118 @@ function WithdrawRequestModal({ client, cycles = [], onClose, onSuccess }) {
       setSaving(false);
     }
   };
+
+  // Shared withdrawal form used by both Personal and Group tabs
+  const withdrawalForm = (
+    <>
+      <div className="bg-slate-50 dark:bg-slate-700/50 rounded-2xl px-4 py-4 mb-3">
+        <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Withdrawal Amount</p>
+        <div className="flex items-center gap-2">
+          <span className="text-2xl font-black text-slate-700 dark:text-slate-200">₦</span>
+          <input
+            type="number" inputMode="decimal" min="1"
+            value={amount} onChange={e => setAmount(e.target.value)}
+            placeholder="0.00"
+            className="flex-1 bg-transparent text-2xl font-black text-slate-700 dark:text-slate-200 outline-none placeholder:text-slate-300 dark:placeholder:text-slate-600 tabular [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+          />
+        </div>
+        {amtNum > (client.current_balance || 0) && (
+          <p className="text-[11px] text-red-500 mt-1">Exceeds available balance</p>
+        )}
+      </div>
+
+      <div className="bg-slate-50 dark:bg-slate-700/40 border border-slate-200 dark:border-slate-600 rounded-2xl px-4 py-3 mb-3 space-y-2">
+        <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+          {pctFee > 0 ? `Withdrawal fee · ${pctFee}%`
+            : client.commission_model === "first_period" ? "Fee: first period per cycle"
+            : "No withdrawal fee"}
+        </p>
+        <div className="flex justify-between text-xs">
+          <span className="text-slate-500 dark:text-slate-400">Requested</span>
+          <span className="font-bold text-slate-700 dark:text-slate-200">{amtNum > 0 ? fmt(amtNum) : "—"}</span>
+        </div>
+        {feeAmt > 0 && amtNum > 0 && (
+          <div className="flex justify-between text-xs">
+            <span className="text-slate-500 dark:text-slate-400">{`Fee (${pctFee}%)`}</span>
+            <span className="font-bold text-red-500">−{fmt(feeAmt)}</span>
+          </div>
+        )}
+        <div className="flex justify-between text-xs border-t border-slate-200 dark:border-slate-600 pt-2">
+          <span className="font-extrabold text-slate-600 dark:text-slate-300">You receive</span>
+          <span className={`font-extrabold ${amtNum > 0 && netAmt > 0 ? "text-green-600 dark:text-green-400" : "text-slate-400 dark:text-slate-500"}`}>
+            {amtNum > 0 ? fmt(Math.max(0, netAmt)) : "—"}
+          </span>
+        </div>
+      </div>
+
+      <div className="bg-slate-50 dark:bg-slate-700/40 border border-slate-200 dark:border-slate-600 rounded-2xl px-4 py-3 mb-3">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Payout Account</p>
+          {!editingAcct && acctForm.account_name && (
+            <button type="button" onClick={() => { setEditingAcct(true); setAcctVerified(false); }}
+              className="text-[11px] font-bold text-brand-500 dark:text-brand-400">Change</button>
+          )}
+        </div>
+        {!editingAcct && acctForm.account_name ? (
+          <div>
+            <p className="text-sm font-extrabold text-slate-700 dark:text-slate-200">{acctForm.account_name}</p>
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{acctForm.bank_name} · ****{acctForm.account_number.slice(-4)}</p>
+          </div>
+        ) : (
+          <div className="space-y-2.5">
+            <select value={acctForm.bank_code} onChange={e => {
+              const sel = banks.find(b => b.code === e.target.value);
+              setAcctForm(p => ({ ...p, bank_code: e.target.value, bank_name: sel?.name || "", account_name: "" }));
+              setAcctVerified(false);
+            }} className="w-full h-10 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 text-sm font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/30">
+              <option value="">Select bank…</option>
+              {banks.map(b => <option key={b.code} value={b.code}>{b.name}</option>)}
+            </select>
+            <div className="flex gap-2">
+              <input type="text" inputMode="numeric" maxLength={10} placeholder="10-digit account number"
+                value={acctForm.account_number}
+                onChange={e => { setAcctForm(p => ({ ...p, account_number: e.target.value.replace(/\D/g, "").slice(0, 10), account_name: "" })); setAcctVerified(false); }}
+                className="flex-1 h-10 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 text-sm font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/30" />
+              <button type="button" onClick={resolveAcct}
+                disabled={acctVerifying || !acctForm.bank_code || acctForm.account_number.length !== 10}
+                className="h-10 px-3.5 rounded-xl bg-brand-500 text-white text-xs font-bold disabled:opacity-40 flex-shrink-0 active:scale-95 transition">
+                {acctVerifying ? "…" : "Verify"}
+              </button>
+            </div>
+            {acctVerified && acctForm.account_name && (
+              <div className="flex items-center gap-2 px-3 py-2 bg-green-50 dark:bg-green-900/20 rounded-xl">
+                <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-green-600 flex-shrink-0" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                <p className="text-[12px] font-bold text-green-700 dark:text-green-400">{acctForm.account_name}</p>
+              </div>
+            )}
+            {acctError && <p className="text-xs text-red-500">{acctError}</p>}
+          </div>
+        )}
+      </div>
+
+      {error && <p className="text-xs text-red-500 mb-3">{error}</p>}
+
+      <button
+        onClick={() => {
+          if (!amtNum || amtNum <= 0) { setError("Enter a valid amount"); return; }
+          if (amtNum > (client.current_balance || 0)) { setError("Amount exceeds your balance"); return; }
+          if (netAmt <= 0) { setError("Amount too small after fee deduction"); return; }
+          if (!acctForm.account_name || !acctForm.account_number || !acctForm.bank_code) {
+            setError("Add and verify your bank account before requesting a withdrawal"); return;
+          }
+          setTxnPin({
+            title: "Request Withdrawal",
+            amount: Math.round(netAmt * 100),
+            description: "Savings withdrawal request",
+            onApprove: () => { setTxnPin(null); handleSubmit(); },
+          });
+        }}
+        disabled={saving || !amtNum || amtNum <= 0}
+        className="w-full py-3.5 bg-brand-500 hover:bg-brand-600 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] disabled:opacity-50 shadow-sm">
+        {saving ? "Submitting…" : "Submit Request"}
+      </button>
+    </>
+  );
 
   return (
     <>
@@ -1552,14 +1678,11 @@ function WithdrawRequestModal({ client, cycles = [], onClose, onSuccess }) {
               </svg>
             </div>
             <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">Request Submitted!</h3>
-            <p className="text-xs text-slate-400 dark:text-slate-500">You'll be notified by email once your request is reviewed.</p>
-            <button onClick={onClose} className="mt-5 w-full py-3.5 bg-brand-500 text-white rounded-xl font-bold text-sm">
-              Close
-            </button>
+            <p className="text-xs text-slate-400 dark:text-slate-500">You&apos;ll be notified by email once your request is reviewed.</p>
+            <button onClick={onClose} className="mt-5 w-full py-3.5 bg-brand-500 text-white rounded-xl font-bold text-sm">Close</button>
           </div>
         ) : (
           <>
-            {/* Header with balance */}
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 bg-slate-100 dark:bg-slate-700 rounded-2xl flex items-center justify-center flex-shrink-0">
                 <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
@@ -1576,140 +1699,187 @@ function WithdrawRequestModal({ client, cycles = [], onClose, onSuccess }) {
               </div>
             </div>
 
-            {/* Per-cycle status cards */}
-            {cycles.filter(cy => cy.status === "active").length > 0 && (
-              <div className="space-y-2 mb-4">
-                {cycles.filter(cy => cy.status === "active").map(cy => {
-                  const isLocked = cy.commission_model === "first_period";
+            {hasTabs && (
+              <div className="flex gap-1 p-1 bg-slate-100 dark:bg-slate-700/50 rounded-xl mb-4">
+                {[
+                  { key: "personal", label: "Personal" },
+                  ...(savingsGroups.length > 0 ? [{ key: "group", label: "Group Savings" }] : []),
+                  ...(esusuRounds.length  > 0 ? [{ key: "esusu",  label: "Esusu" }] : []),
+                ].map(tab => (
+                  <button key={tab.key} type="button" onClick={() => { setActiveTab(tab.key); setError(""); }}
+                    className={`flex-1 py-2 rounded-lg text-[11px] font-bold transition ${
+                      activeTab === tab.key
+                        ? "bg-white dark:bg-slate-700 text-slate-800 dark:text-white shadow-sm"
+                        : "text-slate-500 dark:text-slate-400"
+                    }`}>
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* ── Personal Savings tab ── */}
+            {activeTab === "personal" && (
+              <>
+                {cycles.filter(cy => cy.status === "active").length > 0 && (
+                  <div className="space-y-2 mb-4">
+                    {cycles.filter(cy => cy.status === "active").map(cy => {
+                      const isLocked = cy.commission_model === "first_period";
+                      return (
+                        <div key={cy.id} className={`px-3.5 py-2.5 rounded-xl border ${isLocked ? "border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-900/10" : "border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/30"}`}>
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{cy.label || "Savings"}</p>
+                            {isLocked
+                              ? <span className="text-[9px] font-extrabold bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full uppercase tracking-wide">Locked</span>
+                              : <span className="text-[9px] font-extrabold bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full uppercase tracking-wide">Available</span>
+                            }
+                          </div>
+                          {isLocked && (
+                            <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">
+                              Locked with your collector — contact your savings agent to discuss early access
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {withdrawalForm}
+              </>
+            )}
+
+            {/* ── Saving Group tab ── */}
+            {activeTab === "group" && (
+              <>
+                {savingsGroups.length > 1 && (
+                  <div className="mb-4">
+                    <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Which savings group?</p>
+                    <div className="space-y-1.5">
+                      {savingsGroups.map(g => (
+                        <button key={g.id} type="button" onClick={() => setSelectedGrpId(g.id)}
+                          className={`w-full flex items-center justify-between px-3 py-2 rounded-xl border-2 text-left text-sm transition ${
+                            (selectedGrpId || savingsGroups[0]?.id) === g.id
+                              ? "border-[#16255A] bg-[#16255A]/5 dark:bg-[#16255A]/20 text-[#16255A] dark:text-blue-300"
+                              : "border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200"
+                          }`}>
+                          <span className="font-semibold">{g.name}</span>
+                          {(selectedGrpId || savingsGroups[0]?.id) === g.id && (
+                            <div className="w-3.5 h-3.5 rounded-full bg-[#16255A] flex-shrink-0" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {savingsGroups.length === 1 && (
+                  <div className="px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/30 mb-4">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{savingsGroups[0].name}</p>
+                      <span className="text-[9px] font-extrabold bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full uppercase tracking-wide">Available</span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">Your group savings balance is part of your total withdrawable balance</p>
+                  </div>
+                )}
+                {withdrawalForm}
+              </>
+            )}
+
+            {/* ── Esusu Rotation tab ── */}
+            {activeTab === "esusu" && (
+              <div className="space-y-4">
+                {esusuRounds.length === 0 && (
+                  <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">No active esusu round</p>
+                )}
+                {esusuRounds.map(rd => {
+                  const myTurn = (rd.turns || []).find(t => t.client_id === client.id);
+                  const myTurnStatus = myTurn?.status;
+                  const hasPaid = !!rd.contribution_ticks?.[client.id];
                   return (
-                    <div key={cy.id} className={`px-3.5 py-2.5 rounded-xl border ${isLocked ? "border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-900/10" : "border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/30"}`}>
-                      <div className="flex items-center justify-between">
-                        <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{cy.label || "Savings"}</p>
-                        {isLocked
-                          ? <span className="text-[9px] font-extrabold bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full uppercase tracking-wide">Locked</span>
-                          : <span className="text-[9px] font-extrabold bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full uppercase tracking-wide">Available</span>
-                        }
+                    <div key={rd.group?.id} className="space-y-3">
+                      {esusuRounds.length > 1 && (
+                        <p className="text-xs font-extrabold text-slate-600 dark:text-slate-300">{rd.group?.name}</p>
+                      )}
+                      {rd.round && (
+                        <div className="bg-slate-50 dark:bg-slate-700/40 border border-slate-200 dark:border-slate-600 rounded-xl px-3.5 py-3">
+                          <div className="flex items-center justify-between mb-1.5">
+                            <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Round {rd.round.round_number}</p>
+                            <span className="text-[9px] font-extrabold bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400 px-2 py-0.5 rounded-full uppercase tracking-wide">Active</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400">Pot collected</p>
+                            <p className="text-sm font-extrabold text-slate-700 dark:text-slate-200">{fmt(rd.pot_size || 0)}</p>
+                          </div>
+                          <div className="flex items-center justify-between mt-0.5">
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400">Your contribution this period</p>
+                            <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${hasPaid ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400" : "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400"}`}>
+                              {hasPaid ? "Paid" : "Pending"}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                      <div className="space-y-1.5">
+                        {(rd.turns || []).map(t => {
+                          const isMe       = t.client_id === client.id;
+                          const isPaid     = t.status === "paid";
+                          const isCurrent  = t.status === "current";
+                          const isSkipped  = t.status === "skipped";
+                          return (
+                            <div key={t.position} className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl border ${
+                              isMe
+                                ? "border-[#16255A]/30 bg-[#16255A]/5 dark:bg-[#16255A]/15 dark:border-[#16255A]/40"
+                                : "border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/30"
+                            }`}>
+                              <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-extrabold ${
+                                isPaid    ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400"
+                                : isCurrent ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400"
+                                : isSkipped ? "bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500"
+                                : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
+                              }`}>
+                                {t.position}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className={`text-xs font-bold truncate ${isMe ? "text-[#16255A] dark:text-blue-300" : "text-slate-700 dark:text-slate-200"}`}>
+                                  {t.client_name}{isMe ? " (you)" : ""}
+                                </p>
+                              </div>
+                              <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full flex-shrink-0 ${
+                                isPaid    ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400"
+                                : isCurrent ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400"
+                                : isSkipped ? "bg-slate-100 dark:bg-slate-600 text-slate-500 dark:text-slate-400"
+                                : "bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400"
+                              }`}>
+                                {isPaid ? "Received" : isCurrent ? "Current" : isSkipped ? "Skipped" : "Upcoming"}
+                              </span>
+                            </div>
+                          );
+                        })}
+                        {(rd.turns || []).length === 0 && !rd.round && (
+                          <p className="text-xs text-slate-400 dark:text-slate-500 text-center py-3">No active round — your agent will start one when the group is ready</p>
+                        )}
                       </div>
-                      {isLocked && (
-                        <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">
-                          Locked with your collector — contact your savings agent to discuss early access
-                        </p>
+                      {myTurnStatus === "paid" && (
+                        <div className="px-3.5 py-2.5 rounded-xl border border-green-200 dark:border-green-800/50 bg-green-50 dark:bg-green-900/10">
+                          <p className="text-xs font-bold text-green-700 dark:text-green-400">You have received your pot</p>
+                          <p className="text-[10px] text-green-600 dark:text-green-500 mt-0.5">Your payout has been credited to your balance</p>
+                        </div>
+                      )}
+                      {myTurnStatus === "current" && (
+                        <div className="px-3.5 py-2.5 rounded-xl border border-blue-200 dark:border-blue-800/50 bg-blue-50 dark:bg-blue-900/10">
+                          <p className="text-xs font-bold text-[#16255A] dark:text-blue-300">It&apos;s your turn this period!</p>
+                          <p className="text-[10px] text-blue-600 dark:text-blue-400 mt-0.5">Once all members contribute, the pot will be disbursed to your account by your savings agent</p>
+                        </div>
+                      )}
+                      {myTurnStatus === "upcoming" && (
+                        <div className="px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700/30">
+                          <p className="text-xs font-bold text-slate-600 dark:text-slate-300">Your turn is coming</p>
+                          <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">Keep contributing each period — the pot will be yours when your turn arrives</p>
+                        </div>
                       )}
                     </div>
                   );
                 })}
               </div>
             )}
-
-            {/* Amount input */}
-            <div className="bg-slate-50 dark:bg-slate-700/50 rounded-2xl px-4 py-4 mb-3">
-              <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Withdrawal Amount</p>
-              <div className="flex items-center gap-2">
-                <span className="text-2xl font-black text-slate-700 dark:text-slate-200">₦</span>
-                <input
-                  type="number" inputMode="decimal" min="1"
-                  value={amount} onChange={e => setAmount(e.target.value)}
-                  placeholder="0.00"
-                  className="flex-1 bg-transparent text-2xl font-black text-slate-700 dark:text-slate-200 outline-none placeholder:text-slate-300 dark:placeholder:text-slate-600 tabular [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                />
-              </div>
-              {amtNum > (client.current_balance || 0) && (
-                <p className="text-[11px] text-red-500 mt-1">Exceeds available balance</p>
-              )}
-            </div>
-
-            {/* Fee breakdown card — always visible, shows rule and live calculation */}
-            <div className="bg-slate-50 dark:bg-slate-700/40 border border-slate-200 dark:border-slate-600 rounded-2xl px-4 py-3 mb-3 space-y-2">
-              <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                {pctFee > 0 ? `Withdrawal fee · ${pctFee}%`
-                  : client.commission_model === "first_period" ? "Fee: first period per cycle"
-                  : "No withdrawal fee"}
-              </p>
-              <div className="flex justify-between text-xs">
-                <span className="text-slate-500 dark:text-slate-400">Requested</span>
-                <span className="font-bold text-slate-700 dark:text-slate-200">{amtNum > 0 ? fmt(amtNum) : "—"}</span>
-              </div>
-              {feeAmt > 0 && amtNum > 0 && (
-                <div className="flex justify-between text-xs">
-                  <span className="text-slate-500 dark:text-slate-400">{`Fee (${pctFee}%)`}</span>
-                  <span className="font-bold text-red-500">−{fmt(feeAmt)}</span>
-                </div>
-              )}
-              <div className="flex justify-between text-xs border-t border-slate-200 dark:border-slate-600 pt-2">
-                <span className="font-extrabold text-slate-600 dark:text-slate-300">You receive</span>
-                <span className={`font-extrabold ${amtNum > 0 && netAmt > 0 ? "text-green-600 dark:text-green-400" : "text-slate-400 dark:text-slate-500"}`}>
-                  {amtNum > 0 ? fmt(Math.max(0, netAmt)) : "—"}
-                </span>
-              </div>
-            </div>
-
-            {/* Payout account */}
-            <div className="bg-slate-50 dark:bg-slate-700/40 border border-slate-200 dark:border-slate-600 rounded-2xl px-4 py-3 mb-3">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Payout Account</p>
-                {!editingAcct && acctForm.account_name && (
-                  <button type="button" onClick={() => { setEditingAcct(true); setAcctVerified(false); }}
-                    className="text-[11px] font-bold text-brand-500 dark:text-brand-400">Change</button>
-                )}
-              </div>
-              {!editingAcct && acctForm.account_name ? (
-                <div>
-                  <p className="text-sm font-extrabold text-slate-700 dark:text-slate-200">{acctForm.account_name}</p>
-                  <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{acctForm.bank_name} · ****{acctForm.account_number.slice(-4)}</p>
-                </div>
-              ) : (
-                <div className="space-y-2.5">
-                  <select value={acctForm.bank_code} onChange={e => {
-                    const sel = banks.find(b => b.code === e.target.value);
-                    setAcctForm(p => ({ ...p, bank_code: e.target.value, bank_name: sel?.name || "", account_name: "" }));
-                    setAcctVerified(false);
-                  }} className="w-full h-10 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 text-sm font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/30">
-                    <option value="">Select bank…</option>
-                    {banks.map(b => <option key={b.code} value={b.code}>{b.name}</option>)}
-                  </select>
-                  <div className="flex gap-2">
-                    <input type="text" inputMode="numeric" maxLength={10} placeholder="10-digit account number"
-                      value={acctForm.account_number}
-                      onChange={e => { setAcctForm(p => ({ ...p, account_number: e.target.value.replace(/\D/g, "").slice(0, 10), account_name: "" })); setAcctVerified(false); }}
-                      className="flex-1 h-10 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 text-sm font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/30" />
-                    <button type="button" onClick={resolveAcct}
-                      disabled={acctVerifying || !acctForm.bank_code || acctForm.account_number.length !== 10}
-                      className="h-10 px-3.5 rounded-xl bg-brand-500 text-white text-xs font-bold disabled:opacity-40 flex-shrink-0 active:scale-95 transition">
-                      {acctVerifying ? "…" : "Verify"}
-                    </button>
-                  </div>
-                  {acctVerified && acctForm.account_name && (
-                    <div className="flex items-center gap-2 px-3 py-2 bg-green-50 dark:bg-green-900/20 rounded-xl">
-                      <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-green-600 flex-shrink-0" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
-                      <p className="text-[12px] font-bold text-green-700 dark:text-green-400">{acctForm.account_name}</p>
-                    </div>
-                  )}
-                  {acctError && <p className="text-xs text-red-500">{acctError}</p>}
-                </div>
-              )}
-            </div>
-
-            {error && <p className="text-xs text-red-500 mb-3">{error}</p>}
-
-            <button
-              onClick={() => {
-                if (!amtNum || amtNum <= 0) { setError("Enter a valid amount"); return; }
-                if (amtNum > (client.current_balance || 0)) { setError("Amount exceeds your balance"); return; }
-                if (netAmt <= 0) { setError("Amount too small after fee deduction"); return; }
-                if (!acctForm.account_name || !acctForm.account_number || !acctForm.bank_code) {
-                  setError("Add and verify your bank account before requesting a withdrawal"); return;
-                }
-                setTxnPin({
-                  title: "Request Withdrawal",
-                  amount: Math.round(netAmt * 100),
-                  description: "Savings withdrawal request",
-                  onApprove: () => { setTxnPin(null); handleSubmit(); },
-                });
-              }}
-              disabled={saving || !amtNum || amtNum <= 0}
-              className="w-full py-3.5 bg-brand-500 hover:bg-brand-600 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] disabled:opacity-50 shadow-sm">
-              {saving ? "Submitting…" : "Submit Request"}
-            </button>
           </>
         )}
       </div>
@@ -4329,6 +4499,8 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
         <WithdrawRequestModal
           client={client}
           cycles={cycles}
+          clientGroups={client?.group_memberships?.filter(m => m.status === "active") || []}
+          rotationsData={rotationsData}
           onClose={() => setShowWithdraw(false)}
           onSuccess={() => { setShowWithdraw(false); refreshWithdrawRequests(); }}
         />

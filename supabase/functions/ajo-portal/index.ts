@@ -238,7 +238,7 @@ serve(async (req) => {
 
     // ── Client requests a withdrawal ─────────────────────────────
     if (action === "request-withdrawal") {
-      const { client_id, owner_id, amount } = body as { client_id: string; owner_id: string; amount: number };
+      const { client_id, owner_id, amount, notes: reqNotes } = body as { client_id: string; owner_id: string; amount: number; notes?: string };
       if (!client_id || !amount || amount <= 0) return json({ error: "client_id and amount are required" }, 400);
 
       const { data: cl } = await sb.from("aso_clients")
@@ -311,6 +311,7 @@ serve(async (req) => {
         fee_amount: feeAmount,
         net_amount: netAmount,
         status:     withdrawalStatus,
+        ...(reqNotes ? { notes: reqNotes } : {}),
       }).select().single();
 
       if (reqErr) return json({ error: "Couldn't process your request — please try again" }, 500);
