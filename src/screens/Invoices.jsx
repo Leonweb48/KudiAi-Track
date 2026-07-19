@@ -827,6 +827,19 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
           onSent={async (id) => {
             const { error } = await markSent(id);
             if (!error) {
+              // Auto-deduct stock for catalog-linked line items
+              if (inventory?.recordMovement) {
+                const stockItems = (detailInv.invoice_items || []).filter(item => item.product_id && !item.parent_item_id);
+                for (const item of stockItems) {
+                  inventory.recordMovement({
+                    product_id: item.product_id,
+                    type:       "sale",
+                    quantity:   Math.round(parseFloat(item.quantity) || 1),
+                    unit_price: (item.unit_price_kobo || 0) / 100,
+                    notes:      `Invoice ${detailInv.invoice_number}`,
+                  });
+                }
+              }
               const _inv = { ...detailInv, status: "sent" };
               ;(async () => {
                 let pdfBase64 = null;
@@ -866,8 +879,23 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
             await reload();
           }}
           onCancel={async (id) => {
+            const prevStatus = detailInv.status;
             const { error } = await cancelInvoice(id);
             if (!error) {
+              // Restore stock if the invoice had already been sent and stock was deducted
+              const wasActive = ["sent","overdue","partially_paid","paid"].includes(prevStatus);
+              if (wasActive && inventory?.recordMovement) {
+                const stockItems = (detailInv.invoice_items || []).filter(item => item.product_id && !item.parent_item_id);
+                for (const item of stockItems) {
+                  inventory.recordMovement({
+                    product_id: item.product_id,
+                    type:       "adjustment",
+                    quantity:   Math.round(parseFloat(item.quantity) || 1),
+                    unit_price: 0,
+                    notes:      `Reversed: Invoice ${detailInv.invoice_number} cancelled`,
+                  });
+                }
+              }
               sendEmailTrigger("invoice_cancelled", {
                 owner_id:       userId,
                 owner_email:    profile?.email || "",

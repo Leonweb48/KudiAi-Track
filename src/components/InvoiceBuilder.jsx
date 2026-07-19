@@ -140,6 +140,7 @@ function StepItems({ items, onChange, products }) {
       description: p.product_name, quantity: "1",
       unit_price: String(p.selling_price || ""), unit_price_kobo: up_kobo,
       line_total_kobo: up_kobo, pricing_mode: "manual", sub_items: [],
+      product_id: p.id, available_qty: p.quantity,
     }]);
     setShowPicker(false); setPickerQ("");
   };
@@ -220,6 +221,14 @@ function StepItems({ items, onChange, products }) {
                 <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M3 6h18M19 6l-1 14H6L5 6M10 11v6M14 11v6M9 6V4h6v2"/></svg>
               </button>
             </div>
+            {item.product_id && item.available_qty != null && (
+              <p className={`text-[10px] font-semibold mb-1 -mt-1 ${
+                item.available_qty <= 0 ? "text-red-400" :
+                item.available_qty <= 5 ? "text-amber-500" : "text-emerald-500"
+              }`}>
+                {item.available_qty <= 0 ? "⚠ Out of stock" : `${item.available_qty} available`}
+              </p>
+            )}
             <div className="flex gap-2">
               <div className="w-16 flex-shrink-0">
                 <Field label="Qty" type="number" inputMode="numeric" value={item.quantity}
@@ -333,9 +342,20 @@ function StepItems({ items, onChange, products }) {
           <div className="max-h-48 overflow-y-auto">
             {filteredProducts.map(p => (
               <button key={p.id} onClick={() => addFromProduct(p)}
-                className="w-full text-left px-3 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 rounded-xl flex items-center justify-between">
-                <span className="font-semibold text-slate-800 dark:text-white">{p.product_name}</span>
-                <span className="text-slate-500 dark:text-slate-400 text-xs">{fmt(p.selling_price || 0)}</span>
+                className="w-full text-left px-3 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 rounded-xl flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <span className="font-semibold text-slate-800 dark:text-white">{p.product_name}</span>
+                  {p.quantity != null && (
+                    <span className={`ml-2 text-[10px] font-semibold ${
+                      p.quantity <= 0 ? "text-red-400" :
+                      p.quantity <= (p.low_stock_threshold || 5) ? "text-amber-500" :
+                      "text-emerald-500"
+                    }`}>
+                      {p.quantity <= 0 ? "Out of stock" : `${p.quantity} in stock`}
+                    </span>
+                  )}
+                </div>
+                <span className="text-slate-500 dark:text-slate-400 text-xs flex-shrink-0">{fmt(p.selling_price || 0)}</span>
               </button>
             ))}
             {filteredProducts.length === 0 && (

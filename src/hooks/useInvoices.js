@@ -154,6 +154,7 @@ export function useInvoices(userId) {
           pricing_mode:    item.pricing_mode || "manual",
           sort_order:      i,
           parent_item_id:  null,
+          product_id:      item.product_id || null,
         })))
         .select("id");
       if (itemErr) return { error: itemErr };
@@ -244,6 +245,7 @@ export function useInvoices(userId) {
           pricing_mode:    item.pricing_mode || "manual",
           sort_order:      i,
           parent_item_id:  null,
+          product_id:      item.product_id || null,
         })))
         .select("id");
       if (itemErr) return { error: itemErr };
