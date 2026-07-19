@@ -71,7 +71,7 @@ function computeCouponDiscount(appliedCoupon, planSlug, billingCycle, chargeAmou
 
 const SUB_PENDING_PREFIX = "sub_pending_";
 
-function PaidButton({ plan, session, disabled, yearly = false, appliedCoupon, onSuccess, onCancel, buttonLabel }) {
+function PaidButton({ plan, session, disabled, yearly = false, appliedCoupon, onSuccess, onCancel, onError, buttonLabel }) {
   const chargeAmount = yearly && plan.price_yearly > 0 ? plan.price_yearly : plan.price_monthly;
   const billingCycle = yearly ? "yearly" : "monthly";
   const { applies: couponApplies, discount: discountAmount, final: finalAmount } =
@@ -119,6 +119,23 @@ function PaidButton({ plan, session, disabled, yearly = false, appliedCoupon, on
         if (fnErr) throw new Error(fnErr.message || "Server error");
         if (!data?.authorization_url) throw new Error(data?.error || "Failed to initialize payment");
         localStorage.setItem("pendingPayment", JSON.stringify({ planId: plan.slug, reference: data.reference || ref, yearly, ...(couponMeta || {}) }));
+
+        // Detect if the user closes the CCT without completing payment.
+        // paymentCallback fires (from the deep-link) before browserFinished on success.
+        let paymentCompleted = false;
+        const onPaymentCallback = () => { paymentCompleted = true; };
+        window.addEventListener("paymentCallback", onPaymentCallback, { once: true });
+
+        const browserListener = await Browser.addListener("browserFinished", () => {
+          window.removeEventListener("paymentCallback", onPaymentCallback);
+          browserListener.remove();
+          if (!paymentCompleted) {
+            setBusy(false);
+            setErr("Payment cancelled. Please try again.");
+            onCancel?.();
+          }
+        });
+
         await Browser.open({ url: data.authorization_url });
       } else {
         const paidRef = await openPaystackInline({
@@ -137,7 +154,7 @@ function PaidButton({ plan, session, disabled, yearly = false, appliedCoupon, on
             ],
           },
         });
-        onSuccess?.(paidRef, couponMeta);
+        onSuccess?.(paidRef, couponMeta, () => setBusy(false));
       }
     } catch (e) {
       if (e.message === "cancelled") {
@@ -273,7 +290,7 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
     applyCoupon();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const saveSub = useCallback(async (planSlug, reference, isYearly = false, couponInfo = null) => {
+  const saveSub = useCallback(async (planSlug, reference, isYearly = false, couponInfo = null, onButtonError = null) => {
     const refKey = reference || `free_${planSlug}_${Date.now()}`;
     if (processingRef.current === refKey) return;
     processingRef.current = refKey;
@@ -375,6 +392,7 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
     } catch (e) {
       setError(e.message || "Could not save plan. Please try again.");
       setSaving(false);
+      onButtonError?.();
     } finally {
       processingRef.current = null;
     }
@@ -741,7 +759,7 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
                         disabled={saving}
                         yearly={true}
                         appliedCoupon={appliedCoupon}
-                        onSuccess={(ref, ci) => saveSubRef.current?.(plan.slug, ref, true, ci)}
+                        onSuccess={(ref, ci, onErr) => saveSubRef.current?.(plan.slug, ref, true, ci, onErr)}
                         onCancel={() => setSaving(false)}
                         buttonLabel={`Switch to Yearly — Save ${savingsPercent(plan)}%`}
                       />
@@ -779,7 +797,7 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
                     disabled={saving}
                     yearly={yearly}
                     appliedCoupon={appliedCoupon}
-                    onSuccess={(ref, ci) => saveSubRef.current?.(plan.slug, ref, yearly, ci)}
+                    onSuccess={(ref, ci, onErr) => saveSubRef.current?.(plan.slug, ref, yearly, ci, onErr)}
                     onCancel={() => setSaving(false)}
                   />
                 )}
