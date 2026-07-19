@@ -126,9 +126,16 @@ function isGroupAccount(c) {
 
 /* ── Per-client Ajo Contribution History Modal ─────────────────────────── */
 function AsoClientHistoryModal({ client, contributions, cycles = [], businessName, staffMap = {}, onClose, onOpenCycle, onCloseCycle, onExecuteCommission, onReverseContrib }) {
-  const [tab,           setTab]           = useState(cycles.length > 0 ? "card" : "history");
-  const [newCycleLabel, setNewCycleLabel] = useState("");
-  const [showNewCycle,  setShowNewCycle]  = useState(false);
+  const [tab,          setTab]          = useState(cycles.length > 0 ? "card" : "history");
+  const [showNewCycle, setShowNewCycle] = useState(false);
+  const [newCycleForm, setNewCycleForm] = useState({
+    purpose:   "",
+    amount:    client.contribution_amount ?? "",
+    frequency: client.contribution_frequency || "monthly",
+    length:    "",
+    model:     client.commission_model || "none",
+    percent:   client.commission_percent ?? "",
+  });
   // Auto-switch to card tab when a cycle is added
   useEffect(() => { if (cycles.length > 0) setTab("card"); }, [cycles.length]);
   const [typeFilter,    setTypeFilter]    = useState("all");
@@ -352,21 +359,101 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
               showNewCycle ? (
                 <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-4 space-y-3">
                   <p className="text-sm font-bold text-slate-700 dark:text-white">New Saving Cycle</p>
-                  <input
-                    type="text"
-                    placeholder="Label (e.g. House Savings)"
-                    value={newCycleLabel}
-                    onChange={e => setNewCycleLabel(e.target.value)}
-                    className="w-full border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-900 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500"
-                  />
+
+                  {/* Purpose — required; must be unique among active cycles for this client */}
+                  <div>
+                    <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Purpose <span className="text-red-500">*</span></label>
+                    <input
+                      type="text"
+                      placeholder="e.g. House Fund, School Fees…"
+                      value={newCycleForm.purpose}
+                      onChange={e => setNewCycleForm(f => ({ ...f, purpose: e.target.value }))}
+                      className="w-full border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-900 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    />
+                  </div>
+
+                  {/* Amount + Frequency */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Amount / period (₦)</label>
+                      <input
+                        type="number"
+                        min="1"
+                        placeholder="0"
+                        value={newCycleForm.amount}
+                        onChange={e => setNewCycleForm(f => ({ ...f, amount: e.target.value }))}
+                        className="w-full border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-900 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Frequency</label>
+                      <select
+                        value={newCycleForm.frequency}
+                        onChange={e => setNewCycleForm(f => ({ ...f, frequency: e.target.value }))}
+                        className="w-full border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-900 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+                        <option value="daily">Daily</option>
+                        <option value="weekly">Weekly</option>
+                        <option value="monthly">Monthly</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Length (optional) */}
+                  <div>
+                    <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Length (periods) — optional</label>
+                    <input
+                      type="number"
+                      min="1"
+                      placeholder="Leave blank for default"
+                      value={newCycleForm.length}
+                      onChange={e => setNewCycleForm(f => ({ ...f, length: e.target.value }))}
+                      className="w-full border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-900 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    />
+                  </div>
+
+                  {/* Fee model */}
+                  <div>
+                    <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Fee model</label>
+                    <select
+                      value={newCycleForm.model}
+                      onChange={e => setNewCycleForm(f => ({ ...f, model: e.target.value }))}
+                      className="w-full border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-900 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+                      <option value="none">No withdrawal fee</option>
+                      <option value="percent">% on withdrawals</option>
+                      <option value="first_period">First deposit (collector&apos;s day 1)</option>
+                    </select>
+                  </div>
+
+                  {/* Fee % — only when model is percent */}
+                  {newCycleForm.model === "percent" && (
+                    <div>
+                      <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Fee %</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.1"
+                        placeholder="e.g. 5"
+                        value={newCycleForm.percent}
+                        onChange={e => setNewCycleForm(f => ({ ...f, percent: e.target.value }))}
+                        className="w-full border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-900 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500"
+                      />
+                    </div>
+                  )}
+
                   <div className="flex gap-2">
                     <button
-                      onClick={() => { setShowNewCycle(false); setNewCycleLabel(""); }}
+                      onClick={() => { setShowNewCycle(false); setNewCycleForm(f => ({ ...f, purpose: "" })); }}
                       className="flex-1 py-2.5 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl text-sm font-bold">
                       Cancel
                     </button>
                     <button
-                      onClick={() => { onOpenCycle(false, newCycleLabel.trim() || undefined); setShowNewCycle(false); setNewCycleLabel(""); }}
+                      onClick={() => {
+                        if (!newCycleForm.purpose.trim()) return;
+                        onOpenCycle({ ...newCycleForm });
+                        setShowNewCycle(false);
+                        setNewCycleForm(f => ({ ...f, purpose: "" }));
+                      }}
                       className="flex-1 py-2.5 bg-brand-600 text-white rounded-xl text-sm font-bold">
                       Open Cycle
                     </button>
@@ -2933,16 +3020,18 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         const { client: hc, contributions: hcons, cycles: hcycles } = historyFor;
         const bizName = profile?.business_name || profile?.owner_name || "My Business";
 
-        const handleOpenCycle = async (force = false, label = undefined) => {
+        const handleOpenCycle = async (form = {}) => {
           const body = {
             action: "open_cycle",
             client_id: hc.id,
-            start_date: hc.registration_date || new Date().toISOString().slice(0, 10),
-            expected_amount_per_period: hc.contribution_amount,
-            commission_model: hc.commission_model || "none",
-            commission_percent: hc.commission_percent || null,
-            label: label || undefined,
-            force,
+            // start_date omitted — RPC defaults to CURRENT_DATE, never registration_date
+            expected_amount_per_period: form.amount ? Number(form.amount) : hc.contribution_amount,
+            commission_model: form.model || hc.commission_model || "none",
+            commission_percent: form.model === "percent" ? (Number(form.percent) || null) : null,
+            label: form.purpose?.trim() || undefined,
+            frequency: form.frequency || hc.contribution_frequency || "monthly",
+            ...(form.length ? { length_periods: Number(form.length) } : {}),
+            force: false,
           };
           const { data, error } = await supabase.functions.invoke("ajo-write", { body });
           if (error) { setHistoryErr(friendlyError(error, "Failed to open cycle.")); return; }

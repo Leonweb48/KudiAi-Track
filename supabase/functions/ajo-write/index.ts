@@ -307,20 +307,21 @@ serve(async (req: Request) => {
       } else {
         const { data: clientRow } = await sb
           .from("aso_clients")
-          .select("contribution_amount, registration_date, commission_model, commission_percent")
+          .select("contribution_amount, contribution_frequency, commission_model, commission_percent")
           .eq("id", client_id).maybeSingle();
         if ((clientRow as Record<string, unknown>)?.contribution_amount) {
           const cr = clientRow as Record<string, unknown>;
           const { data: openData } = await sb.rpc("ajo_open_cycle", {
             p_client_id:        client_id,
             p_owner_id:         ownerId,
-            p_start:            (cr.registration_date as string) || new Date().toISOString().slice(0, 10),
+            p_start:            null, // defaults to CURRENT_DATE in RPC — never registration_date
             p_length:           null,
             p_amount:           cr.contribution_amount as number,
-            p_label:            null,
+            p_label:            "Personal Savings",
             p_commission_model: (cr.commission_model as string) || null,
             p_commission_pct:   (cr.commission_percent as number) || null,
             p_force:            false,
+            p_frequency:        (cr.contribution_frequency as string) || null,
           }); // best-effort — cycle creation never blocks the contribution
           cycleId = (openData as Record<string, unknown>)?.cycle_id as string || null;
         }
@@ -438,20 +439,21 @@ serve(async (req: Request) => {
       } else {
         const { data: collClientRow } = await sb
           .from("aso_clients")
-          .select("contribution_amount, registration_date, commission_model, commission_percent")
+          .select("contribution_amount, contribution_frequency, commission_model, commission_percent")
           .eq("id", client_id).maybeSingle();
         if ((collClientRow as Record<string, unknown>)?.contribution_amount) {
           const cr = collClientRow as Record<string, unknown>;
           const { data: openData } = await sb.rpc("ajo_open_cycle", {
             p_client_id:        client_id,
             p_owner_id:         ownerId,
-            p_start:            (cr.registration_date as string) || new Date().toISOString().slice(0, 10),
+            p_start:            null, // defaults to CURRENT_DATE in RPC — never registration_date
             p_length:           null,
             p_amount:           cr.contribution_amount as number,
-            p_label:            null,
+            p_label:            "Personal Savings",
             p_commission_model: (cr.commission_model as string) || null,
             p_commission_pct:   (cr.commission_percent as number) || null,
             p_force:            false,
+            p_frequency:        (cr.contribution_frequency as string) || null,
           });
           collCycleId = (openData as Record<string, unknown>)?.cycle_id as string || null;
         }
@@ -672,11 +674,13 @@ serve(async (req: Request) => {
   if (action === "open_cycle") {
     const {
       client_id: ocClientId, start_date, length_periods, expected_amount_per_period,
-      label: ocLabel, commission_model: ocCommModel, commission_percent: ocCommPct, force: ocForce,
+      label: ocLabel, commission_model: ocCommModel, commission_percent: ocCommPct,
+      force: ocForce, frequency: ocFrequency,
     } = params as {
       client_id: string; start_date?: string; length_periods?: number;
       expected_amount_per_period?: number; label?: string;
       commission_model?: string; commission_percent?: number; force?: boolean;
+      frequency?: string;
     };
     if (!ocClientId) return json({ ok: false, error: "client_id required" }, 400);
 
@@ -696,6 +700,7 @@ serve(async (req: Request) => {
       p_commission_model: ocCommModel       || null,
       p_commission_pct:   ocCommPct         || null,
       p_force:            ocForce           || false,
+      p_frequency:        ocFrequency       || null,
     });
     if (ocErr) return json({ ok: false, error: ocErr.message });
     return json(ocData);

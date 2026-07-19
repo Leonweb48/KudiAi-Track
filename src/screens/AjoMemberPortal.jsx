@@ -1379,18 +1379,23 @@ function ManualDepositModal({ client, clientGroups = [], ownerInfo, onClose, onS
 }
 
 // ── Withdrawal request modal ──────────────────────────────────────────────
-function WithdrawRequestModal({ client, onClose, onSuccess }) {
-  const [amount,       setAmount]       = useState("");
-  const [saving,       setSaving]       = useState(false);
-  const [error,        setError]        = useState("");
-  const [done,         setDone]         = useState(false);
-  const [txnPin,       setTxnPin]       = useState(null);
-  const [lockedAmount, setLockedAmount] = useState(0);
+function WithdrawRequestModal({ client, cycles = [], onClose, onSuccess }) {
+  const [amount,      setAmount]      = useState("");
+  const [saving,      setSaving]      = useState(false);
+  const [error,       setError]       = useState("");
+  const [done,        setDone]        = useState(false);
+  const [txnPin,      setTxnPin]      = useState(null);
+  const [esusuLocked, setEsusuLocked] = useState(0);
+  const [cycleLocked, setCycleLocked] = useState(0);
 
   useEffect(() => {
-    supabase.rpc("ajo_locked_esusu_amount", { p_client_id: client.id })
-      .then(({ data }) => setLockedAmount(Number(data || 0)))
-      .catch(() => {});
+    Promise.all([
+      supabase.rpc("ajo_locked_esusu_amount", { p_client_id: client.id }),
+      supabase.rpc("ajo_locked_cycle_amount",  { p_client_id: client.id }),
+    ]).then(([{ data: eData }, { data: cData }]) => {
+      setEsusuLocked(Number(eData || 0));
+      setCycleLocked(Number(cData || 0));
+    }).catch(() => {});
   }, [client.id]);
 
   // Bank account state
@@ -1432,18 +1437,27 @@ function WithdrawRequestModal({ client, onClose, onSuccess }) {
     finally { setAcctVerifying(false); }
   };
 
-  const pctFee      = client.commission_model === "percent" ? (client.commission_percent || 0) : 0;
-  const amtNum      = parseFloat(amount) || 0;
-  const feeAmt      = (amtNum * pctFee) / 100;
-  const netAmt      = amtNum - feeAmt;
+  // Fee from active percent cycle (not client row — cycle model is the truth after Cycles v2)
+  const activePctCycle = cycles.find(cy => cy.status === "active" && cy.commission_model === "percent");
+  const pctFee       = activePctCycle ? (activePctCycle.commission_percent || 0) : 0;
+  const amtNum       = parseFloat(amount) || 0;
+  const feeAmt       = (amtNum * pctFee) / 100;
+  const netAmt       = amtNum - feeAmt;
+  const lockedAmount = esusuLocked + cycleLocked;
   const withdrawable = Math.max((client.current_balance || 0) - lockedAmount, 0);
 
   const handleSubmit = async () => {
     if (!amtNum || amtNum <= 0)   { setError("Enter a valid amount"); return; }
     if (amtNum > withdrawable) {
-      setError(lockedAmount > 0
-        ? `Only ${fmt(withdrawable)} is available — ${fmt(lockedAmount)} is locked in your active esusu round`
-        : "Amount exceeds your balance");
+      let lockMsg = "Amount exceeds your balance";
+      if (esusuLocked > 0 && cycleLocked > 0) {
+        lockMsg = `Only ${fmt(withdrawable)} is available — ${fmt(esusuLocked)} locked in esusu and ${fmt(cycleLocked)} locked in your first-period cycle`;
+      } else if (esusuLocked > 0) {
+        lockMsg = `Only ${fmt(withdrawable)} is available — ${fmt(esusuLocked)} is locked in your active esusu round`;
+      } else if (cycleLocked > 0) {
+        lockMsg = `Only ${fmt(withdrawable)} is available — ${fmt(cycleLocked)} is locked in your first-period savings cycle`;
+      }
+      setError(lockMsg);
       return;
     }
     if (netAmt <= 0)              { setError("Amount too small after fee deduction"); return; }
@@ -2566,7 +2580,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
 }
 
 // ── Me tab (Staff Portal structure) ───────────────────────────────────────
-function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onProfileUpdate, contributions = [] }) {
+function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onProfileUpdate, contributions = [], cycles = [] }) {
   const [view,           setView]           = useState("menu");
   const [editForm,       setEditForm]       = useState({
     full_name:      client?.full_name || "",
@@ -2975,44 +2989,56 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
             </div>
           </div>
 
-          {/* Withdrawal / Commission Fee */}
-          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 overflow-hidden">
-            <p className="px-4 pt-3 pb-2 text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest border-b border-slate-50 dark:border-slate-700/30">
-              {isGroup ? "Group Withdrawal Fee" : "Withdrawal Fee"}
-            </p>
-            <div className="px-4 py-4">
-              {isGroup ? (
-                client?.commission_model === "percent" ? (
+          {/* Per-cycle fee breakdown — source of truth is the cycle, not the client row */}
+          {isGroup && (
+            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 overflow-hidden">
+              <p className="px-4 pt-3 pb-2 text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest border-b border-slate-50 dark:border-slate-700/30">Group Withdrawal Fee</p>
+              <div className="px-4 py-4">
+                {client?.commission_model === "percent" ? (
                   <>
                     <p className="text-2xl font-extrabold text-slate-800 dark:text-white tabular-nums">{client.commission_percent || 0}%</p>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Your group's withdrawal fee: {client.commission_percent || 0}%</p>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Your group&apos;s withdrawal fee: {client.commission_percent || 0}%</p>
                   </>
                 ) : (
                   <p className="text-sm font-semibold text-green-600 dark:text-green-400">No withdrawal fees</p>
-                )
-              ) : client?.commission_model === "percent" ? (
-                <>
-                  <p className="text-2xl font-extrabold text-slate-800 dark:text-white tabular-nums">{client.commission_percent || 0}%</p>
-                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{client.commission_percent || 0}% is deducted from each withdrawal</p>
-                </>
-              ) : client?.commission_model === "first_period" ? (
-                <>
-                  <p className="text-sm font-bold text-slate-700 dark:text-slate-200">Your first deposit of each savings cycle goes to your collector</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Your savings start from deposit 2 of each cycle</p>
-                  {(client.contribution_amount || 0) > 0 && (
-                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
-                      That's {fmt(client.contribution_amount)} per cycle based on your contribution amount
-                    </p>
-                  )}
-                </>
-              ) : (
-                <p className="text-sm font-semibold text-green-600 dark:text-green-400">No withdrawal fees</p>
-              )}
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* Combined first-deposit disclosure: reg fee + first_period cycle fee */}
-          {client?.commission_model === "first_period" &&
+          {cycles.filter(cy => cy.status === "active").length > 0 ? (
+            cycles.filter(cy => cy.status === "active").map(cy => (
+              <div key={cy.id} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 overflow-hidden">
+                <p className="px-4 pt-3 pb-2 text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest border-b border-slate-50 dark:border-slate-700/30">
+                  {cy.label || "Personal Savings"} — Cycle Fee
+                </p>
+                <div className="px-4 py-4">
+                  {cy.commission_model === "percent" ? (
+                    <>
+                      <p className="text-2xl font-extrabold text-slate-800 dark:text-white tabular-nums">{cy.commission_percent || 0}%</p>
+                      <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{cy.commission_percent || 0}% deducted from each withdrawal</p>
+                    </>
+                  ) : cy.commission_model === "first_period" ? (
+                    <>
+                      <p className="text-sm font-bold text-slate-700 dark:text-slate-200">First deposit goes to your collector</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Savings in this cycle start from deposit 2</p>
+                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 font-medium">Funds are locked until this cycle completes</p>
+                    </>
+                  ) : (
+                    <p className="text-sm font-semibold text-green-600 dark:text-green-400">No fee on this cycle</p>
+                  )}
+                </div>
+              </div>
+            ))
+          ) : !isGroup && (
+            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 px-4 py-4">
+              <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">Withdrawal Fee</p>
+              <p className="text-sm text-slate-400 dark:text-slate-500">No active savings cycles</p>
+            </div>
+          )}
+
+          {/* Combined first-deposit disclosure: reg fee + first_period on same cycle */}
+          {cycles.some(cy => cy.status === "active" && cy.commission_model === "first_period") &&
            (client?.registration_charge || 0) > 0 &&
            !regFeeRow && (
             <div className="bg-amber-50 dark:bg-amber-900/20 rounded-2xl border border-amber-200 dark:border-amber-800 px-4 py-4">
@@ -4137,6 +4163,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
               onChangePwdClick={() => setShowPwdModal(true)}
               onProfileUpdate={updates => setClient(prev => ({ ...prev, ...updates }))}
               contributions={contributions}
+              cycles={cycles}
             />
           )}
           {!client && tab === "home" && <SkeletonHome />}
@@ -4230,6 +4257,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
       {showWithdraw && client && (
         <WithdrawRequestModal
           client={client}
+          cycles={cycles}
           onClose={() => setShowWithdraw(false)}
           onSuccess={() => { setShowWithdraw(false); refreshWithdrawRequests(); }}
         />

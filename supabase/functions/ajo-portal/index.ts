@@ -249,16 +249,27 @@ serve(async (req) => {
       if (!cl) return json({ error: "Client not found" }, 404);
       if (amount > (cl.current_balance || 0)) return json({ error: "Insufficient balance" }, 400);
 
-      // Locked-funds ceiling: esusu contributions in an active round are not withdrawable.
-      const { data: lockedRaw } = await sb.rpc("ajo_locked_esusu_amount", { p_client_id: client_id });
-      const lockedAmount = Number(lockedRaw || 0);
-      const withdrawable = (cl.current_balance || 0) - lockedAmount;
+      // Locked-funds ceiling: stack esusu lock + first_period cycle lock.
+      const [{ data: esusuLockedRaw }, { data: cycleLockedRaw }] = await Promise.all([
+        sb.rpc("ajo_locked_esusu_amount", { p_client_id: client_id }),
+        sb.rpc("ajo_locked_cycle_amount", { p_client_id: client_id }),
+      ]);
+      const esusuLocked = Number(esusuLockedRaw || 0);
+      const cycleLocked = Number(cycleLockedRaw || 0);
+      const withdrawable = (cl.current_balance || 0) - esusuLocked - cycleLocked;
       if (amount > withdrawable) {
+        let lockMsg = "Insufficient balance";
+        if (esusuLocked > 0 && cycleLocked > 0) {
+          lockMsg = `Insufficient withdrawable balance — ₦${esusuLocked.toLocaleString("en-NG")} locked in your active esusu round and ₦${cycleLocked.toLocaleString("en-NG")} locked in a first-period savings cycle`;
+        } else if (esusuLocked > 0) {
+          lockMsg = `Insufficient withdrawable balance — ₦${esusuLocked.toLocaleString("en-NG")} is locked in your active esusu round`;
+        } else if (cycleLocked > 0) {
+          lockMsg = `Insufficient withdrawable balance — ₦${cycleLocked.toLocaleString("en-NG")} is locked in your first-period savings cycle until it completes`;
+        }
         return json({
-          error: lockedAmount > 0
-            ? `Insufficient withdrawable balance — ₦${lockedAmount.toLocaleString("en-NG")} is locked in your active esusu round`
-            : "Insufficient balance",
-          locked_amount: lockedAmount,
+          error: lockMsg,
+          esusu_locked: esusuLocked,
+          cycle_locked: cycleLocked,
           withdrawable: Math.max(withdrawable, 0),
         }, 400);
       }
@@ -270,8 +281,18 @@ serve(async (req) => {
         : false;
       const isHighValue = amount >= HIGH_VALUE_HOLD_THRESHOLD;
 
-      // Withdrawal fee uses commission_model only. Registration fee is charged at first deposit via contribution RPCs.
-      const feePercent = cl.commission_model === "percent" ? (cl.commission_percent || 0) : 0;
+      // Withdrawal fee from the active percent cycle (not the client row).
+      // Registration fee is charged at first deposit via contribution RPCs — never here.
+      const { data: activePctCycle } = await sb
+        .from("ajo_cycles")
+        .select("commission_percent")
+        .eq("client_id", client_id)
+        .eq("status", "active")
+        .eq("commission_model", "percent")
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      const feePercent = activePctCycle ? (activePctCycle.commission_percent || 0) : 0;
       const feeType    = "withdrawal_fee";
       const feeAmount  = (amount * feePercent) / 100;
       const netAmount  = amount - feeAmount;
