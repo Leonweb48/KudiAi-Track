@@ -74,6 +74,19 @@ function buildPeriods(cycle, contributions) {
     }
   }
 
+  // For non-first_period cycles: subtract the registration fee from period 0's paid.
+  // The contribution row records the gross deposit; the net available for savings is
+  // gross − reg_fee. Without this, a first-deposit that barely covers the expected
+  // amount would show "paid" even though ₦reg_fee went to the reg charge, not savings.
+  if (cycle.commission_model !== "first_period" && periods.length > 0) {
+    const regFee = contributions
+      .filter((c) => c.type === "registration_fee" && c.status === "completed")
+      .reduce((s, c) => s + Number(c.amount || 0), 0);
+    if (regFee > 0) {
+      periods[0].paid = Math.max(0, periods[0].paid - regFee);
+    }
+  }
+
   // Detect whether a first_period cycle fee was collected (commission row with this cycle_id)
   const cycleCommissionCollected =
     cycle.commission_model === "first_period" && cycle.id
@@ -91,8 +104,17 @@ function buildPeriods(cycle, contributions) {
   return {
     cycleStarted,
     periods: periods.map((p) => {
-      if (cycle.commission_model === "first_period" && p.idx === 0 && cycleCommissionCollected) {
-        return { ...p, status: "collector" };
+      // first_period period 0: drive status from commission_balance accumulation.
+      if (cycle.commission_model === "first_period" && p.idx === 0) {
+        if (cycleCommissionCollected) {
+          return { ...p, status: "collector" };
+        }
+        const commBalance = Number(cycle.commission_balance || 0);
+        if (commBalance > 0) {
+          const expected = Number(expected_amount_per_period);
+          return { ...p, paid: commBalance, status: commBalance >= expected ? "paid" : "partial" };
+        }
+        // commBalance = 0: fall through to normal upcoming / current logic
       }
 
       const expected  = Number(expected_amount_per_period);
@@ -453,6 +475,11 @@ export default function ContributionCard({
           <div>
             <p className="text-[10px] font-bold text-brand-500 uppercase tracking-wide">Collector Commission</p>
             <p className="text-xs text-brand-600 dark:text-brand-300 mt-0.5">{commission.label}</p>
+            {cycle?.commission_model === "first_period" && !commissionDone && Number(cycle.commission_balance || 0) > 0 && (
+              <p className="text-[10px] text-amber-500 font-medium mt-0.5">
+                {fmtCurrency(cycle.commission_balance)} / {fmtCurrency(commission.amount)} received
+              </p>
+            )}
           </div>
           <div className="text-right flex-shrink-0">
             <p className="font-extrabold text-brand-600 dark:text-brand-300 text-sm">{fmtCurrency(commission.amount)}</p>
@@ -543,6 +570,11 @@ export default function ContributionCard({
               {selected.status === "collector" && (
                 <p className="text-xs text-[#16255A] dark:text-[#8EA3D4] bg-[#EEF1F9] dark:bg-[#16255A]/20 rounded-lg px-3 py-2">
                   This deposit went to your collector as the cycle fee. Your savings start from period 2.
+                </p>
+              )}
+              {selected.status === "partial" && selected.idx === 0 && cycle?.commission_model === "first_period" && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-lg px-3 py-2">
+                  Collector fee in progress — {fmtCurrency(Number(cycle.commission_balance || 0))} received of {fmtCurrency(cycle.expected_amount_per_period)}. Your savings start once the full fee is paid.
                 </p>
               )}
               {selected.status === "pending" && (
