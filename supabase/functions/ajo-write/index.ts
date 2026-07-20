@@ -424,35 +424,48 @@ serve(async (req: Request) => {
     if (!(acData as Record<string, unknown>)?.ok) return json(acData);
 
     const acResult = acData as Record<string, unknown>;
-    const acCtx = await fetchEmailContext(sb, acContrib.aso_client_id as string, acOwnerId, user.id);
-    await fireAjoEmail("ajo_contribution_approved", {
-      client_email:  acCtx.clientEmail,
-      client_name:   acCtx.clientName,
-      owner_email:   acCtx.ownerEmail,
-      business_name: acCtx.businessName,
-      staff_name:    acCtx.staffName,
-      amount:        acContrib.amount,
-      method:        acContrib.payment_method,
-      new_balance:   acResult.new_balance || 0,
-      reg_fee:       acResult.reg_fee     || 0,
-      date:          new Date().toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" }),
-    });
+    const acAmt    = Number(acContrib.amount).toLocaleString("en-NG");
 
-    const acClientUserId = await resolveClientUserId(sb, acContrib.aso_client_id as string);
-    const acAmt          = Number(acContrib.amount).toLocaleString("en-NG");
-    await notifyUser(sb, acClientUserId, {
-      type: "contribution_approved", title: "Contribution Approved",
-      body: `Your ₦${acAmt} contribution has been approved`, priority: "normal",
-      deepLink: { tab: "contributions" },
-    });
-    if ((acContrib as Record<string, unknown>).contribution_source === "staff_collection") {
-      const acStaffUserId = await resolveStaffUserId(sb, (acContrib as Record<string, unknown>).recorded_by as string);
-      await notifyUser(sb, acStaffUserId, {
-        type: "collection_approved", title: "Collection Approved",
-        body: `Your recorded ₦${acAmt} collection was approved by the owner`, priority: "normal",
-        deepLink: { tab: "aso", sub: "collections" },
-      });
-    }
+    // Fetch email context + client userId in parallel, then fire all side
+    // effects in parallel.  A 3.5 s race cap ensures the response is always
+    // returned promptly — a slow email endpoint never triggers a function timeout.
+    await Promise.race([
+      (async () => {
+        const [acCtx, acClientUserId] = await Promise.all([
+          fetchEmailContext(sb, acContrib.aso_client_id as string, acOwnerId, user.id),
+          resolveClientUserId(sb, acContrib.aso_client_id as string),
+        ]);
+        const effects: Promise<unknown>[] = [
+          fireAjoEmail("ajo_contribution_approved", {
+            client_email:  acCtx.clientEmail,
+            client_name:   acCtx.clientName,
+            owner_email:   acCtx.ownerEmail,
+            business_name: acCtx.businessName,
+            staff_name:    acCtx.staffName,
+            amount:        acContrib.amount,
+            method:        acContrib.payment_method,
+            new_balance:   acResult.new_balance || 0,
+            reg_fee:       acResult.reg_fee     || 0,
+            date:          new Date().toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" }),
+          }),
+          notifyUser(sb, acClientUserId, {
+            type: "contribution_approved", title: "Contribution Approved",
+            body: `Your ₦${acAmt} contribution has been approved`, priority: "normal",
+            deepLink: { tab: "contributions" },
+          }),
+        ];
+        if ((acContrib as Record<string, unknown>).contribution_source === "staff_collection") {
+          const acStaffUserId = await resolveStaffUserId(sb, (acContrib as Record<string, unknown>).recorded_by as string);
+          effects.push(notifyUser(sb, acStaffUserId, {
+            type: "collection_approved", title: "Collection Approved",
+            body: `Your recorded ₦${acAmt} collection was approved by the owner`, priority: "normal",
+            deepLink: { tab: "aso", sub: "collections" },
+          }));
+        }
+        await Promise.allSettled(effects);
+      })().catch(() => null),
+      new Promise<void>(r => setTimeout(r, 3500)),
+    ]);
 
     return json(acData);
   }
@@ -662,44 +675,52 @@ serve(async (req: Request) => {
       return json({ ok: false, error: rpcErr }, 400);
     }
 
-    const ctx   = await fetchEmailContext(sb, client_id, ownerId, user.id);
-    if (request_id) {
-      // Request-based approval — send the approval-specific email server-side
-      await fireAjoEmail("ajo_withdrawal_approved", {
-        client_email:  ctx.clientEmail,
-        client_name:   ctx.clientName,
-        user_email:    ctx.ownerEmail,
-        business_name: ctx.businessName,
-        staff_email:   ctx.staffEmail,
-        staff_name:    ctx.staffName,
-        amount:        rpcWd?.gross_amount,
-        fee_amount:    rpcWd?.fee_amount,
-        net_amount:    rpcWd?.net_amount,
-        balance_after: rpcWd?.balance_after,
-        date:          new Date().toLocaleDateString("en-NG"),
-      });
-      const rwApprClientUserId = await resolveClientUserId(sb, client_id);
-      await notifyUser(sb, rwApprClientUserId, {
-        type: "withdrawal_approved", title: "Withdrawal Approved",
-        body: `Your withdrawal of ₦${Number(rpcWd?.net_amount ?? gross_amount).toLocaleString("en-NG")} has been approved`,
-        priority: "high", deepLink: { tab: "aso", sub: "withdrawals" },
-      });
-    } else {
-      // Direct withdrawal (no prior request) — standard withdrawal email
-      await fireAjoEmail("ajo_withdrawal", {
-        client_email:  ctx.clientEmail,
-        client_name:   ctx.clientName,
-        user_email:    ctx.ownerEmail,
-        business_name: ctx.businessName,
-        staff_email:   ctx.staffEmail,
-        staff_name:    ctx.staffName,
-        amount:        rpcWd?.net_amount,
-        gross_amount:  rpcWd?.gross_amount,
-        fee_amount:    rpcWd?.fee_amount,
-        balance_after: rpcWd?.balance_after,
-        date:          new Date().toLocaleDateString("en-NG"),
-      });
-    }
+    // Fetch context then fire all post-withdrawal side effects in parallel with a 3.5 s cap
+    await Promise.race([
+      (async () => {
+        const [ctx, rwApprClientUserId] = await Promise.all([
+          fetchEmailContext(sb, client_id, ownerId, user.id),
+          request_id ? resolveClientUserId(sb, client_id) : Promise.resolve(null as string | null),
+        ]);
+        if (request_id) {
+          await Promise.allSettled([
+            fireAjoEmail("ajo_withdrawal_approved", {
+              client_email:  ctx.clientEmail,
+              client_name:   ctx.clientName,
+              user_email:    ctx.ownerEmail,
+              business_name: ctx.businessName,
+              staff_email:   ctx.staffEmail,
+              staff_name:    ctx.staffName,
+              amount:        rpcWd?.gross_amount,
+              fee_amount:    rpcWd?.fee_amount,
+              net_amount:    rpcWd?.net_amount,
+              balance_after: rpcWd?.balance_after,
+              date:          new Date().toLocaleDateString("en-NG"),
+            }),
+            notifyUser(sb, rwApprClientUserId, {
+              type: "withdrawal_approved", title: "Withdrawal Approved",
+              body: `Your withdrawal of ₦${Number(rpcWd?.net_amount ?? gross_amount).toLocaleString("en-NG")} has been approved`,
+              priority: "high", deepLink: { tab: "aso", sub: "withdrawals" },
+            }),
+          ]);
+        } else {
+          await fireAjoEmail("ajo_withdrawal", {
+            client_email:  ctx.clientEmail,
+            client_name:   ctx.clientName,
+            user_email:    ctx.ownerEmail,
+            business_name: ctx.businessName,
+            staff_email:   ctx.staffEmail,
+            staff_name:    ctx.staffName,
+            amount:        rpcWd?.net_amount,
+            gross_amount:  rpcWd?.gross_amount,
+            fee_amount:    rpcWd?.fee_amount,
+            balance_after: rpcWd?.balance_after,
+            date:          new Date().toLocaleDateString("en-NG"),
+          });
+        }
+      })().catch(() => null),
+      new Promise<void>(r => setTimeout(r, 3500)),
+    ]);
 
     return json(data);
   }
@@ -729,24 +750,32 @@ serve(async (req: Request) => {
     if (updErr) return json({ ok: false, error: updErr.message });
 
     const clientId = rwrRow.aso_client_id as string;
-    const ctx = await fetchEmailContext(sb, clientId, ownerId, user.id);
-    await fireAjoEmail("ajo_withdrawal_rejected", {
-      client_email:  ctx.clientEmail,
-      client_name:   ctx.clientName,
-      user_email:    ctx.ownerEmail,
-      business_name: ctx.businessName,
-      group_name:    (rwrRow as Record<string, unknown>).group_name || "",
-      amount:        (rwrRow as Record<string, unknown>).amount,
-      reason:        rwrReason || "",
-      date:          new Date().toLocaleDateString("en-NG"),
-    });
-
-    const rwrClientUserId = await resolveClientUserId(sb, clientId);
-    await notifyUser(sb, rwrClientUserId, {
-      type: "withdrawal_rejected", title: "Withdrawal Rejected",
-      body: `Your withdrawal request for ₦${Number((rwrRow as Record<string, unknown>).amount).toLocaleString("en-NG")} was rejected${rwrReason ? ` — ${rwrReason}` : ""}`,
-      priority: "high", deepLink: { tab: "aso", sub: "withdrawals" },
-    });
+    await Promise.race([
+      (async () => {
+        const [ctx, rwrClientUserId] = await Promise.all([
+          fetchEmailContext(sb, clientId, ownerId, user.id),
+          resolveClientUserId(sb, clientId),
+        ]);
+        await Promise.allSettled([
+          fireAjoEmail("ajo_withdrawal_rejected", {
+            client_email:  ctx.clientEmail,
+            client_name:   ctx.clientName,
+            user_email:    ctx.ownerEmail,
+            business_name: ctx.businessName,
+            group_name:    (rwrRow as Record<string, unknown>).group_name || "",
+            amount:        (rwrRow as Record<string, unknown>).amount,
+            reason:        rwrReason || "",
+            date:          new Date().toLocaleDateString("en-NG"),
+          }),
+          notifyUser(sb, rwrClientUserId, {
+            type: "withdrawal_rejected", title: "Withdrawal Rejected",
+            body: `Your withdrawal request for ₦${Number((rwrRow as Record<string, unknown>).amount).toLocaleString("en-NG")} was rejected${rwrReason ? ` — ${rwrReason}` : ""}`,
+            priority: "high", deepLink: { tab: "aso", sub: "withdrawals" },
+          }),
+        ]);
+      })().catch(() => null),
+      new Promise<void>(r => setTimeout(r, 3500)),
+    ]);
 
     return json({ ok: true });
   }
@@ -1586,31 +1615,38 @@ serve(async (req: Request) => {
       .eq("id", rcId);
     if (rcErr) return json({ ok: false, error: rcErr.message });
 
-    // Notify client that their staff-recorded contribution was rejected by the owner
-    const rcCtx = await fetchEmailContext(sb, rcRow.aso_client_id as string, rcRow.owner_id as string, user.id);
-    await fireAjoEmail("ajo_contribution_rejected", {
-      client_email:  rcCtx.clientEmail,
-      client_name:   rcCtx.clientName,
-      owner_email:   rcCtx.ownerEmail,
-      business_name: rcCtx.businessName,
-      amount:        (rcRow as Record<string, unknown>).amount,
-      reason:        rcReason?.trim() || "",
-      date:          new Date().toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" }),
-    });
-
-    const rcAmt          = Number((rcRow as Record<string, unknown>).amount).toLocaleString("en-NG");
-    const rcClientUserId = await resolveClientUserId(sb, rcRow.aso_client_id as string);
-    await notifyUser(sb, rcClientUserId, {
-      type: "contribution_rejected", title: "Contribution Rejected",
-      body: `Your ₦${rcAmt} contribution was rejected${rcReason?.trim() ? ` — ${rcReason.trim()}` : ""}`,
-      priority: "normal", deepLink: { tab: "contributions" },
-    });
-    const rcStaffUserId = await resolveStaffUserId(sb, (rcRow as Record<string, unknown>).recorded_by as string);
-    await notifyUser(sb, rcStaffUserId, {
-      type: "collection_rejected", title: "Collection Rejected",
-      body: `Your recorded ₦${rcAmt} collection was rejected by the owner${rcReason?.trim() ? ` — ${rcReason.trim()}` : ""}`,
-      priority: "normal", deepLink: { tab: "aso", sub: "collections" },
-    });
+    const rcAmt = Number((rcRow as Record<string, unknown>).amount).toLocaleString("en-NG");
+    await Promise.race([
+      (async () => {
+        const [rcCtx, rcClientUserId, rcStaffUserId] = await Promise.all([
+          fetchEmailContext(sb, rcRow.aso_client_id as string, rcRow.owner_id as string, user.id),
+          resolveClientUserId(sb, rcRow.aso_client_id as string),
+          resolveStaffUserId(sb, (rcRow as Record<string, unknown>).recorded_by as string),
+        ]);
+        await Promise.allSettled([
+          fireAjoEmail("ajo_contribution_rejected", {
+            client_email:  rcCtx.clientEmail,
+            client_name:   rcCtx.clientName,
+            owner_email:   rcCtx.ownerEmail,
+            business_name: rcCtx.businessName,
+            amount:        (rcRow as Record<string, unknown>).amount,
+            reason:        rcReason?.trim() || "",
+            date:          new Date().toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" }),
+          }),
+          notifyUser(sb, rcClientUserId, {
+            type: "contribution_rejected", title: "Contribution Rejected",
+            body: `Your ₦${rcAmt} contribution was rejected${rcReason?.trim() ? ` — ${rcReason.trim()}` : ""}`,
+            priority: "normal", deepLink: { tab: "contributions" },
+          }),
+          notifyUser(sb, rcStaffUserId, {
+            type: "collection_rejected", title: "Collection Rejected",
+            body: `Your recorded ₦${rcAmt} collection was rejected by the owner${rcReason?.trim() ? ` — ${rcReason.trim()}` : ""}`,
+            priority: "normal", deepLink: { tab: "aso", sub: "collections" },
+          }),
+        ]);
+      })().catch(() => null),
+      new Promise<void>(r => setTimeout(r, 3500)),
+    ]);
 
     return json({ ok: true });
   }

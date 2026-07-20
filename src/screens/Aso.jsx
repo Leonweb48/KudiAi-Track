@@ -1464,14 +1464,13 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       if (writeErr || !writeData?.ok) {
         const errMsg = writeData?.error || writeErr?.message || "Approval failed";
         setApproveError({ id: req.id, text: errMsg });
-        reloadWithdrawalRequests(); // request was auto-rejected server-side
         return;
       }
       setApproveError({ id: null, text: "" });
-      reloadWithdrawalRequests();
     } catch (e) {
       setApproveError({ id: req.id, text: e?.message || "Approval failed" });
     } finally {
+      reloadWithdrawalRequests();
       setProcessingId(null);
     }
   };
@@ -1484,12 +1483,11 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       });
       if (rwErr || !rwData?.ok) {
         console.error("Reject failed:", rwErr?.message || rwData?.error);
-        return;
       }
-      reloadWithdrawalRequests();
     } catch (e) {
       console.error("Reject failed:", e);
     } finally {
+      reloadWithdrawalRequests();
       setProcessingId(null);
     }
   };
@@ -1507,10 +1505,10 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       });
       if (error || !data?.ok) throw new Error(data?.error || error?.message || "Confirm failed");
       flashDeposit("ok", `₦${Number(data.amount || claim.amount).toLocaleString("en-NG")} confirmed — client balance updated.`);
-      reloadPendingDeposits();
     } catch (e) {
       flashDeposit("err", e.message || "Confirm failed");
     } finally {
+      reloadPendingDeposits();
       setProcessingDepositId(null);
     }
   };
@@ -1525,10 +1523,10 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       setRejectingDeposit(null);
       setRejectReason("");
       flashDeposit("ok", "Deposit claim rejected — client has been notified.");
-      reloadPendingDeposits();
     } catch (e) {
       flashDeposit("err", e.message || "Reject failed");
     } finally {
+      reloadPendingDeposits();
       setProcessingDepositId(null);
     }
   };
@@ -1541,10 +1539,10 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       });
       if (error || !data?.ok) throw new Error(data?.error || error?.message || "Approve failed");
       flashDeposit("ok", `₦${Number(data.amount || dep.amount).toLocaleString("en-NG")} approved — client balance updated.`);
-      reloadPendingDeposits();
     } catch (e) {
       flashDeposit("err", e.message || "Approve failed");
     } finally {
+      reloadPendingDeposits();
       setProcessingDepositId(null);
     }
   };
@@ -2047,7 +2045,8 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                             setProcessingStaffContribId(item.id);
                             const { data } = await supabase.functions.invoke("ajo-write", { body: { action: "reject_contribution", contribution_id: item.id, reason: staffContribRejectReason } });
                             setProcessingStaffContribId(null);
-                            if (data?.ok) { setRejectingStaffContrib(null); setStaffContribRejectReason(""); reloadPendingStaffContribs(); }
+                            if (data?.ok) { setRejectingStaffContrib(null); setStaffContribRejectReason(""); }
+                            reloadPendingStaffContribs();
                           }}
                           className="flex-1 py-2 bg-red-600 text-white rounded-xl font-bold text-xs disabled:opacity-50 active:scale-[0.99] transition">
                           {isProc ? "…" : "Confirm Reject"}
