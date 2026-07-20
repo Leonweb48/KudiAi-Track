@@ -35,5 +35,6 @@ jobs:
           supabase functions deploy paystack                            --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
           supabase functions deploy peyflex                             --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
           supabase functions deploy pin-manager                         --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
+          supabase functions deploy notify-send                         --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
