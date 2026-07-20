@@ -48,9 +48,15 @@ async function getPushPlugin() {
     return null;
   }
   try {
-    const { PushNotifications } = await import("@capacitor/push-notifications");
-    pushDbg("getPushPlugin() → plugin imported OK");
-    return PushNotifications;
+    const mod = await import("@capacitor/push-notifications");
+    // Handle both ESM named export and CJS default-wrapped export
+    const Push = mod.PushNotifications ?? mod.default?.PushNotifications ?? mod.default ?? null;
+    pushDbg("getPushPlugin() → import resolved", {
+      hasNamed:  !!mod.PushNotifications,
+      hasDefault: !!mod.default,
+      resolved:  Push ? "OK" : "NULL",
+    });
+    return Push;
   } catch (e) {
     pushDbg("getPushPlugin() FAILED to import plugin", String(e));
     return null;
@@ -130,7 +136,10 @@ export function usePushNotifications(userId, onDeepLink) {
         pushDbg("Capacitor.getPlatform()", platform);
 
         const Push = await getPushPlugin();
-        if (!Push) return; // getPushPlugin() already logged the reason
+        if (!Push) {
+          pushDbg("getPushPlugin() returned null — registration aborted");
+          return;
+        }
 
         // Channels must exist before any message referencing them arrives
         pushDbg("createAndroidChannels() start");
