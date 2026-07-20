@@ -10,6 +10,7 @@
  *   onRetrieveToken — optional async () => string; shown for electricity receipts
  */
 import { useRef, useState } from "react";
+import { useToast } from "../Toast";
 import { jsPDF } from "jspdf";
 import { Capacitor } from "@capacitor/core";
 import { Filesystem, Directory } from "@capacitor/filesystem";
@@ -183,16 +184,11 @@ export default function TransactionDetailModal({ data, onClose, onReportIssue, o
   const receiptRef = useRef(null);
   const [shareOpen,  setShareOpen]  = useState(false);
   const [loading,    setLoading]    = useState(null);
-  const [toast,      setToast]      = useState(null);
   const [ticketData, setTicketData] = useState(null);
+  const toast = useToast();
 
   const { title, fields = [], receiptRef: ref, filenames } = data;
   const retrievableField = fields.find(f => f.retrievable);
-
-  function showToast(msg) {
-    setToast(msg);
-    setTimeout(() => setToast(null), 3000);
-  }
 
   async function handleShare(type) {
     setShareOpen(false);
@@ -213,10 +209,10 @@ export default function TransactionDetailModal({ data, onClose, onReportIssue, o
         await savePdf(pdf, filenames?.pdf || 'receipt.pdf');
         result = Capacitor.isNativePlatform() ? 'shared' : 'downloaded';
       }
-      if (result === 'downloaded') showToast('Receipt saved to your downloads folder.');
+      if (result === 'downloaded') toast({ title: 'Receipt saved to your downloads folder.', type: 'success' });
     } catch (e) {
       if (!e?.message?.includes('cancel') && e?.name !== 'AbortError') {
-        showToast('Could not share receipt. Please try again.');
+        toast({ title: 'Could not share receipt. Please try again.', type: 'error' });
       }
     } finally {
       setLoading(null);
@@ -328,11 +324,6 @@ export default function TransactionDetailModal({ data, onClose, onReportIssue, o
         />
       )}
 
-      {toast && (
-        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[90] bg-slate-800 dark:bg-slate-700 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-lg max-w-xs text-center">
-          {toast}
-        </div>
-      )}
     </>
   );
 }

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../../utils/supabase";
+import { useToast } from "../../components/Toast";
 const fmtDate = ts => new Date(ts).toLocaleDateString([],{day:"numeric",month:"short",year:"numeric"});
 
 const TABS = [
@@ -49,11 +50,10 @@ export default function AdminDashboard({ orgId, orgName, org, members:initMember
   const [requests,   setRequests]   = useState([]);
   const [reports,    setReports]    = useState([]);
   const [loading,    setLoading]    = useState(false);
-  const [actionMsg,  setActionMsg]  = useState("");
   const [memberQ,    setMemberQ]    = useState("");
   const [selMember,  setSelMember]  = useState(null);   // member detail sheet
 
-  const toast = msg => { setActionMsg(msg); setTimeout(()=>setActionMsg(""),3000); };
+  const toast = useToast();
 
   const loadTab = useCallback(async t => {
     setLoading(true);
@@ -86,7 +86,7 @@ export default function AdminDashboard({ orgId, orgName, org, members:initMember
       .update({status:"approved",reviewed_by:myId,reviewed_at:new Date().toISOString()})
       .eq("id",req.id);
     setRequests(r=>r.map(x=>x.id===req.id?{...x,status:"approved"}:x));
-    toast("✅ Request approved");
+    toast({ title: "Request approved", type: "success" });
   };
 
   const rejectRequest = async req => {
@@ -94,7 +94,7 @@ export default function AdminDashboard({ orgId, orgName, org, members:initMember
       .update({status:"rejected",reviewed_by:myId,reviewed_at:new Date().toISOString()})
       .eq("id",req.id);
     setRequests(r=>r.map(x=>x.id===req.id?{...x,status:"rejected"}:x));
-    toast("Request rejected");
+    toast({ title: "Request rejected", type: "info" });
   };
 
   const muteMember = async (mem, minutes=60) => {
@@ -102,7 +102,7 @@ export default function AdminDashboard({ orgId, orgName, org, members:initMember
     await supabase.from("org_members").update({is_muted:true,muted_until:until}).eq("id",mem.id);
     await supabase.from("group_mutes").upsert({org_id:orgId,member_id:mem.id,muted_by:myId,muted_until:until},{onConflict:"org_id,member_id"});
     setMembers(ms=>ms.map(m=>m.id===mem.id?{...m,is_muted:true,muted_until:until}:m));
-    toast(`🔇 ${mem.full_name} muted for ${minutes}m`);
+    toast({ title: `${mem.full_name} muted for ${minutes}m`, type: "info" });
     setSelMember(null);
   };
 
@@ -110,7 +110,7 @@ export default function AdminDashboard({ orgId, orgName, org, members:initMember
     await supabase.from("org_members").update({is_muted:false,muted_until:null}).eq("id",mem.id);
     await supabase.from("group_mutes").delete().match({org_id:orgId,member_id:mem.id});
     setMembers(ms=>ms.map(m=>m.id===mem.id?{...m,is_muted:false,muted_until:null}:m));
-    toast(`🔊 ${mem.full_name} unmuted`);
+    toast({ title: `${mem.full_name} unmuted`, type: "success" });
     setSelMember(null);
   };
 
@@ -119,14 +119,14 @@ export default function AdminDashboard({ orgId, orgName, org, members:initMember
     await supabase.from("org_members").update({is_banned:true,banned_at:new Date().toISOString(),status:"suspended"}).eq("id",mem.id);
     await supabase.from("group_bans").insert({org_id:orgId,member_id:mem.id,banned_by:myId,banned_user_id:mem.user_id,is_permanent:false});
     setMembers(ms=>ms.map(m=>m.id===mem.id?{...m,is_banned:true,status:"suspended"}:m));
-    toast(`⛔ ${mem.full_name} banned`);
+    toast({ title: `${mem.full_name} banned`, type: "error" });
     setSelMember(null);
   };
 
   const setChatRole = async (mem, role) => {
     await supabase.from("org_members").update({chat_role:role}).eq("id",mem.id);
     setMembers(ms=>ms.map(m=>m.id===mem.id?{...m,chat_role:role}:m));
-    toast(`${mem.full_name} is now ${role}`);
+    toast({ title: `${mem.full_name} is now ${role}`, type: "success" });
     setSelMember(null);
   };
 
@@ -135,7 +135,7 @@ export default function AdminDashboard({ orgId, orgName, org, members:initMember
       .update({status:"resolved",reviewed_by:myId,reviewed_at:new Date().toISOString(),action_taken:action})
       .eq("id",rep.id);
     setReports(rs=>rs.map(r=>r.id===rep.id?{...r,status:"resolved",action_taken:action}:r));
-    toast("Report resolved");
+    toast({ title: "Report resolved", type: "success" });
   };
 
 
@@ -182,13 +182,6 @@ export default function AdminDashboard({ orgId, orgName, org, members:initMember
           ))}
         </div>
       </div>
-
-      {/* Toast */}
-      {actionMsg && (
-        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-[200] bg-slate-800 text-white text-sm font-medium px-4 py-2.5 rounded-2xl shadow-xl">
-          {actionMsg}
-        </div>
-      )}
 
       <div className="flex-1 overflow-y-auto">
 

@@ -2487,8 +2487,8 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
   const [disputeDesc,    setDisputeDesc]    = useState("");
   const [disputeLoading, setDisputeLoading] = useState(false);
   const [disputeError,   setDisputeError]   = useState("");
-  const [disputeToast,   setDisputeToast]   = useState(false);
   const [disputedIds,    setDisputedIds]    = useState(() => new Set());
+  const toast = useToast();
 
   const withdrawItems = withdrawRequests.map(r => ({
     _type: "withdrawal_request",
@@ -2717,16 +2717,6 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
         <PendingInfoSheet item={pendingSheet} onClose={() => setPendingSheet(null)} />
       )}
 
-      {/* Dispute success toast (AMP-21) */}
-      {disputeToast && (
-        <div className="fixed bottom-24 inset-x-4 z-[280] bg-green-600 text-white text-sm font-bold px-4 py-3 rounded-2xl shadow-xl flex items-center gap-2 animate-[fadeIn_0.2s_ease]">
-          <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 flex-shrink-0" stroke="currentColor" strokeWidth={3} strokeLinecap="round">
-            <path d="M20 6L9 17l-5-5"/>
-          </svg>
-          Dispute submitted — we'll review your case
-        </div>
-      )}
-
       {/* Filter chips + PDF export */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex gap-2 overflow-x-auto no-scrollbar">
@@ -2801,8 +2791,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
                     });
                     setDisputedIds(prev => new Set([...prev, disputeFor.id]));
                     setDisputeFor(null);
-                    setDisputeToast(true);
-                    setTimeout(() => setDisputeToast(false), 3500);
+                    toast({ title: "Dispute submitted — we'll review your case", type: "success" });
                   } catch (err) {
                     setDisputeError(friendlyError(err));
                   } finally {

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../utils/supabase";
 import { friendlyError } from "../utils/errorMessage";
+import { useToast } from "../components/Toast";
 // ── Helpers ────────────────────────────────────────────────────────────────────
 const fmt = (n) =>
   new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN", maximumFractionDigits: 0 }).format(n || 0);
@@ -132,7 +133,7 @@ function Users({ session }) {
   const [search, setSearch]   = useState("");
   const [loading, setLoading] = useState(true);
   const [acting, setActing]   = useState(null);
-  const [toast, setToast]     = useState("");
+  const toast = useToast();
 
   const load = useCallback((p = 1, q = search) => {
     setLoading(true);
@@ -149,11 +150,10 @@ function Users({ session }) {
     setActing(userId);
     try {
       await callPortal(session, "user-action", { target_id: userId, user_action: act });
-      setToast(`User ${act}d successfully.`);
-      setTimeout(() => setToast(""), 3000);
+      toast({ title: `User ${act}d successfully.`, type: "success" });
       load(page);
     } catch (e) {
-      setToast(friendlyError(e));
+      toast({ title: friendlyError(e), type: "error" });
     } finally {
       setActing(null);
     }
@@ -186,10 +186,6 @@ function Users({ session }) {
           onClick={() => load(1, search)}
         >Search</button>
       </div>
-
-      {toast && (
-        <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm rounded-xl px-4 py-2">{toast}</div>
-      )}
 
       {loading ? (
         <div className="flex justify-center py-12"><Spin /></div>
