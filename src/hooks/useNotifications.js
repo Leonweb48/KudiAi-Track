@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { supabase } from "../utils/supabase";
 
 const PAGE_SIZE = 50;
@@ -20,6 +20,12 @@ const NAV_TAB_ALIASES = {
 };
 
 export function useNotifications(userId) {
+  // Each hook instance gets a stable unique suffix so two callers with the
+  // same userId never create channels with identical names (Supabase throws
+  // if .on() is called on an already-subscribed channel).
+  const instanceId = useRef(null);
+  if (!instanceId.current) instanceId.current = Math.random().toString(36).slice(2, 8);
+
   const [notifications, setNotifications] = useState([]);
   const [loading,       setLoading]       = useState(false);
   const [hasMore,       setHasMore]       = useState(false);
@@ -69,7 +75,7 @@ export function useNotifications(userId) {
   // ── Realtime ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!userId) return;
-    const channel = supabase.channel(`notifications_rt_${userId}`)
+    const channel = supabase.channel(`notifications_rt_${userId}_${instanceId.current}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` },
         (p) => setNotifications(prev => [p.new, ...prev]),
       )
