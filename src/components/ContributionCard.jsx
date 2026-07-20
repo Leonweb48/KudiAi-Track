@@ -41,7 +41,9 @@ function periodEnd(startDate, idx, freq) {
 
 // Returns { periods, cycleStarted }
 // p.paid = completed contributions only; p.pendingAmount/pendingRow for provisional display.
-function buildPeriods(cycle, contributions) {
+// allContributions (optional) — the full unfiltered list used only for reversal detection,
+// so that reversal rows without a matching cycle_id are still caught.
+function buildPeriods(cycle, contributions, allContributions) {
   const { start_date, length_periods, expected_amount_per_period, status: cycleStatus } = cycle;
   const freq = cycle.frequency || cycle.contribution_frequency || "monthly";
   const today = new Date();
@@ -55,11 +57,10 @@ function buildPeriods(cycle, contributions) {
   }
 
   // Build set of contribution IDs that have a reversal row pointing at them.
-  // When an owner reverses a deposit, a 'reversal_contribution' row is inserted
-  // with reverses_contribution_id = original row's id.  The original row keeps
-  // status='completed', so without this exclusion it would still show as paid.
+  // Search the FULL contributions list (allContributions) so that reversal rows
+  // without a cycle_id are still found even when cycleContribs filtered them out.
   const reversedIds = new Set(
-    contributions
+    (allContributions || contributions)
       .filter(c => c.reverses_contribution_id && typeof c.type === "string" && c.type.startsWith("reversal_"))
       .map(c => c.reverses_contribution_id)
   );
@@ -98,14 +99,15 @@ function buildPeriods(cycle, contributions) {
     }
   }
 
-  // Detect whether a first_period cycle fee was collected (commission row with this cycle_id)
+  // Detect whether the collector's Day 1 fee has been (net) collected.
+  // Use commission_balance on the cycle as the signal — it is set to
+  // expected_amount_per_period when the fee is taken and reset to 0 on reversal.
+  // This is more reliable than scanning for commission rows because a reversal
+  // inserts a reversal_commission row without modifying the original.
   const cycleCommissionCollected =
-    cycle.commission_model === "first_period" && cycle.id
-      ? contributions.some(
-          (c) => c.type === "commission" && c.status === "completed" &&
-                 (c.cycle_id === cycle.id || (!c.cycle_id && c.type === "commission"))
-        )
-      : false;
+    cycle.commission_model === "first_period" &&
+    Number(cycle.commission_balance || 0) >= Number(cycle.expected_amount_per_period || 0) &&
+    Number(cycle.expected_amount_per_period || 0) > 0;
 
   // Cycle is "started" only once at least one completed contribution exists.
   const cycleStarted = contributions.some(
@@ -345,8 +347,8 @@ export default function ContributionCard({
   }, [contributions, cycle?.id, isLegacyCycle]);
 
   const { periods, cycleStarted } = useMemo(
-    () => (cycle ? buildPeriods({ ...cycle, frequency: freq }, cycleContribs) : { periods: [], cycleStarted: false }),
-    [cycle, cycleContribs, freq]
+    () => (cycle ? buildPeriods({ ...cycle, frequency: freq }, cycleContribs, contributions) : { periods: [], cycleStarted: false }),
+    [cycle, cycleContribs, freq, contributions]
   );
 
   const paidCount    = periods.filter((p) => p.status === "paid").length;

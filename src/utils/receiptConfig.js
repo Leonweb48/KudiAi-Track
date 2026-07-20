@@ -225,7 +225,7 @@ export function buildAjoContributionReceipt(contribution, clientName, businessNa
   const t        = contribution.type || '';
   const label    = t === 'contribution' ? 'Ajo Contribution'
                  : t === 'withdrawal'   ? 'Ajo Withdrawal'
-                 : ledgerTypeLabel(t);
+                 : ledgerTypeLabel(contribution);
   const isOut    = t === 'withdrawal' || t === 'withdrawal_fee' || t === 'registration_fee'
                  || t === 'commission' || t.startsWith('reversal_');
   const statusMap = { completed: 'success', confirmed: 'success', pending: 'pending', rejected: 'failed', declined: 'failed' };

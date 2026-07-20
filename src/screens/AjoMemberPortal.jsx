@@ -2418,7 +2418,7 @@ function OverviewTab({ client, contributions, cycles = [], rotationsData = [], r
                 <div key={c.id} className="bg-white dark:bg-slate-800 rounded-xl px-3 py-2.5 flex items-center gap-3 border border-slate-100 dark:border-slate-700">
                   <div className={`w-2 h-2 rounded-full flex-shrink-0 ${dotCls}`} />
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">{ledgerTypeLabel(c.type)}</p>
+                    <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">{ledgerTypeLabel(c)}</p>
                     <p className="text-[10px] text-slate-400">{fmtDate(c.created_at)} &middot; {c.payment_method || "cash"}</p>
                   </div>
                   <span className={`text-sm font-extrabold tabular flex-shrink-0 ${amtCls}`}>
@@ -2465,7 +2465,7 @@ function PendingInfoSheet({ item, onClose }) {
         <div className="space-y-2 mb-5">
           {[
             { label: "Amount", value: fmt(item.amount) },
-            { label: "Type",   value: ledgerTypeLabel(item.type) },
+            { label: "Type",   value: ledgerTypeLabel(item) },
             item.payment_method && { label: "Method", value: item.payment_method.replace(/_/g, " ") },
             (item.claim_notes || item.notes) && { label: "Note", value: item.claim_notes || item.notes },
           ].filter(Boolean).map(row => (
@@ -2504,12 +2504,10 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
   const contribItems = contributions.map(c => ({ _type: "contribution", ...c, date: c.created_at }));
   const allItems = [...withdrawItems, ...contribItems].sort((a, b) => new Date(b.date) - new Date(a.date));
 
-  // Build set of IDs that were reversed (reversal entries point back via reversal_of / source_id)
   const reversedIdSet = new Set(
     contributions
-      .filter(c => c.type?.startsWith("reversal_"))
-      .map(c => c.reversal_of || c.reversal_of_id || c.source_id || c.linked_id)
-      .filter(Boolean)
+      .filter(c => c.type?.startsWith("reversal_") && c.reverses_contribution_id)
+      .map(c => c.reverses_contribution_id)
   );
 
   const FILTERS = [
@@ -2567,7 +2565,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
       const isWdReq = item._type === "withdrawal_request";
       const isFee   = item.type === "withdrawal_fee" || item.type === "registration_fee";
       const isWd    = !isWdReq && (item.type === "withdrawal" || isFee || item.type === "commission" || (item.type || "").startsWith("reversal_"));
-      const desc    = isWdReq ? "Withdrawal Request (Pending)" : ledgerTypeLabel(item.type);
+      const desc    = isWdReq ? "Withdrawal Request (Pending)" : ledgerTypeLabel(item);
       if (!isWdReq) { if (isWd) runBal -= amt; else runBal += amt; }
       return {
         date:        pdfFmtDate(item.created_at || item.date),
@@ -2666,7 +2664,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2">
               <p className={`text-xs font-semibold min-w-0 truncate ${isReversed ? "line-through text-slate-400 dark:text-slate-500" : "text-slate-700 dark:text-slate-200"}`}>
-                {isWdReq ? "Withdrawal Request" : ledgerTypeLabel(item.type)}
+                {isWdReq ? "Withdrawal Request" : ledgerTypeLabel(item)}
               </p>
               <span className={`text-sm font-extrabold tabular flex-shrink-0 ${amtCls}`}>
                 {sign}{fmt(item.amount)}

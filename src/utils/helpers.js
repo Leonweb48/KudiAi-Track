@@ -7,7 +7,7 @@ export const LEDGER_LABELS = {
   withdrawal:                "Withdrawal",
   withdrawal_fee:            "Withdrawal Fee",
   registration_fee:          "Registration Fee",
-  commission:                "Commission",
+  commission:                "Collector Commission",
   esusu_payout:              "Esusu Payout",
   esusu_pot_sweep:           "Esusu Pot Sweep",
   reversal_contribution:     "Reversal · Contribution",
@@ -19,9 +19,9 @@ export const LEDGER_LABELS = {
 export const ledgerTypeLabel = (typeOrRow) => {
   if (!typeOrRow) return "Transaction";
   if (typeof typeOrRow === "object") {
-    const { type, cycle_id } = typeOrRow;
-    // first_period cycle fee: commission row linked to a cycle
-    if (type === "commission" && cycle_id) return "Cycle fee — first deposit";
+    const { type, cycle_id, notes } = typeOrRow;
+    if (type === "commission" && cycle_id) return "Cycle Commission Fee — Day 1";
+    if (type === "commission") return "Collector Commission";
     return ledgerTypeLabel(type);
   }
   const type = typeOrRow;
