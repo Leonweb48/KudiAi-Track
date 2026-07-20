@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "342535398493",
+    "project_id": "kudiai-track26",
+    "storage_bucket": "kudiai-track26.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:342535398493:android:a84065534b6e22abf399b4",
+        "android_client_info": {
+          "package_name": "com.amayatechnologies.kuditrack"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA-_ei4cqBgDDqnSE0iIL-portkTXI4YWg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
