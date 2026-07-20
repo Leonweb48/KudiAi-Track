@@ -2,17 +2,13 @@
  * NotificationPreferences — Part 4.
  * Reads/writes notification_preferences table.
  * Mounted from Settings → Notifications row.
- *
- * Master toggle: In-app always on (display only); Push on/off.
- * Per-category: Money approvals · Savings activity · Stock alerts.
- * All preferences stored server-side; enforced in notify-send.
  */
 
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../utils/supabase";
 import Modal from "./shared/Modal";
 
-// ── Native push helpers (no-op on web) ────────────────────────────────────────
+// ── Native push helpers ────────────────────────────────────────────────────────
 function isNative() {
   return typeof window !== "undefined" && window.Capacitor?.isNativePlatform?.();
 }
@@ -26,27 +22,37 @@ async function getPushPlugin() {
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
-function Toggle({ on, onChange }) {
+function Toggle({ on, onChange, locked = false }) {
   return (
     <button
       role="switch"
       aria-checked={on}
-      onClick={() => onChange(!on)}
-      className={`relative w-11 h-6 rounded-full transition-colors duration-200 focus-visible:outline-none flex-shrink-0 ${on ? "bg-brand-500 dark:bg-brand-600" : "bg-slate-300 dark:bg-slate-600"}`}
+      onClick={locked ? undefined : () => onChange(!on)}
+      disabled={locked}
+      className={`relative w-11 h-6 rounded-full transition-colors duration-200 focus-visible:outline-none flex-shrink-0
+        ${on ? "bg-[#16255A]" : "bg-slate-300 dark:bg-slate-600"}
+        ${locked ? "cursor-default" : ""}`}
     >
       <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${on ? "translate-x-5" : "translate-x-0"}`} />
     </button>
   );
 }
 
-function PrefRow({ label, sub, on, onChange, disabled = false }) {
+function PrefRow({ label, sub, on, onChange, locked = false }) {
   return (
-    <div className={`flex items-center justify-between gap-4 py-3.5 ${disabled ? "opacity-50" : ""}`}>
-      <div className="min-w-0">
-        <p className="text-[14px] font-semibold text-slate-800 dark:text-slate-100 truncate">{label}</p>
+    <div className="flex items-center justify-between gap-4 py-3.5">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <p className="text-[14px] font-semibold text-slate-800 dark:text-slate-100 truncate">{label}</p>
+          {locked && (
+            <span className="text-[10px] font-bold text-[#16255A] dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 rounded-full flex-shrink-0">
+              Always on
+            </span>
+          )}
+        </div>
         {sub && <p className="text-[12px] text-slate-400 dark:text-slate-500 mt-0.5">{sub}</p>}
       </div>
-      <Toggle on={disabled ? true : on} onChange={disabled ? undefined : onChange} />
+      <Toggle on={on} onChange={onChange} locked={locked} />
     </div>
   );
 }
@@ -54,17 +60,27 @@ function PrefRow({ label, sub, on, onChange, disabled = false }) {
 // ── Status pill ───────────────────────────────────────────────────────────────
 function StatusPill({ status }) {
   const cfg = {
-    granted: { bg: "bg-green-100 dark:bg-green-900/30", text: "text-green-700 dark:text-green-400", label: "Permission granted" },
-    denied:  { bg: "bg-red-100 dark:bg-red-900/30",   text: "text-red-700 dark:text-red-400",   label: "Permission denied" },
-    prompt:  { bg: "bg-amber-100 dark:bg-amber-900/30", text: "text-amber-700 dark:text-amber-400", label: "Not yet enabled" },
-  }[status] ?? { bg: "bg-slate-100 dark:bg-slate-800", text: "text-slate-500", label: "Checking…" };
+    granted: { dot: "bg-green-500", bg: "bg-green-100 dark:bg-green-900/30", text: "text-green-700 dark:text-green-400", label: "Permission granted" },
+    denied:  { dot: "bg-red-500",   bg: "bg-red-100 dark:bg-red-900/30",     text: "text-red-700 dark:text-red-400",   label: "Permission denied" },
+    prompt:  { dot: "bg-amber-500", bg: "bg-amber-100 dark:bg-amber-900/30", text: "text-amber-700 dark:text-amber-400", label: "Not yet enabled" },
+  }[status] ?? { dot: "bg-slate-400", bg: "bg-slate-100 dark:bg-slate-800", text: "text-slate-500", label: "Checking…" };
 
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold ${cfg.bg} ${cfg.text}`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${status === "granted" ? "bg-green-500" : status === "denied" ? "bg-red-500" : "bg-amber-500"}`} />
+    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold ${cfg.bg} ${cfg.text}`}>
+      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${cfg.dot}`} />
       {cfg.label}
     </span>
   );
+}
+
+function InfoMsg({ children, type = "info" }) {
+  const styles = {
+    success: "text-green-600 dark:text-green-400",
+    error:   "text-red-500 dark:text-red-400",
+    warn:    "text-amber-600 dark:text-amber-400",
+    info:    "text-slate-500 dark:text-slate-400",
+  };
+  return <p className={`text-[12px] font-semibold text-center ${styles[type]}`}>{children}</p>;
 }
 
 const DEFAULT_PREFS = { push_enabled: true, pref_money: true, pref_savings: true, pref_stock: true };
@@ -75,14 +91,14 @@ export default function NotificationPreferences({ userId, onClose }) {
   const [saving,       setSaving]       = useState(false);
   const [saved,        setSaved]        = useState(false);
 
-  // Native push registration state
-  const [pushStatus,   setPushStatus]   = useState(null);   // "granted"|"denied"|"prompt"|null
+  // Native push state
+  const [pushStatus,   setPushStatus]   = useState(null);
   const [enabling,     setEnabling]     = useState(false);
-  const [enableResult, setEnableResult] = useState(null);   // "ok"|"denied"|"error"
+  const [enableResult, setEnableResult] = useState(null); // "ok"|"denied"|"timeout"|"error"
 
-  // End-to-end test
+  // Test state
   const [testing,      setTesting]      = useState(false);
-  const [testResult,   setTestResult]   = useState(null);   // "sent"|"error"|null
+  const [testResult,   setTestResult]   = useState(null); // "sent"|"error"|null
 
   // Load saved preferences
   useEffect(() => {
@@ -104,8 +120,10 @@ export default function NotificationPreferences({ userId, onClose }) {
     (async () => {
       const Push = await getPushPlugin();
       if (!Push) return;
-      const { receive } = await Push.checkPermissions();
-      setPushStatus(receive);
+      try {
+        const { receive } = await Push.checkPermissions();
+        setPushStatus(receive);
+      } catch { /* bridge unavailable — leave null */ }
     })();
   }, []);
 
@@ -120,44 +138,55 @@ export default function NotificationPreferences({ userId, onClose }) {
     setTimeout(() => setSaved(false), 2000);
   };
 
-  // Manually request push permission + register FCM token
   const handleEnablePush = useCallback(async () => {
     setEnabling(true);
     setEnableResult(null);
     try {
       const Push = await getPushPlugin();
-      if (!Push) return;
+      if (!Push) { setEnableResult("error"); return; }
 
-      let status = pushStatus;
-
-      if (status !== "granted") {
-        // Clear the one-time-prompt flag so the hook also retries on next launch
-        localStorage.removeItem("kt_push_prompted");
-        const { receive } = await Push.requestPermissions();
-        status = receive;
-        setPushStatus(receive);
+      // If already denied by Android, requestPermissions() can hang forever —
+      // skip it and tell the user to use Android Settings instead.
+      if (pushStatus === "denied") {
+        setEnableResult("denied");
+        return;
       }
 
-      if (status === "granted") {
+      let currentStatus = pushStatus;
+
+      if (currentStatus !== "granted") {
+        localStorage.removeItem("kt_push_prompted");
+
+        // Race against 10 s — requestPermissions can hang if the dialog
+        // doesn't appear (e.g. after "Don't ask again" on some Android builds).
+        const result = await Promise.race([
+          Push.requestPermissions(),
+          new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 10000)),
+        ]);
+
+        currentStatus = result.receive;
+        setPushStatus(result.receive);
+      }
+
+      if (currentStatus === "granted") {
         await Push.register();
         setEnableResult("ok");
       } else {
         setEnableResult("denied");
       }
-    } catch {
-      setEnableResult("error");
+    } catch (err) {
+      setEnableResult(err?.message === "timeout" ? "timeout" : "error");
     } finally {
       setEnabling(false);
     }
   }, [pushStatus]);
 
-  // Send a test notification through notify-send → verifies the full pipeline
   const handleTest = useCallback(async () => {
     if (!userId) return;
     setTesting(true);
     setTestResult(null);
     try {
-      await supabase.functions.invoke("notify-send", {
+      const { error } = await supabase.functions.invoke("notify-send", {
         body: {
           action:   "notify",
           userId,
@@ -168,8 +197,9 @@ export default function NotificationPreferences({ userId, onClose }) {
           category: "money",
         },
       });
+      if (error) throw error;
       setTestResult("sent");
-      setTimeout(() => setTestResult(null), 4000);
+      setTimeout(() => setTestResult(null), 6000);
     } catch {
       setTestResult("error");
       setTimeout(() => setTestResult(null), 4000);
@@ -182,19 +212,20 @@ export default function NotificationPreferences({ userId, onClose }) {
     <Modal title="Notification Preferences" onClose={onClose}>
       {loading ? (
         <div className="flex items-center justify-center py-10">
-          <div className="w-5 h-5 border-2 border-brand-400 border-t-transparent rounded-full animate-spin" />
+          <div className="w-5 h-5 border-2 border-[#16255A] border-t-transparent rounded-full animate-spin" />
         </div>
       ) : (
         <div className="px-4 pb-6 space-y-0">
-          {/* Channels */}
+
+          {/* ── Channels ── */}
           <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider pt-4 pb-1">Channels</p>
-          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 overflow-hidden divide-y divide-slate-100 dark:divide-slate-700 px-4">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-700 px-4">
             <PrefRow
               label="In-app Notifications"
-              sub="Bell icon + notification center — always on"
+              sub="Bell icon and notification center"
               on={true}
               onChange={() => {}}
-              disabled
+              locked
             />
             <PrefRow
               label="Push Notifications"
@@ -204,70 +235,77 @@ export default function NotificationPreferences({ userId, onClose }) {
             />
           </div>
 
-          {/* Native push permission status + action — shown on native builds only */}
+          {/* ── Native push permission card (device only) ── */}
           {isNative() && (
-            <div className="mt-3 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 px-4 py-3.5 space-y-3">
+            <div className="mt-3 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 px-4 py-4 space-y-3">
+
+              {/* Status row */}
               <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
+                <div>
                   <p className="text-[13px] font-semibold text-slate-700 dark:text-slate-200">Android permission</p>
                   <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">Required to receive push alerts</p>
                 </div>
-                {pushStatus && <StatusPill status={pushStatus} />}
+                {pushStatus ? <StatusPill status={pushStatus} /> : (
+                  <span className="text-[11px] text-slate-400">Checking…</span>
+                )}
               </div>
 
-              {/* Enable button — shown when not yet granted */}
+              {/* Enable button — only when not yet granted */}
               {pushStatus !== "granted" && (
                 <button
                   onClick={handleEnablePush}
                   disabled={enabling}
                   className="w-full py-2.5 rounded-xl text-[13px] font-bold text-white bg-[#16255A] active:opacity-80 transition-opacity disabled:opacity-60"
                 >
-                  {enabling ? "Enabling…" : pushStatus === "denied" ? "Re-request Permission" : "Enable Push Notifications"}
+                  {enabling
+                    ? "Waiting for Android response…"
+                    : pushStatus === "denied"
+                      ? "Open Android Settings"
+                      : "Enable Push Notifications"}
                 </button>
               )}
 
-              {/* Outcome of enable attempt */}
+              {/* Result messages */}
               {enableResult === "ok" && (
-                <p className="text-[12px] text-green-600 dark:text-green-400 font-semibold text-center">
-                  Push enabled — your device is now registered.
-                </p>
+                <InfoMsg type="success">Push enabled — your device is now registered.</InfoMsg>
               )}
               {enableResult === "denied" && (
-                <p className="text-[12px] text-red-500 dark:text-red-400 font-semibold text-center">
-                  Permission denied. Go to Android Settings → Apps → KudiAI Track → Notifications and enable it manually.
-                </p>
+                <InfoMsg type="warn">
+                  Go to Android Settings → Apps → KudiAI Track → Notifications and turn it on.
+                </InfoMsg>
+              )}
+              {enableResult === "timeout" && (
+                <InfoMsg type="warn">
+                  The Android dialog didn't appear. Go to Android Settings → Apps → KudiAI Track → Notifications.
+                </InfoMsg>
               )}
               {enableResult === "error" && (
-                <p className="text-[12px] text-red-500 dark:text-red-400 font-semibold text-center">
-                  Something went wrong. Try again or restart the app.
-                </p>
+                <InfoMsg type="error">Something went wrong. Try restarting the app.</InfoMsg>
               )}
 
-              {/* Test button — always shown on native */}
+              {/* Test button */}
               <button
                 onClick={handleTest}
                 disabled={testing}
-                className="w-full py-2.5 rounded-xl text-[13px] font-bold text-[#16255A] dark:text-brand-400 border border-[#16255A]/30 dark:border-brand-400/30 active:bg-[#16255A]/5 transition-colors disabled:opacity-60"
+                className="w-full py-2.5 rounded-xl text-[13px] font-bold text-[#16255A] dark:text-blue-400 border border-[#16255A]/30 dark:border-blue-400/30 active:bg-[#16255A]/5 transition-colors disabled:opacity-60"
               >
                 {testing ? "Sending…" : "Send Test Notification"}
               </button>
 
               {testResult === "sent" && (
-                <p className="text-[12px] text-green-600 dark:text-green-400 font-semibold text-center">
-                  Test sent — check your bell icon and (if push is enabled) your notification shade.
-                </p>
+                <InfoMsg type="success">
+                  Sent! Tap the bell icon above to see it in your notification center. If push is enabled you'll also see it in your notification shade.
+                </InfoMsg>
               )}
               {testResult === "error" && (
-                <p className="text-[12px] text-red-500 dark:text-red-400 font-semibold text-center">
-                  Test failed — check your internet connection.
-                </p>
+                <InfoMsg type="error">Failed to send. Check your internet connection and try again.</InfoMsg>
               )}
             </div>
           )}
 
-          {/* Categories */}
+          {/* ── Categories ── */}
           <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider pt-5 pb-1">Categories</p>
-          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 overflow-hidden divide-y divide-slate-100 dark:divide-slate-700 px-4">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-700 px-4">
             <PrefRow
               label="Money & Approvals"
               sub="Collections, withdrawals, capital alerts, security holds"
