@@ -4,6 +4,7 @@ import { BrowserRouter } from "react-router-dom";
 import "./index.css";
 import App from "./App";
 import { LanguageProvider } from "./contexts/LanguageContext";
+import { ToastProvider } from "./components/Toast";
 import { CapacitorUpdater } from "@capgo/capacitor-updater";
 import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
@@ -32,7 +33,9 @@ root.render(
   <React.StrictMode>
     <BrowserRouter>
       <LanguageProvider>
-        <App />
+        <ToastProvider>
+          <App />
+        </ToastProvider>
       </LanguageProvider>
     </BrowserRouter>
   </React.StrictMode>
