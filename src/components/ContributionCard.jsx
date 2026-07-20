@@ -54,10 +54,21 @@ function buildPeriods(cycle, contributions) {
     periods.push({ idx: i, from, to, paid: 0, pendingAmount: 0, pendingRow: null, rejectedRow: null });
   }
 
-  // Status-split: pending never inflates paid.
+  // Build set of contribution IDs that have a reversal row pointing at them.
+  // When an owner reverses a deposit, a 'reversal_contribution' row is inserted
+  // with reverses_contribution_id = original row's id.  The original row keeps
+  // status='completed', so without this exclusion it would still show as paid.
+  const reversedIds = new Set(
+    contributions
+      .filter(c => c.reverses_contribution_id && typeof c.type === "string" && c.type.startsWith("reversal_"))
+      .map(c => c.reverses_contribution_id)
+  );
+
+  // Status-split: pending never inflates paid; reversed rows are excluded.
   for (const c of contributions) {
     if (!c.created_at) continue;
     if (c.type && c.type !== "contribution") continue;
+    if (reversedIds.has(c.id)) continue;
     const dt = new Date(c.created_at);
     for (const p of periods) {
       if (dt >= p.from && dt < p.to) {
