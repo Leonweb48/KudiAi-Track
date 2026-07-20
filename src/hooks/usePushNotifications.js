@@ -10,7 +10,6 @@
  */
 
 import { useEffect, useRef } from "react";
-import { PushNotifications } from "@capacitor/push-notifications";
 import { supabase } from "../utils/supabase";
 
 const PROMPTED_KEY = "kt_push_prompted";
@@ -48,9 +47,16 @@ function getPushPlugin() {
     pushDbg("getPushPlugin() — not native → push skipped");
     return null;
   }
-  const available = typeof PushNotifications !== "undefined" && !!PushNotifications;
-  pushDbg("getPushPlugin() → static import", { available });
-  return available ? PushNotifications : null;
+  try {
+    // eslint-disable-next-line import/no-commonjs
+    const mod = require("@capacitor/push-notifications");
+    const Push = mod.PushNotifications ?? mod.default?.PushNotifications ?? mod.default ?? null;
+    pushDbg("getPushPlugin() → require OK", { resolved: Push ? "OK" : "NULL" });
+    return Push;
+  } catch (e) {
+    pushDbg("getPushPlugin() → require failed", String(e));
+    return null;
+  }
 }
 
 async function registerToken(userId, token) {
