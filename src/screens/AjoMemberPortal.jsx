@@ -1445,7 +1445,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
       setEsusuLocked(Number(eData || 0));
       setCycleLocked(Number(cData || 0));
     }).catch(() => {});
-  }, [client.id]);
+  }, [client.id, client.current_balance, cycles]);
 
   // Bank account state
   const [banks,        setBanks]        = useState([]);
@@ -1748,15 +1748,24 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
                       return (
                         <div key={cy.id} className={`px-3.5 py-2.5 rounded-xl border ${isLocked ? "border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-900/10" : "border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/30"}`}>
                           <div className="flex items-center justify-between">
-                            <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{cy.label || "Savings"}</p>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{cy.label || "Savings"}</p>
+                              {isLocked && cycleLocked > 0 && (
+                                <p className="text-[11px] font-extrabold text-amber-700 dark:text-amber-400 tabular-nums">
+                                  {fmt(cycleLocked)} saved
+                                </p>
+                              )}
+                            </div>
                             {isLocked
-                              ? <span className="text-[9px] font-extrabold bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full uppercase tracking-wide">Locked</span>
-                              : <span className="text-[9px] font-extrabold bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full uppercase tracking-wide">Available</span>
+                              ? <span className="ml-2 shrink-0 text-[9px] font-extrabold bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full uppercase tracking-wide">Locked</span>
+                              : <span className="ml-2 shrink-0 text-[9px] font-extrabold bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full uppercase tracking-wide">Available</span>
                             }
                           </div>
                           {isLocked && (
-                            <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">
-                              Locked with your collector — contact your savings agent to discuss early access
+                            <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">
+                              {cycleLocked > 0
+                                ? "Locked until cycle closes · contact your savings agent for early access"
+                                : "Day 1 collector’s fee paid — savings accumulate from next deposit"}
                             </p>
                           )}
                         </div>
