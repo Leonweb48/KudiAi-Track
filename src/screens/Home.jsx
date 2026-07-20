@@ -482,7 +482,7 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
       )}
 
       {/* ── Sales Forecast ───────────────────────────────────────── */}
-      {!loading && forecast && <SalesForecastCard prediction={forecast} t={t} hidden={balanceHidden} />}
+      {!loading && forecast?.projectedWeek != null && <SalesForecastCard prediction={forecast} t={t} hidden={balanceHidden} />}
 
       {/* ── Upsell inline slot ───────────────────────────────────── */}
       <UpsellInlineSlot campaigns={upsells} loading={camLoading} recordEvent={recordEvent} />

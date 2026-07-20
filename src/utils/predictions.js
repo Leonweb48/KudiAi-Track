@@ -7,7 +7,22 @@ export function getSalesPrediction(transactions) {
   const now = new Date();
   const cut28 = new Date(now.getTime() - 28 * MS_DAY);
 
-  // Build daily revenue map for last 28 days
+  // This week (Sun–Sat) actual — always computed so the stat card is never blank
+  const dow = now.getDay();
+  const startOfWeek = new Date(now.getTime() - dow * MS_DAY);
+  startOfWeek.setHours(0, 0, 0, 0);
+  const thisWeekActual = transactions
+    .filter(t => t.type === "in" && new Date(t.transaction_date) >= startOfWeek)
+    .reduce((s, t) => s + t.amount, 0);
+
+  // This month actual — always computed
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const daysInMonth  = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const thisMonthActual = transactions
+    .filter(t => t.type === "in" && new Date(t.transaction_date) >= startOfMonth)
+    .reduce((s, t) => s + t.amount, 0);
+
+  // Build daily revenue map for last 28 days (needed for projections)
   const dailyMap = {};
   transactions
     .filter(t => t.type === "in" && new Date(t.transaction_date) >= cut28)
@@ -16,25 +31,13 @@ export function getSalesPrediction(transactions) {
     });
 
   const dailyValues = Object.values(dailyMap);
-  if (dailyValues.length < 3) return null; // need at least 3 data points
+  if (dailyValues.length < 3) {
+    // Not enough history for projections — return actuals only
+    return { thisWeekActual, thisMonthActual, projectedWeek: null, projectedMonth: null, avgDaily: 0, trend: null, trendPct: null };
+  }
 
   const avgDaily = dailyValues.reduce((a, b) => a + b, 0) / dailyValues.length;
-
-  // This week (Sun–Sat) projection
-  const dow = now.getDay();
-  const startOfWeek = new Date(now.getTime() - dow * MS_DAY);
-  startOfWeek.setHours(0, 0, 0, 0);
-  const thisWeekActual = transactions
-    .filter(t => t.type === "in" && new Date(t.transaction_date) >= startOfWeek)
-    .reduce((s, t) => s + t.amount, 0);
-  const projectedWeek = Math.round(thisWeekActual + avgDaily * (6 - dow));
-
-  // This month projection
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const daysInMonth  = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-  const thisMonthActual = transactions
-    .filter(t => t.type === "in" && new Date(t.transaction_date) >= startOfMonth)
-    .reduce((s, t) => s + t.amount, 0);
+  const projectedWeek  = Math.round(thisWeekActual  + avgDaily * (6 - dow));
   const projectedMonth = Math.round(thisMonthActual + avgDaily * (daysInMonth - now.getDate()));
 
   // Trend: last 14 days vs previous 14 days
