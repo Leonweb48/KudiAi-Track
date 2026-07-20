@@ -120,11 +120,10 @@ export default function PinSetupFlow({ pinLock }) {
           setTxnPin("");
           return;
         }
-        // Save txn PIN
+        // Save txn PIN — setupTxnPin already calls refetch() internally
         setSaving(true);
         try {
           await pinLock.setupTxnPin(txnPin);
-          await pinLock.refetch();
         } catch (err) {
           setPin("");
           setError(err?.message || "Failed to save PIN. Try again.");
