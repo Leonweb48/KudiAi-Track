@@ -5,6 +5,9 @@ import "./index.css";
 import App from "./App";
 import { LanguageProvider } from "./contexts/LanguageContext";
 import { ToastProvider } from "./components/Toast";
+import { CapacitorUpdater } from "@capgo/capacitor-updater";
+import { App as CapacitorApp } from "@capacitor/app";
+import { Capacitor } from "@capacitor/core";
 
 class AppErrorBoundary extends React.Component {
   constructor(props) { super(props); this.state = { error: null }; }
@@ -27,9 +30,6 @@ class AppErrorBoundary extends React.Component {
     return this.props.children;
   }
 }
-import { CapacitorUpdater } from "@capgo/capacitor-updater";
-import { App as CapacitorApp } from "@capacitor/app";
-import { Capacitor } from "@capacitor/core";
 
 if (Capacitor.isNativePlatform()) {
   // Tell Capgo this bundle loaded successfully — prevents auto-rollback
