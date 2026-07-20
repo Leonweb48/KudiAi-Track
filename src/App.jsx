@@ -635,6 +635,7 @@ export default function App() {
           org={coopOrg}
           onBack={() => { setCoopOrg(null); }}
           adminEmail={session?.user?.email}
+          userId={userId}
         />
       )}
 

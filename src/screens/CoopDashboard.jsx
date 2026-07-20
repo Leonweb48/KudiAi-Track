@@ -3283,7 +3283,7 @@ const ORG_TYPE_ICONS = { cooperative:"🤝", market_association:"🏪", church:"
 // ═══════════════════════════════════════════════════
 //  MAIN DASHBOARD
 // ═══════════════════════════════════════════════════
-export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = false, adminEmail = null }) {
+export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = false, adminEmail = null, userId = null }) {
   const t = useT();
   const toast = useToast();
   const MAIN_TABS = useMemo(() => makeMainTabs(t), [t]);
@@ -3384,7 +3384,7 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
               <NotificationCenter
-                userId={org?.owner_id ?? null}
+                userId={userId ?? org?.owner_id ?? null}
                 onNavigate={(dl) => { if (dl?.tab) navigateTo(dl.tab); }}
                 toast={toast}
               />
