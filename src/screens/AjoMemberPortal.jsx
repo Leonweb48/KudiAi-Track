@@ -1574,7 +1574,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
             className="flex-1 bg-transparent text-2xl font-black text-slate-700 dark:text-slate-200 outline-none placeholder:text-slate-300 dark:placeholder:text-slate-600 tabular [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
           />
         </div>
-        {amtNum > (client.current_balance || 0) && (
+        {amtNum > withdrawable && (
           <p className="text-[11px] text-red-500 mt-1">Exceeds available balance</p>
         )}
       </div>
@@ -1653,7 +1653,18 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
       <button
         onClick={() => {
           if (!amtNum || amtNum <= 0) { setError("Enter a valid amount"); return; }
-          if (amtNum > (client.current_balance || 0)) { setError("Amount exceeds your balance"); return; }
+          if (amtNum > withdrawable) {
+            let lockMsg = "Amount exceeds your available balance";
+            if (esusuLocked > 0 && cycleLocked > 0) {
+              lockMsg = `Only ${fmt(withdrawable)} is available — ${fmt(esusuLocked)} locked in esusu and ${fmt(cycleLocked)} locked in your first-period cycle`;
+            } else if (esusuLocked > 0) {
+              lockMsg = `Only ${fmt(withdrawable)} is available — ${fmt(esusuLocked)} is locked in your active esusu round`;
+            } else if (cycleLocked > 0) {
+              lockMsg = `Only ${fmt(withdrawable)} is available — ${fmt(cycleLocked)} is locked in your first-period savings cycle`;
+            }
+            setError(lockMsg);
+            return;
+          }
           if (netAmt <= 0) { setError("Amount too small after fee deduction"); return; }
           if (!acctForm.account_name || !acctForm.account_number || !acctForm.bank_code) {
             setError("Add and verify your bank account before requesting a withdrawal"); return;
@@ -1731,7 +1742,9 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
                 {cycles.filter(cy => cy.status === "active").length > 0 && (
                   <div className="space-y-2 mb-4">
                     {cycles.filter(cy => cy.status === "active").map(cy => {
-                      const isLocked = cy.commission_model === "first_period";
+                      const isLocked = cy.commission_model === "first_period" &&
+                        Number(cy.commission_balance || 0) >= Number(cy.expected_amount_per_period || 0) &&
+                        Number(cy.expected_amount_per_period || 0) > 0;
                       return (
                         <div key={cy.id} className={`px-3.5 py-2.5 rounded-xl border ${isLocked ? "border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-900/10" : "border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/30"}`}>
                           <div className="flex items-center justify-between">
