@@ -54,13 +54,14 @@ export function useNotifications(userId) {
     if (!userId) return;
     setLoading(true);
     const from = reset ? 0 : page * PAGE_SIZE;
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("notifications")
       .select("id,user_id,type,title,body,deep_link,priority,read_at,created_at")
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .range(from, from + PAGE_SIZE - 1);
     setLoading(false);
+    if (error) { console.error("[Notif] fetchPage error:", error.message); return; }
     if (!data) return;
     if (reset) { setNotifications(data); setPage(1); }
     else        { setNotifications(prev => [...prev, ...data]); setPage(p => p + 1); }
@@ -82,7 +83,13 @@ export function useNotifications(userId) {
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` },
         (p) => setNotifications(prev => prev.map(n => n.id === p.new.id ? p.new : n)),
       )
-      .subscribe();
+      .subscribe((status, err) => {
+        if (status === "SUBSCRIBED") {
+          console.log("[Notif] Realtime SUBSCRIBED for", userId?.slice(0, 8));
+        } else if (err || status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.error("[Notif] Realtime subscription failed:", status, err);
+        }
+      });
     return () => { supabase.removeChannel(channel); };
   }, [userId]);
 

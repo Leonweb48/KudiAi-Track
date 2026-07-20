@@ -111,7 +111,7 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
   const { transactions, credits, asoClients, debtPayments, profile, loading } = store;
   const t      = useT();
   const toast  = useToast();
-  const userId = profile?.user_id ?? null;
+  const userId = profile?.id ?? null;
 
   const handleNotifNavigate = useCallback((dl) => {
     if (!dl?.tab) return;
