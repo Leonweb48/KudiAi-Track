@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { supabase } from "../utils/supabase";
 import { canDo, featureLimit, upgradeLabel, planRequiredLabel, planAvailableText } from "../utils/plans";
 import { useT } from "../contexts/LanguageContext";
+import { notify } from "../lib/notifyEngine";
 
 function makeRoles(t) {
   return [
@@ -476,6 +477,9 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
       if (updErr) throw updErr;
 
       await updatePermissions(selected.id);
+      if (selected.user_id) {
+        notify({ type: "permission_change", userId: selected.user_id, data: { staffId: selected.user_id } }).catch(() => {});
+      }
       setSelected(null);
       await loadStaff();
     } catch (e) {

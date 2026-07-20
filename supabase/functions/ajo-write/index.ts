@@ -123,6 +123,42 @@ async function fetchEmailContext(
   };
 }
 
+// ── Fire-and-forget in-app notification ───────────────────────────────────────
+async function notifyUser(
+  sb: ReturnType<typeof createClient>,
+  userId: string | null | undefined,
+  opts: { type: string; title: string; body: string; priority?: string; deepLink?: Record<string, unknown> | null },
+): Promise<void> {
+  if (!userId) return;
+  await (sb.from("notifications") as unknown as { insert: (row: unknown) => Promise<unknown> }).insert({
+    user_id:   userId,
+    type:      opts.type,
+    title:     opts.title,
+    body:      opts.body,
+    priority:  opts.priority || "normal",
+    deep_link: opts.deepLink ?? null,
+  }).catch(() => null);
+}
+
+// ── Resolve a client's auth user_id from aso_clients.client_user_id ──────────
+async function resolveClientUserId(
+  sb: ReturnType<typeof createClient>,
+  clientId: string,
+): Promise<string | null> {
+  const { data } = await sb.from("aso_clients").select("client_user_id").eq("id", clientId).maybeSingle();
+  return (data as { client_user_id?: string } | null)?.client_user_id ?? null;
+}
+
+// ── Resolve a staff member's auth user_id from their staff row id ─────────────
+async function resolveStaffUserId(
+  sb: ReturnType<typeof createClient>,
+  staffRowId: string | null | undefined,
+): Promise<string | null> {
+  if (!staffRowId) return null;
+  const { data } = await sb.from("staff").select("user_id").eq("id", staffRowId).maybeSingle();
+  return (data as { user_id?: string } | null)?.user_id ?? null;
+}
+
 // ── Resolve Ajo permissions for the caller ────────────────────────────────────
 // Returns null  → caller is the owner; full access, no staff ID to track.
 // Returns false → caller is not an active staff member for this owner; 403.
@@ -364,7 +400,7 @@ serve(async (req: Request) => {
 
     // Look up the contribution to determine the business owner
     const { data: acContrib } = await sb.from("ajo_contributions")
-      .select("owner_id, aso_client_id, amount, payment_method, contribution_context")
+      .select("owner_id, aso_client_id, amount, payment_method, contribution_context, recorded_by, contribution_source")
       .eq("id", acId)
       .eq("status", "pending")
       .maybeSingle();
@@ -398,6 +434,22 @@ serve(async (req: Request) => {
       reg_fee:       acResult.reg_fee     || 0,
       date:          new Date().toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" }),
     });
+
+    const acClientUserId = await resolveClientUserId(sb, acContrib.aso_client_id as string);
+    const acAmt          = Number(acContrib.amount).toLocaleString("en-NG");
+    await notifyUser(sb, acClientUserId, {
+      type: "contribution_approved", title: "Contribution Approved",
+      body: `Your ₦${acAmt} contribution has been approved`, priority: "normal",
+      deepLink: { tab: "contributions" },
+    });
+    if ((acContrib as Record<string, unknown>).contribution_source === "staff_collection") {
+      const acStaffUserId = await resolveStaffUserId(sb, (acContrib as Record<string, unknown>).recorded_by as string);
+      await notifyUser(sb, acStaffUserId, {
+        type: "collection_approved", title: "Collection Approved",
+        body: `Your recorded ₦${acAmt} collection was approved by the owner`, priority: "normal",
+        deepLink: { tab: "aso", sub: "collections" },
+      });
+    }
 
     return json(acData);
   }
@@ -529,6 +581,13 @@ serve(async (req: Request) => {
       new_balance:   app.new_balance || 0,
     });
 
+    const collClientUserId = await resolveClientUserId(sb, client_id);
+    await notifyUser(sb, collClientUserId, {
+      type: "contribution_approved", title: "Contribution Recorded",
+      body: `Your ₦${Number(amount).toLocaleString("en-NG")} contribution has been recorded and credited`,
+      priority: "normal", deepLink: { tab: "contributions" },
+    });
+
     return json({ ok: true, recovered, ...app });
   }
 
@@ -590,6 +649,12 @@ serve(async (req: Request) => {
           reason:        `Insufficient balance at time of approval. ${rpcErr}`,
           date:          new Date().toLocaleDateString("en-NG"),
         }).catch(() => {});
+        const rwFailClientUserId = await resolveClientUserId(sb, client_id);
+        await notifyUser(sb, rwFailClientUserId, {
+          type: "withdrawal_rejected", title: "Withdrawal Rejected",
+          body: `Your withdrawal request for ₦${Number(gross_amount).toLocaleString("en-NG")} was rejected — insufficient balance`,
+          priority: "high", deepLink: { tab: "aso", sub: "withdrawals" },
+        });
       }
       return json({ ok: false, error: rpcErr }, 400);
     }
@@ -609,6 +674,12 @@ serve(async (req: Request) => {
         net_amount:    rpcWd?.net_amount,
         balance_after: rpcWd?.balance_after,
         date:          new Date().toLocaleDateString("en-NG"),
+      });
+      const rwApprClientUserId = await resolveClientUserId(sb, client_id);
+      await notifyUser(sb, rwApprClientUserId, {
+        type: "withdrawal_approved", title: "Withdrawal Approved",
+        body: `Your withdrawal of ₦${Number(rpcWd?.net_amount ?? gross_amount).toLocaleString("en-NG")} has been approved`,
+        priority: "high", deepLink: { tab: "aso", sub: "withdrawals" },
       });
     } else {
       // Direct withdrawal (no prior request) — standard withdrawal email
@@ -665,6 +736,13 @@ serve(async (req: Request) => {
       amount:        (rwrRow as Record<string, unknown>).amount,
       reason:        rwrReason || "",
       date:          new Date().toLocaleDateString("en-NG"),
+    });
+
+    const rwrClientUserId = await resolveClientUserId(sb, clientId);
+    await notifyUser(sb, rwrClientUserId, {
+      type: "withdrawal_rejected", title: "Withdrawal Rejected",
+      body: `Your withdrawal request for ₦${Number((rwrRow as Record<string, unknown>).amount).toLocaleString("en-NG")} was rejected${rwrReason ? ` — ${rwrReason}` : ""}`,
+      priority: "high", deepLink: { tab: "aso", sub: "withdrawals" },
     });
 
     return json({ ok: true });
@@ -846,6 +924,13 @@ serve(async (req: Request) => {
       date:          new Date().toLocaleDateString("en-NG"),
     });
 
+    const mdClientUserId = await resolveClientUserId(sb, claim.aso_client_id);
+    await notifyUser(sb, mdClientUserId, {
+      type: "deposit_confirmed", title: "Deposit Confirmed",
+      body: `Your deposit of ₦${Number(data?.amount).toLocaleString("en-NG")} was confirmed and credited`,
+      priority: "high", deepLink: { tab: "contributions" },
+    });
+
     return json(data);
   }
 
@@ -882,6 +967,13 @@ serve(async (req: Request) => {
       amount:        claim.amount,
       reason:        reason,
       date:          new Date().toLocaleDateString("en-NG"),
+    });
+
+    const rmcClientUserId = await resolveClientUserId(sb, claim.aso_client_id);
+    await notifyUser(sb, rmcClientUserId, {
+      type: "deposit_rejected", title: "Deposit Rejected",
+      body: `Your deposit claim was rejected${reason?.trim() ? ` — ${reason.trim()}` : ""}`,
+      priority: "high", deepLink: { tab: "contributions" },
     });
 
     return json(data);
@@ -1028,7 +1120,7 @@ serve(async (req: Request) => {
     const [ownerRow, groupRow, allMembers, beneficiaryRow, nextTurnRow, roundRow, allTurnRows, staffRow] = await Promise.all([
       sb.from("profiles").select("email, business_name").eq("id", ownerId).maybeSingle().then(r => r.data),
       sb.from("ajo_groups").select("name, group_mode").eq("id", groupId).maybeSingle().then(r => r.data),
-      sb.from("aso_clients").select("id, full_name, email").eq("ajo_group_id", groupId).then(r => r.data || []),
+      sb.from("aso_clients").select("id, full_name, email, client_user_id").eq("ajo_group_id", groupId).then(r => r.data || []),
       sb.from("aso_clients").select("current_balance").eq("id", beneficiaryClientId).maybeSingle().then(r => r.data),
       epResult.next_turn_id
         ? sb.from("ajo_group_turns").select("position, expected_payout_date, client_id").eq("id", epResult.next_turn_id as string).maybeSingle().then(r => r.data)
@@ -1040,9 +1132,13 @@ serve(async (req: Request) => {
         : Promise.resolve(null),
     ]);
 
-    // Build a clientId → name lookup from the members we already fetched
-    const clientNameMap: Record<string, string> = {};
-    (allMembers as Array<{ id: string; full_name: string }>).forEach(m => { clientNameMap[m.id] = m.full_name; });
+    // Build clientId → name and clientId → client_user_id maps from members already fetched
+    const clientNameMap:   Record<string, string> = {};
+    const clientAuthIdMap: Record<string, string> = {};
+    (allMembers as Array<{ id: string; full_name: string; client_user_id?: string }>).forEach(m => {
+      clientNameMap[m.id]   = m.full_name;
+      if (m.client_user_id) clientAuthIdMap[m.id] = m.client_user_id;
+    });
 
     const businessName      = (ownerRow  as { business_name?: string } | null)?.business_name || "";
     const ownerEmail        = (ownerRow  as { email?: string }         | null)?.email          || "";
@@ -1139,6 +1235,14 @@ serve(async (req: Request) => {
         debtor_count:      epResult.debtor_count || 0,
       });
     }
+
+    // 6. In-app bell for the beneficiary
+    const epBeneficiaryAuthId = clientAuthIdMap[beneficiaryClientId] || await resolveClientUserId(sb, beneficiaryClientId);
+    await notifyUser(sb, epBeneficiaryAuthId, {
+      type: "payout_received", title: "Esusu Payout Received",
+      body: `₦${Number(potAmount).toLocaleString("en-NG")} has been credited to your account`,
+      priority: "normal", deepLink: { tab: "contributions" },
+    });
 
     return json(epData);
   }
@@ -1461,7 +1565,7 @@ serve(async (req: Request) => {
 
     const { data: rcRow } = await sb
       .from("ajo_contributions")
-      .select("owner_id, aso_client_id, amount, status, contribution_source")
+      .select("owner_id, aso_client_id, amount, status, contribution_source, recorded_by")
       .eq("id", rcId)
       .maybeSingle();
     if (!rcRow) return json({ ok: false, error: "Contribution not found" }, 404);
@@ -1491,6 +1595,20 @@ serve(async (req: Request) => {
       date:          new Date().toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" }),
     });
 
+    const rcAmt          = Number((rcRow as Record<string, unknown>).amount).toLocaleString("en-NG");
+    const rcClientUserId = await resolveClientUserId(sb, rcRow.aso_client_id as string);
+    await notifyUser(sb, rcClientUserId, {
+      type: "contribution_rejected", title: "Contribution Rejected",
+      body: `Your ₦${rcAmt} contribution was rejected${rcReason?.trim() ? ` — ${rcReason.trim()}` : ""}`,
+      priority: "normal", deepLink: { tab: "contributions" },
+    });
+    const rcStaffUserId = await resolveStaffUserId(sb, (rcRow as Record<string, unknown>).recorded_by as string);
+    await notifyUser(sb, rcStaffUserId, {
+      type: "collection_rejected", title: "Collection Rejected",
+      body: `Your recorded ₦${rcAmt} collection was rejected by the owner${rcReason?.trim() ? ` — ${rcReason.trim()}` : ""}`,
+      priority: "normal", deepLink: { tab: "aso", sub: "collections" },
+    });
+
     return json({ ok: true });
   }
 
@@ -1513,6 +1631,26 @@ serve(async (req: Request) => {
     const bacAjoPerms = await resolveAjoPerms(sb, user.id, bacOwnerId);
     if (bacAjoPerms !== null) return json({ ok: false, error: "Unauthorized: owner-only action" }, 403);
 
+    // Prefetch contribution details so we can notify after each approval
+    const { data: bacRows } = await sb
+      .from("ajo_contributions")
+      .select("id, aso_client_id, amount, recorded_by, contribution_source")
+      .in("id", bacIds);
+    const bacMap: Record<string, { aso_client_id: string; amount: number; recorded_by: string | null; contribution_source: string | null }> = {};
+    for (const r of (bacRows || [])) bacMap[(r as Record<string, unknown>).id as string] = r as { aso_client_id: string; amount: number; recorded_by: string | null; contribution_source: string | null };
+
+    // Prefetch all unique client_user_ids and staff user_ids in batch
+    const uniqueClientIds = [...new Set((bacRows || []).map(r => (r as Record<string, unknown>).aso_client_id as string).filter(Boolean))];
+    const uniqueStaffRowIds = [...new Set((bacRows || []).map(r => (r as Record<string, unknown>).recorded_by as string).filter(Boolean))];
+    const [{ data: bClientRows }, { data: bStaffRows }] = await Promise.all([
+      uniqueClientIds.length ? sb.from("aso_clients").select("id, client_user_id").in("id", uniqueClientIds) : Promise.resolve({ data: [] }),
+      uniqueStaffRowIds.length ? sb.from("staff").select("id, user_id").in("id", uniqueStaffRowIds) : Promise.resolve({ data: [] }),
+    ]);
+    const bClientAuthMap: Record<string, string> = {};
+    for (const r of (bClientRows || [])) bClientAuthMap[(r as Record<string, unknown>).id as string] = (r as Record<string, unknown>).client_user_id as string;
+    const bStaffAuthMap: Record<string, string> = {};
+    for (const r of (bStaffRows || [])) bStaffAuthMap[(r as Record<string, unknown>).id as string] = (r as Record<string, unknown>).user_id as string;
+
     const results: Array<{ id: string; ok: boolean; error?: string }> = [];
 
     for (const cId of bacIds) {
@@ -1525,6 +1663,23 @@ serve(async (req: Request) => {
         results.push({ id: cId, ok: false, error: bErr?.message || (bRes as Record<string, unknown>)?.error as string || "Failed" });
       } else {
         results.push({ id: cId, ok: true });
+        // Notify the client and recording staff after each successful approval
+        const bc    = bacMap[cId];
+        const bcAmt = bc ? Number(bc.amount).toLocaleString("en-NG") : "";
+        if (bc) {
+          await notifyUser(sb, bClientAuthMap[bc.aso_client_id], {
+            type: "contribution_approved", title: "Contribution Approved",
+            body: `Your ₦${bcAmt} contribution has been approved`, priority: "normal",
+            deepLink: { tab: "contributions" },
+          });
+          if (bc.contribution_source === "staff_collection" && bc.recorded_by) {
+            await notifyUser(sb, bStaffAuthMap[bc.recorded_by], {
+              type: "collection_approved", title: "Collection Approved",
+              body: `Your recorded ₦${bcAmt} collection was approved by the owner`, priority: "normal",
+              deepLink: { tab: "aso", sub: "collections" },
+            });
+          }
+        }
       }
     }
 

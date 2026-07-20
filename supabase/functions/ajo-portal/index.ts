@@ -242,7 +242,7 @@ serve(async (req) => {
       if (!client_id || !amount || amount <= 0) return json({ error: "client_id and amount are required" }, 400);
 
       const { data: cl } = await sb.from("aso_clients")
-        .select("full_name, email, user_id, current_balance, total_withdrawn, registration_charge, commission_model, commission_percent, portal_pin_changed_at")
+        .select("full_name, email, user_id, client_user_id, current_balance, total_withdrawn, registration_charge, commission_model, commission_percent, portal_pin_changed_at")
         .eq("id", client_id)
         .maybeSingle();
 
@@ -339,6 +339,18 @@ serve(async (req) => {
           },
         }),
       }).catch(() => null);
+
+      // If placed into held_24h security hold, notify the client immediately
+      if (withdrawalStatus === "held_24h" && cl.client_user_id) {
+        await sb.from("notifications").insert({
+          user_id:   cl.client_user_id,
+          type:      "held_24h",
+          title:     "Security Hold Active",
+          body:      `₦${Number(amount).toLocaleString("en-NG")} withdrawal is in 24h security review — it will be released automatically`,
+          priority:  "high",
+          deep_link: { tab: "aso", sub: "withdrawals" },
+        }).catch(() => null);
+      }
 
       return json({ request });
     }
