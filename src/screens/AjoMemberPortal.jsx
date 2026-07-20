@@ -25,6 +25,8 @@ import { buildAjoMemberContext } from "../utils/buildContext";
 import AppLogo from "../components/AppLogo";
 import { useT, useLanguage } from "../contexts/LanguageContext";
 import { createReportPdf, fmtCurrency as pdfFmt, fmtDate as pdfFmtDate } from "../utils/generateReportPdf";
+import NotificationCenter from "../components/NotificationCenter";
+import { useToast } from "../components/Toast";
 import ContributionCard from "../components/ContributionCard";
 import EsusuRotationDashboard from "../components/EsusuRotationDashboard";
 import LegalScreen from "./LegalScreen";
@@ -4126,6 +4128,7 @@ function AjoMemberBillsWrapper({ client, ownerInfo, session }) {
 // ── Main portal ───────────────────────────────────────────────────────────
 export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
   const t = useT();
+  const toast = useToast();
 
   const NAV = useMemo(() => makeNav(t), [t]);
 
@@ -4348,6 +4351,11 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
 
           <div className="flex-none flex items-center gap-2">
             {loadingData && <div className="w-3.5 h-3.5 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />}
+            <NotificationCenter
+              userId={client?.user_id ?? session?.user?.id ?? null}
+              onNavigate={(dl) => { if (dl?.tab) setTab(dl.tab); }}
+              toast={toast}
+            />
             <button onClick={() => setTab("me")}
               className="w-9 h-9 rounded-full bg-gradient-to-br from-brand-500 to-brand-600 relative flex items-center justify-center border-2 border-slate-100 dark:border-slate-700 shadow-sm active:scale-90 transition-transform overflow-hidden">
               <span className="text-sm font-black text-white">{avatarInitial}</span>

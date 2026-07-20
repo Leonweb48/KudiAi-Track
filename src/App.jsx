@@ -1,7 +1,9 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useLocation, Routes, Route } from "react-router-dom";
 import { useStore }          from "./hooks/useStore";
 import { useAuth }           from "./hooks/useAuth";
+import { ToastProvider }     from "./components/Toast";
+import { usePushNotifications } from "./hooks/usePushNotifications";
 import SyncBar               from "./components/SyncBar";
 import BottomNav             from "./components/BottomNav";
 import VoiceModal            from "./components/VoiceModal";
@@ -59,6 +61,7 @@ import { usePinLock }        from "./hooks/usePinLock";
 import { useLoyalty }        from "./hooks/useLoyalty";
 import { useBranches }       from "./hooks/useBranches";
 import { usePermissions }    from "./hooks/usePermissions";
+import { useNotifications }  from "./hooks/useNotifications";
 import { canDo }             from "./utils/plans";
 
 function Spinner() {
@@ -75,13 +78,6 @@ function Spinner() {
 export default function App() {
   const navigate   = useNavigate();
   const location   = useLocation();
-
-  // Listen for deep-link navigation from campaign CTAs
-  useEffect(() => {
-    const handler = (e) => { if (e.detail?.path) navigate(e.detail.path); };
-    window.addEventListener("promoNavigate", handler);
-    return () => window.removeEventListener("promoNavigate", handler);
-  }, [navigate]);
 
   // Derive active tab from URL path — maps legacy credit/aso routes to finance
   const rawTab = location.pathname === "/" ? "home" : location.pathname.slice(1).split("/")[0];
@@ -131,14 +127,18 @@ export default function App() {
   // Two-tier PIN lock (server-side via pin-manager edge function)
   const pinLock = usePinLock(userId, session);
 
-  // Notification action deep-link — cold start / post-PIN-unlock: consume localStorage
-  useEffect(() => {
-    if (pinLock.loading || pinLock.locked) return;
-    const route = localStorage.getItem("kt_pending_notif_route");
-    if (!route) return;
-    localStorage.removeItem("kt_pending_notif_route");
-    navigate(route, { replace: true });
-  }, [pinLock.loading, pinLock.locked]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Notification engine — owner portal (userId is the auth owner id)
+  const notifHook = useNotifications(userId);
+
+  // Push notification deep-link handler — called by usePushNotifications on tap
+  const handlePushDeepLink = useCallback((dl) => {
+    if (!dl?.tab) return;
+    const target = (dl.tab === "credit" || dl.tab === "aso") ? "finance" : dl.tab;
+    navigate(target === "home" ? "/" : `/${target}`, { replace: true });
+  }, [navigate]);
+
+  // Register FCM token + handle push taps (no-op on web)
+  usePushNotifications(userId, handlePushDeepLink);
 
   // Loyalty program
   const loyalty = useLoyalty(userId);
@@ -449,6 +449,7 @@ export default function App() {
   };
 
   return (
+    <ToastProvider onDeepLink={handlePushDeepLink}>
     <div className={isDark ? "dark" : ""}>
       <div className="h-[100dvh] bg-slate-50 dark:bg-slate-900 md:bg-slate-200 dark:md:bg-slate-950 flex justify-center transition-colors duration-200">
         <div className="w-full max-w-md relative flex flex-col h-[100dvh] safe-top md:shadow-2xl md:shadow-black/20 dark:md:shadow-black/60 md:border-x md:border-slate-300/50 dark:md:border-slate-700/50">
@@ -486,7 +487,7 @@ export default function App() {
             </Routes>
           </main>
 
-          <BottomNav active={MORE_TABS.has(tab) ? "more" : tab} onNavigate={setTab} />
+          <BottomNav active={MORE_TABS.has(tab) ? "more" : tab} onNavigate={setTab} badges={notifHook.badgeTabs} />
 
           <MoreSheet
             open={moreSheetOpen}
@@ -639,5 +640,6 @@ export default function App() {
 
       {/* PIN lock screen removed — now handled as full-page gate above */}
     </div>
+    </ToastProvider>
   );
 }

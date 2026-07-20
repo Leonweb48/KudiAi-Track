@@ -23,6 +23,8 @@ import TabCardDuoSlot from "../components/slots/TabCardDuoSlot";
 import OffersSection from "../components/slots/OffersSection";
 import { applyPeriodFilter } from "../utils/helpers";
 import PeriodFilter from "../components/shared/PeriodFilter";
+import NotificationCenter from "../components/NotificationCenter";
+import { useToast } from "../components/Toast";
 
 const coopFn = async (action, body = {}) => {
   const r = await supabase.functions.invoke("coop-portal", { body: { action, ...body } });
@@ -3283,6 +3285,7 @@ const ORG_TYPE_ICONS = { cooperative:"🤝", market_association:"🏪", church:"
 // ═══════════════════════════════════════════════════
 export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = false, adminEmail = null }) {
   const t = useT();
+  const toast = useToast();
   const MAIN_TABS = useMemo(() => makeMainTabs(t), [t]);
   const MORE_TABS = useMemo(() => makeMoreTabs(t), [t]);
   const TABS      = useMemo(() => makeTabs(t),     [t]);
@@ -3380,6 +3383,11 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
               <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 tracking-widest uppercase leading-none ml-1">Track</span>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
+              <NotificationCenter
+                userId={org?.owner_id ?? null}
+                onNavigate={(dl) => { if (dl?.tab) navigateTo(dl.tab); }}
+                toast={toast}
+              />
               <button onClick={() => navigateTo("profile")}
                 className="active:scale-90 transition-transform">
                 {org.logo_url

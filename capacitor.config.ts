@@ -17,9 +17,8 @@ const config: CapacitorConfig = {
       statsUrl: "https://api.capgo.app/stats",
       channelUrl: "https://api.capgo.app/channel_self",
     },
-    LocalNotifications: {
-      smallIcon: 'ic_notification',
-      iconColor: '#3DA829',
+    PushNotifications: {
+      presentationOptions: [],
     },
   },
 };

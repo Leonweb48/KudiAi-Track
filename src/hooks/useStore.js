@@ -4,6 +4,7 @@ import { uid, today } from "../utils/helpers";
 import { logAudit } from "../utils/auditLog";
 import { sendEmailTrigger } from "../utils/emailTrigger";
 import { computeCapital } from "../lib/profitEngine";
+import { notify } from "../lib/notifyEngine";
 
 const fireEmailTrigger = sendEmailTrigger;
 
@@ -507,6 +508,18 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
           action:  `${t.type === "in" ? "Sale" : "Expense"}: ${t.item_name}`,
           module:  "transactions",
           details: extra ? `${amt} · ${extra}` : amt });
+        notify({
+          type:         "staff_collection",
+          userId,
+          originUserId: staffId,
+          data: {
+            ownerId:   userId,
+            staffName: staffName || "Staff",
+            amount:    parseFloat(t.amount) || 0,
+            item:      t.item_name || t.category || "transaction",
+            txId:      data.id,
+          },
+        });
       }
       return data;
     }

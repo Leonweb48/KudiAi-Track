@@ -10,6 +10,8 @@ import { canDo, normalizeSlug, planAvailableText } from "../utils/plans";
 import AppLogo                from "../components/AppLogo";
 import Icon                   from "../components/Icon";
 import Modal                  from "../components/shared/Modal";
+import NotificationCenter     from "../components/NotificationCenter";
+import { useToast }           from "../components/Toast";
 import AIChatWidget           from "../components/AIChatWidget";
 import VoiceModal             from "../components/VoiceModal";
 import { StaffActivityStatement } from "../components/shared/Receipt";
@@ -1060,7 +1062,8 @@ function ManagerMe({ staff, session, store, inventory, livePerms, staffId, lock,
    MAIN STAFF DASHBOARD
 ═══════════════════════════════════════════════════════════════════ */
 export default function ManagerDashboard({ session, staff: staffProp }) {
-  const t = useT();
+  const t     = useT();
+  const toast = useToast();
 
   const NAV = useMemo(() => makeNav(t), [t]);
 
@@ -1217,6 +1220,11 @@ export default function ManagerDashboard({ session, staff: staffProp }) {
             <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 tracking-widest uppercase leading-none ml-1">Track</span>
           </div>
           <div className="flex items-center gap-2">
+            <NotificationCenter
+              userId={session?.user?.id}
+              onNavigate={(dl) => { if (dl?.tab) goTo(dl.tab, dl.sub || null); }}
+              toast={toast}
+            />
             <button onClick={() => goTo("me")}
               className="w-9 h-9 rounded-full bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center border-2 border-slate-100 dark:border-slate-700 shadow-sm active:scale-90 transition-transform overflow-hidden">
               {staff?.profile_image_url

@@ -61,7 +61,8 @@ serve(async (req) => {
   try { body = await req.json(); } catch { return json({ error: "Invalid JSON" }, 400); }
   const { action } = body;
 
-  // Fire-and-forget in-app notification insert (bypasses RLS via service role)
+  // Fire-and-forget notification insert — writes to the unified notifications table.
+  // coop_notifications is retained as archive; all new writes go here.
   const insertNotif = (
     orgId: string,
     recipientType: "member" | "org",
@@ -72,11 +73,38 @@ serve(async (req) => {
     actionTab?: string | null,
     recipientId?: string | null,
   ) => {
-    sb.from("coop_notifications").insert({
-      org_id: orgId, recipient_id: recipientId || null,
-      recipient_type: recipientType, type, category,
-      title, body: bodyText, action_tab: actionTab || null,
-    }).then(() => null).catch(() => null);
+    const priority = (type === "alert" || type === "warning") ? "high" : "normal";
+
+    // Resolve auth user_id from the recipient
+    const resolveUserId: Promise<string | null> =
+      recipientType === "org"
+        ? sb.from("organizations").select("owner_id").eq("id", orgId).maybeSingle()
+            .then(({ data }) => data?.owner_id ?? null)
+        : recipientId
+        ? sb.from("org_members").select("user_id").eq("id", recipientId).maybeSingle()
+            .then(({ data }) => data?.user_id ?? null)
+        : Promise.resolve(null);
+
+    resolveUserId.then((userId) => {
+      if (!userId) return;
+      fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/notify-send`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+        },
+        body: JSON.stringify({
+          action: "notify",
+          userId,
+          type: `coop_${category}`,
+          title,
+          body: bodyText,
+          deepLink: actionTab ? { tab: actionTab } : null,
+          priority,
+          category: category === "loan" || category === "finance" ? "money" : "savings",
+        }),
+      }).catch(() => null);
+    }).catch(() => null);
   };
 
   // ── Global auth guard ─────────────────────────────────────────────────────

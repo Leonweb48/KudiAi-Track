@@ -25,6 +25,8 @@ import TabCardQuadSlot from "../components/slots/TabCardQuadSlot";
 import TabCardDuoSlot from "../components/slots/TabCardDuoSlot";
 import { createReportPdf, fmtCurrency as pdfFmt, fmtDate as pdfFmtDate } from "../utils/generateReportPdf";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
+import NotificationCenter from "../components/NotificationCenter";
+import { useToast } from "../components/Toast";
 
 const coopFn = async (action, body = {}) => {
   const r = await supabase.functions.invoke("coop-portal", { body: { action, ...body } });
@@ -1728,6 +1730,7 @@ function ProfileSheet({ member, onClose, onSave }) {
 
 export default function CoopMemberPortal({ member: initialMember }) {
   const t = useT();
+  const toast = useToast();
   const MAIN_TABS = useMemo(() => makeMainTabsMember(t), [t]);
   const MORE_TABS = useMemo(() => makeMoreTabsMember(t), [t]);
 
@@ -1951,6 +1954,11 @@ export default function CoopMemberPortal({ member: initialMember }) {
             <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 tracking-widest uppercase leading-none ml-1">Track</span>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
+              <NotificationCenter
+                userId={member?.user_id ?? null}
+                onNavigate={(dl) => { if (dl?.tab) navigateTo(dl.tab); }}
+                toast={toast}
+              />
             <button onClick={() => setShowProfile(true)} className="active:scale-90 transition-transform">
               {member.avatar_url
                 ? <img src={member.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover border-2 border-slate-100 dark:border-slate-700 shadow-sm" />

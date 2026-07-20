@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { fmt, today } from "../utils/helpers";
 import { compute } from "../lib/profitEngine";
 import { supabase } from "../utils/supabase";
@@ -13,6 +13,8 @@ import { usePartnerOffers } from "../hooks/usePartnerOffers";
 import HomeBannerSlot from "../components/slots/HomeBannerSlot";
 import PopupSlot from "../components/slots/PopupSlot";
 import FeedCardSlot from "../components/slots/FeedCardSlot";
+import NotificationCenter from "../components/NotificationCenter";
+import { useToast } from "../components/Toast";
 import UpsellInlineSlot from "../components/slots/UpsellInlineSlot";
 import TabCardQuadSlot from "../components/slots/TabCardQuadSlot";
 import TabCardDuoSlot from "../components/slots/TabCardDuoSlot";
@@ -107,7 +109,16 @@ function SalesForecastCard({ prediction, t, balanceHidden }) {
 /* ── Main ────────────────────────────────────────────────────────── */
 export default function Home({ store, inventory, invoiceHook, plan, setTab, onQuickAction, onVoiceOpen, onAIOpen }) {
   const { transactions, credits, asoClients, debtPayments, profile, loading } = store;
-  const t = useT();
+  const t      = useT();
+  const toast  = useToast();
+  const userId = profile?.user_id ?? null;
+
+  const handleNotifNavigate = useCallback((dl) => {
+    if (!dl?.tab) return;
+    const target = (dl.tab === "credit" || dl.tab === "aso") ? "finance" : dl.tab;
+    setTab(target);
+  }, [setTab]);
+
   const [balanceHidden,      setBalanceHidden]      = useState(() => sessionStorage.getItem("kt_balance_hidden") === "1");
   const [search,             setSearch]             = useState("");
   const [receipt,            setReceipt]            = useState(null);
@@ -195,6 +206,7 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
           <span className="text-[12px] font-bold text-slate-400 dark:text-slate-500 tracking-widest uppercase leading-none ml-1">Track</span>
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
+          <NotificationCenter userId={userId} onNavigate={handleNotifNavigate} toast={toast} />
           <button onClick={() => setShowProfilePreview(true)} aria-label="Profile"
             className="w-9 h-9 rounded-full border-2 border-slate-100 dark:border-slate-700 shadow-sm overflow-hidden active:scale-95 transition-transform">
             {profile.profile_image_url

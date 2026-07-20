@@ -10,6 +10,8 @@ import VoiceModal             from "../components/VoiceModal";
 import { AddTxnModal }        from "./Transactions";
 import { useT }               from "../contexts/LanguageContext";
 import { useInvoices }        from "../hooks/useInvoices";
+import NotificationCenter     from "../components/NotificationCenter";
+import { useToast }           from "../components/Toast";
 import StaffHome              from "./staff/StaffHome";
 import StaffSales             from "./staff/StaffSales";
 import StaffRecords           from "./staff/StaffRecords";
@@ -23,7 +25,8 @@ import AIChatWidget           from "../components/AIChatWidget";
    Tab content lives in src/screens/staff/*.jsx
 ═══════════════════════════════════════════════════════════════════ */
 export default function StaffDashboard({ session, staff: staffProp, pinLock }) {
-  const t = useT();
+  const t    = useT();
+  const toast = useToast();
 
   const NAV = useMemo(() => makeNav(t), [t]);
 
@@ -202,6 +205,11 @@ If asked about business-wide figures (total business revenue, all staff performa
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <NotificationCenter
+              userId={session?.user?.id}
+              onNavigate={(dl) => { if (dl?.tab) goTo(dl.tab, dl.sub || null); }}
+              toast={toast}
+            />
             <button onClick={() => goTo("me")}
               className="w-9 h-9 rounded-full flex items-center justify-center border-2 border-slate-100 dark:border-slate-700 shadow-sm active:scale-90 transition-transform overflow-hidden bg-[linear-gradient(135deg,#3DA829,#2E8020)]">
               {staff?.profile_image_url

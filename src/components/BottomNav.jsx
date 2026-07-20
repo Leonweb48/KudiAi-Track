@@ -9,7 +9,8 @@ const NAV_IDS = [
   { id: "more",         icon: "settings",  tkey: "nav.more"  },
 ];
 
-export default function BottomNav({ active, onNavigate }) {
+// badges: Set of tab IDs that have at least one unread high-priority notification
+export default function BottomNav({ active, onNavigate, badges }) {
   const t = useT();
   return (
     <nav
@@ -19,6 +20,7 @@ export default function BottomNav({ active, onNavigate }) {
       <div className="flex items-stretch h-[64px] px-1">
         {NAV_IDS.map((n) => {
           const isActive = active === n.id;
+          const hasBadge = badges?.has(n.id);
           const label = t(n.tkey);
           return (
             <button
@@ -33,7 +35,7 @@ export default function BottomNav({ active, onNavigate }) {
                 <span className="absolute inset-x-0.5 top-1.5 bottom-1.5 rounded-2xl bg-brand-50 dark:bg-brand-900/20 transition-all duration-200" />
               )}
 
-              {/* Icon */}
+              {/* Icon + badge dot */}
               <div className={`relative z-10 transition-all duration-200 ${isActive ? "scale-110" : "scale-100"}`}>
                 <Icon
                   name={n.icon}
@@ -42,6 +44,9 @@ export default function BottomNav({ active, onNavigate }) {
                     ? "text-brand-600 dark:text-brand-400"
                     : "text-slate-400 dark:text-slate-500"}
                 />
+                {hasBadge && (
+                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-red-500 ring-2 ring-white dark:ring-slate-900" />
+                )}
               </div>
 
               {/* Label */}

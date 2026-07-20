@@ -17,6 +17,7 @@ import { maxDobDate, isAtLeast18, AGE_ERROR } from "../utils/ageValidation";
 import { useCampaigns } from "../hooks/useCampaigns";
 import AnnouncementBarSlot from "../components/slots/AnnouncementBarSlot";
 import UpsellInlineSlot from "../components/slots/UpsellInlineSlot";
+import NotificationPreferences from "../components/NotificationPreferences";
 
 /* ── Change PIN Modal (3-step: verify current → enter new → confirm new) ── */
 const PinBsIcon = () => (
@@ -219,6 +220,7 @@ const GlobeIcon = () => ic("M12 2a10 10 0 100 20A10 10 0 0012 2z|M2 12h20|M12 2a
 const GiftIcon   = () => ic("M20 12v10H4V12|M22 7H2v5h20V7z|M12 22V7|M12 7H7.5a2.5 2.5 0 010-5C11 2 12 7 12 7z|M12 7h4.5a2.5 2.5 0 000-5C13 2 12 7 12 7z");
 const BranchIcon = () => ic("M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z|M9 22V12h6v10");
 const CoopIcon   = () => ic("M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2|M23 21v-2a4 4 0 00-3-3.87|M16 3.13a4 4 0 010 7.75|M9 7a4 4 0 100 8 4 4 0 000-8z");
+const BellSettingsIcon = () => ic("M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9|M13.73 21a2 2 0 01-3.46 0");
 const LogoutIconSvg  = () => (
   <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-red-500 dark:text-red-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
     <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
@@ -289,6 +291,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
   const [showForgotPin, setShowForgotPin] = useState(false);
   const [showLangPick,  setShowLangPick]  = useState(false);
   const [legalScreen,        setLegalScreen]        = useState(null); // "terms" | "privacy"
+  const [showNotifPrefs,     setShowNotifPrefs]     = useState(false);
   const [acceptedConsent,    setAcceptedConsent]    = useState(null);
   const [showProfilePreview, setShowProfilePreview] = useState(false);
   const [wcAmountStr, setWcAmountStr] = useState(
@@ -593,6 +596,17 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
           </div>
         </div>
       )}
+
+      {/* ── NOTIFICATIONS ──────────────────────────────────────────── */}
+      <SectionLabel>Notifications</SectionLabel>
+      <SettingsCard>
+        <Row
+          icon={<BellSettingsIcon />}
+          label="Notification Preferences"
+          sub="Push alerts, in-app bell, category toggles"
+          onClick={() => setShowNotifPrefs(true)}
+        />
+      </SettingsCard>
 
       {/* ── APPEARANCE ─────────────────────────────────────────────── */}
       <SectionLabel>{t("settings.appearance")}</SectionLabel>
@@ -994,6 +1008,14 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
         <div className="fixed inset-0 z-sheet bg-slate-50 dark:bg-slate-900">
           <StaffManagement session={session} plan={plan} onBack={() => setStaffMgmt(false)} onUpgrade={() => { setStaffMgmt(false); onUpgrade?.(); }} />
         </div>
+      )}
+
+      {/* ── Notification Preferences modal ─────────────────────────── */}
+      {showNotifPrefs && (
+        <NotificationPreferences
+          userId={session?.user?.id}
+          onClose={() => setShowNotifPrefs(false)}
+        />
       )}
 
       {/* ── Legal full-screen overlay ───────────────────────────────── */}
