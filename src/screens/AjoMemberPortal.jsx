@@ -4363,7 +4363,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
           {tab === "home" && client && (
             <OverviewTab
               client={client}
-              userEmail={client?.email || session?.user?.email}
+              userEmail={client?.email || null}
               contributions={contributions}
               cycles={cycles}
               rotationsData={rotationsData}
