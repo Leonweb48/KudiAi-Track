@@ -15,31 +15,180 @@ const CAT_PREF: Record<string, string> = {
   stock:   "pref_stock",
 };
 
-// ── FCM push via legacy API ──────────────────────────────────────────────────
-async function sendFCM(token: string, title: string, body: string, deepLink: Record<string, unknown> | null) {
-  const serverKey = Deno.env.get("FIREBASE_SERVER_KEY");
-  if (!serverKey) return; // Firebase not configured; skip push silently
+// ── FCM HTTP v1 via OAuth2 service-account JWT ───────────────────────────────
 
-  await fetch("https://fcm.googleapis.com/fcm/send", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `key=${serverKey}`,
-    },
-    body: JSON.stringify({
-      to: token,
-      notification: {
-        title,
-        body,
-        icon: "ic_notification",
-        color: "#3DA829",
-        android_channel_id: "money_alerts",
-      },
-      data: deepLink ? { deepLink: JSON.stringify(deepLink) } : {},
-      android: { priority: "high" },
-    }),
-  }).catch(() => null);
+// Module-level token cache — survives warm invocations (~55 min effective TTL)
+let _fcmToken: string | null = null;
+let _fcmExpiry = 0;
+
+/** Convert PEM private key block to raw DER ArrayBuffer for WebCrypto. */
+function pemToDer(pem: string): ArrayBuffer {
+  const b64 = pem
+    .replace(/-----BEGIN PRIVATE KEY-----/, "")
+    .replace(/-----END PRIVATE KEY-----/, "")
+    .replace(/\r?\n/g, "");
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes.buffer;
 }
+
+/** Base64url-encode a Uint8Array or ArrayBuffer. */
+function b64url(input: Uint8Array | ArrayBuffer): string {
+  const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
+  let str = "";
+  for (const b of bytes) str += String.fromCharCode(b);
+  return btoa(str).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+}
+
+interface ServiceAccount {
+  client_email: string;
+  private_key:  string;
+  project_id:   string;
+}
+
+/** Mint (or return cached) an OAuth2 Bearer token for FCM. */
+async function getFCMToken(sa: ServiceAccount): Promise<string | null> {
+  const now = Math.floor(Date.now() / 1000);
+  if (_fcmToken && now < _fcmExpiry) return _fcmToken;
+
+  const enc = new TextEncoder();
+  const header  = b64url(enc.encode(JSON.stringify({ alg: "RS256", typ: "JWT" })));
+  const payload = b64url(enc.encode(JSON.stringify({
+    iss:   sa.client_email,
+    scope: "https://www.googleapis.com/auth/firebase.messaging",
+    aud:   "https://oauth2.googleapis.com/token",
+    iat:   now,
+    exp:   now + 3600,
+  })));
+
+  const signingInput = `${header}.${payload}`;
+
+  let cryptoKey: CryptoKey;
+  try {
+    cryptoKey = await crypto.subtle.importKey(
+      "pkcs8",
+      pemToDer(sa.private_key),
+      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+      false,
+      ["sign"],
+    );
+  } catch (e) {
+    console.error("[FCM] importKey failed:", e);
+    return null;
+  }
+
+  const sig = await crypto.subtle.sign(
+    "RSASSA-PKCS1-v1_5",
+    cryptoKey,
+    enc.encode(signingInput),
+  );
+
+  const jwt = `${signingInput}.${b64url(sig)}`;
+
+  const tokenResp = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: `grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=${jwt}`,
+  });
+
+  if (!tokenResp.ok) {
+    console.error("[FCM] Token exchange failed:", await tokenResp.text());
+    return null;
+  }
+
+  const { access_token, expires_in } = await tokenResp.json() as { access_token: string; expires_in: number };
+  _fcmToken  = access_token;
+  _fcmExpiry = now + (expires_in ?? 3600) - 300; // 5-min buffer → ~55-min cache
+  return _fcmToken;
+}
+
+/**
+ * Send via FCM HTTP v1 API.
+ * Returns the raw response body string so callers can log it for acceptance checks.
+ * Prunes UNREGISTERED tokens from push_tokens automatically.
+ */
+async function sendFCMv1(
+  sb:       ReturnType<typeof createClient>,
+  token:    string,
+  title:    string,
+  body:     string,
+  deepLink: Record<string, unknown> | null,
+  priority: string,
+): Promise<{ status: number; body: string }> {
+  const saRaw = Deno.env.get("FIREBASE_SERVICE_ACCOUNT");
+  if (!saRaw) return { status: 0, body: "FIREBASE_SERVICE_ACCOUNT not set" };
+
+  let sa: ServiceAccount;
+  try { sa = JSON.parse(saRaw) as ServiceAccount; }
+  catch { return { status: 0, body: "FIREBASE_SERVICE_ACCOUNT is not valid JSON" }; }
+
+  const accessToken = await getFCMToken(sa);
+  if (!accessToken) return { status: 0, body: "Could not obtain FCM access token" };
+
+  // v1 requires ALL data values to be strings
+  const data: Record<string, string> = {};
+  if (deepLink) data["deepLink"] = JSON.stringify(deepLink);
+
+  // Channels move under android.notification in v1
+  const channelId = priority === "high" ? "money_alerts" : "updates";
+
+  const resp = await fetch(
+    `https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type":  "application/json",
+        "Authorization": `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        message: {
+          token,
+          notification: { title, body },
+          data,
+          android: {
+            priority: priority === "high" ? "HIGH" : "NORMAL",
+            notification: {
+              icon:       "ic_notification",
+              color:      "#3DA829",
+              channel_id: channelId,
+            },
+          },
+        },
+      }),
+    },
+  );
+
+  const respText = await resp.text();
+
+  if (!resp.ok) {
+    // Parse errorCode to decide whether to prune the token
+    let errCode = "";
+    try {
+      const errJson = JSON.parse(respText) as {
+        error?: { status?: string; details?: Array<{ errorCode?: string }> }
+      };
+      errCode = errJson?.error?.details?.[0]?.errorCode
+             ?? errJson?.error?.status
+             ?? "";
+    } catch { /* ignore parse failure */ }
+
+    const stale = resp.status === 404
+               || errCode === "UNREGISTERED"
+               || errCode === "INVALID_ARGUMENT";
+
+    if (stale) {
+      await sb.from("push_tokens").delete().eq("token", token);
+      console.log("[FCM] Pruned stale token:", token.slice(0, 20) + "…");
+    } else {
+      console.error("[FCM] Send failed:", respText);
+    }
+  }
+
+  return { status: resp.status, body: respText };
+}
+
+// ── Main handler ─────────────────────────────────────────────────────────────
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -48,14 +197,12 @@ Deno.serve(async (req) => {
   const serviceKey  = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const anonKey     = Deno.env.get("SUPABASE_ANON_KEY")!;
 
-  // Caller identity — service_role bypasses all ownership checks
-  const authHeader = req.headers.get("Authorization") ?? "";
+  const authHeader  = req.headers.get("Authorization") ?? "";
   const callerToken = authHeader.replace("Bearer ", "").trim();
   const isServiceRole = callerToken === serviceKey;
 
-  const sb = createClient(supabaseUrl, serviceKey); // always service role for DB writes
+  const sb = createClient(supabaseUrl, serviceKey);
 
-  // Caller user (for ownership check on non-service-role calls)
   let callerId: string | null = null;
   if (!isServiceRole && callerToken && callerToken !== anonKey) {
     const { data: { user } } = await createClient(supabaseUrl, anonKey).auth.getUser(callerToken);
@@ -87,10 +234,10 @@ Deno.serve(async (req) => {
       type,
       title,
       body: bodyText,
-      deepLink = null,
-      priority = "normal",
+      deepLink  = null,
+      priority  = "normal",
       dedupeKey = null,
-      category = "money",
+      category  = "money",
     } = body as {
       userId: string; type: string; title: string; body: string;
       deepLink?: Record<string, unknown> | null; priority?: string;
@@ -99,7 +246,7 @@ Deno.serve(async (req) => {
 
     if (!userId || !type || !title) return json({ error: "userId, type, title required" }, 400);
 
-    // Cross-user auth guard: service_role OR caller is staff of that user's business
+    // Cross-user auth guard
     if (!isServiceRole && callerId && callerId !== userId) {
       const { data: ownerProf } = await sb.from("profiles").select("id").eq("user_id", userId).maybeSingle();
       if (ownerProf) {
@@ -119,10 +266,10 @@ Deno.serve(async (req) => {
       return json({ ok: true, suppressed: "preference" });
     }
 
-    // Dedupe: if an unread notification with the same dedupeKey exists, UPDATE it
+    // Dedupe: UPDATE existing unread row with same dedupe_key
     if (dedupeKey) {
       const { data: existing } = await sb.from("notifications")
-        .select("id, title, body")
+        .select("id")
         .eq("user_id", userId)
         .eq("dedupe_key", dedupeKey)
         .is("read_at", null)
@@ -151,7 +298,8 @@ Deno.serve(async (req) => {
 
     if (insertErr) return json({ error: insertErr.message }, 500);
 
-    // FCM push for high-priority when user has tokens and push is enabled
+    // FCM v1 push for high-priority
+    let fcmResult: { status: number; body: string } | null = null;
     if (priority === "high" && (prefs?.push_enabled ?? true)) {
       const { data: tokens } = await sb.from("push_tokens")
         .select("token, platform")
@@ -159,11 +307,14 @@ Deno.serve(async (req) => {
         .gte("last_seen", new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString());
 
       if (tokens?.length) {
-        await Promise.all(tokens.map(t => sendFCM(t.token, title, bodyText ?? "", deepLink)));
+        const results = await Promise.all(
+          tokens.map(t => sendFCMv1(sb, t.token, title, bodyText ?? "", deepLink, priority))
+        );
+        fcmResult = results[0] ?? null; // surface first result for debugging
       }
     }
 
-    return json({ ok: true, action: "inserted", id: notif?.id });
+    return json({ ok: true, action: "inserted", id: notif?.id, fcm: fcmResult });
   }
 
   return json({ error: "Unknown action" }, 400);
