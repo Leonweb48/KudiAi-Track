@@ -47,11 +47,12 @@ public class MainActivity extends BridgeActivity {
             needed.add(Manifest.permission.CAMERA);
         }
 
-        // Push notifications (Android 13+)
+        // POST_NOTIFICATIONS is intentionally omitted here.
+        // Requesting it in the native startup burst (before the Capacitor bridge loads) races
+        // with Capacitor's own Push.requestPermissions() and causes the OS dialog to appear
+        // before the user has any context for why push is needed. The hook in
+        // usePushNotifications.js handles it contextually after login (3-second delay).
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                needed.add(Manifest.permission.POST_NOTIFICATIONS);
-            }
             // Media storage (Android 13+)
             if (checkSelfPermission(Manifest.permission.READ_MEDIA_IMAGES) != PackageManager.PERMISSION_GRANTED) {
                 needed.add(Manifest.permission.READ_MEDIA_IMAGES);
