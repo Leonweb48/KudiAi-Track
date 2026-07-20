@@ -1449,12 +1449,15 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
 
   // Bank account state
   const [banks,        setBanks]        = useState([]);
-  const hasAccount = !!(client.account_number && client.account_name);
+  const hasAccount = !!(
+    (client.withdrawal_account_number || client.account_number) &&
+    (client.withdrawal_account_name   || client.account_name)
+  );
   const [acctForm,     setAcctForm]     = useState({
-    bank_code:      client.bank_code      || "",
-    account_number: client.account_number || "",
-    account_name:   client.account_name   || "",
-    bank_name:      client.bank_name      || "",
+    bank_code:      client.withdrawal_bank_code      || client.bank_code      || "",
+    account_number: client.withdrawal_account_number || client.account_number || "",
+    account_name:   client.withdrawal_account_name   || client.account_name   || "",
+    bank_name:      client.withdrawal_bank_name      || client.bank_name      || "",
   });
   const [acctVerified,  setAcctVerified]  = useState(false);
   const [acctVerifying, setAcctVerifying] = useState(false);
@@ -1524,16 +1527,18 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
     }
     setSaving(true); setError("");
     try {
-      const bankChanged = acctForm.account_number !== (client.account_number || "") ||
-                          acctForm.bank_code !== (client.bank_code || "");
+      const existingAcctNum  = client.withdrawal_account_number || client.account_number || "";
+      const existingBankCode = client.withdrawal_bank_code      || client.bank_code      || "";
+      const bankChanged = acctForm.account_number !== existingAcctNum ||
+                          acctForm.bank_code      !== existingBankCode;
       if (bankChanged && acctVerified) {
         await ajoFn("update-profile", {
           client_id: client.id,
           fields: {
-            bank_code:      acctForm.bank_code,
-            bank_name:      acctForm.bank_name,
-            account_number: acctForm.account_number,
-            account_name:   acctForm.account_name,
+            withdrawal_bank_code:      acctForm.bank_code,
+            withdrawal_bank_name:      acctForm.bank_name,
+            withdrawal_account_number: acctForm.account_number,
+            withdrawal_account_name:   acctForm.account_name,
           },
         });
       }

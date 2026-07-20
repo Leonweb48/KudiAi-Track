@@ -32,11 +32,14 @@ const EMAIL_TRIGGER_URL    = "https://admin.kudiai.app/api/public/email-trigger"
 const EMAIL_TRIGGER_SECRET = Deno.env.get("EMAIL_TRIGGER_SECRET") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 
 async function fireAjoEmail(event: string, data: Record<string, unknown>): Promise<void> {
+  const ctrl  = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 5000);
   await fetch(EMAIL_TRIGGER_URL, {
     method:  "POST",
     headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
     body:    JSON.stringify({ event, data }),
-  }).catch(() => null);
+    signal:  ctrl.signal,
+  }).catch(() => null).finally(() => clearTimeout(timer));
 }
 
 // ── PIN verification (same PBKDF2 scheme as pin-manager/index.ts) ─────────────
