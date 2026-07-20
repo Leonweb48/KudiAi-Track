@@ -10,6 +10,7 @@
  */
 
 import { useEffect, useRef } from "react";
+import { PushNotifications } from "@capacitor/push-notifications";
 import { supabase } from "../utils/supabase";
 
 const PROMPTED_KEY = "kt_push_prompted";
@@ -42,25 +43,14 @@ function isNative() {
   return typeof window !== "undefined" && window.Capacitor?.isNativePlatform?.();
 }
 
-async function getPushPlugin() {
+function getPushPlugin() {
   if (!isNative()) {
-    pushDbg("getPushPlugin() — isNativePlatform()=false → web build, push skipped");
+    pushDbg("getPushPlugin() — not native → push skipped");
     return null;
   }
-  try {
-    const mod = await import("@capacitor/push-notifications");
-    // Handle both ESM named export and CJS default-wrapped export
-    const Push = mod.PushNotifications ?? mod.default?.PushNotifications ?? mod.default ?? null;
-    pushDbg("getPushPlugin() → import resolved", {
-      hasNamed:  !!mod.PushNotifications,
-      hasDefault: !!mod.default,
-      resolved:  Push ? "OK" : "NULL",
-    });
-    return Push;
-  } catch (e) {
-    pushDbg("getPushPlugin() FAILED to import plugin", String(e));
-    return null;
-  }
+  const available = typeof PushNotifications !== "undefined" && !!PushNotifications;
+  pushDbg("getPushPlugin() → static import", { available });
+  return available ? PushNotifications : null;
 }
 
 async function registerToken(userId, token) {
@@ -135,7 +125,7 @@ export function usePushNotifications(userId, onDeepLink) {
         const platform = window.Capacitor?.getPlatform?.() ?? "unknown";
         pushDbg("Capacitor.getPlatform()", platform);
 
-        const Push = await getPushPlugin();
+        const Push = getPushPlugin();
         if (!Push) {
           pushDbg("getPushPlugin() returned null — registration aborted");
           return;
@@ -241,7 +231,7 @@ export async function forceRegisterPush(userId) {
   localStorage.removeItem(PROMPTED_KEY);
   pushDbg("cleared kt_push_prompted");
 
-  const Push = await getPushPlugin();
+  const Push = getPushPlugin();
   if (!Push) return "not-native";
 
   let resolve;
