@@ -806,11 +806,12 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     try {
       const { data, error } = await supabase
         .from("ajo_contributions")
-        .select("*, aso_clients(full_name, email, membership_number)")
+        .select("id, aso_client_id, owner_id, amount, type, status, created_at, payment_method, notes, proof_url, contribution_context, recorded_by, cycle_id, contribution_source, aso_clients(full_name, email, membership_number)")
         .eq("status", "pending")
         .eq("type", "contribution")
         .or("contribution_source.neq.staff_collection,contribution_source.is.null")
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .limit(50);
       if (error) throw error;
       setPendingDeposits(data || []);
       setDepError(null);
@@ -837,7 +838,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     try {
       const { data: grps } = await supabase
         .from("ajo_groups")
-        .select("*")
+        .select("id, owner_id, name, description, is_active, group_mode, contribution_amount, contribution_frequency, percentage_charge, bank_code, account_number, account_name, bank_name, paystack_subaccount_code, privacy_show_names, privacy_show_amounts, created_at")
         .eq("owner_id", profile.id)
         .eq("is_active", true)
         .order("created_at", { ascending: true });
@@ -2533,12 +2534,12 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                     const [contribRes, cycleRes] = await Promise.all([
                       supabase
                         .from("ajo_contributions")
-                        .select("*")
+                        .select("id, aso_client_id, owner_id, amount, type, status, created_at, payment_method, contribution_context, cycle_id, reverses_contribution_id, fee_for_contribution_id, notes, recorded_by, paystack_ref, paystack_status, paid_at, approved_at, approved_by, confirmed_at, confirmed_by, initiated_by, payment_channel, proof_url, contribution_source")
                         .eq("aso_client_id", c.id)
                         .order("created_at", { ascending: false }),
                       supabase
                         .from("ajo_cycles")
-                        .select("*")
+                        .select("id, client_id, label, status, commission_model, commission_balance, expected_amount_per_period, frequency, length_periods, start_date, created_at, commission_percent")
                         .eq("client_id", c.id)
                         .eq("status", "active")
                         .order("created_at", { ascending: true }),

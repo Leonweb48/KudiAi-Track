@@ -184,7 +184,7 @@ serve(async (req) => {
       const { client_id } = body as { client_id: string };
       const { data } = await sb
         .from("ajo_contributions")
-        .select("*")
+        .select("id, aso_client_id, owner_id, amount, type, status, created_at, payment_method, contribution_context, cycle_id, reverses_contribution_id, fee_for_contribution_id, notes, recorded_by, paystack_ref, paystack_status, paid_at, approved_at, approved_by, confirmed_at, confirmed_by, initiated_by, payment_channel, proof_url, contribution_source")
         .eq("aso_client_id", client_id)
         .order("created_at", { ascending: false })
         .limit(100);
@@ -197,7 +197,7 @@ serve(async (req) => {
       if (!client_id) return json({ error: "client_id required" }, 400);
       const { data: cycles } = await sb
         .from("ajo_cycles")
-        .select("*")
+        .select("id, client_id, label, status, commission_model, commission_balance, expected_amount_per_period, frequency, length_periods, start_date, created_at, commission_percent")
         .eq("client_id", client_id)
         .eq("status", "active")
         .order("created_at", { ascending: true });
@@ -359,7 +359,7 @@ serve(async (req) => {
     if (action === "get-withdrawal-requests") {
       const { client_id } = body as { client_id: string };
       const { data } = await sb.from("ajo_withdrawal_requests")
-        .select("*")
+        .select("id, aso_client_id, owner_id, amount, status, requested_at, notes, bank_name, bank_code, account_number, account_name, review_notes, reviewed_at")
         .eq("aso_client_id", client_id)
         .order("requested_at", { ascending: false })
         .limit(20);

@@ -96,11 +96,43 @@ async function uploadAjoAvatar(file, clientId) {
   return data.url;
 }
 
+async function compressImage(file, maxKB = 250) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const canvas = document.createElement("canvas");
+      let { width, height } = img;
+      // Scale down if large — proof screenshots don't need more than 1200px wide
+      if (width > 1200) { height = Math.round(height * 1200 / width); width = 1200; }
+      canvas.width = width; canvas.height = height;
+      canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+      // Try quality levels until under maxKB
+      let quality = 0.75;
+      const tryCompress = () => {
+        canvas.toBlob(blob => {
+          if (!blob) { resolve(file); return; }
+          if (blob.size <= maxKB * 1024 || quality <= 0.3) {
+            resolve(new File([blob], file.name.replace(/\.\w+$/, ".jpg"), { type: "image/jpeg" }));
+          } else {
+            quality -= 0.1;
+            tryCompress();
+          }
+        }, "image/jpeg", quality);
+      };
+      tryCompress();
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
+  });
+}
+
 async function uploadAjoProof(file, clientId) {
-  if (file.size > 2 * 1024 * 1024) throw new Error("Image must be under 2 MB");
-  const ext  = (file.name.split(".").pop() || "jpg").toLowerCase();
+  const compressed = await compressImage(file, 250);
+  const ext  = "jpg";
   const path = `${clientId}/${Date.now()}.${ext}`;
-  const { error } = await supabase.storage.from("ajo-proofs").upload(path, file, { contentType: file.type });
+  const { error } = await supabase.storage.from("ajo-proofs").upload(path, compressed, { contentType: "image/jpeg" });
   if (error) throw new Error(error.message);
   // Always use the direct Supabase URL — the proxy alias (kudiai.app/sb) baked into
   // getPublicUrl breaks link opening in PWA/browser contexts.
