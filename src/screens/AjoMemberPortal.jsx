@@ -908,6 +908,7 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], onClose,
 
         {/* First-deposit requirement banner (Paystack path) */}
         {contribCtx === "personal_savings" && (() => {
+          if (Number(client?.total_saved || 0) > 0) return null;
           const regCharge = Number(client?.registration_charge || 0);
           const expected  = Number(client?.contribution_amount || 0);
           const minReq    = expected + regCharge;
@@ -1309,6 +1310,11 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
                 <p className="font-extrabold text-slate-800 dark:text-white">Make a Deposit</p>
                 <p className="text-[11px] text-slate-400">Transfer then submit your claim below</p>
               </div>
+              <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600 transition flex-shrink-0">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="w-4 h-4">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
             </div>
 
             <ContribTypeSelector clientGroups={clientGroups.map(m => m.group).filter(Boolean)} value={contribCtx} selectedGroupId={contribGroupId}
@@ -1336,6 +1342,7 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
 
             {/* Fix 3: First-deposit minimum info banner */}
             {contribCtx === "personal_savings" && (() => {
+              if (Number(client.total_saved || 0) > 0) return null;
               const regCharge = Number(client.registration_charge || 0);
               const expected  = Number(client.contribution_amount  || 0);
               const minReq    = expected + regCharge;
@@ -1792,6 +1799,11 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
                   {cycleLocked > 0 && <span className="ml-1 text-amber-500">· {fmt(cycleLocked)} locked in cycle</span>}
                 </p>
               </div>
+              <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600 transition flex-shrink-0">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="w-4 h-4">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
             </div>
 
             {hasTabs && (
