@@ -782,17 +782,18 @@ serve(async (req) => {
       const { data: grMemRows } = await sb.from("aso_client_group_memberships")
         .select("client_id").eq("group_id", grGroupId).eq("status", "active");
       const grMemberIds = (grMemRows || []).map((m: { client_id: string }) => m.client_id);
-      let grMembers: Array<{ id: string; full_name: string }> = [];
+      let grMembers: Array<{ id: string; full_name: string; contribution_amount?: number }> = [];
       if (grMemberIds.length > 0) {
         const { data: mData } = await sb.from("aso_clients")
-          .select("id, full_name").in("id", grMemberIds).eq("status", "active");
-        grMembers = (mData || []) as Array<{ id: string; full_name: string }>;
+          .select("id, full_name, contribution_amount").in("id", grMemberIds).eq("status", "active");
+        grMembers = (mData || []) as Array<{ id: string; full_name: string; contribution_amount?: number }>;
       }
 
       const showFull = isOwnerRequest || (grGroup.privacy_show_names !== false);
 
-      const memberList = (grMembers || []).map((m: { id: string; full_name: string }) => ({
-        id:           m.id,
+      const memberList = (grMembers || []).map((m: { id: string; full_name: string; contribution_amount?: number }) => ({
+        id:                  m.id,
+        contribution_amount: m.contribution_amount || 0,
         display_name: showFull
           ? m.full_name
           : (m.full_name || "").split(" ").map((w: string, i: number) => i === 0 ? w : w[0] + ".").join(" "),
@@ -831,25 +832,31 @@ serve(async (req) => {
           };
         });
 
-        // Pot + ticks from the current turn's period_start
-        const currentTurn = (turns as Array<{ status: string; period_start?: string }>).find(t => t.status === "current");
-        if (currentTurn?.period_start) {
-          const memberIds = memberList.map((m: { id: string }) => m.id);
-          if (memberIds.length > 0) {
-            const { data: grContribs } = await sb.from("ajo_contributions")
-              .select("aso_client_id, amount")
-              .in("aso_client_id", memberIds)
-              .eq("type", "contribution")
-              .eq("status", "completed")
-              .gte("created_at", currentTurn.period_start);
+        // Pot + ticks: net unswept esusu contributions since round start.
+        // Using round.created_at (not period_start) so contributions collected before
+        // the previous payout executes are still counted. Contribution context must be
+        // esusu_rotation so personal-savings deposits don't create false ticks.
+        const memberIds = memberList.map((m: { id: string }) => m.id);
+        if (memberIds.length > 0 && grRound?.created_at) {
+          const { data: grContribs } = await sb.from("ajo_contributions")
+            .select("aso_client_id, amount, type")
+            .in("aso_client_id", memberIds)
+            .eq("contribution_context", "esusu_rotation")
+            .in("type", ["contribution", "esusu_pot_sweep"])
+            .eq("status", "completed")
+            .gte("created_at", grRound.created_at);
 
-            pot_size = (grContribs || []).reduce(
-              (s: number, c: { amount: number }) => s + Number(c.amount || 0), 0
-            );
-            const paidSet = new Set((grContribs || []).map((c: { aso_client_id: string }) => c.aso_client_id));
-            for (const m of memberList) {
-              contribution_ticks[m.id] = paidSet.has(m.id);
-            }
+          // Net per member = contributions − sweeps
+          const netByMember: Record<string, number> = {};
+          for (const c of (grContribs || []) as Array<{ aso_client_id: string; amount: number; type: string }>) {
+            if (!netByMember[c.aso_client_id]) netByMember[c.aso_client_id] = 0;
+            netByMember[c.aso_client_id] += c.type === "contribution" ? Number(c.amount) : -Number(c.amount);
+          }
+
+          pot_size = Object.values(netByMember).reduce((s, n) => s + Math.max(0, n), 0);
+          for (const m of memberList as Array<{ id: string; contribution_amount: number }>) {
+            const net = netByMember[m.id] || 0;
+            contribution_ticks[m.id] = net >= (m.contribution_amount || 0) && net > 0;
           }
         }
       }
