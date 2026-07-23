@@ -1469,10 +1469,9 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
   const [cycleLocked,   setCycleLocked]   = useState(0);
   const [activeTab,       setActiveTab]       = useState("personal");
   const [selectedGrpId,   setSelectedGrpId]   = useState(null);
-  const [selectedCycleId, setSelectedCycleId] = useState(() => {
-    const active = cycles.filter(c => c.status === "active");
-    return active.length === 1 ? active[0].id : null;
-  });
+  const selectedCycleId = cycles.filter(c => c.status === "active").length === 1
+    ? cycles.find(c => c.status === "active")?.id ?? null
+    : null;
 
   useEffect(() => {
     Promise.all([
