@@ -857,7 +857,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     if (!profile?.id) return;
     if (!silent) setGroupsLoading(true);
     try {
-      const BASE_SELECT = "id, owner_id, name, description, is_active, group_mode, contribution_amount, contribution_frequency, percentage_charge, bank_code, account_number, account_name, bank_name, paystack_subaccount_code, privacy_show_names, privacy_show_amounts, created_at";
+      const BASE_SELECT = "id, owner_id, name, description, is_active, group_mode, contribution_amount, contribution_frequency, percentage_charge, bank_code, account_number, account_name, paystack_subaccount_code, privacy_show_names, privacy_show_amounts, created_at";
       const LIFECYCLE   = ", round_status, target_amount, target_deadline, started_at, closed_at";
       const { data: grps, error } = await supabase
         .from("ajo_groups")
@@ -1238,7 +1238,13 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           privacy_show_amounts: gf.privacy_show_amounts === true,
         },
       });
-      if (error || data?.error) throw new Error(data?.error || error?.message || "Failed to create group");
+      if (error || data?.error) {
+        let msg = data?.error || error?.message || "Failed to create group";
+        if (!data?.error && error?.context) {
+          try { const b = await error.context.json(); msg = b?.error || msg; } catch {}
+        }
+        throw new Error(msg);
+      }
       const newGroup = data.group;
       // Auto-create Paystack subaccount if bank details provided
       if (gf.bank_code && gf.account_number && newGroup?.id) {

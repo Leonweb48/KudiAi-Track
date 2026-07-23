@@ -718,7 +718,10 @@ serve(async (req) => {
         is_active: true,
       }).select().single();
 
-      if (grpErr) return json({ error: "Couldn't create the group — please try again" }, 500);
+      if (grpErr) {
+        const limitHit = grpErr.message?.includes("Group limit");
+        return json({ error: limitHit ? grpErr.message : "Couldn't create the group — please try again" }, 500);
+      }
       return json({ group: grp });
     }
 
