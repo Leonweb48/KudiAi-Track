@@ -1264,11 +1264,14 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           setSubAcctMsg(`Group saved. Bank account link failed: ${msg} — use 'Create Subaccount' to retry.`);
         }
       }
-      if (newGroup) setGroups(prev => [...prev, newGroup]);
+      if (newGroup) {
+        setGroups(prev => [...prev, newGroup]);
+      } else {
+        loadGroups(); // edge fn returned no row — fetch from DB to recover
+      }
       setShowGroupAdd(false);
       setGf(BLANK_GROUP);
       setResolvedName("");
-      loadGroups({ silent: true });
     } catch (e) {
       setGroupError(e.message || "Failed to save group");
     } finally {

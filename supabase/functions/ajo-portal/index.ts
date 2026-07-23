@@ -715,6 +715,7 @@ serve(async (req) => {
         group_mode: group_mode || "savings",
         privacy_show_names:   privacy_show_names  !== false,
         privacy_show_amounts: privacy_show_amounts === true,
+        is_active: true,
       }).select().single();
 
       if (grpErr) return json({ error: "Couldn't create the group — please try again" }, 500);
