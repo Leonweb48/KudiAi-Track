@@ -1173,7 +1173,11 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     const { data, error } = await supabase.functions.invoke("ajo-write", {
       body: { action: "execute_payout", turn_id: turnId, pin },
     });
-    if (error) throw new Error(error.message || "Payout failed");
+    if (error) {
+      let msg = error?.message || "Payout failed";
+      if (error?.context) { try { const b = await error.context.json(); msg = b?.error || msg; } catch {} }
+      throw new Error(msg);
+    }
     return data; // caller checks data.ok — blocked payouts return ok:false with details
   };
 

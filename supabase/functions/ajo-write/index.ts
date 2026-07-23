@@ -1344,17 +1344,17 @@ serve(async (req: Request) => {
   // ── Esusu: execute_payout (PIN-gated) ──────────────────────────────────
   if (action === "execute_payout") {
     const { turn_id: epTurnId } = params as { turn_id: string };
-    if (!epTurnId) return json({ ok: false, error: "turn_id required" }, 400);
+    if (!epTurnId) return json({ ok: false, error: "turn_id required" });
 
     const { data: turnRow } = await sb.from("ajo_group_turns").select("group_id, position, round_id").eq("id", epTurnId).maybeSingle();
-    if (!turnRow) return json({ ok: false, error: "Turn not found" }, 404);
+    if (!turnRow) return json({ ok: false, error: "Turn not found" });
 
     const { data: grpRow } = await sb.from("ajo_groups").select("owner_id").eq("id", turnRow.group_id as string).maybeSingle();
-    if (!grpRow) return json({ ok: false, error: "Group not found" }, 404);
+    if (!grpRow) return json({ ok: false, error: "Group not found" });
 
     const ownerId = grpRow.owner_id as string;
     const ajoPerms = await resolveAjoPerms(sb, user.id, ownerId);
-    if (ajoPerms !== null) return json({ ok: false, error: "Unauthorized: owner-only action" }, 403);
+    if (ajoPerms !== null) return json({ ok: false, error: "Unauthorized: owner-only action" });
 
     const { data: epData, error: epErr } = await sb.rpc("ajo_execute_payout", {
       p_turn_id:  epTurnId,
@@ -1363,6 +1363,8 @@ serve(async (req: Request) => {
     if (epErr) return json({ ok: false, error: epErr.message });
     if (!(epData as Record<string, unknown>)?.ok) return json(epData);
 
+    // Payout committed — notifications are best-effort; never let a crash here hide the success
+    try {
     // Gather all context needed for rich payout emails
     const epResult            = epData as Record<string, unknown>;
     const groupId             = turnRow.group_id as string;
@@ -1498,6 +1500,9 @@ serve(async (req: Request) => {
       priority: "normal", deepLink: { tab: "contributions" },
     });
 
+    } catch (_notifErr) {
+      // Notification or email context build threw — payout already committed, return success
+    }
     return json(epData);
   }
 
