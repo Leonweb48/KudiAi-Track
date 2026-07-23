@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { createReportPdf, fmtCurrency, fmtDate } from "../utils/generateReportPdf";
 import TransactionPinModal from "./TransactionPinModal";
-import { allocatePeriods } from "../utils/allocatePeriods.mjs";
+import { allocatePeriods, allocateForReceipt } from "../utils/allocatePeriods.mjs";
 
 // ── Visual maps ───────────────────────────────────────────────────────────────
 
@@ -82,6 +82,13 @@ function commissionAlreadyExecuted(contributions) {
   return contributions.some((c) => c.type === "commission" && c.status === "completed");
 }
 
+// ── Compact currency for grid cells (no import needed — standalone) ──────────
+function fmtCompact(n) {
+  if (n >= 1000000) return `₦${(n / 1000000).toFixed(1)}M`;
+  if (n >= 1000)    return `₦${Math.round(n / 1000)}k`;
+  return `₦${n}`;
+}
+
 // ── PDF export ────────────────────────────────────────────────────────────────
 
 async function exportCardPdf({ cycle, periods, contributions, clientName, businessName }) {
@@ -158,6 +165,32 @@ async function exportCardPdf({ cycle, periods, contributions, clientName, busine
   }
   pdf.addTotalsBlock(totalsRows);
 
+  // Deposit allocation breakdown — shows how each deposit split across periods
+  const completedDeposits = (contributions || []).filter(c => c.type === "contribution" && c.status === "completed");
+  if (completedDeposits.length > 0) {
+    const allocRows = completedDeposits.map(dep => {
+      const { splits } = allocateForReceipt({ ...cycle, frequency: freq }, contributions, dep.id);
+      return {
+        date:   fmtDate(dep.created_at),
+        amount: fmtCurrency(dep.amount),
+        split:  splits.length > 0
+          ? splits.map(s => `P${s.idx + 1}: ${fmtCurrency(s.amount)}`).join("  ·  ")
+          : "—",
+      };
+    });
+    if (allocRows.some(r => r.split !== "—")) {
+      pdf.addSectionTitle("Deposit Allocations");
+      pdf.addTable(
+        [
+          { key: "date",   label: "Date",          w: 0.22 },
+          { key: "amount", label: "Amount",        w: 0.20, right: true },
+          { key: "split",  label: "Period Split",  w: 0.58 },
+        ],
+        allocRows
+      );
+    }
+  }
+
   await pdf.save(`contribution-card-${clientName.toLowerCase().replace(/\s+/g, "-")}.pdf`);
 }
 
@@ -169,6 +202,7 @@ export default function ContributionCard({
   frequency,
   clientName,
   businessName,
+  registrationCharge = 0,
   onOpenCycle,
   onCloseCycle,
   onExecuteCommission,
@@ -192,8 +226,8 @@ export default function ContributionCard({
     );
   }, [contributions, cycle?.id, isLegacyCycle]);
 
-  const { periods, cycleStarted } = useMemo(
-    () => (cycle ? allocatePeriods({ ...cycle, frequency: freq }, cycleContribs, contributions) : { periods: [], cycleStarted: false }),
+  const { periods, cycleStarted, progressPct, nextDue } = useMemo(
+    () => (cycle ? allocatePeriods({ ...cycle, frequency: freq }, cycleContribs, contributions) : { periods: [], cycleStarted: false, progressPct: 0, nextDue: null }),
     [cycle, cycleContribs, freq, contributions]
   );
 
@@ -201,8 +235,11 @@ export default function ContributionCard({
   const missedCount  = periods.filter((p) => p.status === "missed").length;
   const partialCount = periods.filter((p) => p.status === "partial").length;
   const pendingCount = periods.filter((p) => p.status === "pending").length;
-  const totalPaid    = periods.reduce((s, p) => s + p.paid, 0);
-  const pendingTotal = periods.reduce((s, p) => s + (p.pendingAmount || 0), 0);
+  const totalPaid         = periods.reduce((s, p) => s + p.paid, 0);
+  const pendingTotal      = periods.reduce((s, p) => s + (p.pendingAmount || 0), 0);
+  const outstandingPartial = cycle
+    ? periods.filter(p => p.status === "partial").reduce((s, p) => s + Math.max(0, Number(cycle.expected_amount_per_period) - p.paid), 0)
+    : 0;
 
   const commission        = useMemo(() => computeCommission(cycle, cycleContribs), [cycle, cycleContribs]);
   const commissionDone    = useMemo(() => commissionAlreadyExecuted(cycleContribs), [cycleContribs]);
@@ -252,6 +289,19 @@ export default function ContributionCard({
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
             From {fmtDate(cycle.start_date)} · {cycle.length_periods} periods
           </p>
+          {cycleStarted && (
+            <div className="flex items-center gap-1.5 mt-1.5">
+              <div className="flex-1 h-1 rounded-full bg-slate-100 dark:bg-slate-700 overflow-hidden">
+                <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${progressPct}%` }} />
+              </div>
+              <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 flex-shrink-0">{paidCount}/{cycle.length_periods}</span>
+            </div>
+          )}
+          {nextDue && cycle.status === "active" && (
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
+              Next due {fmtDate(nextDue)}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           {!compact && (
@@ -293,6 +343,11 @@ export default function ContributionCard({
             {fmtCurrency(totalPaid)} / {fmtCurrency(totalExp)}
           </span>
         </div>
+        {outstandingPartial > 0 && (
+          <p className="text-[10px] text-amber-600 dark:text-amber-500 font-medium">
+            {fmtCurrency(outstandingPartial)} outstanding across {partialCount} partial period{partialCount > 1 ? "s" : ""}
+          </p>
+        )}
         {pendingTotal > 0 && (
           <p className="text-[10px] text-amber-500 font-medium">
             {fmtCurrency(pendingTotal)} awaiting confirmation
@@ -305,28 +360,70 @@ export default function ContributionCard({
         )}
       </div>
 
-      {/* Grid — CC-11: max-height + internal scroll for long cycles */}
-      <div
-        className="px-4 pb-4 grid gap-1.5 max-h-52 overflow-y-auto"
-        style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
-      >
-        {periods.map((p) => (
-          <button
-            key={p.idx}
-            onClick={() => setSelected(p)}
-            className={`
-              aspect-square rounded-lg flex flex-col items-center justify-center text-center
-              text-[11px] font-bold transition-all active:scale-95
-              ${MARK_CLS[p.status]}
-              ${compact ? "text-[9px]" : ""}
-            `}
-            title={`Period ${p.idx + 1} · ${MARK_LABEL[p.status]}`}
-          >
-            <span className={compact ? "text-[10px]" : "text-base leading-none mb-0.5"}>{MARK_ICON[p.status]}</span>
-            {!compact && <span className="text-[9px] opacity-75">#{p.idx + 1}</span>}
-          </button>
-        ))}
-      </div>
+      {/* pending_activation — active cycle with no deposits yet */}
+      {!cycleStarted && pendingTotal === 0 && cycle.status === "active" ? (
+        <div className="px-4 pb-5 flex flex-col items-center text-center gap-3">
+          <div className="w-14 h-14 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
+            <svg viewBox="0 0 24 24" fill="none" className="w-7 h-7 text-slate-400 dark:text-slate-500" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            </svg>
+          </div>
+          <div>
+            <p className="text-sm font-bold text-slate-700 dark:text-slate-200">Activate with your first deposit</p>
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">Your savings period tracker will appear here after your first deposit.</p>
+          </div>
+          {(() => {
+            const expected   = Number(cycle.expected_amount_per_period || 0);
+            const regCharge  = Number(registrationCharge || 0);
+            const isFirstPrd = cycle.commission_model === "first_period";
+            if (!isFirstPrd && regCharge === 0) return null;
+            const total = expected + regCharge;
+            const parts = isFirstPrd
+              ? `${fmtCurrency(expected)} collector fee${regCharge > 0 ? ` + ${fmtCurrency(regCharge)} registration` : ""}`
+              : `${fmtCurrency(expected)} contribution + ${fmtCurrency(regCharge)} registration`;
+            return (
+              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl px-3 py-2.5 w-full">
+                <p className="text-[11px] font-bold text-blue-700 dark:text-blue-300">
+                  First deposit: {fmtCurrency(total)} = {parts}
+                </p>
+              </div>
+            );
+          })()}
+        </div>
+      ) : (
+        /* Grid — CC-11: max-height + internal scroll for long cycles */
+        <div
+          className="px-4 pb-4 grid gap-1.5 max-h-52 overflow-y-auto"
+          style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+        >
+          {periods.map((p) => {
+            const outstanding = p.status === "partial"
+              ? Math.max(0, Number(cycle.expected_amount_per_period) - p.paid)
+              : 0;
+            return (
+              <button
+                key={p.idx}
+                onClick={() => setSelected(p)}
+                className={`
+                  aspect-square rounded-lg flex flex-col items-center justify-center text-center
+                  text-[11px] font-bold transition-all active:scale-95
+                  ${MARK_CLS[p.status]}
+                  ${compact ? "text-[9px]" : ""}
+                `}
+                title={`Period ${p.idx + 1} · ${MARK_LABEL[p.status]}${outstanding > 0 ? ` · ${fmtCurrency(outstanding)} outstanding` : ""}`}
+              >
+                <span className={compact ? "text-[10px]" : "text-base leading-none mb-0.5"}>{MARK_ICON[p.status]}</span>
+                {!compact && (
+                  outstanding > 0
+                    ? <span className="text-[8px] leading-tight opacity-90">{fmtCompact(outstanding)}</span>
+                    : <span className="text-[9px] opacity-75">#{p.idx + 1}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Commission strip */}
       {!compact && commission.amount > 0 && (
@@ -403,9 +500,16 @@ export default function ContributionCard({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-3">
-              <p className="font-bold text-slate-900 dark:text-white text-base">
-                Period #{selected.idx + 1}
-              </p>
+              <div>
+                <p className="font-bold text-slate-900 dark:text-white text-base">
+                  Period #{selected.idx + 1}
+                </p>
+                {selected.status === "partial" && (
+                  <p className="text-xs text-amber-500 font-semibold mt-0.5">
+                    {fmtCurrency(selected.paid)} paid · {fmtCurrency(Math.max(0, Number(cycle.expected_amount_per_period) - selected.paid))} outstanding
+                  </p>
+                )}
+              </div>
               <button
                 onClick={() => setSelected(null)}
                 className="w-11 h-11 flex items-center justify-center rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition text-slate-400 hover:text-slate-600"

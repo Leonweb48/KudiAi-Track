@@ -221,7 +221,9 @@ export function buildCoopWithdrawalRequestReceipt(request, memberName, orgName) 
 }
 
 // ── Ajo contribution (logged — from AjoMemberPortal history list) ────────────
-export function buildAjoContributionReceipt(contribution, clientName, businessName) {
+// periodSplit: optional { splits: [{idx, amount}] } from allocateForReceipt —
+// when provided, adds per-period breakdown rows to the receipt fields.
+export function buildAjoContributionReceipt(contribution, clientName, businessName, periodSplit = null) {
   const t        = contribution.type || '';
   const label    = t === 'contribution' ? 'Ajo Contribution'
                  : t === 'withdrawal'   ? 'Ajo Withdrawal'
@@ -230,6 +232,11 @@ export function buildAjoContributionReceipt(contribution, clientName, businessNa
                  || t === 'commission' || t.startsWith('reversal_');
   const statusMap = { completed: 'success', confirmed: 'success', pending: 'pending', rejected: 'failed', declined: 'failed' };
   const { ref, image, pdf } = receiptFilenames(contribution.id, contribution.created_at || contribution.date);
+
+  const splitFields = (periodSplit?.splits || []).map(s => ({
+    label: `  Period ${s.idx + 1}`,
+    value: `₦${Number(s.amount).toLocaleString('en-NG')}`,
+  }));
 
   return {
     title:     label,
@@ -240,6 +247,8 @@ export function buildAjoContributionReceipt(contribution, clientName, businessNa
     fields: [
       { label: 'Transaction Type', value: label },
       clientName                  && { label: 'Member',         value: clientName },
+      splitFields.length > 0      && { label: 'Allocation',     value: `${splitFields.length} period${splitFields.length > 1 ? 's' : ''}` },
+      ...splitFields,
       contribution.payment_method && { label: 'Payment Method', value: humanize(contribution.payment_method) },
                                      { label: 'Reference',      value: ref, copy: true },
     ].filter(Boolean),

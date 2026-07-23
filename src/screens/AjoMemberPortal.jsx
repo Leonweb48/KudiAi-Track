@@ -25,6 +25,7 @@ import { buildAjoMemberContext } from "../utils/buildContext";
 import AppLogo from "../components/AppLogo";
 import { useT, useLanguage } from "../contexts/LanguageContext";
 import { createReportPdf, fmtCurrency as pdfFmt, fmtDate as pdfFmtDate } from "../utils/generateReportPdf";
+import { allocatePeriods } from "../utils/allocatePeriods.mjs";
 import NotificationCenter from "../components/NotificationCenter";
 import { useToast } from "../components/Toast";
 import ContributionCard from "../components/ContributionCard";
@@ -904,6 +905,21 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], onClose,
             </div>
           </div>
         )}
+
+        {/* First-deposit requirement banner (Paystack path) */}
+        {contribCtx === "personal_savings" && (() => {
+          const regCharge = Number(client?.registration_charge || 0);
+          const expected  = Number(client?.contribution_amount || 0);
+          const minReq    = expected + regCharge;
+          if (minReq <= 0 || (regCharge === 0 && client?.commission_model !== "first_period")) return null;
+          return (
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl px-3 py-2.5 mb-4">
+              <p className="text-[11px] font-bold text-blue-700 dark:text-blue-300">
+                First deposit: ₦{minReq.toLocaleString("en-NG")} = ₦{expected.toLocaleString("en-NG")} contribution + ₦{regCharge.toLocaleString("en-NG")} registration
+              </p>
+            </div>
+          );
+        })()}
 
         {/* Amount */}
         <div className="bg-brand-50 dark:bg-brand-900/20 rounded-2xl px-4 py-4 mb-5">
@@ -2239,6 +2255,7 @@ function OverviewTab({ client, contributions, cycles = [], rotationsData = [], r
           frequency={client?.contribution_frequency}
           clientName={client?.full_name || ""}
           businessName={ownerInfo?.owner?.business_name || ""}
+          registrationCharge={client?.registration_charge || 0}
           isLegacyCycle={idx === 0}
         />
       ))}
@@ -2717,6 +2734,38 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
       { label: "Records",           value: String(allItems.length) },
     ]);
     pdf.addStatement(rows, { openingBalance: 0, totalDebits: totD, totalCredits: totC });
+
+    // Per-cycle period status
+    const statementCycles = cycles.filter(c => c.status === "active" || c.status === "completed");
+    if (statementCycles.length > 0) {
+      const PERIOD_STATUS_LABELS = {
+        paid: "Paid", paid_in_advance: "Paid ahead", partial: "Partial",
+        pending: "Pending", missed: "Missed", current: "Current",
+        upcoming: "Upcoming", collector: "Collector's",
+      };
+      const FREQ_COLS_PDF = { daily: 7, weekly: 5, monthly: 4 };
+      pdf.addSectionTitle("Period Status by Cycle");
+      statementCycles.forEach(cyc => {
+        const cycContribs = contributions.filter(c => c.cycle_id === cyc.id);
+        const freq = cyc.frequency || cyc.contribution_frequency || "monthly";
+        const { periods: cyPeriods } = allocatePeriods(cyc, cycContribs, contributions);
+        pdf.addGrid(cyPeriods, FREQ_COLS_PDF[freq] || 4);
+        const pRows = cyPeriods.map(p => ({
+          period: `#${p.idx + 1}`,
+          paid:   pdfFmt(p.paid),
+          status: PERIOD_STATUS_LABELS[p.status] || p.status,
+        }));
+        pdf.addTable(
+          [
+            { key: "period", label: "Period", w: 0.20 },
+            { key: "paid",   label: "Paid",   w: 0.30, right: true },
+            { key: "status", label: "Status", w: 0.50 },
+          ],
+          pRows
+        );
+      });
+    }
+
     await pdf.save(`Ajo_Savings_${(client?.full_name || "Statement").replace(/\s+/g, "_")}.pdf`);
   };
 

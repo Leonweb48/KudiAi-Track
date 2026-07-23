@@ -172,3 +172,43 @@ export function allocatePeriods(cycle, contributions, allContributions) {
     nextDue: nextDuePeriod ? nextDuePeriod.from : null,
   };
 }
+
+/**
+ * Compute how a specific completed contribution allocates across periods.
+ * Returns the marginal per-period delta caused by this deposit — i.e. the
+ * difference between period state with and without this contribution row.
+ *
+ * Useful for receipt builders and PDF exports to show "₦12,000 → P1 ₦5k · P2 ₦5k · P3 ₦2k".
+ *
+ * @param {object}   cycle      — ajo_cycles row (needs frequency field)
+ * @param {object[]} allContribs — all contributions for this cycle
+ * @param {string}   depositId  — id of the contribution row to trace
+ * @returns {{ splits: Array<{idx:number, from:Date, to:Date, amount:number}>, total:number }}
+ */
+export function allocateForReceipt(cycle, allContribs, depositId) {
+  const target = allContribs.find(c => c.id === depositId);
+  if (!target || target.status !== "completed") return { splits: [], total: 0 };
+
+  // Exclude: the target deposit itself, and any reversal of it
+  const excludeIds = new Set([depositId]);
+  allContribs.forEach(c => {
+    if (c.reverses_contribution_id === depositId) excludeIds.add(c.id);
+  });
+
+  const before = allContribs.filter(c => !excludeIds.has(c.id) && c.status === "completed");
+  const after  = [...before, target];
+
+  const { periods: pBefore } = allocatePeriods(cycle, before);
+  const { periods: pAfter }  = allocatePeriods(cycle, after);
+
+  const splits = pAfter
+    .map((p, i) => ({
+      idx:    p.idx,
+      from:   p.from,
+      to:     p.to,
+      amount: Math.round((p.paid - (pBefore[i]?.paid || 0)) * 100) / 100,
+    }))
+    .filter(s => s.amount > 0);
+
+  return { splits, total: splits.reduce((sum, s) => sum + s.amount, 0) };
+}

@@ -342,6 +342,7 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
                 frequency={client.contribution_frequency}
                 clientName={client.full_name}
                 businessName={businessName}
+                registrationCharge={client.registration_charge || 0}
                 isLegacyCycle={idx === 0}
                 onCloseCycle={onCloseCycle ? () => onCloseCycle(cyc) : undefined}
                 onExecuteCommission={cyc.status !== "active" ? ((amt, pin) => onExecuteCommission(amt, pin, cyc)) : undefined}
@@ -354,6 +355,7 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
                 frequency={client.contribution_frequency}
                 clientName={client.full_name}
                 businessName={businessName}
+                registrationCharge={client.registration_charge || 0}
                 isLegacyCycle={true}
               />
             )}
@@ -2823,11 +2825,17 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             </div>
           )}
 
-          {action === "contribute" && (selected.total_saved || 0) === 0 && (selected.registration_charge || 0) > 0 && (
-            <p className="text-xs text-blue-600 dark:text-blue-400 mb-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/60 rounded-xl px-3 py-2">
-              ℹ Registration fee of {fmt(selected.registration_charge)} will be automatically deducted from this first deposit.
-            </p>
-          )}
+          {action === "contribute" && (selected.total_saved || 0) === 0 && (() => {
+            const regCharge = Number(selected.registration_charge || 0);
+            const expected  = Number(selected.contribution_amount || 0);
+            const minReq    = expected + regCharge;
+            if (minReq <= 0 || (regCharge === 0 && selected.commission_model !== "first_period")) return null;
+            return (
+              <p className="text-xs text-blue-600 dark:text-blue-400 mb-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/60 rounded-xl px-3 py-2">
+                First deposit: {fmt(minReq)} = {fmt(expected)} contribution + {fmt(regCharge)} registration
+              </p>
+            );
+          })()}
 
           {action === "contribute" && selectedClientMems.length > 0 && (() => {
             const opts = [
