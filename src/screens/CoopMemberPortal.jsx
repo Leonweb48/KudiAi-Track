@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { friendlyError } from "../utils/errorMessage";
-import { usePullToRefresh } from "../hooks/usePullToRefresh";
-import PullIndicator from "../components/PullIndicator";
+import { Capacitor } from "@capacitor/core";
+import { App as CapApp } from "@capacitor/app";
 import { buildCallbackUrl, openPaystackCheckout } from "../utils/paystackCheckout";
 import { supabase } from "../utils/supabase";
 import { useTheme } from "../hooks/useTheme";
@@ -1901,12 +1901,33 @@ export default function CoopMemberPortal({ member: initialMember }) {
     }).catch(console.error);
   }, [member?.id, org?.id, coopReloadKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const ptr = usePullToRefresh(useCallback(() => { setCoopReloadKey(k => k + 1); }, []));
-
-  // Silent 3-second background refresh — increments key to re-trigger data-load useEffect
+  // Resume-on-foreground — 10 s debounce catches missed changes after backgrounding.
+  const lastCoopResumeRef = useRef(0);
   useEffect(() => {
     if (!member?.id) return;
-    const id = setInterval(() => setCoopReloadKey(k => k + 1), 3000);
+    const onResume = () => {
+      if (Date.now() - lastCoopResumeRef.current < 10_000) return;
+      lastCoopResumeRef.current = Date.now();
+      setCoopReloadKey(k => k + 1);
+    };
+    const onVisibility = () => { if (!document.hidden) onResume(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    let appListener;
+    if (Capacitor.isNativePlatform()) {
+      CapApp.addListener("appStateChange", ({ isActive }) => { if (isActive) onResume(); })
+        .then(l => { appListener = l; });
+    }
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      appListener?.remove();
+    };
+  }, [member?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 60-second fallback poll — CoopMemberPortal has no realtime channel (all data from edge fns).
+  // Replaces the former 3 s poll (was 900 edge-fn calls/hour per member).
+  useEffect(() => {
+    if (!member?.id) return;
+    const id = setInterval(() => setCoopReloadKey(k => k + 1), 60_000);
     return () => clearInterval(id);
   }, [member?.id]);
 
@@ -1971,8 +1992,7 @@ export default function CoopMemberPortal({ member: initialMember }) {
         </header>
 
         {/* ── Main Content ── */}
-        <main ref={ptr.scrollRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
-          <PullIndicator pullY={ptr.pullY} refreshing={ptr.refreshing} dragging={ptr.dragging} />
+        <main className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
           <AnnouncementBarSlot campaigns={annBars} loading={camLoading} recordEvent={recordCamEvent} />
           {tabContent[tab]}
           {tab === "home" && (

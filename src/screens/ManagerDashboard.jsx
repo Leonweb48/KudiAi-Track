@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { Capacitor } from "@capacitor/core";
+import { App as CapApp } from "@capacitor/app";
 import { supabase }           from "../utils/supabase";
 import { useStore }           from "../hooks/useStore";
 import { useInventory }       from "../hooks/useInventory";
@@ -1148,17 +1150,31 @@ export default function ManagerDashboard({ session, staff: staffProp }) {
     ch.on("broadcast", { event: "permissions_changed" }, ({ payload }) => {
       if (payload?.staffId === staffId) fetchPerms();
     }).subscribe();
-    const poll      = setInterval(fetchPerms, 8000);
-    const onVisible = () => { if (document.visibilityState === "visible") fetchPerms(); };
-    window.addEventListener("focus", fetchPerms);
-    document.addEventListener("visibilitychange", onVisible);
-    return () => {
-      supabase.removeChannel(ch);
-      clearInterval(poll);
-      window.removeEventListener("focus", fetchPerms);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
+    return () => { supabase.removeChannel(ch); };
   }, [ownerId, staffId, fetchPerms]);
+
+  // Resume-on-foreground — catches permission changes that happened while backgrounded.
+  // Replaces the former 8 s poll + duplicate focus/visibilitychange listeners.
+  const lastPermsResumeRef = useRef(0);
+  useEffect(() => {
+    if (!staffId) return;
+    const onResume = () => {
+      if (Date.now() - lastPermsResumeRef.current < 10_000) return;
+      lastPermsResumeRef.current = Date.now();
+      fetchPerms();
+    };
+    const onVisibility = () => { if (!document.hidden) onResume(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    let appListener;
+    if (Capacitor.isNativePlatform()) {
+      CapApp.addListener("appStateChange", ({ isActive }) => { if (isActive) onResume(); })
+        .then(l => { appListener = l; });
+    }
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      appListener?.remove();
+    };
+  }, [staffId, fetchPerms]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Voice: save parsed transaction
   const handleVoiceSave = useCallback(async (parsed) => {

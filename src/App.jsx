@@ -54,8 +54,6 @@ import AdminDashboard        from "./screens/AdminDashboard";
 import Help                  from "./screens/Help";
 import Profile               from "./screens/Profile";
 import { useInventory }      from "./hooks/useInventory";
-import { usePullToRefresh }  from "./hooks/usePullToRefresh";
-import PullIndicator         from "./components/PullIndicator";
 import { useInvoices }      from "./hooks/useInvoices";
 import { usePinLock }        from "./hooks/usePinLock";
 import { useLoyalty }        from "./hooks/useLoyalty";
@@ -145,9 +143,6 @@ export default function App() {
 
   // Branch management (premium only)
   const branchesHook = useBranches(userId);
-
-  // Pull-to-refresh — triggers a full store data reload without a route change
-  const ptr = usePullToRefresh(store.reloadData);
 
   // Data refresh is now realtime-first (useStore's transactions_rt channel) + resume handler
   // in Transactions.jsx (10s debounce) + a 30s backup poll when rt is disconnected.
@@ -466,8 +461,7 @@ export default function App() {
             </div>
           )}
 
-          <main ref={ptr.scrollRef} className="flex-1 overflow-y-auto overscroll-contain">
-            <PullIndicator pullY={ptr.pullY} refreshing={ptr.refreshing} dragging={ptr.dragging} />
+          <main className="flex-1 overflow-y-auto overscroll-contain">
             <Routes>
               <Route path="/"             element={SCREENS.home}         />
               <Route path="/transactions" element={SCREENS.transactions}  />

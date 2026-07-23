@@ -8,8 +8,8 @@ import { fmt, fmtDate, fmtDateTime, ledgerTypeLabel } from "../utils/helpers";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
 import Icon from "../components/Icon";
 import Modal from "../components/shared/Modal";
-import { usePullToRefresh } from "../hooks/usePullToRefresh";
-import PullIndicator from "../components/PullIndicator";
+import { Capacitor } from "@capacitor/core";
+import { App as CapApp } from "@capacitor/app";
 import { useCampaigns } from "../hooks/useCampaigns";
 import { usePartnerOffers } from "../hooks/usePartnerOffers";
 import AnnouncementBarSlot from "../components/slots/AnnouncementBarSlot";
@@ -4417,17 +4417,32 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
     fetchPortalData(false);
   }, [fetchPortalData, reloadKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Silent background refresh every 15 s — always uses latest fetchPortalData via ref
+  // Stale-closure fix: always call the latest fetchPortalData from refs (used by realtime + resume)
   const fetchPortalDataRef = useRef(fetchPortalData);
   useEffect(() => { fetchPortalDataRef.current = fetchPortalData; }, [fetchPortalData]);
+
+  // Resume-on-foreground — 10 s debounce catches missed changes after backgrounding.
+  // Replaces the former 3 s unconditional poll (was 300 DB round-trips/hour).
+  const lastAjoResumeRef = useRef(0);
   useEffect(() => {
     if (!ajoClient?.id) return;
-    const id = setInterval(() => fetchPortalDataRef.current(true), 3000);
-    return () => clearInterval(id);
-  }, [ajoClient?.id]);
-
-  // Pull-to-refresh — calls fetchPortalData(false) so spinner + error state show normally
-  const ptr = usePullToRefresh(useCallback(() => fetchPortalData(false), [fetchPortalData]));
+    const onResume = () => {
+      if (Date.now() - lastAjoResumeRef.current < 10_000) return;
+      lastAjoResumeRef.current = Date.now();
+      fetchPortalDataRef.current?.(true);
+    };
+    const onVisibility = () => { if (!document.hidden) onResume(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    let appListener;
+    if (Capacitor.isNativePlatform()) {
+      CapApp.addListener("appStateChange", ({ isActive }) => { if (isActive) onResume(); })
+        .then(l => { appListener = l; });
+    }
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      appListener?.remove();
+    };
+  }, [ajoClient?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Realtime: sync balance/contributions from business side ────────────
   useEffect(() => {
@@ -4530,8 +4545,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
         </header>
 
         {/* Content */}
-        <main ref={ptr.scrollRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
-          <PullIndicator pullY={ptr.pullY} refreshing={ptr.refreshing} dragging={ptr.dragging} />
+        <main className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
           <AnnouncementBarSlot campaigns={annBars} loading={camLoading} recordEvent={recordCamEvent} />
           {tab === "home" && client && (
             <OverviewTab

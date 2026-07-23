@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Icon   from "../components/Icon";
 import Modal  from "../components/shared/Modal";
 import Field  from "../components/shared/Field";
@@ -22,6 +22,7 @@ import { getLang, speakConfirmation } from "../utils/i18n";
 import AssignRecordModal from "../components/AssignRecordModal";
 import TransactionPinModal from "../components/TransactionPinModal";
 import { Capacitor } from "@capacitor/core";
+import { App as CapApp } from "@capacitor/app";
 import { InAppBrowser, ToolBarType } from "@capgo/capacitor-inappbrowser";
 import { friendlyError } from "../utils/errorMessage";
 
@@ -1246,6 +1247,29 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       });
     return () => { supabase.removeChannel(channel); };
   }, [plan]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Resume-on-foreground — reload active queues after backgrounding so approval/reject
+  // lists are always fresh without polling. 10 s debounce prevents double-fire.
+  const lastAsoResumeRef = useRef(0);
+  useEffect(() => {
+    const onResume = () => {
+      if (Date.now() - lastAsoResumeRef.current < 10_000) return;
+      lastAsoResumeRef.current = Date.now();
+      reloadWithdrawalRequests();
+      reloadPendingDeposits();
+    };
+    const onVisibility = () => { if (!document.hidden) onResume(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    let appListener;
+    if (Capacitor.isNativePlatform()) {
+      CapApp.addListener("appStateChange", ({ isActive }) => { if (isActive) onResume(); })
+        .then(l => { appListener = l; });
+    }
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      appListener?.remove();
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Per-action capability flags (null staffAjoPerms = owner = all true)
   const canContribute     = !staffAjoPerms || staffAjoPerms.can_create;
