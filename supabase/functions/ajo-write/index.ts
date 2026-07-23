@@ -1236,15 +1236,15 @@ serve(async (req: Request) => {
   if (action === "start_savings_round") {
     const { group_id: ssrGid, target_amount: ssrTarget, target_deadline: ssrDeadline } =
       params as { group_id: string; target_amount: number; target_deadline: string };
-    if (!ssrGid) return json({ ok: false, error: "group_id required" }, 400);
-    if (!ssrTarget || ssrTarget <= 0) return json({ ok: false, error: "target_amount required and must be > 0" }, 400);
-    if (!ssrDeadline) return json({ ok: false, error: "target_deadline required" }, 400);
+    if (!ssrGid) return json({ ok: false, error: "group_id required" });
+    if (!ssrTarget || ssrTarget <= 0) return json({ ok: false, error: "target_amount required and must be > 0" });
+    if (!ssrDeadline) return json({ ok: false, error: "target_deadline required" });
 
     const { data: ssrGrp } = await sb.from("ajo_groups").select("owner_id").eq("id", ssrGid).maybeSingle();
-    if (!ssrGrp) return json({ ok: false, error: "Group not found" }, 404);
+    if (!ssrGrp) return json({ ok: false, error: "Group not found" });
 
     const ssrPerms = await resolveAjoPerms(sb, user.id, ssrGrp.owner_id as string);
-    if (ssrPerms !== null) return json({ ok: false, error: "Unauthorized: owner-only action" }, 403);
+    if (ssrPerms !== null) return json({ ok: false, error: "Unauthorized: owner-only action" });
 
     const { data: ssrData, error: ssrErr } = await sb.rpc("ajo_start_savings_round", {
       p_owner_id:      ssrGrp.owner_id as string,

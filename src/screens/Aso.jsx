@@ -1115,7 +1115,11 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     });
     setStartRoundSaving(false);
     if (error || !data?.ok) {
-      setStartRoundMsg({ id: grpId, text: data?.error || error?.message || "Failed to start round", ok: false });
+      let msg = data?.error || error?.message || "Failed to start round";
+      if (!data?.error && error?.context) {
+        try { const b = await error.context.json(); msg = b?.error || msg; } catch {}
+      }
+      setStartRoundMsg({ id: grpId, text: msg, ok: false });
       return;
     }
     setStartRoundGid(null);
