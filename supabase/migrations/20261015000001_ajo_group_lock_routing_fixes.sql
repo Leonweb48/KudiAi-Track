@@ -221,8 +221,8 @@ GRANT EXECUTE ON FUNCTION public.ajo_record_withdrawal(UUID, UUID, NUMERIC, TEXT
   TO service_role;
 
 -- ── Fix 5: Verify first_period lock releases on cycle close ───────────────────
--- Uses SAVEPOINT so the test UPDATE is rolled back — cycle status unchanged.
--- Evidence appears as NOTICE output in migration logs.
+-- Uses PL/pgSQL's implicit BEGIN…EXCEPTION savepoint to temp-close a cycle,
+-- read the lock, then roll back the UPDATE — cycle status unchanged.
 
 DO $$
 DECLARE
@@ -254,11 +254,18 @@ BEGIN
   RAISE NOTICE 'Fix 5 PRE-CLOSE : client=%, cycle=%, ajo_locked_cycle_amount=₦%',
     v_client_id, v_cycle_id, v_locked_before;
 
-  SAVEPOINT sp_fix5_verify;
-  UPDATE ajo_cycles SET status = 'completed', closed_at = NOW() WHERE id = v_cycle_id;
-  v_locked_after := ajo_locked_cycle_amount(v_client_id);
-  RAISE NOTICE 'Fix 5 POST-CLOSE: ajo_locked_cycle_amount=₦% (expected 0)', v_locked_after;
-  ROLLBACK TO SAVEPOINT sp_fix5_verify;
+  -- Nested block = implicit savepoint; RAISE EXCEPTION rolls back the UPDATE only.
+  -- v_locked_after is a PL/pgSQL variable and is NOT rolled back with the DML.
+  BEGIN
+    UPDATE ajo_cycles SET status = 'completed', closed_at = NOW() WHERE id = v_cycle_id;
+    v_locked_after := ajo_locked_cycle_amount(v_client_id);
+    RAISE NOTICE 'Fix 5 POST-CLOSE: ajo_locked_cycle_amount=₦% (expected 0)', v_locked_after;
+    RAISE EXCEPTION '__rollback__';
+  EXCEPTION
+    WHEN OTHERS THEN
+      IF SQLERRM <> '__rollback__' THEN RAISE; END IF;
+      -- Intentional rollback — UPDATE is undone, v_locked_after value is kept
+  END;
 
   IF v_locked_after = 0 THEN
     RAISE NOTICE 'Fix 5 PASS: withdrawable increases by ₦% across cycle closure', v_locked_before;
