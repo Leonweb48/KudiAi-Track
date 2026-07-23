@@ -4491,7 +4491,6 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
   useEffect(() => { fetchPortalDataRef.current = fetchPortalData; }, [fetchPortalData]);
 
   // Resume-on-foreground — 10 s debounce catches missed changes after backgrounding.
-  // Replaces the former 3 s unconditional poll (was 300 DB round-trips/hour).
   const lastAjoResumeRef = useRef(0);
   useEffect(() => {
     if (!ajoClient?.id) return;
@@ -4511,6 +4510,17 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
       document.removeEventListener("visibilitychange", onVisibility);
       appListener?.remove();
     };
+  }, [ajoClient?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 20 s silent poll — safety net for when the WebSocket drops without triggering
+  // a visibility/appState event (common in Android WebView and weak connections).
+  // Realtime still fires immediately for in-range events; the poll only fills gaps.
+  useEffect(() => {
+    if (!ajoClient?.id) return;
+    const id = setInterval(() => {
+      if (!document.hidden) fetchPortalDataRef.current?.(true);
+    }, 20_000);
+    return () => clearInterval(id);
   }, [ajoClient?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Realtime: sync balance/contributions from business side ────────────
