@@ -483,21 +483,24 @@ export default function Auth() {
 
         // Safety valve: Chrome Custom Tab sometimes blocks custom-scheme redirects,
         // causing appUrlOpen to never fire and the loading spinner to freeze.
-        // When the browser closes, wait 1 s for appUrlOpen to arrive first;
-        // if no session exists after that, surface an error so the user can retry.
+        // Poll every 500 ms for up to 5 s after the CCT closes:
+        //   • exit immediately if appUrlOpen fired (exchange in flight)
+        //   • exit immediately if session already exists (exchange completed)
+        //   • only surface an error after the full 5 s with neither
+        // On some Android versions appUrlOpen arrives late (>1 s after browserFinished),
+        // so a single fixed delay is not reliable.
         let browserDoneListener = null;
         browserDoneListener = await Browser.addListener("browserFinished", async () => {
           browserDoneListener?.remove();
-          await new Promise((r) => setTimeout(r, 1000));
-          // If appUrlOpen already fired and is mid-exchange, do not surface an error —
-          // the exchange will complete and onAuthStateChange will route the user correctly.
-          if (sessionStorage.getItem("kuditrack_oauth_exchange")) return;
-          const { data: { session } } = await supabase.auth.getSession();
-          if (!session) {
-            window.dispatchEvent(new CustomEvent("kuditrack_auth_error", {
-              detail: "Google sign-in was cancelled or failed. Please try again.",
-            }));
+          for (let i = 0; i < 10; i++) {
+            await new Promise((r) => setTimeout(r, 500));
+            if (sessionStorage.getItem("kuditrack_oauth_exchange")) return;
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session) return;
           }
+          window.dispatchEvent(new CustomEvent("kuditrack_auth_error", {
+            detail: "Google sign-in was cancelled or failed. Please try again.",
+          }));
         });
 
         await Browser.open({ url: authUrl });
