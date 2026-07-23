@@ -1245,6 +1245,7 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
         proof_url:            proofUrl,
         contribution_context: contribCtx,
         ...(contribCtx === "personal_savings" && selectedMdCycleId ? { cycle_id: selectedMdCycleId } : {}),
+        ...(contribCtx !== "personal_savings" && contribGroupId   ? { group_id: contribGroupId }    : {}),
       });
       setDone(true);
       onSuccess?.();
@@ -1466,8 +1467,12 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
   const [txnPin,        setTxnPin]        = useState(null);
   const [esusuLocked,   setEsusuLocked]   = useState(0);
   const [cycleLocked,   setCycleLocked]   = useState(0);
-  const [activeTab,     setActiveTab]     = useState("personal");
-  const [selectedGrpId, setSelectedGrpId] = useState(null);
+  const [activeTab,       setActiveTab]       = useState("personal");
+  const [selectedGrpId,   setSelectedGrpId]   = useState(null);
+  const [selectedCycleId, setSelectedCycleId] = useState(() => {
+    const active = cycles.filter(c => c.status === "active");
+    return active.length === 1 ? active[0].id : null;
+  });
 
   useEffect(() => {
     Promise.all([
@@ -1577,11 +1582,18 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
       const reqNotes = activeTab === "group" && selectedGroup
         ? `Group savings — ${selectedGroup.name}`
         : undefined;
+      // Attribution: attach cycle_id for personal withdrawals, group_id for group/esusu
+      const reqCycleId = activeTab === "personal" ? (selectedCycleId || null) : null;
+      const reqGroupId = (activeTab === "group" || activeTab === "esusu")
+        ? (selectedGrpId || (savingsGroups[0]?.id || esusuRounds[0]?.group?.id) || null)
+        : null;
       await ajoFn("request-withdrawal", {
         client_id: client.id,
         owner_id:  client.user_id,
         amount:    amtNum,
-        ...(reqNotes ? { notes: reqNotes } : {}),
+        ...(reqCycleId ? { cycle_id: reqCycleId } : {}),
+        ...(reqGroupId ? { group_id: reqGroupId } : {}),
+        ...(reqNotes   ? { notes:    reqNotes }   : {}),
       });
       setDone(true);
       onSuccess();
@@ -2196,7 +2208,12 @@ function OverviewTab({ client, contributions, cycles = [], rotationsData = [], r
         </div>
       </div>
 
-      {/* Saving cycle cards — one per active cycle (AJ-M01) */}
+      {/* ── Personal Savings ── */}
+      {cycles.length > 0 && (
+        <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider px-1">
+          Personal Savings
+        </p>
+      )}
       {cycles.map((cyc, idx) => (
         <ContributionCard
           key={cyc.id}
@@ -2426,15 +2443,41 @@ function OverviewTab({ client, contributions, cycles = [], rotationsData = [], r
         </div>
       )}
 
-      {/* Group membership cards — one per group (savings or esusu rotation) */}
+      {/* ── Esusu Rotation groups ── */}
+      {rotationsData.filter(rd => rd.group?.group_mode === "rotating").length > 0 && (
+        <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider px-1 mt-2">
+          Esusu Rotation
+        </p>
+      )}
       {rotationLoading && rotationsData.length === 0 && (
         <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4 animate-pulse h-24" />
       )}
-      {rotationsData.map(rd => (
+      {rotationsData.filter(rd => rd.group?.group_mode === "rotating").map(rd => (
         <div key={rd.group?.id} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4 space-y-4">
-          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-            {rd.group?.group_mode === "rotating" ? "Ajo Rotation" : "Savings Group"} — {rd.group?.name}
-          </p>
+          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">{rd.group?.name}</p>
+          {rd.round ? (
+            <EsusuRotationDashboard
+              data={rd}
+              loading={false}
+              isOwner={false}
+              myClientId={client?.id}
+              onRefresh={null}
+            />
+          ) : (
+            <p className="text-xs text-slate-500 dark:text-slate-400">No active rotation round yet.</p>
+          )}
+        </div>
+      ))}
+
+      {/* ── Savings Groups ── */}
+      {rotationsData.filter(rd => rd.group?.group_mode !== "rotating").length > 0 && (
+        <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider px-1 mt-2">
+          Savings Groups
+        </p>
+      )}
+      {rotationsData.filter(rd => rd.group?.group_mode !== "rotating").map(rd => (
+        <div key={rd.group?.id} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4 space-y-4">
+          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">{rd.group?.name}</p>
           {rd.round ? (
             <EsusuRotationDashboard
               data={rd}
@@ -2445,9 +2488,7 @@ function OverviewTab({ client, contributions, cycles = [], rotationsData = [], r
             />
           ) : (
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              {rd.group?.group_mode === "rotating"
-                ? "No active rotation round yet."
-                : `Contribution: ₦${Number(rd.group?.contribution_amount || 0).toLocaleString("en-NG")} / ${rd.group?.contribution_frequency || "period"}`}
+              {`Contribution: ₦${Number(rd.group?.contribution_amount || 0).toLocaleString("en-NG")} / ${rd.group?.contribution_frequency || "period"}`}
             </p>
           )}
         </div>
@@ -2538,7 +2579,12 @@ function PendingInfoSheet({ item, onClose }) {
 }
 
 // ── History tab ───────────────────────────────────────────────────────────
-function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo }) {
+function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, cycles = [], rotationsData = [] }) {
+  // Build lookup maps so each row can show its entity name
+  const cycleNameMap = Object.fromEntries(cycles.map(c => [c.id, c.label || "Personal Savings"]));
+  const groupNameMap = Object.fromEntries(
+    rotationsData.filter(rd => rd.group?.id).map(rd => [rd.group.id, rd.group.name])
+  );
   const [typeFilter,     setTypeFilter]     = useState("all");
   const [receipt,        setReceipt]        = useState(null);
   const [pendingSheet,   setPendingSheet]   = useState(null);
@@ -2737,6 +2783,13 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo })
               {item.paystack_ref && ` · Ref: ${item.paystack_ref.slice(-8)}`}
             </p>
             <p className="text-[10px] text-slate-400">{fmtDateTime(item.created_at || item.date)}</p>
+            {!isWdReq && (item.cycle_id || item.group_id) && (
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
+                {item.cycle_id
+                  ? cycleNameMap[item.cycle_id] || "Personal Savings"
+                  : groupNameMap[item.group_id] || "Group"}
+              </p>
+            )}
             {(item.claim_notes || item.notes) && <p className="text-[10px] text-slate-400 italic mt-0.5">"{item.claim_notes || item.notes}"</p>}
             {isRejected && isManual && item.rejected_reason && (
               <p className="text-[10px] text-red-500 dark:text-red-400 mt-1 font-semibold">Reason: {item.rejected_reason}</p>
@@ -4446,6 +4499,8 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
               withdrawRequests={withdrawRequests}
               client={client}
               ownerInfo={ownerInfo}
+              cycles={cycles}
+              rotationsData={rotationsData}
             />
           )}
           {tab === "me" && (

@@ -791,7 +791,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     try {
       const { data, error } = await supabase
         .from("ajo_withdrawal_requests")
-        .select("*, aso_clients(full_name, email, membership_number, current_balance, total_withdrawn, bank_code, account_number, account_name, bank_name, withdrawal_bank_code, withdrawal_account_number, withdrawal_bank_name, withdrawal_account_name, commission_model, commission_percent)")
+        .select("*, aso_clients(full_name, email, membership_number, current_balance, total_withdrawn, bank_code, account_number, account_name, bank_name, withdrawal_bank_code, withdrawal_account_number, withdrawal_bank_name, withdrawal_account_name, commission_model, commission_percent), ajo_cycles(label), ajo_groups(name, group_mode)")
         .in("status", ["pending", "held_24h"])
         .order("requested_at", { ascending: false });
       if (error) throw error;
@@ -1716,6 +1716,13 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                     )}
                   </div>
                   <p className="text-[10px] text-slate-400 mt-0.5">{req.requested_at ? new Date(req.requested_at).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" }) : ""}</p>
+                  {(req.ajo_cycles?.label || req.ajo_groups?.name) && (
+                    <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 mt-0.5">
+                      From: {req.ajo_cycles?.label
+                        ? req.ajo_cycles.label
+                        : `${req.ajo_groups?.group_mode === "rotating" ? "Esusu" : "Savings Group"} — ${req.ajo_groups?.name}`}
+                    </p>
+                  )}
                   {req.fee_type !== "registration_fee" && req.fee_amount > 0 && cl.commission_model === "percent" &&
                    cl.commission_percent !== undefined && effectivePct !== null &&
                    Math.abs(parseFloat(effectivePct) - (cl.commission_percent || 0)) > 0.05 && (

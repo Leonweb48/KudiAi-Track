@@ -290,9 +290,9 @@ serve(async (req: Request) => {
   // ── Route to SQL RPC ──────────────────────────────────────────────────────
 
   if (action === "record_contribution") {
-    const { client_id, amount, method, ref, notes, contribution_context, cycle_id: callerCycleId } = params as {
+    const { client_id, amount, method, ref, notes, contribution_context, cycle_id: callerCycleId, group_id: callerGroupId } = params as {
       client_id: string; amount: number;
-      method?: string; ref?: string; notes?: string; contribution_context?: string; cycle_id?: string;
+      method?: string; ref?: string; notes?: string; contribution_context?: string; cycle_id?: string; group_id?: string;
     };
 
     const ownerId = await resolveClientOwner(sb, client_id);
@@ -376,6 +376,7 @@ serve(async (req: Request) => {
       p_recorded_by:           recordedBy,
       p_contribution_context:  contribution_context || "personal_savings",
       p_cycle_id:              cycleId,
+      p_group_id:              callerGroupId || null,
       ...(contribSource ? { p_source: contribSource } : {}),
     });
     if (error) return json({ ok: false, error: error.message });
@@ -481,8 +482,8 @@ serve(async (req: Request) => {
   // manual-deposit claims (those use initiated_by='client'), which must always wait
   // for explicit owner confirmation and must never be auto-approved by a collection retry.
   if (action === "collection_record") {
-    const { client_id, amount, contribution_context, cycle_id: callerCollCycleId } = params as {
-      client_id: string; amount: number; contribution_context?: string; cycle_id?: string;
+    const { client_id, amount, contribution_context, cycle_id: callerCollCycleId, group_id: callerCollGroupId } = params as {
+      client_id: string; amount: number; contribution_context?: string; cycle_id?: string; group_id?: string;
     };
 
     const ownerId = await resolveClientOwner(sb, client_id);
@@ -558,6 +559,7 @@ serve(async (req: Request) => {
         p_contribution_context: context,
         p_source:               "collection",
         p_cycle_id:             collCycleId,
+        p_group_id:             callerCollGroupId || null,
       });
       if (recErr || !(recData as Record<string, unknown>)?.ok) {
         return json({

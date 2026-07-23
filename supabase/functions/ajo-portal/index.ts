@@ -184,7 +184,7 @@ serve(async (req) => {
       const { client_id } = body as { client_id: string };
       const { data } = await sb
         .from("ajo_contributions")
-        .select("id, aso_client_id, owner_id, amount, type, status, created_at, payment_method, contribution_context, cycle_id, reverses_contribution_id, fee_for_contribution_id, notes, recorded_by, paystack_ref, paystack_status, paid_at, approved_at, approved_by, confirmed_at, confirmed_by, initiated_by, payment_channel, proof_url, contribution_source")
+        .select("id, aso_client_id, owner_id, amount, type, status, created_at, payment_method, contribution_context, cycle_id, group_id, reverses_contribution_id, fee_for_contribution_id, notes, recorded_by, paystack_ref, paystack_status, paid_at, approved_at, approved_by, confirmed_at, confirmed_by, initiated_by, payment_channel, proof_url, contribution_source")
         .eq("aso_client_id", client_id)
         .order("created_at", { ascending: false })
         .limit(100);
@@ -238,7 +238,7 @@ serve(async (req) => {
 
     // ── Client requests a withdrawal ─────────────────────────────
     if (action === "request-withdrawal") {
-      const { client_id, owner_id, amount, notes: reqNotes } = body as { client_id: string; owner_id: string; amount: number; notes?: string };
+      const { client_id, owner_id, amount, notes: reqNotes, cycle_id: reqCycleId, group_id: reqGroupId } = body as { client_id: string; owner_id: string; amount: number; notes?: string; cycle_id?: string; group_id?: string };
       if (!client_id || !amount || amount <= 0) return json({ error: "client_id and amount are required" }, 400);
 
       const { data: cl } = await sb.from("aso_clients")
@@ -311,6 +311,8 @@ serve(async (req) => {
         fee_amount: feeAmount,
         net_amount: netAmount,
         status:     withdrawalStatus,
+        cycle_id:   reqCycleId || null,
+        group_id:   reqGroupId || null,
         ...(reqNotes ? { notes: reqNotes } : {}),
       }).select().single();
 
@@ -359,7 +361,7 @@ serve(async (req) => {
     if (action === "get-withdrawal-requests") {
       const { client_id } = body as { client_id: string };
       const { data } = await sb.from("ajo_withdrawal_requests")
-        .select("id, aso_client_id, owner_id, amount, status, requested_at, notes, bank_name, bank_code, account_number, account_name, review_notes, reviewed_at")
+        .select("id, aso_client_id, owner_id, amount, status, requested_at, notes, bank_name, bank_code, account_number, account_name, review_notes, reviewed_at, cycle_id, group_id")
         .eq("aso_client_id", client_id)
         .order("requested_at", { ascending: false })
         .limit(20);
@@ -368,9 +370,9 @@ serve(async (req) => {
 
     // ── Client submits a manual bank-transfer claim ───────────────
     if (action === "submit-manual-claim") {
-      const { client_id, owner_id, amount, payer_name, notes, proof_url, contribution_context = "personal_savings", cycle_id: callerCycleId } = body as {
+      const { client_id, owner_id, amount, payer_name, notes, proof_url, contribution_context = "personal_savings", cycle_id: callerCycleId, group_id: callerGroupId } = body as {
         client_id: string; owner_id: string; amount: number;
-        payer_name?: string; notes?: string; proof_url?: string; contribution_context?: string; cycle_id?: string;
+        payer_name?: string; notes?: string; proof_url?: string; contribution_context?: string; cycle_id?: string; group_id?: string;
       };
 
       if (!client_id || !owner_id) return json({ error: "client_id and owner_id required" }, 400);
@@ -386,6 +388,7 @@ serve(async (req) => {
         p_proof_url:             proof_url              || null,
         p_contribution_context:  contribution_context,
         p_cycle_id:              callerCycleId          || null,
+        p_group_id:              callerGroupId          || null,
       });
 
       if (!rpcResult?.ok) return json({ error: rpcResult?.error || "Failed to submit claim" }, 400);
@@ -519,6 +522,7 @@ serve(async (req) => {
         subaccount_code:      subaccountCode || null,
         contribution_context,
         cycle_id:             psCycleId,
+        group_id:             contribution_context !== "personal_savings" ? (resolvedGroupId || null) : null,
         notes:                `Self-pay (${contribution_context}) initiated by client · ref: ${ref}`,
       });
       if (insErr) return json({ error: "Something went wrong — please try again" }, 500);
