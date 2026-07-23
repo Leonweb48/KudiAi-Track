@@ -229,8 +229,13 @@ export default function ContributionCard({
     if (!cycle?.id) return contributions;
     const direct = contributions.filter(c => c.cycle_id === cycle.id);
     if (isLegacyCycle && direct.length === 0) {
+      // Legacy fallback: absorb null-cycle_id rows that belong to personal savings only.
+      // Exclude any row that is linked to a group (group_id set) — that covers both
+      // modern rows (contribution_context='group_savings'/'esusu_rotation') and old rows
+      // that pre-date the context column and defaulted to 'personal_savings'.
       return contributions.filter(c =>
         !c.cycle_id &&
+        !c.group_id &&
         c.contribution_context !== "group_savings" &&
         c.contribution_context !== "esusu_rotation"
       );
@@ -416,7 +421,7 @@ export default function ContributionCard({
             // Registration fee is a one-time charge on the client's very first deposit ever.
             // If they already have any completed contribution (on any prior cycle), skip it.
             const alreadyPaidReg = contributions.some(
-              c => c.status === "completed" && c.type === "contribution"
+              c => c.status === "completed" && c.type === "contribution" && !c.group_id
             );
             const regCharge = alreadyPaidReg ? 0 : Number(registrationCharge || 0);
             if (!isFirstPrd && regCharge === 0) return null;
