@@ -746,10 +746,14 @@ export function useAuth() {
     if (Capacitor.isNativePlatform()) {
       App.addListener("appUrlOpen", async ({ url }) => {
         if (url.startsWith("com.amayatechnologies.kuditrack://login-callback")) {
+          // Signal browserFinished that we are handling this URL so it does not
+          // race to declare failure while exchangeCodeForSession is in flight.
+          sessionStorage.setItem("kuditrack_oauth_exchange", "1");
           try { await Browser.close(); } catch { /* custom tab may already be dismissed */ }
           // Supabase v2 uses PKCE by default — redirect contains ?code=... not #access_token=...
           // exchangeCodeForSession handles both PKCE codes and implicit token hashes
           const { error } = await supabase.auth.exchangeCodeForSession(url);
+          sessionStorage.removeItem("kuditrack_oauth_exchange");
           if (error) {
             // Fallback for implicit flow (token in URL hash)
             const hashStr = url.split("#")[1] || "";

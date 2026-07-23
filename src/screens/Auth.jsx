@@ -489,6 +489,9 @@ export default function Auth() {
         browserDoneListener = await Browser.addListener("browserFinished", async () => {
           browserDoneListener?.remove();
           await new Promise((r) => setTimeout(r, 1000));
+          // If appUrlOpen already fired and is mid-exchange, do not surface an error —
+          // the exchange will complete and onAuthStateChange will route the user correctly.
+          if (sessionStorage.getItem("kuditrack_oauth_exchange")) return;
           const { data: { session } } = await supabase.auth.getSession();
           if (!session) {
             window.dispatchEvent(new CustomEvent("kuditrack_auth_error", {
