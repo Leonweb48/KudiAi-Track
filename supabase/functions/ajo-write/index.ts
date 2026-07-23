@@ -366,6 +366,41 @@ serve(async (req: Request) => {
       }
     }
 
+    // ── Fix 2: Reject non-personal contributions with no active membership/round ──
+    if (contribution_context === "group_savings" || contribution_context === "esusu_rotation") {
+      const gid = callerGroupId;
+      if (!gid) return json({ ok: false, error: "Select a savings group to contribute to" }, 400);
+      const { data: gmem } = await sb.from("aso_client_group_memberships")
+        .select("id").eq("client_id", client_id).eq("group_id", gid)
+        .eq("status", "active").maybeSingle();
+      if (!gmem) return json({ ok: false, error: "This client is not an active member of the selected group" }, 400);
+      if (contribution_context === "esusu_rotation") {
+        const { data: grd } = await sb.from("ajo_group_rounds")
+          .select("id").eq("group_id", gid).eq("status", "active").maybeSingle();
+        if (!grd) return json({ ok: false, error: "This esusu group has no active round — ask your savings agent to start one" }, 400);
+      }
+    }
+
+    // ── Fix 3: First-deposit minimum (expected + registration fee) ──
+    if ((!contribution_context || contribution_context === "personal_savings") && cycleId) {
+      const { data: f3Cli } = await sb.from("aso_clients").select("registration_charge").eq("id", client_id).maybeSingle();
+      const { data: f3Cyc } = await sb.from("ajo_cycles").select("expected_amount_per_period").eq("id", cycleId).maybeSingle();
+      const regCharge = Number((f3Cli as Record<string, unknown>)?.registration_charge || 0);
+      const expected  = Number((f3Cyc as Record<string, unknown>)?.expected_amount_per_period || 0);
+      const minReq    = expected + regCharge;
+      if (minReq > 0 && Number(amount) < minReq) {
+        const { data: hasFirst } = await sb.from("ajo_contributions")
+          .select("id").eq("aso_client_id", client_id).eq("status", "completed").eq("type", "contribution").limit(1).maybeSingle();
+        if (!hasFirst) {
+          return json({
+            ok: false,
+            error: `First deposit must be ₦${minReq.toLocaleString("en-NG")} — ₦${expected.toLocaleString("en-NG")} contribution + ₦${regCharge.toLocaleString("en-NG")} registration`,
+            min_amount: minReq,
+          }, 400);
+        }
+      }
+    }
+
     const { data, error } = await sb.rpc("ajo_record_contribution", {
       p_client_id:             client_id,
       p_owner_id:              ownerId,
@@ -524,6 +559,41 @@ serve(async (req: Request) => {
             p_frequency:        (cr.contribution_frequency as string) || null,
           });
           collCycleId = (openData as Record<string, unknown>)?.cycle_id as string || null;
+        }
+      }
+    }
+
+    // ── Fix 2: Validate group membership and active round ──
+    if (context === "group_savings" || context === "esusu_rotation") {
+      const gid = callerCollGroupId;
+      if (!gid) return json({ ok: false, error: "Select a savings group to contribute to" }, 400);
+      const { data: gmem } = await sb.from("aso_client_group_memberships")
+        .select("id").eq("client_id", client_id).eq("group_id", gid)
+        .eq("status", "active").maybeSingle();
+      if (!gmem) return json({ ok: false, error: "This client is not an active member of the selected group" }, 400);
+      if (context === "esusu_rotation") {
+        const { data: grd } = await sb.from("ajo_group_rounds")
+          .select("id").eq("group_id", gid).eq("status", "active").maybeSingle();
+        if (!grd) return json({ ok: false, error: "This esusu group has no active round — ask your savings agent to start one" }, 400);
+      }
+    }
+
+    // ── Fix 3: First-deposit minimum ──
+    if (context === "personal_savings" && collCycleId) {
+      const { data: f3Cli } = await sb.from("aso_clients").select("registration_charge").eq("id", client_id).maybeSingle();
+      const { data: f3Cyc } = await sb.from("ajo_cycles").select("expected_amount_per_period").eq("id", collCycleId).maybeSingle();
+      const regCharge = Number((f3Cli as Record<string, unknown>)?.registration_charge || 0);
+      const expected  = Number((f3Cyc as Record<string, unknown>)?.expected_amount_per_period || 0);
+      const minReq    = expected + regCharge;
+      if (minReq > 0 && Number(amount) < minReq) {
+        const { data: hasFirst } = await sb.from("ajo_contributions")
+          .select("id").eq("aso_client_id", client_id).eq("status", "completed").eq("type", "contribution").limit(1).maybeSingle();
+        if (!hasFirst) {
+          return json({
+            ok: false,
+            error: `First deposit must be ₦${minReq.toLocaleString("en-NG")} — ₦${expected.toLocaleString("en-NG")} contribution + ₦${regCharge.toLocaleString("en-NG")} registration`,
+            min_amount: minReq,
+          }, 400);
         }
       }
     }

@@ -1318,6 +1318,21 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
               </div>
             )}
 
+            {/* Fix 3: First-deposit minimum info banner */}
+            {contribCtx === "personal_savings" && (() => {
+              const regCharge = Number(client.registration_charge || 0);
+              const expected  = Number(client.contribution_amount  || 0);
+              const minReq    = expected + regCharge;
+              if (minReq <= 0 || (regCharge === 0 && client.commission_model !== "first_period")) return null;
+              return (
+                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl px-3 py-2.5 mb-3">
+                  <p className="text-[11px] font-bold text-blue-700 dark:text-blue-300">
+                    First deposit: ₦{minReq.toLocaleString("en-NG")} = ₦{expected.toLocaleString("en-NG")} contribution + ₦{regCharge.toLocaleString("en-NG")} registration
+                  </p>
+                </div>
+              );
+            })()}
+
             {/* Bank details */}
             {hasBank ? (() => {
               const isClientAcct = !!clientBank?.account_number;
@@ -1467,6 +1482,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
   const [txnPin,        setTxnPin]        = useState(null);
   const [esusuLocked,   setEsusuLocked]   = useState(0);
   const [cycleLocked,   setCycleLocked]   = useState(0);
+  const [groupLocked,   setGroupLocked]   = useState(0);
   const [activeTab,       setActiveTab]       = useState("personal");
   const [selectedGrpId,   setSelectedGrpId]   = useState(null);
   const selectedCycleId = cycles.filter(c => c.status === "active").length === 1
@@ -1477,9 +1493,11 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
     Promise.all([
       supabase.rpc("ajo_locked_esusu_amount", { p_client_id: client.id }),
       supabase.rpc("ajo_locked_cycle_amount",  { p_client_id: client.id }),
-    ]).then(([{ data: eData }, { data: cData }]) => {
+      supabase.rpc("ajo_locked_group_amount",  { p_client_id: client.id }),
+    ]).then(([{ data: eData }, { data: cData }, { data: gData }]) => {
       setEsusuLocked(Number(eData || 0));
       setCycleLocked(Number(cData || 0));
+      setGroupLocked(Number(gData || 0));
     }).catch(() => {});
   }, [client.id, client.current_balance, cycles]);
 
@@ -1540,20 +1558,19 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
   const amtNum       = parseFloat(amount) || 0;
   const feeAmt       = (amtNum * pctFee) / 100;
   const netAmt       = amtNum - feeAmt;
-  const lockedAmount = esusuLocked + cycleLocked;
+  const lockedAmount = esusuLocked + cycleLocked + groupLocked;
   const withdrawable = Math.max((client.current_balance || 0) - lockedAmount, 0);
 
   const handleSubmit = async () => {
     if (!amtNum || amtNum <= 0)   { setError("Enter a valid amount"); return; }
     if (amtNum > withdrawable) {
-      let lockMsg = "Amount exceeds your balance";
-      if (esusuLocked > 0 && cycleLocked > 0) {
-        lockMsg = `Only ${fmt(withdrawable)} is available — ${fmt(esusuLocked)} locked in esusu and ${fmt(cycleLocked)} locked in your first-period cycle`;
-      } else if (esusuLocked > 0) {
-        lockMsg = `Only ${fmt(withdrawable)} is available — ${fmt(esusuLocked)} is locked in your active esusu round`;
-      } else if (cycleLocked > 0) {
-        lockMsg = `Only ${fmt(withdrawable)} is available — ${fmt(cycleLocked)} is locked in your first-period savings cycle`;
-      }
+      const lockParts = [];
+      if (groupLocked > 0) lockParts.push(`${fmt(groupLocked)} committed to group/esusu`);
+      if (esusuLocked > 0) lockParts.push(`${fmt(esusuLocked)} locked in active esusu round`);
+      if (cycleLocked > 0) lockParts.push(`${fmt(cycleLocked)} locked in first-period cycle`);
+      const lockMsg = lockParts.length > 0
+        ? `Only ${fmt(withdrawable)} is available — ${lockParts.join(" and ")}`
+        : "Amount exceeds your balance";
       setError(lockMsg);
       return;
     }
@@ -1754,8 +1771,9 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
                 <p className="font-extrabold text-slate-800 dark:text-white">Request Withdrawal</p>
                 <p className="text-[11px] text-slate-400">
                   Available: <strong className="text-slate-600 dark:text-slate-300">{fmt(withdrawable)}</strong>
-                  {esusuLocked > 0 && <span className="ml-1 text-amber-500">· {fmt(esusuLocked)} in esusu</span>}
-                  {cycleLocked > 0 && <span className="ml-1 text-amber-500">· {fmt(cycleLocked)} locked in savings cycle</span>}
+                  {groupLocked > 0 && <span className="ml-1 text-amber-500">· {fmt(groupLocked)} in group/esusu</span>}
+                  {esusuLocked > 0 && <span className="ml-1 text-amber-500">· {fmt(esusuLocked)} in esusu round</span>}
+                  {cycleLocked > 0 && <span className="ml-1 text-amber-500">· {fmt(cycleLocked)} locked in cycle</span>}
                 </p>
               </div>
             </div>

@@ -250,26 +250,28 @@ serve(async (req) => {
       if (amount > (cl.current_balance || 0)) return json({ error: "Insufficient balance" }, 400);
 
       // Locked-funds ceiling: stack esusu lock + first_period cycle lock.
-      const [{ data: esusuLockedRaw }, { data: cycleLockedRaw }] = await Promise.all([
+      const [{ data: esusuLockedRaw }, { data: cycleLockedRaw }, { data: groupLockedRaw }] = await Promise.all([
         sb.rpc("ajo_locked_esusu_amount", { p_client_id: client_id }),
-        sb.rpc("ajo_locked_cycle_amount", { p_client_id: client_id }),
+        sb.rpc("ajo_locked_cycle_amount",  { p_client_id: client_id }),
+        sb.rpc("ajo_locked_group_amount",  { p_client_id: client_id }),
       ]);
       const esusuLocked = Number(esusuLockedRaw || 0);
       const cycleLocked = Number(cycleLockedRaw || 0);
-      const withdrawable = (cl.current_balance || 0) - esusuLocked - cycleLocked;
+      const groupLocked = Number(groupLockedRaw || 0);
+      const withdrawable = (cl.current_balance || 0) - esusuLocked - cycleLocked - groupLocked;
       if (amount > withdrawable) {
-        let lockMsg = "Insufficient balance";
-        if (esusuLocked > 0 && cycleLocked > 0) {
-          lockMsg = `Insufficient withdrawable balance — ₦${esusuLocked.toLocaleString("en-NG")} locked in your active esusu round and ₦${cycleLocked.toLocaleString("en-NG")} locked in a first-period savings cycle`;
-        } else if (esusuLocked > 0) {
-          lockMsg = `Insufficient withdrawable balance — ₦${esusuLocked.toLocaleString("en-NG")} is locked in your active esusu round`;
-        } else if (cycleLocked > 0) {
-          lockMsg = `Insufficient withdrawable balance — ₦${cycleLocked.toLocaleString("en-NG")} is locked in your first-period savings cycle until it completes`;
-        }
+        const lockParts: string[] = [];
+        if (groupLocked > 0) lockParts.push(`₦${groupLocked.toLocaleString("en-NG")} committed to a savings group or esusu — available after your payout`);
+        if (esusuLocked > 0) lockParts.push(`₦${esusuLocked.toLocaleString("en-NG")} locked in an active esusu round`);
+        if (cycleLocked > 0) lockParts.push(`₦${cycleLocked.toLocaleString("en-NG")} locked in a first-period savings cycle`);
+        const lockMsg = lockParts.length > 0
+          ? `Insufficient withdrawable balance — ${lockParts.join(" and ")}`
+          : "Insufficient balance";
         return json({
-          error: lockMsg,
+          error:        lockMsg,
           esusu_locked: esusuLocked,
           cycle_locked: cycleLocked,
+          group_locked: groupLocked,
           withdrawable: Math.max(withdrawable, 0),
         }, 400);
       }
@@ -379,6 +381,41 @@ serve(async (req) => {
       const numAmt = Number(amount);
       if (!numAmt || numAmt <= 0) return json({ error: "Amount must be greater than zero" }, 400);
 
+      // ── Fix 2: Reject non-personal contributions with no active membership/round ──
+      if (contribution_context === "group_savings" || contribution_context === "esusu_rotation") {
+        if (!callerGroupId) return json({ error: "Select a savings group to contribute to" }, 400);
+        const { data: gmem } = await sb.from("aso_client_group_memberships")
+          .select("id").eq("client_id", client_id).eq("group_id", callerGroupId)
+          .eq("status", "active").maybeSingle();
+        if (!gmem) return json({ error: "This client is not an active member of the selected group" }, 400);
+        if (contribution_context === "esusu_rotation") {
+          const { data: grd } = await sb.from("ajo_group_rounds")
+            .select("id").eq("group_id", callerGroupId).eq("status", "active").maybeSingle();
+          if (!grd) return json({ error: "This esusu group has no active round — ask your savings agent to start one" }, 400);
+        }
+      }
+
+      // ── Fix 3: First-deposit minimum (expected + registration fee) ──
+      if (contribution_context === "personal_savings" && callerCycleId) {
+        const { data: f3Cli } = await sb.from("aso_clients").select("registration_charge").eq("id", client_id).maybeSingle();
+        const { data: f3Cyc } = await sb.from("ajo_cycles").select("expected_amount_per_period").eq("id", callerCycleId).maybeSingle();
+        const regCharge = Number((f3Cli as Record<string, unknown>)?.registration_charge || 0);
+        const expected  = Number((f3Cyc as Record<string, unknown>)?.expected_amount_per_period || 0);
+        const minReq    = expected + regCharge;
+        if (minReq > 0 && numAmt < minReq) {
+          const { data: hasFirst } = await sb.from("ajo_contributions")
+            .select("id").eq("aso_client_id", client_id).eq("status", "completed").eq("type", "contribution").limit(1).maybeSingle();
+          if (!hasFirst) {
+            return json({
+              error: `First deposit must be ₦${minReq.toLocaleString("en-NG")} — ₦${expected.toLocaleString("en-NG")} contribution + ₦${regCharge.toLocaleString("en-NG")} registration`,
+              min_amount: minReq,
+              contribution_required: expected,
+              registration_fee: regCharge,
+            }, 400);
+          }
+        }
+      }
+
       const { data: rpcResult } = await sb.rpc("ajo_submit_manual_claim", {
         p_client_id:             client_id,
         p_owner_id:              owner_id,
@@ -429,7 +466,7 @@ serve(async (req) => {
 
       const { data: cl, error: clErr } = await sb
         .from("aso_clients")
-        .select("id, email, contribution_amount, contribution_frequency, user_id, paystack_subaccount_code, full_name, next_contribution_date, ajo_group_id, commission_model")
+        .select("id, email, contribution_amount, contribution_frequency, user_id, paystack_subaccount_code, full_name, next_contribution_date, ajo_group_id, commission_model, registration_charge")
         .eq("id", client_id)
         .maybeSingle();
 
@@ -459,6 +496,41 @@ serve(async (req) => {
           .eq("id", resolvedGroupId)
           .maybeSingle();
         if (grp?.paystack_subaccount_code) subaccountCode = grp.paystack_subaccount_code;
+      }
+
+      // ── Fix 2: Validate group membership and active round before charging ──
+      if (contribution_context === "group_savings" || contribution_context === "esusu_rotation") {
+        if (!resolvedGroupId) {
+          return json({ error: "Select a savings group to contribute to" }, 400);
+        }
+        const { data: gmem } = await sb.from("aso_client_group_memberships")
+          .select("id").eq("client_id", client_id).eq("group_id", resolvedGroupId)
+          .eq("status", "active").maybeSingle();
+        if (!gmem) return json({ error: "This client is not an active member of the selected group" }, 400);
+        if (contribution_context === "esusu_rotation") {
+          const { data: grd } = await sb.from("ajo_group_rounds")
+            .select("id").eq("group_id", resolvedGroupId).eq("status", "active").maybeSingle();
+          if (!grd) return json({ error: "This esusu group has no active round — ask your savings agent to start one" }, 400);
+        }
+      }
+
+      // ── Fix 3: First-deposit minimum before Paystack charges the card ──
+      if (contribution_context === "personal_savings") {
+        const regCharge = Number((cl as Record<string, unknown>).registration_charge || 0);
+        const expected  = Number(cl.contribution_amount || 0);
+        const minReq    = expected + regCharge;
+        if (minReq > 0 && amount < minReq) {
+          const { data: hasFirst } = await sb.from("ajo_contributions")
+            .select("id").eq("aso_client_id", client_id).eq("status", "completed").eq("type", "contribution").limit(1).maybeSingle();
+          if (!hasFirst) {
+            return json({
+              error: `First deposit must be ₦${minReq.toLocaleString("en-NG")} — ₦${expected.toLocaleString("en-NG")} contribution + ₦${regCharge.toLocaleString("en-NG")} registration`,
+              min_amount: minReq,
+              contribution_required: expected,
+              registration_fee: regCharge,
+            }, 400);
+          }
+        }
       }
 
       const psRes = await fetch("https://api.paystack.co/transaction/initialize", {

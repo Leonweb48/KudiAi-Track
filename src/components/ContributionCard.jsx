@@ -40,9 +40,10 @@ function periodEnd(startDate, idx, freq) {
 }
 
 // Returns { periods, cycleStarted }
-// p.paid = completed contributions only; p.pendingAmount/pendingRow for provisional display.
-// allContributions (optional) — the full unfiltered list used only for reversal detection,
-// so that reversal rows without a matching cycle_id are still caught.
+// Sequential allocation model: net client contributions (gross − fees) are
+// allocated to the oldest unfilled period first and roll forward across multiple
+// periods. "paid_in_advance" means a future period has been pre-funded.
+// allContributions (optional) — full unfiltered list used for reversal detection.
 function buildPeriods(cycle, contributions, allContributions) {
   const { start_date, length_periods, expected_amount_per_period, status: cycleStatus } = cycle;
   const freq = cycle.frequency || cycle.contribution_frequency || "monthly";
@@ -56,78 +57,82 @@ function buildPeriods(cycle, contributions, allContributions) {
     periods.push({ idx: i, from, to, paid: 0, pendingAmount: 0, pendingRow: null, rejectedRow: null });
   }
 
-  // Build set of contribution IDs that have a reversal row pointing at them.
-  // Search the FULL contributions list (allContributions) so that reversal rows
-  // without a cycle_id are still found even when cycleContribs filtered them out.
+  // Reversal detection across the full list so rows without cycle_id are caught.
   const reversedIds = new Set(
     (allContributions || contributions)
       .filter(c => c.reverses_contribution_id && typeof c.type === "string" && c.type.startsWith("reversal_"))
       .map(c => c.reverses_contribution_id)
   );
 
-  // Status-split: pending never inflates paid; reversed rows are excluded.
+  // Net client allocation = gross contributions − fees (commission + reg_fee) + fee reversals − reversed contributions.
+  // Day-one collector fee excluded: for first_period cycles the commission goes to
+  // the collector, not the client, so it must not inflate the savings ledger.
+  const ALLOC_SIGNS = {
+    contribution:              1,
+    reversal_contribution:    -1,
+    commission:               -1,
+    registration_fee:         -1,
+    reversal_commission:       1,
+    reversal_registration_fee: 1,
+  };
+  const netClientTotal = Math.max(
+    0,
+    contributions
+      .filter(c => c.status === "completed" && ALLOC_SIGNS[c.type] !== undefined && !reversedIds.has(c.id))
+      .reduce((s, c) => s + Number(c.amount || 0) * ALLOC_SIGNS[c.type], 0)
+  );
+
+  // For first_period, client allocation starts from period 1 (period 0 = collector's).
+  const clientStart = cycle.commission_model === "first_period" ? 1 : 0;
+  let remaining = netClientTotal;
+  for (let i = clientStart; i < periods.length && remaining > 0; i++) {
+    const fill = Math.min(remaining, Number(expected_amount_per_period));
+    periods[i].paid = fill;
+    remaining -= fill;
+  }
+
+  // Pending contributions: provisionally allocated to the next unfilled slot.
+  const pendingContribs = contributions
+    .filter(c => c.type === "contribution" && c.status === "pending" && !reversedIds.has(c.id))
+    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+  let pendingLeft = pendingContribs.reduce((s, c) => s + Number(c.amount || 0), 0);
+  for (let i = clientStart; i < periods.length && pendingLeft > 0; i++) {
+    const p = periods[i];
+    const canFill = Number(expected_amount_per_period) - p.paid;
+    if (canFill <= 0) continue;
+    const fill = Math.min(pendingLeft, canFill);
+    p.pendingAmount = fill;
+    if (!p.pendingRow) p.pendingRow = pendingContribs[0];
+    pendingLeft -= fill;
+  }
+
+  // Carry rejected rows by date (best-effort attribution for UI messaging).
   for (const c of contributions) {
-    if (!c.created_at) continue;
-    if (c.type && c.type !== "contribution") continue;
-    if (reversedIds.has(c.id)) continue;
+    if (c.type !== "contribution" || (c.status !== "rejected" && c.status !== "failed")) continue;
     const dt = new Date(c.created_at);
     for (const p of periods) {
-      if (dt >= p.from && dt < p.to) {
-        if (c.status === "completed") {
-          p.paid += Number(c.amount || 0);
-        } else if (c.status === "pending") {
-          p.pendingAmount += Number(c.amount || 0);
-          if (!p.pendingRow) p.pendingRow = c;
-        } else if (c.status === "rejected" || c.status === "failed") {
-          if (!p.rejectedRow) p.rejectedRow = c;
-        }
-        break;
-      }
+      if (dt >= p.from && dt < p.to) { if (!p.rejectedRow) p.rejectedRow = c; break; }
     }
   }
 
-  // For non-first_period cycles: subtract the registration fee from period 0's paid.
-  // The contribution row records the gross deposit; the net available for savings is
-  // gross − reg_fee. Without this, a first-deposit that barely covers the expected
-  // amount would show "paid" even though ₦reg_fee went to the reg charge, not savings.
-  if (cycle.commission_model !== "first_period" && periods.length > 0) {
-    const regFee = contributions
-      .filter((c) => c.type === "registration_fee" && c.status === "completed")
-      .reduce((s, c) => s + Number(c.amount || 0), 0);
-    if (regFee > 0) {
-      periods[0].paid = Math.max(0, periods[0].paid - regFee);
-    }
-  }
-
-  // Detect whether the collector's Day 1 fee has been (net) collected.
-  // Use commission_balance on the cycle as the signal — it is set to
-  // expected_amount_per_period when the fee is taken and reset to 0 on reversal.
-  // This is more reliable than scanning for commission rows because a reversal
-  // inserts a reversal_commission row without modifying the original.
   const cycleCommissionCollected =
     cycle.commission_model === "first_period" &&
     Number(cycle.commission_balance || 0) >= Number(cycle.expected_amount_per_period || 0) &&
     Number(cycle.expected_amount_per_period || 0) > 0;
 
-  // Cycle is "started" only once at least one completed contribution exists.
-  const cycleStarted = contributions.some(
-    (c) => c.type === "contribution" && c.status === "completed"
-  );
+  const cycleStarted = contributions.some(c => c.type === "contribution" && c.status === "completed");
 
   return {
     cycleStarted,
     periods: periods.map((p) => {
-      // first_period period 0: drive status from commission_balance accumulation.
+      // first_period period 0 is always the collector's slot.
       if (cycle.commission_model === "first_period" && p.idx === 0) {
-        if (cycleCommissionCollected) {
-          return { ...p, status: "collector" };
-        }
+        if (cycleCommissionCollected) return { ...p, status: "collector" };
         const commBalance = Number(cycle.commission_balance || 0);
         if (commBalance > 0) {
           const expected = Number(expected_amount_per_period);
           return { ...p, paid: commBalance, status: commBalance >= expected ? "paid" : "partial" };
         }
-        // commBalance = 0: fall through to normal upcoming / current logic
       }
 
       const expected  = Number(expected_amount_per_period);
@@ -136,14 +141,13 @@ function buildPeriods(cycle, contributions, allContributions) {
 
       let status;
       if (cycleStatus !== "active") {
-        // Closed cycle: only completed counts — pending/rejected revert to missed.
         if (p.paid >= expected) status = "paid";
         else if (p.paid > 0)   status = "partial";
         else                   status = "missed";
       } else if (p.paid >= expected) {
-        status = "paid";
+        status = isFuture ? "paid_in_advance" : "paid";
       } else if (p.pendingAmount > 0) {
-        status = "pending"; // supersedes partial/current — provisional
+        status = "pending";
       } else if (isFuture) {
         status = "upcoming";
       } else if (p.paid > 0) {
@@ -151,7 +155,7 @@ function buildPeriods(cycle, contributions, allContributions) {
       } else if (isCurrent && cycleStarted) {
         status = "current";
       } else if (isCurrent) {
-        status = "upcoming"; // not-started: suppress pulsing active state
+        status = "upcoming";
       } else {
         status = "missed";
       }
@@ -163,33 +167,36 @@ function buildPeriods(cycle, contributions, allContributions) {
 // ── Visual maps ───────────────────────────────────────────────────────────────
 
 const MARK_CLS = {
-  paid:      "bg-emerald-500 text-white",
-  partial:   "bg-amber-400 text-white",
-  pending:   "border-2 border-dashed border-amber-400 dark:border-amber-500 text-amber-500 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20",
-  missed:    "border-2 border-red-300 dark:border-red-700 text-red-400 dark:text-red-500 bg-transparent",
-  current:   "bg-brand-500 text-white ring-2 ring-brand-300 dark:ring-brand-600 animate-pulse",
-  upcoming:  "bg-slate-100 text-slate-400 dark:bg-slate-700 dark:text-slate-500",
-  collector: "bg-[#16255A] text-white dark:bg-[#1E3A6E]",
+  paid:            "bg-emerald-500 text-white",
+  paid_in_advance: "bg-emerald-300 text-emerald-900",
+  partial:         "bg-amber-400 text-white",
+  pending:         "border-2 border-dashed border-amber-400 dark:border-amber-500 text-amber-500 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20",
+  missed:          "border-2 border-red-300 dark:border-red-700 text-red-400 dark:text-red-500 bg-transparent",
+  current:         "bg-brand-500 text-white ring-2 ring-brand-300 dark:ring-brand-600 animate-pulse",
+  upcoming:        "bg-slate-100 text-slate-400 dark:bg-slate-700 dark:text-slate-500",
+  collector:       "bg-[#16255A] text-white dark:bg-[#1E3A6E]",
 };
 
 const MARK_ICON = {
-  paid:      "✓",
-  partial:   "~",
-  pending:   "?",
-  missed:    "✗",
-  current:   "→",
-  upcoming:  "·",
-  collector: "₦",
+  paid:            "✓",
+  paid_in_advance: "✓",
+  partial:         "~",
+  pending:         "?",
+  missed:          "✗",
+  current:         "→",
+  upcoming:        "·",
+  collector:       "₦",
 };
 
 const MARK_LABEL = {
-  paid:      "Paid",
-  partial:   "Partial",
-  pending:   "Pending",
-  missed:    "Missed",
-  current:   "Current",
-  upcoming:  "Upcoming",
-  collector: "Collector's",
+  paid:            "Paid",
+  paid_in_advance: "Paid ahead",
+  partial:         "Partial",
+  pending:         "Pending",
+  missed:          "Missed",
+  current:         "Current",
+  upcoming:        "Upcoming",
+  collector:       "Collector's",
 };
 
 const COLS_BY_FREQ = { daily: 7, weekly: 5, monthly: 4 };
@@ -240,7 +247,7 @@ function commissionAlreadyExecuted(contributions) {
 
 async function exportCardPdf({ cycle, periods, contributions, clientName, businessName }) {
   const freq = cycle.frequency || cycle.contribution_frequency || "monthly";
-  const paid         = periods.filter((p) => p.status === "paid").length;
+  const paid         = periods.filter((p) => p.status === "paid" || p.status === "paid_in_advance").length;
   const partial      = periods.filter((p) => p.status === "partial").length;
   const pending      = periods.filter((p) => p.status === "pending").length;
   const missed       = periods.filter((p) => p.status === "missed").length;
@@ -351,7 +358,7 @@ export default function ContributionCard({
     [cycle, cycleContribs, freq, contributions]
   );
 
-  const paidCount    = periods.filter((p) => p.status === "paid").length;
+  const paidCount    = periods.filter((p) => p.status === "paid" || p.status === "paid_in_advance").length;
   const missedCount  = periods.filter((p) => p.status === "missed").length;
   const partialCount = periods.filter((p) => p.status === "partial").length;
   const pendingCount = periods.filter((p) => p.status === "pending").length;
@@ -571,12 +578,13 @@ export default function ContributionCard({
               <div className="flex justify-between">
                 <span className="text-slate-500 dark:text-slate-400">Status</span>
                 <span className={`font-semibold ${
-                  selected.status === "paid"      ? "text-emerald-600"
-                  : selected.status === "missed"    ? "text-red-500"
-                  : selected.status === "partial"   ? "text-amber-500"
-                  : selected.status === "pending"   ? "text-amber-400"
-                  : selected.status === "current"   ? "text-brand-500"
-                  : selected.status === "collector" ? "text-[#16255A] dark:text-[#8EA3D4]"
+                  selected.status === "paid"            ? "text-emerald-600"
+                  : selected.status === "paid_in_advance" ? "text-emerald-500"
+                  : selected.status === "missed"          ? "text-red-500"
+                  : selected.status === "partial"         ? "text-amber-500"
+                  : selected.status === "pending"         ? "text-amber-400"
+                  : selected.status === "current"         ? "text-brand-500"
+                  : selected.status === "collector"       ? "text-[#16255A] dark:text-[#8EA3D4]"
                   : "text-slate-400"
                 }`}>{MARK_LABEL[selected.status]}</span>
               </div>
