@@ -129,7 +129,7 @@ serve(async (req) => {
       "get-client","get-contributions","get-active-cycle","get-owner-info",
       "request-withdrawal","get-withdrawal-requests","submit-manual-claim",
       "initialize-payment","confirm-payment","submit-dispute",
-      "get-goal","set-goal","delete-goal","get-txn-pin-status","set-txn-pin",
+      "get-goal","set-goal","delete-goal","get-txn-pin-status","set-txn-pin","verify-txn-pin",
       "upload-avatar","update-profile","log-profile-update",
       "send-profile-otp","verify-profile-otp",
       "send-txn-pin-otp","verify-txn-pin-otp",
@@ -1049,6 +1049,17 @@ serve(async (req) => {
       }
       await sb.from("aso_clients").update({ portal_pin: new_pin, portal_pin_changed_at: new Date().toISOString() }).eq("id", client_id);
       return json({ success: true });
+    }
+
+    // ── Verify portal transaction PIN (checks aso_clients.portal_pin) ─────────
+    if (action === "verify-txn-pin") {
+      const { client_id, pin } = body as { client_id: string; pin: string };
+      if (!client_id || !pin) return json({ error: "client_id and pin required" }, 400);
+      const { data: cl } = await sb.from("aso_clients").select("portal_pin").eq("id", client_id).maybeSingle();
+      if (!cl) return json({ error: "Client not found" }, 404);
+      if (!cl.portal_pin) return json({ ok: true, no_pin: true });
+      if (cl.portal_pin !== pin) return json({ ok: false, error: "Incorrect PIN" });
+      return json({ ok: true });
     }
 
     // ── Avatar upload (service-role bypasses storage RLS) ────────────────────

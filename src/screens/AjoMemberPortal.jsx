@@ -670,6 +670,123 @@ function SupportInline({ client, session }) {
   );
 }
 
+// ── Portal-aware transaction PIN modal ───────────────────────────────────────
+// Verifies against aso_clients.portal_pin (via ajo-portal verify-txn-pin).
+// If the client has no PIN set (portal_pin_changed_at is null), auto-approves.
+const SHAKE_CSS = `@keyframes _shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)}}.ajo-pin-shake{animation:_shake 0.5s ease}`;
+const PAD_DIGITS = [1,2,3,4,5,6,7,8,9];
+
+function AjoTxnPinModal({ clientId, hasPinSet, title, amount, description, onApprove, onCancel }) {
+  const [pin, setPin] = useState("");
+  const [err, setErr] = useState("");
+  const [shake, setShake] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!hasPinSet) { onApprove?.(); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const triggerShake = useCallback(() => {
+    setShake(true);
+    setTimeout(() => setShake(false), 600);
+  }, []);
+
+  const handleVerify = useCallback(async (entered) => {
+    setBusy(true);
+    try {
+      const res = await ajoFn("verify-txn-pin", { client_id: clientId, pin: entered });
+      if (res?.ok) { onApprove?.(); return; }
+      triggerShake();
+      setPin("");
+      setErr("Incorrect PIN — try again.");
+    } catch {
+      triggerShake();
+      setPin("");
+      setErr("Something went wrong. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  }, [clientId, onApprove, triggerShake]);
+
+  const handleDigit = useCallback((d) => {
+    if (busy || pin.length >= 4) return;
+    const next = pin + d;
+    setPin(next);
+    setErr("");
+    if (next.length === 4) setTimeout(() => handleVerify(next), 150);
+  }, [busy, pin, handleVerify]);
+
+  const handleDel = useCallback(() => {
+    if (busy) return;
+    setPin(p => p.slice(0, -1));
+    setErr("");
+  }, [busy]);
+
+  if (!hasPinSet) return null;
+
+  return (
+    <>
+      <style>{SHAKE_CSS}</style>
+      <div onClick={onCancel} className="fixed inset-0 bg-black/55" style={{ zIndex: 300 }} />
+      <div className="fixed left-0 right-0 bottom-0 bg-white dark:bg-slate-900 rounded-t-3xl shadow-2xl"
+        style={{ zIndex: 301, paddingBottom: "env(safe-area-inset-bottom, 16px)", animation: "slideUp 0.28s cubic-bezier(0.34,1.56,0.64,1)" }}>
+        <style>{`@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}`}</style>
+        <div className="flex justify-center pt-3 pb-2">
+          <div className="w-10 h-1 bg-slate-200 dark:bg-slate-700 rounded-full" />
+        </div>
+        <p className="text-center font-bold text-[17px] text-slate-900 dark:text-slate-100 px-6 mb-4">{title}</p>
+        {(amount != null || description) && (
+          <div className="mx-4 mb-5 bg-slate-50 dark:bg-slate-800 rounded-2xl p-4">
+            {amount != null && (
+              <p className="text-center text-[28px] font-extrabold text-brand-500 mb-2">
+                ₦{(amount / 100).toLocaleString("en-NG", { minimumFractionDigits: 2 })}
+              </p>
+            )}
+            {description && (
+              <p className="text-center text-[12px] text-slate-500 dark:text-slate-400">{description}</p>
+            )}
+          </div>
+        )}
+        <div className="flex flex-col items-center gap-4 px-6">
+          <p className="text-[13px] text-slate-500 text-center">Enter your transaction PIN to confirm</p>
+          {busy
+            ? <div className="w-6 h-6 border-2 border-slate-200 border-t-brand-500 rounded-full animate-spin" />
+            : <div className={`flex justify-center gap-4 ${shake ? "ajo-pin-shake" : ""}`}>
+                {[0,1,2,3].map(i => (
+                  <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all duration-150 ${
+                    pin.length > i ? "scale-110" : "border-slate-300 dark:border-slate-600 bg-transparent"
+                  }`} style={pin.length > i ? { background: "var(--brand-green)", borderColor: "var(--brand-green)" } : undefined} />
+                ))}
+              </div>
+          }
+          {err && <p className="text-[12px] font-semibold text-red-500 text-center -mt-2">{err}</p>}
+          <div className="grid grid-cols-3 gap-2.5 w-full max-w-[280px]">
+            {PAD_DIGITS.map(n => (
+              <button key={n} onClick={() => handleDigit(String(n))}
+                className="h-14 rounded-[14px] bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 text-slate-900 dark:text-slate-100 text-[19px] font-bold transition-all duration-100">
+                {n}
+              </button>
+            ))}
+            <div />
+            <button onClick={() => handleDigit("0")}
+              className="h-14 rounded-[14px] bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 text-slate-900 dark:text-slate-100 text-[19px] font-bold transition-all duration-100">
+              0
+            </button>
+            <button onClick={handleDel}
+              className="h-14 rounded-[14px] bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 text-slate-600 dark:text-slate-400 flex items-center justify-center transition-all duration-100">
+              <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 4H8l-7 8 7 8h13a2 2 0 002-2V6a2 2 0 00-2-2z" /><line x1="18" y1="9" x2="13" y2="14" /><line x1="13" y1="9" x2="18" y2="14" />
+              </svg>
+            </button>
+          </div>
+          <button onClick={onCancel} className="text-sm text-slate-400 py-2 px-6 mb-1">Cancel</button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ── Pay Contribution modal ────────────────────────────────────────────────
 // Contribution type selector — shown only when client is in a group (2 options)
 function ContribTypeSelector({ clientGroups = [], value, selectedGroupId, onChange }) {
@@ -973,10 +1090,12 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], onClose,
           onClick={() => {
             const amt = parseFloat(customAmt);
             if (!amt || amt <= 0) { setMessage("Please enter a valid amount."); return; }
+            const hasPinSet = Boolean(client?.portal_pin_changed_at);
             setTxnPin({
               title: "Confirm Contribution",
               amount: Math.round(amt * 100),
               description: "Savings contribution via Paystack",
+              hasPinSet,
               onApprove: () => { setTxnPin(null); handlePay(); },
             });
           }}
@@ -991,7 +1110,7 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], onClose,
           className="w-full mt-3 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition text-center py-2">
           Cancel
         </button>
-        {txnPin && <TransactionPinModal {...txnPin} onCancel={() => setTxnPin(null)} />}
+        {txnPin && <AjoTxnPinModal {...txnPin} clientId={client?.id} onCancel={() => setTxnPin(null)} />}
       </div>
     </div>
   );
@@ -1756,6 +1875,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
             title: "Request Withdrawal",
             amount: Math.round(netAmt * 100),
             description: "Savings withdrawal request",
+            hasPinSet: Boolean(client?.portal_pin_changed_at),
             onApprove: () => { setTxnPin(null); handleSubmit(); },
           });
         }}
@@ -2084,7 +2204,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
         )}
       </div>
     </div>
-    {txnPin && <TransactionPinModal {...txnPin} onCancel={() => setTxnPin(null)} />}
+    {txnPin && <AjoTxnPinModal {...txnPin} clientId={client?.id} onCancel={() => setTxnPin(null)} />}
     </>
   );
 }
