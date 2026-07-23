@@ -655,6 +655,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
   // Ajo Groups management
   const [showGroups,           setShowGroups]           = useState(false);
+  const groupsBackdropDown     = useRef(false);
   const [groups,               setGroups]               = useState([]);
   const [groupsLoading,        setGroupsLoading]        = useState(false);
   const [showGroupAdd,         setShowGroupAdd]         = useState(false);
@@ -3578,7 +3579,9 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
       {/* ── Ajo Groups Management Modal ─────────────────────────────────── */}
       {showGroups && isOwner && (
-        <div className="fixed inset-0 z-sub-sheet bg-black/50 flex items-end justify-center" onClick={e => { if (e.target === e.currentTarget) setShowGroups(false); }}>
+        <div className="fixed inset-0 z-sub-sheet bg-black/50 flex items-end justify-center"
+          onPointerDown={e => { groupsBackdropDown.current = (e.target === e.currentTarget); }}
+          onClick={e => { if (e.target === e.currentTarget && groupsBackdropDown.current) { groupsBackdropDown.current = false; setShowGroups(false); } }}>
           <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-t-3xl shadow-2xl flex flex-col" style={{ maxHeight: "90dvh" }}>
             {/* Header */}
             <div className="flex items-center gap-3 px-5 pt-5 pb-3 border-b border-slate-100 dark:border-slate-700 flex-shrink-0">
