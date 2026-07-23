@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { supabase } from "../utils/supabase";
 import Field from "../components/shared/Field";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
@@ -172,6 +172,7 @@ export default function Onboarding({ session, onComplete }) {
   const [nin,            setNin]            = useState("");
   const [profileFile,    setProfileFile]    = useState(null);
   const [profilePreview, setProfilePreview] = useState(null);
+  const photoRef = useRef(null);
 
   /* ── Step 2 — Business Logo (optional) ─────────── */
   const [logoFile,    setLogoFile]    = useState(null);
@@ -375,11 +376,15 @@ export default function Onboarding({ session, onComplete }) {
 
         {/* ── Step 1 — Personal / KYC ──────────────────────── */}
         {step === 1 && (
+          <>
+            {/* Hidden file input lives OUTSIDE the form so Android WebView cannot
+                fire a spurious form-submit event when the native file picker closes */}
+            <input ref={photoRef} type="file" accept="image/*" className="hidden" onChange={handlePhoto} />
           <form onSubmit={handleStep1} className="flex-1 overflow-y-auto px-5 py-5 space-y-4 pb-10 bg-white dark:bg-slate-900">
 
             {/* Profile photo */}
             <div className="flex flex-col items-center pb-2">
-              <label className="relative cursor-pointer group">
+              <div className="relative cursor-pointer group" onClick={() => photoRef.current?.click()}>
                 <div className={`w-28 h-28 rounded-full overflow-hidden flex items-center justify-center transition-all
                   ${profilePreview
                     ? "border-2 border-green-500"
@@ -401,8 +406,7 @@ export default function Onboarding({ session, onComplete }) {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
                   </svg>
                 </span>
-                <input type="file" accept="image/*" className="hidden" onChange={handlePhoto} />
-              </label>
+              </div>
               <p className="text-xs font-semibold text-gray-600 dark:text-slate-300 mt-2">
                 Profile Photo <span className="text-red-500">*</span>
               </p>
@@ -467,6 +471,7 @@ export default function Onboarding({ session, onComplete }) {
               Next — Business Registration →
             </button>
           </form>
+          </>
         )}
 
         {/* ── Step 2 — Business Registration ───────────────── */}
