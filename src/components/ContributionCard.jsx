@@ -223,11 +223,17 @@ export default function ContributionCard({
   // (cycle predates attribution tracking — all historical rows lack cycle_id).
   // When direct hits exist, null-cycle_id rows belong to an indeterminate cycle and must
   // NOT be pulled in, otherwise the first card inflates to the client's lifetime total.
+  // Always exclude group_savings and esusu_rotation rows — those have cycle_id=null by
+  // design but belong to a group/esusu context, never to a personal savings cycle.
   const cycleContribs = useMemo(() => {
     if (!cycle?.id) return contributions;
     const direct = contributions.filter(c => c.cycle_id === cycle.id);
     if (isLegacyCycle && direct.length === 0) {
-      return contributions.filter(c => !c.cycle_id);
+      return contributions.filter(c =>
+        !c.cycle_id &&
+        c.contribution_context !== "group_savings" &&
+        c.contribution_context !== "esusu_rotation"
+      );
     }
     return direct;
   }, [contributions, cycle?.id, isLegacyCycle]);
