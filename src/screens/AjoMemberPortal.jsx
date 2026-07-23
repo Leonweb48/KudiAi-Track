@@ -2102,6 +2102,24 @@ function OverviewTab({ client, contributions, cycles = [], rotationsData = [], r
   const [balanceHidden, setBalanceHidden] = useState(() =>
     sessionStorage.getItem("ajo_balance_hidden") === "1"
   );
+  const [savingsDash, setSavingsDash] = useState(null); // { grp, myTotal, details:{loading,pot,members} }
+
+  const openSavingsDash = async (grp, myTotal) => {
+    setSavingsDash({ grp, myTotal, details: { loading: true, pot: 0, members: [] } });
+    try {
+      const data = await ajoFn("get-savings-group-details", { group_id: grp.id, client_id: client.id });
+      setSavingsDash(prev =>
+        prev?.grp?.id === grp.id
+          ? { ...prev, details: { loading: false, pot: data.pot || 0, members: data.members || [] } }
+          : prev
+      );
+    } catch {
+      setSavingsDash(prev =>
+        prev?.grp?.id === grp.id ? { ...prev, details: { loading: false, pot: 0, members: [] } } : prev
+      );
+    }
+  };
+
   const [feeCardDismissed, setFeeCardDismissed] = useState(() =>
     !client?.id || localStorage.getItem("ajo_fee_intro_" + client.id) === "1"
   );
@@ -2699,9 +2717,188 @@ function OverviewTab({ client, contributions, cycles = [], rotationsData = [], r
                 {fmt(grp.contribution_amount)} / {grp.contribution_frequency || "period"}
               </p>
             )}
+
+            {/* Dashboard entry */}
+            <button
+              type="button"
+              onClick={() => openSavingsDash(grp, myTotal)}
+              className="w-full pt-2 pb-0.5 flex items-center justify-center gap-1.5 text-[11px] font-bold text-brand-600 dark:text-brand-400 active:opacity-70 transition">
+              <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>
+              </svg>
+              View Group Dashboard
+            </button>
           </div>
         );
       })}
+
+      {/* ── Savings group dashboard overlay ── */}
+      {savingsDash && (() => {
+        const { grp, myTotal, details } = savingsDash;
+        const rs       = grp.round_status || "not_started";
+        const target   = Number(grp.target_amount || 0);
+        const pot      = details.pot || 0;
+        const pct      = target > 0 ? Math.min(100, (pot / target) * 100) : 0;
+        const myPct    = pot > 0 ? Math.round((myTotal / pot) * 100) : 0;
+        const daysLeft = grp.target_deadline
+          ? Math.ceil((new Date(grp.target_deadline) - new Date()) / 86400000)
+          : null;
+        const sortedMembers = [...(details.members || [])].sort((a, b) => (b.contributed || 0) - (a.contributed || 0));
+        const maxContrib    = Math.max(...sortedMembers.map(m => m.contributed || 0), 1);
+        const statusMap = {
+          not_started: { label: "Not Started",  pill: "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400" },
+          active:      { label: "Active",        pill: "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400" },
+          target_met:  { label: "Target Met ✓",  pill: "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300" },
+          closed:      { label: "Closed",        pill: "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400" },
+        };
+        const st = statusMap[rs] || statusMap.not_started;
+        return (
+          <div className="fixed inset-0 z-[60] bg-black/60 flex items-end justify-center">
+            <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-t-3xl shadow-2xl flex flex-col" style={{ maxHeight: "92dvh" }}>
+              {/* Header */}
+              <div className="flex items-center gap-3 px-5 pt-5 pb-3 border-b border-slate-100 dark:border-slate-700 flex-shrink-0">
+                <button type="button" onClick={() => setSavingsDash(null)}
+                  className="w-9 h-9 bg-slate-100 dark:bg-slate-700 rounded-xl flex items-center justify-center flex-shrink-0 active:scale-95 transition">
+                  <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+                </button>
+                <div className="flex-1 min-w-0">
+                  <p className="font-extrabold text-slate-800 dark:text-white text-sm truncate">{grp.name}</p>
+                  <span className={`inline-block text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wide mt-0.5 ${st.pill}`}>{st.label}</span>
+                </div>
+                <button type="button" onClick={() => setSavingsDash(null)}
+                  className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-500">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="w-3.5 h-3.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
+
+              {/* Scrollable content */}
+              <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+                {details.loading ? (
+                  <div className="flex justify-center py-12">
+                    <div className="w-7 h-7 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+                  </div>
+                ) : (
+                  <>
+                    {/* Hero */}
+                    <div className="bg-gradient-to-br from-slate-800 to-slate-900 dark:from-slate-700 dark:to-slate-800 rounded-2xl p-5 text-white">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Group Total Saved</p>
+                      <p className="text-3xl font-extrabold tabular-nums leading-none">{fmt(pot)}</p>
+                      {target > 0 && (
+                        <p className="text-[11px] text-slate-400 mt-1">of {fmt(target)} target · <span className="text-white font-bold">{Math.round(pct)}%</span></p>
+                      )}
+                      <div className="mt-3 pt-3 border-t border-white/10 flex items-center justify-between">
+                        <div>
+                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">My Contribution</p>
+                          <p className="text-base font-extrabold tabular-nums">{fmt(myTotal)}</p>
+                        </div>
+                        {pot > 0 && (
+                          <span className="text-[10px] font-bold text-slate-300 bg-white/10 px-2 py-1 rounded-full">{myPct}% of pot</span>
+                        )}
+                      </div>
+                      {rs === "active" && daysLeft !== null && daysLeft >= 0 && (
+                        <div className="flex items-center gap-1.5 mt-2">
+                          <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                          <span className="text-[10px] text-green-400 font-bold">{daysLeft} days remaining</span>
+                        </div>
+                      )}
+                      {daysLeft !== null && daysLeft < 0 && (rs === "active" || rs === "target_met") && (
+                        <div className="flex items-center gap-1.5 mt-2">
+                          <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                          <span className="text-[10px] text-amber-400 font-bold">Deadline passed</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Progress bar */}
+                    {target > 0 && (
+                      <div>
+                        <div className="h-3 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all duration-700 ${rs === "target_met" ? "bg-gradient-to-r from-blue-400 to-blue-600" : "bg-gradient-to-r from-green-400 to-green-600"}`}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                        <div className="flex items-center justify-between mt-1">
+                          <span className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold">{fmt(pot)} raised</span>
+                          <span className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold">{fmt(Math.max(0, target - pot))} to go</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Stats grid */}
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { label: "Members",      value: String(sortedMembers.length) },
+                        { label: "Days Left",    value: daysLeft !== null ? (daysLeft >= 0 ? `${daysLeft}d` : "Overdue") : "—" },
+                        { label: "Contribution", value: grp.contribution_amount ? fmt(grp.contribution_amount) : "—" },
+                        { label: "Frequency",    value: grp.contribution_frequency || "—" },
+                      ].map(({ label, value }) => (
+                        <div key={label} className="bg-slate-50 dark:bg-slate-800/60 rounded-xl px-3 py-2.5 border border-slate-100 dark:border-slate-700">
+                          <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide">{label}</p>
+                          <p className="text-sm font-extrabold text-slate-800 dark:text-white mt-0.5 capitalize tabular-nums">{value}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Saving strength */}
+                    {sortedMembers.length > 0 && (
+                      <div>
+                        <p className="text-[10px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2">Saving Strength</p>
+                        <div className="space-y-2">
+                          {sortedMembers.map((m, idx) => {
+                            const contributed = m.contributed ?? null;
+                            const barPct   = contributed !== null && maxContrib > 0 ? (contributed / maxContrib) * 100 : 0;
+                            const sharePct = contributed !== null && pot > 0 ? Math.round((contributed / pot) * 100) : null;
+                            const barColor = idx === 0
+                              ? "bg-gradient-to-r from-amber-400 to-amber-500"
+                              : m.is_me
+                                ? "bg-gradient-to-r from-brand-400 to-brand-600"
+                                : "bg-gradient-to-r from-green-400 to-green-500";
+                            return (
+                              <div key={m.client_id} className={`rounded-xl px-3 py-2.5 border ${m.is_me ? "bg-brand-50 dark:bg-brand-900/20 border-brand-200 dark:border-brand-800" : "bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700"}`}>
+                                <div className="flex items-center justify-between mb-1.5">
+                                  <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                                    <span className="text-[10px] font-extrabold text-slate-400 dark:text-slate-500 tabular-nums flex-shrink-0 w-5">#{idx + 1}</span>
+                                    <p className={`text-[11px] font-extrabold truncate ${m.is_me ? "text-brand-700 dark:text-brand-300" : "text-slate-800 dark:text-white"}`}>
+                                      {m.full_name}{m.is_me ? " (You)" : ""}
+                                    </p>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                                    {contributed !== null ? (
+                                      <span className="text-[10px] font-extrabold text-slate-600 dark:text-slate-300 tabular-nums">{fmt(contributed)}</span>
+                                    ) : (
+                                      <span className="text-[10px] text-slate-400">Hidden</span>
+                                    )}
+                                    {sharePct !== null && (
+                                      <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded-full">{sharePct}%</span>
+                                    )}
+                                  </div>
+                                </div>
+                                {contributed !== null && (
+                                  <div className="h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                                    <div className={`h-full rounded-full transition-all duration-500 ${barColor}`} style={{ width: `${barPct}%` }} />
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {grp.started_at && (
+                      <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center">
+                        Round started {new Date(grp.started_at).toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" })}
+                      </p>
+                    )}
+                    <div className="h-4" />
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Activity calendar (always shown) */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-4 border border-slate-100 dark:border-slate-700">

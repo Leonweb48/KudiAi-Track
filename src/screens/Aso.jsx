@@ -3679,9 +3679,9 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                         {/* Hero */}
                         <div className="bg-gradient-to-br from-slate-800 to-slate-900 dark:from-slate-700 dark:to-slate-800 rounded-2xl p-5 text-white">
                           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total Saved</p>
-                          <p className="text-3xl font-extrabold tabular-nums leading-none">₦{fmt(pot)}</p>
+                          <p className="text-3xl font-extrabold tabular-nums leading-none">{fmt(pot)}</p>
                           {target > 0 && (
-                            <p className="text-[11px] text-slate-400 mt-1">of ₦{fmt(target)} target · <span className="text-white font-bold">{Math.round(pct)}%</span></p>
+                            <p className="text-[11px] text-slate-400 mt-1">of {fmt(target)} target · <span className="text-white font-bold">{Math.round(pct)}%</span></p>
                           )}
                           {rs === "active" && daysLeft !== null && daysLeft >= 0 && (
                             <div className="flex items-center gap-1.5 mt-2">
@@ -3707,8 +3707,8 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                               />
                             </div>
                             <div className="flex items-center justify-between mt-1">
-                              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold">₦{fmt(pot)} raised</span>
-                              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold">₦{fmt(Math.max(0, target - pot))} to go</span>
+                              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold">{fmt(pot)} raised</span>
+                              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold">{fmt(Math.max(0, target - pot))} to go</span>
                             </div>
                           </div>
                         )}
@@ -3718,7 +3718,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                           {[
                             { label: "Members", value: String((det.members || []).length) },
                             { label: "Days Left", value: daysLeft !== null ? (daysLeft >= 0 ? `${daysLeft}d` : "Overdue") : "—" },
-                            { label: "Contribution", value: dashGrp.contribution_amount ? `₦${fmt(dashGrp.contribution_amount)}` : "—" },
+                            { label: "Contribution", value: dashGrp.contribution_amount ? fmt(dashGrp.contribution_amount) : "—" },
                             { label: "Frequency", value: dashGrp.contribution_frequency || "—" },
                           ].map(({ label, value }) => (
                             <div key={label} className="bg-slate-50 dark:bg-slate-800/60 rounded-xl px-3 py-2.5 border border-slate-100 dark:border-slate-700">
@@ -3754,7 +3754,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                                         <p className="text-[11px] font-extrabold text-slate-800 dark:text-white truncate">{m.full_name}</p>
                                       </div>
                                       <div className="flex items-center gap-1.5 flex-shrink-0">
-                                        <span className="text-[10px] font-extrabold text-slate-600 dark:text-slate-300 tabular-nums">₦{fmt(m.contributed)}</span>
+                                        <span className="text-[10px] font-extrabold text-slate-600 dark:text-slate-300 tabular-nums">{fmt(m.contributed)}</span>
                                         <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded-full">{sharePct}%</span>
                                         {isActive && (
                                           <button

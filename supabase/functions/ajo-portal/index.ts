@@ -875,6 +875,69 @@ serve(async (req) => {
       return json({ group: grGroup, round: grRound || null, turns, members: memberList, contribution_ticks, pot_size, pending_debts });
     }
 
+    // ── Savings group dashboard details (pot + member strength) ──────────
+    if (action === "get-savings-group-details") {
+      const { group_id: sgGid, client_id: sgCid } = body as { group_id?: string; client_id?: string };
+      if (!sgGid || !sgCid) return json({ error: "group_id and client_id required" }, 400);
+
+      const { data: sgGrp } = await sb.from("ajo_groups")
+        .select("id, round_status, target_amount, target_deadline, started_at, contribution_amount, contribution_frequency, privacy_show_names, privacy_show_amounts")
+        .eq("id", sgGid).maybeSingle();
+      if (!sgGrp) return json({ error: "Group not found" }, 404);
+
+      // Verify caller is an active member
+      const { data: sgJoin } = await sb.from("aso_client_group_memberships")
+        .select("id").eq("client_id", sgCid).eq("group_id", sgGid).eq("status", "active").maybeSingle();
+      if (!sgJoin) {
+        const { data: sgLeg } = await sb.from("aso_clients").select("ajo_group_id").eq("id", sgCid).maybeSingle();
+        if (!sgLeg || (sgLeg as { ajo_group_id?: string }).ajo_group_id !== sgGid)
+          return json({ error: "Access denied" }, 403);
+      }
+
+      // All active members
+      const { data: sgMemRows } = await sb.from("aso_client_group_memberships")
+        .select("client_id").eq("group_id", sgGid).eq("status", "active");
+      const sgMemberIds = (sgMemRows || []).map((m: { client_id: string }) => m.client_id);
+      let sgMembers: Array<{ id: string; full_name: string }> = [];
+      if (sgMemberIds.length > 0) {
+        const { data: mData } = await sb.from("aso_clients").select("id, full_name").in("id", sgMemberIds);
+        sgMembers = (mData || []) as Array<{ id: string; full_name: string }>;
+      }
+
+      // Contributions since round started
+      const since = (sgGrp as { started_at?: string }).started_at || "1970-01-01";
+      const { data: sgCtribs } = await sb.from("ajo_contributions")
+        .select("aso_client_id, amount")
+        .eq("group_id", sgGid)
+        .eq("contribution_context", "group_savings")
+        .eq("type", "contribution")
+        .eq("status", "completed")
+        .gte("created_at", since);
+
+      const totByClient: Record<string, number> = {};
+      (sgCtribs || []).forEach((r: { aso_client_id: string; amount: number }) => {
+        totByClient[r.aso_client_id] = (totByClient[r.aso_client_id] || 0) + Number(r.amount);
+      });
+      const pot = Object.values(totByClient).reduce((s, v) => s + v, 0);
+
+      const showNames   = (sgGrp as { privacy_show_names?: boolean }).privacy_show_names   !== false;
+      const showAmounts = (sgGrp as { privacy_show_amounts?: boolean }).privacy_show_amounts !== false;
+
+      const members = sgMembers.map((m: { id: string; full_name: string }) => {
+        const isMe = m.id === sgCid;
+        return {
+          client_id:   m.id,
+          is_me:       isMe,
+          full_name:   (showNames || isMe)
+            ? m.full_name
+            : m.full_name.split(" ").map((w: string, i: number) => i === 0 ? w : w[0] + ".").join(" "),
+          contributed: (showAmounts || isMe) ? (totByClient[m.id] || 0) : null,
+        };
+      });
+
+      return json({ pot, members });
+    }
+
     // ── Submit a dispute ticket for a contribution ────────────────────────
     if (action === "submit-dispute") {
       const { client_id, owner_id, contribution_id, description } = body as {
