@@ -1267,7 +1267,6 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       setShowGroupAdd(false);
       setGf(BLANK_GROUP);
       setResolvedName("");
-      loadGroups();
     } catch (e) {
       setGroupError(e.message || "Failed to save group");
     } finally {
