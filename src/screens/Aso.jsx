@@ -848,13 +848,28 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     if (!profile?.id) return;
     setGroupsLoading(true);
     try {
-      const { data: grps } = await supabase
+      const BASE_SELECT = "id, owner_id, name, description, is_active, group_mode, contribution_amount, contribution_frequency, percentage_charge, bank_code, account_number, account_name, bank_name, paystack_subaccount_code, privacy_show_names, privacy_show_amounts, created_at";
+      const LIFECYCLE   = ", round_status, target_amount, target_deadline, started_at, closed_at";
+      const { data: grps, error } = await supabase
         .from("ajo_groups")
-        .select("id, owner_id, name, description, is_active, group_mode, contribution_amount, contribution_frequency, percentage_charge, bank_code, account_number, account_name, bank_name, paystack_subaccount_code, privacy_show_names, privacy_show_amounts, created_at, round_status, target_amount, target_deadline, started_at, closed_at")
+        .select(BASE_SELECT + LIFECYCLE)
         .eq("owner_id", profile.id)
         .eq("is_active", true)
         .order("created_at", { ascending: true });
-      setGroups(grps || []);
+      if (error) {
+        console.error("loadGroups (full):", error);
+        // Lifecycle columns may not be in schema cache yet — fall back to base columns
+        const { data: fallback, error: e2 } = await supabase
+          .from("ajo_groups")
+          .select(BASE_SELECT)
+          .eq("owner_id", profile.id)
+          .eq("is_active", true)
+          .order("created_at", { ascending: true });
+        if (e2) console.error("loadGroups (fallback):", e2);
+        setGroups(fallback || []);
+      } else {
+        setGroups(grps || []);
+      }
     } catch (e) {
       console.error("loadGroups:", e);
     } finally {
@@ -1097,11 +1112,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     setStartRoundGid(null);
     setStartRoundTarget(""); setStartRoundDeadline("");
     setStartRoundMsg({ id: null, text: "", ok: false });
-    // Reload groups to reflect new round_status
-    const { data: fresh } = await supabase.from("ajo_groups")
-      .select("id, owner_id, name, description, is_active, group_mode, contribution_amount, contribution_frequency, percentage_charge, bank_code, account_number, account_name, bank_name, paystack_subaccount_code, privacy_show_names, privacy_show_amounts, created_at, round_status, target_amount, target_deadline, started_at, closed_at")
-      .eq("owner_id", profile.id).eq("is_active", true).order("created_at", { ascending: false });
-    if (fresh) setGroups(fresh);
+    await loadGroups();
     loadSavingsDetails(grpId, data?.started_at);
   };
 
@@ -1115,10 +1126,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           body: { action: "close_savings_round", group_id: grpId },
         });
         if (error || !data?.ok) throw new Error(data?.error || error?.message || "Failed to close round");
-        const { data: fresh } = await supabase.from("ajo_groups")
-          .select("id, owner_id, name, description, is_active, group_mode, contribution_amount, contribution_frequency, percentage_charge, bank_code, account_number, account_name, bank_name, paystack_subaccount_code, privacy_show_names, privacy_show_amounts, created_at, round_status, target_amount, target_deadline, started_at, closed_at")
-          .eq("owner_id", profile.id).eq("is_active", true).order("created_at", { ascending: false });
-        if (fresh) setGroups(fresh);
+        await loadGroups();
         setSavingsDetails(p => ({ ...p, [grpId]: undefined }));
       },
     });
