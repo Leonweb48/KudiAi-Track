@@ -463,7 +463,7 @@ serve(async (req: Request) => {
     const acAmt    = Number(acContrib.amount).toLocaleString("en-NG");
 
     // Fetch email context + client userId in parallel, then fire all side
-    // effects in parallel.  A 3.5 s race cap ensures the response is always
+    // effects in parallel.  A 2.5 s race cap ensures the response is always
     // returned promptly — a slow email endpoint never triggers a function timeout.
     await Promise.race([
       (async () => {
@@ -500,7 +500,7 @@ serve(async (req: Request) => {
         }
         await Promise.allSettled(effects);
       })().catch(() => null),
-      new Promise<void>(r => setTimeout(r, 3500)),
+      new Promise<void>(r => setTimeout(r, 2500)),
     ]);
 
     return json(acData);
@@ -747,7 +747,7 @@ serve(async (req: Request) => {
       return json({ ok: false, error: rpcErr }, 400);
     }
 
-    // Fetch context then fire all post-withdrawal side effects in parallel with a 3.5 s cap
+    // Fetch context then fire all post-withdrawal side effects in parallel with a 2.5 s cap
     await Promise.race([
       (async () => {
         const [ctx, rwApprClientUserId] = await Promise.all([
@@ -791,7 +791,7 @@ serve(async (req: Request) => {
           });
         }
       })().catch(() => null),
-      new Promise<void>(r => setTimeout(r, 3500)),
+      new Promise<void>(r => setTimeout(r, 2500)),
     ]);
 
     return json(data);
@@ -846,7 +846,7 @@ serve(async (req: Request) => {
           }),
         ]);
       })().catch(() => null),
-      new Promise<void>(r => setTimeout(r, 3500)),
+      new Promise<void>(r => setTimeout(r, 2500)),
     ]);
 
     return json({ ok: true });
@@ -1013,27 +1013,36 @@ serve(async (req: Request) => {
     if (error) return json({ ok: false, error: error.message });
     if (!data?.ok) return json({ ok: false, error: data?.error || "Failed to confirm" });
 
-    // Fire confirmation email to client — non-blocking
-    const ctx = await fetchEmailContext(sb, claim.aso_client_id, ownerId, user.id);
-    await fireAjoEmail("ajo_manual_deposit_confirmed", {
-      client_email:  ctx.clientEmail,
-      client_name:   ctx.clientName,
-      user_email:    ctx.ownerEmail,
-      business_name: ctx.businessName,
-      staff_email:   ctx.staffEmail,
-      staff_name:    ctx.staffName,
-      amount:        data?.amount,
-      reg_fee:       data?.reg_fee || 0,
-      new_balance:   data?.new_balance,
-      date:          new Date().toLocaleDateString("en-NG"),
-    });
-
-    const mdClientUserId = await resolveClientUserId(sb, claim.aso_client_id);
-    await notifyUser(sb, mdClientUserId, {
-      type: "deposit_confirmed", title: "Deposit Confirmed",
-      body: `Your deposit of ₦${Number(data?.amount).toLocaleString("en-NG")} was confirmed and credited`,
-      priority: "high", deepLink: { tab: "contributions" },
-    });
+    // Fire confirmation email + push notification — capped at 2.5 s so a slow
+    // email endpoint never causes a client-side WebView timeout (10 s budget).
+    await Promise.race([
+      (async () => {
+        const [ctx, mdClientUserId] = await Promise.all([
+          fetchEmailContext(sb, claim.aso_client_id, ownerId, user.id),
+          resolveClientUserId(sb, claim.aso_client_id),
+        ]);
+        await Promise.allSettled([
+          fireAjoEmail("ajo_manual_deposit_confirmed", {
+            client_email:  ctx.clientEmail,
+            client_name:   ctx.clientName,
+            user_email:    ctx.ownerEmail,
+            business_name: ctx.businessName,
+            staff_email:   ctx.staffEmail,
+            staff_name:    ctx.staffName,
+            amount:        data?.amount,
+            reg_fee:       data?.reg_fee || 0,
+            new_balance:   data?.new_balance,
+            date:          new Date().toLocaleDateString("en-NG"),
+          }),
+          notifyUser(sb, mdClientUserId, {
+            type: "deposit_confirmed", title: "Deposit Confirmed",
+            body: `Your deposit of ₦${Number(data?.amount).toLocaleString("en-NG")} was confirmed and credited`,
+            priority: "high", deepLink: { tab: "contributions" },
+          }),
+        ]);
+      })().catch(() => null),
+      new Promise<void>(r => setTimeout(r, 2500)),
+    ]);
 
     return json(data);
   }
@@ -1061,24 +1070,33 @@ serve(async (req: Request) => {
     if (error) return json({ ok: false, error: error.message });
     if (!data?.ok) return json({ ok: false, error: data?.error || "Failed to reject" });
 
-    // Fire rejection email to client — non-blocking
-    const ctx = await fetchEmailContext(sb, claim.aso_client_id, ownerId, user.id);
-    await fireAjoEmail("ajo_manual_deposit_rejected", {
-      client_email:  ctx.clientEmail,
-      client_name:   ctx.clientName,
-      user_email:    ctx.ownerEmail,
-      business_name: ctx.businessName,
-      amount:        claim.amount,
-      reason:        reason,
-      date:          new Date().toLocaleDateString("en-NG"),
-    });
-
-    const rmcClientUserId = await resolveClientUserId(sb, claim.aso_client_id);
-    await notifyUser(sb, rmcClientUserId, {
-      type: "deposit_rejected", title: "Deposit Rejected",
-      body: `Your deposit claim was rejected${reason?.trim() ? ` — ${reason.trim()}` : ""}`,
-      priority: "high", deepLink: { tab: "contributions" },
-    });
+    // Fire rejection email + push notification — capped at 2.5 s so a slow
+    // email endpoint never causes a client-side WebView timeout (10 s budget).
+    await Promise.race([
+      (async () => {
+        const [ctx, rmcClientUserId] = await Promise.all([
+          fetchEmailContext(sb, claim.aso_client_id, ownerId, user.id),
+          resolveClientUserId(sb, claim.aso_client_id),
+        ]);
+        await Promise.allSettled([
+          fireAjoEmail("ajo_manual_deposit_rejected", {
+            client_email:  ctx.clientEmail,
+            client_name:   ctx.clientName,
+            user_email:    ctx.ownerEmail,
+            business_name: ctx.businessName,
+            amount:        claim.amount,
+            reason:        reason,
+            date:          new Date().toLocaleDateString("en-NG"),
+          }),
+          notifyUser(sb, rmcClientUserId, {
+            type: "deposit_rejected", title: "Deposit Rejected",
+            body: `Your deposit claim was rejected${reason?.trim() ? ` — ${reason.trim()}` : ""}`,
+            priority: "high", deepLink: { tab: "contributions" },
+          }),
+        ]);
+      })().catch(() => null),
+      new Promise<void>(r => setTimeout(r, 2500)),
+    ]);
 
     return json(data);
   }
@@ -1717,7 +1735,7 @@ serve(async (req: Request) => {
           }),
         ]);
       })().catch(() => null),
-      new Promise<void>(r => setTimeout(r, 3500)),
+      new Promise<void>(r => setTimeout(r, 2500)),
     ]);
 
     return json({ ok: true });

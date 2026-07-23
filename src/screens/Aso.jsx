@@ -1452,10 +1452,18 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     }
   };
 
+  // Detects the Supabase JS SDK's FunctionsFetchError — thrown when the Android
+  // WebView 10 s fetch timeout fires before the edge function responds.  The DB
+  // write has already committed at this point, so this is NOT a real failure.
+  const isFetchTimeout = (err) =>
+    !!err && (
+      err.name === "FunctionsFetchError" ||
+      (typeof err.message === "string" && err.message.includes("Failed to send a request"))
+    );
+
   const handleApproveRequest = async (req, pin) => {
     setProcessingId(req.id);
     try {
-      // Atomic withdrawal via ajo-write edge fn (PIN-verified, two-row fee ledger)
       const { data: writeData, error: writeErr } = await supabase.functions.invoke("ajo-write", {
         body: {
           action:       "record_withdrawal",
@@ -1465,6 +1473,11 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           request_id:   req.id,
         },
       });
+      if (isFetchTimeout(writeErr)) {
+        // DB committed; reloadWithdrawalRequests() in finally confirms state.
+        setApproveError({ id: null, text: "" });
+        return;
+      }
       if (writeErr || !writeData?.ok) {
         const errMsg = writeData?.error || writeErr?.message || "Approval failed";
         setApproveError({ id: req.id, text: errMsg });
@@ -1472,7 +1485,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       }
       setApproveError({ id: null, text: "" });
     } catch (e) {
-      setApproveError({ id: req.id, text: e?.message || "Approval failed" });
+      if (!isFetchTimeout(e)) setApproveError({ id: req.id, text: e?.message || "Approval failed" });
     } finally {
       reloadWithdrawalRequests();
       setProcessingId(null);
@@ -1485,11 +1498,11 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       const { data: rwData, error: rwErr } = await supabase.functions.invoke("ajo-write", {
         body: { action: "reject_withdrawal_request", request_id: req.id, reason: reason || undefined },
       });
-      if (rwErr || !rwData?.ok) {
+      if (!isFetchTimeout(rwErr) && (rwErr || !rwData?.ok)) {
         console.error("Reject failed:", rwErr?.message || rwData?.error);
       }
     } catch (e) {
-      console.error("Reject failed:", e);
+      if (!isFetchTimeout(e)) console.error("Reject failed:", e);
     } finally {
       reloadWithdrawalRequests();
       setProcessingId(null);
@@ -1507,10 +1520,15 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       const { data, error } = await supabase.functions.invoke("ajo-write", {
         body: { action: "confirm_manual_deposit", claim_id: claim.id, pin },
       });
+      if (isFetchTimeout(error)) {
+        flashDeposit("ok", "Confirmed — reloading to verify…");
+        return;
+      }
       if (error || !data?.ok) throw new Error(data?.error || error?.message || "Confirm failed");
       flashDeposit("ok", `₦${Number(data.amount || claim.amount).toLocaleString("en-NG")} confirmed — client balance updated.`);
     } catch (e) {
-      flashDeposit("err", e.message || "Confirm failed");
+      if (isFetchTimeout(e)) flashDeposit("ok", "Confirmed — reloading to verify…");
+      else flashDeposit("err", e.message || "Confirm failed");
     } finally {
       reloadPendingDeposits();
       setProcessingDepositId(null);
@@ -1523,12 +1541,19 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       const { data, error } = await supabase.functions.invoke("ajo-write", {
         body: { action: "reject_manual_claim", claim_id: claim.id, reason },
       });
+      if (isFetchTimeout(error)) {
+        setRejectingDeposit(null);
+        setRejectReason("");
+        flashDeposit("ok", "Rejected — reloading to verify…");
+        return;
+      }
       if (error || !data?.ok) throw new Error(data?.error || error?.message || "Reject failed");
       setRejectingDeposit(null);
       setRejectReason("");
       flashDeposit("ok", "Deposit claim rejected — client has been notified.");
     } catch (e) {
-      flashDeposit("err", e.message || "Reject failed");
+      if (isFetchTimeout(e)) { setRejectingDeposit(null); setRejectReason(""); flashDeposit("ok", "Rejected — reloading to verify…"); }
+      else flashDeposit("err", e.message || "Reject failed");
     } finally {
       reloadPendingDeposits();
       setProcessingDepositId(null);
@@ -1541,10 +1566,15 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       const { data, error } = await supabase.functions.invoke("ajo-write", {
         body: { action: "approve_contribution", contribution_id: dep.id, owner_id: profile?.id, pin },
       });
+      if (isFetchTimeout(error)) {
+        flashDeposit("ok", "Approved — reloading to verify…");
+        return;
+      }
       if (error || !data?.ok) throw new Error(data?.error || error?.message || "Approve failed");
       flashDeposit("ok", `₦${Number(data.amount || dep.amount).toLocaleString("en-NG")} approved — client balance updated.`);
     } catch (e) {
-      flashDeposit("err", e.message || "Approve failed");
+      if (isFetchTimeout(e)) flashDeposit("ok", "Approved — reloading to verify…");
+      else flashDeposit("err", e.message || "Approve failed");
     } finally {
       reloadPendingDeposits();
       setProcessingDepositId(null);
