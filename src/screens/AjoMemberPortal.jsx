@@ -1822,18 +1822,25 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
                       const isLocked = cy.commission_model === "first_period" &&
                         Number(cy.commission_balance || 0) >= Number(cy.expected_amount_per_period || 0) &&
                         Number(cy.expected_amount_per_period || 0) > 0;
-                      // Sum only completed contributions attributed to THIS cycle
-                      const cycSaved = contributions
-                        .filter(c => c.cycle_id === cy.id && c.type === "contribution" && c.status === "completed")
-                        .reduce((s, c) => s + Number(c.amount || 0), 0);
+                      // Mirror ajo_locked_cycle_amount RPC per cycle:
+                      // locked = SUM(contribution rows) - SUM(commission rows) for this cycle
+                      const cycRows = contributions.filter(
+                        c => c.cycle_id === cy.id && c.status === "completed" &&
+                             (c.type === "contribution" || c.type === "commission")
+                      );
+                      const cycLocked = Math.max(
+                        0,
+                        cycRows.filter(c => c.type === "contribution").reduce((s, c) => s + Number(c.amount || 0), 0) -
+                        cycRows.filter(c => c.type === "commission" ).reduce((s, c) => s + Number(c.amount || 0), 0)
+                      );
                       return (
                         <div key={cy.id} className={`px-3.5 py-2.5 rounded-xl border ${isLocked ? "border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-900/10" : "border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/30"}`}>
                           <div className="flex items-center justify-between">
                             <div className="flex-1 min-w-0">
                               <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{cy.label || "Savings"}</p>
-                              {isLocked && cycSaved > 0 && (
+                              {isLocked && (
                                 <p className="text-[11px] font-extrabold text-amber-700 dark:text-amber-400 tabular-nums">
-                                  {fmt(cycSaved)} saved
+                                  {fmt(cycLocked)} locked
                                 </p>
                               )}
                             </div>
@@ -1844,8 +1851,8 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
                           </div>
                           {isLocked && (
                             <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">
-                              {cycSaved > 0
-                                ? "Locked until cycle closes · contact your savings agent for early access"
+                              {cycLocked > 0
+                                ? "Withdrawable when cycle closes · contact your savings agent for early access"
                                 : "Day 1 collector’s fee paid — savings accumulate from next deposit"}
                             </p>
                           )}
