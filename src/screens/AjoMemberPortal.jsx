@@ -2603,24 +2603,105 @@ function OverviewTab({ client, contributions, cycles = [], rotationsData = [], r
           Savings Groups
         </p>
       )}
-      {rotationsData.filter(rd => rd.group?.group_mode !== "rotating").map(rd => (
-        <div key={rd.group?.id} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4 space-y-4">
-          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">{rd.group?.name}</p>
-          {rd.round ? (
-            <EsusuRotationDashboard
-              data={rd}
-              loading={false}
-              isOwner={false}
-              myClientId={client?.id}
-              onRefresh={null}
-            />
-          ) : (
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              {`Contribution: ₦${Number(rd.group?.contribution_amount || 0).toLocaleString("en-NG")} / ${rd.group?.contribution_frequency || "period"}`}
-            </p>
-          )}
-        </div>
-      ))}
+      {rotationsData.filter(rd => rd.group?.group_mode !== "rotating").map(rd => {
+        const grp = rd.group;
+        if (!grp) return null;
+        const rs     = grp.round_status || "not_started";
+        const target = Number(grp.target_amount || 0);
+        const myContribs = contributions.filter(c =>
+          c.group_id === grp.id &&
+          c.contribution_context === "group_savings" &&
+          c.type === "contribution" &&
+          c.status === "completed" &&
+          (!grp.started_at || new Date(c.created_at) >= new Date(grp.started_at))
+        );
+        const myTotal  = myContribs.reduce((s, c) => s + Number(c.amount), 0);
+        const pct      = target > 0 ? Math.min(100, Math.round((myTotal / target) * 100)) : 0;
+        const daysLeft = grp.target_deadline
+          ? Math.ceil((new Date(grp.target_deadline) - new Date()) / 86400000)
+          : null;
+        const statusMap = {
+          not_started: { label: "Not started", pill: "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400" },
+          active:      { label: "Active",      pill: "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400" },
+          target_met:  { label: "Target met",  pill: "bg-blue-100  dark:bg-blue-900/30  text-blue-700  dark:text-blue-400"  },
+          closed:      { label: "Closed",      pill: "bg-slate-100 dark:bg-slate-700    text-slate-500 dark:text-slate-400" },
+        };
+        const st = statusMap[rs] || statusMap.not_started;
+        return (
+          <div key={grp.id} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4 space-y-3">
+            {/* Header */}
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-sm font-bold text-slate-700 dark:text-slate-200 leading-snug">{grp.name}</p>
+              <span className={`shrink-0 text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wide ${st.pill}`}>
+                {st.label}
+              </span>
+            </div>
+
+            {/* Progress block — active or target met */}
+            {(rs === "active" || rs === "target_met") && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500">
+                  <span>My contribution this round</span>
+                  {daysLeft !== null && (
+                    <span className={daysLeft < 0 ? "text-red-500" : ""}>
+                      {daysLeft < 0 ? "Deadline passed" : `${daysLeft} day${daysLeft !== 1 ? "s" : ""} left`}
+                    </span>
+                  )}
+                </div>
+                {target > 0 && (
+                  <>
+                    <div className="h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${rs === "target_met" ? "bg-blue-500" : "bg-green-500"}`}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-extrabold text-slate-700 dark:text-slate-200 tabular-nums">{fmt(myTotal)}</p>
+                      <p className="text-[11px] text-slate-400 dark:text-slate-500">of {fmt(target)} target · {pct}%</p>
+                    </div>
+                  </>
+                )}
+                {target === 0 && (
+                  <p className="text-sm font-extrabold text-slate-700 dark:text-slate-200 tabular-nums">{fmt(myTotal)} saved</p>
+                )}
+                {rs === "active" && (
+                  <div className="flex items-center gap-1.5 pt-0.5">
+                    <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3 text-amber-500 flex-shrink-0" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                      <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>
+                    </svg>
+                    <p className="text-[10px] text-slate-400 dark:text-slate-500">Locked until the round closes</p>
+                  </div>
+                )}
+                {rs === "target_met" && (
+                  <p className="text-[10px] text-blue-600 dark:text-blue-400">Target reached — waiting for your savings agent to close the group</p>
+                )}
+              </div>
+            )}
+
+            {/* Not started */}
+            {rs === "not_started" && (
+              <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                Waiting for your savings agent to start the round
+              </p>
+            )}
+
+            {/* Closed */}
+            {rs === "closed" && (
+              <p className="text-[11px] text-green-600 dark:text-green-400">
+                {myTotal > 0 ? `${fmt(myTotal)} released to your balance` : "This round has closed"}
+              </p>
+            )}
+
+            {/* Contribution frequency */}
+            {Number(grp.contribution_amount) > 0 && (
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 pt-0.5 border-t border-slate-100 dark:border-slate-700">
+                {fmt(grp.contribution_amount)} / {grp.contribution_frequency || "period"}
+              </p>
+            )}
+          </div>
+        );
+      })}
 
       {/* Activity calendar (always shown) */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-4 border border-slate-100 dark:border-slate-700">
