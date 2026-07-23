@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { createReportPdf, fmtCurrency, fmtDate } from "../utils/generateReportPdf";
 import TransactionPinModal from "./TransactionPinModal";
-import { allocatePeriods } from "../utils/allocatePeriods";
+import { allocatePeriods } from "../utils/allocatePeriods.mjs";
 
 // ── Visual maps ───────────────────────────────────────────────────────────────
 
