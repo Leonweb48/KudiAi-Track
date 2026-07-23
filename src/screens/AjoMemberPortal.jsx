@@ -1822,16 +1822,18 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
                       const isLocked = cy.commission_model === "first_period" &&
                         Number(cy.commission_balance || 0) >= Number(cy.expected_amount_per_period || 0) &&
                         Number(cy.expected_amount_per_period || 0) > 0;
-                      // Mirror ajo_locked_cycle_amount RPC per cycle:
-                      // locked = SUM(contribution rows) - SUM(commission rows) for this cycle
+                      // Per-cycle locked = SUM(contributions) - SUM(commissions) - SUM(registration_fees)
+                      // ajo_approve_contribution stores all three row types with cycle_id, so we
+                      // must subtract registration_fee or the locked figure is inflated by the reg charge.
                       const cycRows = contributions.filter(
                         c => c.cycle_id === cy.id && c.status === "completed" &&
-                             (c.type === "contribution" || c.type === "commission")
+                             (c.type === "contribution" || c.type === "commission" || c.type === "registration_fee")
                       );
                       const cycLocked = Math.max(
                         0,
-                        cycRows.filter(c => c.type === "contribution").reduce((s, c) => s + Number(c.amount || 0), 0) -
-                        cycRows.filter(c => c.type === "commission" ).reduce((s, c) => s + Number(c.amount || 0), 0)
+                        cycRows.filter(c => c.type === "contribution"   ).reduce((s, c) => s + Number(c.amount || 0), 0) -
+                        cycRows.filter(c => c.type === "commission"     ).reduce((s, c) => s + Number(c.amount || 0), 0) -
+                        cycRows.filter(c => c.type === "registration_fee").reduce((s, c) => s + Number(c.amount || 0), 0)
                       );
                       return (
                         <div key={cy.id} className={`px-3.5 py-2.5 rounded-xl border ${isLocked ? "border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-900/10" : "border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/30"}`}>
