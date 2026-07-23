@@ -687,6 +687,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [closingRoundGid,      setClosingRoundGid]      = useState(null);  // eslint-disable-line no-unused-vars
   const [savingsDetails,       setSavingsDetails]       = useState({});    // { [grpId]: { loading, pot, members } }
   const [expandedSavingsGid,   setExpandedSavingsGid]  = useState(null);  // group id with expanded member list
+  const [savingsDashGid,       setSavingsDashGid]       = useState(null);  // group id for savings dashboard view
   const [archiveSafetyLoading, setArchiveSafetyLoading] = useState(null); // grp.id being checked
   // Rotation management
   const [showRotation,   setShowRotation]   = useState(null); // group object
@@ -3597,24 +3598,240 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           onClick={e => { if (e.target === e.currentTarget && groupsBackdropDown.current) { groupsBackdropDown.current = false; setShowGroups(false); } }}>
           <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-t-3xl shadow-2xl flex flex-col" style={{ maxHeight: "90dvh" }}>
             {/* Header */}
-            <div className="flex items-center gap-3 px-5 pt-5 pb-3 border-b border-slate-100 dark:border-slate-700 flex-shrink-0">
-              <div className="w-9 h-9 bg-brand-100 dark:bg-brand-900/40 rounded-xl flex items-center justify-center flex-shrink-0">
-                <svg viewBox="0 0 24 24" fill="none" className="w-4.5 h-4.5 text-brand-600 dark:text-brand-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-                  <rect x="2" y="5" width="20" height="14" rx="2" /><line x1="2" y1="10" x2="22" y2="10" />
-                </svg>
+            {savingsDashGid ? (() => {
+              const dhGrp = groups.find(g => g.id === savingsDashGid);
+              const dhRs  = dhGrp?.round_status || "not_started";
+              return (
+                <div className="flex items-center gap-3 px-5 pt-5 pb-3 border-b border-slate-100 dark:border-slate-700 flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setSavingsDashGid(null)}
+                    className="w-9 h-9 bg-slate-100 dark:bg-slate-700 rounded-xl flex items-center justify-center flex-shrink-0 active:scale-95 transition">
+                    <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+                  </button>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-extrabold text-slate-800 dark:text-white text-sm truncate">{dhGrp?.name || "Savings Group"}</p>
+                    <span className={`inline-block text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wide mt-0.5 ${
+                      dhRs === "active" ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400"
+                      : dhRs === "target_met" ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300"
+                      : dhRs === "closed" ? "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
+                      : "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400"
+                    }`}>
+                      {dhRs === "not_started" ? "Not Started" : dhRs === "target_met" ? "Target Met ✓" : dhRs === "closed" ? "Closed" : "Active"}
+                    </span>
+                  </div>
+                  <button onClick={() => { setSavingsDashGid(null); setShowGroups(false); }} className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-500">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="w-3.5 h-3.5">
+                      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                </div>
+              );
+            })() : (
+              <div className="flex items-center gap-3 px-5 pt-5 pb-3 border-b border-slate-100 dark:border-slate-700 flex-shrink-0">
+                <div className="w-9 h-9 bg-brand-100 dark:bg-brand-900/40 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <svg viewBox="0 0 24 24" fill="none" className="w-4.5 h-4.5 text-brand-600 dark:text-brand-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                    <rect x="2" y="5" width="20" height="14" rx="2" /><line x1="2" y1="10" x2="22" y2="10" />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <p className="font-extrabold text-slate-800 dark:text-white text-sm">Ajo Groups</p>
+                  <p className="text-[10px] text-slate-400">Manage Paystack subaccounts per group</p>
+                </div>
+                <button onClick={() => setShowGroups(false)} className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-500">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="w-3.5 h-3.5">
+                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
               </div>
-              <div className="flex-1">
-                <p className="font-extrabold text-slate-800 dark:text-white text-sm">Ajo Groups</p>
-                <p className="text-[10px] text-slate-400">Manage Paystack subaccounts per group</p>
-              </div>
-              <button onClick={() => setShowGroups(false)} className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-500">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="w-3.5 h-3.5">
-                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
-            </div>
+            )}
 
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+            <div className={savingsDashGid ? "flex-1 overflow-y-auto" : "flex-1 overflow-y-auto px-5 py-4 space-y-4"}>
+
+              {/* ── Savings group dashboard ── */}
+              {savingsDashGid && (() => {
+                const dashGrp = groups.find(g => g.id === savingsDashGid);
+                if (!dashGrp) return null;
+                const det     = savingsDetails[savingsDashGid] || { loading: true, pot: 0, members: [] };
+                const rs      = dashGrp.round_status || "not_started";
+                const target  = Number(dashGrp.target_amount || 0);
+                const pot     = det.pot || 0;
+                const pct     = target > 0 ? Math.min(100, (pot / target) * 100) : 0;
+                const daysLeft = dashGrp.target_deadline
+                  ? Math.ceil((new Date(dashGrp.target_deadline) - new Date()) / 86400000)
+                  : null;
+                const sortedMembers = [...(det.members || [])].sort((a, b) => b.contributed - a.contributed);
+                const maxContrib    = Math.max(...sortedMembers.map(m => m.contributed), 1);
+                const isActive      = rs === "active" || rs === "target_met";
+                const isPendingGrp  = Boolean(groupApprovals.find(r => r.target_id === dashGrp.id));
+                return (
+                  <div className="px-4 py-4 space-y-4">
+                    {det.loading ? (
+                      <div className="flex justify-center py-12">
+                        <div className="w-7 h-7 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+                      </div>
+                    ) : (
+                      <>
+                        {/* Hero */}
+                        <div className="bg-gradient-to-br from-slate-800 to-slate-900 dark:from-slate-700 dark:to-slate-800 rounded-2xl p-5 text-white">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total Saved</p>
+                          <p className="text-3xl font-extrabold tabular-nums leading-none">₦{fmt(pot)}</p>
+                          {target > 0 && (
+                            <p className="text-[11px] text-slate-400 mt-1">of ₦{fmt(target)} target · <span className="text-white font-bold">{Math.round(pct)}%</span></p>
+                          )}
+                          {rs === "active" && daysLeft !== null && daysLeft >= 0 && (
+                            <div className="flex items-center gap-1.5 mt-2">
+                              <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                              <span className="text-[10px] text-green-400 font-bold">{daysLeft} days remaining</span>
+                            </div>
+                          )}
+                          {daysLeft !== null && daysLeft < 0 && isActive && (
+                            <div className="flex items-center gap-1.5 mt-2">
+                              <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                              <span className="text-[10px] text-amber-400 font-bold">Deadline passed — ready to close</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Progress bar */}
+                        {target > 0 && (
+                          <div>
+                            <div className="h-3 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all duration-700 ${rs === "target_met" ? "bg-gradient-to-r from-blue-400 to-blue-600" : "bg-gradient-to-r from-green-400 to-green-600"}`}
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                            <div className="flex items-center justify-between mt-1">
+                              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold">₦{fmt(pot)} raised</span>
+                              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold">₦{fmt(Math.max(0, target - pot))} to go</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Stats grid */}
+                        <div className="grid grid-cols-2 gap-2">
+                          {[
+                            { label: "Members", value: String((det.members || []).length) },
+                            { label: "Days Left", value: daysLeft !== null ? (daysLeft >= 0 ? `${daysLeft}d` : "Overdue") : "—" },
+                            { label: "Contribution", value: dashGrp.contribution_amount ? `₦${fmt(dashGrp.contribution_amount)}` : "—" },
+                            { label: "Frequency", value: dashGrp.contribution_frequency || "—" },
+                          ].map(({ label, value }) => (
+                            <div key={label} className="bg-slate-50 dark:bg-slate-800/60 rounded-xl px-3 py-2.5 border border-slate-100 dark:border-slate-700">
+                              <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide">{label}</p>
+                              <p className="text-sm font-extrabold text-slate-800 dark:text-white mt-0.5 capitalize tabular-nums">{value}</p>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Saving strength */}
+                        <div>
+                          <p className="text-[10px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2">Saving Strength</p>
+                          {sortedMembers.length === 0 ? (
+                            <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-4 text-center border border-slate-100 dark:border-slate-700">
+                              <p className="text-[11px] text-slate-400">No contributions recorded yet</p>
+                              {rs === "not_started" && <p className="text-[10px] text-slate-400 mt-0.5">Start a round to begin tracking</p>}
+                            </div>
+                          ) : (
+                            <div className="space-y-2">
+                              {sortedMembers.map((m, idx) => {
+                                const barPct    = maxContrib > 0 ? (m.contributed / maxContrib) * 100 : 0;
+                                const sharePct  = pot > 0 ? Math.round((m.contributed / pot) * 100) : 0;
+                                const barColor  = idx === 0
+                                  ? "bg-gradient-to-r from-amber-400 to-amber-500"
+                                  : idx === 1
+                                    ? "bg-gradient-to-r from-slate-400 to-slate-500 dark:from-slate-300 dark:to-slate-400"
+                                    : "bg-gradient-to-r from-green-400 to-green-500";
+                                return (
+                                  <div key={m.client_id} className="bg-white dark:bg-slate-800 rounded-xl px-3 py-2.5 border border-slate-100 dark:border-slate-700">
+                                    <div className="flex items-center justify-between mb-1.5">
+                                      <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                                        <span className="text-[10px] font-extrabold text-slate-400 dark:text-slate-500 tabular-nums flex-shrink-0 w-5">#{idx + 1}</span>
+                                        <p className="text-[11px] font-extrabold text-slate-800 dark:text-white truncate">{m.full_name}</p>
+                                      </div>
+                                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                                        <span className="text-[10px] font-extrabold text-slate-600 dark:text-slate-300 tabular-nums">₦{fmt(m.contributed)}</span>
+                                        <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded-full">{sharePct}%</span>
+                                        {isActive && (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleReleaseSavingsMember(dashGrp.id, m.client_id, m.full_name)}
+                                            className="text-[9px] font-bold text-red-500 dark:text-red-400 hover:underline ml-0.5">
+                                            Release
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <div className="h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                                      <div className={`h-full rounded-full transition-all duration-500 ${barColor}`} style={{ width: `${barPct}%` }} />
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Action buttons */}
+                        {!isPendingGrp && (
+                          <div className="space-y-2">
+                            {(rs === "not_started" || rs === "closed") && (
+                              <button
+                                type="button"
+                                onClick={() => { setStartRoundGid(dashGrp.id); setStartRoundTarget(""); setStartRoundDeadline(""); setStartRoundMsg({ id: null, text: "", ok: false }); }}
+                                className="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2">
+                                <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="10 8 16 12 10 16"/></svg>
+                                Start Savings Round
+                              </button>
+                            )}
+                            {startRoundGid === dashGrp.id && (
+                              <div className="bg-slate-50 dark:bg-slate-700/40 rounded-xl p-3 space-y-2.5 border border-slate-200 dark:border-slate-600">
+                                <p className="text-xs font-bold text-slate-700 dark:text-slate-200">Configure Round</p>
+                                <div>
+                                  <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-0.5">Target Amount (₦)</p>
+                                  <input type="number" min="1" placeholder="e.g. 500000" value={startRoundTarget} onChange={e => setStartRoundTarget(e.target.value)}
+                                    className="w-full text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 text-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-slate-400" />
+                                </div>
+                                <div>
+                                  <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-0.5">Target Deadline</p>
+                                  <input type="date" min={new Date(Date.now() + 86400000).toISOString().split("T")[0]} value={startRoundDeadline} onChange={e => setStartRoundDeadline(e.target.value)}
+                                    className="w-full text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 text-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-slate-400" />
+                                </div>
+                                {startRoundMsg.id === dashGrp.id && (
+                                  <p className={`text-[10px] font-semibold ${startRoundMsg.ok ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}>{startRoundMsg.text}</p>
+                                )}
+                                <div className="flex gap-2">
+                                  <button type="button" onClick={() => setStartRoundGid(null)} className="flex-1 py-2 text-xs font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-600 transition">Cancel</button>
+                                  <button type="button" onClick={() => handleStartSavingsRound(dashGrp.id)} disabled={startRoundSaving} className="flex-1 py-2 text-xs font-bold text-white bg-green-600 hover:bg-green-700 disabled:opacity-60 rounded-xl transition flex items-center justify-center gap-1">
+                                    {startRoundSaving ? <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /> : "Start Round"}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                            {isActive && (
+                              <button
+                                type="button"
+                                onClick={() => handleCloseSavingsRound(dashGrp.id)}
+                                className="w-full py-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl font-bold text-sm border border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/30 transition active:scale-[0.99]">
+                                Close Group &amp; Release All Funds
+                              </button>
+                            )}
+                          </div>
+                        )}
+
+                        {dashGrp.started_at && (
+                          <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center">
+                            Round started {new Date(dashGrp.started_at).toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" })}
+                          </p>
+                        )}
+                        <div className="h-6" />
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {!savingsDashGid && (<>
               {/* Explainer */}
               <div className="bg-brand-50 dark:bg-brand-900/20 rounded-2xl px-4 py-3 border border-brand-100 dark:border-brand-800/60">
                 <p className="text-[11px] text-brand-700 dark:text-brand-300 font-medium leading-relaxed">
@@ -3707,6 +3924,23 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                               <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
                             </svg>
                             Manage Rotation
+                          </button>
+                        )}
+
+                        {/* ── Savings dashboard entry ── */}
+                        {!isRotating && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSavingsDashGid(grp.id);
+                              const det = savingsDetails[grp.id];
+                              if (!det || det.loading) loadSavingsDetails(grp.id, grp.started_at);
+                            }}
+                            className="w-full mt-2 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-bold text-xs transition active:scale-[0.99] flex items-center justify-center gap-1.5">
+                            <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                              <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>
+                            </svg>
+                            Savings Dashboard
                           </button>
                         )}
 
@@ -4195,6 +4429,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
               )}
 
               <div className="h-4" />
+              </>)}
             </div>
           </div>
         </div>
