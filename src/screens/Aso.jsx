@@ -2985,7 +2985,10 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             </div>
           )}
 
-          {action === "contribute" && (selected.total_saved || 0) === 0 && (() => {
+          {action === "contribute" &&
+           (selected.total_saved || 0) === 0 &&
+           !pendingDeposits.some(d => d.aso_client_id === selected.id) &&
+           (() => {
             const regCharge = Number(selected.registration_charge || 0);
             const expected  = Number(selected.contribution_amount || 0);
             const minReq    = expected + regCharge;

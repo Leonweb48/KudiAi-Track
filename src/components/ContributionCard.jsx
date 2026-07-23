@@ -375,8 +375,13 @@ export default function ContributionCard({
           </div>
           {(() => {
             const expected   = Number(cycle.expected_amount_per_period || 0);
-            const regCharge  = Number(registrationCharge || 0);
             const isFirstPrd = cycle.commission_model === "first_period";
+            // Registration fee is a one-time charge on the client's very first deposit ever.
+            // If they already have any completed contribution (on any prior cycle), skip it.
+            const alreadyPaidReg = contributions.some(
+              c => c.status === "completed" && c.type === "contribution"
+            );
+            const regCharge = alreadyPaidReg ? 0 : Number(registrationCharge || 0);
             if (!isFirstPrd && regCharge === 0) return null;
             const total = expected + regCharge;
             const parts = isFirstPrd
