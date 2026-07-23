@@ -127,7 +127,13 @@ function isGroupAccount(c) {
 
 /* ── Per-client Ajo Contribution History Modal ─────────────────────────── */
 function AsoClientHistoryModal({ client, contributions, cycles = [], businessName, staffMap = {}, onClose, onOpenCycle, onCloseCycle, onExecuteCommission, onReverseContrib }) {
-  const [tab,          setTab]          = useState(cycles.length > 0 ? "card" : "history");
+  // Derived from props — computed before state so they can seed initial values
+  // Name map over ALL cycles (active + closed) — used to label history rows
+  const cycleNameMap = Object.fromEntries(cycles.map(c => [c.id, c.label || "Personal Savings"]));
+  // Card tab only renders active cycles to avoid stale open/close buttons on closed history cards
+  const activeCycles = cycles.filter(c => c.status === "active");
+
+  const [tab,          setTab]          = useState(activeCycles.length > 0 ? "card" : "history");
   const [showNewCycle, setShowNewCycle] = useState(false);
   const [newCycleForm, setNewCycleForm] = useState({
     purpose:   "",
@@ -137,8 +143,8 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
     model:     client.commission_model || "none",
     percent:   client.commission_percent ?? "",
   });
-  // Auto-switch to card tab when a cycle is added
-  useEffect(() => { if (cycles.length > 0) setTab("card"); }, [cycles.length]);
+  // Auto-switch to card tab when an active cycle is added
+  useEffect(() => { if (activeCycles.length > 0) setTab("card"); }, [activeCycles.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const [typeFilter,    setTypeFilter]    = useState("all");
   const [period,        setPeriod]        = useState("all");
   const [dateFrom,      setDateFrom]      = useState("");
@@ -335,7 +341,7 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
         {/* Card tab */}
         {tab === "card" && (
           <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-            {cycles.map((cyc, idx) => (
+            {activeCycles.map((cyc, idx) => (
               <ContributionCard
                 key={cyc.id}
                 cycle={cyc}
@@ -349,7 +355,7 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
                 onExecuteCommission={cyc.status !== "active" ? ((amt, pin) => onExecuteCommission(amt, pin, cyc)) : undefined}
               />
             ))}
-            {cycles.length === 0 && (
+            {activeCycles.length === 0 && (
               <ContributionCard
                 cycle={null}
                 contributions={contributions}
@@ -524,7 +530,9 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
                       <Badge status={tx.status || "completed"} />
                     </div>
                     <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                      {TX_TYPE_LABEL[tx.type] ?? tx.type} · {METHOD_LABEL[tx.payment_method] ?? "Cash"}
+                      {TX_TYPE_LABEL[tx.type] ?? tx.type}
+                      {tx.cycle_id && cycleNameMap[tx.cycle_id] ? ` — ${cycleNameMap[tx.cycle_id]}` : ""}
+                      {" · "}{METHOD_LABEL[tx.payment_method] ?? "Cash"}
                     </p>
                     <p className="text-[10px] text-slate-400 mt-0.5">{dateStr}</p>
                     {tx.recorded_by && staffMap[tx.recorded_by] && (
@@ -2711,7 +2719,6 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                         .from("ajo_cycles")
                         .select("id, client_id, label, status, commission_model, commission_balance, expected_amount_per_period, frequency, length_periods, start_date, created_at, commission_percent")
                         .eq("client_id", c.id)
-                        .eq("status", "active")
                         .order("created_at", { ascending: true }),
                     ]);
                     setHistoryFor({ client: c, contributions: contribRes.data || [], cycles: cycleRes.data || [] });

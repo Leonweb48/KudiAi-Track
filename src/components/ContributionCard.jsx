@@ -217,13 +217,18 @@ export default function ContributionCard({
   const freq = frequency || cycle?.frequency || cycle?.contribution_frequency || "monthly";
   const cols = COLS_BY_FREQ[freq] || 4;
 
-  // Isolate this cycle's contributions: explicit cycle_id match, or NULL cycle_id
-  // rows attributed to the oldest active cycle (legacy pre-attribution rule).
+  // Isolate this cycle's contributions: explicit cycle_id match.
+  // Legacy fallback: absorb null-cycle_id rows ONLY when this cycle has zero direct hits
+  // (cycle predates attribution tracking — all historical rows lack cycle_id).
+  // When direct hits exist, null-cycle_id rows belong to an indeterminate cycle and must
+  // NOT be pulled in, otherwise the first card inflates to the client's lifetime total.
   const cycleContribs = useMemo(() => {
     if (!cycle?.id) return contributions;
-    return contributions.filter(c =>
-      c.cycle_id === cycle.id || (!c.cycle_id && isLegacyCycle)
-    );
+    const direct = contributions.filter(c => c.cycle_id === cycle.id);
+    if (isLegacyCycle && direct.length === 0) {
+      return contributions.filter(c => !c.cycle_id);
+    }
+    return direct;
   }, [contributions, cycle?.id, isLegacyCycle]);
 
   const { periods, cycleStarted, progressPct, nextDue } = useMemo(

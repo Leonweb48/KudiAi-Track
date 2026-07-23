@@ -2918,11 +2918,13 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
               {item.paystack_ref && ` · Ref: ${item.paystack_ref.slice(-8)}`}
             </p>
             <p className="text-[10px] text-slate-400">{fmtDateTime(item.created_at || item.date)}</p>
-            {!isWdReq && (item.cycle_id || item.group_id) && (
+            {!isWdReq && (
               <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
                 {item.cycle_id
-                  ? cycleNameMap[item.cycle_id] || "Personal Savings"
-                  : groupNameMap[item.group_id] || "Group"}
+                  ? (cycleNameMap[item.cycle_id] || "Personal Savings")
+                  : item.group_id
+                    ? (groupNameMap[item.group_id] || "Group")
+                    : "Personal Savings"}
               </p>
             )}
             {(item.claim_notes || item.notes) && <p className="text-[10px] text-slate-400 italic mt-0.5">"{item.claim_notes || item.notes}"</p>}
