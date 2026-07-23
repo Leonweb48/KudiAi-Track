@@ -395,8 +395,24 @@ serve(async (req) => {
         if (!gmem) return json({ error: "This client is not an active member of the selected group" }, 400);
         if (contribution_context === "esusu_rotation") {
           const { data: grd } = await sb.from("ajo_group_rounds")
-            .select("id").eq("group_id", callerGroupId).eq("status", "active").maybeSingle();
+            .select("id, created_at").eq("group_id", callerGroupId).eq("status", "active").maybeSingle();
           if (!grd) return json({ error: "This esusu group has no active round — ask your savings agent to start one" }, 400);
+          // Duplicate-contribution guard: reject if this client already has a net unswept contribution for this group/round
+          const { data: esmContribs } = await sb.from("ajo_contributions")
+            .select("type, amount")
+            .eq("aso_client_id", client_id)
+            .eq("group_id", callerGroupId)
+            .eq("contribution_context", "esusu_rotation")
+            .in("type", ["contribution", "esusu_pot_sweep"])
+            .eq("status", "completed")
+            .gte("created_at", grd.created_at);
+          const esmNet = (esmContribs || []).reduce((acc: number, c: { type: string; amount: number }) =>
+            acc + (c.type === "contribution" ? Number(c.amount) : -Number(c.amount)), 0);
+          const { data: esmCli } = await sb.from("aso_clients").select("contribution_amount").eq("id", client_id).maybeSingle();
+          const esmDue = Number((esmCli as { contribution_amount?: number } | null)?.contribution_amount || 0);
+          if (esmDue > 0 && esmNet >= esmDue) {
+            return json({ error: "You have already contributed for this esusu round — wait for the next turn" }, 400);
+          }
         }
         if (contribution_context === "group_savings") {
           const { data: grpRow } = await sb.from("ajo_groups")
@@ -521,8 +537,23 @@ serve(async (req) => {
         if (!gmem) return json({ error: "This client is not an active member of the selected group" }, 400);
         if (contribution_context === "esusu_rotation") {
           const { data: grd } = await sb.from("ajo_group_rounds")
-            .select("id").eq("group_id", resolvedGroupId).eq("status", "active").maybeSingle();
+            .select("id, created_at").eq("group_id", resolvedGroupId).eq("status", "active").maybeSingle();
           if (!grd) return json({ error: "This esusu group has no active round — ask your savings agent to start one" }, 400);
+          // Duplicate-contribution guard: reject if this client already has a net unswept contribution for this group/round
+          const { data: esContribs } = await sb.from("ajo_contributions")
+            .select("type, amount")
+            .eq("aso_client_id", client_id)
+            .eq("group_id", resolvedGroupId)
+            .eq("contribution_context", "esusu_rotation")
+            .in("type", ["contribution", "esusu_pot_sweep"])
+            .eq("status", "completed")
+            .gte("created_at", grd.created_at);
+          const esNet = (esContribs || []).reduce((acc: number, c: { type: string; amount: number }) =>
+            acc + (c.type === "contribution" ? Number(c.amount) : -Number(c.amount)), 0);
+          const esDue = Number(cl.contribution_amount || 0);
+          if (esDue > 0 && esNet >= esDue) {
+            return json({ error: "You have already contributed for this esusu round — wait for the next turn" }, 400);
+          }
         }
       }
 
@@ -842,6 +873,7 @@ serve(async (req) => {
             .select("aso_client_id, amount, type")
             .in("aso_client_id", memberIds)
             .eq("contribution_context", "esusu_rotation")
+            .eq("group_id", grGroupId)
             .in("type", ["contribution", "esusu_pot_sweep"])
             .eq("status", "completed")
             .gte("created_at", grRound.created_at);
