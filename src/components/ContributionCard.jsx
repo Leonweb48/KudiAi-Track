@@ -209,10 +209,11 @@ export default function ContributionCard({
   compact = false,
   isLegacyCycle = false,
 }) {
-  const [selected, setSelected] = useState(null);
-  const [exporting, setExporting] = useState(false);
+  const [selected,             setSelected]             = useState(null);
+  const [exporting,            setExporting]            = useState(false);
   const [showPinForCommission, setShowPinForCommission] = useState(false);
-  const [commissionExecuting, setCommissionExecuting] = useState(false);
+  const [commissionExecuting,  setCommissionExecuting]  = useState(false);
+  const [cardTab,              setCardTab]              = useState("card");
 
   const freq = frequency || cycle?.frequency || cycle?.contribution_frequency || "monthly";
   const cols = COLS_BY_FREQ[freq] || 4;
@@ -336,6 +337,31 @@ export default function ContributionCard({
           )}
         </div>
       </div>
+
+      {/* Tab bar — card view vs cycle history */}
+      {!compact && (
+        <div className="flex border-b border-slate-100 dark:border-slate-700 px-4">
+          {[
+            { id: "card",    label: "Card" },
+            { id: "history", label: `History${cycleContribs.length > 0 ? ` (${cycleContribs.length})` : ""}` },
+          ].map(t => (
+            <button
+              key={t.id}
+              onClick={() => setCardTab(t.id)}
+              className={`py-2 mr-5 text-xs font-bold border-b-2 transition-colors ${
+                cardTab === t.id
+                  ? t.id === "card" ? "border-brand-500 text-brand-500" : "border-blue-500 text-blue-600 dark:text-blue-400"
+                  : "border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── Card tab ── */}
+      {(compact || cardTab === "card") && <>
 
       {/* Stats strip */}
       <div className="px-4 pb-3 flex flex-col gap-1">
@@ -485,6 +511,82 @@ export default function ContributionCard({
           ))}
         </div>
       )}
+
+      {/* end card tab */}
+      </>}
+
+      {/* ── History tab ── */}
+      {!compact && cardTab === "history" && (() => {
+        const TX_LABEL = {
+          contribution:             "Contribution",
+          withdrawal:               "Withdrawal",
+          commission:               "Commission",
+          registration_fee:         "Registration Fee",
+          withdrawal_fee:           "Withdrawal Fee",
+          reversal_contribution:    "Reversal",
+          reversal_withdrawal:      "Reversal (withdrawal)",
+          reversal_withdrawal_fee:  "Reversal (fee)",
+          reversal_registration_fee:"Reversal (reg fee)",
+          esusu_payout:             "Esusu Payout",
+          disbursement:             "Disbursement",
+        };
+        const isCredit = (type) =>
+          type === "contribution" || type === "esusu_payout" || type === "disbursement" ||
+          (type || "").startsWith("reversal_withdrawal") || type === "reversal_registration_fee";
+        const statusCls = (s) =>
+          s === "completed" || s === "approved" ? "text-emerald-600 dark:text-emerald-400"
+          : s === "rejected"                     ? "text-red-500 dark:text-red-400"
+          : "text-amber-500 dark:text-amber-400";
+        const sorted = [...cycleContribs].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+        const fmt = (n) => `₦${Number(n || 0).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        if (sorted.length === 0) {
+          return (
+            <div className="px-4 py-10 flex flex-col items-center text-center gap-2">
+              <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8 text-slate-300 dark:text-slate-600" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round">
+                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8"/>
+              </svg>
+              <p className="text-xs text-slate-400 dark:text-slate-500 font-semibold">No transactions yet for this cycle</p>
+            </div>
+          );
+        }
+        return (
+          <div className="px-4 pb-4 pt-2 space-y-2 max-h-72 overflow-y-auto">
+            {sorted.map(tx => {
+              const credit = isCredit(tx.type);
+              const dateStr = tx.created_at
+                ? new Date(tx.created_at).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })
+                : "—";
+              return (
+                <div key={tx.id} className="flex items-start gap-3 rounded-xl bg-slate-50 dark:bg-slate-700/40 px-3 py-2.5">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${credit ? "bg-green-50 dark:bg-green-900/20" : "bg-red-50 dark:bg-red-900/20"}`}>
+                    <svg viewBox="0 0 24 24" fill="none" className={`w-3.5 h-3.5 ${credit ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"}`} stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+                      {credit ? <path d="M12 5v14M5 12l7-7 7 7"/> : <path d="M12 19V5M5 12l7 7 7-7"/>}
+                    </svg>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[11px] font-bold text-slate-700 dark:text-slate-200 truncate">
+                        {TX_LABEL[tx.type] ?? tx.type}
+                      </p>
+                      <span className={`text-xs font-extrabold tabular-nums flex-shrink-0 ${credit ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}>
+                        {credit ? "+" : "−"}{fmt(tx.amount)}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className={`text-[10px] font-semibold capitalize ${statusCls(tx.status)}`}>{tx.status || "—"}</span>
+                      <span className="text-[10px] text-slate-400">·</span>
+                      <span className="text-[10px] text-slate-400">{dateStr}</span>
+                    </div>
+                    {tx.notes && (
+                      <p className="text-[10px] text-slate-400 italic mt-0.5 truncate">"{tx.notes}"</p>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {/* PIN modal for commission execution */}
       {showPinForCommission && (
