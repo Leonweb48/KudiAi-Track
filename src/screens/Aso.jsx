@@ -852,9 +852,9 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     setPendingStaffContribs(data || []);
   };
 
-  const loadGroups = async () => {
+  const loadGroups = async ({ silent = false } = {}) => {
     if (!profile?.id) return;
-    setGroupsLoading(true);
+    if (!silent) setGroupsLoading(true);
     try {
       const BASE_SELECT = "id, owner_id, name, description, is_active, group_mode, contribution_amount, contribution_frequency, percentage_charge, bank_code, account_number, account_name, bank_name, paystack_subaccount_code, privacy_show_names, privacy_show_amounts, created_at";
       const LIFECYCLE   = ", round_status, target_amount, target_deadline, started_at, closed_at";
@@ -1267,6 +1267,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       setShowGroupAdd(false);
       setGf(BLANK_GROUP);
       setResolvedName("");
+      loadGroups({ silent: true });
     } catch (e) {
       setGroupError(e.message || "Failed to save group");
     } finally {
