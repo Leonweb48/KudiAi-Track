@@ -77,11 +77,36 @@ export function buildTransactionReceipt(txn, profile) {
 }
 
 // ── Ajo/Aso contribution or withdrawal (from Aso screen) ─────────────────────
+function buildDestinationLabel(contribution) {
+  const ctx  = contribution.contribution_context || 'personal_savings';
+  const type = contribution.type || '';
+  const grp  = contribution.group_name || '';
+  const cyc  = contribution.cycle_label || '';
+  const rnd  = contribution.round_number ? ` (Round ${contribution.round_number})` : '';
+
+  if (type === 'registration_fee')  return `Registration fee — one-time`;
+  if (type === 'commission')         return `Collector's fee — Day 1${cyc ? ` of ${cyc}` : ''}`;
+  if (type === 'withdrawal_fee')     return `Withdrawal fee${cyc ? ` — ${contribution.fee_percent ? contribution.fee_percent + '% of ' : ''}${cyc}` : ''}`;
+  if (type === 'disbursement' && grp) {
+    if (ctx === 'esusu_rotation') return `Esusu payout — ${grp}${rnd}, your turn`;
+    return `Savings group release — ${grp}`;
+  }
+  if (type === 'group_release' && grp) return `Released from savings group — ${grp}`;
+  if (type === 'withdrawal') {
+    if (grp) return `From: Released group funds — ${grp}`;
+    return `From: Personal Savings${cyc ? ` — ${cyc}` : ''}`;
+  }
+  if (ctx === 'esusu_rotation')  return `To: Esusu — ${grp}${rnd}`;
+  if (ctx === 'group_savings')   return `To: Savings Group — ${grp}`;
+  return `To: Personal Savings${cyc ? ` — ${cyc}` : ''}`;
+}
+
 export function buildAsoContributionReceipt(contribution, clientName, businessName) {
   const isWithdrawal = contribution.type === 'withdrawal';
   const isReg        = contribution.type === 'registration_fee';
   const status       = contribution.status === 'pending' ? 'pending' : 'success';
   const { ref, image, pdf } = receiptFilenames(contribution.id, contribution.created_at || contribution.date);
+  const destination  = buildDestinationLabel(contribution);
 
   return {
     title:     isReg ? 'Registration Fee' : isWithdrawal ? 'Withdrawal' : 'Contribution',
@@ -91,6 +116,7 @@ export function buildAsoContributionReceipt(contribution, clientName, businessNa
     datetime:  formatReceiptDateTime(contribution.created_at || contribution.date),
     fields: [
       { label: 'Transaction Type', value: isReg ? 'Registration Fee' : isWithdrawal ? 'Ajo Withdrawal' : 'Ajo Contribution' },
+      destination                 && { label: isWithdrawal ? 'From' : 'To',  value: destination },
       clientName                  && { label: 'Member',         value: clientName },
       contribution.payment_method && { label: 'Payment Method', value: humanize(contribution.payment_method) },
       contribution.notes          && { label: 'Note',           value: contribution.notes },
@@ -110,6 +136,9 @@ export function buildAsoContributionReceipt(contribution, clientName, businessNa
 export function buildAjoWithdrawalReceipt(req, clientName, businessName) {
   const statusMap = { pending: 'pending', approved: 'success', rejected: 'failed' };
   const { ref, image, pdf } = receiptFilenames(req.id, req.requested_at);
+  const destination = req.group_name
+    ? `From: Released group funds — ${req.group_name}`
+    : `From: Personal Savings${req.cycle_label ? ` — ${req.cycle_label}` : ''}`;
 
   return {
     title:     'Withdrawal Request',
@@ -119,6 +148,7 @@ export function buildAjoWithdrawalReceipt(req, clientName, businessName) {
     datetime:  formatReceiptDateTime(req.requested_at),
     fields: [
       { label: 'Transaction Type', value: 'Ajo Withdrawal' },
+      destination        && { label: 'From',           value: destination },
       clientName         && { label: 'Member',         value: clientName },
       req.fee_amount > 0 && { label: 'Processing Fee', value: fmtAmt(req.fee_amount) },
       req.fee_type       && { label: 'Fee Type',        value: humanize(req.fee_type) },
@@ -232,6 +262,7 @@ export function buildAjoContributionReceipt(contribution, clientName, businessNa
                  || t === 'commission' || t.startsWith('reversal_');
   const statusMap = { completed: 'success', confirmed: 'success', pending: 'pending', rejected: 'failed', declined: 'failed' };
   const { ref, image, pdf } = receiptFilenames(contribution.id, contribution.created_at || contribution.date);
+  const destination = buildDestinationLabel(contribution);
 
   const splitFields = (periodSplit?.splits || []).map(s => ({
     label: `  Period ${s.idx + 1}`,
@@ -246,6 +277,7 @@ export function buildAjoContributionReceipt(contribution, clientName, businessNa
     datetime:  formatReceiptDateTime(contribution.created_at || contribution.date),
     fields: [
       { label: 'Transaction Type', value: label },
+      destination                 && { label: isOut ? 'From' : 'To', value: destination },
       clientName                  && { label: 'Member',         value: clientName },
       splitFields.length > 0      && { label: 'Allocation',     value: `${splitFields.length} period${splitFields.length > 1 ? 's' : ''}` },
       ...splitFields,

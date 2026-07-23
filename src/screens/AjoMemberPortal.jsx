@@ -1490,7 +1490,7 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
 }
 
 // ── Withdrawal request modal ──────────────────────────────────────────────
-function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotationsData = [], onClose, onSuccess }) {
+function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotationsData = [], contributions = [], onClose, onSuccess }) {
   const [amount,        setAmount]        = useState("");
   const [saving,        setSaving]        = useState(false);
   const [error,         setError]         = useState("");
@@ -1855,40 +1855,109 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
             )}
 
             {/* ── Saving Group tab ── */}
-            {activeTab === "group" && (
-              <>
-                {savingsGroups.length > 1 && (
-                  <div className="mb-4">
-                    <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Which savings group?</p>
-                    <div className="space-y-1.5">
-                      {savingsGroups.map(g => (
-                        <button key={g.id} type="button" onClick={() => setSelectedGrpId(g.id)}
-                          className={`w-full flex items-center justify-between px-3 py-2 rounded-xl border-2 text-left text-sm transition ${
-                            (selectedGrpId || savingsGroups[0]?.id) === g.id
-                              ? "border-[#16255A] bg-[#16255A]/5 dark:bg-[#16255A]/20 text-[#16255A] dark:text-blue-300"
-                              : "border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200"
-                          }`}>
-                          <span className="font-semibold">{g.name}</span>
-                          {(selectedGrpId || savingsGroups[0]?.id) === g.id && (
-                            <div className="w-3.5 h-3.5 rounded-full bg-[#16255A] flex-shrink-0" />
+            {activeTab === "group" && (() => {
+              const grp = selectedGroup;
+              if (!grp) return null;
+              const rs     = grp.round_status || "not_started";
+              const target = Number(grp.target_amount || 0);
+
+              // My contribution total for this group in this round
+              const myContribs = contributions.filter(c =>
+                c.group_id === grp.id &&
+                c.contribution_context === "group_savings" &&
+                c.type === "contribution" &&
+                c.status === "completed" &&
+                (!grp.started_at || new Date(c.created_at) >= new Date(grp.started_at))
+              );
+              const myTotal = myContribs.reduce((s, c) => s + Number(c.amount), 0);
+
+              // Pot = sum over ALL members — we don't have other members' contributions client-side,
+              // so we derive from rotationsData (if present) or show only my contribution.
+              // The owner's group detail page shows the full pot; client sees their share only.
+
+              const daysLeft = grp.target_deadline
+                ? Math.ceil((new Date(grp.target_deadline) - new Date()) / 86400000)
+                : null;
+
+              return (
+                <>
+                  {savingsGroups.length > 1 && (
+                    <div className="mb-4">
+                      <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Which savings group?</p>
+                      <div className="space-y-1.5">
+                        {savingsGroups.map(g => (
+                          <button key={g.id} type="button" onClick={() => setSelectedGrpId(g.id)}
+                            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl border-2 text-left text-sm transition ${
+                              (selectedGrpId || savingsGroups[0]?.id) === g.id
+                                ? "border-[#16255A] bg-[#16255A]/5 dark:bg-[#16255A]/20 text-[#16255A] dark:text-blue-300"
+                                : "border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200"
+                            }`}>
+                            <span className="font-semibold">{g.name}</span>
+                            {(selectedGrpId || savingsGroups[0]?.id) === g.id && (
+                              <div className="w-3.5 h-3.5 rounded-full bg-[#16255A] flex-shrink-0" />
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Status card */}
+                  <div className="mb-4 space-y-3">
+                    {/* Round status banner */}
+                    {rs === "not_started" && (
+                      <div className="px-3.5 py-3 rounded-xl border border-amber-200 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-900/10">
+                        <p className="text-xs font-extrabold text-amber-700 dark:text-amber-400">Round not started yet</p>
+                        <p className="text-[10px] text-amber-600 dark:text-amber-500 mt-0.5">Your savings agent will set a target and start the round when the group is ready</p>
+                      </div>
+                    )}
+                    {rs === "active" && target > 0 && (
+                      <div className="px-3.5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/30 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Group target</p>
+                          {daysLeft !== null && daysLeft >= 0 && (
+                            <span className="text-[10px] text-slate-400 dark:text-slate-500">{daysLeft} day{daysLeft !== 1 ? "s" : ""} left</span>
                           )}
-                        </button>
-                      ))}
-                    </div>
+                        </div>
+                        <div className="h-2 bg-slate-200 dark:bg-slate-600 rounded-full overflow-hidden">
+                          <div className="h-full bg-green-500 rounded-full" style={{ width: `${target > 0 && myTotal > 0 ? Math.min(100, Math.round((myTotal / target) * 100)) : 0}%` }} />
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-extrabold text-slate-700 dark:text-slate-200">{fmt(myTotal)} saved</p>
+                          <p className="text-[10px] text-slate-400 dark:text-slate-500">of {fmt(target)} target</p>
+                        </div>
+                        <div className="flex items-center gap-1.5 pt-0.5">
+                          <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3 text-amber-500 flex-shrink-0" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                          <p className="text-[10px] text-slate-500 dark:text-slate-400">Locked until the round closes</p>
+                        </div>
+                      </div>
+                    )}
+                    {rs === "target_met" && (
+                      <div className="px-3.5 py-3 rounded-xl border border-blue-200 dark:border-blue-700/50 bg-blue-50 dark:bg-blue-900/10">
+                        <p className="text-xs font-extrabold text-blue-700 dark:text-blue-400">Target met — funds locked until group closes</p>
+                        <p className="text-[10px] text-blue-600 dark:text-blue-500 mt-0.5">Your savings agent will close the group to release your {fmt(myTotal)}</p>
+                      </div>
+                    )}
+                    {rs === "closed" && (
+                      <div className="px-3.5 py-3 rounded-xl border border-green-200 dark:border-green-700/50 bg-green-50 dark:bg-green-900/10">
+                        <p className="text-xs font-extrabold text-green-700 dark:text-green-400">Released — {fmt(myTotal)} available in your savings</p>
+                        <p className="text-[10px] text-green-600 dark:text-green-500 mt-0.5">This group has closed. Your funds are now part of your withdrawable balance.</p>
+                      </div>
+                    )}
+
+                    {/* My contribution stat */}
+                    {rs !== "not_started" && (
+                      <div className="flex items-center justify-between px-3 py-2 bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700">
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400">My contribution this round</p>
+                        <p className="text-sm font-extrabold text-slate-700 dark:text-slate-200 tabular-nums">{fmt(myTotal)}</p>
+                      </div>
+                    )}
                   </div>
-                )}
-                {savingsGroups.length === 1 && (
-                  <div className="px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/30 mb-4">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{savingsGroups[0].name}</p>
-                      <span className="text-[9px] font-extrabold bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full uppercase tracking-wide">Available</span>
-                    </div>
-                    <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">Your group savings balance is part of your total withdrawable balance</p>
-                  </div>
-                )}
-                {withdrawalForm}
-              </>
-            )}
+
+                  {(rs === "active" || rs === "closed" || rs === "target_met") && withdrawalForm}
+                </>
+              );
+            })()}
 
             {/* ── Esusu Rotation tab ── */}
             {activeTab === "esusu" && (
@@ -4690,6 +4759,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
           cycles={cycles}
           clientGroups={client?.group_memberships?.filter(m => m.status === "active") || []}
           rotationsData={rotationsData}
+          contributions={contributions}
           onClose={() => setShowWithdraw(false)}
           onSuccess={() => { setShowWithdraw(false); refreshWithdrawRequests(); }}
         />

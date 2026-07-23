@@ -669,6 +669,15 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [directEditSaving,     setDirectEditSaving]     = useState(false);
   const [directEditMsg,        setDirectEditMsg]        = useState({ id: null, text: "", ok: false });
   const [archiveSafety,        setArchiveSafety]        = useState({}); // { [grpId]: {safe,activeRound,unsettledMembers} }
+  // Savings lifecycle state
+  const [startRoundGid,        setStartRoundGid]        = useState(null);  // group id for start-round modal
+  const [startRoundTarget,     setStartRoundTarget]     = useState("");
+  const [startRoundDeadline,   setStartRoundDeadline]   = useState("");
+  const [startRoundMsg,        setStartRoundMsg]        = useState({ id: null, text: "", ok: false });
+  const [startRoundSaving,     setStartRoundSaving]     = useState(false);
+  const [closingRoundGid,      setClosingRoundGid]      = useState(null);  // eslint-disable-line no-unused-vars
+  const [savingsDetails,       setSavingsDetails]       = useState({});    // { [grpId]: { loading, pot, members } }
+  const [expandedSavingsGid,   setExpandedSavingsGid]  = useState(null);  // group id with expanded member list
   const [archiveSafetyLoading, setArchiveSafetyLoading] = useState(null); // grp.id being checked
   // Rotation management
   const [showRotation,   setShowRotation]   = useState(null); // group object
@@ -841,7 +850,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     try {
       const { data: grps } = await supabase
         .from("ajo_groups")
-        .select("id, owner_id, name, description, is_active, group_mode, contribution_amount, contribution_frequency, percentage_charge, bank_code, account_number, account_name, bank_name, paystack_subaccount_code, privacy_show_names, privacy_show_amounts, created_at")
+        .select("id, owner_id, name, description, is_active, group_mode, contribution_amount, contribution_frequency, percentage_charge, bank_code, account_number, account_name, bank_name, paystack_subaccount_code, privacy_show_names, privacy_show_amounts, created_at, round_status, target_amount, target_deadline, started_at, closed_at")
         .eq("owner_id", profile.id)
         .eq("is_active", true)
         .order("created_at", { ascending: true });
@@ -1039,6 +1048,95 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     setShowRotation(grp);
     setRotationData(null);
     loadRotation(grp.id);
+  };
+
+  const loadSavingsDetails = async (grpId, startedAt) => {
+    setSavingsDetails(p => ({ ...p, [grpId]: { ...(p[grpId] || {}), loading: true } }));
+    const since = startedAt || "1970-01-01";
+    const { data: rows } = await supabase
+      .from("aso_client_group_memberships")
+      .select("client_id, status, aso_clients(id, full_name, current_balance)")
+      .eq("group_id", grpId)
+      .eq("status", "active");
+    const members = rows || [];
+    const { data: contribRows } = await supabase
+      .from("ajo_contributions")
+      .select("aso_client_id, amount")
+      .eq("group_id", grpId)
+      .eq("contribution_context", "group_savings")
+      .eq("type", "contribution")
+      .eq("status", "completed")
+      .gte("created_at", since);
+    const totByClient = {};
+    (contribRows || []).forEach(r => {
+      totByClient[r.aso_client_id] = (totByClient[r.aso_client_id] || 0) + Number(r.amount);
+    });
+    const pot = Object.values(totByClient).reduce((s, v) => s + v, 0);
+    const memberList = members.map(m => ({
+      client_id:   m.client_id,
+      full_name:   m.aso_clients?.full_name || "—",
+      contributed: totByClient[m.client_id] || 0,
+    }));
+    setSavingsDetails(p => ({ ...p, [grpId]: { loading: false, pot, members: memberList } }));
+  };
+
+  const handleStartSavingsRound = async (grpId) => {
+    const target   = parseFloat(startRoundTarget);
+    const deadline = startRoundDeadline;
+    if (!target || target <= 0) { setStartRoundMsg({ id: grpId, text: "Enter a valid target amount", ok: false }); return; }
+    if (!deadline)              { setStartRoundMsg({ id: grpId, text: "Select a deadline date", ok: false }); return; }
+    setStartRoundSaving(true);
+    const { data, error } = await supabase.functions.invoke("ajo-write", {
+      body: { action: "start_savings_round", group_id: grpId, target_amount: target, target_deadline: deadline },
+    });
+    setStartRoundSaving(false);
+    if (error || !data?.ok) {
+      setStartRoundMsg({ id: grpId, text: data?.error || error?.message || "Failed to start round", ok: false });
+      return;
+    }
+    setStartRoundGid(null);
+    setStartRoundTarget(""); setStartRoundDeadline("");
+    setStartRoundMsg({ id: null, text: "", ok: false });
+    // Reload groups to reflect new round_status
+    const { data: fresh } = await supabase.from("ajo_groups")
+      .select("id, owner_id, name, description, is_active, group_mode, contribution_amount, contribution_frequency, percentage_charge, bank_code, account_number, account_name, bank_name, paystack_subaccount_code, privacy_show_names, privacy_show_amounts, created_at, round_status, target_amount, target_deadline, started_at, closed_at")
+      .eq("owner_id", profile.id).eq("is_active", true).order("created_at", { ascending: false });
+    if (fresh) setGroups(fresh);
+    loadSavingsDetails(grpId, data?.started_at);
+  };
+
+  const handleCloseSavingsRound = (grpId) => {
+    setClosingRoundGid(null);
+    setTxnPin({
+      title: "Confirm Group Close",
+      description: "Enter your PIN to close this savings round and release all member funds.",
+      onConfirm: async () => {
+        const { data, error } = await supabase.functions.invoke("ajo-write", {
+          body: { action: "close_savings_round", group_id: grpId },
+        });
+        if (error || !data?.ok) throw new Error(data?.error || error?.message || "Failed to close round");
+        const { data: fresh } = await supabase.from("ajo_groups")
+          .select("id, owner_id, name, description, is_active, group_mode, contribution_amount, contribution_frequency, percentage_charge, bank_code, account_number, account_name, bank_name, paystack_subaccount_code, privacy_show_names, privacy_show_amounts, created_at, round_status, target_amount, target_deadline, started_at, closed_at")
+          .eq("owner_id", profile.id).eq("is_active", true).order("created_at", { ascending: false });
+        if (fresh) setGroups(fresh);
+        setSavingsDetails(p => ({ ...p, [grpId]: undefined }));
+      },
+    });
+  };
+
+  const handleReleaseSavingsMember = (grpId, clientId, clientName) => {
+    setTxnPin({
+      title: "Release Member",
+      description: `Release ${clientName} from the savings group? Their contributions will unlock into their withdrawable balance.`,
+      onConfirm: async () => {
+        const { data, error } = await supabase.functions.invoke("ajo-write", {
+          body: { action: "release_savings_member", group_id: grpId, client_id: clientId },
+        });
+        if (error || !data?.ok) throw new Error(data?.error || error?.message || "Failed to release member");
+        const grp = groups.find(g => g.id === grpId);
+        loadSavingsDetails(grpId, grp?.started_at);
+      },
+    });
   };
 
   const handleStartRound = async (turns) => {
@@ -3577,6 +3675,157 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                             Manage Rotation
                           </button>
                         )}
+
+                        {/* ── Savings lifecycle panel ── */}
+                        {!isRotating && (() => {
+                          const rs     = grp.round_status || "not_started";
+                          const target = Number(grp.target_amount || 0);
+                          const det    = savingsDetails[grp.id];
+                          const pot    = det?.pot || 0;
+                          const pct    = target > 0 ? Math.min(100, Math.round((pot / target) * 100)) : 0;
+                          const daysLeft = grp.target_deadline
+                            ? Math.ceil((new Date(grp.target_deadline) - new Date()) / 86400000)
+                            : null;
+                          const deadlinePassed = daysLeft !== null && daysLeft < 0;
+
+                          return (
+                            <div className="mt-3 space-y-2">
+                              {/* Status badge row */}
+                              <div className="flex items-center justify-between">
+                                <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wide ${
+                                  rs === "active"     ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400"
+                                  : rs === "target_met" ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300"
+                                  : rs === "closed"   ? "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
+                                  : "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400"
+                                }`}>
+                                  {rs === "not_started" ? "Not started" : rs === "target_met" ? "Target met ✓" : rs === "closed" ? "Closed" : "Active"}
+                                </span>
+                                {(rs === "active" || rs === "target_met") && target > 0 && (
+                                  <span className="text-[10px] text-slate-500 dark:text-slate-400 tabular-nums font-semibold">
+                                    {fmt(pot)} / {fmt(target)}
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Deadline passed prompt */}
+                              {deadlinePassed && (rs === "active" || rs === "target_met") && (
+                                <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 rounded-xl px-3 py-2">
+                                  <p className="text-[10px] font-bold text-amber-700 dark:text-amber-300">
+                                    Target deadline reached — {fmt(pot)} of {fmt(target)} saved. Close group and release funds?
+                                  </p>
+                                </div>
+                              )}
+
+                              {/* Progress bar */}
+                              {(rs === "active" || rs === "target_met") && target > 0 && (
+                                <div>
+                                  <div className="h-1.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                                    <div
+                                      className={`h-full rounded-full transition-all ${rs === "target_met" ? "bg-blue-500" : "bg-green-500"}`}
+                                      style={{ width: `${pct}%` }}
+                                    />
+                                  </div>
+                                  <div className="flex items-center justify-between mt-0.5">
+                                    <span className="text-[10px] text-slate-400 dark:text-slate-500">{pct}% of target</span>
+                                    {daysLeft !== null && daysLeft >= 0 && (
+                                      <span className="text-[10px] text-slate-400 dark:text-slate-500">{daysLeft}d left</span>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Member breakdown toggle */}
+                              {(rs === "active" || rs === "target_met") && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (expandedSavingsGid === grp.id) {
+                                      setExpandedSavingsGid(null);
+                                    } else {
+                                      setExpandedSavingsGid(grp.id);
+                                      if (!det || !det.members) loadSavingsDetails(grp.id, grp.started_at);
+                                    }
+                                  }}
+                                  className="w-full flex items-center justify-between px-2.5 py-1.5 bg-slate-50 dark:bg-slate-700/40 rounded-xl border border-slate-200 dark:border-slate-600 text-[10px] font-bold text-slate-600 dark:text-slate-300">
+                                  <span>Member breakdown</span>
+                                  <svg viewBox="0 0 24 24" fill="none" className={`w-3 h-3 transition-transform ${expandedSavingsGid === grp.id ? "rotate-180" : ""}`} stroke="currentColor" strokeWidth={2.5}><polyline points="6 9 12 15 18 9"/></svg>
+                                </button>
+                              )}
+
+                              {/* Member list */}
+                              {expandedSavingsGid === grp.id && (
+                                <div className="space-y-1 bg-slate-50 dark:bg-slate-700/30 rounded-xl p-2">
+                                  {det?.loading && (
+                                    <div className="flex justify-center py-2">
+                                      <div className="w-4 h-4 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+                                    </div>
+                                  )}
+                                  {!det?.loading && (det?.members || []).map(m => (
+                                    <div key={m.client_id} className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700">
+                                      <p className="text-[10px] font-semibold text-slate-700 dark:text-slate-200 truncate flex-1">{m.full_name}</p>
+                                      <span className="text-[10px] font-extrabold text-slate-600 dark:text-slate-300 tabular-nums flex-shrink-0">{fmt(m.contributed)}</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleReleaseSavingsMember(grp.id, m.client_id, m.full_name)}
+                                        className="text-[9px] font-bold text-red-500 dark:text-red-400 hover:underline flex-shrink-0 ml-1">
+                                        Release
+                                      </button>
+                                    </div>
+                                  ))}
+                                  {!det?.loading && (det?.members || []).length === 0 && (
+                                    <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center py-1">No active members</p>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Start round button */}
+                              {(rs === "not_started" || rs === "closed") && !isLocked && (
+                                <button
+                                  type="button"
+                                  onClick={() => { setStartRoundGid(grp.id); setStartRoundTarget(""); setStartRoundDeadline(""); setStartRoundMsg({ id: null, text: "", ok: false }); }}
+                                  className="w-full py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold text-xs transition active:scale-[0.99] flex items-center justify-center gap-1.5">
+                                  Start savings round
+                                </button>
+                              )}
+
+                              {/* Start round modal */}
+                              {startRoundGid === grp.id && (
+                                <div className="bg-slate-50 dark:bg-slate-700/40 rounded-xl p-3 space-y-2.5 border border-slate-200 dark:border-slate-600">
+                                  <p className="text-xs font-bold text-slate-700 dark:text-slate-200">Start Savings Round</p>
+                                  <div>
+                                    <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-0.5">Target Amount (₦)</p>
+                                    <input type="number" min="1" placeholder="e.g. 500000" value={startRoundTarget} onChange={e => setStartRoundTarget(e.target.value)}
+                                      className="w-full text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 text-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-slate-400" />
+                                  </div>
+                                  <div>
+                                    <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-0.5">Target Deadline</p>
+                                    <input type="date" min={new Date(Date.now() + 86400000).toISOString().split("T")[0]} value={startRoundDeadline} onChange={e => setStartRoundDeadline(e.target.value)}
+                                      className="w-full text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 text-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-slate-400" />
+                                  </div>
+                                  {startRoundMsg.id === grp.id && (
+                                    <p className={`text-[10px] font-semibold ${startRoundMsg.ok ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}>{startRoundMsg.text}</p>
+                                  )}
+                                  <div className="flex gap-2">
+                                    <button type="button" onClick={() => setStartRoundGid(null)} className="flex-1 py-2 text-xs font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-600 transition">Cancel</button>
+                                    <button type="button" onClick={() => handleStartSavingsRound(grp.id)} disabled={startRoundSaving} className="flex-1 py-2 text-xs font-bold text-white bg-green-600 hover:bg-green-700 disabled:opacity-60 rounded-xl transition flex items-center justify-center gap-1">
+                                      {startRoundSaving ? <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /> : "Start Round"}
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Close group button */}
+                              {(rs === "active" || rs === "target_met") && !isLocked && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleCloseSavingsRound(grp.id)}
+                                  className="w-full py-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl font-bold text-xs border border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/30 transition active:scale-[0.99]">
+                                  Close group &amp; release funds
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })()}
 
                         {/* ── Pending approval badge ── */}
                         {isLocked && !approvalMsg && (

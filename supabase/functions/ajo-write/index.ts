@@ -69,7 +69,7 @@ function json(body: unknown, status = 200): Response {
 }
 
 // ── PIN-requiring actions ─────────────────────────────────────────────────────
-const PIN_GATED = new Set(["record_withdrawal", "reverse_contribution", "archive_client", "request_client_archive", "confirm_manual_deposit", "approve_contribution", "collection_record", "execute_commission", "execute_payout", "skip_turn", "reorder_turns", "approve_reactivation", "record_credit_repayment", "batch_approve_contributions"]);
+const PIN_GATED = new Set(["record_withdrawal", "reverse_contribution", "archive_client", "request_client_archive", "confirm_manual_deposit", "approve_contribution", "collection_record", "execute_commission", "execute_payout", "skip_turn", "reorder_turns", "approve_reactivation", "record_credit_repayment", "batch_approve_contributions", "close_savings_round", "release_savings_member"]);
 
 // ── Resolve the true owner UUID for a client from the DB ─────────────────────
 async function resolveClientOwner(
@@ -379,6 +379,13 @@ serve(async (req: Request) => {
           .select("id").eq("group_id", gid).eq("status", "active").maybeSingle();
         if (!grd) return json({ ok: false, error: "This esusu group has no active round — ask your savings agent to start one" }, 400);
       }
+      if (contribution_context === "group_savings") {
+        const { data: grpRow } = await sb.from("ajo_groups")
+          .select("round_status").eq("id", gid).maybeSingle();
+        if (!grpRow || grpRow.round_status !== "active") {
+          return json({ ok: false, error: "This savings group hasn't started — ask your savings agent to start it" }, 400);
+        }
+      }
     }
 
     // ── Fix 3: First-deposit minimum (expected + registration fee) ──
@@ -575,6 +582,13 @@ serve(async (req: Request) => {
         const { data: grd } = await sb.from("ajo_group_rounds")
           .select("id").eq("group_id", gid).eq("status", "active").maybeSingle();
         if (!grd) return json({ ok: false, error: "This esusu group has no active round — ask your savings agent to start one" }, 400);
+      }
+      if (context === "group_savings") {
+        const { data: grpRow } = await sb.from("ajo_groups")
+          .select("round_status").eq("id", gid).maybeSingle();
+        if (!grpRow || grpRow.round_status !== "active") {
+          return json({ ok: false, error: "This savings group hasn't started — ask your savings agent to start it" }, 400);
+        }
       }
     }
 
@@ -995,7 +1009,7 @@ serve(async (req: Request) => {
     // Resolve owner from the claim itself (don't trust client-supplied owner_id)
     const { data: claim } = await sb
       .from("ajo_contributions")
-      .select("owner_id, aso_client_id")
+      .select("owner_id, aso_client_id, contribution_context, group_id")
       .eq("id", claim_id)
       .maybeSingle();
 
@@ -1004,6 +1018,15 @@ serve(async (req: Request) => {
 
     const ajoPerms = await resolveAjoPerms(sb, user.id, ownerId);
     if (ajoPerms !== null) return json({ ok: false, error: "Unauthorized: owner-only action" }, 403);
+
+    // Gate: group_savings deposits cannot be confirmed if the round is no longer active
+    if (claim.contribution_context === "group_savings" && claim.group_id) {
+      const { data: grpRow } = await sb.from("ajo_groups")
+        .select("round_status").eq("id", claim.group_id).maybeSingle();
+      if (!grpRow || grpRow.round_status !== "active") {
+        return json({ ok: false, error: "This savings group is no longer active — the deposit cannot be confirmed" }, 400);
+      }
+    }
 
     const { data, error } = await sb.rpc("ajo_confirm_manual_deposit", {
       p_claim_id:     claim_id,
@@ -1207,6 +1230,115 @@ serve(async (req: Request) => {
     });
     if (srErr) return json({ ok: false, error: srErr.message });
     return json(srData);
+  }
+
+  // ── Savings: start_savings_round ──────────────────────────────────────────
+  if (action === "start_savings_round") {
+    const { group_id: ssrGid, target_amount: ssrTarget, target_deadline: ssrDeadline } =
+      params as { group_id: string; target_amount: number; target_deadline: string };
+    if (!ssrGid) return json({ ok: false, error: "group_id required" }, 400);
+    if (!ssrTarget || ssrTarget <= 0) return json({ ok: false, error: "target_amount required and must be > 0" }, 400);
+    if (!ssrDeadline) return json({ ok: false, error: "target_deadline required" }, 400);
+
+    const { data: ssrGrp } = await sb.from("ajo_groups").select("owner_id").eq("id", ssrGid).maybeSingle();
+    if (!ssrGrp) return json({ ok: false, error: "Group not found" }, 404);
+
+    const ssrPerms = await resolveAjoPerms(sb, user.id, ssrGrp.owner_id as string);
+    if (ssrPerms !== null) return json({ ok: false, error: "Unauthorized: owner-only action" }, 403);
+
+    const { data: ssrData, error: ssrErr } = await sb.rpc("ajo_start_savings_round", {
+      p_owner_id:      ssrGrp.owner_id as string,
+      p_group_id:      ssrGid,
+      p_target_amount: ssrTarget,
+      p_deadline:      ssrDeadline,
+    });
+    if (ssrErr) return json({ ok: false, error: ssrErr.message });
+    return json(ssrData);
+  }
+
+  // ── Savings: close_savings_round (PIN-gated) ─────────────────────────────
+  if (action === "close_savings_round") {
+    const { group_id: csrGid } = params as { group_id: string };
+    if (!csrGid) return json({ ok: false, error: "group_id required" }, 400);
+
+    const { data: csrGrp } = await sb.from("ajo_groups")
+      .select("owner_id, name").eq("id", csrGid).maybeSingle();
+    if (!csrGrp) return json({ ok: false, error: "Group not found" }, 404);
+
+    const csrOwnerId = csrGrp.owner_id as string;
+    const csrPerms = await resolveAjoPerms(sb, user.id, csrOwnerId);
+    if (csrPerms !== null) return json({ ok: false, error: "Unauthorized: owner-only action" }, 403);
+
+    const { data: csrData, error: csrErr } = await sb.rpc("ajo_close_savings_round", {
+      p_owner_id: csrOwnerId,
+      p_group_id: csrGid,
+    });
+    if (csrErr) return json({ ok: false, error: csrErr.message });
+    if (!(csrData as Record<string, unknown>)?.ok) return json(csrData);
+
+    const csr = csrData as Record<string, unknown>;
+    const releases = (csr.releases as Array<{ client_id: string; client_name: string; released_amount: number }>) || [];
+
+    // Notify all released members
+    await Promise.race([
+      Promise.allSettled(
+        releases.map(async rel => {
+          const clientUserId = await resolveClientUserId(sb, rel.client_id);
+          if (!clientUserId) return;
+          return notifyUser(sb, clientUserId, {
+            type:     "group_funds_released",
+            title:    "Savings group funds released",
+            body:     `${csrGrp.name} has closed — ₦${Number(rel.released_amount).toLocaleString("en-NG")} is now available in your balance`,
+            priority: "high",
+            deepLink: { tab: "savings" },
+          });
+        })
+      ),
+      new Promise<void>(r => setTimeout(r, 2500)),
+    ]);
+
+    return json(csrData);
+  }
+
+  // ── Savings: release_savings_member (PIN-gated) ──────────────────────────
+  if (action === "release_savings_member") {
+    const { group_id: rsmGid, client_id: rsmClientId } =
+      params as { group_id: string; client_id: string };
+    if (!rsmGid || !rsmClientId) return json({ ok: false, error: "group_id and client_id required" }, 400);
+
+    const { data: rsmGrp } = await sb.from("ajo_groups")
+      .select("owner_id, name").eq("id", rsmGid).maybeSingle();
+    if (!rsmGrp) return json({ ok: false, error: "Group not found" }, 404);
+
+    const rsmOwnerId = rsmGrp.owner_id as string;
+    const rsmPerms = await resolveAjoPerms(sb, user.id, rsmOwnerId);
+    if (rsmPerms !== null) return json({ ok: false, error: "Unauthorized: owner-only action" }, 403);
+
+    const { data: rsmData, error: rsmErr } = await sb.rpc("ajo_release_savings_member", {
+      p_owner_id:  rsmOwnerId,
+      p_group_id:  rsmGid,
+      p_client_id: rsmClientId,
+    });
+    if (rsmErr) return json({ ok: false, error: rsmErr.message });
+    if (!(rsmData as Record<string, unknown>)?.ok) return json(rsmData);
+
+    const rsm = rsmData as Record<string, unknown>;
+    await Promise.race([
+      (async () => {
+        const rsmUserId = await resolveClientUserId(sb, rsmClientId);
+        if (!rsmUserId) return;
+        return notifyUser(sb, rsmUserId, {
+          type:     "group_member_released",
+          title:    "Released from savings group",
+          body:     `You have been released from ${rsmGrp.name}${(rsm.released_amount as number) > 0 ? ` — ₦${Number(rsm.released_amount).toLocaleString("en-NG")} is now available in your balance` : ""}`,
+          priority: "high",
+          deepLink: { tab: "savings" },
+        });
+      })().catch(() => null),
+      new Promise<void>(r => setTimeout(r, 2500)),
+    ]);
+
+    return json(rsmData);
   }
 
   // ── Esusu: execute_payout (PIN-gated) ──────────────────────────────────

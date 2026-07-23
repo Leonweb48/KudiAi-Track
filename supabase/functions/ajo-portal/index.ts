@@ -33,7 +33,7 @@ const CLIENT_SELECT = `
   withdrawal_bank_code, withdrawal_bank_name, withdrawal_account_number, withdrawal_account_name,
   portal_pin_changed_at, created_at,
   ajo_groups(name),
-  aso_client_group_memberships(id, group_id, status, joined_at, ajo_groups(id, name, group_mode, contribution_amount, contribution_frequency))
+  aso_client_group_memberships(id, group_id, status, joined_at, ajo_groups(id, name, group_mode, contribution_amount, contribution_frequency, round_status, target_amount, target_deadline, started_at, privacy_show_names, privacy_show_amounts))
 `;
 
 function normalizeClient(client: Record<string, unknown> | null) {
@@ -44,8 +44,13 @@ function normalizeClient(client: Record<string, unknown> | null) {
     const mg = m.ajo_groups as Record<string, unknown> | null;
     return {
       id: m.id, group_id: m.group_id, status: m.status, joined_at: m.joined_at,
-      group: mg ? { id: mg.id, name: mg.name, group_mode: mg.group_mode,
-        contribution_amount: mg.contribution_amount, contribution_frequency: mg.contribution_frequency } : null,
+      group: mg ? {
+        id: mg.id, name: mg.name, group_mode: mg.group_mode,
+        contribution_amount: mg.contribution_amount, contribution_frequency: mg.contribution_frequency,
+        round_status: mg.round_status, target_amount: mg.target_amount,
+        target_deadline: mg.target_deadline, started_at: mg.started_at,
+        privacy_show_names: mg.privacy_show_names, privacy_show_amounts: mg.privacy_show_amounts,
+      } : null,
     };
   });
   const out = { ...client, group_name: grp?.name ?? "", group_memberships };
@@ -392,6 +397,13 @@ serve(async (req) => {
           const { data: grd } = await sb.from("ajo_group_rounds")
             .select("id").eq("group_id", callerGroupId).eq("status", "active").maybeSingle();
           if (!grd) return json({ error: "This esusu group has no active round — ask your savings agent to start one" }, 400);
+        }
+        if (contribution_context === "group_savings") {
+          const { data: grpRow } = await sb.from("ajo_groups")
+            .select("round_status").eq("id", callerGroupId).maybeSingle();
+          if (!grpRow || grpRow.round_status !== "active") {
+            return json({ error: "This savings group hasn't started — ask your savings agent to start it" }, 400);
+          }
         }
       }
 
