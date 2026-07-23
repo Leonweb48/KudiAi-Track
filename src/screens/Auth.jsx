@@ -483,21 +483,36 @@ export default function Auth() {
 
         // Safety valve: Chrome Custom Tab sometimes blocks custom-scheme redirects,
         // causing appUrlOpen to never fire and the loading spinner to freeze.
-        // Poll every 500 ms for up to 5 s after the CCT closes:
-        //   • exit immediately if appUrlOpen fired (exchange in flight)
-        //   • exit immediately if session already exists (exchange completed)
-        //   • only surface an error after the full 5 s with neither
-        // On some Android versions appUrlOpen arrives late (>1 s after browserFinished),
-        // so a single fixed delay is not reliable.
+        //
+        // On some Android devices appUrlOpen arrives >5 s after browserFinished
+        // (OS URL routing latency + first-time registration DB overhead).
+        // The original 5 s window produced a false "cancelled" error even though
+        // the exchange completed shortly after.  Extended to 15 s (30 × 500 ms).
+        //
+        // Three exit conditions (any one is enough to abort the error):
+        //   1. onAuthStateChange SIGNED_IN — instant detection when session lands
+        //   2. sessionStorage flag set     — appUrlOpen fired, exchange in flight
+        //   3. getSession() returns a session — exchange completed between ticks
         let browserDoneListener = null;
         browserDoneListener = await Browser.addListener("browserFinished", async () => {
           browserDoneListener?.remove();
-          for (let i = 0; i < 10; i++) {
+
+          let authResolved = false;
+          const { data: { subscription: authSub } } = supabase.auth.onAuthStateChange((event) => {
+            if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+              authResolved = true;
+            }
+          });
+
+          for (let i = 0; i < 30; i++) {
             await new Promise((r) => setTimeout(r, 500));
-            if (sessionStorage.getItem("kuditrack_oauth_exchange")) return;
+            if (authResolved) { authSub.unsubscribe(); return; }
+            if (sessionStorage.getItem("kuditrack_oauth_exchange")) { authSub.unsubscribe(); return; }
             const { data: { session } } = await supabase.auth.getSession();
-            if (session) return;
+            if (session) { authSub.unsubscribe(); return; }
           }
+
+          authSub.unsubscribe();
           window.dispatchEvent(new CustomEvent("kuditrack_auth_error", {
             detail: "Google sign-in was cancelled or failed. Please try again.",
           }));
