@@ -5001,8 +5001,9 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
       <div className="w-full max-w-md flex flex-col h-full relative">
 
         {/* Header */}
-        <header className="flex-none z-sticky min-h-[56px] flex items-center justify-between px-4 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shadow-sm" style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
-
+        <header className="flex-none z-sticky bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shadow-sm">
+          <div style={{ height: "env(safe-area-inset-top, 0px)" }} />
+          <div className="h-14 flex items-center justify-between px-4">
           {/* Business identity — falls back to KudiAI brand until ownerInfo loads */}
           <div className="flex items-center gap-2 min-w-0 flex-1">
             {ownerInfo?.owner?.business_name ? (
@@ -5044,6 +5045,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
               <span className="text-sm font-black text-white">{avatarInitial}</span>
               {client?.profile_image_url && <img src={client.profile_image_url} alt="" className="absolute inset-0 w-full h-full object-cover" onError={(e) => e.currentTarget.style.display = "none"} />}
             </button>
+          </div>
           </div>
         </header>
 

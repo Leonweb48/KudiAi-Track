@@ -451,8 +451,9 @@ export default function App() {
       <div className="h-[100dvh] bg-slate-50 dark:bg-slate-900 md:bg-slate-200 dark:md:bg-slate-950 flex justify-center transition-colors duration-200">
         <div className="w-full max-w-md relative flex flex-col h-[100dvh] safe-top md:shadow-2xl md:shadow-black/20 dark:md:shadow-black/60 md:border-x md:border-slate-300/50 dark:md:border-slate-700/50">
           {/* Owner portal header — flex-none at column root, same pattern as Staff/Manager/Ajo */}
-          <header className="flex-none z-sticky min-h-[56px] flex items-center justify-between px-4 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700/60 shadow-sm"
-            style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
+          <header className="flex-none z-sticky bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700/60 shadow-sm">
+            <div style={{ height: "env(safe-area-inset-top, 0px)" }} />
+            <div className="h-14 flex items-center justify-between px-4">
             <div className="flex items-center gap-2 flex-none min-w-0">
               <AppLogo className="h-8 w-8 flex-shrink-0" />
               {store.profile?.business_name ? (
@@ -485,6 +486,7 @@ export default function App() {
                     </div>
                 }
               </button>
+            </div>
             </div>
           </header>
 
