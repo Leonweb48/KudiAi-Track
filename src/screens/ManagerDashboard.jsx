@@ -1095,7 +1095,7 @@ export default function ManagerDashboard({ session, staff: staffProp }) {
   const staffId  = staff?.id;
   const ownerId  = staff?.owner_id;
 
-  const store     = useStore(ownerId, staffId, staff?.full_name);
+  const store     = useStore(ownerId, staffId, staff?.full_name, staff?.branch_id || null);
   const inventory = useInventory(ownerId, staffId, staff?.branch_id || null);
   const lock      = useBiometricLock(staffId);
 
@@ -1179,9 +1179,10 @@ export default function ManagerDashboard({ session, staff: staffProp }) {
   // Voice: save parsed transaction
   const handleVoiceSave = useCallback(async (parsed) => {
     if (!parsed || !ownerId) return;
-    await supabase.from("transactions").insert({
-      owner_id:         ownerId,
+    const { error } = await supabase.from("transactions").insert({
+      user_id:          ownerId,
       staff_id:         staffId,
+      branch_id:        staff?.branch_id || null,
       staff_name:       staff?.full_name || null,
       type:             parsed.type,
       amount:           parsed.amount,
@@ -1193,6 +1194,7 @@ export default function ManagerDashboard({ session, staff: staffProp }) {
       quantity:         parsed.quantity || 1,
       transaction_date: parsed.transaction_date || today(),
     });
+    if (error) console.error("handleVoiceSave:", error.message);
   }, [ownerId, staffId, staff]);
 
   // Nav badges

@@ -17,10 +17,11 @@ export function useInventory(userId, staffId = null, branchId = null) {
     const pQ = staffId
       ? supabase.rpc("get_products_safe", { p_owner_id: userId, p_branch_id: branchId || null })
       : supabase.from("products").select("*").eq("user_id", userId).order("product_name");
+    let mQ = supabase.from("stock_movements").select("*").eq("user_id", userId);
+    if (branchId) mQ = mQ.eq("branch_id", branchId);
     const [pRes, mRes] = await Promise.all([
       pQ,
-      supabase.from("stock_movements").select("*").eq("user_id", userId)
-        .order("created_at", { ascending: false }).limit(500),
+      mQ.order("created_at", { ascending: false }).limit(500),
     ]);
     if (pRes.data) {
       let prods = pRes.data;

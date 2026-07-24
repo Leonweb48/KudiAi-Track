@@ -1783,7 +1783,16 @@ serve(async (req: Request) => {
       .maybeSingle();
 
     if (creditFetchErr || !credit) return json({ ok: false, error: "Credit not found" }, 404);
-    if (credit.user_id !== user.id) return json({ ok: false, error: "Unauthorized" }, 403);
+
+    // Branch managers (staff) may record repayments — this is normal branch operations.
+    // record_credit_repayment is already PIN_GATED so PIN was verified above.
+    // Owners pass (callerUid === credit.user_id → null). Staff must have can_create permission.
+    const crPerms = await resolveAjoPerms(sb, user.id, credit.user_id);
+    if (crPerms === false) return json({ ok: false, error: "Unauthorized" }, 403);
+    if (crPerms !== null && !crPerms.can_create) {
+      return json({ ok: false, error: "Permission denied: Ajo contribution recording not enabled for your account" }, 403);
+    }
+
     if (credit.status === "paid") return json({ ok: false, error: "Credit is already fully paid" }, 409);
 
     const newAmountPaid  = (credit.amount_paid || 0) + parsedAmount;
@@ -1800,12 +1809,12 @@ serve(async (req: Request) => {
       .from("debt_payments")
       .insert({
         credit_id,
-        owner_id:       user.id,
+        owner_id:       credit.user_id,  // always the credit owner, not the JWT caller
         amount:         parsedAmount,
         payment_method: payment_method || "cash",
         payment_date:   new Date().toISOString().slice(0, 10),
         notes:          notes || null,
-        recorded_by:    user.id,
+        recorded_by:    user.id,         // actual caller — owner or branch manager staff
       })
       .select("*")
       .single();

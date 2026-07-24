@@ -1136,11 +1136,12 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     setTxnPin({
       title: "Confirm Group Close",
       description: "Enter your PIN to close this savings round and release all member funds.",
-      onConfirm: async () => {
+      onApprove: async (pin) => {
         const { data, error } = await supabase.functions.invoke("ajo-write", {
-          body: { action: "close_savings_round", group_id: grpId },
+          body: { action: "close_savings_round", group_id: grpId, pin },
         });
         if (error || !data?.ok) throw new Error(data?.error || error?.message || "Failed to close round");
+        setTxnPin(null);
         await loadGroups();
         setSavingsDetails(p => ({ ...p, [grpId]: undefined }));
       },
