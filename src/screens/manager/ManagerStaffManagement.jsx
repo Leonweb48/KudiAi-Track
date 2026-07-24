@@ -7,8 +7,8 @@ const MODULE_LABELS = {
   inventory:    "Stock",        invoices: "Invoices",
   insights:     "Reports",      settings: "Settings",
 };
-const PERM_FIELDS = ["can_view", "can_add", "can_edit", "can_delete"];
-const PERM_LABELS = { can_view: "View", can_add: "Add", can_edit: "Edit", can_delete: "Delete" };
+const PERM_FIELDS = ["can_view", "can_create"];
+const PERM_LABELS = { can_view: "View", can_create: "Add / Create" };
 
 const OWNER_ONLY_MSG = "Only the business owner can perform this action.";
 
