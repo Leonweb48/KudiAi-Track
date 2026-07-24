@@ -182,7 +182,7 @@ export default function ProfileEdit({ staff, session, livePerms = [], onBack, on
           p_field:   key,
           p_old_val: oldVal,
           p_new_val: newVal,
-        }).catch(() => null);
+        }).then(null, () => null);
       }
     }
   }, [staff]);
