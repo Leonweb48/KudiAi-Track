@@ -4,7 +4,7 @@ import { uid, today } from "../utils/helpers";
 import { logAudit } from "../utils/auditLog";
 import { sendEmailTrigger } from "../utils/emailTrigger";
 import { computeCapital } from "../lib/profitEngine";
-import { notify } from "../lib/notifyEngine";
+import { notify, notifyBranchManager } from "../lib/notifyEngine";
 
 const fireEmailTrigger = sendEmailTrigger;
 
@@ -520,6 +520,13 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
             txId:      data.id,
           },
         });
+        if (branchId) {
+          notifyBranchManager(userId, branchId, {
+            type:         t.type === "in" ? "staff_cash_in" : "staff_cash_out",
+            originUserId: staffId,
+            data: { ownerId: userId, staffName: staffName || "Staff", amount: parseFloat(t.amount) || 0 },
+          });
+        }
       }
       return data;
     }
@@ -621,18 +628,9 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
         next_of_kin_phone: c.next_of_kin_phone || "",
       });
       if (staffId) {
-        notify({
-          type:         "credit_created",
-          userId,
-          originUserId: staffId,
-          data: {
-            ownerId:      userId,
-            staffName:    staffName || "Staff",
-            amount:       parseFloat(c.total_amount) || 0,
-            customerName: c.customer_name || "",
-            creditId:     data.id,
-          },
-        });
+        const creditData = { ownerId: userId, staffName: staffName || "Staff", amount: parseFloat(c.total_amount) || 0, customerName: c.customer_name || "", creditId: data.id };
+        notify({ type: "credit_created", userId, originUserId: staffId, data: creditData });
+        if (branchId) notifyBranchManager(userId, branchId, { type: "credit_created", originUserId: staffId, data: creditData });
       }
       return { data, error: null };
     }
@@ -693,18 +691,9 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
           staff_id:       staffId  || "",
           staff_name:     staffName || "",
         });
-        notify({
-          type:         "credit_repayment",
-          userId,
-          originUserId: staffId || userId,
-          data: {
-            ownerId:      userId,
-            customerName: updated.customer_name || "",
-            amount,
-            outstanding:  updated.outstanding,
-            creditId:     id,
-          },
-        });
+        const repayData = { ownerId: userId, customerName: updated.customer_name || "", amount, outstanding: updated.outstanding, creditId: id };
+        notify({ type: "credit_repayment", userId, originUserId: staffId || userId, data: repayData });
+        if (branchId) notifyBranchManager(userId, branchId, { type: "credit_repayment", originUserId: staffId || userId, data: repayData });
         if (updated.status === "paid") {
           fireEmailTrigger("credit_fully_paid", {
             owner_id:       userId,
@@ -720,17 +709,9 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
             staff_id:       staffId || null,
             staff_name:     staffName || "",
           });
-          notify({
-            type:         "credit_completed",
-            userId,
-            originUserId: staffId || userId,
-            data: {
-              ownerId:      userId,
-              customerName: updated.customer_name || "",
-              total:        updated.total_amount,
-              creditId:     id,
-            },
-          });
+          const doneData = { ownerId: userId, customerName: updated.customer_name || "", total: updated.total_amount, creditId: id };
+          notify({ type: "credit_completed", userId, originUserId: staffId || userId, data: doneData });
+          if (branchId) notifyBranchManager(userId, branchId, { type: "credit_completed", originUserId: staffId || userId, data: doneData });
         }
     }
   };
@@ -799,17 +780,9 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
           action:  `Aso client added: ${cl.full_name}`,
           module:  "aso",
           details: `${cl.contribution_frequency || "daily"} · ₦${parseFloat(cl.contribution_amount || 0).toLocaleString()}/period` });
-        notify({
-          type:         "ajo_registration",
-          userId,
-          originUserId: staffId,
-          data: {
-            ownerId:    userId,
-            staffName:  staffName || "Staff",
-            clientName: cl.full_name || "",
-            clientId:   data.id,
-          },
-        });
+        const regData = { ownerId: userId, staffName: staffName || "Staff", clientName: cl.full_name || "", clientId: data.id };
+        notify({ type: "ajo_registration", userId, originUserId: staffId, data: regData });
+        if (branchId) notifyBranchManager(userId, branchId, { type: "ajo_registration", originUserId: staffId, data: regData });
       }
       return { data, error: null };
     }

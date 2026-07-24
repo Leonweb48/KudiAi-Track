@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../utils/supabase";
 import { uid } from "../utils/helpers";
 import { sendEmailTrigger } from "../utils/emailTrigger";
-import { notify } from "../lib/notifyEngine";
+import { notify, notifyBranchManager } from "../lib/notifyEngine";
 
 export function useInventory(userId, staffId = null, branchId = null) {
   const [products,  setProducts]  = useState([]);
@@ -285,6 +285,13 @@ export function useInventory(userId, staffId = null, branchId = null) {
         category:     product.category || null,
         entry_type:   "restock",
       });
+      if (branchId) {
+        notifyBranchManager(userId, branchId, {
+          type:         "branch_restock",
+          originUserId: staffId || userId,
+          data: { ownerId: userId, productName: product.product_name, productId: product_id, quantity: absQty, branchId },
+        });
+      }
     }
 
     setMovements(prev => [mov, ...prev]);

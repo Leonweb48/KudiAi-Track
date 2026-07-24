@@ -176,6 +176,35 @@ async function resolveStaffUserId(
   return (data as { user_id?: string } | null)?.user_id ?? null;
 }
 
+// ── Resolve the auth user_id of the manager assigned to a branch ─────────────
+async function resolveBranchManagerId(
+  sb: ReturnType<typeof createClient>,
+  ownerId: string,
+  branchId: string | null | undefined,
+): Promise<string | null> {
+  if (!branchId) return null;
+  const { data } = await sb.from("staff")
+    .select("user_id")
+    .eq("owner_id", ownerId)
+    .eq("branch_id", branchId)
+    .eq("role", "manager")
+    .eq("status", "active")
+    .not("user_id", "is", null)
+    .maybeSingle();
+  return (data as { user_id?: string } | null)?.user_id ?? null;
+}
+
+// ── Resolve the auth user_id of the staff assigned to a client ───────────────
+async function resolveAssignedStaffUserId(
+  sb: ReturnType<typeof createClient>,
+  clientId: string,
+): Promise<string | null> {
+  const { data: cl } = await sb.from("aso_clients").select("staff_id").eq("id", clientId).maybeSingle();
+  const staffRowId = (cl as { staff_id?: string } | null)?.staff_id;
+  if (!staffRowId) return null;
+  return resolveStaffUserId(sb, staffRowId);
+}
+
 // ── Resolve Ajo permissions for the caller ────────────────────────────────────
 // Returns null  → caller is the owner; full access, no staff ID to track.
 // Returns false → caller is not an active staff member for this owner; 403.
@@ -450,7 +479,7 @@ serve(async (req: Request) => {
       date:          new Date().toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" }),
     });
 
-    // Notify owner when a staff member records a contribution
+    // Notify owner + branch manager when a staff member records a contribution
     if (ajoPerms !== null) {
       notifyUser(sb, ownerId, {
         type:     "staff_collection",
@@ -460,6 +489,22 @@ serve(async (req: Request) => {
         deepLink: { tab: "aso", sub: "collections" },
         category: "money",
       });
+      // Notify branch manager (scoped to this staff's branch only)
+      const { data: actingStaff } = await sb.from("staff").select("branch_id").eq("id", ajoPerms.staffId).maybeSingle();
+      const actingBranchId = (actingStaff as { branch_id?: string } | null)?.branch_id ?? null;
+      if (actingBranchId) {
+        const brMgrUid = await resolveBranchManagerId(sb, ownerId, actingBranchId);
+        if (brMgrUid && brMgrUid !== user.id) {
+          notifyUser(sb, brMgrUid, {
+            type:     "staff_collection",
+            title:    "Branch Collection",
+            body:     `${ctx.staffName || "Staff"} recorded a ₦${Number(amount).toLocaleString("en-NG")} collection at your branch`,
+            priority: "high",
+            deepLink: { tab: "home" },
+            category: "money",
+          });
+        }
+      }
     }
 
     return json(data);
@@ -777,12 +822,22 @@ serve(async (req: Request) => {
           reason:        `Insufficient balance at time of approval. ${rpcErr}`,
           date:          new Date().toLocaleDateString("en-NG"),
         }).catch(() => {});
-        const rwFailClientUserId = await resolveClientUserId(sb, client_id);
-        await notifyUser(sb, rwFailClientUserId, {
-          type: "withdrawal_rejected", title: "Withdrawal Rejected",
-          body: `Your withdrawal request for ₦${Number(gross_amount).toLocaleString("en-NG")} was rejected — insufficient balance`,
-          priority: "high", deepLink: { tab: "contributions" }, category: "money",
-        });
+        const [rwFailClientUserId, rwFailStaffUid] = await Promise.all([
+          resolveClientUserId(sb, client_id),
+          resolveAssignedStaffUserId(sb, client_id),
+        ]);
+        await Promise.allSettled([
+          notifyUser(sb, rwFailClientUserId, {
+            type: "withdrawal_rejected", title: "Withdrawal Rejected",
+            body: `Your withdrawal request for ₦${Number(gross_amount).toLocaleString("en-NG")} was rejected — insufficient balance`,
+            priority: "high", deepLink: { tab: "contributions" }, category: "money",
+          }),
+          notifyUser(sb, rwFailStaffUid !== user.id ? rwFailStaffUid : null, {
+            type: "assigned_client_withdrawal", title: "Client Withdrawal Rejected",
+            body: `${rCtx.clientName || "A client"}'s ₦${Number(gross_amount).toLocaleString("en-NG")} withdrawal was rejected — insufficient balance`,
+            priority: "high", deepLink: { tab: "home" }, category: "money",
+          }),
+        ]);
       }
       return json({ ok: false, error: rpcErr }, 400);
     }
@@ -795,6 +850,7 @@ serve(async (req: Request) => {
           request_id ? resolveClientUserId(sb, client_id) : Promise.resolve(null as string | null),
         ]);
         if (request_id) {
+          const rwApprStaffUid = await resolveAssignedStaffUserId(sb, client_id);
           await Promise.allSettled([
             fireAjoEmail("ajo_withdrawal_approved", {
               client_email:  ctx.clientEmail,
@@ -813,6 +869,11 @@ serve(async (req: Request) => {
               type: "withdrawal_approved", title: "Withdrawal Approved",
               body: `Your withdrawal of ₦${Number(rpcWd?.net_amount ?? gross_amount).toLocaleString("en-NG")} has been approved`,
               priority: "high", deepLink: { tab: "contributions" }, category: "money",
+            }),
+            notifyUser(sb, rwApprStaffUid !== user.id ? rwApprStaffUid : null, {
+              type: "assigned_client_withdrawal", title: "Client Withdrawal Approved",
+              body: `${ctx.clientName || "A client"}'s ₦${Number(rpcWd?.net_amount ?? gross_amount).toLocaleString("en-NG")} withdrawal was approved`,
+              priority: "high", deepLink: { tab: "home" }, category: "money",
             }),
           ]);
         } else {
@@ -864,9 +925,10 @@ serve(async (req: Request) => {
     const clientId = rwrRow.aso_client_id as string;
     await Promise.race([
       (async () => {
-        const [ctx, rwrClientUserId] = await Promise.all([
+        const [ctx, rwrClientUserId, rwrStaffUid] = await Promise.all([
           fetchEmailContext(sb, clientId, ownerId, user.id),
           resolveClientUserId(sb, clientId),
+          resolveAssignedStaffUserId(sb, clientId),
         ]);
         await Promise.allSettled([
           fireAjoEmail("ajo_withdrawal_rejected", {
@@ -883,6 +945,11 @@ serve(async (req: Request) => {
             type: "withdrawal_rejected", title: "Withdrawal Rejected",
             body: `Your withdrawal request for ₦${Number((rwrRow as Record<string, unknown>).amount).toLocaleString("en-NG")} was rejected${rwrReason ? ` — ${rwrReason}` : ""}`,
             priority: "high", deepLink: { tab: "contributions" }, category: "money",
+          }),
+          notifyUser(sb, rwrStaffUid !== user.id ? rwrStaffUid : null, {
+            type: "assigned_client_withdrawal", title: "Client Withdrawal Rejected",
+            body: `${ctx.clientName || "A client"}'s ₦${Number((rwrRow as Record<string, unknown>).amount).toLocaleString("en-NG")} withdrawal was rejected${rwrReason ? ` — ${rwrReason}` : ""}`,
+            priority: "high", deepLink: { tab: "home" }, category: "money",
           }),
         ]);
       })().catch(() => null),

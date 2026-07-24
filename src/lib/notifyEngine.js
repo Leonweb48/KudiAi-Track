@@ -41,7 +41,7 @@ const EVENTS = {
   },
 
   credit_repayment: {
-    priority: "normal", category: "money",
+    priority: "high", category: "money",
     title: () => "Credit Repayment",
     body:  (d) => `${d.customerName || "Customer"} paid ₦${fmt(d.amount)} — ₦${fmt(d.outstanding)} left`,
     deepLink:  { tab: "finance" },
@@ -57,7 +57,7 @@ const EVENTS = {
   },
 
   ajo_registration: {
-    priority: "normal", category: "savings",
+    priority: "high", category: "savings",
     title: () => "New Ajo Member",
     body:  (d) => `${d.staffName || "Staff"} registered ${d.clientName || "a new member"}`,
     deepLink:  { tab: "aso" },
@@ -65,7 +65,7 @@ const EVENTS = {
   },
 
   invoice_created: {
-    priority: "normal", category: "money",
+    priority: "high", category: "money",
     title: () => "Invoice Created",
     body:  (d) => `${d.staffName || "Staff"} created invoice${d.invoiceNumber ? ` #${d.invoiceNumber}` : ""} for ₦${fmt(d.amount)}`,
     deepLink:  { tab: "finance" },
@@ -73,7 +73,7 @@ const EVENTS = {
   },
 
   invoice_sent: {
-    priority: "normal", category: "money",
+    priority: "high", category: "money",
     title: () => "Invoice Sent",
     body:  (d) => `Invoice${d.invoiceNumber ? ` #${d.invoiceNumber}` : ""} (₦${fmt(d.amount)}) sent to ${d.customerName || "customer"}`,
     deepLink:  { tab: "finance" },
@@ -132,7 +132,7 @@ const EVENTS = {
   },
 
   low_stock: {
-    priority: "normal", category: "stock",
+    priority: "high", category: "stock",
     title: (d) => `Low Stock: ${d.productName}`,
     body:  (d) => `Only ${d.quantity} unit${d.quantity === 1 ? "" : "s"} left — consider restocking`,
     deepLink: (d) => ({ tab: "inventory", id: d.productId }),
@@ -140,7 +140,7 @@ const EVENTS = {
   },
 
   credit_overdue: {
-    priority: "normal", category: "money",
+    priority: "high", category: "money",
     title: (d) => `Credit Overdue — ${d.customerName}`,
     body:  (d) => `₦${fmt(d.outstanding)} overdue since ${d.dueDate}`,
     deepLink: (d) => ({ tab: "finance", sub: "credit", id: d.creditId }),
@@ -157,7 +157,7 @@ const EVENTS = {
 
   // ── Staff / manager-received ─────────────────────────────────────────────
   staff_invite: {
-    priority: "normal", category: "permissions",
+    priority: "high", category: "permissions",
     title: () => "Staff Invitation",
     body:  (d) => `${d.businessName || "A business"} invited you as ${d.role || "staff"}`,
     deepLink:  { tab: "me" },
@@ -165,7 +165,7 @@ const EVENTS = {
   },
 
   permission_change: {
-    priority: "normal", category: "permissions",
+    priority: "high", category: "permissions",
     title: () => "Permissions Updated",
     body:  (d) => `${d.businessName || "Your employer"} updated your access permissions`,
     deepLink:  { tab: "me", sub: "security" },
@@ -173,7 +173,7 @@ const EVENTS = {
   },
 
   collection_approved: {
-    priority: "normal", category: "approvals",
+    priority: "high", category: "approvals",
     title: () => "Collection Approved",
     body:  (d) => `Your recorded ₦${fmt(d.amount)} collection was approved`,
     deepLink:  { tab: "records" },
@@ -181,7 +181,7 @@ const EVENTS = {
   },
 
   collection_rejected: {
-    priority: "normal", category: "approvals",
+    priority: "high", category: "approvals",
     title: () => "Collection Rejected",
     body:  (d) => `Your ₦${fmt(d.amount)} collection was rejected${d.reason ? ` — ${d.reason}` : ""}`,
     deepLink:  { tab: "records" },
@@ -189,7 +189,7 @@ const EVENTS = {
   },
 
   commission_processed: {
-    priority: "normal", category: "money",
+    priority: "high", category: "money",
     title: () => "Commission Processed",
     body:  (d) => `₦${fmt(d.amount)} commission credited for ${d.period || "this period"}`,
     deepLink:  { tab: "me", sub: "commissions" },
@@ -197,7 +197,7 @@ const EVENTS = {
   },
 
   shift_changed: {
-    priority: "normal", category: "permissions",
+    priority: "high", category: "permissions",
     title: () => "Shift Updated",
     body:  (d) => `Your shift has been changed to ${d.shift || "a new schedule"}`,
     deepLink:  { tab: "me" },
@@ -206,7 +206,7 @@ const EVENTS = {
 
   // ── Ajo client-received ──────────────────────────────────────────────────
   contribution_approved: {
-    priority: "normal", category: "savings",
+    priority: "high", category: "savings",
     title: () => "Contribution Approved",
     body:  (d) => `Your ₦${fmt(d.amount)} contribution has been approved`,
     deepLink:  { tab: "history" },
@@ -214,7 +214,7 @@ const EVENTS = {
   },
 
   contribution_rejected: {
-    priority: "normal", category: "savings",
+    priority: "high", category: "savings",
     title: () => "Contribution Rejected",
     body:  (d) => `Your contribution was not approved — ${d.reason || "contact your group admin"}`,
     deepLink:  { tab: "history" },
@@ -262,7 +262,7 @@ const EVENTS = {
   },
 
   group_funds_released: {
-    priority: "normal", category: "savings",
+    priority: "high", category: "savings",
     title: () => "Savings Released",
     body:  (d) => `₦${fmt(d.amount)} from your savings group has been released`,
     deepLink:  { tab: "history" },
@@ -279,7 +279,7 @@ const EVENTS = {
   },
 
   reactivation_request: {
-    priority: "normal", category: "savings",
+    priority: "high", category: "savings",
     title: () => "Reactivation Request",
     body:  (d) => `${d.memberName || "A client"} is requesting account reactivation`,
     deepLink:  { tab: "aso", sub: "clients" },
@@ -288,7 +288,7 @@ const EVENTS = {
 
   // ── Staff / manager-received ─────────────────────────────────────────────
   approval_actioned: {
-    priority: "normal", category: "approvals",
+    priority: "high", category: "approvals",
     title: (d) => d.status === "approved" ? "Request Approved" : "Request Declined",
     body:  (d) => d.status === "approved"
       ? `Your ₦${fmt(d.amount)} ${d.requestType || "request"} was approved`
@@ -306,7 +306,7 @@ const EVENTS = {
   },
 
   email_changed: {
-    priority: "normal", category: "permissions",
+    priority: "high", category: "permissions",
     title: () => "Staff Email Changed",
     body:  (d) => `${d.staffName || "A staff member"} changed their email to ${d.newEmail || "a new address"}`,
     deepLink:  { tab: "settings" },
@@ -331,7 +331,7 @@ const EVENTS = {
   },
 
   reactivation_approved: {
-    priority: "normal", category: "savings",
+    priority: "high", category: "savings",
     title: () => "Reactivation Approved",
     body:  (d) => `${d.businessName || "Your savings agent"} approved your reactivation — waiting for admin confirmation`,
     deepLink:  { tab: "me" },
@@ -339,16 +339,42 @@ const EVENTS = {
   },
 
   reactivation_rejected: {
-    priority: "normal", category: "savings",
+    priority: "high", category: "savings",
     title: () => "Reactivation Declined",
     body:  (d) => `Your reactivation request was declined${d.reason ? ` — ${d.reason}` : ""}`,
     deepLink:  { tab: "me" },
     dedupeKey: null,
   },
 
+  // ── Branch manager-received ──────────────────────────────────────────────
+  branch_restock: {
+    priority: "high", category: "stock",
+    title: (d) => `Restock: ${d.productName || "Stock"}`,
+    body:  (d) => `${d.quantity} units added to ${d.productName || "your inventory"}`,
+    deepLink:  { tab: "stock" },
+    dedupeKey: (d) => `restock_${d.productId}_${d.branchId}`,
+  },
+
+  // ── Staff-received: assigned client actions ──────────────────────────────
+  assigned_client_withdrawal: {
+    priority: "high", category: "money",
+    title: () => "Client Withdrawal Request",
+    body:  (d) => `${d.clientName || "A client"} you registered requested ₦${fmt(d.amount)} withdrawal`,
+    deepLink:  { tab: "records" },
+    dedupeKey: (d) => `cli_wd_${d.clientId}`,
+  },
+
+  assigned_client_deposit: {
+    priority: "high", category: "money",
+    title: () => "Client Deposit Claim",
+    body:  (d) => `${d.clientName || "A client"} you registered submitted a ₦${fmt(d.amount)} deposit claim`,
+    deepLink:  { tab: "records" },
+    dedupeKey: (d) => `cli_dep_${d.clientId}`,
+  },
+
   // ── Coop member-received ─────────────────────────────────────────────────
   savings_recorded: {
-    priority: "normal", category: "savings",
+    priority: "high", category: "savings",
     title: () => "Savings Recorded",
     body:  (d) => `₦${fmt(d.amount)} savings deposited — balance: ₦${fmt(d.balance)}`,
     deepLink:  { tab: "contributions" },
@@ -356,7 +382,7 @@ const EVENTS = {
   },
 
   savings_debited: {
-    priority: "normal", category: "savings",
+    priority: "high", category: "savings",
     title: () => "Savings Deducted",
     body:  (d) => `₦${fmt(d.amount)} deducted from your savings — balance: ₦${fmt(d.balance)}`,
     deepLink:  { tab: "contributions" },
@@ -369,7 +395,11 @@ function fmt(n) {
 }
 
 // Event types that support rollup accumulation (pass rollupAmount in data.amount)
-const ROLLUP_TYPES = new Set(["staff_cash_in", "staff_cash_out", "credit_repayment", "invoice_paid"]);
+const ROLLUP_TYPES = new Set([
+  "staff_cash_in", "staff_cash_out",
+  "credit_repayment", "invoice_paid",
+  "staff_collection",
+]);
 
 /**
  * Send a notification.
@@ -415,6 +445,85 @@ export async function notify({ type, userId, originUserId, data = {}, category }
     await supabase.functions.invoke("notify-send", { body: payload });
   } catch (err) {
     console.warn("[notifyEngine] Failed to send:", err);
+  }
+}
+
+// Manager portal tab names differ from owner URL-based routing
+const MANAGER_DEEP_LINKS = {
+  staff_cash_in:              { tab: "home" },
+  staff_cash_out:             { tab: "home" },
+  credit_created:             { tab: "records" },
+  credit_repayment:           { tab: "records" },
+  credit_completed:           { tab: "records" },
+  ajo_registration:           { tab: "records" },
+  invoice_created:            { tab: "home" },
+  invoice_sent:               { tab: "home" },
+  invoice_paid:               { tab: "home" },
+  withdrawal_request:         { tab: "home" },
+  manual_deposit:             { tab: "home" },
+  staff_collection:           { tab: "home" },
+  branch_restock:             { tab: "stock" },
+  assigned_client_withdrawal: { tab: "records" },
+  assigned_client_deposit:    { tab: "records" },
+};
+
+/**
+ * Notify the branch manager of an event scoped to their branch.
+ * Looks up the manager by (ownerId, branchId, role='manager'), then fires notify-send.
+ * Skips silently if: no branchId, no manager account, manager IS the actor.
+ *
+ * @param {string}  ownerId        - business owner's auth user_id
+ * @param {string}  branchId       - branch_id of the acting staff member
+ * @param {object}  opts
+ * @param {string}  opts.type      - event key from EVENTS map
+ * @param {string}  [opts.originUserId] - acting user's auth user_id (suppressed if same as manager)
+ * @param {object}  [opts.data]    - template data
+ */
+export async function notifyBranchManager(ownerId, branchId, { type, originUserId, data = {} }) {
+  if (!ownerId || !branchId) return;
+
+  const { data: mgr } = await supabase
+    .from("staff")
+    .select("user_id")
+    .eq("owner_id", ownerId)
+    .eq("branch_id", branchId)
+    .eq("role", "manager")
+    .eq("status", "active")
+    .not("user_id", "is", null)
+    .maybeSingle();
+
+  if (!mgr?.user_id) return;
+  if (originUserId && mgr.user_id === originUserId) return;
+
+  const tpl = EVENTS[type];
+  if (!tpl) { console.warn("[notifyEngine] notifyBranchManager: unknown type:", type); return; }
+
+  const title    = tpl.title(data);
+  const body     = tpl.body(data);
+  const deepLink = MANAGER_DEEP_LINKS[type] ?? (typeof tpl.deepLink === "function" ? tpl.deepLink(data) : (tpl.deepLink ?? null));
+  const baseDk   = tpl.dedupeKey ? (typeof tpl.dedupeKey === "function" ? tpl.dedupeKey(data) : tpl.dedupeKey) : null;
+  const dk       = baseDk ? `br_${branchId}_${baseDk}` : null;
+
+  const payload = {
+    action:    "notify",
+    userId:    mgr.user_id,
+    type,
+    title,
+    body,
+    deepLink,
+    priority:  "high",
+    dedupeKey: dk,
+    category:  tpl.category,
+  };
+
+  if (ROLLUP_TYPES.has(type) && data.amount != null) {
+    payload.rollupAmount = parseFloat(data.amount) || 0;
+  }
+
+  try {
+    await supabase.functions.invoke("notify-send", { body: payload });
+  } catch (err) {
+    console.warn("[notifyEngine] notifyBranchManager failed:", err);
   }
 }
 

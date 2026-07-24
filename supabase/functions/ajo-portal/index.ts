@@ -261,7 +261,7 @@ serve(async (req) => {
       if (!client_id || !amount || amount <= 0) return json({ error: "client_id and amount are required" }, 400);
 
       const { data: cl } = await sb.from("aso_clients")
-        .select("full_name, email, user_id, client_user_id, current_balance, total_withdrawn, registration_charge, commission_model, commission_percent, portal_pin_changed_at")
+        .select("full_name, email, user_id, client_user_id, current_balance, total_withdrawn, registration_charge, commission_model, commission_percent, portal_pin_changed_at, staff_id")
         .eq("id", client_id)
         .maybeSingle();
 
@@ -372,6 +372,25 @@ serve(async (req) => {
         deepLink: { tab: "aso", sub: "withdrawals" },
         category: "money",
       });
+
+      // Notify the client's assigned staff (fire-and-forget, non-blocking)
+      const assignedStaffId = (cl as Record<string, unknown>).staff_id as string | null;
+      if (assignedStaffId) {
+        sb.from("staff").select("user_id").eq("id", assignedStaffId).eq("status", "active").maybeSingle()
+          .then(({ data: stf }) => {
+            const staffUid = (stf as { user_id?: string } | null)?.user_id;
+            if (staffUid) {
+              notifyUser(staffUid, {
+                type:     "assigned_client_withdrawal",
+                title:    "Client Withdrawal Request",
+                body:     `${(cl as Record<string, unknown>).full_name || "A client"} you registered requested ₦${Number(amount).toLocaleString("en-NG")} withdrawal`,
+                priority: "high",
+                deepLink: { tab: "home" },
+                category: "money",
+              });
+            }
+          }).catch(() => null);
+      }
 
       // If placed into held_24h security hold, notify the client immediately
       if (withdrawalStatus === "held_24h" && (cl as Record<string, unknown>).client_user_id) {
@@ -484,7 +503,7 @@ serve(async (req) => {
 
       // Notify owner — non-blocking
       const [cl, ownerProf] = await Promise.all([
-        sb.from("aso_clients").select("full_name, email").eq("id", client_id).maybeSingle().then(r => r.data),
+        sb.from("aso_clients").select("full_name, email, staff_id").eq("id", client_id).maybeSingle().then(r => r.data),
         sb.from("profiles").select("email, business_name").eq("id", owner_id).maybeSingle().then(r => r.data),
       ]);
       fetch("https://admin.kudiai.app/api/public/email-trigger", {
@@ -514,6 +533,25 @@ serve(async (req) => {
         deepLink: { tab: "aso", sub: "deposits" },
         category: "money",
       });
+
+      // Notify assigned staff (fire-and-forget)
+      const claimStaffId = (cl as Record<string, unknown> | null)?.staff_id as string | null;
+      if (claimStaffId) {
+        sb.from("staff").select("user_id").eq("id", claimStaffId).eq("status", "active").maybeSingle()
+          .then(({ data: stf }) => {
+            const staffUid = (stf as { user_id?: string } | null)?.user_id;
+            if (staffUid) {
+              notifyUser(staffUid, {
+                type:     "assigned_client_deposit",
+                title:    "Client Deposit Claim",
+                body:     `${(cl as Record<string, unknown> | null)?.full_name || "A client"} you registered claims ₦${numAmt.toLocaleString("en-NG")} deposit`,
+                priority: "high",
+                deepLink: { tab: "home" },
+                category: "money",
+              });
+            }
+          }).catch(() => null);
+      }
 
       return json({ ok: true, claim_id: rpcResult.claim_id, amount: numAmt });
     }

@@ -21,8 +21,9 @@ function fmtN(n: number): string {
   return Number(n).toLocaleString("en-NG");
 }
 
-// Anti-flood: suppress FCM re-fire within this window (ms) even if the prior notification was read
-const FLOOD_WINDOW_MS = 2 * 60 * 1000; // 2 minutes
+// Anti-flood tuning constants (adjust here to change global behaviour)
+const FLOOD_WINDOW_MS  = 3 * 60 * 1000; // 3 minutes — suppress repeat FCM within this window
+const FLOOD_THRESHOLD  = 3;             // rollup body kicks in after this many collapsed events
 
 // ── Category → preference field map ─────────────────────────────────────────
 const CAT_PREF: Record<string, string> = {
@@ -314,9 +315,9 @@ Deno.serve(async (req) => {
         const newCount  = prevCount + 1;
         const newTotal  = prevTotal + (rollupAmount ?? 0);
 
-        // Override title/body with aggregate template when type supports rollup
+        // Override title/body with aggregate template after FLOOD_THRESHOLD events collapse
         const rollupTpl = ROLLUP[type];
-        if (rollupTpl && newCount > 1) {
+        if (rollupTpl && newCount > FLOOD_THRESHOLD) {
           title    = rollupTpl.title(newCount);
           bodyText = rollupTpl.body(newCount, newTotal);
         }
