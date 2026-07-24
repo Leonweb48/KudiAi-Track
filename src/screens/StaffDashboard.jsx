@@ -6,6 +6,7 @@ import { today }              from "../utils/helpers";
 import { normalizeSlug }      from "../utils/plans";
 import AppLogo                from "../components/AppLogo";
 import Icon                   from "../components/Icon";
+import SyncBar                from "../components/SyncBar";
 import VoiceModal             from "../components/VoiceModal";
 import { AddTxnModal }        from "./Transactions";
 import { useT }               from "../contexts/LanguageContext";
@@ -191,27 +192,35 @@ If asked about business-wide figures (total business revenue, all staff performa
     <div className="h-[100dvh] bg-white dark:bg-slate-900 flex justify-center transition-colors duration-200">
       <div className="w-full max-w-md flex flex-col h-full relative">
 
-        {/* Header — matches business portal exactly */}
-        <header className="flex-none z-10 h-14 flex items-center justify-between px-4 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700/60 shadow-sm">
-          <div className="flex items-center gap-2">
-            <AppLogo className="h-7 w-7 flex-shrink-0" />
-            <div className="flex items-baseline gap-0.5">
-              <span className="text-[18px] font-black tracking-tight text-slate-800 dark:text-slate-100">Kudi</span>
-              <span className="text-[18px] font-black tracking-tight"
-                style={{ background: "linear-gradient(135deg,#3DA829,#2E8020)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
-                AI
-              </span>
-              <span className="text-[12px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Track</span>
-            </div>
+        {/* Header */}
+        <header className="flex-none z-sticky min-h-[56px] flex items-center justify-between px-4 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700/60 shadow-sm"
+          style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
+          <div className="flex items-center gap-2 flex-none min-w-0">
+            <AppLogo className="h-8 w-8 flex-shrink-0" />
+            {staff?.business_name ? (
+              <p className="text-[15px] font-black text-slate-800 dark:text-white leading-tight truncate" style={{ maxWidth: 160 }}>
+                {staff.business_name}
+              </p>
+            ) : (
+              <div className="flex items-baseline gap-0.5">
+                <span className="text-[17px] font-black tracking-tight text-slate-800 dark:text-slate-100">Kudi</span>
+                <span className="text-[17px] font-black tracking-tight"
+                  style={{ background: "linear-gradient(135deg,var(--brand-green),var(--brand-green-dark))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+                  AI
+                </span>
+                <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Track</span>
+              </div>
+            )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex-none flex items-center gap-2">
             <NotificationCenter
               userId={session?.user?.id}
               onNavigate={(dl) => { if (dl?.tab) goTo(dl.tab, dl.sub || null); }}
               toast={toast}
             />
             <button onClick={() => goTo("me")}
-              className="w-9 h-9 rounded-full flex items-center justify-center border-2 border-slate-100 dark:border-slate-700 shadow-sm active:scale-90 transition-transform overflow-hidden bg-[linear-gradient(135deg,#3DA829,#2E8020)]">
+              className="w-9 h-9 rounded-full flex items-center justify-center border-2 border-slate-100 dark:border-slate-700 shadow-sm active:scale-90 transition-transform overflow-hidden"
+              style={{ background: "linear-gradient(135deg,var(--brand-green),var(--brand-green-dark))" }}>
               {staff?.profile_image_url
                 ? <img src={staff.profile_image_url} alt="" className="w-9 h-9 object-cover" />
                 : <span className="text-sm font-black text-white">{avatarInitial}</span>}
@@ -219,28 +228,7 @@ If asked about business-wide figures (total business revenue, all staff performa
           </div>
         </header>
 
-        {/* RES-3: Offline cached-data banner */}
-        {store.fromCache && !store.dbError && !store.loadError && (
-          <div className="flex-none flex items-center gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-100 dark:border-amber-800/30">
-            <svg className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-            <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-300">Offline — showing cached data</p>
-          </div>
-        )}
-        {/* RES-1: DB write error banner */}
-        {store.dbError && (
-          <div className="flex-none flex items-center gap-2 px-4 py-2 bg-red-50 dark:bg-red-900/20 border-b border-red-100 dark:border-red-800/30">
-            <svg className="w-3.5 h-3.5 text-red-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
-            <p className="text-[11px] font-semibold text-red-700 dark:text-red-300">Save failed — check connection</p>
-          </div>
-        )}
-        {/* RES-2: Load error banner */}
-        {store.loadError && (
-          <div className="flex-none flex items-center gap-2 px-4 py-2 bg-orange-50 dark:bg-orange-900/20 border-b border-orange-100 dark:border-orange-800/30">
-            <svg className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
-            <p className="text-[11px] font-semibold text-orange-700 dark:text-orange-300 flex-1">Couldn't load data</p>
-            <button onClick={() => store.reloadData()} className="text-[11px] font-bold text-orange-600 dark:text-orange-400 underline">Retry</button>
-          </div>
-        )}
+        <SyncBar isOnline={store.isOnline} fromCache={store.fromCache} dbError={store.dbError} loadError={store.loadError} />
 
         {/* Content */}
         <main className="flex-1 min-h-0 overflow-hidden">

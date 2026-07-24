@@ -5001,10 +5001,10 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
       <div className="w-full max-w-md flex flex-col h-full relative">
 
         {/* Header */}
-        <header className="flex-none z-30 min-h-[56px] flex items-center justify-between px-4 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shadow-sm" style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
+        <header className="flex-none z-sticky min-h-[56px] flex items-center justify-between px-4 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shadow-sm" style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
 
           {/* Business identity — falls back to KudiAI brand until ownerInfo loads */}
-          <div className="flex items-center gap-2 flex-none min-w-0">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
             {ownerInfo?.owner?.business_name ? (
               <>
                 {ownerInfo.owner.logo_url ? (

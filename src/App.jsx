@@ -6,6 +6,8 @@ import { ToastProvider }     from "./components/Toast";
 import { usePushNotifications } from "./hooks/usePushNotifications";
 import SyncBar               from "./components/SyncBar";
 import BottomNav             from "./components/BottomNav";
+import AppLogo               from "./components/AppLogo";
+import NotificationCenter    from "./components/NotificationCenter";
 import VoiceModal            from "./components/VoiceModal";
 import DailyVoice            from "./components/DailyVoice";
 import Home                  from "./screens/Home";
@@ -448,6 +450,44 @@ export default function App() {
     <div className={isDark ? "dark" : ""}>
       <div className="h-[100dvh] bg-slate-50 dark:bg-slate-900 md:bg-slate-200 dark:md:bg-slate-950 flex justify-center transition-colors duration-200">
         <div className="w-full max-w-md relative flex flex-col h-[100dvh] safe-top md:shadow-2xl md:shadow-black/20 dark:md:shadow-black/60 md:border-x md:border-slate-300/50 dark:md:border-slate-700/50">
+          {/* Owner portal header — flex-none at column root, same pattern as Staff/Manager/Ajo */}
+          <header className="flex-none z-sticky min-h-[56px] flex items-center justify-between px-4 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700/60 shadow-sm"
+            style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
+            <div className="flex items-center gap-2 flex-none min-w-0">
+              <AppLogo className="h-8 w-8 flex-shrink-0" />
+              {store.profile?.business_name ? (
+                <p className="text-[15px] font-black text-slate-800 dark:text-white leading-tight truncate" style={{ maxWidth: 160 }}>
+                  {store.profile.business_name}
+                </p>
+              ) : (
+                <div className="flex items-baseline gap-0.5 select-none">
+                  <span className="text-[17px] font-black tracking-tight text-slate-800 dark:text-white leading-none">Kudi</span>
+                  <span className="text-[17px] font-black tracking-tight leading-none"
+                    style={{ background: "linear-gradient(135deg,var(--brand-green),var(--brand-green-dark))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>AI</span>
+                  <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 tracking-widest uppercase leading-none ml-1">Track</span>
+                </div>
+              )}
+            </div>
+            <div className="flex-none flex items-center gap-2">
+              <NotificationCenter
+                userId={userId}
+                onNavigate={(dl) => { if (dl?.tab) setTab(dl.tab); }}
+                toast={null}
+              />
+              <button onClick={() => navigate("/profile")} aria-label="Profile"
+                className="w-9 h-9 rounded-full border-2 border-slate-100 dark:border-slate-700 shadow-sm overflow-hidden active:scale-95 transition-transform">
+                {store.profile?.profile_image_url
+                  ? <img src={store.profile.profile_image_url} alt="Profile" className="w-full h-full object-cover" />
+                  : <div className="w-full h-full bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center">
+                      <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" /><path d="M12 11a4 4 0 100-8 4 4 0 000 8" />
+                      </svg>
+                    </div>
+                }
+              </button>
+            </div>
+          </header>
+
           <SyncBar isOnline={store.isOnline} />
 
           {upgradeAvailable && !upgradeBannerDismissed && (

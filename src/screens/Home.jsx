@@ -5,16 +5,12 @@ import { supabase } from "../utils/supabase";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
 import { TxRow } from "../components/shared/TxRow";
 import { useT } from "../contexts/LanguageContext";
-import AppLogo from "../components/AppLogo";
 import { getSalesPrediction } from "../utils/predictions";
-import ProfilePreviewModal from "../components/shared/ProfilePreviewModal";
 import { useCampaigns } from "../hooks/useCampaigns";
 import { usePartnerOffers } from "../hooks/usePartnerOffers";
 import HomeBannerSlot from "../components/slots/HomeBannerSlot";
 import PopupSlot from "../components/slots/PopupSlot";
 import FeedCardSlot from "../components/slots/FeedCardSlot";
-import NotificationCenter from "../components/NotificationCenter";
-import { useToast } from "../components/Toast";
 import UpsellInlineSlot from "../components/slots/UpsellInlineSlot";
 import TabCardQuadSlot from "../components/slots/TabCardQuadSlot";
 import TabCardDuoSlot from "../components/slots/TabCardDuoSlot";
@@ -109,20 +105,11 @@ function SalesForecastCard({ prediction, t, balanceHidden }) {
 /* ── Main ────────────────────────────────────────────────────────── */
 export default function Home({ store, inventory, invoiceHook, plan, setTab, onQuickAction, onVoiceOpen, onAIOpen }) {
   const { transactions, credits, asoClients, debtPayments, profile, loading } = store;
-  const t      = useT();
-  const toast  = useToast();
-  const userId = profile?.id ?? null;
-
-  const handleNotifNavigate = useCallback((dl) => {
-    if (!dl?.tab) return;
-    const target = (dl.tab === "credit" || dl.tab === "aso") ? "finance" : dl.tab;
-    setTab(target);
-  }, [setTab]);
+  const t = useT();
 
   const [balanceHidden,      setBalanceHidden]      = useState(() => sessionStorage.getItem("kt_balance_hidden") === "1");
   const [search,             setSearch]             = useState("");
   const [receipt,            setReceipt]            = useState(null);
-  const [showProfilePreview, setShowProfilePreview] = useState(false);
   const [todayAjo,           setTodayAjo]           = useState(0);
   const [showAITip,          setShowAITip]          = useState(() => !localStorage.getItem("kt_ai_intro_seen"));
 
@@ -194,30 +181,7 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
   ];
 
   return (
-    <div className="px-4 pt-5 pb-32 screen-enter space-y-4">
-
-      {/* ── Top bar ──────────────────────────────────────────────── */}
-      <div className="flex items-center -mx-4 px-4 pb-3 bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700/60 shadow-sm sticky top-0 z-10 -mt-5 mb-1" style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
-        <AppLogo className="h-8 w-auto flex-shrink-0" />
-        <div className="flex-1 flex justify-center items-baseline gap-0.5 select-none">
-          <span className="text-[18px] font-black tracking-tight text-slate-800 dark:text-white leading-none">Kudi</span>
-          <span className="text-[18px] font-black tracking-tight leading-none"
-            style={{ background: "linear-gradient(135deg,var(--brand-green),var(--brand-green-dark))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>AI</span>
-          <span className="text-[12px] font-bold text-slate-400 dark:text-slate-500 tracking-widest uppercase leading-none ml-1">Track</span>
-        </div>
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          <NotificationCenter userId={userId} onNavigate={handleNotifNavigate} toast={toast} />
-          <button onClick={() => setShowProfilePreview(true)} aria-label="Profile"
-            className="w-9 h-9 rounded-full border-2 border-slate-100 dark:border-slate-700 shadow-sm overflow-hidden active:scale-95 transition-transform">
-            {profile.profile_image_url
-              ? <img src={profile.profile_image_url} alt="Profile" className="w-full h-full object-cover" />
-              : <div className="w-full h-full bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center">
-                  <Svg d={P.person} size={18} color="white" sw={2} />
-                </div>
-            }
-          </button>
-        </div>
-      </div>
+    <div className="px-4 pt-4 pb-32 screen-enter space-y-4">
 
       {/* ── Announcement bar slot ────────────────────────────────── */}
       <AnnouncementBarSlot campaigns={annBars} loading={camLoading} recordEvent={recordEvent} />
@@ -603,14 +567,6 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
         ctaUrl={ctaUrl}
         title="Offers for You"
       />
-
-      {showProfilePreview && (
-        <ProfilePreviewModal
-          profile={profile}
-          plan={plan}
-          onClose={() => setShowProfilePreview(false)}
-        />
-      )}
 
       {/* ── Popup slot ───────────────────────────────────────────── */}
       <PopupSlot campaigns={popups} loading={camLoading} recordEvent={recordEvent} />
