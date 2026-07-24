@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../utils/supabase";
 import { today }    from "../utils/helpers";
+import { notify }   from "../lib/notifyEngine";
 
 const nairaToKobo = (n) => Math.round((parseFloat(n) || 0) * 100);
 
@@ -42,7 +43,7 @@ const PROVIDERS = {
   },
 };
 
-export function useInvoices(userId) {
+export function useInvoices(userId, staffId = null) {
   const [invoices,  setInvoices]  = useState([]);
   const [customers, setCustomers] = useState([]);
   const [loading,   setLoading]   = useState(true);
@@ -182,14 +183,41 @@ export function useInvoices(userId) {
     }
 
     await load();
+    notify({
+      type:         "invoice_created",
+      userId,
+      originUserId: staffId || userId,
+      data: {
+        ownerId:       userId,
+        invoiceId:     inv.id,
+        invoiceNumber: inv.invoice_number || "",
+        amount:        total_kobo / 100,
+        customerName:  customer.name.trim(),
+      },
+    });
     return { data: inv };
   };
 
   // ── Mark as sent (locks invoice) ─────────────────────────────────────────
   const markSent = async (id) => {
+    const invLocal = invoices.find(i => i.id === id);
     const { error } = await supabase
       .from("invoices").update({ status: "sent" }).eq("id", id).eq("user_id", userId);
-    if (!error) setInvoices(prev => prev.map(i => i.id === id ? enrichStatus({ ...i, status: "sent" }) : i));
+    if (!error) {
+      setInvoices(prev => prev.map(i => i.id === id ? enrichStatus({ ...i, status: "sent" }) : i));
+      notify({
+        type:         "invoice_sent",
+        userId,
+        originUserId: staffId || userId,
+        data: {
+          ownerId:       userId,
+          invoiceId:     id,
+          invoiceNumber: invLocal?.invoice_number || "",
+          amount:        (invLocal?.total_kobo || 0) / 100,
+          customerName:  invLocal?.customer_name || "",
+        },
+      });
+    }
     return { error };
   };
 
@@ -310,7 +338,7 @@ export function useInvoices(userId) {
     // Fetch current invoice for running total
     const { data: inv, error: fetchErr } = await supabase
       .from("invoices")
-      .select("total_kobo, amount_paid_kobo, status")
+      .select("total_kobo, amount_paid_kobo, status, invoice_number, customer_name")
       .eq("id", invoiceId)
       .single();
     if (fetchErr) return { error: fetchErr };
@@ -327,6 +355,21 @@ export function useInvoices(userId) {
       .eq("id", invoiceId)
       .eq("user_id", userId);
     if (updErr) return { error: updErr };
+
+    if (newStatus === "paid") {
+      notify({
+        type:         "invoice_paid",
+        userId,
+        originUserId: staffId || userId,
+        data: {
+          ownerId:       userId,
+          invoiceId,
+          invoiceNumber: inv.invoice_number || "",
+          amount:        inv.total_kobo / 100,
+          customerName:  inv.customer_name || "",
+        },
+      });
+    }
 
     await load();
     return { data: { amountKobo, newStatus } };

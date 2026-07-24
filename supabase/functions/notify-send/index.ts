@@ -8,6 +8,22 @@ const corsHeaders = {
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
+// ── Rollup templates — aggregate title/body when the same dedupeKey fires N times ──
+// Only applies when the UPDATE path fires (existing unread row with same key).
+const ROLLUP: Record<string, { title: (n: number) => string; body: (n: number, total: number) => string }> = {
+  staff_cash_in:    { title: n => `${n} Sales Recorded`,     body: (n, t) => `${n} sales — ₦${fmtN(t)} total` },
+  staff_cash_out:   { title: n => `${n} Expenses Recorded`,  body: (n, t) => `${n} expenses — ₦${fmtN(t)} total` },
+  credit_repayment: { title: n => `${n} Repayments`,         body: (n, t) => `${n} credit payments — ₦${fmtN(t)} received` },
+  invoice_paid:     { title: n => `${n} Invoices Paid`,      body: (n, t) => `${n} invoices — ₦${fmtN(t)} total received` },
+};
+
+function fmtN(n: number): string {
+  return Number(n).toLocaleString("en-NG");
+}
+
+// Anti-flood: suppress FCM re-fire within this window (ms) even if the prior notification was read
+const FLOOD_WINDOW_MS = 2 * 60 * 1000; // 2 minutes
+
 // ── Category → preference field map ─────────────────────────────────────────
 const CAT_PREF: Record<string, string> = {
   money:       "pref_money",
@@ -242,19 +258,24 @@ Deno.serve(async (req) => {
     const {
       userId,
       type,
-      title,
-      body: bodyText,
-      deepLink  = null,
-      priority  = "normal",
-      dedupeKey = null,
-      category  = "money",
+      title:       titleIn,
+      body:        bodyTextIn,
+      deepLink   = null,
+      priority   = "normal",
+      dedupeKey  = null,
+      category   = "money",
+      rollupAmount,
     } = body as {
       userId: string; type: string; title: string; body: string;
       deepLink?: Record<string, unknown> | null; priority?: string;
       dedupeKey?: string | null; category?: string;
+      rollupAmount?: number;
     };
 
-    if (!userId || !type || !title) return json({ error: "userId, type, title required" }, 400);
+    if (!userId || !type || !titleIn) return json({ error: "userId, type, title required" }, 400);
+
+    let title    = titleIn;
+    let bodyText = bodyTextIn;
 
     // Cross-user auth guard
     if (!isServiceRole && callerId && callerId !== userId) {
@@ -276,10 +297,10 @@ Deno.serve(async (req) => {
       return json({ ok: true, suppressed: "preference" });
     }
 
-    // Dedupe: UPDATE existing unread row with same dedupe_key
+    // Dedupe: UPDATE existing unread row with same dedupe_key (rollup accumulation)
     if (dedupeKey) {
       const { data: existing } = await sb.from("notifications")
-        .select("id")
+        .select("id, notif_count, notif_total")
         .eq("user_id", userId)
         .eq("dedupe_key", dedupeKey)
         .is("read_at", null)
@@ -288,29 +309,58 @@ Deno.serve(async (req) => {
         .maybeSingle();
 
       if (existing) {
+        const prevCount = (existing.notif_count as number) ?? 1;
+        const prevTotal = (existing.notif_total as number) ?? 0;
+        const newCount  = prevCount + 1;
+        const newTotal  = prevTotal + (rollupAmount ?? 0);
+
+        // Override title/body with aggregate template when type supports rollup
+        const rollupTpl = ROLLUP[type];
+        if (rollupTpl && newCount > 1) {
+          title    = rollupTpl.title(newCount);
+          bodyText = rollupTpl.body(newCount, newTotal);
+        }
+
         await sb.from("notifications")
-          .update({ title, body: bodyText, deep_link: deepLink })
+          .update({ title, body: bodyText, deep_link: deepLink, notif_count: newCount, notif_total: newTotal })
           .eq("id", existing.id);
         return json({ ok: true, action: "updated", id: existing.id });
       }
     }
 
+    // Anti-flood: check if FCM was fired within the flood window for this dedupeKey
+    let suppressFCM = false;
+    if (dedupeKey && priority === "high") {
+      const windowStart = new Date(Date.now() - FLOOD_WINDOW_MS).toISOString();
+      const { data: recentPush } = await sb.from("notifications")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("dedupe_key", dedupeKey)
+        .not("last_push_at", "is", null)
+        .gte("last_push_at", windowStart)
+        .limit(1)
+        .maybeSingle();
+      if (recentPush) suppressFCM = true;
+    }
+
     // INSERT new notification
     const { data: notif, error: insertErr } = await sb.from("notifications").insert({
-      user_id:    userId,
+      user_id:     userId,
       type,
       title,
-      body:       bodyText,
-      deep_link:  deepLink,
+      body:        bodyText,
+      deep_link:   deepLink,
       priority,
-      dedupe_key: dedupeKey,
+      dedupe_key:  dedupeKey,
+      notif_count: 1,
+      notif_total: rollupAmount ?? 0,
     }).select("id").single();
 
     if (insertErr) return json({ error: insertErr.message }, 500);
 
-    // FCM v1 push for high-priority
+    // FCM v1 push for high-priority (unless suppressed by flood window)
     let fcmResult: { status: number; body: string } | null = null;
-    if (priority === "high" && (prefs?.push_enabled ?? true)) {
+    if (priority === "high" && !suppressFCM && (prefs?.push_enabled ?? true)) {
       const [tokensResult, unreadResult] = await Promise.all([
         sb.from("push_tokens")
           .select("token, platform")
@@ -322,14 +372,21 @@ Deno.serve(async (req) => {
           .is("read_at", null),
       ]);
 
-      const tokens     = tokensResult.data;
+      const tokens      = tokensResult.data;
       const unreadCount = (unreadResult.count ?? 1);
 
       if (tokens?.length) {
         const results = await Promise.all(
           tokens.map(t => sendFCMv1(sb, t.token, title, bodyText ?? "", deepLink, priority, unreadCount))
         );
-        fcmResult = results[0] ?? null; // surface first result for debugging
+        fcmResult = results[0] ?? null;
+
+        // Record when FCM was fired so the flood window check works across reads
+        if (fcmResult && fcmResult.status >= 200 && fcmResult.status < 300 && notif?.id) {
+          await sb.from("notifications")
+            .update({ last_push_at: new Date().toISOString() })
+            .eq("id", notif.id);
+        }
       }
     }
 

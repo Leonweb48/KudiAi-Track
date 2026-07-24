@@ -509,7 +509,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
           module:  "transactions",
           details: extra ? `${amt} · ${extra}` : amt });
         notify({
-          type:         "staff_collection",
+          type:         t.type === "in" ? "staff_cash_in" : "staff_cash_out",
           userId,
           originUserId: staffId,
           data: {
@@ -620,6 +620,20 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
         next_of_kin:     c.next_of_kin || "",
         next_of_kin_phone: c.next_of_kin_phone || "",
       });
+      if (staffId) {
+        notify({
+          type:         "credit_created",
+          userId,
+          originUserId: staffId,
+          data: {
+            ownerId:      userId,
+            staffName:    staffName || "Staff",
+            amount:       parseFloat(c.total_amount) || 0,
+            customerName: c.customer_name || "",
+            creditId:     data.id,
+          },
+        });
+      }
       return { data, error: null };
     }
   };
@@ -679,6 +693,18 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
           staff_id:       staffId  || "",
           staff_name:     staffName || "",
         });
+        notify({
+          type:         "credit_repayment",
+          userId,
+          originUserId: staffId || userId,
+          data: {
+            ownerId:      userId,
+            customerName: updated.customer_name || "",
+            amount,
+            outstanding:  updated.outstanding,
+            creditId:     id,
+          },
+        });
         if (updated.status === "paid") {
           fireEmailTrigger("credit_fully_paid", {
             owner_id:       userId,
@@ -693,6 +719,17 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
             payment_method: paymentMethod || "cash",
             staff_id:       staffId || null,
             staff_name:     staffName || "",
+          });
+          notify({
+            type:         "credit_completed",
+            userId,
+            originUserId: staffId || userId,
+            data: {
+              ownerId:      userId,
+              customerName: updated.customer_name || "",
+              total:        updated.total_amount,
+              creditId:     id,
+            },
           });
         }
     }
@@ -762,6 +799,17 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
           action:  `Aso client added: ${cl.full_name}`,
           module:  "aso",
           details: `${cl.contribution_frequency || "daily"} · ₦${parseFloat(cl.contribution_amount || 0).toLocaleString()}/period` });
+        notify({
+          type:         "ajo_registration",
+          userId,
+          originUserId: staffId,
+          data: {
+            ownerId:    userId,
+            staffName:  staffName || "Staff",
+            clientName: cl.full_name || "",
+            clientId:   data.id,
+          },
+        });
       }
       return { data, error: null };
     }

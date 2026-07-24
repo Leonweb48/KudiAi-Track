@@ -39,7 +39,7 @@ function Toggle({ on, onToggle, disabled }) {
   );
 }
 
-function StaffCard({ member, managerPerms, managerId }) {
+function StaffCard({ member, managerPerms, managerId, ownerId }) {
   const [expanded,    setExpanded]    = useState(false);
   const [perms,       setPerms]       = useState(member.perms || []);
   const [todayLogs,   setTodayLogs]   = useState([]);
@@ -106,6 +106,9 @@ function StaffCard({ member, managerPerms, managerId }) {
       ));
       if (member.user_id) {
         notify({ type: "permission_change", userId: member.user_id, data: { staffId: member.id } });
+      }
+      if (ownerId) {
+        notify({ type: "manager_perm_change", userId: ownerId, data: { staffName: member.full_name || "a staff member", staffId: member.id } });
       }
     }
     setPermLoading(p => ({ ...p, [key]: false }));
@@ -372,6 +375,7 @@ export default function ManagerStaffManagement({ staff, onBack }) {
                 member={m}
                 managerPerms={managerPerms}
                 managerId={managerId}
+                ownerId={staff?.owner_id}
               />
             ))}
 

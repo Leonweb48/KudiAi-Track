@@ -15,7 +15,88 @@ import { supabase } from "../utils/supabase";
 // ── Event templates ──────────────────────────────────────────────────────────
 // Each entry: { priority, category, title(data), body(data), deepLink, dedupeKey(data) }
 const EVENTS = {
-  // ── Owner-received ──────────────────────────────────────────────────────
+  // ── Owner-received: staff transactions ──────────────────────────────────
+  staff_cash_in: {
+    priority: "high", category: "money",
+    title: () => "New Sale",
+    body:  (d) => `${d.staffName || "Staff"} recorded ₦${fmt(d.amount)} sale`,
+    deepLink:  { tab: "transactions" },
+    dedupeKey: (d) => `cash_in_${d.ownerId}`,
+  },
+
+  staff_cash_out: {
+    priority: "high", category: "money",
+    title: () => "Expense Recorded",
+    body:  (d) => `${d.staffName || "Staff"} recorded ₦${fmt(d.amount)} expense`,
+    deepLink:  { tab: "transactions" },
+    dedupeKey: (d) => `cash_out_${d.ownerId}`,
+  },
+
+  credit_created: {
+    priority: "high", category: "money",
+    title: () => "Credit Extended",
+    body:  (d) => `${d.staffName || "Staff"} gave ₦${fmt(d.amount)} credit to ${d.customerName || "a customer"}`,
+    deepLink:  { tab: "finance" },
+    dedupeKey: (d) => `credit_new_${d.creditId}`,
+  },
+
+  credit_repayment: {
+    priority: "normal", category: "money",
+    title: () => "Credit Repayment",
+    body:  (d) => `${d.customerName || "Customer"} paid ₦${fmt(d.amount)} — ₦${fmt(d.outstanding)} left`,
+    deepLink:  { tab: "finance" },
+    dedupeKey: (d) => `credit_repay_${d.creditId}`,
+  },
+
+  credit_completed: {
+    priority: "high", category: "money",
+    title: () => "Credit Fully Paid",
+    body:  (d) => `${d.customerName || "Customer"} settled their ₦${fmt(d.total)} credit`,
+    deepLink:  { tab: "finance" },
+    dedupeKey: (d) => `credit_done_${d.creditId}`,
+  },
+
+  ajo_registration: {
+    priority: "normal", category: "savings",
+    title: () => "New Ajo Member",
+    body:  (d) => `${d.staffName || "Staff"} registered ${d.clientName || "a new member"}`,
+    deepLink:  { tab: "aso" },
+    dedupeKey: (d) => `ajo_reg_${d.clientId}`,
+  },
+
+  invoice_created: {
+    priority: "normal", category: "money",
+    title: () => "Invoice Created",
+    body:  (d) => `${d.staffName || "Staff"} created invoice${d.invoiceNumber ? ` #${d.invoiceNumber}` : ""} for ₦${fmt(d.amount)}`,
+    deepLink:  { tab: "finance" },
+    dedupeKey: (d) => `inv_create_${d.invoiceId}`,
+  },
+
+  invoice_sent: {
+    priority: "normal", category: "money",
+    title: () => "Invoice Sent",
+    body:  (d) => `Invoice${d.invoiceNumber ? ` #${d.invoiceNumber}` : ""} (₦${fmt(d.amount)}) sent to ${d.customerName || "customer"}`,
+    deepLink:  { tab: "finance" },
+    dedupeKey: (d) => `inv_sent_${d.invoiceId}`,
+  },
+
+  invoice_paid: {
+    priority: "high", category: "money",
+    title: () => "Invoice Paid",
+    body:  (d) => `₦${fmt(d.amount)} received${d.invoiceNumber ? ` — invoice #${d.invoiceNumber}` : ""}`,
+    deepLink:  { tab: "finance" },
+    dedupeKey: (d) => `inv_paid_${d.invoiceId}`,
+  },
+
+  manager_perm_change: {
+    priority: "high", category: "permissions",
+    title: () => "Staff Permissions Changed",
+    body:  (d) => `A manager updated ${d.staffName || "a staff member"}'s permissions`,
+    deepLink:  { tab: "staff" },
+    dedupeKey: (d) => `mgr_perm_${d.staffId}`,
+  },
+
+  // ── Owner-received (legacy) ───────────────────────────────────────────────
   staff_collection: {
     priority: "high", category: "money",
     title: (d) => d.count > 1 ? `${d.count} Collections Pending` : "New Staff Collection",
@@ -287,6 +368,9 @@ function fmt(n) {
   return n != null ? Number(n).toLocaleString() : "0";
 }
 
+// Event types that support rollup accumulation (pass rollupAmount in data.amount)
+const ROLLUP_TYPES = new Set(["staff_cash_in", "staff_cash_out", "credit_repayment", "invoice_paid"]);
+
 /**
  * Send a notification.
  *
@@ -310,20 +394,25 @@ export async function notify({ type, userId, originUserId, data = {}, category }
   const deepLink = typeof tpl.deepLink === "function" ? tpl.deepLink(data) : (tpl.deepLink ?? null);
   const dk       = tpl.dedupeKey ? (typeof tpl.dedupeKey === "function" ? tpl.dedupeKey(data) : tpl.dedupeKey) : null;
 
+  const payload = {
+    action:    "notify",
+    userId,
+    type,
+    title,
+    body,
+    deepLink,
+    priority:  tpl.priority,
+    dedupeKey: dk,
+    category:  category ?? tpl.category,
+  };
+
+  // Pass amount to notify-send for rollup accumulation on supported event types
+  if (ROLLUP_TYPES.has(type) && data.amount != null) {
+    payload.rollupAmount = parseFloat(data.amount) || 0;
+  }
+
   try {
-    await supabase.functions.invoke("notify-send", {
-      body: {
-        action:    "notify",
-        userId,
-        type,
-        title,
-        body,
-        deepLink,
-        priority:  tpl.priority,
-        dedupeKey: dk,
-        category:  category ?? tpl.category,
-      },
-    });
+    await supabase.functions.invoke("notify-send", { body: payload });
   } catch (err) {
     console.warn("[notifyEngine] Failed to send:", err);
   }
