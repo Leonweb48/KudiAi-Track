@@ -176,7 +176,11 @@ If asked about business-wide figures (total business revenue, all staff performa
     { label: "Recent Transactions", q: "What are my most recent transactions?"            },
   ], []);
 
-  usePushNotifications(session?.user?.id ?? null, (dl) => { if (dl?.tab) goTo(dl.tab, dl.sub || null); });
+  usePushNotifications(session?.user?.id ?? null, (dl) => {
+    if (!dl?.tab) return;
+    const t = ["home","sales","records","stock","me"].includes(dl.tab) ? dl.tab : "home";
+    goTo(t, dl.sub || null);
+  });
 
   const avatarInitial = (staff?.full_name || "S")[0].toUpperCase();
 
@@ -187,7 +191,7 @@ If asked about business-wide figures (total business revenue, all staff performa
       case "records": return <StaffRecords store={store} staff={staff} livePerms={livePerms} initialSub={subNav} plan={plan} invoiceHook={invoiceHook} inventory={inventory} ownerId={ownerId} />;
       case "stock":   return <StaffStock   inventory={inventory} staff={staff} livePerms={livePerms} plan={plan} />;
       case "me":      return <StaffMe      staff={staff} session={session} store={store} inventory={inventory} livePerms={livePerms} staffId={staffId} pinLock={pinLock} plan={plan} initialView={subNav} onStaffUpdate={p => setStaffPatch(prev => ({ ...prev, ...p }))} />;
-      default:        setTab("home"); return null;
+      default:        return null;
     }
   }
 
@@ -219,7 +223,10 @@ If asked about business-wide figures (total business revenue, all staff performa
           <div className="flex-none flex items-center gap-2">
             <NotificationCenter
               userId={session?.user?.id}
-              onNavigate={(dl) => { if (dl?.tab) goTo(dl.tab, dl.sub || null); }}
+              onNavigate={(dl) => {
+                if (!dl?.tab) return;
+                goTo(["home","sales","records","stock","me"].includes(dl.tab) ? dl.tab : "home", dl.sub || null);
+              }}
               toast={toast}
             />
             <button onClick={() => goTo("me")}

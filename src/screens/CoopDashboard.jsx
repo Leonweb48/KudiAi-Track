@@ -24,6 +24,7 @@ import OffersSection from "../components/slots/OffersSection";
 import { applyPeriodFilter } from "../utils/helpers";
 import PeriodFilter from "../components/shared/PeriodFilter";
 import NotificationCenter from "../components/NotificationCenter";
+import { usePushNotifications } from "../hooks/usePushNotifications";
 import { useToast } from "../components/Toast";
 
 const coopFn = async (action, body = {}) => {
@@ -3338,6 +3339,12 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
     setShowMore(false);
   }, []);
 
+  usePushNotifications(userId ?? null, (dl) => {
+    if (!dl?.tab) return;
+    const COOP_TABS = ["overview","members","finance","loans","messages","bills","broadcast","programs","settings","profile"];
+    navigateTo(COOP_TABS.includes(dl.tab) ? dl.tab : "overview");
+  });
+
   const openQuickService = useCallback((serviceId) => {
     setBillsAutoSvc(serviceId);
     setTab("bills");
@@ -3385,7 +3392,11 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
             <div className="flex items-center gap-2 flex-shrink-0">
               <NotificationCenter
                 userId={userId ?? org?.owner_id ?? null}
-                onNavigate={(dl) => { if (dl?.tab) navigateTo(dl.tab); }}
+                onNavigate={(dl) => {
+                  if (!dl?.tab) return;
+                  const COOP_TABS = ["overview","members","finance","loans","messages","bills","broadcast","programs","settings","profile"];
+                  navigateTo(COOP_TABS.includes(dl.tab) ? dl.tab : "overview");
+                }}
                 toast={toast}
               />
               <button onClick={() => navigateTo("profile")}

@@ -4992,7 +4992,10 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
     return () => { supabase.removeChannel(channel); };
   }, [ajoClient?.id, ajoClient?.owner_id, ajoClient?.user_id, refreshWithdrawRequests]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  usePushNotifications(session?.user?.id ?? null, (dl) => { if (dl?.tab) setTab(dl.tab); });
+  usePushNotifications(session?.user?.id ?? null, (dl) => {
+    if (!dl?.tab) return;
+    setTab(["home","bills","history","me"].includes(dl.tab) ? dl.tab : "home");
+  });
 
   if (mustChange) return <AjoMemberFirstLogin ajoClient={ajoClient} />;
 
@@ -5041,7 +5044,10 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
             {loadingData && <div className="w-3.5 h-3.5 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />}
             <NotificationCenter
               userId={client?.client_user_id ?? session?.user?.id ?? null}
-              onNavigate={(dl) => { if (dl?.tab) setTab(dl.tab); }}
+              onNavigate={(dl) => {
+                if (!dl?.tab) return;
+                setTab(["home","bills","history","me"].includes(dl.tab) ? dl.tab : "home");
+              }}
               toast={toast}
             />
             <button onClick={() => setTab("me")}

@@ -157,7 +157,11 @@ export default function ManagerDashboard({ session, staff: staffProp, pinLock })
     setTab(t); setSubNav(sub); setSubData(data);
   }, []);
 
-  usePushNotifications(session?.user?.id ?? null, (dl) => { if (dl?.tab) goTo(dl.tab, dl.sub || null); });
+  usePushNotifications(session?.user?.id ?? null, (dl) => {
+    if (!dl?.tab) return;
+    const t = ["home","sales","records","stock","me"].includes(dl.tab) ? dl.tab : "home";
+    goTo(t, dl.sub || null);
+  });
 
   const avatarInitial = (staff?.full_name || "M")[0].toUpperCase();
 
@@ -213,7 +217,7 @@ export default function ManagerDashboard({ session, staff: staffProp, pinLock })
           onStaffUpdate={p => setStaffPatch(prev => ({ ...prev, ...p }))}
         />
       );
-      default: setTab("home"); return null;
+      default: return null;
     }
   }
 
@@ -243,7 +247,10 @@ export default function ManagerDashboard({ session, staff: staffProp, pinLock })
           <div className="flex-none flex items-center gap-2">
             <NotificationCenter
               userId={session?.user?.id}
-              onNavigate={(dl) => { if (dl?.tab) goTo(dl.tab, dl.sub || null); }}
+              onNavigate={(dl) => {
+                if (!dl?.tab) return;
+                goTo(["home","sales","records","stock","me"].includes(dl.tab) ? dl.tab : "home", dl.sub || null);
+              }}
               toast={toast}
             />
             <button onClick={() => goTo("me")}

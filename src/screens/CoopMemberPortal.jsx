@@ -26,6 +26,7 @@ import TabCardDuoSlot from "../components/slots/TabCardDuoSlot";
 import { createReportPdf, fmtCurrency as pdfFmt, fmtDate as pdfFmtDate } from "../utils/generateReportPdf";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
 import NotificationCenter from "../components/NotificationCenter";
+import { usePushNotifications } from "../hooks/usePushNotifications";
 import { useToast } from "../components/Toast";
 
 const coopFn = async (action, body = {}) => {
@@ -1936,6 +1937,12 @@ export default function CoopMemberPortal({ member: initialMember }) {
     setShowMore(false);
   }, []);
 
+  usePushNotifications(member?.user_id ?? null, (dl) => {
+    if (!dl?.tab) return;
+    const COOP_MEMBER_TABS = ["home","contributions","loans","messages","bills","broadcast","support"];
+    navigateTo(COOP_MEMBER_TABS.includes(dl.tab) ? dl.tab : "home");
+  });
+
   const openQuickService = useCallback((serviceId) => {
     setBillsAutoSvc(serviceId);
     setTab("bills");
@@ -1977,7 +1984,11 @@ export default function CoopMemberPortal({ member: initialMember }) {
           <div className="flex items-center gap-2 flex-shrink-0">
               <NotificationCenter
                 userId={member?.user_id ?? null}
-                onNavigate={(dl) => { if (dl?.tab) navigateTo(dl.tab); }}
+                onNavigate={(dl) => {
+                  if (!dl?.tab) return;
+                  const COOP_MEMBER_TABS = ["home","contributions","loans","messages","bills","broadcast","support"];
+                  navigateTo(COOP_MEMBER_TABS.includes(dl.tab) ? dl.tab : "home");
+                }}
                 toast={toast}
               />
             <button onClick={() => setShowProfile(true)} className="active:scale-90 transition-transform">

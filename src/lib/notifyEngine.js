@@ -54,7 +54,7 @@ const EVENTS = {
     priority: "normal", category: "stock",
     title: (d) => `Low Stock: ${d.productName}`,
     body:  (d) => `Only ${d.quantity} unit${d.quantity === 1 ? "" : "s"} left — consider restocking`,
-    deepLink: (d) => ({ tab: "stock", id: d.productId }),
+    deepLink: (d) => ({ tab: "inventory", id: d.productId }),
     dedupeKey: (d) => `low_stock_${d.productId}`,
   },
 
@@ -95,7 +95,7 @@ const EVENTS = {
     priority: "normal", category: "approvals",
     title: () => "Collection Approved",
     body:  (d) => `Your recorded ₦${fmt(d.amount)} collection was approved`,
-    deepLink:  { tab: "aso", sub: "collections" },
+    deepLink:  { tab: "records" },
     dedupeKey: null,
   },
 
@@ -103,7 +103,7 @@ const EVENTS = {
     priority: "normal", category: "approvals",
     title: () => "Collection Rejected",
     body:  (d) => `Your ₦${fmt(d.amount)} collection was rejected${d.reason ? ` — ${d.reason}` : ""}`,
-    deepLink:  { tab: "aso", sub: "collections" },
+    deepLink:  { tab: "records" },
     dedupeKey: null,
   },
 
@@ -128,7 +128,7 @@ const EVENTS = {
     priority: "normal", category: "savings",
     title: () => "Contribution Approved",
     body:  (d) => `Your ₦${fmt(d.amount)} contribution has been approved`,
-    deepLink:  { tab: "contributions" },
+    deepLink:  { tab: "history" },
     dedupeKey: null,
   },
 
@@ -136,7 +136,7 @@ const EVENTS = {
     priority: "normal", category: "savings",
     title: () => "Contribution Rejected",
     body:  (d) => `Your contribution was not approved — ${d.reason || "contact your group admin"}`,
-    deepLink:  { tab: "contributions" },
+    deepLink:  { tab: "history" },
     dedupeKey: null,
   },
 
@@ -144,7 +144,7 @@ const EVENTS = {
     priority: "high", category: "money",
     title: () => "Deposit Confirmed",
     body:  (d) => `Your deposit of ₦${fmt(d.amount)} was confirmed and credited`,
-    deepLink:  { tab: "contributions" },
+    deepLink:  { tab: "history" },
     dedupeKey: null,
   },
 
@@ -152,7 +152,7 @@ const EVENTS = {
     priority: "high", category: "money",
     title: () => "Deposit Rejected",
     body:  (d) => `Your deposit claim was rejected${d.reason ? ` — ${d.reason}` : ""}`,
-    deepLink:  { tab: "contributions" },
+    deepLink:  { tab: "history" },
     dedupeKey: null,
   },
 
@@ -160,7 +160,7 @@ const EVENTS = {
     priority: "high", category: "money",
     title: () => "Withdrawal Approved",
     body:  (d) => `Your withdrawal of ₦${fmt(d.amount)} has been approved`,
-    deepLink:  { tab: "contributions" },
+    deepLink:  { tab: "history" },
     dedupeKey: null,
   },
 
@@ -168,7 +168,7 @@ const EVENTS = {
     priority: "high", category: "money",
     title: () => "Withdrawal Rejected",
     body:  (d) => `Your withdrawal request was rejected${d.reason ? ` — ${d.reason}` : ""}`,
-    deepLink:  { tab: "contributions" },
+    deepLink:  { tab: "history" },
     dedupeKey: null,
   },
 
@@ -176,7 +176,7 @@ const EVENTS = {
     priority: "high", category: "savings",
     title: () => "Payout Received",
     body:  (d) => `₦${fmt(d.amount)} has been credited to your account`,
-    deepLink:  { tab: "contributions" },
+    deepLink:  { tab: "history" },
     dedupeKey: null,
   },
 
@@ -184,7 +184,7 @@ const EVENTS = {
     priority: "normal", category: "savings",
     title: () => "Savings Released",
     body:  (d) => `₦${fmt(d.amount)} from your savings group has been released`,
-    deepLink:  { tab: "contributions" },
+    deepLink:  { tab: "history" },
     dedupeKey: null,
   },
 
@@ -193,7 +193,7 @@ const EVENTS = {
     priority: "high", category: "approvals",
     title: (d) => `Approval Request — ${d.requestType || "Action"}`,
     body:  (d) => `${d.staffName || "Staff"} requests approval for ₦${fmt(d.amount)} ${d.requestType || "action"}`,
-    deepLink:  { tab: "staff", sub: "approvals" },
+    deepLink:  { tab: "settings" },
     dedupeKey: (d) => `appr_req_${d.staffId}_${d.requestType}`,
   },
 
@@ -228,7 +228,7 @@ const EVENTS = {
     priority: "normal", category: "permissions",
     title: () => "Staff Email Changed",
     body:  (d) => `${d.staffName || "A staff member"} changed their email to ${d.newEmail || "a new address"}`,
-    deepLink:  { tab: "staff" },
+    deepLink:  { tab: "settings" },
     dedupeKey: (d) => `email_chg_${d.staffId}`,
   },
 
@@ -237,7 +237,7 @@ const EVENTS = {
     priority: "high", category: "savings",
     title: () => "Contribution Reversed",
     body:  (d) => `₦${fmt(d.amount)} contribution was reversed${d.reason ? ` — ${d.reason}` : ""}`,
-    deepLink:  { tab: "contributions" },
+    deepLink:  { tab: "history" },
     dedupeKey: null,
   },
 
@@ -245,7 +245,7 @@ const EVENTS = {
     priority: "high", category: "savings",
     title: () => "Esusu Turn Skipped",
     body:  (d) => `Your esusu turn has been skipped${d.reason ? ` — ${d.reason}` : ""}`,
-    deepLink:  { tab: "contributions" },
+    deepLink:  { tab: "history" },
     dedupeKey: null,
   },
 
@@ -270,7 +270,7 @@ const EVENTS = {
     priority: "normal", category: "savings",
     title: () => "Savings Recorded",
     body:  (d) => `₦${fmt(d.amount)} savings deposited — balance: ₦${fmt(d.balance)}`,
-    deepLink:  { tab: "savings" },
+    deepLink:  { tab: "contributions" },
     dedupeKey: null,
   },
 
@@ -278,7 +278,7 @@ const EVENTS = {
     priority: "normal", category: "savings",
     title: () => "Savings Deducted",
     body:  (d) => `₦${fmt(d.amount)} deducted from your savings — balance: ₦${fmt(d.balance)}`,
-    deepLink:  { tab: "savings" },
+    deepLink:  { tab: "contributions" },
     dedupeKey: null,
   },
 };
