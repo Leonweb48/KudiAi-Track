@@ -5,7 +5,6 @@ import { supabase }           from "../utils/supabase";
 import { useStore }           from "../hooks/useStore";
 import { useInventory }       from "../hooks/useInventory";
 import { useInvoices }        from "../hooks/useInvoices";
-import { useBiometricLock }   from "../hooks/useBiometricLock";
 import { today }              from "../utils/helpers";
 import { normalizeSlug }      from "../utils/plans";
 import AppLogo                from "../components/AppLogo";
@@ -23,9 +22,10 @@ import ManagerSales           from "./manager/ManagerSales";
 import ManagerRecords         from "./manager/ManagerRecords";
 import ManagerStock           from "./manager/ManagerStock";
 import ManagerMe              from "./manager/ManagerMe";
-import ManagerBranchRoster    from "./manager/ManagerBranchRoster";
+import ManagerBranchRoster      from "./manager/ManagerBranchRoster";
+import ManagerStaffManagement   from "./manager/ManagerStaffManagement";
 
-export default function ManagerDashboard({ session, staff: staffProp }) {
+export default function ManagerDashboard({ session, staff: staffProp, pinLock }) {
   const t     = useT();
   const toast = useToast(); // eslint-disable-line no-unused-vars
 
@@ -53,7 +53,8 @@ export default function ManagerDashboard({ session, staff: staffProp }) {
   const [voiceOpen,        setVoiceOpen]        = useState(false);
   const [showAddTxn,       setShowAddTxn]       = useState(false);
   const [addTxnType,       setAddTxnType]       = useState("in");
-  const [showBranchRoster, setShowBranchRoster] = useState(false);
+  const [showBranchRoster,     setShowBranchRoster]     = useState(false);
+  const [showStaffManagement,  setShowStaffManagement]  = useState(false);
 
   const openAddTxn = useCallback((type) => { setAddTxnType(type); setShowAddTxn(true); }, []);
 
@@ -62,7 +63,6 @@ export default function ManagerDashboard({ session, staff: staffProp }) {
 
   const store      = useStore(ownerId, staffId, staff?.full_name, staff?.branch_id || null);
   const inventory  = useInventory(ownerId, staffId, staff?.branch_id || null);
-  const lock       = useBiometricLock(staffId);
   const invoiceHook = useInvoices(ownerId);
 
   const [ownerPlan, setOwnerPlan] = useState("starter");
@@ -167,6 +167,14 @@ export default function ManagerDashboard({ session, staff: staffProp }) {
         />
       );
     }
+    if (showStaffManagement) {
+      return (
+        <ManagerStaffManagement
+          staff={staff} pinLock={pinLock}
+          onBack={() => setShowStaffManagement(false)}
+        />
+      );
+    }
     switch (tab) {
       case "home":    return (
         <ManagerHome
@@ -194,9 +202,10 @@ export default function ManagerDashboard({ session, staff: staffProp }) {
       case "me":      return (
         <ManagerMe
           staff={staff} session={session} store={store} inventory={inventory}
-          livePerms={livePerms} lock={lock} plan={plan}
+          livePerms={livePerms} pinLock={pinLock} plan={plan}
           staffId={staffId} ownerId={ownerId}
           onBranchRoster={() => setShowBranchRoster(true)}
+          onStaffManagement={() => setShowStaffManagement(true)}
           initialView={subNav}
           onStaffUpdate={p => setStaffPatch(prev => ({ ...prev, ...p }))}
         />
@@ -241,15 +250,15 @@ export default function ManagerDashboard({ session, staff: staffProp }) {
           {renderContent()}
         </main>
 
-        {/* Bottom nav — hidden when branch roster is full-screen */}
-        {!showBranchRoster && (
+        {/* Bottom nav — hidden when full-screen overlays are active */}
+        {!showBranchRoster && !showStaffManagement && (
           <nav className="flex-none z-sticky bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 shadow-float">
             <div className="flex items-stretch h-[60px]">
               {NAV.map(n => {
                 const active = tab === n.id && !showBranchRoster;
                 const cnt    = badge(n.id);
                 return (
-                  <button key={n.id} onClick={() => { setTab(n.id); setSubNav(null); setSubData(null); setShowBranchRoster(false); }}
+                  <button key={n.id} onClick={() => { setTab(n.id); setSubNav(null); setSubData(null); setShowBranchRoster(false); setShowStaffManagement(false); }}
                     className="flex-1 flex flex-col items-center justify-center gap-0.5 relative focus-visible:outline-none">
                     {active && <span className="absolute top-0 left-1/2 -translate-x-1/2 w-5 h-0.5 rounded-full bg-brand-600 dark:bg-brand-400" />}
                     <div className={`relative transition-all duration-200 ${active ? "scale-110" : "scale-100"}`}>

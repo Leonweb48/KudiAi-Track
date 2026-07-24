@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "../../utils/supabase";
 import Modal from "../../components/shared/Modal";
 import { StaffActivityStatement } from "../../components/shared/Receipt";
@@ -9,11 +9,10 @@ import {
   Svg, P, GK, YEAR,
   SectionLabel, SettingsCard, Row, RowIcon,
   ChangePinModal,
-  uploadAvatar,
 } from "./StaffShared";
 import TransactionPinModal from "../../components/TransactionPinModal";
 import ForgotPinFlow from "../../components/ForgotPinFlow";
-import Field from "../../components/shared/Field";
+import ProfileEdit from "../../components/shared/ProfileEdit";
 
 /* ─ Inline profile display components — mirror business Profile.jsx */
 function SectionCard({ title, children }) {
@@ -45,21 +44,14 @@ function ProfileRow({ label, value, cap }) {
 export default function StaffMe({ staff, session, store, inventory, livePerms, staffId, pinLock, plan, initialView, onStaffUpdate }) {
   const [view,              setView]              = useState(initialView || "menu");
   const [isDark,            setIsDark]            = useState(() => localStorage.getItem("kuditrack_dark") === "1");
-  const [editForm,          setEditForm]          = useState({ full_name: staff?.full_name || "", phone: staff?.phone || "" });
-  const [photoFile,         setPhotoFile]         = useState(null);
-  const [photoPreview,      setPhotoPreview]      = useState(null);
-  const [saving,            setSaving]            = useState(false);
-  const [saveMsg,           setSaveMsg]           = useState("");
-  const [changingPin,       setChangingPin]       = useState(null);
-  const [bioLoading,        setBioLoading]        = useState(false);
+  const [changingPin,  setChangingPin]  = useState(null);
+  const [bioLoading,   setBioLoading]   = useState(false);
   const [showTimeoutPicker, setShowTimeoutPicker] = useState(false);
   const [showStatement,     setShowStatement]     = useState(false);
   const [showReconcilePin,  setShowReconcilePin]  = useState(false);
   const [showForgotPin,     setShowForgotPin]     = useState(false);
   const [legalView,         setLegalView]         = useState(null); // "terms" | "privacy"
   const [acceptedConsent,   setAcceptedConsent]   = useState(null);
-  const fileRef = useRef(null);
-
   /* D2: My Activity */
   const [activityLogs,    setActivityLogs]    = useState([]);
   const [activityLoading, setActivityLoading] = useState(false);
@@ -119,20 +111,6 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
     setIsDark(next);
     localStorage.setItem("kuditrack_dark", next ? "1" : "0");
     document.documentElement.classList.toggle("dark", next);
-  };
-
-  const saveProfile = async () => {
-    setSaving(true); setSaveMsg("");
-    try {
-      let photoUrl = staff?.profile_image_url;
-      if (photoFile) photoUrl = await uploadAvatar(photoFile, staffId);
-      await supabase.from("staff").update({ full_name: editForm.full_name, phone: editForm.phone, profile_image_url: photoUrl }).eq("id", staffId);
-      setPhotoFile(null); setPhotoPreview(null);
-      onStaffUpdate?.({ full_name: editForm.full_name, phone: editForm.phone, profile_image_url: photoUrl });
-      setSaveMsg("Profile saved!");
-      setTimeout(() => { setSaveMsg(""); setView("profile"); }, 1500);
-    } catch { setSaveMsg("Save failed. Please try again."); }
-    setSaving(false);
   };
 
   /* ── Back-button sub-header — business portal style ── */
@@ -222,12 +200,24 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
             <ProfileRow label="Full Name" value={staff?.full_name} />
             <ProfileRow label="Email"     value={staff?.email || session?.user?.email} />
             <ProfileRow label="Phone"     value={staff?.phone} />
+            <ProfileRow label="Address"   value={staff?.address} />
           </SectionCard>
+
+          {(staff?.nok_name || staff?.nok_phone || staff?.nok_relationship) && (
+            <SectionCard title="Next of Kin">
+              <ProfileRow label="Name"         value={staff?.nok_name} />
+              <ProfileRow label="Phone"        value={staff?.nok_phone} />
+              <ProfileRow label="Relationship" value={staff?.nok_relationship} />
+            </SectionCard>
+          )}
 
           <SectionCard title="Employment">
             <ProfileRow label="Role"     value={(staff?.role || "").replace(/_/g, " ")} cap />
             <ProfileRow label="Business" value={staff?.business_name} />
             <ProfileRow label="Status"   value={staff?.status} cap />
+            {staff?.shift_assignment && (
+              <ProfileRow label="Shift" value={staff.shift_assignment} />
+            )}
           </SectionCard>
 
           <SectionCard title="Account">
@@ -243,62 +233,15 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
     </div>
   );
 
-  /* ── Edit profile ── */
+  /* ── Edit profile — shared ProfileEdit component ── */
   if (view === "edit") return (
-    <div className="h-full flex flex-col">
-      <SubHeader title="Edit Profile" />
-      <div className="flex-1 overflow-y-auto px-4 py-5 space-y-5 pb-6">
-        {/* Avatar picker */}
-        <div className="flex flex-col items-center gap-3">
-          <div className="relative">
-            <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-white dark:border-slate-800 shadow-lg">
-              {photoPreview
-                ? <img src={photoPreview} alt="" className="w-full h-full object-cover" />
-                : staff?.profile_image_url
-                  ? <img src={staff.profile_image_url} alt="" className="w-full h-full object-cover" />
-                  : <div className="w-full h-full bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center">
-                      <span className="text-2xl font-black text-white">{initials}</span>
-                    </div>
-              }
-            </div>
-            <button onClick={() => fileRef.current?.click()}
-              className="absolute -bottom-1 -right-1 w-9 h-9 rounded-full border-2 border-white dark:border-slate-900 flex items-center justify-center shadow-md active:scale-90 transition"
-              style={{ backgroundColor: GK }}>
-              <Svg d={P.cam} size={15} color="#fff" />
-            </button>
-          </div>
-          <p className="text-[11px] text-slate-400">Tap camera to change photo · JPG or PNG</p>
-          <input ref={fileRef} type="file" accept="image/*" className="hidden"
-            onChange={e => { const f = e.target.files?.[0]; if (!f) return; setPhotoFile(f); setPhotoPreview(URL.createObjectURL(f)); }} />
-        </div>
-
-        {/* Fields */}
-        <div>
-          <Field label="Full Name" type="text" value={editForm.full_name} onChange={e => setEditForm(p => ({...p, full_name: e.target.value}))} />
-          <Field label="Phone" type="tel" value={editForm.phone} onChange={e => setEditForm(p => ({...p, phone: e.target.value}))} />
-          <div className="mb-3">
-            <label className="block mb-1 text-xs font-semibold text-slate-500 dark:text-slate-400 tracking-wide uppercase">Email</label>
-            <input disabled value={staff?.email || session?.user?.email || "—"}
-              className="w-full border rounded-xl px-3 py-2 text-sm bg-slate-50 dark:bg-slate-900 border-slate-100 dark:border-slate-700 text-slate-400 cursor-not-allowed" />
-          </div>
-        </div>
-
-        {saveMsg && (
-          <div className={`flex items-center gap-2 px-4 py-3 rounded-xl ${saveMsg.includes("saved") ? "" : "bg-red-50 dark:bg-red-900/30 text-red-600"}`}
-            style={saveMsg.includes("saved") ? { backgroundColor: "#ecfdf5", color: GK } : {}}>
-            <Svg d={saveMsg.includes("saved") ? P.check : P.alert} size={16} color="currentColor" />
-            <p className="text-sm font-semibold">{saveMsg}</p>
-          </div>
-        )}
-
-        <button onClick={saveProfile} disabled={saving}
-          className="w-full h-12 rounded-2xl text-white font-bold text-sm flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50"
-          style={{ backgroundColor: GK }}>
-          {saving && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-          {saving ? "Saving…" : "Save Changes"}
-        </button>
-      </div>
-    </div>
+    <ProfileEdit
+      staff={staff}
+      session={session}
+      livePerms={livePerms}
+      onBack={() => setView("profile")}
+      onSaved={p => { onStaffUpdate?.(p); }}
+    />
   );
 
   /* ── D2: My Activity ── */

@@ -355,7 +355,7 @@ export default function App() {
   if (status === "org_member")    return <CoopMemberPortal member={orgMember} />;
   if (status === "ajo_client")    return <AjoMemberPortal session={session} ajoClient={ajoClient} pinLock={pinLock} />;
   if (status === "staff")         return <StaffDashboard session={session} staff={staff} pinLock={pinLock} />;
-  if (status === "branch_manager") return <ManagerDashboard session={session} staff={staff} />;
+  if (status === "branch_manager") return <ManagerDashboard session={session} staff={staff} pinLock={pinLock} />;
   if (status === "marketer")      return <MarketerDashboard marketer={marketer} />;
 
   if (showUpgrade) {

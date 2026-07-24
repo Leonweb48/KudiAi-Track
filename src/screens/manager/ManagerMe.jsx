@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "../../utils/supabase";
+import Modal from "../../components/shared/Modal";
 import { StaffActivityStatement } from "../../components/shared/Receipt";
 import Insights from "../Insights";
 import LegalScreen from "../LegalScreen";
@@ -7,11 +8,11 @@ import StaffHelp from "../staff/StaffHelp";
 import {
   Svg, P, GK, YEAR,
   SectionLabel, SettingsCard, Row, RowIcon,
-  ChangePinModal, uploadAvatar,
+  ChangePinModal,
 } from "./ManagerShared";
 import TransactionPinModal from "../../components/TransactionPinModal";
 import ForgotPinFlow from "../../components/ForgotPinFlow";
-import Field from "../../components/shared/Field";
+import ProfileEdit from "../../components/shared/ProfileEdit";
 
 /* ── inline profile display helpers ── */
 function SectionCard({ title, children }) {
@@ -36,35 +37,20 @@ function ProfileRow({ label, value, cap }) {
   );
 }
 
-/* ── bridge: call pin-manager edge function ── */
-async function invokePinManager(action, params = {}) {
-  const { data, error } = await supabase.functions.invoke("pin-manager", {
-    body: { action, ...params },
-  });
-  if (error) throw new Error(error.message);
-  if (data?.error) throw new Error(data.error);
-  return { data };
-}
-
 export default function ManagerMe({
-  staff, session, store, inventory, livePerms, lock,
-  plan, staffId, ownerId, onBranchRoster, initialView, onStaffUpdate,
+  staff, session, store, inventory, livePerms, pinLock,
+  plan, staffId, ownerId, onBranchRoster, onStaffManagement, initialView, onStaffUpdate,
 }) {
-  const [view,              setView]              = useState(initialView || "menu");
-  const [isDark,            setIsDark]            = useState(() => localStorage.getItem("kuditrack_dark") === "1");
-  const [editForm,          setEditForm]          = useState({ full_name: staff?.full_name || "", phone: staff?.phone || "" });
-  const [photoFile,         setPhotoFile]         = useState(null);
-  const [photoPreview,      setPhotoPreview]      = useState(null);
-  const [saving,            setSaving]            = useState(false);
-  const [saveMsg,           setSaveMsg]           = useState("");
-  const [changingPin,       setChangingPin]       = useState(null);   // "app" | "txn"
-  const [bioLoading,        setBioLoading]        = useState(false);
-  const [showStatement,     setShowStatement]     = useState(false);
-  const [showReconcilePin,  setShowReconcilePin]  = useState(false);
-  const [showForgotPin,     setShowForgotPin]     = useState(false);
-  const [legalView,         setLegalView]         = useState(null);
-  const [acceptedConsent,   setAcceptedConsent]   = useState(null);
-  const fileRef = useRef(null);
+  const [view,             setView]             = useState(initialView || "menu");
+  const [isDark,           setIsDark]           = useState(() => localStorage.getItem("kuditrack_dark") === "1");
+  const [changingPin,      setChangingPin]      = useState(null);
+  const [bioLoading,       setBioLoading]       = useState(false);
+  const [showTimeoutPicker, setShowTimeoutPicker] = useState(false);
+  const [showStatement,    setShowStatement]    = useState(false);
+  const [showReconcilePin, setShowReconcilePin] = useState(false);
+  const [showForgotPin,    setShowForgotPin]    = useState(false);
+  const [legalView,        setLegalView]        = useState(null);
+  const [acceptedConsent,  setAcceptedConsent]  = useState(null);
 
   const [activityLogs,    setActivityLogs]    = useState([]);
   const [activityLoading, setActivityLoading] = useState(false);
@@ -119,34 +105,6 @@ export default function ManagerMe({
     document.documentElement.classList.toggle("dark", next);
   };
 
-  const saveProfile = async () => {
-    setSaving(true); setSaveMsg("");
-    try {
-      let photoUrl = staff?.profile_image_url;
-      if (photoFile) photoUrl = await uploadAvatar(photoFile, staffId);
-      await supabase.from("staff").update({
-        full_name: editForm.full_name, phone: editForm.phone, profile_image_url: photoUrl,
-      }).eq("id", staffId);
-      setPhotoFile(null); setPhotoPreview(null);
-      onStaffUpdate?.({ full_name: editForm.full_name, phone: editForm.phone, profile_image_url: photoUrl });
-      setSaveMsg("Profile saved!");
-      setTimeout(() => { setSaveMsg(""); setView("profile"); }, 1500);
-    } catch { setSaveMsg("Save failed. Please try again."); }
-    setSaving(false);
-  };
-
-  // ForgotPinFlow bridge — same server calls as usePinLock but invoked directly
-  const forgotPinLock = {
-    authorizeReset: () => invokePinManager("authorize_pin_reset"),
-    resetAppPin: async (newPin, resetToken) => {
-      const r = await invokePinManager("reset_app_pin", { new_pin: newPin, reset_token: resetToken });
-      await lock.setupPIN(newPin);
-      return r;
-    },
-    resetTxnPin: (newPin, resetToken) =>
-      invokePinManager("reset_txn_pin", { new_pin: newPin, reset_token: resetToken }),
-  };
-
   const SubHeader = ({ title, onEdit }) => (
     <div className="flex-shrink-0 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700/60 px-4 py-3 flex items-center gap-3">
       <button onClick={() => setView("menu")}
@@ -177,6 +135,9 @@ export default function ManagerMe({
         style={{ borderColor: GK, borderTopColor: "transparent" }} />
     </div>
   );
+
+  const autoLockLabel = ({ 0:"Never", 30:"30 seconds", 60:"1 minute", 300:"5 minutes", 900:"15 minutes", 1800:"30 minutes" })[pinLock?.autoLockTimeout]
+    || `${Math.round((pinLock?.autoLockTimeout || 0) / 60)} min`;
 
   /* ── Legal ── */
   if (legalView) return <LegalScreen type={legalView} onBack={() => setLegalView(null)} />;
@@ -225,11 +186,20 @@ export default function ManagerMe({
             <ProfileRow label="Full Name" value={staff?.full_name} />
             <ProfileRow label="Email"     value={staff?.email || session?.user?.email} />
             <ProfileRow label="Phone"     value={staff?.phone} />
+            <ProfileRow label="Address"   value={staff?.address} />
           </SectionCard>
+          {(staff?.nok_name || staff?.nok_phone) && (
+            <SectionCard title="Next of Kin">
+              <ProfileRow label="Name"         value={staff?.nok_name} />
+              <ProfileRow label="Phone"        value={staff?.nok_phone} />
+              <ProfileRow label="Relationship" value={staff?.nok_relationship} />
+            </SectionCard>
+          )}
           <SectionCard title="Employment">
-            <ProfileRow label="Role"     value={(staff?.role || "").replace(/_/g, " ")} cap />
+            <ProfileRow label="Role"    value={(staff?.role || "").replace(/_/g, " ")} cap />
             <ProfileRow label="Business" value={staff?.business_name} />
-            <ProfileRow label="Status"   value={staff?.status} cap />
+            <ProfileRow label="Status"  value={staff?.status} cap />
+            {staff?.shift_assignment && <ProfileRow label="Shift" value={staff.shift_assignment} />}
           </SectionCard>
           <SectionCard title="Account">
             <ProfileRow label="Portal"       value="Manager Portal" />
@@ -244,57 +214,15 @@ export default function ManagerMe({
     </div>
   );
 
-  /* ── Edit profile ── */
+  /* ── Edit profile — shared ProfileEdit component ── */
   if (view === "edit") return (
-    <div className="h-full flex flex-col">
-      <SubHeader title="Edit Profile" />
-      <div className="flex-1 overflow-y-auto px-4 py-5 space-y-5 pb-6">
-        <div className="flex flex-col items-center gap-3">
-          <div className="relative">
-            <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-white dark:border-slate-800 shadow-lg">
-              {photoPreview
-                ? <img src={photoPreview} alt="" className="w-full h-full object-cover" />
-                : staff?.profile_image_url
-                  ? <img src={staff.profile_image_url} alt="" className="w-full h-full object-cover" />
-                  : <div className="w-full h-full bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center">
-                      <span className="text-2xl font-black text-white">{initials}</span>
-                    </div>
-              }
-            </div>
-            <button onClick={() => fileRef.current?.click()}
-              className="absolute -bottom-1 -right-1 w-9 h-9 rounded-full border-2 border-white dark:border-slate-900 flex items-center justify-center shadow-md active:scale-90 transition"
-              style={{ backgroundColor: GK }}>
-              <Svg d={P.cam} size={15} color="#fff" />
-            </button>
-          </div>
-          <p className="text-[11px] text-slate-400">Tap camera to change photo · JPG or PNG</p>
-          <input ref={fileRef} type="file" accept="image/*" className="hidden"
-            onChange={e => { const f = e.target.files?.[0]; if (!f) return; setPhotoFile(f); setPhotoPreview(URL.createObjectURL(f)); }} />
-        </div>
-        <div>
-          <Field label="Full Name" type="text" value={editForm.full_name} onChange={e => setEditForm(p => ({...p, full_name: e.target.value}))} />
-          <Field label="Phone" type="tel" value={editForm.phone} onChange={e => setEditForm(p => ({...p, phone: e.target.value}))} />
-          <div className="mb-3">
-            <label className="block mb-1 text-xs font-semibold text-slate-500 dark:text-slate-400 tracking-wide uppercase">Email</label>
-            <input disabled value={staff?.email || session?.user?.email || "—"}
-              className="w-full border rounded-xl px-3 py-2 text-sm bg-slate-50 dark:bg-slate-900 border-slate-100 dark:border-slate-700 text-slate-400 cursor-not-allowed" />
-          </div>
-        </div>
-        {saveMsg && (
-          <div className={`flex items-center gap-2 px-4 py-3 rounded-xl ${saveMsg.includes("saved") ? "" : "bg-red-50 dark:bg-red-900/30 text-red-600"}`}
-            style={saveMsg.includes("saved") ? { backgroundColor: "#ecfdf5", color: GK } : {}}>
-            <Svg d={saveMsg.includes("saved") ? P.check : P.alert} size={16} color="currentColor" />
-            <p className="text-sm font-semibold">{saveMsg}</p>
-          </div>
-        )}
-        <button onClick={saveProfile} disabled={saving}
-          className="w-full h-12 rounded-2xl text-white font-bold text-sm flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50"
-          style={{ backgroundColor: GK }}>
-          {saving && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-          {saving ? "Saving…" : "Save Changes"}
-        </button>
-      </div>
-    </div>
+    <ProfileEdit
+      staff={staff}
+      session={session}
+      livePerms={livePerms}
+      onBack={() => setView("profile")}
+      onSaved={p => { onStaffUpdate?.(p); }}
+    />
   );
 
   /* ── My Activity ── */
@@ -525,14 +453,14 @@ export default function ManagerMe({
       <div className="px-4 mb-5">
         <SectionLabel>Account</SectionLabel>
         <SettingsCard>
-          <Row icon={<RowIcon d={P.person} />} label="My Profile"       sub="View and edit your profile"            onClick={() => setView("profile")} />
+          <Row icon={<RowIcon d={P.person} />} label="My Profile"       sub="View and edit your profile"             onClick={() => setView("profile")} />
           {livePerms.find(p => p.module === "insights")?.can_view && (
-            <Row icon={<RowIcon d={P.report} />} label="Reports & Insights" sub="View your performance analytics"   onClick={() => setView("reports")} />
+            <Row icon={<RowIcon d={P.report} />} label="Reports & Insights" sub="View your performance analytics"    onClick={() => setView("reports")} />
           )}
-          <Row icon={<RowIcon d={P.doc} />}    label="Activity Statement" sub="Generate & share your statement"     onClick={() => setShowStatement(true)} />
-          <Row icon={<RowIcon d={P.doc} />}    label="My Activity"       sub="Your action log and history"          onClick={() => setView("activity")} />
-          <Row icon={<RowIcon d={P.credit} />} label="My Commissions"    sub="Commission earnings breakdown"        onClick={() => setView("commissions")} />
-          <Row icon={<RowIcon d={P.in} />}     label="My Payments"       sub="Salary and disbursement history"      onClick={() => setView("payments")} />
+          <Row icon={<RowIcon d={P.doc} />}    label="Activity Statement" sub="Generate & share your statement"      onClick={() => setShowStatement(true)} />
+          <Row icon={<RowIcon d={P.doc} />}    label="My Activity"       sub="Your action log and history"           onClick={() => setView("activity")} />
+          <Row icon={<RowIcon d={P.credit} />} label="My Commissions"    sub="Commission earnings breakdown"         onClick={() => setView("commissions")} />
+          <Row icon={<RowIcon d={P.in} />}     label="My Payments"       sub="Salary and disbursement history"       onClick={() => setView("payments")} />
           <Row icon={<RowIcon d={P.check} />}  label="Close My Day"      sub="Submit end-of-day cash reconciliation" onClick={() => setView("reconcile")} />
         </SettingsCard>
       </div>
@@ -543,39 +471,47 @@ export default function ManagerMe({
         <SettingsCard>
           <Row icon={<RowIcon d={P.credit} />} label="My Branch"
             sub="Staff roster, leaderboard & collections" onClick={onBranchRoster} />
+          <Row icon={<RowIcon d={P.person} />} label="Staff Management"
+            sub="Edit permissions, shift assignments" onClick={onStaffManagement} />
         </SettingsCard>
       </div>
 
-      {/* Security */}
+      {/* Security — full parity with StaffMe */}
       <div className="px-4 mb-5">
         <SectionLabel>Security</SectionLabel>
         <SettingsCard>
           <Row icon={<RowIcon d={P.lock} />}   label="App Lock PIN"    sub="Change your 6-digit unlock PIN"  onClick={() => setChangingPin("app")} />
           <Row icon={<RowIcon d={P.shield} />} label="Transaction PIN" sub="Change your 4-digit payment PIN" onClick={() => setChangingPin("txn")} />
-          {lock?.bioAvailable && (
+          {pinLock?.biometricAvailable && (
             <Row
               icon={<RowIcon d={P.finger} />}
               label="Face / Fingerprint"
-              sub={lock.hasBiometric ? "Enabled — tap to disable" : "Tap to enable biometric unlock"}
+              sub={pinLock.biometricEnabled ? "Enabled — tap to disable" : "Tap to enable biometric unlock"}
               onClick={async () => {
                 setBioLoading(true);
-                if (lock.hasBiometric) await lock.disableBiometric();
-                else await lock.enableLock();
+                if (pinLock.biometricEnabled) await pinLock.disableBiometric();
+                else await pinLock.registerBiometric();
                 setBioLoading(false);
               }}
               right={
                 bioLoading
                   ? <div className="w-5 h-5 rounded-full animate-spin border-2"
                       style={{ borderColor: GK, borderTopColor: "transparent" }} />
-                  : <Toggle on={!!lock.hasBiometric} onToggle={async () => {
+                  : <Toggle on={!!pinLock.biometricEnabled} onToggle={async () => {
                       setBioLoading(true);
-                      if (lock.hasBiometric) await lock.disableBiometric();
-                      else await lock.enableLock();
+                      if (pinLock.biometricEnabled) await pinLock.disableBiometric();
+                      else await pinLock.registerBiometric();
                       setBioLoading(false);
                     }} />
               }
             />
           )}
+          <Row
+            icon={<RowIcon d={P.shield} />}
+            label="Auto-lock"
+            sub={pinLock?.autoLockTimeout === 0 ? "Never — enable for better security" : autoLockLabel}
+            onClick={() => setShowTimeoutPicker(true)}
+          />
         </SettingsCard>
       </div>
 
@@ -634,29 +570,42 @@ export default function ManagerMe({
       </div>
 
       {/* Modals */}
-      {changingPin === "app" && (
+      {changingPin && (
         <ChangePinModal
-          mode="app"
+          mode={changingPin}
           onClose={() => setChangingPin(null)}
           onForgotPin={() => { setChangingPin(null); setShowForgotPin(true); }}
           onDone={async (current, newP) => {
-            if (!await lock.unlockWithPIN(current)) throw new Error("Incorrect PIN");
-            await lock.setupPIN(newP);
+            await (changingPin === "app" ? pinLock.changeAppPin : pinLock.changeTxnPin)(current, newP);
           }}
         />
       )}
-      {changingPin === "txn" && (
-        <ChangePinModal
-          mode="txn"
-          onClose={() => setChangingPin(null)}
-          onForgotPin={() => { setChangingPin(null); setShowForgotPin(true); }}
-          onDone={async (current, newP) =>
-            invokePinManager("change_txn_pin", { current_pin: current, new_pin: newP })
-          }
-        />
-      )}
       {showForgotPin && (
-        <ForgotPinFlow pinLock={forgotPinLock} onCancel={() => setShowForgotPin(false)} />
+        <ForgotPinFlow pinLock={pinLock} onCancel={() => setShowForgotPin(false)} />
+      )}
+      {showTimeoutPicker && (
+        <Modal title="Auto-lock Timeout" onClose={() => setShowTimeoutPicker(false)}>
+          <div className="space-y-2 py-2">
+            {[[0,"Never"],[30,"30 seconds"],[60,"1 minute"],[300,"5 minutes (recommended)"],[900,"15 minutes"],[1800,"30 minutes"]].map(([v, l]) => (
+              <button key={v}
+                onClick={async () => { await pinLock.updateSettings({ autoLockTimeout: v }); setShowTimeoutPicker(false); }}
+                className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition text-sm font-semibold ${
+                  pinLock?.autoLockTimeout === v ? "text-white" : "bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200"
+                }`}
+                style={pinLock?.autoLockTimeout === v ? { backgroundColor: GK } : {}}>
+                <span>{l}</span>
+                <span className="flex items-center gap-2">
+                  {v === 0 && <span className="text-[10px] font-bold text-amber-500 bg-amber-50 dark:bg-amber-900/30 px-1.5 py-0.5 rounded-md">⚠ Less secure</span>}
+                  {pinLock?.autoLockTimeout === v && (
+                    <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M20 6L9 17l-5-5" />
+                    </svg>
+                  )}
+                </span>
+              </button>
+            ))}
+          </div>
+        </Modal>
       )}
       {showStatement && (
         <StaffActivityStatement
