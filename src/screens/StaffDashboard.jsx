@@ -193,7 +193,7 @@ If asked about business-wide figures (total business revenue, all staff performa
       <div className="w-full max-w-md flex flex-col h-full relative">
 
         {/* Header */}
-        <header className="flex-none z-sticky bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700/60 shadow-sm">
+        <header className="flex-none z-sticky bg-white dark:bg-slate-900">
           <div style={{ height: "env(safe-area-inset-top, 0px)" }} />
           <div className="h-14 flex items-center justify-between px-4">
           <div className="flex items-center gap-2 flex-none min-w-0">
@@ -220,7 +220,7 @@ If asked about business-wide figures (total business revenue, all staff performa
               toast={toast}
             />
             <button onClick={() => goTo("me")}
-              className="w-9 h-9 rounded-full flex items-center justify-center border-2 border-slate-100 dark:border-slate-700 shadow-sm active:scale-90 transition-transform overflow-hidden"
+              className="w-9 h-9 rounded-full flex items-center justify-center active:scale-90 transition-transform overflow-hidden"
               style={{ background: "linear-gradient(135deg,var(--brand-green),var(--brand-green-dark))" }}>
               {staff?.profile_image_url
                 ? <img src={staff.profile_image_url} alt="" className="w-9 h-9 object-cover" />

@@ -449,9 +449,9 @@ export default function App() {
     <ToastProvider onDeepLink={handlePushDeepLink}>
     <div className={isDark ? "dark" : ""}>
       <div className="h-[100dvh] bg-slate-50 dark:bg-slate-900 md:bg-slate-200 dark:md:bg-slate-950 flex justify-center transition-colors duration-200">
-        <div className="w-full max-w-md relative flex flex-col h-[100dvh] safe-top md:shadow-2xl md:shadow-black/20 dark:md:shadow-black/60 md:border-x md:border-slate-300/50 dark:md:border-slate-700/50">
+        <div className="w-full max-w-md relative flex flex-col h-[100dvh] md:shadow-2xl md:shadow-black/20 dark:md:shadow-black/60 md:border-x md:border-slate-300/50 dark:md:border-slate-700/50">
           {/* Owner portal header — flex-none at column root, same pattern as Staff/Manager/Ajo */}
-          <header className="flex-none z-sticky bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700/60 shadow-sm">
+          <header className="flex-none z-sticky bg-slate-50 dark:bg-slate-900">
             <div style={{ height: "env(safe-area-inset-top, 0px)" }} />
             <div className="h-14 flex items-center justify-between px-4">
             <div className="flex items-center gap-2 flex-none min-w-0">
@@ -476,7 +476,7 @@ export default function App() {
                 toast={null}
               />
               <button onClick={() => navigate("/profile")} aria-label="Profile"
-                className="w-9 h-9 rounded-full border-2 border-slate-100 dark:border-slate-700 shadow-sm overflow-hidden active:scale-95 transition-transform">
+                className="w-9 h-9 rounded-full overflow-hidden active:scale-90 transition-transform">
                 {store.profile?.profile_image_url
                   ? <img src={store.profile.profile_image_url} alt="Profile" className="w-full h-full object-cover" />
                   : <div className="w-full h-full bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center">

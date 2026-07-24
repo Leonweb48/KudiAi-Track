@@ -219,7 +219,7 @@ export default function ManagerDashboard({ session, staff: staffProp, pinLock })
       <div className="w-full max-w-md flex flex-col h-full relative">
 
         {/* Header */}
-        <header className="flex-none z-sticky bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shadow-sm">
+        <header className="flex-none z-sticky bg-slate-50 dark:bg-slate-900">
           <div style={{ height: "env(safe-area-inset-top, 0px)" }} />
           <div className="h-14 flex items-center justify-between px-4">
           <div className="flex items-center gap-2 flex-none min-w-0">
@@ -244,7 +244,7 @@ export default function ManagerDashboard({ session, staff: staffProp, pinLock })
               toast={toast}
             />
             <button onClick={() => goTo("me")}
-              className="w-9 h-9 rounded-full bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center border-2 border-slate-100 dark:border-slate-700 shadow-sm active:scale-90 transition-transform overflow-hidden">
+              className="w-9 h-9 rounded-full bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center active:scale-90 transition-transform overflow-hidden">
               {staff?.profile_image_url
                 ? <img src={staff.profile_image_url} alt="" className="w-9 h-9 object-cover" />
                 : <span className="text-sm font-black text-white">{avatarInitial}</span>}
