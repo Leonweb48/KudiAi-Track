@@ -17,7 +17,6 @@ import OffersSection from "../components/slots/OffersSection";
 import PoweredByCardSlot from "../components/slots/PoweredByCardSlot";
 import TabCardQuadSlot from "../components/slots/TabCardQuadSlot";
 import TabCardDuoSlot from "../components/slots/TabCardDuoSlot";
-import TransactionPinModal from "../components/TransactionPinModal";
 import TransactionDetailModal from "../components/shared/TransactionDetailModal";
 import { buildAjoContributionReceipt, buildAjoWithdrawalReceipt } from "../utils/receiptConfig";
 import AIChatWidget from "../components/AIChatWidget";
