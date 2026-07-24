@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { fmt, today } from "../utils/helpers";
 import { compute } from "../lib/profitEngine";
 import { supabase } from "../utils/supabase";
