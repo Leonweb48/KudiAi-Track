@@ -527,5 +527,46 @@ export async function notifyBranchManager(ownerId, branchId, { type, originUserI
   }
 }
 
+/**
+ * Notify all regular (non-manager) branch staff of an event at their branch.
+ * Skips the origin user. Used for events staff need to act on (e.g. new stock arrived).
+ * @param {string}  ownerId
+ * @param {string}  branchId
+ * @param {object}  opts - { type, originUserId, data }
+ */
+export async function notifyBranchStaff(ownerId, branchId, { type, originUserId, data = {} }) {
+  if (!ownerId || !branchId) return;
+
+  const tpl = EVENTS[type];
+  if (!tpl) { console.warn("[notifyEngine] notifyBranchStaff: unknown type:", type); return; }
+
+  const { data: staffRows } = await supabase
+    .from("staff")
+    .select("user_id")
+    .eq("owner_id", ownerId)
+    .eq("branch_id", branchId)
+    .eq("status", "active")
+    .neq("role", "manager")
+    .not("user_id", "is", null);
+
+  if (!staffRows?.length) return;
+
+  const title    = tpl.title(data);
+  const body     = tpl.body(data);
+  const deepLink = typeof tpl.deepLink === "function" ? tpl.deepLink(data) : (tpl.deepLink ?? null);
+
+  await Promise.allSettled(
+    staffRows
+      .filter(s => !originUserId || s.user_id !== originUserId)
+      .map(s => {
+        const baseDk = tpl.dedupeKey ? (typeof tpl.dedupeKey === "function" ? tpl.dedupeKey(data) : tpl.dedupeKey) : null;
+        const dk     = baseDk ? `staff_${s.user_id}_${baseDk}` : null;
+        return supabase.functions.invoke("notify-send", {
+          body: { action: "notify", userId: s.user_id, type, title, body, deepLink, priority: "high", dedupeKey: dk, category: tpl.category },
+        });
+      })
+  );
+}
+
 // Re-export the template map so tests can validate templates without invoking the edge function
 export { EVENTS as _NOTIFICATION_EVENTS };

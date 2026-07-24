@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../utils/supabase";
 import { uid } from "../utils/helpers";
 import { sendEmailTrigger } from "../utils/emailTrigger";
-import { notify, notifyBranchManager } from "../lib/notifyEngine";
+import { notify, notifyBranchManager, notifyBranchStaff } from "../lib/notifyEngine";
 
 export function useInventory(userId, staffId = null, branchId = null) {
   const [products,  setProducts]  = useState([]);
@@ -286,11 +286,13 @@ export function useInventory(userId, staffId = null, branchId = null) {
         entry_type:   "restock",
       });
       if (branchId) {
-        notifyBranchManager(userId, branchId, {
+        const restockOpts = {
           type:         "branch_restock",
           originUserId: staffId || userId,
           data: { ownerId: userId, productName: product.product_name, productId: product_id, quantity: absQty, branchId },
-        });
+        };
+        notifyBranchManager(userId, branchId, restockOpts);
+        notifyBranchStaff(userId, branchId, restockOpts);
       }
     }
 
