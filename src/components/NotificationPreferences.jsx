@@ -84,9 +84,40 @@ function InfoMsg({ children, type = "info" }) {
   return <p className={`text-[12px] font-semibold text-center ${styles[type]}`}>{children}</p>;
 }
 
-const DEFAULT_PREFS = { push_enabled: true, pref_money: true, pref_savings: true, pref_stock: true };
+const DEFAULT_PREFS = {
+  push_enabled:     true,
+  pref_money:       true,
+  pref_savings:     true,
+  pref_stock:       true,
+  pref_permissions: true,
+  pref_approvals:   true,
+};
 
-export default function NotificationPreferences({ userId, onClose }) {
+// Category rows shown per portal
+const PORTAL_CATEGORIES = {
+  owner: [
+    { field: "pref_money",   label: "Money & Approvals",   sub: "Collections, withdrawals, capital alerts, security holds" },
+    { field: "pref_savings", label: "Savings Activity",    sub: "Contribution approvals, payouts, group updates" },
+    { field: "pref_stock",   label: "Stock Alerts",        sub: "Low inventory warnings" },
+  ],
+  staff: [
+    { field: "pref_money",       label: "Money Alerts",        sub: "Security holds, cash-in alerts" },
+    { field: "pref_approvals",   label: "Collection Approvals", sub: "Approval and rejection of your recorded collections" },
+    { field: "pref_permissions", label: "Permissions & Access", sub: "Permission changes, shift updates, invitations" },
+  ],
+  manager: [
+    { field: "pref_money",       label: "Branch Money Alerts",  sub: "Cash-in alerts and security holds for your branch" },
+    { field: "pref_approvals",   label: "Approvals",            sub: "Collection approvals from branch staff" },
+    { field: "pref_permissions", label: "Permissions & Access", sub: "Permission changes and role updates" },
+  ],
+  ajo: [
+    { field: "pref_savings", label: "Savings Activity",    sub: "Contribution approvals, payouts, group releases" },
+    { field: "pref_money",   label: "Money Transactions",  sub: "Deposits confirmed/rejected, withdrawals approved/rejected" },
+  ],
+};
+
+// eslint-disable-next-line no-unused-vars
+export default function NotificationPreferences({ userId, onClose, portal = "owner" }) {
   const [prefs,        setPrefs]        = useState(DEFAULT_PREFS);
   const [loading,      setLoading]      = useState(true);
   const [saving,       setSaving]       = useState(false);
@@ -113,10 +144,10 @@ export default function NotificationPreferences({ userId, onClose }) {
     (async () => {
       const { data } = await supabase
         .from("notification_preferences")
-        .select("push_enabled, pref_money, pref_savings, pref_stock")
+        .select("push_enabled, pref_money, pref_savings, pref_stock, pref_permissions, pref_approvals")
         .eq("user_id", userId)
         .maybeSingle();
-      setPrefs(data ?? DEFAULT_PREFS);
+      setPrefs({ ...DEFAULT_PREFS, ...(data ?? {}) });
       setLoading(false);
     })();
   }, [userId]);
@@ -138,8 +169,16 @@ export default function NotificationPreferences({ userId, onClose }) {
 
   const save = async () => {
     setSaving(true);
-    await supabase.from("notification_preferences")
-      .upsert({ user_id: userId, ...prefs, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
+    await supabase.from("notification_preferences").upsert({
+      user_id:          userId,
+      push_enabled:     prefs.push_enabled,
+      pref_money:       prefs.pref_money,
+      pref_savings:     prefs.pref_savings,
+      pref_stock:       prefs.pref_stock,
+      pref_permissions: prefs.pref_permissions,
+      pref_approvals:   prefs.pref_approvals,
+      updated_at:       new Date().toISOString(),
+    }, { onConflict: "user_id" });
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -388,24 +427,15 @@ export default function NotificationPreferences({ userId, onClose }) {
           {/* ── Categories ── */}
           <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider pt-5 pb-1">Categories</p>
           <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-700 px-4">
-            <PrefRow
-              label="Money & Approvals"
-              sub="Collections, withdrawals, capital alerts, security holds"
-              on={prefs.pref_money}
-              onChange={update("pref_money")}
-            />
-            <PrefRow
-              label="Savings Activity"
-              sub="Contribution approvals, payouts, loan updates"
-              on={prefs.pref_savings}
-              onChange={update("pref_savings")}
-            />
-            <PrefRow
-              label="Stock Alerts"
-              sub="Low inventory warnings"
-              on={prefs.pref_stock}
-              onChange={update("pref_stock")}
-            />
+            {(PORTAL_CATEGORIES[portal] ?? PORTAL_CATEGORIES.owner).map(cat => (
+              <PrefRow
+                key={cat.field}
+                label={cat.label}
+                sub={cat.sub}
+                on={prefs[cat.field] ?? true}
+                onChange={update(cat.field)}
+              />
+            ))}
           </div>
 
           <button

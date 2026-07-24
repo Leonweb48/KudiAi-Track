@@ -13,6 +13,7 @@ import {
 import TransactionPinModal from "../../components/TransactionPinModal";
 import ForgotPinFlow from "../../components/ForgotPinFlow";
 import ProfileEdit from "../../components/shared/ProfileEdit";
+import NotificationPreferences from "../../components/NotificationPreferences";
 
 /* ── inline profile display helpers ── */
 function SectionCard({ title, children }) {
@@ -50,6 +51,7 @@ export default function ManagerMe({
   const [showReconcilePin, setShowReconcilePin] = useState(false);
   const [showForgotPin,    setShowForgotPin]    = useState(false);
   const [legalView,        setLegalView]        = useState(null);
+  const [showNotifPrefs,   setShowNotifPrefs]   = useState(false);
   const [acceptedConsent,  setAcceptedConsent]  = useState(null);
 
   const [activityLogs,    setActivityLogs]    = useState([]);
@@ -525,6 +527,12 @@ export default function ManagerMe({
             onClick={toggleDark}
             right={<Toggle on={isDark} onToggle={toggleDark} />}
           />
+          <Row
+            icon={<RowIcon d={P.bell} />}
+            label="Notifications"
+            sub="Manage push and in-app notification settings"
+            onClick={() => setShowNotifPrefs(true)}
+          />
         </SettingsCard>
       </div>
 
@@ -613,6 +621,9 @@ export default function ManagerMe({
           businessName={staff?.business_name || store.profile?.business_name}
           onClose={() => setShowStatement(false)}
         />
+      )}
+      {showNotifPrefs && (
+        <NotificationPreferences userId={session?.user?.id} portal="manager" onClose={() => setShowNotifPrefs(false)} />
       )}
     </div>
   );

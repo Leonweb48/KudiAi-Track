@@ -1,5 +1,5 @@
 /**
- * notifyEngine — the single client-side entry point for all non-email notifications.
+ * notifyEngine — single client-side entry point for all non-email notifications.
  * Server-side callers (edge functions) invoke notify-send directly.
  *
  * notify(event) → calls notify-send edge function.
@@ -15,6 +15,7 @@ import { supabase } from "../utils/supabase";
 // ── Event templates ──────────────────────────────────────────────────────────
 // Each entry: { priority, category, title(data), body(data), deepLink, dedupeKey(data) }
 const EVENTS = {
+  // ── Owner-received ──────────────────────────────────────────────────────
   staff_collection: {
     priority: "high", category: "money",
     title: (d) => d.count > 1 ? `${d.count} Collections Pending` : "New Staff Collection",
@@ -41,6 +42,88 @@ const EVENTS = {
     dedupeKey: (d) => `deposit_${d.depositId}`,
   },
 
+  capital_transition: {
+    priority: "high", category: "money",
+    title: (d) => `Capital Alert — ${d.newState === "red" ? "Loss" : d.newState === "yellow" ? "Near-Loss" : "Recovery"}`,
+    body:  (d) => `Working capital moved to ${d.newState} state — tap to view Finance`,
+    deepLink:  { tab: "finance" },
+    dedupeKey: (d) => `capital_state_${d.ownerId}`,
+  },
+
+  low_stock: {
+    priority: "normal", category: "stock",
+    title: (d) => `Low Stock: ${d.productName}`,
+    body:  (d) => `Only ${d.quantity} unit${d.quantity === 1 ? "" : "s"} left — consider restocking`,
+    deepLink: (d) => ({ tab: "stock", id: d.productId }),
+    dedupeKey: (d) => `low_stock_${d.productId}`,
+  },
+
+  credit_overdue: {
+    priority: "normal", category: "money",
+    title: (d) => `Credit Overdue — ${d.customerName}`,
+    body:  (d) => `₦${fmt(d.outstanding)} overdue since ${d.dueDate}`,
+    deepLink: (d) => ({ tab: "finance", sub: "credit", id: d.creditId }),
+    dedupeKey: (d) => `credit_overdue_${d.creditId}`,
+  },
+
+  held_24h: {
+    priority: "high", category: "money",
+    title: () => "Security Hold Active",
+    body:  (d) => `₦${fmt(d.amount)} transaction is in 24h security review`,
+    deepLink:  { tab: "finance" },
+    dedupeKey: (d) => `held24h_${d.transactionId}`,
+  },
+
+  // ── Staff / manager-received ─────────────────────────────────────────────
+  staff_invite: {
+    priority: "normal", category: "permissions",
+    title: () => "Staff Invitation",
+    body:  (d) => `${d.businessName || "A business"} invited you as ${d.role || "staff"}`,
+    deepLink:  { tab: "me" },
+    dedupeKey: null,
+  },
+
+  permission_change: {
+    priority: "normal", category: "permissions",
+    title: () => "Permissions Updated",
+    body:  (d) => `${d.businessName || "Your employer"} updated your access permissions`,
+    deepLink:  { tab: "me", sub: "security" },
+    dedupeKey: (d) => `perms_${d.staffId}`,
+  },
+
+  collection_approved: {
+    priority: "normal", category: "approvals",
+    title: () => "Collection Approved",
+    body:  (d) => `Your recorded ₦${fmt(d.amount)} collection was approved`,
+    deepLink:  { tab: "aso", sub: "collections" },
+    dedupeKey: null,
+  },
+
+  collection_rejected: {
+    priority: "normal", category: "approvals",
+    title: () => "Collection Rejected",
+    body:  (d) => `Your ₦${fmt(d.amount)} collection was rejected${d.reason ? ` — ${d.reason}` : ""}`,
+    deepLink:  { tab: "aso", sub: "collections" },
+    dedupeKey: null,
+  },
+
+  commission_processed: {
+    priority: "normal", category: "money",
+    title: () => "Commission Processed",
+    body:  (d) => `₦${fmt(d.amount)} commission credited for ${d.period || "this period"}`,
+    deepLink:  { tab: "me", sub: "commissions" },
+    dedupeKey: (d) => `commission_${d.staffId}_${d.period}`,
+  },
+
+  shift_changed: {
+    priority: "normal", category: "permissions",
+    title: () => "Shift Updated",
+    body:  (d) => `Your shift has been changed to ${d.shift || "a new schedule"}`,
+    deepLink:  { tab: "me" },
+    dedupeKey: (d) => `shift_${d.staffId}`,
+  },
+
+  // ── Ajo client-received ──────────────────────────────────────────────────
   contribution_approved: {
     priority: "normal", category: "savings",
     title: () => "Contribution Approved",
@@ -57,60 +140,52 @@ const EVENTS = {
     dedupeKey: null,
   },
 
+  deposit_confirmed: {
+    priority: "high", category: "money",
+    title: () => "Deposit Confirmed",
+    body:  (d) => `Your deposit of ₦${fmt(d.amount)} was confirmed and credited`,
+    deepLink:  { tab: "contributions" },
+    dedupeKey: null,
+  },
+
+  deposit_rejected: {
+    priority: "high", category: "money",
+    title: () => "Deposit Rejected",
+    body:  (d) => `Your deposit claim was rejected${d.reason ? ` — ${d.reason}` : ""}`,
+    deepLink:  { tab: "contributions" },
+    dedupeKey: null,
+  },
+
+  withdrawal_approved: {
+    priority: "high", category: "money",
+    title: () => "Withdrawal Approved",
+    body:  (d) => `Your withdrawal of ₦${fmt(d.amount)} has been approved`,
+    deepLink:  { tab: "contributions" },
+    dedupeKey: null,
+  },
+
+  withdrawal_rejected: {
+    priority: "high", category: "money",
+    title: () => "Withdrawal Rejected",
+    body:  (d) => `Your withdrawal request was rejected${d.reason ? ` — ${d.reason}` : ""}`,
+    deepLink:  { tab: "contributions" },
+    dedupeKey: null,
+  },
+
   payout_received: {
-    priority: "normal", category: "savings",
+    priority: "high", category: "savings",
     title: () => "Payout Received",
     body:  (d) => `₦${fmt(d.amount)} has been credited to your account`,
     deepLink:  { tab: "contributions" },
     dedupeKey: null,
   },
 
-  capital_transition: {
-    priority: "high", category: "money",
-    title: (d) => `Capital Alert — ${d.newState === "red" ? "Loss" : d.newState === "yellow" ? "Near-Loss" : "Recovery"}`,
-    body:  (d) => `Working capital moved to ${d.newState} state — tap to view Finance`,
-    deepLink:  { tab: "finance" },
-    dedupeKey: (d) => `capital_state_${d.ownerId}`,
-  },
-
-  low_stock: {
-    priority: "normal", category: "stock",
-    title: (d) => `Low Stock: ${d.productName}`,
-    body:  (d) => `Only ${d.quantity} unit${d.quantity === 1 ? "" : "s"} left — consider restocking`,
-    deepLink: (d) => ({ tab: "inventory", id: d.productId }),
-    dedupeKey: (d) => `low_stock_${d.productId}`,
-  },
-
-  credit_overdue: {
-    priority: "normal", category: "money",
-    title: (d) => `Credit Overdue — ${d.customerName}`,
-    body:  (d) => `₦${fmt(d.outstanding)} overdue since ${d.dueDate}`,
-    deepLink: (d) => ({ tab: "finance", sub: "credit", id: d.creditId }),
-    dedupeKey: (d) => `credit_overdue_${d.creditId}`,
-  },
-
-  staff_invite: {
-    priority: "normal", category: "money",
-    title: () => "Staff Invitation",
-    body:  (d) => `${d.businessName || "A business"} invited you as ${d.role || "staff"}`,
-    deepLink:  { tab: "home" },
+  group_funds_released: {
+    priority: "normal", category: "savings",
+    title: () => "Savings Released",
+    body:  (d) => `₦${fmt(d.amount)} from your savings group has been released`,
+    deepLink:  { tab: "contributions" },
     dedupeKey: null,
-  },
-
-  permission_change: {
-    priority: "normal", category: "money",
-    title: () => "Permissions Updated",
-    body:  (d) => `${d.businessName || "Your employer"} updated your access permissions`,
-    deepLink:  { tab: "home" },
-    dedupeKey: (d) => `perms_${d.staffId}`,
-  },
-
-  held_24h: {
-    priority: "high", category: "money",
-    title: () => "Security Hold Active",
-    body:  (d) => `₦${fmt(d.amount)} transaction is in 24h security review`,
-    deepLink:  { tab: "finance" },
-    dedupeKey: (d) => `held24h_${d.transactionId}`,
   },
 };
 

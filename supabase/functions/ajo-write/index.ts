@@ -126,21 +126,35 @@ async function fetchEmailContext(
   };
 }
 
-// ── Fire-and-forget in-app notification ───────────────────────────────────────
+// ── Fire-and-forget notification via notify-send (gives FCM push + pref checks) ─
+const _SUPABASE_URL  = Deno.env.get("SUPABASE_URL")!;
+const _SERVICE_KEY   = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
 async function notifyUser(
-  sb: ReturnType<typeof createClient>,
+  _sb: ReturnType<typeof createClient>,       // kept for call-site compatibility
   userId: string | null | undefined,
-  opts: { type: string; title: string; body: string; priority?: string; deepLink?: Record<string, unknown> | null },
+  opts: { type: string; title: string; body: string; priority?: string; deepLink?: Record<string, unknown> | null; category?: string },
 ): Promise<void> {
   if (!userId) return;
-  await (sb.from("notifications") as unknown as { insert: (row: unknown) => Promise<unknown> }).insert({
-    user_id:   userId,
-    type:      opts.type,
-    title:     opts.title,
-    body:      opts.body,
-    priority:  opts.priority || "normal",
-    deep_link: opts.deepLink ?? null,
-  }).catch(() => null);
+  try {
+    await fetch(`${_SUPABASE_URL}/functions/v1/notify-send`, {
+      method:  "POST",
+      headers: {
+        "Content-Type":  "application/json",
+        "Authorization": `Bearer ${_SERVICE_KEY}`,
+      },
+      body: JSON.stringify({
+        action:   "notify",
+        userId,
+        type:     opts.type,
+        title:    opts.title,
+        body:     opts.body,
+        priority: opts.priority ?? "normal",
+        deepLink: opts.deepLink ?? null,
+        category: opts.category ?? "savings",
+      }),
+    });
+  } catch { /* fire and forget */ }
 }
 
 // ── Resolve a client's auth user_id from aso_clients.client_user_id ──────────
@@ -494,7 +508,7 @@ serve(async (req: Request) => {
           notifyUser(sb, acClientUserId, {
             type: "contribution_approved", title: "Contribution Approved",
             body: `Your ₦${acAmt} contribution has been approved`, priority: "normal",
-            deepLink: { tab: "contributions" },
+            deepLink: { tab: "contributions" }, category: "savings",
           }),
         ];
         if ((acContrib as Record<string, unknown>).contribution_source === "staff_collection") {
@@ -502,7 +516,7 @@ serve(async (req: Request) => {
           effects.push(notifyUser(sb, acStaffUserId, {
             type: "collection_approved", title: "Collection Approved",
             body: `Your recorded ₦${acAmt} collection was approved by the owner`, priority: "normal",
-            deepLink: { tab: "aso", sub: "collections" },
+            deepLink: { tab: "aso", sub: "collections" }, category: "approvals",
           }));
         }
         await Promise.allSettled(effects);
@@ -687,7 +701,7 @@ serve(async (req: Request) => {
     await notifyUser(sb, collClientUserId, {
       type: "contribution_approved", title: "Contribution Recorded",
       body: `Your ₦${Number(amount).toLocaleString("en-NG")} contribution has been recorded and credited`,
-      priority: "normal", deepLink: { tab: "contributions" },
+      priority: "normal", deepLink: { tab: "contributions" }, category: "savings",
     });
 
     return json({ ok: true, recovered, ...app });
@@ -755,7 +769,7 @@ serve(async (req: Request) => {
         await notifyUser(sb, rwFailClientUserId, {
           type: "withdrawal_rejected", title: "Withdrawal Rejected",
           body: `Your withdrawal request for ₦${Number(gross_amount).toLocaleString("en-NG")} was rejected — insufficient balance`,
-          priority: "high", deepLink: { tab: "aso", sub: "withdrawals" },
+          priority: "high", deepLink: { tab: "contributions" }, category: "money",
         });
       }
       return json({ ok: false, error: rpcErr }, 400);
@@ -786,7 +800,7 @@ serve(async (req: Request) => {
             notifyUser(sb, rwApprClientUserId, {
               type: "withdrawal_approved", title: "Withdrawal Approved",
               body: `Your withdrawal of ₦${Number(rpcWd?.net_amount ?? gross_amount).toLocaleString("en-NG")} has been approved`,
-              priority: "high", deepLink: { tab: "aso", sub: "withdrawals" },
+              priority: "high", deepLink: { tab: "contributions" }, category: "money",
             }),
           ]);
         } else {
@@ -856,7 +870,7 @@ serve(async (req: Request) => {
           notifyUser(sb, rwrClientUserId, {
             type: "withdrawal_rejected", title: "Withdrawal Rejected",
             body: `Your withdrawal request for ₦${Number((rwrRow as Record<string, unknown>).amount).toLocaleString("en-NG")} was rejected${rwrReason ? ` — ${rwrReason}` : ""}`,
-            priority: "high", deepLink: { tab: "aso", sub: "withdrawals" },
+            priority: "high", deepLink: { tab: "contributions" }, category: "money",
           }),
         ]);
       })().catch(() => null),
@@ -1060,7 +1074,7 @@ serve(async (req: Request) => {
           notifyUser(sb, mdClientUserId, {
             type: "deposit_confirmed", title: "Deposit Confirmed",
             body: `Your deposit of ₦${Number(data?.amount).toLocaleString("en-NG")} was confirmed and credited`,
-            priority: "high", deepLink: { tab: "contributions" },
+            priority: "high", deepLink: { tab: "contributions" }, category: "money",
           }),
         ]);
       })().catch(() => null),
@@ -1114,7 +1128,7 @@ serve(async (req: Request) => {
           notifyUser(sb, rmcClientUserId, {
             type: "deposit_rejected", title: "Deposit Rejected",
             body: `Your deposit claim was rejected${reason?.trim() ? ` — ${reason.trim()}` : ""}`,
-            priority: "high", deepLink: { tab: "contributions" },
+            priority: "high", deepLink: { tab: "contributions" }, category: "money",
           }),
         ]);
       })().catch(() => null),
@@ -1290,7 +1304,7 @@ serve(async (req: Request) => {
             title:    "Savings group funds released",
             body:     `${csrGrp.name} has closed — ₦${Number(rel.released_amount).toLocaleString("en-NG")} is now available in your balance`,
             priority: "high",
-            deepLink: { tab: "savings" },
+            deepLink: { tab: "contributions" }, category: "savings",
           });
         })
       ),
@@ -1328,11 +1342,11 @@ serve(async (req: Request) => {
         const rsmUserId = await resolveClientUserId(sb, rsmClientId);
         if (!rsmUserId) return;
         return notifyUser(sb, rsmUserId, {
-          type:     "group_member_released",
+          type:     "group_funds_released",
           title:    "Released from savings group",
           body:     `You have been released from ${rsmGrp.name}${(rsm.released_amount as number) > 0 ? ` — ₦${Number(rsm.released_amount).toLocaleString("en-NG")} is now available in your balance` : ""}`,
           priority: "high",
-          deepLink: { tab: "savings" },
+          deepLink: { tab: "contributions" }, category: "savings",
         });
       })().catch(() => null),
       new Promise<void>(r => setTimeout(r, 2500)),
@@ -1497,7 +1511,7 @@ serve(async (req: Request) => {
     await notifyUser(sb, epBeneficiaryAuthId, {
       type: "payout_received", title: "Esusu Payout Received",
       body: `₦${Number(potAmount).toLocaleString("en-NG")} has been credited to your account`,
-      priority: "normal", deepLink: { tab: "contributions" },
+      priority: "high", deepLink: { tab: "contributions" }, category: "savings",
     });
 
     } catch (_notifErr) {
@@ -1872,12 +1886,12 @@ serve(async (req: Request) => {
           notifyUser(sb, rcClientUserId, {
             type: "contribution_rejected", title: "Contribution Rejected",
             body: `Your ₦${rcAmt} contribution was rejected${rcReason?.trim() ? ` — ${rcReason.trim()}` : ""}`,
-            priority: "normal", deepLink: { tab: "contributions" },
+            priority: "normal", deepLink: { tab: "contributions" }, category: "savings",
           }),
           notifyUser(sb, rcStaffUserId, {
             type: "collection_rejected", title: "Collection Rejected",
             body: `Your recorded ₦${rcAmt} collection was rejected by the owner${rcReason?.trim() ? ` — ${rcReason.trim()}` : ""}`,
-            priority: "normal", deepLink: { tab: "aso", sub: "collections" },
+            priority: "normal", deepLink: { tab: "aso", sub: "collections" }, category: "approvals",
           }),
         ]);
       })().catch(() => null),
@@ -1945,13 +1959,13 @@ serve(async (req: Request) => {
           await notifyUser(sb, bClientAuthMap[bc.aso_client_id], {
             type: "contribution_approved", title: "Contribution Approved",
             body: `Your ₦${bcAmt} contribution has been approved`, priority: "normal",
-            deepLink: { tab: "contributions" },
+            deepLink: { tab: "contributions" }, category: "savings",
           });
           if (bc.contribution_source === "staff_collection" && bc.recorded_by) {
             await notifyUser(sb, bStaffAuthMap[bc.recorded_by], {
               type: "collection_approved", title: "Collection Approved",
               body: `Your recorded ₦${bcAmt} collection was approved by the owner`, priority: "normal",
-              deepLink: { tab: "aso", sub: "collections" },
+              deepLink: { tab: "aso", sub: "collections" }, category: "approvals",
             });
           }
         }

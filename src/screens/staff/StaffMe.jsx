@@ -13,6 +13,7 @@ import {
 import TransactionPinModal from "../../components/TransactionPinModal";
 import ForgotPinFlow from "../../components/ForgotPinFlow";
 import ProfileEdit from "../../components/shared/ProfileEdit";
+import NotificationPreferences from "../../components/NotificationPreferences";
 
 /* ─ Inline profile display components — mirror business Profile.jsx */
 function SectionCard({ title, children }) {
@@ -51,6 +52,7 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
   const [showReconcilePin,  setShowReconcilePin]  = useState(false);
   const [showForgotPin,     setShowForgotPin]     = useState(false);
   const [legalView,         setLegalView]         = useState(null); // "terms" | "privacy"
+  const [showNotifPrefs,    setShowNotifPrefs]    = useState(false);
   const [acceptedConsent,   setAcceptedConsent]   = useState(null);
   /* D2: My Activity */
   const [activityLogs,    setActivityLogs]    = useState([]);
@@ -537,6 +539,12 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
             onClick={toggleDark}
             right={<Toggle on={isDark} onToggle={toggleDark} />}
           />
+          <Row
+            icon={<RowIcon d={P.bell} />}
+            label="Notifications"
+            sub="Manage push and in-app notification settings"
+            onClick={() => setShowNotifPrefs(true)}
+          />
         </SettingsCard>
       </div>
 
@@ -614,6 +622,9 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
       )}
       {showStatement && (
         <StaffActivityStatement store={store} staffName={staff?.full_name} businessName={staff?.business_name || store.profile?.business_name} onClose={() => setShowStatement(false)} />
+      )}
+      {showNotifPrefs && (
+        <NotificationPreferences userId={session?.user?.id} portal="staff" onClose={() => setShowNotifPrefs(false)} />
       )}
     </div>
   );

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Capacitor }          from "@capacitor/core";
+import { usePushNotifications } from "../hooks/usePushNotifications";
 import { App as CapApp }      from "@capacitor/app";
 import { supabase }           from "../utils/supabase";
 import { useStore }           from "../hooks/useStore";
@@ -155,6 +156,8 @@ export default function ManagerDashboard({ session, staff: staffProp, pinLock })
   const goTo = useCallback((t, sub = null, data = null) => {
     setTab(t); setSubNav(sub); setSubData(data);
   }, []);
+
+  usePushNotifications(session?.user?.id ?? null, (dl) => { if (dl?.tab) goTo(dl.tab, dl.sub || null); });
 
   const avatarInitial = (staff?.full_name || "M")[0].toUpperCase();
 

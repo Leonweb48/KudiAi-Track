@@ -10,9 +10,11 @@ const json = (data: unknown, status = 200) =>
 
 // ── Category → preference field map ─────────────────────────────────────────
 const CAT_PREF: Record<string, string> = {
-  money:   "pref_money",
-  savings: "pref_savings",
-  stock:   "pref_stock",
+  money:       "pref_money",
+  savings:     "pref_savings",
+  stock:       "pref_stock",
+  permissions: "pref_permissions",
+  approvals:   "pref_approvals",
 };
 
 // ── FCM HTTP v1 via OAuth2 service-account JWT ───────────────────────────────
@@ -109,12 +111,13 @@ async function getFCMToken(sa: ServiceAccount): Promise<string | null> {
  * Prunes UNREGISTERED tokens from push_tokens automatically.
  */
 async function sendFCMv1(
-  sb:       ReturnType<typeof createClient>,
-  token:    string,
-  title:    string,
-  body:     string,
-  deepLink: Record<string, unknown> | null,
-  priority: string,
+  sb:            ReturnType<typeof createClient>,
+  token:         string,
+  title:         string,
+  body:          string,
+  deepLink:      Record<string, unknown> | null,
+  priority:      string,
+  unreadCount:   number,
 ): Promise<{ status: number; body: string }> {
   const saRaw = Deno.env.get("FIREBASE_SERVICE_ACCOUNT");
   if (!saRaw) return { status: 0, body: "FIREBASE_SERVICE_ACCOUNT not set" };
@@ -127,8 +130,13 @@ async function sendFCMv1(
   if (!accessToken) return { status: 0, body: "Could not obtain FCM access token" };
 
   // v1 requires ALL data values to be strings
-  const data: Record<string, string> = {};
+  const data: Record<string, string> = { group: "kuditrack" };
   if (deepLink) data["deepLink"] = JSON.stringify(deepLink);
+  if (unreadCount > 1) {
+    // summary tap → open notification center
+    data["groupSummary"] = "true";
+    data["groupSummaryDeepLink"] = JSON.stringify({ tab: "home", openNotifications: true });
+  }
 
   // Channels move under android.notification in v1
   const channelId = priority === "high" ? "money_alerts" : "updates";
@@ -149,9 +157,11 @@ async function sendFCMv1(
           android: {
             priority: priority === "high" ? "HIGH" : "NORMAL",
             notification: {
-              icon:       "ic_notification",
-              color:      "#3DA829",
-              channel_id: channelId,
+              icon:               "ic_notification",
+              color:              "#3DA829",
+              channel_id:         channelId,
+              // Badge / shade count — shows total unread when > 1
+              notification_count: unreadCount > 1 ? unreadCount : undefined,
             },
           },
         },
@@ -258,7 +268,7 @@ Deno.serve(async (req) => {
 
     // Preference check
     const { data: prefs } = await sb.from("notification_preferences")
-      .select("push_enabled, pref_money, pref_savings, pref_stock")
+      .select("push_enabled, pref_money, pref_savings, pref_stock, pref_permissions, pref_approvals")
       .eq("user_id", userId).maybeSingle();
 
     const prefField = CAT_PREF[category];
@@ -301,14 +311,23 @@ Deno.serve(async (req) => {
     // FCM v1 push for high-priority
     let fcmResult: { status: number; body: string } | null = null;
     if (priority === "high" && (prefs?.push_enabled ?? true)) {
-      const { data: tokens } = await sb.from("push_tokens")
-        .select("token, platform")
-        .eq("user_id", userId)
-        .gte("last_seen", new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString());
+      const [tokensResult, unreadResult] = await Promise.all([
+        sb.from("push_tokens")
+          .select("token, platform")
+          .eq("user_id", userId)
+          .gte("last_seen", new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString()),
+        sb.from("notifications")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", userId)
+          .is("read_at", null),
+      ]);
+
+      const tokens     = tokensResult.data;
+      const unreadCount = (unreadResult.count ?? 1);
 
       if (tokens?.length) {
         const results = await Promise.all(
-          tokens.map(t => sendFCMv1(sb, t.token, title, bodyText ?? "", deepLink, priority))
+          tokens.map(t => sendFCMv1(sb, t.token, title, bodyText ?? "", deepLink, priority, unreadCount))
         );
         fcmResult = results[0] ?? null; // surface first result for debugging
       }

@@ -12,6 +12,7 @@ import { Capacitor } from "@capacitor/core";
 import { App as CapApp } from "@capacitor/app";
 import { useCampaigns } from "../hooks/useCampaigns";
 import { usePartnerOffers } from "../hooks/usePartnerOffers";
+import { usePushNotifications } from "../hooks/usePushNotifications";
 import AnnouncementBarSlot from "../components/slots/AnnouncementBarSlot";
 import OffersSection from "../components/slots/OffersSection";
 import PoweredByCardSlot from "../components/slots/PoweredByCardSlot";
@@ -4991,9 +4992,12 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
     return () => { supabase.removeChannel(channel); };
   }, [ajoClient?.id, ajoClient?.owner_id, ajoClient?.user_id, refreshWithdrawRequests]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  usePushNotifications(session?.user?.id ?? null, (dl) => { if (dl?.tab) setTab(dl.tab); });
+
   if (mustChange) return <AjoMemberFirstLogin ajoClient={ajoClient} />;
 
   const clientId      = ajoClient?.id;
+
   const avatarInitial = (client?.full_name || ajoClient?.full_name || "M")[0].toUpperCase();
 
   return (
@@ -5036,7 +5040,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
           <div className="flex-none flex items-center gap-2">
             {loadingData && <div className="w-3.5 h-3.5 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />}
             <NotificationCenter
-              userId={client?.user_id ?? session?.user?.id ?? null}
+              userId={client?.client_user_id ?? session?.user?.id ?? null}
               onNavigate={(dl) => { if (dl?.tab) setTab(dl.tab); }}
               toast={toast}
             />

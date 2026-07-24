@@ -22,13 +22,25 @@ const TYPE_ICON = {
   manual_deposit:        { d: "M12 5v14M5 12l7 7 7-7",                                                                           c: "#10b981" },
   contribution_approved: { d: "M20 6L9 17l-5-5",                                                                                 c: "#10b981" },
   contribution_rejected: { d: "M18 6L6 18M6 6l12 12",                                                                            c: "#ef4444" },
-  payout_received:       { d: "M20 6L9 17l-5-5",                                                                                 c: "#10b981" },
+  payout_received:       { d: "M12 2v6l3 3M21 12a9 9 0 11-18 0 9 9 0 0118 0z",                                                  c: "#10b981" },
   capital_transition:    { d: "M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z", c: "#f59e0b" },
   low_stock:             { d: "M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z",                                                   c: "#f59e0b" },
   credit_overdue:        { d: "M12 2a10 10 0 110 20A10 10 0 0112 2zM12 8v4M12 16h.01",                                          c: "#ef4444" },
   staff_invite:          { d: "M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 11a4 4 0 100-8 4 4 0 000 8z",                        c: "#6366f1" },
   permission_change:     { d: "M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4", c: "#8b5cf6" },
   held_24h:              { d: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z",                                                    c: "#ef4444" },
+  // Ajo-write event types
+  collection_approved:   { d: "M20 6L9 17l-5-5",                                                                                 c: "#10b981" },
+  collection_rejected:   { d: "M18 6L6 18M6 6l12 12",                                                                            c: "#ef4444" },
+  deposit_confirmed:     { d: "M12 5v14M5 12l7 7 7-7",                                                                           c: "#10b981" },
+  deposit_rejected:      { d: "M18 6L6 18M6 6l12 12",                                                                            c: "#ef4444" },
+  withdrawal_approved:   { d: "M12 5v14M5 12l7-7 7 7",                                                                           c: "#3b82f6" },
+  withdrawal_rejected:   { d: "M18 6L6 18M6 6l12 12",                                                                            c: "#ef4444" },
+  group_funds_released:  { d: "M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z", c: "#10b981" },
+  manual_deposit_confirmed: { d: "M12 5v14M5 12l7 7 7-7",                                                                        c: "#10b981" },
+  manual_deposit_rejected:  { d: "M18 6L6 18M6 6l12 12",                                                                         c: "#ef4444" },
+  commission_processed:  { d: "M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z", c: "#f59e0b" },
+  shift_changed:         { d: "M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01",                                              c: "#6366f1" },
 };
 
 function NotifIcon({ type }) {
