@@ -23,12 +23,8 @@ export default function ManagerBranchRoster({ staff, store, onBack }) {
     setLoading(true);
 
     const [staffRes, txRes] = await Promise.all([
-      // Scope: only staff on this branch under the same owner
-      supabase.from("staff")
-        .select("id, full_name, email, role, profile_image_url, status")
-        .eq("owner_id", ownerId)
-        .eq("branch_id", branchId)
-        .order("full_name"),
+      // SECURITY DEFINER RPC — manager can only read peers on their own branch
+      supabase.rpc("get_branch_staff", { p_branch_id: branchId }),
       // Today's branch transactions — branch_id filter is the scope gate
       supabase.from("transactions")
         .select("staff_id, type, amount")
