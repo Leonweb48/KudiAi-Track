@@ -205,6 +205,28 @@ serve(async (req) => {
 
     await fireEmail("staff_credentials", emailData);
 
+    // Push only for new accounts so the staff member knows they've been invited.
+    // Password resets skip this — the staff member already knows about their account.
+    if (created && authUserId) {
+      fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/notify-send`, {
+        method:  "POST",
+        headers: {
+          "Content-Type":  "application/json",
+          "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""}`,
+        },
+        body: JSON.stringify({
+          action:   "notify",
+          userId:   authUserId,
+          type:     "staff_invite",
+          title:    "You've Been Invited",
+          body:     `${emailData.business_name || "A business"} added you as Staff — tap to set up your account`,
+          priority: "normal",
+          deepLink: { tab: "me" },
+          category: "permissions",
+        }),
+      }).catch(() => null);
+    }
+
     return json({
       success: true,
       created,

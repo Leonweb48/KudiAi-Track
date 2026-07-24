@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../utils/supabase";
 import { uid } from "../utils/helpers";
 import { sendEmailTrigger } from "../utils/emailTrigger";
+import { notify } from "../lib/notifyEngine";
 
 export function useInventory(userId, staffId = null, branchId = null) {
   const [products,  setProducts]  = useState([]);
@@ -294,7 +295,7 @@ export function useInventory(userId, staffId = null, branchId = null) {
     ));
 
     if (newQty <= product.low_stock_threshold) {
-      // Email only when crossing below threshold (not on every subsequent sale)
+      // Fire email + push once when crossing below threshold (not on every subsequent sale)
       if (product.quantity > product.low_stock_threshold) {
         sendEmailTrigger("low_stock_alert", {
           owner_id:      userId,
@@ -304,6 +305,16 @@ export function useInventory(userId, staffId = null, branchId = null) {
           reorder_level: product.low_stock_threshold,
           category:      product.category || null,
           sku:           product.sku || "",
+        });
+        notify({
+          type:         "low_stock",
+          userId,
+          originUserId: staffId || userId,
+          data: {
+            productName: product.product_name,
+            productId:   product.id,
+            quantity:    newQty,
+          },
         });
       }
     }
