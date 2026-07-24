@@ -7,6 +7,30 @@ const CORS = {
 };
 
 const EMAIL_TRIGGER_SECRET = Deno.env.get("EMAIL_TRIGGER_SECRET") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+const _COOP_NOTIFY_URL = `${Deno.env.get("SUPABASE_URL")}/functions/v1/notify-send`;
+const _COOP_NOTIFY_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+
+function notifyUser(userId: string | null | undefined, opts: {
+  type: string; title: string; body: string;
+  priority?: string; deepLink?: Record<string, unknown> | null; category?: string;
+}): void {
+  if (!userId) return;
+  fetch(_COOP_NOTIFY_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${_COOP_NOTIFY_KEY}` },
+    body: JSON.stringify({ action: "notify", userId, type: opts.type, title: opts.title, body: opts.body, priority: opts.priority ?? "normal", deepLink: opts.deepLink ?? null, category: opts.category ?? "savings" }),
+  }).catch(() => null);
+}
+
+async function resolveMemberUserId(sb: ReturnType<typeof createClient>, memberId: string): Promise<string | null> {
+  const { data } = await sb.from("org_members").select("user_id").eq("id", memberId).maybeSingle();
+  return (data as Record<string, unknown> | null)?.user_id as string | null ?? null;
+}
+
+async function resolveOrgOwnerId(sb: ReturnType<typeof createClient>, orgId: string): Promise<string | null> {
+  const { data } = await sb.from("organizations").select("owner_id").eq("id", orgId).maybeSingle();
+  return (data as Record<string, unknown> | null)?.owner_id as string | null ?? null;
+}
 
 // PBKDF2-SHA256 PIN verification — identical scheme to pin-manager/index.ts and ajo-write/index.ts.
 async function verifyPinHash(pin: string, stored: string): Promise<boolean> {
@@ -1032,6 +1056,28 @@ serve(async (req) => {
         }).catch(() => null);
       }
 
+      // Push notification to member
+      const memUserId = await resolveMemberUserId(sb, String(member_id));
+      if (!isWithdrawal) {
+        notifyUser(memUserId, {
+          type:     "savings_recorded",
+          title:    "Savings Recorded",
+          body:     `₦${amt.toLocaleString("en-NG")} savings deposited — balance: ₦${balance_after.toLocaleString("en-NG")}`,
+          priority: "normal",
+          deepLink: { tab: "savings" },
+          category: "savings",
+        });
+      } else {
+        notifyUser(memUserId, {
+          type:     "savings_debited",
+          title:    "Savings Withdrawn",
+          body:     `₦${amt.toLocaleString("en-NG")} withdrawn — balance: ₦${balance_after.toLocaleString("en-NG")}`,
+          priority: "normal",
+          deepLink: { tab: "savings" },
+          category: "savings",
+        });
+      }
+
       return json({ saving, member: updated_member });
     }
 
@@ -1113,6 +1159,16 @@ serve(async (req) => {
         });
         await sb.from("org_withdrawal_items").insert({
           withdrawal_id: wd.id, member_id: m.id, member_name: m.full_name, amount: m.amount,
+        });
+        // Push notification to each affected member
+        const wdMemUid = await resolveMemberUserId(sb, m.id);
+        notifyUser(wdMemUid, {
+          type:     "savings_debited",
+          title:    "Savings Deducted",
+          body:     `₦${m.amount.toLocaleString("en-NG")} deducted from your savings — balance: ₦${newBal.toLocaleString("en-NG")}`,
+          priority: "normal",
+          deepLink: { tab: "savings" },
+          category: "savings",
         });
       }
 
@@ -3083,6 +3139,17 @@ serve(async (req) => {
         }).catch(() => null);
       }
 
+      // Push notification to org owner
+      const orgOwnerId = await resolveOrgOwnerId(sb, org_id);
+      notifyUser(orgOwnerId, {
+        type:     "reactivation_request",
+        title:    "Member Reactivation Request",
+        body:     `${(mem as Record<string, unknown>).full_name || "A member"} is requesting to rejoin the cooperative`,
+        priority: "normal",
+        deepLink: { tab: "members" },
+        category: "savings",
+      });
+
       return json({ ok: true, request: inserted });
     }
 
@@ -3162,6 +3229,17 @@ serve(async (req) => {
         }),
       }).catch(() => null);
 
+      // Push notification to member
+      const memUserIdApprove = await resolveMemberUserId(sb, memberId);
+      notifyUser(memUserIdApprove, {
+        type:     "reactivation_approved",
+        title:    "Reactivation Pending Admin",
+        body:     `${(orgInfo as Record<string, unknown> | null)?.name || "Your cooperative"} approved your reactivation — waiting for admin confirmation`,
+        priority: "normal",
+        deepLink: { tab: "me" },
+        category: "savings",
+      });
+
       return json({ ok: true });
     }
 
@@ -3202,6 +3280,17 @@ serve(async (req) => {
           }),
         }).catch(() => null);
       }
+
+      // Push notification to member
+      const memUserIdReject = await resolveMemberUserId(sb, (rr as Record<string, unknown>).member_id as string);
+      notifyUser(memUserIdReject, {
+        type:     "reactivation_rejected",
+        title:    "Reactivation Declined",
+        body:     `Your reactivation request was declined${reject_reason ? ` — ${reject_reason}` : ""}`,
+        priority: "normal",
+        deepLink: { tab: "me" },
+        category: "savings",
+      });
 
       return json({ ok: true });
     }
@@ -3369,6 +3458,17 @@ serve(async (req) => {
         .select("*")
         .single();
       if (disbErr) return json({ error: disbErr.message }, 400);
+
+      // Push notification to staff member
+      const { data: staffForNotify } = await sbSvc.from("staff").select("user_id").eq("id", staff_id).maybeSingle();
+      notifyUser((staffForNotify as Record<string, unknown> | null)?.user_id as string | undefined, {
+        type:     "disbursement_received",
+        title:    "Payment Received",
+        body:     `₦${parsedAmount.toLocaleString("en-NG")} ${(type || "payment")} has been credited`,
+        priority: "high",
+        deepLink: { tab: "me" },
+        category: "money",
+      });
 
       return json({ ok: true, disbursement: disb });
     }

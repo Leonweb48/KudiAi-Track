@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../../utils/supabase";
 import { Svg, P, GK, SectionLabel } from "./ManagerShared";
+import { notify } from "../../lib/notifyEngine";
 
 const MODULE_LABELS = {
   transactions: "Transactions", credits:  "Credits / Debts",
@@ -77,6 +78,9 @@ function StaffCard({ member, managerPerms, managerId }) {
       setShiftMsg("Saved");
       setShiftEdit(false);
       setTimeout(() => setShiftMsg(""), 2000);
+      if (member.user_id) {
+        notify({ type: "shift_changed", userId: member.user_id, data: { staffId: member.id, shift: shiftVal.trim() || "unassigned" } });
+      }
     }
     setShiftSaving(false);
   };
@@ -100,6 +104,9 @@ function StaffCard({ member, managerPerms, managerId }) {
       setPerms(prev => prev.map(p =>
         p.module === module ? { ...p, [field]: !currentValue } : p
       ));
+      if (member.user_id) {
+        notify({ type: "permission_change", userId: member.user_id, data: { staffId: member.id } });
+      }
     }
     setPermLoading(p => ({ ...p, [key]: false }));
   };

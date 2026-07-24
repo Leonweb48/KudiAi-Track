@@ -3,6 +3,7 @@ import { fmt, applyPeriodFilter } from "../../utils/helpers";
 import PeriodFilter from "../../components/shared/PeriodFilter";
 import { supabase } from "../../utils/supabase";
 import { Svg, P, GK, NK, TxRow } from "./StaffShared";
+import { notify } from "../../lib/notifyEngine";
 import TransactionDetailModal from "../../components/shared/TransactionDetailModal";
 import { buildTransactionReceipt } from "../../utils/receiptConfig";
 import BillPayments from "../BillPayments";
@@ -44,6 +45,7 @@ export default function StaffSales({ store, staff, session, livePerms, initialSu
       setApprMsg("Failed: " + error.message);
     } else {
       setApprMsg("Approval request sent to manager!");
+      notify({ type: "approval_request_pending", userId: ownerId, originUserId: staffId, data: { staffId, amount: Number(apprForm.amount), requestType: apprForm.type } });
       setTimeout(() => { setShowApprReq(false); setApprMsg(""); setApprForm({ type: "refund", amount: "", reason: "" }); }, 1800);
     }
     setApprSaving(false);

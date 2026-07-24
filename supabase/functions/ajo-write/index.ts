@@ -450,6 +450,18 @@ serve(async (req: Request) => {
       date:          new Date().toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" }),
     });
 
+    // Notify owner when a staff member records a contribution
+    if (ajoPerms !== null) {
+      notifyUser(sb, ownerId, {
+        type:     "staff_collection",
+        title:    "New Staff Collection",
+        body:     `${ctx.staffName || "Staff"} recorded a ₦${Number(amount).toLocaleString("en-NG")} collection — tap to review`,
+        priority: "high",
+        deepLink: { tab: "aso", sub: "collections" },
+        category: "money",
+      });
+    }
+
     return json(data);
   }
 
@@ -1012,6 +1024,17 @@ serve(async (req: Request) => {
         original_type: rpcRev?.original_type || "contribution",
         date:          new Date().toLocaleDateString("en-NG"),
       });
+
+      // Push notification to client about the reversal
+      const { data: rrcl } = await sb.from("aso_clients").select("client_user_id").eq("id", clientId).maybeSingle();
+      notifyUser(sb, rrcl?.client_user_id, {
+        type:     "contribution_reversed",
+        title:    "Contribution Reversed",
+        body:     `₦${Number(rpcRev?.amount).toLocaleString("en-NG")} contribution was reversed${reason ? ` — ${reason}` : ""}`,
+        priority: "high",
+        deepLink: { tab: "contributions" },
+        category: "savings",
+      });
     }
 
     return json(data);
@@ -1558,6 +1581,17 @@ serve(async (req: Request) => {
       date:          new Date().toLocaleDateString("en-NG"),
     });
 
+    // Push notification to affected member
+    const { data: stClientRow } = await sb.from("aso_clients").select("client_user_id").eq("id", turnRow.client_id as string).maybeSingle();
+    notifyUser(sb, stClientRow?.client_user_id, {
+      type:     "esusu_turn_skipped",
+      title:    "Esusu Turn Skipped",
+      body:     `Your esusu turn has been skipped — ${stReason}`,
+      priority: "high",
+      deepLink: { tab: "contributions" },
+      category: "savings",
+    });
+
     return json(stData);
   }
 
@@ -1671,6 +1705,17 @@ serve(async (req: Request) => {
       business_name: (ownerProfile as Record<string, string> | null)?.business_name ?? "",
     });
 
+    // Push notification to client
+    const { data: arRCl } = await sb.from("aso_clients").select("client_user_id").eq("id", (rr as Record<string, unknown>).client_id as string).maybeSingle();
+    notifyUser(sb, arRCl?.client_user_id, {
+      type:     "reactivation_approved",
+      title:    "Reactivation Pending Admin",
+      body:     `${(ownerProfile as Record<string, string> | null)?.business_name || "Your savings agent"} approved your reactivation — waiting for admin confirmation`,
+      priority: "normal",
+      deepLink: { tab: "me" },
+      category: "savings",
+    });
+
     return json({ ok: true });
   }
 
@@ -1773,6 +1818,17 @@ serve(async (req: Request) => {
       client_name:    (rr as Record<string, unknown>).client_name as string || clientForEmail?.full_name || "",
       business_name:  (ownerForEmail as Record<string, string> | null)?.business_name ?? "",
       rejection_note: note ?? "",
+    });
+
+    // Push notification to client
+    const { data: rrRCl } = await sb.from("aso_clients").select("client_user_id").eq("id", (rr as Record<string, unknown>).client_id as string).maybeSingle();
+    notifyUser(sb, rrRCl?.client_user_id, {
+      type:     "reactivation_rejected",
+      title:    "Reactivation Declined",
+      body:     `Your reactivation request was declined${note ? ` — ${note}` : ""}`,
+      priority: "normal",
+      deepLink: { tab: "me" },
+      category: "savings",
     });
 
     return json({ ok: true });

@@ -161,7 +161,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
     setApprovalsLoading(true);
     const { data } = await supabase
       .from("approval_requests")
-      .select("*, staff(full_name, role)")
+      .select("*, staff(full_name, role, user_id)")
       .eq("owner_id", userId)
       .order("created_at", { ascending: false })
       .limit(100);
@@ -172,14 +172,22 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
   };
 
   const approveRequest = async (id) => {
+    const approval = approvals.find(a => a.id === id);
     await supabase.from("approval_requests").update({ status: "approved", actioned_at: new Date().toISOString(), action_note: actionNote }).eq("id", id);
     setActionNote("");
+    if (approval?.staff?.user_id) {
+      notify({ type: "approval_actioned", userId: approval.staff.user_id, data: { status: "approved", amount: approval.amount, requestType: approval.type } });
+    }
     await loadApprovals();
   };
 
   const rejectRequest = async (id) => {
+    const approval = approvals.find(a => a.id === id);
     await supabase.from("approval_requests").update({ status: "rejected", actioned_at: new Date().toISOString(), action_note: actionNote }).eq("id", id);
     setActionNote("");
+    if (approval?.staff?.user_id) {
+      notify({ type: "approval_actioned", userId: approval.staff.user_id, data: { status: "rejected", amount: approval.amount, requestType: approval.type, note: actionNote } });
+    }
     await loadApprovals();
   };
 

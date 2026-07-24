@@ -178,15 +178,24 @@ serve(async (req) => {
       module:   "profile",
     });
 
-    // Owner notification
-    await adminClient.from("notifications").insert({
-      user_id:    staffRow.owner_id,
-      type:       "info",
-      title:      "Staff Email Changed",
-      body:       `${staffRow.full_name} changed their email to ${newEmail}`,
-      priority:   "normal",
-      dedupe_key: `email_change_${staffRow.id}_${Date.now()}`,
-    }).select().maybeSingle().catch(() => null);
+    // Owner notification via notify-send (enables FCM push)
+    fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/notify-send`, {
+      method:  "POST",
+      headers: {
+        "Content-Type":  "application/json",
+        "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""}`,
+      },
+      body: JSON.stringify({
+        action:   "notify",
+        userId:   staffRow.owner_id,
+        type:     "email_changed",
+        title:    "Staff Email Changed",
+        body:     `${staffRow.full_name} changed their email to ${newEmail}`,
+        priority: "normal",
+        deepLink: null,
+        category: "permissions",
+      }),
+    }).catch(() => null);
 
     return json({ ok: true, new_email: newEmail });
   }

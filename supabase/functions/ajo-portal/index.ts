@@ -7,6 +7,20 @@ const CORS = {
 };
 
 const EMAIL_TRIGGER_SECRET = Deno.env.get("EMAIL_TRIGGER_SECRET") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+const _NOTIFY_URL = `${Deno.env.get("SUPABASE_URL")}/functions/v1/notify-send`;
+const _NOTIFY_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+
+function notifyUser(userId: string | null | undefined, opts: {
+  type: string; title: string; body: string;
+  priority?: string; deepLink?: Record<string, unknown> | null; category?: string;
+}): void {
+  if (!userId) return;
+  fetch(_NOTIFY_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${_NOTIFY_KEY}` },
+    body: JSON.stringify({ action: "notify", userId, type: opts.type, title: opts.title, body: opts.body, priority: opts.priority ?? "normal", deepLink: opts.deepLink ?? null, category: opts.category ?? "money" }),
+  }).catch(() => null);
+}
 
 // High-value withdrawal threshold for 24h security hold after a PIN change.
 // Withdrawals at or above this amount, submitted within 24h of a PIN reset, are
@@ -349,16 +363,26 @@ serve(async (req) => {
         }),
       }).catch(() => null);
 
+      // Notify owner of new withdrawal request
+      notifyUser(resolvedOwnerId, {
+        type:     "withdrawal_request",
+        title:    "Withdrawal Request",
+        body:     `${(cl as Record<string, unknown>).full_name || "A member"} requests ₦${Number(amount).toLocaleString("en-NG")} — approve or reject`,
+        priority: "high",
+        deepLink: { tab: "aso", sub: "withdrawals" },
+        category: "money",
+      });
+
       // If placed into held_24h security hold, notify the client immediately
-      if (withdrawalStatus === "held_24h" && cl.client_user_id) {
-        await sb.from("notifications").insert({
-          user_id:   cl.client_user_id,
-          type:      "held_24h",
-          title:     "Security Hold Active",
-          body:      `₦${Number(amount).toLocaleString("en-NG")} withdrawal is in 24h security review — it will be released automatically`,
-          priority:  "high",
-          deep_link: { tab: "aso", sub: "withdrawals" },
-        }).catch(() => null);
+      if (withdrawalStatus === "held_24h" && (cl as Record<string, unknown>).client_user_id) {
+        notifyUser((cl as Record<string, unknown>).client_user_id as string, {
+          type:     "held_24h",
+          title:    "Security Hold Active",
+          body:     `₦${Number(amount).toLocaleString("en-NG")} withdrawal is in 24h security review — it will be released automatically`,
+          priority: "high",
+          deepLink: { tab: "aso", sub: "withdrawals" },
+          category: "money",
+        });
       }
 
       return json({ request });
@@ -480,6 +504,16 @@ serve(async (req) => {
           },
         }),
       }).catch(() => null);
+
+      // Push notification to owner
+      notifyUser(owner_id, {
+        type:     "manual_deposit",
+        title:    "Deposit Claim",
+        body:     `${cl?.full_name || "A member"} claims ₦${numAmt.toLocaleString("en-NG")} — verify and approve`,
+        priority: "high",
+        deepLink: { tab: "aso", sub: "deposits" },
+        category: "money",
+      });
 
       return json({ ok: true, claim_id: rpcResult.claim_id, amount: numAmt });
     }
@@ -685,7 +719,7 @@ serve(async (req) => {
       // Fire email only if this call actually credited the balance (webhook may have beaten us)
       if (rpcResult?.ok) {
         const { data: cl } = await sb.from("aso_clients")
-          .select("full_name, email, current_balance, user_id, staff_id")
+          .select("full_name, email, current_balance, user_id, staff_id, client_user_id")
           .eq("id", client_id).maybeSingle();
         if (cl) {
           let businessName = "";
@@ -713,6 +747,16 @@ serve(async (req) => {
               },
             }),
           }).catch(() => null);
+
+          // Push notification to client
+          notifyUser((cl as Record<string, unknown>).client_user_id as string | undefined, {
+            type:     "deposit_confirmed",
+            title:    "Deposit Confirmed",
+            body:     `Your deposit of ₦${paidAmount.toLocaleString("en-NG")} was confirmed and credited`,
+            priority: "high",
+            deepLink: { tab: "contributions" },
+            category: "money",
+          });
         }
       }
 
@@ -1384,6 +1428,16 @@ serve(async (req) => {
           }),
         }).catch(() => null);
       }
+
+      // Push notification to owner
+      notifyUser(ownerId, {
+        type:     "reactivation_request",
+        title:    "Reactivation Request",
+        body:     `${(clientRow as Record<string, unknown>).full_name || "A client"} is requesting account reactivation`,
+        priority: "normal",
+        deepLink: { tab: "aso", sub: "clients" },
+        category: "savings",
+      });
 
       return json({ ok: true, request: inserted });
     }

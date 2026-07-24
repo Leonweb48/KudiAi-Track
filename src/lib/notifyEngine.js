@@ -187,6 +187,100 @@ const EVENTS = {
     deepLink:  { tab: "contributions" },
     dedupeKey: null,
   },
+
+  // ── Owner-received: staff & client actions ───────────────────────────────
+  approval_request_pending: {
+    priority: "high", category: "approvals",
+    title: (d) => `Approval Request — ${d.requestType || "Action"}`,
+    body:  (d) => `${d.staffName || "Staff"} requests approval for ₦${fmt(d.amount)} ${d.requestType || "action"}`,
+    deepLink:  { tab: "staff", sub: "approvals" },
+    dedupeKey: (d) => `appr_req_${d.staffId}_${d.requestType}`,
+  },
+
+  reactivation_request: {
+    priority: "normal", category: "savings",
+    title: () => "Reactivation Request",
+    body:  (d) => `${d.memberName || "A client"} is requesting account reactivation`,
+    deepLink:  { tab: "aso", sub: "clients" },
+    dedupeKey: (d) => `reactiv_req_${d.clientId}`,
+  },
+
+  // ── Staff / manager-received ─────────────────────────────────────────────
+  approval_actioned: {
+    priority: "normal", category: "approvals",
+    title: (d) => d.status === "approved" ? "Request Approved" : "Request Declined",
+    body:  (d) => d.status === "approved"
+      ? `Your ₦${fmt(d.amount)} ${d.requestType || "request"} was approved`
+      : `Your ₦${fmt(d.amount)} ${d.requestType || "request"} was declined${d.note ? ` — ${d.note}` : ""}`,
+    deepLink:  { tab: "me" },
+    dedupeKey: null,
+  },
+
+  disbursement_received: {
+    priority: "high", category: "money",
+    title: () => "Payment Received",
+    body:  (d) => `₦${fmt(d.amount)} ${d.disbType || "payment"} has been credited to your account`,
+    deepLink:  { tab: "me" },
+    dedupeKey: null,
+  },
+
+  email_changed: {
+    priority: "normal", category: "permissions",
+    title: () => "Staff Email Changed",
+    body:  (d) => `${d.staffName || "A staff member"} changed their email to ${d.newEmail || "a new address"}`,
+    deepLink:  { tab: "staff" },
+    dedupeKey: (d) => `email_chg_${d.staffId}`,
+  },
+
+  // ── Ajo client-received: reversals & esusu ───────────────────────────────
+  contribution_reversed: {
+    priority: "high", category: "savings",
+    title: () => "Contribution Reversed",
+    body:  (d) => `₦${fmt(d.amount)} contribution was reversed${d.reason ? ` — ${d.reason}` : ""}`,
+    deepLink:  { tab: "contributions" },
+    dedupeKey: null,
+  },
+
+  esusu_turn_skipped: {
+    priority: "high", category: "savings",
+    title: () => "Esusu Turn Skipped",
+    body:  (d) => `Your esusu turn has been skipped${d.reason ? ` — ${d.reason}` : ""}`,
+    deepLink:  { tab: "contributions" },
+    dedupeKey: null,
+  },
+
+  reactivation_approved: {
+    priority: "normal", category: "savings",
+    title: () => "Reactivation Approved",
+    body:  (d) => `${d.businessName || "Your savings agent"} approved your reactivation — waiting for admin confirmation`,
+    deepLink:  { tab: "me" },
+    dedupeKey: null,
+  },
+
+  reactivation_rejected: {
+    priority: "normal", category: "savings",
+    title: () => "Reactivation Declined",
+    body:  (d) => `Your reactivation request was declined${d.reason ? ` — ${d.reason}` : ""}`,
+    deepLink:  { tab: "me" },
+    dedupeKey: null,
+  },
+
+  // ── Coop member-received ─────────────────────────────────────────────────
+  savings_recorded: {
+    priority: "normal", category: "savings",
+    title: () => "Savings Recorded",
+    body:  (d) => `₦${fmt(d.amount)} savings deposited — balance: ₦${fmt(d.balance)}`,
+    deepLink:  { tab: "savings" },
+    dedupeKey: null,
+  },
+
+  savings_debited: {
+    priority: "normal", category: "savings",
+    title: () => "Savings Deducted",
+    body:  (d) => `₦${fmt(d.amount)} deducted from your savings — balance: ₦${fmt(d.balance)}`,
+    deepLink:  { tab: "savings" },
+    dedupeKey: null,
+  },
 };
 
 function fmt(n) {
