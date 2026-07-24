@@ -5001,7 +5001,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
       <div className="w-full max-w-md flex flex-col h-full relative">
 
         {/* Header */}
-        <header className="flex-none z-sticky bg-slate-50 dark:bg-slate-900">
+        <header className="flex-none z-sticky bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shadow-sm">
           <div style={{ height: "env(safe-area-inset-top, 0px)" }} />
           <div className="h-14 flex items-center justify-between px-4">
           {/* Business identity — falls back to KudiAI brand until ownerInfo loads */}
@@ -5041,7 +5041,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
               toast={toast}
             />
             <button onClick={() => setTab("me")}
-              className="w-9 h-9 rounded-full bg-gradient-to-br from-brand-500 to-brand-600 relative flex items-center justify-center active:scale-90 transition-transform overflow-hidden">
+              className="w-9 h-9 rounded-full bg-gradient-to-br from-brand-500 to-brand-600 relative flex items-center justify-center border-2 border-slate-100 dark:border-slate-700 shadow-sm active:scale-90 transition-transform overflow-hidden">
               <span className="text-sm font-black text-white">{avatarInitial}</span>
               {client?.profile_image_url && <img src={client.profile_image_url} alt="" className="absolute inset-0 w-full h-full object-cover" onError={(e) => e.currentTarget.style.display = "none"} />}
             </button>
