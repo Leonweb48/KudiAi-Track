@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../utils/supabase";
 import { fmt } from "../utils/helpers";
 import { useTheme } from "../hooks/useTheme";
@@ -60,7 +60,7 @@ export default function MarketerDashboard({ marketer }) {
   const [tab,      setTab]      = useState("clients");
   const { isDark, toggle }      = useTheme();
 
-  useEffect(() => {
+  const fetchClients = useCallback(() => {
     if (!marketer?.id) return;
     supabase
       .from("brm_assignments")
@@ -70,6 +70,22 @@ export default function MarketerDashboard({ marketer }) {
       .order("assigned_at", { ascending: false })
       .then(({ data }) => { setClients(data || []); setLoading(false); });
   }, [marketer?.id]);
+
+  useEffect(() => { fetchClients(); }, [fetchClients]);
+
+  useEffect(() => {
+    if (!marketer?.id) return;
+    const ch = supabase
+      .channel(`brm_rt_${marketer.id}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "brm_assignments", filter: `marketer_id=eq.${marketer.id}` }, fetchClients)
+      .subscribe();
+    const onVisible = () => { if (!document.hidden) fetchClients(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      supabase.removeChannel(ch);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [marketer?.id, fetchClients]);
 
   const totalClients     = clients.length;
   const commissionEarned = marketer?.total_commission_earned || 0;

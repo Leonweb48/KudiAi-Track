@@ -51,6 +51,36 @@ export default function ManagerBranchRoster({ staff, store, onBack }) {
 
   useEffect(() => { load(); }, [load]);
 
+  useEffect(() => {
+    if (!ownerId || !branchId) return;
+    const ch = supabase
+      .channel(`branch_txns_rt_${ownerId}_${branchId}`)
+      .on("postgres_changes", {
+        event: "INSERT", schema: "public", table: "transactions",
+        filter: `user_id=eq.${ownerId}`,
+      }, ({ new: t }) => {
+        if (t.branch_id !== branchId || t.transaction_date !== todayStr || !t.staff_id) return;
+        setActivity(prev => {
+          const next = { ...prev };
+          const e = next[t.staff_id] || { in: 0, out: 0, count: 0 };
+          next[t.staff_id] = {
+            in:    t.type === "in"  ? e.in  + Number(t.amount) : e.in,
+            out:   t.type === "out" ? e.out + Number(t.amount) : e.out,
+            count: e.count + 1,
+          };
+          return next;
+        });
+      })
+      .on("postgres_changes", {
+        event: "UPDATE", schema: "public", table: "transactions",
+        filter: `user_id=eq.${ownerId}`,
+      }, ({ new: t }) => {
+        if (t.branch_id === branchId && t.transaction_date === todayStr) load();
+      })
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  }, [ownerId, branchId, todayStr, load]);
+
   // Collection oversight — aso_clients with outstanding balance on this branch
   const collections = (store.asoClients || [])
     .filter(c => (c.current_balance || 0) > 0 || (c.outstanding || 0) > 0)

@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import { fmt, today } from "../../utils/helpers";
 import { AmountDisplay } from "../../components/shared/AmountDisplay";
 import { canDo } from "../../utils/plans";
@@ -52,7 +52,7 @@ export default function StaffHome({ staff, store, inventory, plan, onGoTo, onVoi
   const [commEarned,       setCommEarned]       = useState(null);
   const [pendingApprovals, setPendingApprovals] = useState(0);
 
-  useEffect(() => {
+  const fetchHomeData = useCallback(() => {
     const staffId = staff?.id;
     if (!staffId) return;
     const thisMonth = new Date().toISOString().slice(0, 7);
@@ -64,7 +64,20 @@ export default function StaffHome({ staff, store, inventory, plan, onGoTo, onVoi
     supabase.from("approval_requests").select("id", { count: "exact", head: true })
       .eq("staff_id", staffId).eq("status", "pending")
       .then(({ count }) => setPendingApprovals(count || 0));
-  }, [staff?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [staff?.id]);
+
+  useEffect(() => { fetchHomeData(); }, [fetchHomeData]);
+
+  useEffect(() => {
+    const staffId = staff?.id;
+    if (!staffId) return;
+    const ch = supabase
+      .channel(`staff_home_rt_${staffId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "commission_earnings", filter: `staff_id=eq.${staffId}` }, fetchHomeData)
+      .on("postgres_changes", { event: "*", schema: "public", table: "approval_requests",   filter: `staff_id=eq.${staffId}` }, fetchHomeData)
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  }, [staff?.id, fetchHomeData]);
 
   const todayStr     = today();
   const todayTx      = transactions.filter(tx => tx.transaction_date === todayStr);
