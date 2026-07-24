@@ -629,6 +629,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [approveError,        setApproveError]        = useState({ id: null, text: "" });
   const [txnPin,              setTxnPin]              = useState(null);
   const [contribSuccess,      setContribSuccess]      = useState(null); // { client, amount, showShare }
+  const [contribError,        setContribError]        = useState(null); // error string
   const [wdError,             setWdError]             = useState(null);
 
   const [pendingDeposits,     setPendingDeposits]     = useState([]);
@@ -3122,11 +3123,14 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                 const savedClient = selected;
                 const savedCtx = contributeCtx;
                 const savedCycleId = contributeCycleId;
-                setSelected(null); setAction(null); setAmt(""); setContributeCtx("personal_savings"); setContributeCycleId(null);
-                const result = await asoContribute(savedClient.id, a, savedCtx, savedCtx === "personal_savings" ? savedCycleId : null);
+                const savedGroupId = contributeGroupId;
+                setSelected(null); setAction(null); setAmt(""); setContributeCtx("personal_savings"); setContributeCycleId(null); setContributeGroupId(null);
+                const result = await asoContribute(savedClient.id, a, savedCtx, savedCtx === "personal_savings" ? savedCycleId : null, savedCtx !== "personal_savings" ? savedGroupId : null);
                 if (!result?.error) {
                   speakConfirmation("ajoDeposit", getLang());
                   setContribSuccess({ client: savedClient, amount: a, showShare: false });
+                } else {
+                  setContribError(result.error);
                 }
               } else {
                 // Clear modal first so it unmounts before PIN sheet opens
@@ -3283,6 +3287,29 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           </div>
         );
       })()}
+
+      {/* ── Contribution error overlay ───────────────────────────── */}
+      {contribError && (
+        <div className="fixed inset-0 z-sheet bg-white dark:bg-slate-900 flex flex-col">
+          <div className="h-1 w-full bg-red-500" />
+          <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
+            <div className="w-20 h-20 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mb-5 shadow-md">
+              <svg viewBox="0 0 24 24" fill="none" className="w-10 h-10 text-red-500" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+                <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+              </svg>
+            </div>
+            <p className="text-[10px] font-bold text-red-500 uppercase tracking-widest mb-2">Contribution Failed</p>
+            <p className="text-sm text-slate-600 dark:text-slate-300 max-w-xs">{contribError}</p>
+          </div>
+          <div className="flex-none px-5 pb-10 pt-3">
+            <button
+              onClick={() => setContribError(null)}
+              className="w-full py-3.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-2xl font-bold text-sm transition active:scale-[0.99]">
+              OK
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── Per-client Contribution History Modal ────────────────── */}
       {historyFor && (() => {

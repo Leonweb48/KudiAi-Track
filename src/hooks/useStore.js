@@ -767,9 +767,9 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     }
   };
 
-  const asoContribute = async (id, amount, contributionContext = "personal_savings", cycleId = null) => {
+  const asoContribute = async (id, amount, contributionContext = "personal_savings", cycleId = null, groupId = null) => {
     const { data, error } = await supabase.functions.invoke("ajo-write", {
-      body: { action: "record_contribution", client_id: id, amount, owner_id: userId, recorded_by: staffId || null, contribution_context: contributionContext, ...(cycleId ? { cycle_id: cycleId } : {}) },
+      body: { action: "record_contribution", client_id: id, amount, owner_id: userId, recorded_by: staffId || null, contribution_context: contributionContext, ...(cycleId ? { cycle_id: cycleId } : {}), ...(groupId ? { group_id: groupId } : {}) },
     });
     if (error || !data?.ok) {
       console.error("asoContribute:", error?.message || data?.error);
