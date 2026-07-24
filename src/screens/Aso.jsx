@@ -1150,11 +1150,12 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     setTxnPin({
       title: "Release Member",
       description: `Release ${clientName} from the savings group? Their contributions will unlock into their withdrawable balance.`,
-      onConfirm: async () => {
+      onApprove: async (pin) => {
         const { data, error } = await supabase.functions.invoke("ajo-write", {
-          body: { action: "release_savings_member", group_id: grpId, client_id: clientId },
+          body: { action: "release_savings_member", group_id: grpId, client_id: clientId, pin },
         });
         if (error || !data?.ok) throw new Error(data?.error || error?.message || "Failed to release member");
+        setTxnPin(null);
         const grp = groups.find(g => g.id === grpId);
         loadSavingsDetails(grpId, grp?.started_at);
       },
