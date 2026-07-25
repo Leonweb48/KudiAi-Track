@@ -134,7 +134,7 @@ export default function App() {
   const handlePushDeepLink = useCallback((dl) => {
     if (!dl?.tab) return;
     const target = (dl.tab === "credit" || dl.tab === "aso") ? "finance" : dl.tab;
-    navigate(target === "home" ? "/" : `/${target}`, { replace: true });
+    navigate(target === "home" ? "/" : `/${target}`, { replace: true, state: (dl.id || dl.sub) ? { id: dl.id, sub: dl.sub } : undefined });
   }, [navigate]);
 
   // Register FCM token + handle push taps (no-op on web)
@@ -472,7 +472,11 @@ export default function App() {
             <div className="flex-none flex items-center gap-2">
               <NotificationCenter
                 userId={userId}
-                onNavigate={(dl) => { if (dl?.tab) setTab(dl.tab); }}
+                onNavigate={(dl) => {
+                  if (!dl?.tab) return;
+                  const target = (dl.tab === "credit" || dl.tab === "aso") ? "finance" : dl.tab;
+                  navigate(target === "home" ? "/" : `/${target}`, (dl.id || dl.sub) ? { state: { id: dl.id, sub: dl.sub } } : undefined);
+                }}
                 toast={null}
               />
               <button onClick={() => navigate("/profile")} aria-label="Profile"

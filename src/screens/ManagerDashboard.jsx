@@ -64,7 +64,7 @@ export default function ManagerDashboard({ session, staff: staffProp, pinLock })
 
   const store      = useStore(ownerId, staffId, staff?.full_name, staff?.branch_id || null);
   const inventory  = useInventory(ownerId, staffId, staff?.branch_id || null);
-  const invoiceHook = useInvoices(ownerId);
+  const invoiceHook = useInvoices(ownerId, staffId, staff?.branch_id || null, staff?.full_name || null);
 
   const [ownerPlan, setOwnerPlan] = useState("starter");
   useEffect(() => {
@@ -160,7 +160,7 @@ export default function ManagerDashboard({ session, staff: staffProp, pinLock })
   usePushNotifications(session?.user?.id ?? null, (dl) => {
     if (!dl?.tab) return;
     const t = ["home","sales","records","stock","me"].includes(dl.tab) ? dl.tab : "home";
-    goTo(t, dl.sub || null);
+    goTo(t, dl.sub || null, dl.id ? { id: dl.id } : null);
   });
 
   const avatarInitial = (staff?.full_name || "M")[0].toUpperCase();
@@ -249,7 +249,7 @@ export default function ManagerDashboard({ session, staff: staffProp, pinLock })
               userId={session?.user?.id}
               onNavigate={(dl) => {
                 if (!dl?.tab) return;
-                goTo(["home","sales","records","stock","me"].includes(dl.tab) ? dl.tab : "home", dl.sub || null);
+                goTo(["home","sales","records","stock","me"].includes(dl.tab) ? dl.tab : "home", dl.sub || null, dl.id ? { id: dl.id } : null);
               }}
               toast={toast}
             />

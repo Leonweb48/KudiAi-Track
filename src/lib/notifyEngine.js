@@ -19,72 +19,72 @@ const EVENTS = {
   staff_cash_in: {
     priority: "high", category: "money",
     title: () => "New Sale",
-    body:  (d) => `${d.staffName || "Staff"} recorded ₦${fmt(d.amount)} sale`,
-    deepLink:  { tab: "transactions" },
+    body:  (d) => `${d.staffName || "Staff"} recorded a ₦${fmt(d.amount)} sale${d.item ? ` — ${d.item}` : ""}`,
+    deepLink:  (d) => ({ tab: "transactions", id: d.txId }),
     dedupeKey: (d) => `cash_in_${d.ownerId}`,
   },
 
   staff_cash_out: {
     priority: "high", category: "money",
     title: () => "Expense Recorded",
-    body:  (d) => `${d.staffName || "Staff"} recorded ₦${fmt(d.amount)} expense`,
-    deepLink:  { tab: "transactions" },
+    body:  (d) => `${d.staffName || "Staff"} recorded ₦${fmt(d.amount)} expense${d.item ? ` — ${d.item}` : ""}`,
+    deepLink:  (d) => ({ tab: "transactions", id: d.txId }),
     dedupeKey: (d) => `cash_out_${d.ownerId}`,
   },
 
   credit_created: {
     priority: "high", category: "money",
     title: () => "Credit Extended",
-    body:  (d) => `${d.staffName || "Staff"} gave ₦${fmt(d.amount)} credit to ${d.customerName || "a customer"}`,
-    deepLink:  { tab: "finance" },
+    body:  (d) => `${d.staffName || "Staff"} extended ₦${fmt(d.amount)} credit to ${d.customerName || "a customer"}${d.dueDate ? ` · due ${d.dueDate}` : ""}`,
+    deepLink:  (d) => ({ tab: "finance", id: d.creditId }),
     dedupeKey: (d) => `credit_new_${d.creditId}`,
   },
 
   credit_repayment: {
     priority: "high", category: "money",
     title: () => "Credit Repayment",
-    body:  (d) => `${d.customerName || "Customer"} paid ₦${fmt(d.amount)} — ₦${fmt(d.outstanding)} left`,
-    deepLink:  { tab: "finance" },
+    body:  (d) => `${d.customerName || "Customer"} paid ₦${fmt(d.amount)} — ₦${fmt(d.outstanding)} outstanding`,
+    deepLink:  (d) => ({ tab: "finance", id: d.creditId }),
     dedupeKey: (d) => `credit_repay_${d.creditId}`,
   },
 
   credit_completed: {
     priority: "high", category: "money",
     title: () => "Credit Fully Paid",
-    body:  (d) => `${d.customerName || "Customer"} settled their ₦${fmt(d.total)} credit`,
-    deepLink:  { tab: "finance" },
+    body:  (d) => `${d.customerName || "Customer"} settled their ₦${fmt(d.total)} credit in full`,
+    deepLink:  (d) => ({ tab: "finance", id: d.creditId }),
     dedupeKey: (d) => `credit_done_${d.creditId}`,
   },
 
   ajo_registration: {
     priority: "high", category: "savings",
     title: () => "New Ajo Member",
-    body:  (d) => `${d.staffName || "Staff"} registered ${d.clientName || "a new member"}`,
-    deepLink:  { tab: "aso" },
+    body:  (d) => `${d.staffName || "Staff"} registered ${d.clientName || "a new member"} as an Ajo savings member`,
+    deepLink:  (d) => ({ tab: "aso", sub: "clients", id: d.clientId }),
     dedupeKey: (d) => `ajo_reg_${d.clientId}`,
   },
 
   invoice_created: {
     priority: "high", category: "money",
     title: () => "Invoice Created",
-    body:  (d) => `${d.staffName || "Staff"} created invoice${d.invoiceNumber ? ` #${d.invoiceNumber}` : ""} for ₦${fmt(d.amount)}`,
-    deepLink:  { tab: "finance" },
+    body:  (d) => `${d.staffName || "Staff"} created invoice${d.invoiceNumber ? ` #${d.invoiceNumber}` : ""} for ${d.customerName || "a customer"} — ₦${fmt(d.amount)}`,
+    deepLink:  (d) => ({ tab: "finance", id: d.invoiceId }),
     dedupeKey: (d) => `inv_create_${d.invoiceId}`,
   },
 
   invoice_sent: {
     priority: "high", category: "money",
     title: () => "Invoice Sent",
-    body:  (d) => `Invoice${d.invoiceNumber ? ` #${d.invoiceNumber}` : ""} (₦${fmt(d.amount)}) sent to ${d.customerName || "customer"}`,
-    deepLink:  { tab: "finance" },
+    body:  (d) => `${d.staffName || "Staff"} sent invoice${d.invoiceNumber ? ` #${d.invoiceNumber}` : ""} (₦${fmt(d.amount)}) to ${d.customerName || "a customer"}`,
+    deepLink:  (d) => ({ tab: "finance", id: d.invoiceId }),
     dedupeKey: (d) => `inv_sent_${d.invoiceId}`,
   },
 
   invoice_paid: {
     priority: "high", category: "money",
     title: () => "Invoice Paid",
-    body:  (d) => `₦${fmt(d.amount)} received${d.invoiceNumber ? ` — invoice #${d.invoiceNumber}` : ""}`,
-    deepLink:  { tab: "finance" },
+    body:  (d) => `₦${fmt(d.amount)} received${d.invoiceNumber ? ` for invoice #${d.invoiceNumber}` : ""}${d.customerName ? ` — ${d.customerName}` : ""}`,
+    deepLink:  (d) => ({ tab: "finance", id: d.invoiceId }),
     dedupeKey: (d) => `inv_paid_${d.invoiceId}`,
   },
 
@@ -350,8 +350,8 @@ const EVENTS = {
   branch_restock: {
     priority: "high", category: "stock",
     title: (d) => `Restock: ${d.productName || "Stock"}`,
-    body:  (d) => `${d.quantity} units added to ${d.productName || "your inventory"}`,
-    deepLink:  { tab: "stock" },
+    body:  (d) => `${d.quantity} units of ${d.productName || "stock"} restocked at your branch`,
+    deepLink:  (d) => ({ tab: "stock", id: d.productId }),
     dedupeKey: (d) => `restock_${d.productId}_${d.branchId}`,
   },
 
@@ -370,6 +370,30 @@ const EVENTS = {
     body:  (d) => `${d.clientName || "A client"} you registered submitted a ₦${fmt(d.amount)} deposit claim`,
     deepLink:  { tab: "records" },
     dedupeKey: (d) => `cli_dep_${d.clientId}`,
+  },
+
+  client_assigned: {
+    priority: "high", category: "permissions",
+    title: () => "Client Assigned",
+    body:  (d) => `${d.clientName || "A client"} has been assigned to you`,
+    deepLink:  (d) => ({ tab: "records", id: d.clientId }),
+    dedupeKey: (d) => `client_assigned_${d.clientId}`,
+  },
+
+  assigned_client_contribution_approved: {
+    priority: "high", category: "approvals",
+    title: () => "Client Contribution Approved",
+    body:  (d) => `${d.clientName || "Your client"}'s ₦${fmt(d.amount)} contribution was approved`,
+    deepLink:  (d) => ({ tab: "records", id: d.clientId }),
+    dedupeKey: null,
+  },
+
+  assigned_client_contribution_rejected: {
+    priority: "high", category: "approvals",
+    title: () => "Client Contribution Rejected",
+    body:  (d) => `${d.clientName || "Your client"}'s contribution was rejected${d.reason ? ` — ${d.reason}` : ""}`,
+    deepLink:  (d) => ({ tab: "records", id: d.clientId }),
+    dedupeKey: null,
   },
 
   // ── Coop member-received ─────────────────────────────────────────────────
@@ -452,17 +476,17 @@ export async function notify({ type, userId, originUserId, data = {}, category }
 const MANAGER_DEEP_LINKS = {
   staff_cash_in:              { tab: "home" },
   staff_cash_out:             { tab: "home" },
-  credit_created:             { tab: "records" },
-  credit_repayment:           { tab: "records" },
-  credit_completed:           { tab: "records" },
-  ajo_registration:           { tab: "records" },
+  credit_created:             (d) => ({ tab: "records", id: d.creditId }),
+  credit_repayment:           (d) => ({ tab: "records", id: d.creditId }),
+  credit_completed:           (d) => ({ tab: "records", id: d.creditId }),
+  ajo_registration:           (d) => ({ tab: "records", id: d.clientId }),
   invoice_created:            { tab: "home" },
   invoice_sent:               { tab: "home" },
   invoice_paid:               { tab: "home" },
   withdrawal_request:         { tab: "home" },
   manual_deposit:             { tab: "home" },
   staff_collection:           { tab: "home" },
-  branch_restock:             { tab: "stock" },
+  branch_restock:             (d) => ({ tab: "stock", id: d.productId }),
   assigned_client_withdrawal: { tab: "records" },
   assigned_client_deposit:    { tab: "records" },
 };
@@ -484,7 +508,7 @@ export async function notifyBranchManager(ownerId, branchId, { type, originUserI
 
   const { data: mgr } = await supabase
     .from("staff")
-    .select("user_id")
+    .select("id, user_id")
     .eq("owner_id", ownerId)
     .eq("branch_id", branchId)
     .eq("role", "manager")
@@ -493,14 +517,17 @@ export async function notifyBranchManager(ownerId, branchId, { type, originUserI
     .maybeSingle();
 
   if (!mgr?.user_id) return;
-  if (originUserId && mgr.user_id === originUserId) return;
+  if (originUserId && (mgr.user_id === originUserId || mgr.id === originUserId)) return;
 
   const tpl = EVENTS[type];
   if (!tpl) { console.warn("[notifyEngine] notifyBranchManager: unknown type:", type); return; }
 
   const title    = tpl.title(data);
   const body     = tpl.body(data);
-  const deepLink = MANAGER_DEEP_LINKS[type] ?? (typeof tpl.deepLink === "function" ? tpl.deepLink(data) : (tpl.deepLink ?? null));
+  const mgrDl    = MANAGER_DEEP_LINKS[type];
+  const deepLink = mgrDl
+    ? (typeof mgrDl === "function" ? mgrDl(data) : mgrDl)
+    : (typeof tpl.deepLink === "function" ? tpl.deepLink(data) : (tpl.deepLink ?? null));
   const baseDk   = tpl.dedupeKey ? (typeof tpl.dedupeKey === "function" ? tpl.dedupeKey(data) : tpl.dedupeKey) : null;
   const dk       = baseDk ? `br_${branchId}_${baseDk}` : null;
 
@@ -542,7 +569,7 @@ export async function notifyBranchStaff(ownerId, branchId, { type, originUserId,
 
   const { data: staffRows } = await supabase
     .from("staff")
-    .select("user_id")
+    .select("id, user_id")
     .eq("owner_id", ownerId)
     .eq("branch_id", branchId)
     .eq("status", "active")
@@ -557,7 +584,7 @@ export async function notifyBranchStaff(ownerId, branchId, { type, originUserId,
 
   await Promise.allSettled(
     staffRows
-      .filter(s => !originUserId || s.user_id !== originUserId)
+      .filter(s => !originUserId || (s.user_id !== originUserId && s.id !== originUserId))
       .map(s => {
         const baseDk = tpl.dedupeKey ? (typeof tpl.dedupeKey === "function" ? tpl.dedupeKey(data) : tpl.dedupeKey) : null;
         const dk     = baseDk ? `staff_${s.user_id}_${baseDk}` : null;

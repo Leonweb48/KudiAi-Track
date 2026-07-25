@@ -43,7 +43,7 @@ const PROVIDERS = {
   },
 };
 
-export function useInvoices(userId, staffId = null, branchId = null) {
+export function useInvoices(userId, staffId = null, branchId = null, staffName = null) {
   const [invoices,  setInvoices]  = useState([]);
   const [customers, setCustomers] = useState([]);
   const [loading,   setLoading]   = useState(true);
@@ -183,7 +183,7 @@ export function useInvoices(userId, staffId = null, branchId = null) {
     }
 
     await load();
-    const invCreatedData = { ownerId: userId, invoiceId: inv.id, invoiceNumber: inv.invoice_number || "", amount: total_kobo / 100, customerName: customer.name.trim() };
+    const invCreatedData = { ownerId: userId, invoiceId: inv.id, invoiceNumber: inv.invoice_number || "", amount: total_kobo / 100, customerName: customer.name.trim(), staffName: staffName || "Staff" };
     notify({ type: "invoice_created", userId, originUserId: staffId || userId, data: invCreatedData });
     if (branchId) notifyBranchManager(userId, branchId, { type: "invoice_created", originUserId: staffId || userId, data: invCreatedData });
     return { data: inv };
@@ -196,7 +196,7 @@ export function useInvoices(userId, staffId = null, branchId = null) {
       .from("invoices").update({ status: "sent" }).eq("id", id).eq("user_id", userId);
     if (!error) {
       setInvoices(prev => prev.map(i => i.id === id ? enrichStatus({ ...i, status: "sent" }) : i));
-      const invSentData = { ownerId: userId, invoiceId: id, invoiceNumber: invLocal?.invoice_number || "", amount: (invLocal?.total_kobo || 0) / 100, customerName: invLocal?.customer_name || "" };
+      const invSentData = { ownerId: userId, invoiceId: id, invoiceNumber: invLocal?.invoice_number || "", amount: (invLocal?.total_kobo || 0) / 100, customerName: invLocal?.customer_name || "", staffName: staffName || "Staff" };
       notify({ type: "invoice_sent", userId, originUserId: staffId || userId, data: invSentData });
       if (branchId) notifyBranchManager(userId, branchId, { type: "invoice_sent", originUserId: staffId || userId, data: invSentData });
     }
@@ -339,7 +339,7 @@ export function useInvoices(userId, staffId = null, branchId = null) {
     if (updErr) return { error: updErr };
 
     if (newStatus === "paid") {
-      const invPaidData = { ownerId: userId, invoiceId, invoiceNumber: inv.invoice_number || "", amount: inv.total_kobo / 100, customerName: inv.customer_name || "" };
+      const invPaidData = { ownerId: userId, invoiceId, invoiceNumber: inv.invoice_number || "", amount: inv.total_kobo / 100, customerName: inv.customer_name || "", staffName: staffName || "Staff" };
       notify({ type: "invoice_paid", userId, originUserId: staffId || userId, data: invPaidData });
       if (branchId) notifyBranchManager(userId, branchId, { type: "invoice_paid", originUserId: staffId || userId, data: invPaidData });
     }

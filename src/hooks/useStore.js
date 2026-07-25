@@ -852,6 +852,18 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     setAsoClients(p => p.map(c => c.id === id ? { ...c, ...updates } : c));
     const { error } = await supabase.from("aso_clients").update(updates).eq("id", id);
     if (error) { console.error("updateAsoClient:", error); loadData(); return { error }; }
+    if (updates.staff_id) {
+      const client = asoClients.find(c => c.id === id);
+      const { data: newStaff } = await supabase.from("staff").select("user_id").eq("id", updates.staff_id).maybeSingle();
+      if (newStaff?.user_id) {
+        notify({
+          type: "client_assigned",
+          userId: newStaff.user_id,
+          originUserId: userId,
+          data: { clientName: client?.full_name || "A client", clientId: id, ownerId: userId },
+        });
+      }
+    }
     return { error: null };
   };
 

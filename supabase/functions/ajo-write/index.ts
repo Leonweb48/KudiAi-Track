@@ -561,9 +561,10 @@ serve(async (req: Request) => {
     // returned promptly — a slow email endpoint never triggers a function timeout.
     await Promise.race([
       (async () => {
-        const [acCtx, acClientUserId] = await Promise.all([
+        const [acCtx, acClientUserId, acAssignedStaffUid] = await Promise.all([
           fetchEmailContext(sb, acContrib.aso_client_id as string, acOwnerId, user.id),
           resolveClientUserId(sb, acContrib.aso_client_id as string),
+          resolveAssignedStaffUserId(sb, acContrib.aso_client_id as string),
         ]);
         const effects: Promise<unknown>[] = [
           fireAjoEmail("ajo_contribution_approved", {
@@ -584,12 +585,22 @@ serve(async (req: Request) => {
             deepLink: { tab: "contributions" }, category: "savings",
           }),
         ];
+        let acRecordingStaffUid: string | null = null;
         if ((acContrib as Record<string, unknown>).contribution_source === "staff_collection") {
-          const acStaffUserId = await resolveStaffUserId(sb, (acContrib as Record<string, unknown>).recorded_by as string);
-          effects.push(notifyUser(sb, acStaffUserId, {
+          acRecordingStaffUid = await resolveStaffUserId(sb, (acContrib as Record<string, unknown>).recorded_by as string);
+          effects.push(notifyUser(sb, acRecordingStaffUid, {
             type: "collection_approved", title: "Collection Approved",
             body: `Your recorded ₦${acAmt} collection was approved by the owner`, priority: "normal",
             deepLink: { tab: "aso", sub: "collections" }, category: "approvals",
+          }));
+        }
+        if (acAssignedStaffUid && acAssignedStaffUid !== acRecordingStaffUid && acAssignedStaffUid !== acClientUserId) {
+          effects.push(notifyUser(sb, acAssignedStaffUid, {
+            type: "assigned_client_contribution_approved", title: "Client Contribution Approved",
+            body: `${acCtx.clientName || "Your client"}'s ₦${acAmt} contribution was approved`,
+            priority: "high",
+            deepLink: { tab: "records", id: acContrib.aso_client_id },
+            category: "approvals",
           }));
         }
         await Promise.allSettled(effects);
@@ -2007,12 +2018,13 @@ serve(async (req: Request) => {
     const rcAmt = Number((rcRow as Record<string, unknown>).amount).toLocaleString("en-NG");
     await Promise.race([
       (async () => {
-        const [rcCtx, rcClientUserId, rcStaffUserId] = await Promise.all([
+        const [rcCtx, rcClientUserId, rcStaffUserId, rcAssignedStaffUid] = await Promise.all([
           fetchEmailContext(sb, rcRow.aso_client_id as string, rcRow.owner_id as string, user.id),
           resolveClientUserId(sb, rcRow.aso_client_id as string),
           resolveStaffUserId(sb, (rcRow as Record<string, unknown>).recorded_by as string),
+          resolveAssignedStaffUserId(sb, rcRow.aso_client_id as string),
         ]);
-        await Promise.allSettled([
+        const rcEffects: Promise<unknown>[] = [
           fireAjoEmail("ajo_contribution_rejected", {
             client_email:  rcCtx.clientEmail,
             client_name:   rcCtx.clientName,
@@ -2032,7 +2044,17 @@ serve(async (req: Request) => {
             body: `Your recorded ₦${rcAmt} collection was rejected by the owner${rcReason?.trim() ? ` — ${rcReason.trim()}` : ""}`,
             priority: "normal", deepLink: { tab: "aso", sub: "collections" }, category: "approvals",
           }),
-        ]);
+        ];
+        if (rcAssignedStaffUid && rcAssignedStaffUid !== rcStaffUserId && rcAssignedStaffUid !== rcClientUserId) {
+          rcEffects.push(notifyUser(sb, rcAssignedStaffUid, {
+            type: "assigned_client_contribution_rejected", title: "Client Contribution Rejected",
+            body: `${rcCtx.clientName || "Your client"}'s contribution was rejected${rcReason?.trim() ? ` — ${rcReason.trim()}` : ""}`,
+            priority: "normal",
+            deepLink: { tab: "records", id: rcRow.aso_client_id },
+            category: "approvals",
+          }));
+        }
+        await Promise.allSettled(rcEffects);
       })().catch(() => null),
       new Promise<void>(r => setTimeout(r, 2500)),
     ]);

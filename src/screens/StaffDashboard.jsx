@@ -66,7 +66,7 @@ export default function StaffDashboard({ session, staff: staffProp, pinLock }) {
 
   const store       = useStore(ownerId, staffId, staff?.full_name, staff?.branch_id || null);
   const inventory   = useInventory(ownerId, staffId, staff?.branch_id || null);
-  const invoiceHook = useInvoices(ownerId);
+  const invoiceHook = useInvoices(ownerId, staffId, staff?.branch_id || null, staff?.full_name || null);
 
   const [ownerPlan, setOwnerPlan] = useState("starter");
 
@@ -179,7 +179,7 @@ If asked about business-wide figures (total business revenue, all staff performa
   usePushNotifications(session?.user?.id ?? null, (dl) => {
     if (!dl?.tab) return;
     const t = ["home","sales","records","stock","me"].includes(dl.tab) ? dl.tab : "home";
-    goTo(t, dl.sub || null);
+    goTo(t, dl.sub || null, dl.id ? { id: dl.id } : null);
   });
 
   const avatarInitial = (staff?.full_name || "S")[0].toUpperCase();
@@ -225,7 +225,7 @@ If asked about business-wide figures (total business revenue, all staff performa
               userId={session?.user?.id}
               onNavigate={(dl) => {
                 if (!dl?.tab) return;
-                goTo(["home","sales","records","stock","me"].includes(dl.tab) ? dl.tab : "home", dl.sub || null);
+                goTo(["home","sales","records","stock","me"].includes(dl.tab) ? dl.tab : "home", dl.sub || null, dl.id ? { id: dl.id } : null);
               }}
               toast={toast}
             />
