@@ -19,7 +19,7 @@ export default function ManagerHome({ staff, store, inventory, plan, onGoTo, onV
   const todayTx     = transactions.filter(tx => tx.transaction_date === todayStr);
   const cashIn      = todayTx.filter(tx => tx.type === "in").reduce((s, tx) => s + tx.amount, 0);
   const cashOut     = todayTx.filter(tx => tx.type === "out").reduce((s, tx) => s + tx.amount, 0);
-  const profit      = cashIn - cashOut;
+  const netCash     = cashIn - cashOut;
   const totalCredit = credits.reduce((s, c) => s + (c.outstanding || 0), 0);
   const overdueCnt  = credits.filter(c => c.status === "overdue").length;
   const totalAso    = asoClients.reduce((s, c) => s + (c.current_balance || 0), 0);
@@ -73,10 +73,10 @@ export default function ManagerHome({ staff, store, inventory, plan, onGoTo, onV
           <div className="absolute -top-12 -right-12 w-40 h-40 rounded-full bg-white/5 pointer-events-none" />
           <div className="absolute -bottom-14 -left-10 w-48 h-48 rounded-full bg-white/5 pointer-events-none" />
           <div className="relative">
-            <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest">Today's Profit</p>
+            <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest">Branch Net Cash</p>
             {loading
               ? <div className="h-12 w-44 bg-white/20 rounded-xl animate-pulse mt-2 mb-5" />
-              : <AmountDisplay amount={Math.abs(profit)} size="hero" align="left" className="mt-1.5 mb-5" style={{ color: profit < 0 ? "#fca5a5" : "#fff" }} />
+              : <AmountDisplay amount={Math.abs(netCash)} size="hero" align="left" className="mt-1.5 mb-5" style={{ color: netCash < 0 ? "#fca5a5" : "#fff" }} />
             }
             <div className="flex gap-5">
               <div className="min-w-0 flex-1">

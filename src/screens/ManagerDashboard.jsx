@@ -62,7 +62,7 @@ export default function ManagerDashboard({ session, staff: staffProp, pinLock })
   const staffId = staff?.id;
   const ownerId = staff?.owner_id;
 
-  const store      = useStore(ownerId, staffId, staff?.full_name, staff?.branch_id || null);
+  const store      = useStore(ownerId, staffId, staff?.full_name, staff?.branch_id || null, staff?.role || null);
   const inventory  = useInventory(ownerId, staffId, staff?.branch_id || null, staff?.full_name || null);
   const invoiceHook = useInvoices(ownerId, staffId, staff?.branch_id || null, staff?.full_name || null);
 

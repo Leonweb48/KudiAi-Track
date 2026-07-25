@@ -16,7 +16,7 @@ function loadCacheLS(key) {
   try { return JSON.parse(localStorage.getItem(key) || "null"); } catch { return null; }
 }
 
-export function useStore(userId, staffId = null, staffName = null, branchId = null) {
+export function useStore(userId, staffId = null, staffName = null, branchId = null, role = null) {
   const [transactions, setTransactions] = useState([]);
   const [credits,      setCredits]      = useState([]);
   const [asoClients,   setAsoClients]   = useState([]);
@@ -77,13 +77,14 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     let asoQ = supabase.from("aso_clients").select("*").eq("user_id", userId).eq("portal_active", true);
     let dpQ  = supabase.from("debt_payments").select("*").eq("owner_id", userId);
     if (staffId) {
-      if (branchId) {
-        // Show records the staff member created OR records assigned to their branch
-        txQ  = txQ.or(`staff_id.eq.${staffId},branch_id.eq.${branchId}`);
-        crQ  = crQ.or(`staff_id.eq.${staffId},branch_id.eq.${branchId}`);
-        asoQ = asoQ.or(`staff_id.eq.${staffId},branch_id.eq.${branchId}`);
-        dpQ  = dpQ.eq("staff_id", staffId);
+      if (role === "manager" && branchId) {
+        // Manager: all records for their branch (RLS enforces the same on the server)
+        txQ  = txQ.eq("branch_id", branchId);
+        crQ  = crQ.eq("branch_id", branchId);
+        asoQ = asoQ.eq("branch_id", branchId);
+        dpQ  = dpQ.eq("staff_id",  staffId);
       } else {
+        // Regular staff: own records only — never the whole branch
         txQ  = txQ.eq("staff_id",  staffId);
         crQ  = crQ.eq("staff_id",  staffId);
         asoQ = asoQ.eq("staff_id", staffId);
@@ -346,7 +347,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [userId, staffId, branchId]);
+  }, [userId, staffId, branchId, role]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -385,9 +386,12 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
         (payload) => {
           if (!payload.new) return;
           const t = payload.new;
-          // Mirror the same staff/branch filter applied in loadData — without this,
-          // staff would accumulate every owner/peer transaction during the session.
-          if (staffId && t.staff_id !== staffId && !(branchId && t.branch_id === branchId)) return;
+          // Mirror the scope filter from loadData: manager sees branch, staff sees own only.
+          if (staffId) {
+            const isMine   = t.staff_id === staffId;
+            const isBranch = role === "manager" && branchId && t.branch_id === branchId;
+            if (!isMine && !isBranch) return;
+          }
           setTransactions(prev => {
             if (prev.some(r => r.id === t.id || (t.client_txn_id && r.client_txn_id === t.client_txn_id))) return prev;
             return [t, ...prev];
@@ -403,7 +407,11 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
         (payload) => {
           if (!payload.new) return;
           const c = payload.new;
-          if (staffId && c.staff_id !== staffId && !(branchId && c.branch_id === branchId)) return;
+          if (staffId) {
+            const isMine   = c.staff_id === staffId;
+            const isBranch = role === "manager" && branchId && c.branch_id === branchId;
+            if (!isMine && !isBranch) return;
+          }
           setCredits(prev => {
             if (prev.some(r => r.id === c.id)) return prev;
             return [c, ...prev];
