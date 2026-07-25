@@ -96,7 +96,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
   const [dateFrom,       setDateFrom]       = useState("");
   const [dateTo,         setDateTo]         = useState("");
 
-  const { credits, addCredit, repayCredit, updateCredit, profile, staffMap = {}, debtPayments = [] } = store;
+  const { credits, addCredit, repayCredit, updateCredit, addExtraCredit, profile, staffMap = {}, debtPayments = [] } = store;
 
   const [f, setF] = useState(BLANK);
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
@@ -271,7 +271,11 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
       ...(c.status === "paid" ? { status: "active" } : {}),
       ...(ef.notes ? { notes: [c.notes, ef.notes].filter(Boolean).join(" | ") } : {}),
     };
-    const { error } = await updateCredit(c.id, updates);
+    const { error } = await addExtraCredit(c.id, updates, {
+      amount:       totalAddition,
+      outstanding:  (c.outstanding || 0) + totalAddition,
+      customerName: c.customer_name,
+    });
     setAddingExtra(false);
     if (!error) closeAddCreditFor();
   };

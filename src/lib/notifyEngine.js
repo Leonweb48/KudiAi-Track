@@ -40,6 +40,14 @@ const EVENTS = {
     dedupeKey: (d) => `credit_new_${d.creditId}`,
   },
 
+  credit_extended: {
+    priority: "high", category: "money",
+    title: () => "Credit Extended",
+    body:  (d) => `${d.staffName || "Staff"} added ₦${fmt(d.amount)} to ${d.customerName || "a customer"}'s credit — outstanding now ₦${fmt(d.outstanding)}`,
+    deepLink:  (d) => ({ tab: "finance", id: d.creditId }),
+    dedupeKey: null,
+  },
+
   credit_repayment: {
     priority: "high", category: "money",
     title: () => "Credit Repayment",
@@ -477,6 +485,7 @@ const MANAGER_DEEP_LINKS = {
   staff_cash_in:              { tab: "home" },
   staff_cash_out:             { tab: "home" },
   credit_created:             (d) => ({ tab: "records", id: d.creditId }),
+  credit_extended:            (d) => ({ tab: "records", id: d.creditId }),
   credit_repayment:           (d) => ({ tab: "records", id: d.creditId }),
   credit_completed:           (d) => ({ tab: "records", id: d.creditId }),
   ajo_registration:           (d) => ({ tab: "records", id: d.clientId }),

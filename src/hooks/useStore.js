@@ -847,6 +847,26 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     return { error: null };
   };
 
+  // ── Add extra credit to an existing credit customer ───────────
+  // Wraps updateCredit and fires owner + manager notifications so the
+  // "add credit to existing user" path matches the new-credit-user path.
+  const addExtraCredit = async (id, updates, { amount, outstanding, customerName } = {}) => {
+    const result = await updateCredit(id, updates);
+    if (!result.error && staffId) {
+      const extData = {
+        ownerId:      userId,
+        staffName:    staffName || "Staff",
+        amount:       amount       || 0,
+        outstanding:  outstanding  || 0,
+        customerName: customerName || "",
+        creditId:     id,
+      };
+      notify({ type: "credit_extended", userId, originUserId: staffId, data: extData });
+      if (branchId) notifyBranchManager(userId, branchId, { type: "credit_extended", originUserId: staffId, data: extData });
+    }
+    return result;
+  };
+
   // ── Update Aso Client record ───────────────────────────────────
   const updateAsoClient = async (id, updates) => {
     setAsoClients(p => p.map(c => c.id === id ? { ...c, ...updates } : c));
@@ -972,7 +992,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     patchTransactionNote,
     // Staff cannot delete transactions — only business owners (no staffId) can
     deleteTransaction: staffId ? null : deleteTransaction,
-    addCredit, repayCredit, updateCredit, debtPayments,
+    addCredit, repayCredit, updateCredit, addExtraCredit, debtPayments,
     addAsoClient, asoContribute, asoCollectionRecord, asoWithdraw, updateAsoClient, deleteAsoClient, requestAsoClientArchive, cancelAsoClientArchive,
     asoReverseContribution,
   };
