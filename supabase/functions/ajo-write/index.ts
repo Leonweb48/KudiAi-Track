@@ -211,6 +211,7 @@ async function resolveAssignedStaffUserId(
 // Returns perms → caller is staff; check individual flags before each action.
 interface AjoStaffPerms {
   staffId:               string;
+  isManager:             boolean; // branch managers bypass client scoping
   can_create:            boolean; // record contributions
   ajo_confirm_deposits:  boolean; // confirm / reject manual deposit claims
   ajo_record_withdrawals:boolean; // record withdrawals + reverse contributions
@@ -226,19 +227,33 @@ async function resolveAjoPerms(
 
   const { data } = await sb
     .from("staff")
-    .select("id, staff_permissions(module, can_create, ajo_confirm_deposits, ajo_record_withdrawals, ajo_manage_clients)")
+    .select("id, role, staff_permissions(module, can_create, ajo_confirm_deposits, ajo_record_withdrawals, ajo_manage_clients)")
     .eq("user_id",  callerUid)
     .eq("owner_id", ownerId)
-    .eq("status",   "active")   // was incorrectly "is_active" = true — fixed
+    .eq("status",   "active")
     .maybeSingle();
 
   if (!data) return false; // not an active staff member for this owner
+
+  // Managers have full staff-level access to all Ajo actions without needing
+  // explicit staff_permissions rows — they oversee all clients at their branch.
+  if ((data as Record<string, unknown>).role === "manager") {
+    return {
+      staffId:                data.id,
+      isManager:              true,
+      can_create:             true,
+      ajo_confirm_deposits:   true,
+      ajo_record_withdrawals: true,
+      ajo_manage_clients:     true,
+    };
+  }
 
   const p = (data.staff_permissions as Record<string, unknown>[]).find(
     (sp) => sp.module === "aso",
   );
   return {
     staffId:                data.id,
+    isManager:              false,
     can_create:             Boolean(p?.can_create),
     ajo_confirm_deposits:   Boolean(p?.ajo_confirm_deposits),
     ajo_record_withdrawals: Boolean(p?.ajo_record_withdrawals),
@@ -348,9 +363,10 @@ serve(async (req: Request) => {
     }
 
     // Scoping: staff can only record for clients assigned to them or created by them.
+    // Managers bypass scoping — they oversee all clients at their branch.
     // Legacy clients (staff_id IS NULL AND created_by IS NULL) are accessible to all
     // can_view staff until the owner assigns scope.
-    if (ajoPerms !== null) {
+    if (ajoPerms !== null && !ajoPerms.isManager) {
       const { data: clientScope } = await sb
         .from("aso_clients")
         .select("staff_id, created_by")
