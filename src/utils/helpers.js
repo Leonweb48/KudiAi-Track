@@ -54,6 +54,11 @@ export const uid = () =>
     ? crypto.randomUUID()
     : Math.random().toString(36).slice(2, 10);
 
+// True for any bill/VAS pass-through transaction — checked via payment_type OR bill_status.
+// Use this everywhere you compute cash-out or expenses to keep pass-throughs out of P&L.
+export const isBillPayment = (t) =>
+  (t.bill_status != null && t.bill_status !== "") || t.payment_type === "bill_payment";
+
 export const filterByPeriod = (transactions, period) => {
   const now = new Date();
   return transactions.filter((t) => {

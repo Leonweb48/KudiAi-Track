@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { createReportPdf } from "../utils/generateReportPdf";
-import { fmt }              from "../utils/helpers";
+import { fmt, isBillPayment } from "../utils/helpers";
 
 /* ── MANAGER-ONLY: rendered only under Reports & Insights in ManagerDashboard ─ */
 
@@ -201,13 +201,13 @@ function buildBillsData(transactions, from, to) {
 function buildMyPerformanceData(transactions, credits, asoClients, from, to) {
   const tx=transactions.filter(t=>inRange(t.transaction_date,from,to));
   const cashIn=tx.filter(t=>t.type==="in").reduce((s,t)=>s+t.amount,0);
-  const cashOut=tx.filter(t=>t.type==="out").reduce((s,t)=>s+t.amount,0);
+  const cashOut=tx.filter(t=>t.type==="out"&&!isBillPayment(t)).reduce((s,t)=>s+t.amount,0);
   const byCat={};
-  tx.forEach(t=>{ const k=t.category||"Other"; if(!byCat[k])byCat[k]={in:0,out:0,count:0}; byCat[k][t.type]+=t.amount; byCat[k].count++; });
+  tx.filter(t=>!isBillPayment(t)||t.type==="in").forEach(t=>{ const k=t.category||"Other"; if(!byCat[k])byCat[k]={in:0,out:0,count:0}; byCat[k][t.type]+=t.amount; byCat[k].count++; });
   const datesInRange=[]; let cur=from;
   while(cur<=to){ datesInRange.push(cur); cur=addDays(cur,1); if(datesInRange.length>60)break; }
   const byDate={};
-  tx.forEach(t=>{ if(!byDate[t.transaction_date])byDate[t.transaction_date]={v1:0,v2:0}; if(t.type==="in")byDate[t.transaction_date].v1+=t.amount; else byDate[t.transaction_date].v2+=t.amount; });
+  tx.forEach(t=>{ if(!byDate[t.transaction_date])byDate[t.transaction_date]={v1:0,v2:0}; if(t.type==="in")byDate[t.transaction_date].v1+=t.amount; else if(!isBillPayment(t))byDate[t.transaction_date].v2+=t.amount; });
   const bars=datesInRange.length<=14
     ? datesInRange.map(d=>({label:new Date(d+"T00:00:00").toLocaleDateString("en-NG",{day:"numeric",month:"short"}),v1:byDate[d]?.v1||0,v2:byDate[d]?.v2||0}))
     : (()=>{ const weeks={}; datesInRange.forEach(d=>{ const dt=new Date(d+"T00:00:00"),wk=`W${Math.ceil(dt.getDate()/7)}`,mon=dt.toLocaleDateString("en-NG",{month:"short"}),key=`${mon} ${wk}`; if(!weeks[key])weeks[key]={v1:0,v2:0}; weeks[key].v1+=byDate[d]?.v1||0; weeks[key].v2+=byDate[d]?.v2||0; }); return Object.entries(weeks).map(([label,v])=>({label,...v})); })();

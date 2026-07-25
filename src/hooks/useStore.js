@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../utils/supabase";
-import { uid, today } from "../utils/helpers";
+import { uid, today, isBillPayment } from "../utils/helpers";
 import { logAudit } from "../utils/auditLog";
 import { sendEmailTrigger } from "../utils/emailTrigger";
 import { computeCapital } from "../lib/profitEngine";
@@ -207,7 +207,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
           const saleTxs  = dayTxs.filter(t => t.type === "in" && saleCats.has(t.category));
           const totalRev = saleTxs.reduce((s, t) => s + (t.amount || 0), 0);
           const namedRev = saleTxs.filter(t => t.item_name?.trim()).reduce((s, t) => s + (t.amount || 0), 0);
-          const expenses = dayTxs.filter(t => t.type === "out" && t.category !== "stock" && !t.bill_status)
+          const expenses = dayTxs.filter(t => t.type === "out" && t.category !== "stock" && !isBillPayment(t))
             .reduce((s, t) => s + (t.amount || 0), 0);
           const coverage  = totalRev > 0 ? namedRev / totalRev : 0;
           const hasProfit = coverage >= 0.5;

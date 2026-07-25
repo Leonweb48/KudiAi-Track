@@ -3,7 +3,7 @@ import Modal from "../components/shared/Modal";
 import { useBranches } from "../hooks/useBranches";
 import { canDo, featureLimit, upgradeLabel, planAvailableText } from "../utils/plans";
 import { supabase } from "../utils/supabase";
-import { fmt } from "../utils/helpers";
+import { fmt, isBillPayment } from "../utils/helpers";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
 import { useT } from "../contexts/LanguageContext";
 
@@ -108,11 +108,11 @@ function OverviewTab({ transactions, credits }) {
 
   const todayTx  = transactions.filter(t => (t.transaction_date || "").startsWith(today));
   const cashIn   = todayTx.filter(t => t.type === "in").reduce((s, t) => s + t.amount, 0);
-  const cashOut  = todayTx.filter(t => t.type === "out").reduce((s, t) => s + t.amount, 0);
+  const cashOut  = todayTx.filter(t => t.type === "out" && !isBillPayment(t)).reduce((s, t) => s + t.amount, 0);
   const profit   = cashIn - cashOut;
 
   const monthIn  = transactions.filter(t => t.type === "in"  && (t.transaction_date || "").startsWith(MS)).reduce((s, t) => s + t.amount, 0);
-  const monthOut = transactions.filter(t => t.type === "out" && (t.transaction_date || "").startsWith(MS)).reduce((s, t) => s + t.amount, 0);
+  const monthOut = transactions.filter(t => t.type === "out" && !isBillPayment(t) && (t.transaction_date || "").startsWith(MS)).reduce((s, t) => s + t.amount, 0);
 
   const openCr   = credits.filter(c => c.status !== "paid");
   const outstanding = openCr.reduce((s, c) => s + (c.outstanding || 0), 0);
@@ -586,7 +586,7 @@ export default function Branches({ store, onClose, userId, inventory = {}, onRep
       const bPrd = allProducts.filter(p => p.branch_id === b.id);
       map[b.id] = {
         salesMonth:  bTx.filter(t => t.type === "in"  && (t.transaction_date || "").startsWith(MS)).reduce((s, t) => s + t.amount, 0),
-        expensMonth: bTx.filter(t => t.type === "out" && (t.transaction_date || "").startsWith(MS)).reduce((s, t) => s + t.amount, 0),
+        expensMonth: bTx.filter(t => t.type === "out" && !isBillPayment(t) && (t.transaction_date || "").startsWith(MS)).reduce((s, t) => s + t.amount, 0),
         openCredits: bCr.filter(c => c.status !== "paid").length,
         ajoBalance:  bAso.reduce((s, c) => s + (c.current_balance || 0), 0),
         ajoClients:  bAso.length,

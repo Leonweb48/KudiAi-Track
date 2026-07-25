@@ -1,4 +1,4 @@
-import { today, fmt } from "./helpers";
+import { today, fmt, isBillPayment } from "./helpers";
 
 export function buildCoopOrgContext(org = {}, members = [], wallet = null, programs = [], loans = [], announcements = []) {
   if (!org || !org.name) return "Cooperative Organisation Portal | Organisation data is still loading.";
@@ -141,7 +141,7 @@ export function buildContext(store, products, branches = [], invoices = []) {
   const cy       = now.getFullYear();
 
   const txIn  = transactions.filter(t => t.type === "in");
-  const txOut = transactions.filter(t => t.type === "out");
+  const txOut = transactions.filter(t => t.type === "out" && !isBillPayment(t));
   const allIn  = txIn.reduce((s, t) => s + t.amount, 0);
   const allOut = txOut.reduce((s, t) => s + t.amount, 0);
 
@@ -151,7 +151,7 @@ export function buildContext(store, products, branches = [], invoices = []) {
 
   const mTx  = transactions.filter(t => { const d = new Date(t.transaction_date); return d.getMonth() === cm && d.getFullYear() === cy; });
   const mIn  = mTx.filter(t => t.type === "in").reduce((s, t) => s + t.amount, 0);
-  const mOut = mTx.filter(t => t.type === "out").reduce((s, t) => s + t.amount, 0);
+  const mOut = mTx.filter(t => t.type === "out" && !isBillPayment(t)).reduce((s, t) => s + t.amount, 0);
 
   const itemMap = {};
   txIn.forEach(t => { if (t.item_name) itemMap[t.item_name] = (itemMap[t.item_name] || 0) + t.amount; });

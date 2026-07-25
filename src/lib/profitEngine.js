@@ -41,9 +41,10 @@
  *       product → tracked as unmeasured (revenue known, margin unknown).
  *   R4  Gross profit = measuredRevenue − COGS (excludes unmeasured items intentionally).
  *   R5  Expenses = "out" transactions excluding stock purchases and bill pass-throughs.
- *   R6  Cash view = all actual money movements regardless of P&L treatment:
+ *   R6  Cash view = actual business money movements:
  *       cash.in includes debt repayments + invoice payments.
- *       cash.out includes stock + bill payments + expenses.
+ *       cash.out includes stock + expenses — bill payments are EXCLUDED (pass-through;
+ *       captured separately in byStream.billPayments).
  *       No double-count: credit sales in revenue once; repayments in cash only.
  *   R7  Interest earned = interest portion of debt repayments, recognized at collection.
  *       Repayments are allocated principal-first; interest portion enters profit.revenue
@@ -294,8 +295,9 @@ export function compute(ledger, range) {
     ...invPmtItems,
   ];
   const cashIn  = pool(cashInItems);
-  // Failed bills are excluded — payment never completed so no money left the account
-  const cashOut = pool(txsOut.filter(t => !isFailedBill(t)).map(t => ({ id: t.id, amount: t.amount })));
+  // Bill payments (successful or failed) are pass-through — excluded from business cash-out.
+  // They're captured separately in byStream.billPayments.
+  const cashOut = pool(txsOut.filter(t => !isBillPayment(t)).map(t => ({ id: t.id, amount: t.amount })));
 
   // ── Cash by stream ────────────────────────────────────────────────────────
   const byStream = {

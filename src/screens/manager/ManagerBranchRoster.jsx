@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../../utils/supabase";
-import { fmt, today } from "../../utils/helpers";
+import { fmt, today, isBillPayment } from "../../utils/helpers";
 import { Svg, P } from "./ManagerShared";
 
 function Skeleton({ className }) {
@@ -43,7 +43,7 @@ export default function ManagerBranchRoster({ staff, store, onBack }) {
       if (!map[tx.staff_id]) map[tx.staff_id] = { in: 0, out: 0, count: 0 };
       map[tx.staff_id].count++;
       if (tx.type === "in")  map[tx.staff_id].in  += tx.amount;
-      if (tx.type === "out") map[tx.staff_id].out += tx.amount;
+      if (tx.type === "out" && !isBillPayment(tx)) map[tx.staff_id].out += tx.amount;
     }
     setActivity(map);
     setLoading(false);
@@ -65,7 +65,7 @@ export default function ManagerBranchRoster({ staff, store, onBack }) {
           const e = next[t.staff_id] || { in: 0, out: 0, count: 0 };
           next[t.staff_id] = {
             in:    t.type === "in"  ? e.in  + Number(t.amount) : e.in,
-            out:   t.type === "out" ? e.out + Number(t.amount) : e.out,
+            out:   t.type === "out" && !isBillPayment(t) ? e.out + Number(t.amount) : e.out,
             count: e.count + 1,
           };
           return next;

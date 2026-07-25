@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../../utils/supabase";
+import { isBillPayment } from "../../utils/helpers";
 import Modal from "../../components/shared/Modal";
 import { StaffActivityStatement } from "../../components/shared/Receipt";
 import Insights from "../Insights";
@@ -343,7 +344,7 @@ export default function ManagerMe({
     const todayStr     = new Date().toISOString().slice(0, 10);
     const todayTx      = (store.transactions || []).filter(tx => tx.transaction_date === todayStr);
     const expectedCash = todayTx.filter(tx => tx.type === "in").reduce((s, tx) => s + tx.amount, 0)
-                       - todayTx.filter(tx => tx.type === "out").reduce((s, tx) => s + tx.amount, 0);
+                       - todayTx.filter(tx => tx.type === "out" && !isBillPayment(tx)).reduce((s, tx) => s + tx.amount, 0);
     const discrepancy  = Number(actualCash || 0) - expectedCash;
 
     const submitReconciliation = async () => {

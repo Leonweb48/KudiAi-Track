@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect, useCallback } from "react";
-import { fmt, today } from "../../utils/helpers";
+import { fmt, today, isBillPayment } from "../../utils/helpers";
 import { AmountDisplay } from "../../components/shared/AmountDisplay";
 import { canDo } from "../../utils/plans";
 import { useT, useLanguage } from "../../contexts/LanguageContext";
@@ -82,7 +82,7 @@ export default function StaffHome({ staff, store, inventory, plan, onGoTo, onVoi
   const todayStr     = today();
   const todayTx      = transactions.filter(tx => tx.transaction_date === todayStr);
   const cashIn       = todayTx.filter(tx => tx.type === "in").reduce((s, tx) => s + tx.amount, 0);
-  const cashOut      = todayTx.filter(tx => tx.type === "out").reduce((s, tx) => s + tx.amount, 0);
+  const cashOut      = todayTx.filter(tx => tx.type === "out" && !isBillPayment(tx)).reduce((s, tx) => s + tx.amount, 0);
   const totalCredit  = credits.reduce((s, c) => s + (c.outstanding || 0), 0);
   const overdueCount = credits.filter(c => c.status === "overdue").length;
   const totalAso     = asoClients.reduce((s, c) => s + (c.current_balance || 0), 0);

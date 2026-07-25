@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Capacitor } from "@capacitor/core";
 import { speakText, cancelTTS } from "../utils/tts";
 import { askGemini } from "../utils/gemini";
+import { isBillPayment } from "../utils/helpers";
 
 const VOICE_KEY   = (uid) => `kt_voice_date_${uid}`;
 const SUMMARY_KEY = (uid, date) => `kt_voice_summary_${uid}_${date}`;
@@ -104,7 +105,7 @@ function buildPrompt({ firstName, transactions, credits, lowStock }) {
 
   const yTx     = (transactions || []).filter(t => { const d = new Date(t.transaction_date); return d >= yStart && d <= yEnd; });
   const totalIn  = yTx.filter(t => t.type === "in" ).reduce((s, t) => s + t.amount, 0);
-  const totalOut = yTx.filter(t => t.type === "out").reduce((s, t) => s + t.amount, 0);
+  const totalOut = yTx.filter(t => t.type === "out" && !isBillPayment(t)).reduce((s, t) => s + t.amount, 0);
   const profit   = totalIn - totalOut;
 
   const itemCounts = {};

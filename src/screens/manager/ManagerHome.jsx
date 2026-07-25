@@ -1,6 +1,6 @@
 import { AmountDisplay } from "../../components/shared/AmountDisplay";
 import { canDo }         from "../../utils/plans";
-import { fmt, today }    from "../../utils/helpers";
+import { fmt, today, isBillPayment } from "../../utils/helpers";
 import SyncBar           from "../../components/SyncBar";
 import {
   Svg, P, StatCard, TxRow,
@@ -18,7 +18,7 @@ export default function ManagerHome({ staff, store, inventory, plan, onGoTo, onV
   const todayStr    = today();
   const todayTx     = transactions.filter(tx => tx.transaction_date === todayStr);
   const cashIn      = todayTx.filter(tx => tx.type === "in").reduce((s, tx) => s + tx.amount, 0);
-  const cashOut     = todayTx.filter(tx => tx.type === "out").reduce((s, tx) => s + tx.amount, 0);
+  const cashOut     = todayTx.filter(tx => tx.type === "out" && !isBillPayment(tx)).reduce((s, tx) => s + tx.amount, 0);
   const netCash     = cashIn - cashOut;
   const totalCredit = credits.reduce((s, c) => s + (c.outstanding || 0), 0);
   const overdueCnt  = credits.filter(c => c.status === "overdue").length;

@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { filterByPeriod, fmt } from "../utils/helpers";
+import { filterByPeriod, fmt, isBillPayment } from "../utils/helpers";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
 import { canDo, upgradeLabel, planRequiredLabel, getLowestPlanWithFeature } from "../utils/plans";
 import { useT, useLanguage } from "../contexts/LanguageContext";
@@ -274,7 +274,7 @@ export default function Insights({ store, inventory, plan = "starter", onUpgrade
     try {
       const tx       = filterByPeriod(transactions, period);
       const totalIn  = tx.filter(t2 => t2.type === "in").reduce((s, t2) => s + t2.amount, 0);
-      const totalOut = tx.filter(t2 => t2.type === "out").reduce((s, t2) => s + t2.amount, 0);
+      const totalOut = tx.filter(t2 => t2.type === "out" && !isBillPayment(t2)).reduce((s, t2) => s + t2.amount, 0);
 
       const itemCounts = {};
       tx.forEach(t2 => { if (t2.item_name) itemCounts[t2.item_name] = (itemCounts[t2.item_name] || 0) + 1; });

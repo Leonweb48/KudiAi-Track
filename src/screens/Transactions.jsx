@@ -6,7 +6,7 @@ import { useCampaigns }        from "../hooks/useCampaigns";
 import AnnouncementBarSlot     from "../components/slots/AnnouncementBarSlot";
 import TransactionDetailModal from "../components/shared/TransactionDetailModal";
 import { buildTransactionReceipt } from "../utils/receiptConfig";
-import { fmt, applyPeriodFilter } from "../utils/helpers";
+import { fmt, applyPeriodFilter, isBillPayment } from "../utils/helpers";
 import PeriodFilter from "../components/shared/PeriodFilter";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
 import { TxRow } from "../components/shared/TxRow";
@@ -303,9 +303,9 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
 
   const hasMore = displayCount < totalRows;
 
-  /* Summary totals — always from full transactions set */
+  /* Summary totals — bill payments excluded from out/net (pass-through) */
   const totIn  = transactions.reduce((s, tx) => tx.type === "in"  ? s + tx.amount : s, 0);
-  const totOut = transactions.reduce((s, tx) => tx.type === "out" ? s + tx.amount : s, 0);
+  const totOut = transactions.reduce((s, tx) => tx.type === "out" && !isBillPayment(tx) ? s + tx.amount : s, 0);
   const net    = totIn - totOut;
 
   const openAdd = (type = "in") => {

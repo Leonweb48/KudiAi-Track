@@ -7,7 +7,7 @@ import CoopList             from "./CoopList";
 import Invoices             from "./Invoices";
 import LoanApplicationModal from "../components/LoanApplicationModal";
 import { canDo, getLowestPlanWithFeature } from "../utils/plans";
-import { fmt }              from "../utils/helpers";
+import { fmt, isBillPayment } from "../utils/helpers";
 import { AmountDisplay }    from "../components/shared/AmountDisplay";
 import { compute, computeCapital } from "../lib/profitEngine";
 
@@ -80,7 +80,7 @@ function buildSparkData(txns, days = 7) {
     const dateStr = d.toISOString().slice(0, 10);
     const day = txns.filter(t => t.transaction_date === dateStr);
     const inA  = day.filter(t => t.type === "in").reduce((s, t) => s + t.amount, 0);
-    const outA = day.filter(t => t.type === "out").reduce((s, t) => s + t.amount, 0);
+    const outA = day.filter(t => t.type === "out" && !isBillPayment(t)).reduce((s, t) => s + t.amount, 0);
     return inA - outA;
   });
 }
@@ -1025,7 +1025,7 @@ export default function Finance({
     }
 
     const expMap = {};
-    curr.filter(t => t.type === "out").forEach(t => {
+    curr.filter(t => t.type === "out" && !isBillPayment(t)).forEach(t => {
       const cat = t.category || "other";
       expMap[cat] = (expMap[cat] || 0) + t.amount;
     });
@@ -1037,7 +1037,7 @@ export default function Finance({
       netPL:            netNow,
       cashNet:          engine.cash.net.amount,
       inCount:          curr.filter(t => t.type === "in").length,
-      outCount:         curr.filter(t => t.type === "out").length,
+      outCount:         curr.filter(t => t.type === "out" && !isBillPayment(t)).length,
       trendPct:         tPct,
       trendUp:          tUp,
       sparkData:        buildSparkData(transactions),

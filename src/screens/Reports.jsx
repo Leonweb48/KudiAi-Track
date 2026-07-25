@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { fmt }        from "../utils/helpers";
+import { fmt, isBillPayment } from "../utils/helpers";
 import { useT }       from "../contexts/LanguageContext";
 import { createReportPdf } from "../utils/generateReportPdf";
 import {
@@ -194,7 +194,7 @@ function ChartLegend({ items }) {
 function buildSalesData(transactions, from, to) {
   const tx = transactions.filter(t => inRange(t.transaction_date, from, to));
   const cashIn  = tx.filter(t=>t.type==="in").reduce((s,t)=>s+t.amount,0);
-  const cashOut = tx.filter(t=>t.type==="out").reduce((s,t)=>s+t.amount,0);
+  const cashOut = tx.filter(t=>t.type==="out" && !isBillPayment(t)).reduce((s,t)=>s+t.amount,0);
 
   // Daily bars
   const datesInRange = [];
@@ -205,7 +205,7 @@ function buildSalesData(transactions, from, to) {
   tx.forEach(t => {
     if (!byDate[t.transaction_date]) byDate[t.transaction_date] = {v1:0,v2:0};
     if (t.type==="in") byDate[t.transaction_date].v1 += t.amount;
-    else               byDate[t.transaction_date].v2 += t.amount;
+    else if (!isBillPayment(t)) byDate[t.transaction_date].v2 += t.amount;
   });
 
   const bars = datesInRange.length <= 14

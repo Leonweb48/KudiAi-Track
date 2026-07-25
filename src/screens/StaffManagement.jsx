@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "../utils/supabase";
+import { isBillPayment } from "../utils/helpers";
 import { canDo, featureLimit, upgradeLabel, planRequiredLabel, planAvailableText } from "../utils/plans";
 import { useT } from "../contexts/LanguageContext";
 import { notify } from "../lib/notifyEngine";
@@ -561,7 +562,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
     const cr  = crRes.data  || [];
     const aso = asoRes.data || [];
     const totalIn  = tx.filter(t => t.type === "in").reduce((s, t) => s + Number(t.amount), 0);
-    const totalOut = tx.filter(t => t.type === "out").reduce((s, t) => s + Number(t.amount), 0);
+    const totalOut = tx.filter(t => t.type === "out" && !isBillPayment(t)).reduce((s, t) => s + Number(t.amount), 0);
     const thisMonth = new Date().toISOString().slice(0, 7);
     const txThisMonth = tx.filter(t => (t.transaction_date || "").startsWith(thisMonth));
     setReportData({ tx, cr, aso, totalIn, totalOut, txThisMonth });

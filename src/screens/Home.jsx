@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { fmt, today } from "../utils/helpers";
+import { fmt, today, isBillPayment } from "../utils/helpers";
 import { compute } from "../lib/profitEngine";
 import { supabase } from "../utils/supabase";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
@@ -148,7 +148,7 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
 
   const todayTx = transactions.filter(tx => tx.transaction_date === today());
   const cashIn  = todayTx.filter(tx => tx.type === "in" ).reduce((s, tx) => s + tx.amount, 0);
-  const cashOut = todayTx.filter(tx => tx.type === "out").reduce((s, tx) => s + tx.amount, 0);
+  const cashOut = todayTx.filter(tx => tx.type === "out" && !isBillPayment(tx)).reduce((s, tx) => s + tx.amount, 0);
 
   // Same ledger + engine as Finance page so "Today's Profit" matches Finance Net P&L
   const todayEngine = useMemo(() => {
