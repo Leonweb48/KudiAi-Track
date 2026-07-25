@@ -26,6 +26,11 @@ export function useNotifications(userId, onNewNotification = null) {
   const instanceId = useRef(null);
   if (!instanceId.current) instanceId.current = Math.random().toString(36).slice(2, 8);
 
+  // Keep a ref to the callback so the realtime effect never needs to re-subscribe
+  // when the caller re-renders with a new function reference.
+  const onNewNotificationRef = useRef(onNewNotification);
+  useEffect(() => { onNewNotificationRef.current = onNewNotification; });
+
   const [notifications, setNotifications] = useState([]);
   const [loading,       setLoading]       = useState(false);
   const [hasMore,       setHasMore]       = useState(false);
@@ -78,7 +83,7 @@ export function useNotifications(userId, onNewNotification = null) {
     if (!userId) return;
     const channel = supabase.channel(`notifications_rt_${userId}_${instanceId.current}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` },
-        (p) => { setNotifications(prev => [p.new, ...prev]); onNewNotification?.(p.new); },
+        (p) => { setNotifications(prev => [p.new, ...prev]); onNewNotificationRef.current?.(p.new); },
       )
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` },
         (p) => setNotifications(prev => prev.map(n => n.id === p.new.id ? p.new : n)),
