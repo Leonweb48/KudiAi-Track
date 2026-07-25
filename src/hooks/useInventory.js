@@ -285,15 +285,16 @@ export function useInventory(userId, staffId = null, branchId = null) {
         category:     product.category || null,
         entry_type:   "restock",
       });
-      if (branchId) {
-        const restockOpts = {
-          type:         "branch_restock",
-          originUserId: staffId || userId,
-          data: { ownerId: userId, productName: product.product_name, productId: product_id, quantity: absQty, branchId },
-        };
-        notifyBranchManager(userId, branchId, restockOpts);
-        notifyBranchStaff(userId, branchId, restockOpts);
-      }
+    }
+
+    if (type === "restock" && branchId) {
+      const restockOpts = {
+        type:         "branch_restock",
+        originUserId: staffId || userId,
+        data: { ownerId: userId, productName: product.product_name, productId: product_id, quantity: absQty, branchId },
+      };
+      notifyBranchManager(userId, branchId, restockOpts);
+      notifyBranchStaff(userId, branchId, restockOpts);
     }
 
     setMovements(prev => [mov, ...prev]);
