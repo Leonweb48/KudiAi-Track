@@ -352,7 +352,7 @@ export function useInventory(userId, staffId = null, branchId = null, staffName 
       }
     }
     return true;
-  }, [userId, staffId, branchId, products]);
+  }, [userId, staffId, branchId, staffName, products]);
 
   // Analytics — computed inline on every access
   const salesQty = {}, salesRev = {};
