@@ -138,24 +138,17 @@ function EmptyState() {
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function NotificationCenter({ userId, onNavigate, toast }) {
-  const [open, setOpen]        = useState(false);
-  const sheetRef               = useRef(null);
-  const prevCount              = useRef(0);
+  const [open, setOpen] = useState(false);
+  const sheetRef        = useRef(null);
+  const openRef         = useRef(open);
+  useEffect(() => { openRef.current = open; }, [open]);
 
-  const { notifications, unreadCount, loading, hasMore, loadMore, markRead, markAllRead } = useNotifications(userId);
-
-  // Toast on new high-priority notifications when center is closed
-  useEffect(() => {
-    if (!toast) return;
-    const newHighPri = notifications.slice(0, notifications.length - prevCount.current)
-      .filter(n => !n.read_at && n.priority === "high");
-    if (newHighPri.length && !open) {
-      newHighPri.forEach(n => {
-        toast({ title: n.title, body: n.body, type: "info", deepLink: n.deep_link });
-      });
+  const { notifications, unreadCount, loading, hasMore, loadMore, markRead, markAllRead } = useNotifications(userId, (n) => {
+    // Called only for realtime INSERT — never for page loads. No prevCount race.
+    if (toast && !n.read_at && n.priority === "high" && !openRef.current) {
+      toast({ title: n.title, body: n.body, type: "info", deepLink: n.deep_link });
     }
-    prevCount.current = notifications.length;
-  }, [notifications]); // eslint-disable-line react-hooks/exhaustive-deps
+  });
 
   // Close sheet on outside tap
   useEffect(() => {

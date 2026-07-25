@@ -19,7 +19,7 @@ const NAV_TAB_ALIASES = {
   home:         "home",
 };
 
-export function useNotifications(userId) {
+export function useNotifications(userId, onNewNotification = null) {
   // Each hook instance gets a stable unique suffix so two callers with the
   // same userId never create channels with identical names (Supabase throws
   // if .on() is called on an already-subscribed channel).
@@ -78,7 +78,7 @@ export function useNotifications(userId) {
     if (!userId) return;
     const channel = supabase.channel(`notifications_rt_${userId}_${instanceId.current}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` },
-        (p) => setNotifications(prev => [p.new, ...prev]),
+        (p) => { setNotifications(prev => [p.new, ...prev]); onNewNotification?.(p.new); },
       )
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` },
         (p) => setNotifications(prev => prev.map(n => n.id === p.new.id ? p.new : n)),
