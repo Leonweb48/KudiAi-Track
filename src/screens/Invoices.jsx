@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useToast } from "../components/Toast";
 import TransactionPinModal from "../components/TransactionPinModal";
 import { Capacitor }             from "@capacitor/core";
 import { canDo, planAvailableText } from "../utils/plans";
@@ -177,6 +178,7 @@ function RecordPaymentModal({ inv, onClose, onSave }) {
   const [paidAt,    setPaidAt]    = useState(today());
   const [saving,    setSaving]    = useState(false);
   const [error,     setError]     = useState("");
+  const toast = useToast();
 
   const handleSave = async () => {
     if (!amount || parseFloat(amount) <= 0) { setError("Enter a valid amount"); return; }
@@ -185,6 +187,7 @@ function RecordPaymentModal({ inv, onClose, onSave }) {
     const { error: err } = await onSave({ amount_naira: amount, method, reference, paidAt });
     setSaving(false);
     if (err) { setError(err.message || "Failed to record payment"); return; }
+    toast({ type: "success", title: `Payment recorded — ${fmtK(Math.round(parseFloat(amount) * 100))}`, body: inv.invoice_number });
     onClose();
   };
 
@@ -256,15 +259,23 @@ function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCance
   const [showPayment,   setShowPayment]   = useState(false);
   const [pdfLoading,    setPdfLoading]    = useState(false);
   const [confirmAction, setConfirmAction] = useState(null); // { type: "cancel"|"delete", label: string }
+  const [actionError,   setActionError]   = useState("");
+  const toast = useToast();
 
   const sc          = STATUS_CONFIG[inv.status] || STATUS_CONFIG.draft;
   const outstanding = inv.total_kobo - inv.amount_paid_kobo;
 
   const handleSent = async () => {
-    setActing(true);
-    await onSent(inv.id);
-    setActing(false);
-    onClose();
+    setActing(true); setActionError("");
+    try {
+      await onSent(inv.id);
+      toast({ type: "success", title: "Invoice marked as sent", body: inv.invoice_number });
+      onClose();
+    } catch (e) {
+      setActionError(e?.message || "Couldn't update invoice — try again");
+    } finally {
+      setActing(false);
+    }
   };
 
   const handleCancel = () => {
@@ -277,12 +288,18 @@ function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCance
 
   const executeConfirm = async () => {
     const ct = confirmAction.type;
-    setActing(true);
+    setActing(true); setActionError("");
     setConfirmAction(null);
-    if (ct === "cancel") await onCancel(inv.id);
-    else await onDelete(inv.id);
-    setActing(false);
-    onClose();
+    try {
+      if (ct === "cancel") await onCancel(inv.id);
+      else await onDelete(inv.id);
+      toast({ type: "success", title: ct === "cancel" ? "Invoice cancelled" : "Invoice deleted", body: inv.invoice_number });
+      onClose();
+    } catch (e) {
+      setActionError(e?.message || "Couldn't complete action — try again");
+    } finally {
+      setActing(false);
+    }
   };
 
   const handlePdf = async () => {
@@ -539,6 +556,12 @@ function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCance
                 className="w-11 h-11 flex items-center justify-center rounded-xl bg-red-600 text-white font-bold text-sm flex-shrink-0 active:scale-95 transition disabled:opacity-50">
                 Yes
               </button>
+            </div>
+          )}
+
+          {actionError && (
+            <div className="px-5 py-2 flex-shrink-0">
+              <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 rounded-xl px-3 py-2">{actionError}</p>
             </div>
           )}
 

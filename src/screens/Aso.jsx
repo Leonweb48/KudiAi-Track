@@ -25,6 +25,7 @@ import { Capacitor } from "@capacitor/core";
 import { App as CapApp } from "@capacitor/app";
 import { InAppBrowser, ToolBarType } from "@capgo/capacitor-inappbrowser";
 import { friendlyError } from "../utils/errorMessage";
+import { useToast } from "../components/Toast";
 
 const BLANK = {
   full_name: "", contribution_frequency: "daily", contribution_amount: "",
@@ -582,6 +583,7 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
 
 export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, onUpgrade, staffId = null, embedded }) {
   const t = useT();
+  const toast = useToast();
   const [showAdd,      setShowAdd]      = useState(false);
   const [selected,              setSelected]             = useState(null);
   const [action,                setAction]               = useState(null);
@@ -1126,7 +1128,8 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     }
     setStartRoundGid(null);
     setStartRoundTarget(""); setStartRoundDeadline("");
-    setStartRoundMsg({ id: null, text: "", ok: false });
+    setStartRoundMsg({ id: grpId, text: "Savings round started!", ok: true });
+    setTimeout(() => setStartRoundMsg({ id: null, text: "", ok: false }), 4000);
     await loadGroups();
     loadSavingsDetails(grpId, data?.started_at);
   };
@@ -1287,6 +1290,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       } else {
         loadGroups(); // edge fn returned no row — fetch from DB to recover
       }
+      toast({ type: "success", title: "Group created", body: gf.name.trim() });
       setShowGroupAdd(false);
       setGf(BLANK_GROUP);
       setResolvedName("");
@@ -1636,6 +1640,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       if (isFetchTimeout(writeErr)) {
         // DB committed; reloadWithdrawalRequests() in finally confirms state.
         setApproveError({ id: null, text: "" });
+        flashDeposit("ok", "Withdrawal approved — verifying…");
         return;
       }
       if (writeErr || !writeData?.ok) {
@@ -1644,6 +1649,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         return;
       }
       setApproveError({ id: null, text: "" });
+      flashDeposit("ok", `₦${Number(req.amount).toLocaleString("en-NG")} withdrawal approved — payment processing.`);
     } catch (e) {
       if (!isFetchTimeout(e)) setApproveError({ id: req.id, text: e?.message || "Approval failed" });
     } finally {
@@ -1659,10 +1665,19 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         body: { action: "reject_withdrawal_request", request_id: req.id, reason: reason || undefined },
       });
       if (!isFetchTimeout(rwErr) && (rwErr || !rwData?.ok)) {
-        console.error("Reject failed:", rwErr?.message || rwData?.error);
+        const msg = rwData?.error || rwErr?.message || "Rejection failed — please try again";
+        console.error("Reject failed:", msg);
+        flashDeposit("err", msg);
+      } else {
+        flashDeposit("ok", "Withdrawal request rejected — client has been notified.");
       }
     } catch (e) {
-      if (!isFetchTimeout(e)) console.error("Reject failed:", e);
+      if (isFetchTimeout(e)) {
+        flashDeposit("ok", "Rejected — reloading to verify…");
+      } else {
+        console.error("Reject failed:", e);
+        flashDeposit("err", e?.message || "Rejection failed — please try again");
+      }
     } finally {
       reloadWithdrawalRequests();
       setProcessingId(null);

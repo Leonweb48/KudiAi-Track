@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import { useToast } from "../components/Toast";
 import { supabase } from "../utils/supabase";
 import Icon   from "../components/Icon";
 import { AddTxnModal } from "../components/shared/AddTxnModal";
@@ -164,6 +165,7 @@ function FeedSkeleton() {
    ══════════════════════════════════════════════════════════════════════ */
 export default function Transactions({ store, plan = "starter", onVoiceOpen, autoOpen, autoType, autoCategory, onAutoOpened, onUpgrade, readOnly, inventory = null }) {
   const t = useT();
+  const toast = useToast();
   const { slotMap: camSlots, loading: camLoading, recordEvent: recordCamEvent } = useCampaigns(["announcement_bar", "upsell_inline"], "business", "business.sales");
   const salesAnnBars = camSlots.announcement_bar || [];
 
@@ -776,7 +778,14 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
                 Cancel
               </button>
               <button
-                onClick={() => { deleteTransaction(confirmDeleteId); setConfirmDeleteId(null); }}
+                onClick={async () => {
+                  const id = confirmDeleteId;
+                  setConfirmDeleteId(null);
+                  const result = await deleteTransaction(id);
+                  if (result?.error) {
+                    toast({ type: "error", title: "Couldn't delete — check connection and try again", body: result.error?.message });
+                  }
+                }}
                 className="flex-1 h-11 rounded-xl bg-red-500 hover:bg-red-600 text-white font-semibold text-sm active:scale-95 transition">
                 Delete
               </button>

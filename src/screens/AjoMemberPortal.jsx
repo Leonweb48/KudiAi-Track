@@ -2213,6 +2213,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
 function OverviewTab({ client, contributions, cycles = [], rotationsData = [], rotationLoading, onWithdrawClick, onPayClick, onDepositClick, ownerInfo, withdrawRequests = [], onBillsClick, userEmail, onGoToMe }) {
   const t = useT();
   const { lang } = useLanguage();
+  const toast = useToast();
 
   const [goal,         setGoal]        = useState(0);
   const [editGoal,     setEditGoal]    = useState(false);
@@ -2609,9 +2610,14 @@ function OverviewTab({ client, contributions, cycles = [], rotationsData = [], r
                   className="flex-1 py-2 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg text-xs font-bold">
                   Keep it
                 </button>
-                <button onClick={() => {
+                <button onClick={async () => {
                   setClearConfirm(false); setGoal(0);
-                  ajoFn("delete-goal", { client_id: client.id }).catch(() => null);
+                  try {
+                    await ajoFn("delete-goal", { client_id: client.id });
+                  } catch (e) {
+                    toast({ type: "error", title: "Couldn't clear goal — try again", body: e?.message });
+                    setGoal(prev => prev); // revert optimistic
+                  }
                 }} className="flex-1 py-2 bg-amber-600 text-white rounded-lg text-xs font-bold">
                   Clear Goal
                 </button>
@@ -2624,10 +2630,21 @@ function OverviewTab({ client, contributions, cycles = [], rotationsData = [], r
               <input type="number" value={goalInput} onChange={e => setGoalInput(e.target.value)}
                 placeholder="Target amount (₦)"
                 className="flex-1 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500" />
-              <button onClick={() => {
+              <button onClick={async () => {
                 const g = parseFloat(goalInput) || 0;
-                if (g > 0) { setGoal(g); ajoFn("set-goal", { client_id: client.id, target_amount: g }).catch(() => null); }
-                setEditGoal(false);
+                if (g > 0) {
+                  const prev = goal;
+                  setGoal(g); setEditGoal(false);
+                  try {
+                    await ajoFn("set-goal", { client_id: client.id, target_amount: g });
+                    toast({ type: "success", title: `Savings goal set — ${fmt(g)}` });
+                  } catch (e) {
+                    toast({ type: "error", title: "Couldn't save goal — try again", body: e?.message });
+                    setGoal(prev);
+                  }
+                } else {
+                  setEditGoal(false);
+                }
               }} className="px-3 py-2 bg-brand-500 text-white rounded-xl text-sm font-bold">Save</button>
               <button onClick={() => setEditGoal(false)}
                 className="px-3 py-2 bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 rounded-xl text-sm font-bold">✕</button>

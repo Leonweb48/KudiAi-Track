@@ -548,8 +548,8 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     const txToCancel = transactions.find(tx => tx.id === id);
     setTransactions(p => p.filter(tx => tx.id !== id));
     const { error } = await supabase.from("transactions").delete().eq("id", id);
-    if (error) { console.error("deleteTransaction:", error); loadData(); }
-    else if (txToCancel) {
+    if (error) { console.error("deleteTransaction:", error); loadData(); return { error }; }
+    if (txToCancel) {
       fireEmailTrigger("transaction_cancelled", {
         owner_id:      userId,
         business_name: profile.business_name || "",
@@ -561,6 +561,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
         staff_name:    staffName || "",
       });
     }
+    return { error: null };
   };
 
   // ── Credits ────────────────────────────────────────────────────
@@ -669,7 +670,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     if (error || data?.error) {
       console.error("repayCredit:", data?.error || error?.message);
       loadData();
-      return;
+      return { error: data?.error || error?.message || "Payment failed" };
     }
     const { payment: dp, outstanding: newOutstanding, status: newStatus } = data;
     let updated;
@@ -722,6 +723,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
           if (branchId) notifyBranchManager(userId, branchId, { type: "credit_completed", originUserId: staffId || userId, data: doneData });
         }
     }
+    return { error: null };
   };
 
   // ── Aso Clients ────────────────────────────────────────────────

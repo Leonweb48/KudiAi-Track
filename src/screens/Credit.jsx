@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import Icon   from "../components/Icon";
 import Modal  from "../components/shared/Modal";
+import { useToast } from "../components/Toast";
 import TransactionPinModal from "../components/TransactionPinModal";
 import { canDo, upgradeLabel, planAvailableText } from "../utils/plans";
 import Field  from "../components/shared/Field";
@@ -59,6 +60,7 @@ function buildReminderMessage(c, businessName) {
 
 export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened, onUpgrade, embedded }) {
   const t = useT();
+  const toast = useToast();
   const [showAdd,      setShowAdd]      = useState(false);
   const [repaying,     setRepaying]     = useState(null);
   const [assigningCredit, setAssigningCredit] = useState(null);
@@ -73,8 +75,10 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
   const [photoFile,    setPhotoFile]    = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
   const [adding,       setAdding]       = useState(false);
+  const [addError,     setAddError]     = useState("");
   const [addCreditFor, setAddCreditFor] = useState(null);  // existing record to add credit to
   const [addingExtra,  setAddingExtra]  = useState(false);
+  const [extraError,   setExtraError]   = useState("");
   const EF_BLANK = { total_amount: "", due_date: "", notes: "", interest_type: "", interest_value: "" };
   const [ef, setEf] = useState(EF_BLANK);
   const setE = (k, v) => setEf(p => ({ ...p, [k]: v }));
@@ -238,11 +242,11 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
   };
 
   const resetAdd = () => {
-    setShowAdd(false); setF(BLANK);
+    setShowAdd(false); setF(BLANK); setAddError("");
     setPhotoFile(null); setPhotoPreview(null);
   };
 
-  const closeAddCreditFor = () => { setAddCreditFor(null); setEf(EF_BLANK); };
+  const closeAddCreditFor = () => { setAddCreditFor(null); setEf(EF_BLANK); setExtraError(""); };
 
   const handleAddExtraCredit = async () => {
     if (!ef.total_amount || !addCreditFor) return;
@@ -277,7 +281,12 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
       customerName: c.customer_name,
     });
     setAddingExtra(false);
-    if (!error) closeAddCreditFor();
+    if (error) {
+      setExtraError(error.message || "Failed to update credit. Please try again.");
+      return;
+    }
+    toast({ type: "success", title: "Credit updated", body: c.customer_name });
+    closeAddCreditFor();
   };
 
   const handleAdd = async () => {
@@ -298,7 +307,12 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
       interest_value:  iVal || null,
       interest_type:   f.interest_type || null,
     });
-    if (!error && data && photoFile) {
+    if (error) {
+      setAddError(error.message || "Failed to save credit record. Please try again.");
+      setAdding(false);
+      return;
+    }
+    if (data && photoFile) {
       try {
         const url = await uploadPhoto(photoFile, data.id, "avatars", "credit");
         await updateCredit(data.id, { profile_image_url: url });
@@ -307,6 +321,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
       }
     }
     setAdding(false);
+    toast({ type: "success", title: "Credit record saved", body: f.customer_name });
     resetAdd();
   };
 
@@ -855,6 +870,9 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
             </div>
           )}
 
+          {extraError && (
+            <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 rounded-xl px-3 py-2 mt-2">{extraError}</p>
+          )}
           <button
             onClick={handleAddExtraCredit}
             disabled={!ef.total_amount || addingExtra}
@@ -985,6 +1003,9 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
           <Field as="textarea" value={f.notes}
             onChange={e => set("notes", e.target.value)} placeholder="Optional notes…" />
 
+          {addError && (
+            <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 rounded-xl px-3 py-2 mb-1">{addError}</p>
+          )}
           <button onClick={handleAdd}
             disabled={!f.customer_name || !f.total_amount || adding}
             className="w-full py-3.5 mt-1 bg-brand-500 hover:bg-brand-600 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] shadow-sm disabled:opacity-50">
@@ -1024,11 +1045,18 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                 amount: Math.round(parseFloat(repayAmt) * 100),
                 recipient: repaying.customer_name || undefined,
                 description: `Credit repayment · ${repayMethod}`,
-                onApprove: (verifiedPin) => {
+                onApprove: async (verifiedPin) => {
                   setTxnPin(null);
-                  repayCredit(repaying.id, parseFloat(repayAmt), repayMethod, repayNote, verifiedPin);
-                  speakConfirmation("creditSaved", getLang());
+                  const amt = parseFloat(repayAmt);
+                  const name = repaying.customer_name;
                   setRepaying(null); setRepayAmt(""); setRepayMethod("cash"); setRepayNote("");
+                  const result = await repayCredit(repaying.id, amt, repayMethod, repayNote, verifiedPin);
+                  if (result?.error) {
+                    toast({ type: "error", title: "Payment failed — try again", body: typeof result.error === "string" ? result.error : result.error.message });
+                  } else {
+                    speakConfirmation("creditSaved", getLang());
+                    toast({ type: "success", title: `Payment recorded — ${fmt(amt)}`, body: name });
+                  }
                 },
               });
             }}
