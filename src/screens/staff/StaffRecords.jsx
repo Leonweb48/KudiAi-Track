@@ -61,20 +61,22 @@ export default function StaffRecords({ store, staff, livePerms, initialSub, plan
           <PermBlock msg="Invoices not enabled" hint="Contact your manager to enable invoice access for your account." />
         )}
         {sub === "invoices" && allowed.includes("invoices") && (
-          <Invoices
-            invoiceHook={invoiceHook}
-            plan={plan}
-            onUpgrade={null}
-            profile={{
-              email:             store.profile?.email,
-              business_name:     store.profile?.business_name,
-              profile_image_url: store.profile?.profile_image_url,
-              store_image_url:   store.profile?.store_image_url,
-            }}
-            inventory={inventory}
-            addTransaction={store.addTransaction}
-            userId={ownerId}
-          />
+          <div className="h-full overflow-y-auto pb-4">
+            <Invoices
+              invoiceHook={invoiceHook}
+              plan={plan}
+              onUpgrade={null}
+              profile={{
+                email:             store.profile?.email,
+                business_name:     store.profile?.business_name,
+                profile_image_url: store.profile?.profile_image_url,
+                store_image_url:   store.profile?.store_image_url,
+              }}
+              inventory={inventory}
+              addTransaction={store.addTransaction}
+              userId={ownerId}
+            />
+          </div>
         )}
       </div>
     </div>
