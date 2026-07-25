@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import TransactionPinModal from "./TransactionPinModal";
+import ResultOverlay from "./ResultOverlay";
 import { fmtDate } from "../utils/helpers";
 import Badge from "./shared/Badge";
 
@@ -226,7 +227,16 @@ export default function EsusuRotationDashboard({
         const result = await onExecutePayout(pinFor.turnId, pin);
         if (result?.ok) {
           setPayoutBlocked(null);
-          setPayoutResult(result);
+          setPayoutResult({
+            ...result,
+            _overlay: {
+              type: "success",
+              title: "Payout Completed",
+              amount: result.pot_amount,
+              counterparty: result.beneficiary_name,
+              note: result.round_complete ? "Round complete — all members have been paid." : undefined,
+            },
+          });
           onRefresh?.();
         } else if (result?.blocked) {
           setPayoutBlocked(result);
@@ -485,31 +495,15 @@ export default function EsusuRotationDashboard({
         </div>
       )}
 
-      {/* Payout success card */}
-      {payoutResult && (
-        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/50 rounded-2xl p-4 space-y-1.5">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0">
-              <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-white" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
-                <path d="M20 6L9 17l-5-5" />
-              </svg>
-            </div>
-            <p className="font-extrabold text-green-700 dark:text-green-400 text-sm">Payout Successful!</p>
-          </div>
-          {payoutResult.beneficiary_name && (
-            <p className="text-sm text-slate-700 dark:text-slate-200">
-              <span className="font-semibold">{payoutResult.beneficiary_name}</span> has been paid
-              {payoutResult.pot_amount ? ` — ₦${Number(payoutResult.pot_amount).toLocaleString()}` : ""}
-            </p>
-          )}
-          {payoutResult.round_complete && (
-            <p className="text-xs font-bold text-green-600 dark:text-green-400">Round complete — all members have received their payout.</p>
-          )}
-          <button onClick={() => setPayoutResult(null)}
-            className="text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 underline underline-offset-2">
-            Dismiss
-          </button>
-        </div>
+      {payoutResult?._overlay && (
+        <ResultOverlay
+          type={payoutResult._overlay.type}
+          title={payoutResult._overlay.title}
+          amount={payoutResult._overlay.amount}
+          counterparty={payoutResult._overlay.counterparty}
+          note={payoutResult._overlay.note}
+          onPrimary={() => setPayoutResult(null)}
+        />
       )}
 
       {/* Skip / reorder success */}

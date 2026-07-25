@@ -21,6 +21,7 @@ import { useT } from "../contexts/LanguageContext";
 import { getLang, speakConfirmation } from "../utils/i18n";
 import AssignRecordModal from "../components/AssignRecordModal";
 import TransactionPinModal from "../components/TransactionPinModal";
+import ResultOverlay from "../components/ResultOverlay";
 import { Capacitor } from "@capacitor/core";
 import { App as CapApp } from "@capacitor/app";
 import { InAppBrowser, ToolBarType } from "@capgo/capacitor-inappbrowser";
@@ -134,8 +135,9 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
   // Card tab only renders active cycles to avoid stale open/close buttons on closed history cards
   const activeCycles = cycles.filter(c => c.status === "active");
 
-  const [tab,          setTab]          = useState(activeCycles.length > 0 ? "card" : "history");
-  const [showNewCycle, setShowNewCycle] = useState(false);
+  const [tab,           setTab]           = useState(activeCycles.length > 0 ? "card" : "history");
+  const [historyResult, setHistoryResult] = useState(null);
+  const [showNewCycle,  setShowNewCycle]  = useState(false);
   const [newCycleForm, setNewCycleForm] = useState({
     purpose:   "",
     amount:    client.contribution_amount ?? "",
@@ -276,6 +278,8 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
           description={`Reverse ₦${Number(reverseFor.amount || 0).toLocaleString("en-NG")} · ${reverseReason}`}
           onCancel={() => { setReverseStep("reason"); setReverseError(""); }}
           onApprove={async (pin) => {
+            const amt  = reverseFor.amount;
+            const name = client.full_name;
             const result = await onReverseContrib(reverseFor, reverseReason.trim(), pin);
             if (result?.error) {
               setReverseStep("reason");
@@ -285,6 +289,7 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
               setReverseReason("");
               setReverseStep("reason");
               setReverseError("");
+              setHistoryResult({ type: "success", title: "Contribution Reversed", amount: amt, counterparty: name });
             }
           }}
         />
@@ -577,6 +582,16 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
         </div>
         </>}
       </div>
+      {historyResult && (
+        <ResultOverlay
+          type={historyResult.type}
+          title={historyResult.title}
+          amount={historyResult.amount}
+          counterparty={historyResult.counterparty}
+          reason={historyResult.reason}
+          onPrimary={() => setHistoryResult(null)}
+        />
+      )}
     </div>
   );
 }
@@ -630,6 +645,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [cancellingArchiveId, setCancellingArchiveId] = useState(null);
   const [approveError,        setApproveError]        = useState({ id: null, text: "" });
   const [txnPin,              setTxnPin]              = useState(null);
+  const [actionResult,        setActionResult]        = useState(null); // { type, title, amount, counterparty, reason }
   const [contribSuccess,      setContribSuccess]      = useState(null); // { client, amount, showShare }
   const [contribError,        setContribError]        = useState(null); // error string
   const [wdError,             setWdError]             = useState(null);
@@ -1143,8 +1159,12 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         const { data, error } = await supabase.functions.invoke("ajo-write", {
           body: { action: "close_savings_round", group_id: grpId, pin },
         });
-        if (error || !data?.ok) throw new Error(data?.error || error?.message || "Failed to close round");
         setTxnPin(null);
+        if (error || !data?.ok) {
+          setActionResult({ type: "failure", title: "Close Round Failed", reason: data?.error || error?.message || "Couldn't close round — try again" });
+          return;
+        }
+        setActionResult({ type: "success", title: "Savings Round Closed" });
         await loadGroups();
         setSavingsDetails(p => ({ ...p, [grpId]: undefined }));
       },
@@ -1159,8 +1179,12 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         const { data, error } = await supabase.functions.invoke("ajo-write", {
           body: { action: "release_savings_member", group_id: grpId, client_id: clientId, pin },
         });
-        if (error || !data?.ok) throw new Error(data?.error || error?.message || "Failed to release member");
         setTxnPin(null);
+        if (error || !data?.ok) {
+          setActionResult({ type: "failure", title: "Release Failed", counterparty: clientName, reason: data?.error || error?.message || "Couldn't release member — try again" });
+          return;
+        }
+        setActionResult({ type: "success", title: "Member Released", counterparty: clientName });
         const grp = groups.find(g => g.id === grpId);
         loadSavingsDetails(grpId, grp?.started_at);
       },
@@ -1625,8 +1649,9 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       (typeof err.message === "string" && err.message.includes("Failed to send a request"))
     );
 
-  const handleApproveRequest = async (req, pin) => {
+  const handleApproveRequest = async (req, pin, onResult) => {
     setProcessingId(req.id);
+    const clientName = req.aso_clients?.full_name;
     try {
       const { data: writeData, error: writeErr } = await supabase.functions.invoke("ajo-write", {
         body: {
@@ -1638,20 +1663,25 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         },
       });
       if (isFetchTimeout(writeErr)) {
-        // DB committed; reloadWithdrawalRequests() in finally confirms state.
         setApproveError({ id: null, text: "" });
-        flashDeposit("ok", "Withdrawal approved — verifying…");
+        onResult?.({ type: "success", title: "Withdrawal Approved", amount: req.net_amount || req.amount, counterparty: clientName, note: "Verifying — confirm with client shortly." });
         return;
       }
       if (writeErr || !writeData?.ok) {
         const errMsg = writeData?.error || writeErr?.message || "Approval failed";
         setApproveError({ id: req.id, text: errMsg });
+        onResult?.({ type: "failure", title: "Approval Failed", reason: errMsg });
         return;
       }
       setApproveError({ id: null, text: "" });
-      flashDeposit("ok", `₦${Number(req.amount).toLocaleString("en-NG")} withdrawal approved — payment processing.`);
+      onResult?.({ type: "success", title: "Withdrawal Approved", amount: req.net_amount || req.amount, counterparty: clientName });
     } catch (e) {
-      if (!isFetchTimeout(e)) setApproveError({ id: req.id, text: e?.message || "Approval failed" });
+      if (isFetchTimeout(e)) {
+        onResult?.({ type: "success", title: "Withdrawal Approved", amount: req.net_amount || req.amount, counterparty: clientName, note: "Verifying — confirm with client shortly." });
+      } else {
+        setApproveError({ id: req.id, text: e?.message || "Approval failed" });
+        onResult?.({ type: "failure", title: "Approval Failed", reason: e?.message || "Approval failed — try again" });
+      }
     } finally {
       reloadWithdrawalRequests();
       setProcessingId(null);
@@ -1689,21 +1719,26 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     setTimeout(() => setDepositFeedback(null), type === "err" ? 6000 : 4000);
   };
 
-  const handleConfirmDeposit = async (claim, pin) => {
+  const handleConfirmDeposit = async (claim, pin, onResult) => {
     setProcessingDepositId(claim.id);
+    const clientName = claim.aso_clients?.full_name;
     try {
       const { data, error } = await supabase.functions.invoke("ajo-write", {
         body: { action: "confirm_manual_deposit", claim_id: claim.id, pin },
       });
+      const amt = data?.amount || claim.amount;
       if (isFetchTimeout(error)) {
-        flashDeposit("ok", "Confirmed — reloading to verify…");
+        onResult?.({ type: "success", title: "Deposit Confirmed", amount: amt, counterparty: clientName, note: "Verifying — balance updating shortly." });
         return;
       }
       if (error || !data?.ok) throw new Error(data?.error || error?.message || "Confirm failed");
-      flashDeposit("ok", `₦${Number(data.amount || claim.amount).toLocaleString("en-NG")} confirmed — client balance updated.`);
+      onResult?.({ type: "success", title: "Deposit Confirmed", amount: amt, counterparty: clientName });
     } catch (e) {
-      if (isFetchTimeout(e)) flashDeposit("ok", "Confirmed — reloading to verify…");
-      else flashDeposit("err", e.message || "Confirm failed");
+      if (isFetchTimeout(e)) {
+        onResult?.({ type: "success", title: "Deposit Confirmed", counterparty: clientName, note: "Verifying — balance updating shortly." });
+      } else {
+        onResult?.({ type: "failure", title: "Confirm Failed", reason: e.message || "Couldn't confirm deposit — try again" });
+      }
     } finally {
       reloadPendingDeposits();
       setProcessingDepositId(null);
@@ -1735,21 +1770,26 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     }
   };
 
-  const handleApproveContribution = async (dep, pin) => {
+  const handleApproveContribution = async (dep, pin, onResult) => {
     setProcessingDepositId(dep.id);
+    const clientName = dep.aso_clients?.full_name;
     try {
       const { data, error } = await supabase.functions.invoke("ajo-write", {
         body: { action: "approve_contribution", contribution_id: dep.id, owner_id: profile?.id, pin },
       });
+      const amt = data?.amount || dep.amount;
       if (isFetchTimeout(error)) {
-        flashDeposit("ok", "Approved — reloading to verify…");
+        onResult?.({ type: "success", title: "Contribution Approved", amount: amt, counterparty: clientName, note: "Verifying — balance updating shortly." });
         return;
       }
       if (error || !data?.ok) throw new Error(data?.error || error?.message || "Approve failed");
-      flashDeposit("ok", `₦${Number(data.amount || dep.amount).toLocaleString("en-NG")} approved — client balance updated.`);
+      onResult?.({ type: "success", title: "Contribution Approved", amount: amt, counterparty: clientName });
     } catch (e) {
-      if (isFetchTimeout(e)) flashDeposit("ok", "Approved — reloading to verify…");
-      else flashDeposit("err", e.message || "Approve failed");
+      if (isFetchTimeout(e)) {
+        onResult?.({ type: "success", title: "Contribution Approved", counterparty: clientName, note: "Verifying — balance updating shortly." });
+      } else {
+        onResult?.({ type: "failure", title: "Approve Failed", reason: e.message || "Couldn't approve — try again" });
+      }
     } finally {
       reloadPendingDeposits();
       setProcessingDepositId(null);
@@ -1981,7 +2021,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                     amount: Math.round((req.net_amount || 0) * 100),
                     recipient: cl.full_name,
                     description: isHeld ? "Security hold release — savings withdrawal" : "Savings withdrawal approval",
-                    onApprove: (pin) => { setTxnPin(null); handleApproveRequest(req, pin); },
+                    onApprove: (pin) => { setTxnPin(null); handleApproveRequest(req, pin, r => setActionResult(r)); },
                   })}
                   disabled={isProc}
                   className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold text-xs transition active:scale-[0.99] disabled:opacity-50">
@@ -2288,7 +2328,12 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                             const { data } = await supabase.functions.invoke("ajo-write", { body: { action: "approve_contribution", contribution_id: item.id, owner_id: profile?.id, pin } });
                             setProcessingStaffContribId(null);
                             reloadPendingStaffContribs();
-                            if (!data?.ok) setStaffContribFeedback({ ok: false, msg: data?.error || "Approve failed" });
+                            if (!data?.ok) {
+                              setStaffContribFeedback({ ok: false, msg: data?.error || "Approve failed" });
+                              setActionResult({ type: "failure", title: "Approve Failed", reason: data?.error || "Couldn't approve — try again" });
+                            } else {
+                              setActionResult({ type: "success", title: "Collection Approved", amount: item.amount, counterparty: cl.full_name || "Client" });
+                            }
                           },
                         })}
                         className="flex-1 py-2.5 bg-green-600 text-white rounded-xl font-bold text-xs disabled:opacity-50 active:scale-[0.99] transition">
@@ -2396,8 +2441,9 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                           description: `${isManualClaim ? "Bank transfer claim" : "Recorded contribution"} · ₦${Number(dep.amount).toLocaleString("en-NG")}`,
                           onApprove:   (pin) => {
                             setTxnPin(null);
-                            if (isManualClaim) handleConfirmDeposit(dep, pin);
-                            else handleApproveContribution(dep, pin);
+                            const onR = r => setActionResult(r);
+                            if (isManualClaim) handleConfirmDeposit(dep, pin, onR);
+                            else handleApproveContribution(dep, pin, onR);
                           },
                         })}
                         disabled={isProc}
@@ -3158,10 +3204,16 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                   amount: Math.round(savedAmt * 100),
                   recipient: savedClient.full_name,
                   description: `Gross withdrawal · balance after: ${savedClient.current_balance - savedAmt >= 0 ? `₦${(savedClient.current_balance - savedAmt).toLocaleString()}` : "pending"}`,
-                  onApprove: (pin) => {
+                  onApprove: async (pin) => {
                     setTxnPin(null);
-                    asoWithdraw(savedClient.id, savedAmt, pin);
-                    speakConfirmation("ajoWithdraw", getLang());
+                    const result = await asoWithdraw(savedClient.id, savedAmt, pin);
+                    if (result?.error) {
+                      const msg = typeof result.error === "string" ? result.error : (result.error?.message || "Couldn't complete withdrawal — try again");
+                      setActionResult({ type: "failure", title: "Withdrawal Failed", amount: savedAmt, counterparty: savedClient.full_name, reason: msg });
+                    } else {
+                      speakConfirmation("ajoWithdraw", getLang());
+                      setActionResult({ type: "success", title: "Withdrawal Recorded", amount: savedAmt, counterparty: savedClient.full_name });
+                    }
                   },
                 });
               }
@@ -4483,6 +4535,17 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         </div>
       )}
       {txnPin && <TransactionPinModal {...txnPin} onCancel={() => setTxnPin(null)} />}
+      {actionResult && (
+        <ResultOverlay
+          type={actionResult.type}
+          title={actionResult.title}
+          amount={actionResult.amount}
+          counterparty={actionResult.counterparty}
+          note={actionResult.note}
+          reason={actionResult.reason}
+          onPrimary={() => setActionResult(null)}
+        />
+      )}
 
       {/* ── Cycle open/close confirm strip ──── */}
       {cycleConfirm && (

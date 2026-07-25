@@ -13,6 +13,7 @@ import { maxDobDate, isAtLeast18, AGE_ERROR } from "../utils/ageValidation";
 import AIChatWidget from "../components/AIChatWidget";
 import { buildCoopOrgContext } from "../utils/buildContext";
 import TransactionPinModal from "../components/TransactionPinModal";
+import ResultOverlay from "../components/ResultOverlay";
 import { createReportPdf, fmtCurrency as pdfFmt, fmtDate as pdfFmtDate } from "../utils/generateReportPdf";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
 import { useCampaigns } from "../hooks/useCampaigns";
@@ -1050,7 +1051,8 @@ function FinanceTab({ org, members, programs, onRefresh }) {
   const [viewSaving,   setViewSaving]   = useState(null);
   const [viewWd,       setViewWd]       = useState(null);
   const [viewReq,      setViewReq]      = useState(null);
-  const [txnPin,       setTxnPin]       = useState(null);
+  const [txnPin,        setTxnPin]        = useState(null);
+  const [actionResult,  setActionResult]  = useState(null);
 
   const set  = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
   const setW = k => e => setWdForm(p => ({ ...p, [k]: e.target.value }));
@@ -1129,8 +1131,12 @@ function FinanceTab({ org, members, programs, onRefresh }) {
     setSaving(true); setError("");
     try {
       await coopFn("record-saving", { org_id: org.id, ...form, amount: parseFloat(form.amount) });
+      const memberName = activeMembers.find(m => m.id === form.member_id)?.full_name;
+      const amt = parseFloat(form.amount);
+      const isWd = form.type === "withdrawal";
       setShowRecord(false); setForm({ member_id: "", amount: "", type: "deposit", payment_method: "cash", notes: "", program_id: "" });
       load(); onRefresh();
+      setActionResult({ type: "success", title: isWd ? "Withdrawal Recorded" : "Contribution Recorded", amount: amt, counterparty: memberName });
     } catch (e) { setError(e.message || "Failed"); }
     finally { setSaving(false); }
   };
@@ -1140,10 +1146,11 @@ function FinanceTab({ org, members, programs, onRefresh }) {
     if (wdForm.method === "equal" && !wdForm.per_member_amount) { setError("Amount per member required"); return; }
     setSaving(true); setError("");
     try {
-      await coopFn("create-withdrawal", { org_id: org.id, ...wdForm,
-        per_member_amount: parseFloat(wdForm.per_member_amount || "0") });
+      const perAmt = parseFloat(wdForm.per_member_amount || "0");
+      await coopFn("create-withdrawal", { org_id: org.id, ...wdForm, per_member_amount: perAmt });
       setShowWd(false); setWdForm({ purpose: "", method: "equal", per_member_amount: "", authorized_by: "", notes: "", program_id: "" });
       load(); onRefresh();
+      setActionResult({ type: "success", title: "Bulk Withdrawal Recorded", amount: perAmt || undefined });
     } catch (e) { setError(e.message || "Failed"); }
     finally { setSaving(false); }
   };
@@ -1424,6 +1431,16 @@ function FinanceTab({ org, members, programs, onRefresh }) {
         />
       )}
       {txnPin && <TransactionPinModal {...txnPin} onCancel={() => setTxnPin(null)} />}
+      {actionResult && (
+        <ResultOverlay
+          type={actionResult.type}
+          title={actionResult.title}
+          amount={actionResult.amount}
+          counterparty={actionResult.counterparty}
+          reason={actionResult.reason}
+          onPrimary={() => setActionResult(null)}
+        />
+      )}
     </div>
   );
 }
@@ -1454,10 +1471,11 @@ function LoansTab({ org, members, onRefresh }) {
     member_id: "", amount_requested: "", interest_rate: String(defaultRate),
     loan_purpose: "", repayment_months: "12",
   });
-  const [saving,   setSaving]   = useState(false);
-  const [error,    setError]    = useState("");
-  const [txnPin,   setTxnPin]   = useState(null);
-  const [receipt,  setReceipt]  = useState(null);
+  const [saving,        setSaving]        = useState(false);
+  const [error,         setError]         = useState("");
+  const [txnPin,        setTxnPin]        = useState(null);
+  const [actionResult,  setActionResult]  = useState(null);
+  const [receipt,       setReceipt]       = useState(null);
 
   const load = useCallback(() => {
     coopFn("get-loans", { org_id: org.id })
@@ -1503,7 +1521,12 @@ function LoansTab({ org, members, onRefresh }) {
         loan_id: loan.id, org_id: org.id, status: newStatus,
         amount_approved: loan.amount_requested, approved_by_name: "Admin", ...extra,
       });
+      const memberName = members.find(m => m.id === loan.member_id)?.full_name;
+      const amt = loan.amount_approved || loan.amount_requested;
       setSelected(null); setShowReject(false); setRejectReason(""); load(); onRefresh();
+      if (newStatus === "disbursed") {
+        setActionResult({ type: "success", title: "Loan Disbursed", amount: amt, counterparty: memberName });
+      }
     } catch (e) { setError(e.message || "Failed"); }
     finally { setSaving(false); }
   };
@@ -1511,15 +1534,18 @@ function LoansTab({ org, members, onRefresh }) {
   const handleRepay = async () => {
     if (!repayForm.amount) { setError("Amount required"); return; }
     setSaving(true); setError("");
+    const amt = parseFloat(repayForm.amount);
+    const memberName = selected?.org_members?.full_name;
     try {
       await coopFn("record-repayment", {
         org_id: org.id, loan_id: selected.id, member_id: selected.member_id,
-        amount: parseFloat(repayForm.amount), payment_method: repayForm.payment_method,
+        amount: amt, payment_method: repayForm.payment_method,
       });
       setRepayForm({ amount: "", payment_method: "cash" });
       load(); onRefresh();
       loadRepayments(selected.id);
-      setSelected(prev => prev ? { ...prev, outstanding_balance: Math.max(0, (prev.outstanding_balance || 0) - parseFloat(repayForm.amount)) } : null);
+      setSelected(prev => prev ? { ...prev, outstanding_balance: Math.max(0, (prev.outstanding_balance || 0) - amt) } : null);
+      setActionResult({ type: "success", title: "Repayment Recorded", amount: amt, counterparty: memberName });
     } catch (e) { setError(e.message || "Failed"); }
     finally { setSaving(false); }
   };
@@ -1785,6 +1811,16 @@ function LoansTab({ org, members, onRefresh }) {
       )}
       {txnPin && <TransactionPinModal {...txnPin} onCancel={() => setTxnPin(null)} />}
       {receipt && <TransactionDetailModal data={receipt} onClose={() => setReceipt(null)} />}
+      {actionResult && (
+        <ResultOverlay
+          type={actionResult.type}
+          title={actionResult.title}
+          amount={actionResult.amount}
+          counterparty={actionResult.counterparty}
+          reason={actionResult.reason}
+          onPrimary={() => setActionResult(null)}
+        />
+      )}
     </div>
   );
 }

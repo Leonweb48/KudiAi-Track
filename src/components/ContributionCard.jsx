@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { createReportPdf, fmtCurrency, fmtDate } from "../utils/generateReportPdf";
 import TransactionPinModal from "./TransactionPinModal";
+import ResultOverlay from "./ResultOverlay";
 import { allocatePeriods, allocateForReceipt } from "../utils/allocatePeriods.mjs";
 
 // ── Visual maps ───────────────────────────────────────────────────────────────
@@ -213,6 +214,7 @@ export default function ContributionCard({
   const [exporting,            setExporting]            = useState(false);
   const [showPinForCommission, setShowPinForCommission] = useState(false);
   const [commissionExecuting,  setCommissionExecuting]  = useState(false);
+  const [commissionResult,     setCommissionResult]     = useState(null);
   const [cardTab,              setCardTab]              = useState("card");
 
   const freq = frequency || cycle?.frequency || cycle?.contribution_frequency || "monthly";
@@ -290,8 +292,14 @@ export default function ContributionCard({
   const handleCommissionPin = async (pin) => {
     setShowPinForCommission(false);
     setCommissionExecuting(true);
-    try { await onExecuteCommission(commission.amount, pin); }
-    finally { setCommissionExecuting(false); }
+    try {
+      await onExecuteCommission(commission.amount, pin);
+      setCommissionResult({ type: "success", title: "Commission Deducted", amount: commission.amount, counterparty: clientName });
+    } catch (e) {
+      setCommissionResult({ type: "failure", title: "Commission Failed", reason: e?.message || "Couldn't deduct commission — try again" });
+    } finally {
+      setCommissionExecuting(false);
+    }
   };
 
   return (
@@ -606,6 +614,16 @@ export default function ContributionCard({
           subtitle={`Deduct ${fmtCurrency(commission.amount)} from ${clientName}'s balance`}
           onApprove={handleCommissionPin}
           onCancel={() => setShowPinForCommission(false)}
+        />
+      )}
+      {commissionResult && (
+        <ResultOverlay
+          type={commissionResult.type}
+          title={commissionResult.title}
+          amount={commissionResult.amount}
+          counterparty={commissionResult.counterparty}
+          reason={commissionResult.reason}
+          onPrimary={() => setCommissionResult(null)}
         />
       )}
 

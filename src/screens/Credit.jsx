@@ -3,6 +3,7 @@ import Icon   from "../components/Icon";
 import Modal  from "../components/shared/Modal";
 import { useToast } from "../components/Toast";
 import TransactionPinModal from "../components/TransactionPinModal";
+import ResultOverlay from "../components/ResultOverlay";
 import { canDo, upgradeLabel, planAvailableText } from "../utils/plans";
 import Field  from "../components/shared/Field";
 import Badge  from "../components/shared/Badge";
@@ -64,8 +65,9 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
   const [showAdd,      setShowAdd]      = useState(false);
   const [repaying,     setRepaying]     = useState(null);
   const [assigningCredit, setAssigningCredit] = useState(null);
-  const [txnPin,       setTxnPin]       = useState(null);
-  const [repayAmt,     setRepayAmt]     = useState("");
+  const [txnPin,        setTxnPin]        = useState(null);
+  const [actionResult,  setActionResult]  = useState(null);
+  const [repayAmt,      setRepayAmt]      = useState("");
   const [repayMethod,  setRepayMethod]  = useState("cash");
   const [repayNote,    setRepayNote]    = useState("");
   const [receipt,      setReceipt]      = useState(null);
@@ -1047,15 +1049,19 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                 description: `Credit repayment · ${repayMethod}`,
                 onApprove: async (verifiedPin) => {
                   setTxnPin(null);
-                  const amt = parseFloat(repayAmt);
+                  const amt  = parseFloat(repayAmt);
+                  const id   = repaying.id;
                   const name = repaying.customer_name;
+                  const meth = repayMethod;
+                  const note = repayNote;
                   setRepaying(null); setRepayAmt(""); setRepayMethod("cash"); setRepayNote("");
-                  const result = await repayCredit(repaying.id, amt, repayMethod, repayNote, verifiedPin);
+                  const result = await repayCredit(id, amt, meth, note, verifiedPin);
                   if (result?.error) {
-                    toast({ type: "error", title: "Payment failed — try again", body: typeof result.error === "string" ? result.error : result.error.message });
+                    const msg = typeof result.error === "string" ? result.error : (result.error?.message || "Payment failed — try again");
+                    setActionResult({ type: "failure", title: "Payment Failed", amount: amt, counterparty: name, reason: msg });
                   } else {
                     speakConfirmation("creditSaved", getLang());
-                    toast({ type: "success", title: `Payment recorded — ${fmt(amt)}`, body: name });
+                    setActionResult({ type: "success", title: "Payment Recorded", amount: amt, counterparty: name });
                   }
                 },
               });
@@ -1296,6 +1302,16 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
         <ClientProfile record={profile_} type="credit" onSave={updateCredit} onClose={() => setProfile_(null)} />
       )}
       {txnPin && <TransactionPinModal {...txnPin} onCancel={() => setTxnPin(null)} />}
+      {actionResult && (
+        <ResultOverlay
+          type={actionResult.type}
+          title={actionResult.title}
+          amount={actionResult.amount}
+          counterparty={actionResult.counterparty}
+          reason={actionResult.reason}
+          onPrimary={() => setActionResult(null)}
+        />
+      )}
       {assigningCredit && (
         <AssignRecordModal
           type="credit"
