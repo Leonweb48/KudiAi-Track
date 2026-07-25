@@ -4,7 +4,7 @@ import { uid } from "../utils/helpers";
 import { sendEmailTrigger } from "../utils/emailTrigger";
 import { notify, notifyBranchManager, notifyBranchStaff } from "../lib/notifyEngine";
 
-export function useInventory(userId, staffId = null, branchId = null) {
+export function useInventory(userId, staffId = null, branchId = null, staffName = null) {
   const [products,  setProducts]  = useState([]);
   const [movements, setMovements] = useState([]);
   const [loading,   setLoading]   = useState(true);
@@ -287,14 +287,37 @@ export function useInventory(userId, staffId = null, branchId = null) {
       });
     }
 
-    if (type === "restock" && branchId) {
-      const restockOpts = {
-        type:         "branch_restock",
-        originUserId: staffId || userId,
-        data: { ownerId: userId, productName: product.product_name, productId: product_id, quantity: absQty, branchId },
-      };
-      notifyBranchManager(userId, branchId, restockOpts);
-      notifyBranchStaff(userId, branchId, restockOpts);
+    if (type === "restock") {
+      // Use the hook's branchId (staff/manager) or fall back to the product's own branch_id
+      // so that owner-portal restocks also reach the right branch.
+      const effectiveBranchId = branchId || product.branch_id || null;
+
+      if (effectiveBranchId) {
+        const restockData = {
+          ownerId:     userId,
+          staffName:   staffName || null,
+          productName: product.product_name,
+          productId:   product_id,
+          quantity:    absQty,
+          branchId:    effectiveBranchId,
+        };
+        const restockOpts = {
+          type:         "branch_restock",
+          originUserId: staffId || userId,
+          data:          restockData,
+        };
+
+        // Notify owner when a staff member or manager adds stock
+        if (staffId) {
+          notify({ type: "branch_restock", userId, originUserId: staffId, data: restockData });
+        }
+
+        // Notify branch manager (skipped automatically if manager is the actor)
+        notifyBranchManager(userId, effectiveBranchId, restockOpts);
+
+        // Notify all other branch staff (skips the actor)
+        notifyBranchStaff(userId, effectiveBranchId, restockOpts);
+      }
     }
 
     setMovements(prev => [mov, ...prev]);

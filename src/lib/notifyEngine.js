@@ -358,7 +358,9 @@ const EVENTS = {
   branch_restock: {
     priority: "high", category: "stock",
     title: (d) => `Restock: ${d.productName || "Stock"}`,
-    body:  (d) => `${d.quantity} units of ${d.productName || "stock"} restocked at your branch`,
+    body:  (d) => d.staffName
+      ? `${d.staffName} added ${d.quantity} unit${d.quantity === 1 ? "" : "s"} of ${d.productName || "stock"} to stock`
+      : `${d.quantity} unit${d.quantity === 1 ? "" : "s"} of ${d.productName || "stock"} restocked`,
     deepLink:  (d) => ({ tab: "stock", id: d.productId }),
     dedupeKey: (d) => `restock_${d.productId}_${d.branchId}`,
   },
