@@ -1,5 +1,6 @@
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import { supabase } from "./supabase";
+import { TextToSpeech } from "@capacitor-community/text-to-speech";
 
 const TTS_URL = "https://admin.kudiai.app/api/public/tts";
 
@@ -101,8 +102,31 @@ function playBase64(base64) {
   });
 }
 
-function deviceSpeak(text) {
-  _log("[TTS-DIAG] deviceSpeak() called — falling back to speechSynthesis");
+async function deviceSpeak(text) {
+  const clean = text.replace(/\*\*/g, "").replace(/#+\s*/g, "").trim();
+
+  // On native Android/iOS use the OS TTS engine directly — speechSynthesis is
+  // unreliable in Capacitor WebView and often completely absent.
+  if (Capacitor.isNativePlatform()) {
+    _log("[TTS-DIAG] deviceSpeak() → native TextToSpeech plugin");
+    try {
+      await TextToSpeech.speak({
+        text:   clean,
+        lang:   "en-NG",
+        rate:   0.9,
+        pitch:  1.0,
+        volume: 1.0,
+        category: "ambient",
+      });
+      _log("[TTS-DIAG] native TTS completed");
+    } catch (e) {
+      _log("[TTS-DIAG] native TextToSpeech.speak() failed:", e?.message);
+    }
+    return;
+  }
+
+  // Web fallback
+  _log("[TTS-DIAG] deviceSpeak() → speechSynthesis (web)");
   return new Promise((resolve) => {
     if (!("speechSynthesis" in window)) {
       _log("[TTS-DIAG] speechSynthesis not available");
@@ -112,7 +136,7 @@ function deviceSpeak(text) {
     window.speechSynthesis.cancel();
 
     const doUtter = () => {
-      const utter = new SpeechSynthesisUtterance(text.replace(/\*\*/g, "").replace(/#+\s*/g, ""));
+      const utter = new SpeechSynthesisUtterance(clean);
       utter.rate   = 0.88;
       utter.pitch  = 1.05;
       utter.volume = 1.0;
