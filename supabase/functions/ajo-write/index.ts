@@ -1162,8 +1162,12 @@ serve(async (req: Request) => {
     });
     if (error) return json({ ok: false, error: error.message });
 
+    const rpcRev = data as Record<string, unknown>;
+    // Only fire notifications on confirmed success — never on domain failures
+    // (short reason, already reversed, balance too low, unauthorized, etc.)
+    if (!rpcRev?.ok) return json(data);
+
     if (clientId) {
-      const rpcRev = data as Record<string, unknown>;
       const ctx    = await fetchEmailContext(sb, clientId, ownerId, user.id);
       await fireAjoEmail("ajo_reversal", {
         client_email:  ctx.clientEmail,

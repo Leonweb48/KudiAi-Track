@@ -257,7 +257,7 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
                 Cancel
               </button>
               <button onClick={() => {
-                if (!reverseReason.trim()) { setReverseError("Please enter a reason."); return; }
+                if (reverseReason.trim().length < 5) { setReverseError("Please enter a reason (at least 5 characters)."); return; }
                 setReverseError("");
                 setReverseStep("pin");
               }}
