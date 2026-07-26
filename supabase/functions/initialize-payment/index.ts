@@ -41,7 +41,7 @@ serve(async (req) => {
           reference,
           // Must be an HTTPS URL so Paystack can redirect to it after payment.
           // The Vercel page then deep-links back into the native app.
-          callback_url: "https://kuditrack-kappa.vercel.app/payment-return",
+          callback_url: "https://kudiai.app/payment-return",
           metadata: {
             payment_type: "subscription",
             plan_slug:    planId,
