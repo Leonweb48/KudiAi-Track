@@ -392,6 +392,15 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
 
   const toggleDark = () => setProfile(p => ({ ...p, dark_mode: !p.dark_mode }));
 
+  const [ttsEnabled, setTtsEnabled] = useState(() => {
+    try { return localStorage.getItem("kt_tts_enabled") === "1"; } catch { return false; }
+  });
+  const toggleTts = () => setTtsEnabled(v => {
+    const next = !v;
+    try { localStorage.setItem("kt_tts_enabled", next ? "1" : "0"); } catch {}
+    return next;
+  });
+
   const initials  = profile.owner_name?.[0]?.toUpperCase() || "A";
   const avatarSrc = photoPreview || profile.profile_image_url;
 
@@ -617,6 +626,33 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
           sub={t("settings.darkModeSub")}
           onClick={toggleDark}
           right={Toggle}
+        />
+        <Row
+          icon={
+            <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+              <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+              <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+            </svg>
+          }
+          label="Voice Feedback"
+          sub="Speak confirmations after transactions and AI replies"
+          onClick={toggleTts}
+          right={
+            <button
+              onClick={e => { e.stopPropagation(); toggleTts(); }}
+              role="switch"
+              aria-checked={ttsEnabled}
+              className={`w-12 h-6 rounded-full transition-colors duration-200 relative focus-visible:outline-none flex-shrink-0 ${
+                ttsEnabled ? "bg-brand-600" : "bg-slate-200 dark:bg-slate-600"
+              }`}
+            >
+              <span
+                className="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all duration-200"
+                style={{ left: ttsEnabled ? "calc(100% - 22px)" : "2px" }}
+              />
+            </button>
+          }
         />
       </SettingsCard>
 

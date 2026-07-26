@@ -3,23 +3,79 @@ import { supabase } from "./supabase";
 
 const TTS_URL = "https://admin.kudiai.app/api/public/tts";
 
-let _current = null;
+// ── AudioContext (shared, persisted across calls) ────────────────────────────
+// Using AudioContext + BufferSourceNode instead of new Audio() bypasses the
+// Android WebView autoplay restriction: once unlockAudio() is called from a
+// synchronous tap handler, the context stays in "running" state for the session,
+// so subsequent async play calls (after network requests) work without a new gesture.
+let _audioCtx  = null;
+let _currentSrc = null;
+
+function getAudioCtx() {
+  if (!_audioCtx || _audioCtx.state === "closed") {
+    _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  return _audioCtx;
+}
+
+// Call this once from a synchronous user-gesture handler (e.g. first tap/touchstart)
+// to unlock audio for the entire session.
+export function unlockAudio() {
+  try {
+    if (typeof window === "undefined") return;
+    const ctx = getAudioCtx();
+    if (ctx.state === "suspended") ctx.resume();
+    // Play a zero-length silent buffer — sufficient to mark the context as user-activated
+    const buf = ctx.createBuffer(1, 1, 22050);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+    src.start(0);
+  } catch (e) { /* ignore — never block the user action */ }
+}
 
 export function cancelTTS() {
-  if (_current) {
-    _current.pause();
-    _current = null;
+  if (_currentSrc) {
+    try { _currentSrc.stop(); } catch (e) {}
+    _currentSrc = null;
   }
   if ("speechSynthesis" in window) window.speechSynthesis.cancel();
 }
 
 function playBase64(base64) {
   return new Promise((resolve, reject) => {
-    const audio = new Audio(`data:audio/mp3;base64,${base64}`);
-    _current = audio;
-    audio.onended = () => { _current = null; resolve(); };
-    audio.onerror = (e) => { _current = null; reject(new Error(`audio error: ${e?.message || e}`)); };
-    audio.play().catch((e) => { _current = null; reject(e); });
+    try {
+      const ctx = getAudioCtx();
+      // Decode the base64 string to a typed array
+      const binary = atob(base64);
+      const bytes  = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+      ctx.decodeAudioData(
+        bytes.buffer,
+        (audioBuffer) => {
+          // Stop any currently playing audio
+          if (_currentSrc) {
+            try { _currentSrc.stop(); } catch (e) {}
+            _currentSrc = null;
+          }
+          const src = ctx.createBufferSource();
+          src.buffer = audioBuffer;
+          src.connect(ctx.destination);
+          _currentSrc = src;
+          src.onended = () => { _currentSrc = null; resolve(); };
+          // Resume in case context was suspended after background/foreground switch
+          if (ctx.state === "suspended") {
+            ctx.resume().then(() => src.start(0)).catch(reject);
+          } else {
+            src.start(0);
+          }
+        },
+        (err) => reject(new Error(`decode error: ${err?.message || err}`))
+      );
+    } catch (e) {
+      reject(e);
+    }
   });
 }
 
@@ -99,7 +155,15 @@ async function serverTTS(text) {
   }
 }
 
+// ── Public API ───────────────────────────────────────────────────────────────
+
+export function isTtsEnabled() {
+  try { return localStorage.getItem("kt_tts_enabled") === "1"; }
+  catch { return false; }
+}
+
 export async function speakText(text, lang = "en") {
+  if (!isTtsEnabled()) return;
   if (!text || !text.trim()) return;
   cancelTTS();
 
@@ -113,5 +177,18 @@ export async function speakText(text, lang = "en") {
   }
 }
 
-// speakEvent is kept as a no-op — callers (AddTxnModal) still import it
-export async function speakEvent() {}
+// Event key → confirmation text for native TTS (Android-safe, no speechSynthesis)
+const EVENT_TEXT = {
+  cashIn:      "Transaction recorded",
+  cashOut:     "Expense recorded",
+  ajoDeposit:  "Deposit confirmed",
+  ajoWithdraw: "Withdrawal processed",
+  creditSaved: "Payment recorded",
+  stockIn:     "Stock updated",
+};
+
+export async function speakEvent(eventKey = "cashIn", lang = "en") {
+  if (!isTtsEnabled()) return;
+  const text = EVENT_TEXT[eventKey] || "Action recorded";
+  await speakText(text, lang).catch(() => {});
+}

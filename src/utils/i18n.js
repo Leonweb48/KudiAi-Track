@@ -1,4 +1,5 @@
 import { formatNGN } from './formatNGN';
+import { Capacitor } from "@capacitor/core";
 
 /* ── Language configuration ──────────────────────────────────────── */
 export const LANGUAGES = [
@@ -507,11 +508,21 @@ const TTS_MESSAGES = {
 };
 
 export const speakConfirmation = (eventKey, langCode = "en") => {
-  if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
   const bcp47 = TTS_LANG_MAP[langCode] || "en-NG";
   const msgs  = TTS_MESSAGES[bcp47] || TTS_MESSAGES["en-NG"];
   const text  = msgs[eventKey]      || TTS_MESSAGES["en-NG"][eventKey];
   if (!text) return;
+
+  // On native (Android/iOS), delegate to speakEvent which uses the server TTS
+  // path + AudioContext playback — window.speechSynthesis is unreliable in WebView.
+  if (Capacitor.isNativePlatform()) {
+    import("./tts").then(({ speakEvent, isTtsEnabled }) => {
+      if (isTtsEnabled()) speakEvent(eventKey, langCode).catch(() => {});
+    }).catch(() => {});
+    return;
+  }
+
+  if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
   window.speechSynthesis.cancel();
   const utt   = new SpeechSynthesisUtterance(text);
   utt.lang    = bcp47;

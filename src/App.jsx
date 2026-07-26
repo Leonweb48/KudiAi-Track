@@ -29,6 +29,7 @@ import PinSetupFlow          from "./components/PinSetupFlow";
 import AIChatWidget         from "./components/AIChatWidget";
 import Loyalty               from "./screens/Loyalty";
 import Branches              from "./screens/Branches";
+import { unlockAudio }       from "./utils/tts";
 import MoreSheet             from "./components/MoreSheet";
 import ManagerDashboard from "./screens/ManagerDashboard";
 import AjoMemberPortal       from "./screens/AjoMemberPortal";
@@ -159,6 +160,22 @@ export default function App() {
   useEffect(() => {
     document.documentElement.classList.toggle("dark", !!isDark);
   }, [isDark]);
+
+  // Unlock AudioContext on first user interaction so subsequent async TTS calls
+  // can play audio on Android WebView (which blocks autoplay after any await).
+  useEffect(() => {
+    const unlock = () => {
+      unlockAudio();
+      document.removeEventListener("touchstart", unlock, true);
+      document.removeEventListener("click",      unlock, true);
+    };
+    document.addEventListener("touchstart", unlock, true);
+    document.addEventListener("click",      unlock, true);
+    return () => {
+      document.removeEventListener("touchstart", unlock, true);
+      document.removeEventListener("click",      unlock, true);
+    };
+  }, []);
 
   // ── Handle Paystack return URLs and subscription upgrade returns ──
   useEffect(() => {
