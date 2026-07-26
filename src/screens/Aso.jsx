@@ -132,8 +132,8 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
   // Derived from props — computed before state so they can seed initial values
   // Name map over ALL cycles (active + closed) — used to label history rows
   const cycleNameMap = Object.fromEntries(cycles.map(c => [c.id, c.label || "Personal Savings"]));
-  // Card tab only renders active cycles to avoid stale open/close buttons on closed history cards
-  const activeCycles = cycles.filter(c => c.status === "active");
+  // Card tab renders active AND completed (matured) cycles — settled/closed go to history only
+  const activeCycles = cycles.filter(c => c.status === "active" || c.status === "completed");
 
   const [tab,           setTab]           = useState(activeCycles.length > 0 ? "card" : "history");
   const [historyResult, setHistoryResult] = useState(null);

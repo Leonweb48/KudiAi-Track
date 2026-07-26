@@ -327,6 +327,11 @@ export default function ContributionCard({
               Next due {fmtDate(nextDue)}
             </p>
           )}
+          {cycle.status === "completed" && (
+            <span className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-700 text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">
+              ✓ Complete — withdraw available
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           {!compact && (
@@ -346,7 +351,7 @@ export default function ContributionCard({
               Close
             </button>
           )}
-          {!compact && onOpenCycle && cycle.status !== "active" && (
+          {!compact && onOpenCycle && (cycle.status === "completed" || cycle.status === "settled") && (
             <button
               onClick={() => onOpenCycle()}
               className="text-[11px] font-semibold text-brand-500 hover:text-brand-600 transition-colors min-h-[44px] px-3 inline-flex items-center"

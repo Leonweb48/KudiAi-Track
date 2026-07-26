@@ -607,6 +607,25 @@ serve(async (req: Request) => {
             category: "approvals",
           }));
         }
+        if (acResult.cycle_just_matured) {
+          const maturedAmt = Number(acResult.matured_net_balance || 0).toLocaleString("en-NG");
+          effects.push(
+            notifyUser(sb, acClientUserId, {
+              type: "cycle_matured", title: "Savings Cycle Complete!",
+              body: `Your "${acResult.matured_cycle_label || "Personal Savings"}" cycle is complete — ₦${maturedAmt} is now available to withdraw`,
+              priority: "high", deepLink: { tab: "contributions" }, category: "savings",
+            }),
+            fireAjoEmail("ajo_cycle_matured", {
+              client_email:  acCtx.clientEmail,
+              client_name:   acCtx.clientName,
+              owner_email:   acCtx.ownerEmail,
+              business_name: acCtx.businessName,
+              cycle_label:   acResult.matured_cycle_label || "Personal Savings",
+              net_balance:   acResult.matured_net_balance || 0,
+              date:          new Date().toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" }),
+            }),
+          );
+        }
         await Promise.allSettled(effects);
       })().catch(() => null),
       new Promise<void>(r => setTimeout(r, 2500)),
@@ -792,6 +811,24 @@ serve(async (req: Request) => {
       priority: "normal", deepLink: { tab: "contributions" }, category: "savings",
     });
 
+    if (app.cycle_just_matured) {
+      const maturedAmt = Number(app.matured_net_balance || 0).toLocaleString("en-NG");
+      notifyUser(sb, collClientUserId, {
+        type: "cycle_matured", title: "Savings Cycle Complete!",
+        body: `Your "${app.matured_cycle_label || "Personal Savings"}" cycle is complete — ₦${maturedAmt} is now available to withdraw`,
+        priority: "high", deepLink: { tab: "contributions" }, category: "savings",
+      }).catch(() => null);
+      fireAjoEmail("ajo_cycle_matured", {
+        client_email:  ctx.clientEmail,
+        client_name:   ctx.clientName,
+        owner_email:   ctx.ownerEmail,
+        business_name: ctx.businessName,
+        cycle_label:   app.matured_cycle_label || "Personal Savings",
+        net_balance:   app.matured_net_balance || 0,
+        date:          dateStr,
+      }).catch(() => null);
+    }
+
     return json({ ok: true, recovered, ...app });
   }
 
@@ -933,6 +970,13 @@ serve(async (req: Request) => {
               category: "money",
             }),
           ]);
+        }
+        if (rpcWd.cycle_just_closed) {
+          notifyUser(sb, rwApprClientUserId, {
+            type: "cycle_settled", title: "Savings Cycle Closed",
+            body: `Your "${rpcWd.closed_cycle_label || "Personal Savings"}" savings cycle is now closed. Thank you for saving!`,
+            priority: "normal", deepLink: { tab: "contributions" }, category: "savings",
+          }).catch(() => null);
         }
       })().catch(() => null),
       new Promise<void>(r => setTimeout(r, 2500)),
@@ -1111,25 +1155,12 @@ serve(async (req: Request) => {
     const ajoPerms = await resolveAjoPerms(sb, user.id, ownerId);
     if (ajoPerms !== null) return json({ ok: false, error: "Unauthorized: owner-only action" }, 403);
 
-    // Diagnostic: capture balance before RPC so logs confirm the UPDATE ran
-    const { data: preDiag } = clientId
-      ? await sb.from("aso_clients").select("current_balance, total_saved").eq("id", clientId).maybeSingle()
-      : { data: null };
-    console.log("[REVERSAL-DIAG] pre-rpc balance:", JSON.stringify(preDiag), "| client_id:", clientId, "| original_id:", original_id);
-
     const { data, error } = await sb.rpc("ajo_reverse_contribution", {
       p_original_id: original_id,
       p_owner_id:    ownerId,
       p_reason:      reason,
     });
-    console.log("[REVERSAL-DIAG] rpc returned:", JSON.stringify(data), "| error:", error?.message ?? null);
     if (error) return json({ ok: false, error: error.message });
-
-    // Diagnostic: confirm update
-    const { data: postDiag } = clientId
-      ? await sb.from("aso_clients").select("current_balance, total_saved").eq("id", clientId).maybeSingle()
-      : { data: null };
-    console.log("[REVERSAL-DIAG] post-rpc balance:", JSON.stringify(postDiag));
 
     if (clientId) {
       const rpcRev = data as Record<string, unknown>;
@@ -1222,6 +1253,22 @@ serve(async (req: Request) => {
             body: `Your deposit of ₦${Number(data?.amount).toLocaleString("en-NG")} was confirmed and credited`,
             priority: "high", deepLink: { tab: "contributions" }, category: "money",
           }),
+          ...(data?.cycle_just_matured ? [
+            notifyUser(sb, mdClientUserId, {
+              type: "cycle_matured", title: "Savings Cycle Complete!",
+              body: `Your "${data.matured_cycle_label || "Personal Savings"}" cycle is complete — ₦${Number(data.matured_net_balance || 0).toLocaleString("en-NG")} is now available to withdraw`,
+              priority: "high", deepLink: { tab: "contributions" }, category: "savings",
+            }),
+            fireAjoEmail("ajo_cycle_matured", {
+              client_email:  ctx.clientEmail,
+              client_name:   ctx.clientName,
+              owner_email:   ctx.ownerEmail,
+              business_name: ctx.businessName,
+              cycle_label:   data.matured_cycle_label || "Personal Savings",
+              net_balance:   data.matured_net_balance || 0,
+              date:          new Date().toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" }),
+            }),
+          ] : []),
         ]);
       })().catch(() => null),
       new Promise<void>(r => setTimeout(r, 2500)),
