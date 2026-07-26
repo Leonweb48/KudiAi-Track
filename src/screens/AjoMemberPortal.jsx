@@ -810,6 +810,24 @@ function getGroupSaved(groupId, startedAt, contributions) {
   ).reduce((s, c) => s + Number(c.amount || 0), 0);
 }
 
+// Pending-request helpers — subtract outstanding requests from entity ceilings.
+// Realtime-safe: re-derive from live withdrawRequests prop each render.
+function getPendingForCycle(cycleId, withdrawRequests) {
+  return (withdrawRequests || [])
+    .filter(r => r.cycle_id === cycleId && (r.status === "pending" || r.status === "held_24h"))
+    .reduce((s, r) => s + Number(r.amount || 0), 0);
+}
+function getPendingForGroup(groupId, withdrawRequests) {
+  return (withdrawRequests || [])
+    .filter(r => r.group_id === groupId && (r.status === "pending" || r.status === "held_24h"))
+    .reduce((s, r) => s + Number(r.amount || 0), 0);
+}
+function getTotalPending(withdrawRequests) {
+  return (withdrawRequests || [])
+    .filter(r => r.status === "pending" || r.status === "held_24h")
+    .reduce((s, r) => s + Number(r.amount || 0), 0);
+}
+
 // ── Shared tab/sub-tab bar components (used by all three money screens) ──
 
 function MoneyTabBar({ tabs, active, onChange }) {
@@ -873,7 +891,7 @@ function MoneySummaryRow({ label1, val1, label2, val2, loading, highlightVal2 = 
 // Each card shows static info in its header button; when selected the
 // children (action form) appear below in an inline expansion.
 
-function MoneyCycleCard({ cycle, saved, net, locked, lockReason, selected, onSelect, mode, children }) {
+function MoneyCycleCard({ cycle, saved, net, availableNow, locked, lockReason, selected, onSelect, mode, children }) {
   return (
     <div className={`mb-2 rounded-xl border-2 transition overflow-hidden ${
       selected
@@ -897,7 +915,7 @@ function MoneyCycleCard({ cycle, saved, net, locked, lockReason, selected, onSel
           )}
           {mode === "withdraw" && (locked
             ? <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium text-right max-w-[55%]">{lockReason || "Available when complete"}</span>
-            : <span className="text-xs font-bold text-green-600 dark:text-green-400 tabular-nums">{fmt(net)} available</span>
+            : <span className="text-xs font-bold text-green-600 dark:text-green-400 tabular-nums">{fmt(availableNow ?? net)} available</span>
           )}
           {(mode === "pay" || mode === "deposit") && (
             <span className="text-[10px] font-bold text-brand-600 dark:text-brand-400">
@@ -915,7 +933,7 @@ function MoneyCycleCard({ cycle, saved, net, locked, lockReason, selected, onSel
   );
 }
 
-function MoneyGroupCard({ group, saved, selected, onSelect, mode, children }) {
+function MoneyGroupCard({ group, saved, availableNow, selected, onSelect, mode, children }) {
   const rs = group.round_status || "not_started";
   const isReleased = rs === "closed";
   const isActive   = rs === "active";
@@ -941,7 +959,7 @@ function MoneyGroupCard({ group, saved, selected, onSelect, mode, children }) {
             <span className="text-xs text-slate-500 dark:text-slate-400">My savings <span className="font-bold text-slate-700 dark:text-slate-200 tabular-nums">{fmt(saved)}</span></span>
           )}
           {mode === "withdraw" && (isReleased
-            ? <span className="text-xs font-bold text-green-600 dark:text-green-400 tabular-nums">{fmt(saved)} available</span>
+            ? <span className="text-xs font-bold text-green-600 dark:text-green-400 tabular-nums">{fmt(availableNow ?? saved)} available</span>
             : <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">Locked until group closes</span>
           )}
           {(mode === "pay" || mode === "deposit") && (
@@ -1903,7 +1921,7 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
 }
 
 // ── Withdrawal request modal ──────────────────────────────────────────────
-function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotationsData = [], contributions = [], onClose, onSuccess }) {
+function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotationsData = [], contributions = [], withdrawRequests = [], onClose, onSuccess }) {
   // ── Core state (unchanged) ────────────────────────────────────────────────
   const [amount,        setAmount]        = useState("");
   const [saving,        setSaving]        = useState(false);
@@ -2001,6 +2019,29 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
   const grpTotal  = savingsGroups.reduce((s, g) => s + getGroupSaved(g.id, g.started_at, contributions), 0);
   const grpAvail  = savingsGroups.filter(g => g.round_status === "closed").reduce((s, g) => s + getGroupSaved(g.id, g.started_at, contributions), 0);
 
+  // Pending deduction — subtract outstanding requests from the ceiling shown/enforced
+  const totalPending     = getTotalPending(withdrawRequests);
+  const trulyWithdrawable = Math.max(0, withdrawable - totalPending);
+
+  const activePending = (() => {
+    if (activeTab === "personal" && selectedCycleId) return getPendingForCycle(selectedCycleId, withdrawRequests);
+    if (activeTab === "group"    && selectedGrpId)   return getPendingForGroup(selectedGrpId, withdrawRequests);
+    return 0;
+  })();
+
+  const activeCeiling = (() => {
+    if (activeTab === "personal" && selectedCycleId && selectedCycleObj) {
+      const stats = getCycleStats(selectedCycleObj, contributions);
+      return Math.max(0, stats.net - activePending);
+    }
+    if (activeTab === "group" && selectedGrpId) {
+      const g = savingsGroups.find(sg => sg.id === selectedGrpId);
+      if (!g) return trulyWithdrawable;
+      return Math.max(0, getGroupSaved(selectedGrpId, g.started_at, contributions) - activePending);
+    }
+    return trulyWithdrawable;
+  })();
+
   // ── Bank account verification (unchanged logic) ────────────────────────────
   const resolveAcct = async () => {
     if (!acctForm.bank_code || acctForm.account_number.length !== 10) {
@@ -2024,14 +2065,15 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
   // ── handleSubmit (unchanged attribution logic) ─────────────────────────────
   const handleSubmit = async () => {
     if (!amtNum || amtNum <= 0)   { setError("Enter a valid amount"); return; }
-    if (amtNum > withdrawable) {
+    if (amtNum > activeCeiling) {
+      const pendMsg = activePending > 0 ? ` (${fmt(activePending)} already pending)` : "";
       const lockParts = [];
       if (groupLocked > 0) lockParts.push(`${fmt(groupLocked)} committed to group/esusu`);
       if (esusuLocked > 0) lockParts.push(`${fmt(esusuLocked)} locked in active esusu round`);
       if (cycleLocked > 0) lockParts.push(`${fmt(cycleLocked)} locked in first-period cycle`);
       setError(lockParts.length > 0
-        ? `Only ${fmt(withdrawable)} is available — ${lockParts.join(" and ")}`
-        : "Amount exceeds your balance");
+        ? `Only ${fmt(activeCeiling)} is available${pendMsg} — ${lockParts.join(" and ")}`
+        : `Only ${fmt(activeCeiling)} is available${pendMsg}`);
       return;
     }
     if (netAmt <= 0)              { setError("Amount too small after fee deduction"); return; }
@@ -2090,10 +2132,13 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
             className="flex-1 bg-transparent text-2xl font-black text-slate-700 dark:text-slate-200 outline-none placeholder:text-slate-300 dark:placeholder:text-slate-600 tabular [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
           />
         </div>
-        {amtNum > withdrawable && (
+        {activePending > 0 && (
+          <p className="text-[11px] text-amber-500 mt-1">{fmt(activePending)} pending review — {fmt(activeCeiling)} available now</p>
+        )}
+        {amtNum > activeCeiling && (
           <p className="text-[11px] text-red-500 mt-1">Exceeds available balance</p>
         )}
-        {amtNum > 0 && amtNum <= withdrawable && (
+        {amtNum > 0 && amtNum <= activeCeiling && amtNum <= withdrawable && (
           <div className="mt-2 pt-2 border-t border-slate-200 dark:border-slate-600">
             {feeAmt > 0 ? (
               <div className="flex items-baseline justify-between">
@@ -2160,14 +2205,17 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
       <button
         onClick={() => {
           if (!amtNum || amtNum <= 0) { setError("Enter a valid amount"); return; }
-          if (amtNum > withdrawable) {
-            let lockMsg = "Amount exceeds your available balance";
-            if (esusuLocked > 0 && cycleLocked > 0) {
-              lockMsg = `Only ${fmt(withdrawable)} is available — ${fmt(esusuLocked)} locked in esusu and ${fmt(cycleLocked)} locked in your first-period cycle`;
-            } else if (esusuLocked > 0) {
-              lockMsg = `Only ${fmt(withdrawable)} is available — ${fmt(esusuLocked)} is locked in your active esusu round`;
-            } else if (cycleLocked > 0) {
-              lockMsg = `Only ${fmt(withdrawable)} is available — ${fmt(cycleLocked)} is locked in your first-period savings cycle`;
+          if (amtNum > activeCeiling) {
+            const pendMsg = activePending > 0 ? ` — ${fmt(activePending)} already pending review` : "";
+            let lockMsg = `Only ${fmt(activeCeiling)} available${pendMsg}`;
+            if (!pendMsg) {
+              if (esusuLocked > 0 && cycleLocked > 0) {
+                lockMsg = `Only ${fmt(activeCeiling)} available — ${fmt(esusuLocked)} locked in esusu and ${fmt(cycleLocked)} in your savings cycle`;
+              } else if (esusuLocked > 0) {
+                lockMsg = `Only ${fmt(activeCeiling)} available — ${fmt(esusuLocked)} is locked in your active esusu round`;
+              } else if (cycleLocked > 0) {
+                lockMsg = `Only ${fmt(activeCeiling)} available — ${fmt(cycleLocked)} is locked in your savings cycle`;
+              }
             }
             setError(lockMsg); return;
           }
@@ -2222,9 +2270,12 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
             <div className="text-center mb-4">
               <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1">Ready to withdraw</p>
               {locksLoaded
-                ? <p className="text-4xl font-black text-slate-800 dark:text-white tabular-nums">{fmt(withdrawable)}</p>
+                ? <p className="text-4xl font-black text-slate-800 dark:text-white tabular-nums">{fmt(trulyWithdrawable)}</p>
                 : <div className="h-10 w-40 bg-slate-200 dark:bg-slate-700 rounded-xl mx-auto animate-pulse" />
               }
+              {locksLoaded && totalPending > 0 && (
+                <p className="text-[11px] text-amber-500 dark:text-amber-400 mt-1">{fmt(totalPending)} pending review</p>
+              )}
             </div>
 
             {/* Collapsible set-aside — same lock source as hero; only once loaded */}
@@ -2279,10 +2330,13 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
                       <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-4">No first-period cycles</p>
                     )}
                     {fpCycles.map(cy => {
-                      const stats  = getCycleStats(cy, contributions);
-                      const locked = cy.status === "active";
+                      const stats      = getCycleStats(cy, contributions);
+                      const locked     = cy.status === "active";
+                      const cyPending  = getPendingForCycle(cy.id, withdrawRequests);
+                      const cyAvailNow = Math.max(0, stats.net - cyPending);
                       return (
                         <MoneyCycleCard key={cy.id} cycle={cy} saved={stats.saved} net={stats.net}
+                          availableNow={locked ? undefined : cyAvailNow}
                           locked={locked}
                           lockReason="Available when your savings plan is complete"
                           mode="withdraw"
@@ -2303,9 +2357,12 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
                       <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-4">No percentage cycles</p>
                     )}
                     {pctCycles.map(cy => {
-                      const stats = getCycleStats(cy, contributions);
+                      const stats      = getCycleStats(cy, contributions);
+                      const cyPending  = getPendingForCycle(cy.id, withdrawRequests);
+                      const cyAvailNow = Math.max(0, stats.net - cyPending);
                       return (
                         <MoneyCycleCard key={cy.id} cycle={cy} saved={stats.saved} net={stats.net}
+                          availableNow={cyAvailNow}
                           locked={false} mode="withdraw"
                           selected={selectedCycleId === cy.id}
                           onSelect={() => { setSelectedCycleId(cy.id); setAmount(""); setError(""); }}>
@@ -2330,11 +2387,13 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
                   <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">No savings groups</p>
                 )}
                 {savingsGroups.map(g => {
-                  const saved = getGroupSaved(g.id, g.started_at, contributions);
-                  const rs = g.round_status || "not_started";
+                  const saved      = getGroupSaved(g.id, g.started_at, contributions);
+                  const rs         = g.round_status || "not_started";
                   const canWithdraw = rs === "active" || rs === "closed" || rs === "target_met";
+                  const gPending   = getPendingForGroup(g.id, withdrawRequests);
+                  const gAvailNow  = rs === "closed" ? Math.max(0, saved - gPending) : undefined;
                   return (
-                    <MoneyGroupCard key={g.id} group={g} saved={saved} mode="withdraw"
+                    <MoneyGroupCard key={g.id} group={g} saved={saved} availableNow={gAvailNow} mode="withdraw"
                       selected={selectedGrpId === g.id}
                       onSelect={() => { setSelectedGrpId(g.id); setAmount(""); setError(""); }}>
                       {canWithdraw ? withdrawalForm : (
@@ -5396,6 +5455,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
           clientGroups={client?.group_memberships?.filter(m => m.status === "active") || []}
           rotationsData={rotationsData}
           contributions={contributions}
+          withdrawRequests={withdrawRequests}
           onClose={() => setShowWithdraw(false)}
           onSuccess={() => { refreshWithdrawRequests(); }}
         />

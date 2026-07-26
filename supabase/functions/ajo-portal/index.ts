@@ -295,6 +295,71 @@ serve(async (req) => {
         }, 400);
       }
 
+      // ── Pending-request deduction (global) ────────────────────────────────────
+      // A client's truly-available balance = withdrawable (lock-adjusted) minus
+      // the sum of their outstanding pending/held_24h withdrawal requests.
+      // This prevents stacking multiple requests against the same funds.
+      const { data: pendingRows } = await sb
+        .from("ajo_withdrawal_requests")
+        .select("amount")
+        .eq("aso_client_id", client_id)
+        .in("status", ["pending", "held_24h"]);
+      const totalPending = ((pendingRows || []) as Array<{ amount: number }>)
+        .reduce((s, r) => s + Number(r.amount || 0), 0);
+      const trulyWithdrawable = withdrawable - totalPending;
+      if (amount > trulyWithdrawable) {
+        const availFmt = Math.max(0, trulyWithdrawable).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const pendFmt  = totalPending.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        return json({
+          error:       `₦${availFmt} available right now — ₦${pendFmt} is already pending review`,
+          withdrawable: Math.max(0, trulyWithdrawable),
+          pending:      totalPending,
+        }, 400);
+      }
+
+      // ── Per-entity scoping ─────────────────────────────────────────────────────
+      // If the client selected a specific cycle or group, cap the request to that
+      // entity's own balance minus any pending requests already against it.
+      if (reqCycleId) {
+        const [{ data: cycleNetRaw }, { data: cyclePendingRaw }] = await Promise.all([
+          sb.rpc("ajo_cycle_net_balance",    { p_client_id: client_id, p_cycle_id: reqCycleId }),
+          sb.rpc("ajo_pending_for_entity",   { p_client_id: client_id, p_cycle_id: reqCycleId, p_group_id: null }),
+        ]);
+        const cycleNet     = Number(cycleNetRaw    || 0);
+        const cyclePending = Number(cyclePendingRaw || 0);
+        const cycleAvailNow = Math.max(0, cycleNet - cyclePending);
+        if (amount > cycleAvailNow) {
+          const pendStr = cyclePending > 0
+            ? ` — ₦${cyclePending.toLocaleString("en-NG")} already pending review`
+            : "";
+          return json({
+            error:            `Only ₦${cycleAvailNow.toLocaleString("en-NG")} available in this savings plan${pendStr}`,
+            entity_available: cycleAvailNow,
+            entity_pending:   cyclePending,
+          }, 400);
+        }
+      }
+
+      if (reqGroupId) {
+        const [{ data: groupNetRaw }, { data: groupPendingRaw }] = await Promise.all([
+          sb.rpc("ajo_group_net_balance",  { p_client_id: client_id, p_group_id: reqGroupId }),
+          sb.rpc("ajo_pending_for_entity", { p_client_id: client_id, p_cycle_id: null, p_group_id: reqGroupId }),
+        ]);
+        const groupNet     = Number(groupNetRaw    || 0);
+        const groupPending = Number(groupPendingRaw || 0);
+        const groupAvailNow = Math.max(0, groupNet - groupPending);
+        if (amount > groupAvailNow) {
+          const pendStr = groupPending > 0
+            ? ` — ₦${groupPending.toLocaleString("en-NG")} already pending review`
+            : "";
+          return json({
+            error:            `Only ₦${groupAvailNow.toLocaleString("en-NG")} available in this savings group${pendStr}`,
+            entity_available: groupAvailNow,
+            entity_pending:   groupPending,
+          }, 400);
+        }
+      }
+
       // 24h security hold: high-value withdrawals after a PIN reset get status "held_24h"
       const pinChangedAt = (cl as Record<string, unknown>).portal_pin_changed_at as string | null;
       const withinPinHold = pinChangedAt
