@@ -990,7 +990,7 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], onClose,
             <button
               onClick={() => setCustomAmt(String(client.contribution_amount))}
               className="mt-2 text-[10px] text-brand-500 dark:text-brand-400 underline underline-offset-2">
-              Use ₦{fmt(client.contribution_amount)} instead
+              Use {fmt(client.contribution_amount)} instead
             </button>
           )}
         </div>
@@ -1075,7 +1075,7 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], onClose,
           {status === "loading"
             ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Opening Paystack…</>
             : status === "awaiting" ? "Open Paystack again"
-            : <>Pay ₦{fmt(parseFloat(customAmt) || 0)} now</>}
+            : <>Pay {fmt(parseFloat(customAmt) || 0)} now</>}
         </button>
         <button onClick={onClose} disabled={status === "loading" || status === "verifying"}
           className="w-full mt-3 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition text-center py-2">
@@ -1599,6 +1599,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
   const [esusuLocked,   setEsusuLocked]   = useState(0);
   const [cycleLocked,   setCycleLocked]   = useState(0);
   const [groupLocked,   setGroupLocked]   = useState(0);
+  const [locksLoaded,   setLocksLoaded]   = useState(false);
   const [activeTab,       setActiveTab]       = useState("personal");
   const [selectedGrpId,   setSelectedGrpId]   = useState(null);
   const selectedCycleId = cycles.filter(c => c.status === "active").length === 1
@@ -1606,6 +1607,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
     : null;
 
   useEffect(() => {
+    setLocksLoaded(false);
     Promise.all([
       supabase.rpc("ajo_locked_esusu_amount", { p_client_id: client.id }),
       supabase.rpc("ajo_locked_cycle_amount",  { p_client_id: client.id }),
@@ -1614,7 +1616,8 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
       setEsusuLocked(Number(eData || 0));
       setCycleLocked(Number(cData || 0));
       setGroupLocked(Number(gData || 0));
-    }).catch(() => {});
+      setLocksLoaded(true);
+    }).catch(() => setLocksLoaded(true));
   }, [client.id, client.current_balance, cycles]);
 
   // Bank account state
@@ -1757,13 +1760,13 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
           <div className="mt-2 pt-2 border-t border-slate-200 dark:border-slate-600">
             {feeAmt > 0 ? (
               <div className="flex items-baseline justify-between">
-                <span className="text-xs text-slate-500 dark:text-slate-400">You&apos;ll receive · ₦{fmt(feeAmt)} handling fee</span>
-                <span className="text-sm font-extrabold text-green-600 dark:text-green-400 tabular-nums">₦{fmt(Math.max(0, netAmt))}</span>
+                <span className="text-xs text-slate-500 dark:text-slate-400">You&apos;ll receive · {fmt(feeAmt)} handling fee</span>
+                <span className="text-sm font-extrabold text-green-600 dark:text-green-400 tabular-nums">{fmt(Math.max(0, netAmt))}</span>
               </div>
             ) : (
               <div className="flex items-baseline justify-between">
                 <span className="text-xs text-slate-500 dark:text-slate-400">You&apos;ll receive · no fee</span>
-                <span className="text-sm font-extrabold text-green-600 dark:text-green-400 tabular-nums">₦{fmt(amtNum)}</span>
+                <span className="text-sm font-extrabold text-green-600 dark:text-green-400 tabular-nums">{fmt(amtNum)}</span>
               </div>
             )}
           </div>
@@ -1846,7 +1849,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
         }}
         disabled={saving || !amtNum || amtNum <= 0}
         className="w-full py-3.5 bg-brand-500 hover:bg-brand-600 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] disabled:opacity-50 shadow-sm">
-        {saving ? "Withdrawing…" : amtNum > 0 && netAmt > 0 ? `Withdraw ₦${fmt(netAmt)}` : "Withdraw"}
+        {saving ? "Withdrawing…" : amtNum > 0 && netAmt > 0 ? `Withdraw ${fmt(netAmt)}` : "Withdraw"}
       </button>
     </>
   );
@@ -1885,14 +1888,17 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
               </button>
             </div>
 
-            {/* Hero: one clear number leads */}
+            {/* Hero: one clear number — skeleton while locks load (bug 1 fix) */}
             <div className="text-center mb-4">
               <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1">Ready to withdraw</p>
-              <p className="text-4xl font-black text-slate-800 dark:text-white tabular-nums">₦{fmt(withdrawable)}</p>
+              {locksLoaded
+                ? <p className="text-4xl font-black text-slate-800 dark:text-white tabular-nums">{fmt(withdrawable)}</p>
+                : <div className="h-10 w-40 bg-slate-200 dark:bg-slate-700 rounded-xl mx-auto animate-pulse" />
+              }
             </div>
 
-            {/* Collapsible set-aside — only if something is locked */}
-            {lockedAmount > 0 && (
+            {/* Collapsible set-aside — only once locks are loaded and something is actually locked */}
+            {locksLoaded && lockedAmount > 0 && (
               <details className="mb-4 group">
                 <summary className="text-xs font-bold text-amber-600 dark:text-amber-400 cursor-pointer select-none list-none flex items-center gap-1.5">
                   <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 transition-transform group-open:rotate-90 flex-shrink-0" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
@@ -1901,17 +1907,17 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
                 <div className="mt-2 space-y-1.5 pl-1">
                   {cycleLocked > 0 && (
                     <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-800/30">
-                      <p className="text-xs text-amber-700 dark:text-amber-400">₦{fmt(cycleLocked)} · In your savings plan (until it completes)</p>
+                      <p className="text-xs text-amber-700 dark:text-amber-400">{fmt(cycleLocked)} · In your savings plan (until it completes)</p>
                     </div>
                   )}
                   {groupLocked > 0 && (
                     <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-800/30">
-                      <p className="text-xs text-amber-700 dark:text-amber-400">₦{fmt(groupLocked)} · In your group savings</p>
+                      <p className="text-xs text-amber-700 dark:text-amber-400">{fmt(groupLocked)} · In your group savings</p>
                     </div>
                   )}
                   {esusuLocked > 0 && (
                     <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-800/30">
-                      <p className="text-xs text-amber-700 dark:text-amber-400">₦{fmt(esusuLocked)} · In your esusu rotation</p>
+                      <p className="text-xs text-amber-700 dark:text-amber-400">{fmt(esusuLocked)} · In your esusu rotation</p>
                     </div>
                   )}
                 </div>
@@ -2102,6 +2108,13 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
                 {esusuRounds.length === 0 && (
                   <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">No active esusu round</p>
                 )}
+                {/* Bug 3 fix: show same esusuLocked source as the header hero number */}
+                {locksLoaded && esusuLocked > 0 && (
+                  <div className="flex items-center justify-between px-3 py-2.5 bg-amber-50 dark:bg-amber-900/10 rounded-xl border border-amber-100 dark:border-amber-800/30 mb-1">
+                    <p className="text-[11px] text-amber-700 dark:text-amber-400 font-semibold">Your locked amount in esusu</p>
+                    <p className="text-sm font-extrabold text-amber-700 dark:text-amber-400 tabular-nums">{fmt(esusuLocked)}</p>
+                  </div>
+                )}
                 {esusuRounds.map(rd => {
                   const myTurn = (rd.turns || []).find(t => t.client_id === client.id);
                   const myTurnStatus = myTurn?.status;
@@ -2118,7 +2131,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
                             <span className="text-[9px] font-extrabold bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400 px-2 py-0.5 rounded-full uppercase tracking-wide">Active</span>
                           </div>
                           <div className="flex items-center justify-between">
-                            <p className="text-[11px] text-slate-500 dark:text-slate-400">Pot collected</p>
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400">Group pot (all members)</p>
                             <p className="text-sm font-extrabold text-slate-700 dark:text-slate-200">{fmt(rd.pot_size || 0)}</p>
                           </div>
                           <div className="flex items-center justify-between mt-0.5">
