@@ -787,48 +787,247 @@ function AjoTxnPinModal({ clientId, hasPinSet, title, amount, description, onApp
   );
 }
 
-// ── Pay Contribution modal ────────────────────────────────────────────────
-// Contribution type selector — shown only when client is in a group (2 options)
-function ContribTypeSelector({ clientGroups = [], value, selectedGroupId, onChange, label = "Which savings goal?" }) {
-  if (!clientGroups.length) return null;
-  const opts = [
-    { key: "personal_savings", label: "Personal Savings", desc: "Add to your personal savings balance", groupId: null },
-    ...clientGroups.map(g =>
-      g.group_mode === "rotating"
-        ? { key: "esusu_rotation", label: g.name, desc: "Esusu Rotation — contribute to the pot", groupId: g.id }
-        : { key: "group_savings",  label: g.name, desc: "Savings Group — contribute to the pool",  groupId: g.id }
-    ),
-  ];
+
+
+// ── Shared money-screen helpers ───────────────────────────────────────────
+// Pure helpers — re-derive from live contribution rows each render so
+// realtime updates (via ajo_client_sync) propagate automatically.
+
+function getCycleStats(cycle, contributions) {
+  const rows = contributions.filter(c => c.cycle_id === cycle.id && c.status === "completed");
+  const saved = rows.filter(c => c.type === "contribution").reduce((s, c) => s + Number(c.amount || 0), 0);
+  const fees  = rows.filter(c => c.type === "commission" || c.type === "registration_fee").reduce((s, c) => s + Number(c.amount || 0), 0);
+  const withd = rows.filter(c => c.type === "withdrawal").reduce((s, c) => s + Number(c.amount || 0), 0);
+  return { saved, net: Math.max(0, saved - fees - withd) };
+}
+
+function getGroupSaved(groupId, startedAt, contributions) {
+  return contributions.filter(c =>
+    c.group_id === groupId &&
+    c.contribution_context === "group_savings" &&
+    c.type === "contribution" && c.status === "completed" &&
+    (!startedAt || new Date(c.created_at) >= new Date(startedAt))
+  ).reduce((s, c) => s + Number(c.amount || 0), 0);
+}
+
+// ── Shared tab/sub-tab bar components (used by all three money screens) ──
+
+function MoneyTabBar({ tabs, active, onChange }) {
   return (
-    <div className="mb-5">
-      <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">{label}</p>
-      <div className="space-y-2">
-        {opts.map(opt => (
-          <button key={`${opt.key}:${opt.groupId || "personal"}`} type="button"
-            onClick={() => onChange(opt.key, opt.groupId)}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl border-2 text-left transition ${
-              value === opt.key && selectedGroupId === opt.groupId
-                ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20"
-                : "border-slate-200 dark:border-slate-700"
-            }`}>
-            <div className="flex-1 min-w-0">
-              <p className="text-[15px] font-extrabold text-slate-800 dark:text-white truncate">{opt.label}</p>
-              <p className="text-[11px] text-slate-400 dark:text-slate-500">{opt.desc}</p>
-            </div>
-            <div className={`flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-              value === opt.key && selectedGroupId === opt.groupId ? "border-brand-500 bg-brand-500" : "border-slate-300 dark:border-slate-600"
-            }`}>
-              {value === opt.key && selectedGroupId === opt.groupId && <div className="w-2 h-2 rounded-full bg-white" />}
-            </div>
-          </button>
-        ))}
+    <div className="flex gap-0.5 p-1 bg-slate-100 dark:bg-slate-700/50 rounded-xl mb-3">
+      {tabs.map(t => (
+        <button key={t.key} type="button" onClick={() => onChange(t.key)}
+          className={`flex-1 py-2 px-1 rounded-lg text-[11px] font-bold transition ${
+            active === t.key
+              ? "bg-white dark:bg-slate-700 text-slate-800 dark:text-white shadow-sm"
+              : "text-slate-500 dark:text-slate-400"
+          }`}>
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function MoneySubTabBar({ tabs, active, onChange }) {
+  if (!tabs || tabs.length <= 1) return null;
+  return (
+    <div className="flex gap-1.5 mb-3">
+      {tabs.map(t => (
+        <button key={t.key} type="button" onClick={() => onChange(t.key)}
+          className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition border ${
+            active === t.key
+              ? "bg-brand-50 dark:bg-brand-900/30 border-brand-300 dark:border-brand-700 text-brand-700 dark:text-brand-300"
+              : "border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400"
+          }`}>
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// Summary row — two figures side-by-side; supports skeleton while loading
+function MoneySummaryRow({ label1, val1, label2, val2, loading, highlightVal2 = true }) {
+  return (
+    <div className="flex items-center justify-between px-3 py-2.5 mb-3 bg-slate-50 dark:bg-slate-700/40 rounded-xl">
+      <div>
+        <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-0.5">{label1}</p>
+        {loading
+          ? <div className="h-4 w-20 bg-slate-200 dark:bg-slate-600 rounded animate-pulse" />
+          : <p className="text-sm font-black text-slate-700 dark:text-slate-200 tabular-nums">{fmt(val1)}</p>
+        }
+      </div>
+      <div className="text-right">
+        <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-0.5">{label2}</p>
+        {loading
+          ? <div className="h-4 w-16 bg-slate-200 dark:bg-slate-600 rounded animate-pulse ml-auto" />
+          : <p className={`text-sm font-black tabular-nums ${highlightVal2 && val2 > 0 ? "text-green-600 dark:text-green-400" : "text-slate-700 dark:text-slate-200"}`}>{fmt(val2)}</p>
+        }
       </div>
     </div>
   );
 }
 
+// ── Shared card primitives ────────────────────────────────────────────────
+// Each card shows static info in its header button; when selected the
+// children (action form) appear below in an inline expansion.
+
+function MoneyCycleCard({ cycle, saved, net, locked, lockReason, selected, onSelect, mode, children }) {
+  return (
+    <div className={`mb-2 rounded-xl border-2 transition overflow-hidden ${
+      selected
+        ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20"
+        : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+    }`}>
+      <button type="button" onClick={onSelect} className="w-full text-left px-3.5 py-3">
+        <div className="flex items-start justify-between gap-2 mb-1">
+          <p className="text-sm font-extrabold text-slate-700 dark:text-slate-200 leading-tight">{cycle.label || "Savings"}</p>
+          <span className={`flex-shrink-0 text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wide mt-0.5 ${
+            locked
+              ? "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400"
+              : "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400"
+          }`}>
+            {locked ? "Active" : "Complete"}
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          {saved > 0 && (
+            <span className="text-xs text-slate-500 dark:text-slate-400">Saved <span className="font-bold text-slate-700 dark:text-slate-200 tabular-nums">{fmt(saved)}</span></span>
+          )}
+          {mode === "withdraw" && (locked
+            ? <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium text-right max-w-[55%]">{lockReason || "Available when complete"}</span>
+            : <span className="text-xs font-bold text-green-600 dark:text-green-400 tabular-nums">{fmt(net)} available</span>
+          )}
+          {(mode === "pay" || mode === "deposit") && (
+            <span className="text-[10px] font-bold text-brand-600 dark:text-brand-400">
+              {cycle.commission_model === "first_period" ? "Fixed savings" : "Flexible savings"}
+            </span>
+          )}
+        </div>
+      </button>
+      {selected && children && (
+        <div className="px-3.5 pb-3.5 pt-0.5 border-t border-slate-100 dark:border-slate-700">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MoneyGroupCard({ group, saved, selected, onSelect, mode, children }) {
+  const rs = group.round_status || "not_started";
+  const isReleased = rs === "closed";
+  const isActive   = rs === "active";
+  const statusLabel = rs === "not_started" ? "Not started" : isActive ? "Saving" : rs === "target_met" ? "Target met" : "Released";
+  const statusColor = isReleased
+    ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400"
+    : isActive ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400"
+    : rs === "target_met" ? "bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-400"
+    : "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400";
+  return (
+    <div className={`mb-2 rounded-xl border-2 transition overflow-hidden ${
+      selected ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20" : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+    }`}>
+      <button type="button" onClick={onSelect} className="w-full text-left px-3.5 py-3">
+        <div className="flex items-start justify-between gap-2 mb-1">
+          <p className="text-sm font-extrabold text-slate-700 dark:text-slate-200 leading-tight truncate">{group.name}</p>
+          <span className={`flex-shrink-0 text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wide mt-0.5 ${statusColor}`}>
+            {statusLabel}
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          {saved > 0 && (
+            <span className="text-xs text-slate-500 dark:text-slate-400">My savings <span className="font-bold text-slate-700 dark:text-slate-200 tabular-nums">{fmt(saved)}</span></span>
+          )}
+          {mode === "withdraw" && (isReleased
+            ? <span className="text-xs font-bold text-green-600 dark:text-green-400 tabular-nums">{fmt(saved)} available</span>
+            : <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">Locked until group closes</span>
+          )}
+          {(mode === "pay" || mode === "deposit") && (
+            <span className="text-[10px] text-blue-600 dark:text-blue-400 font-medium">Group savings</span>
+          )}
+        </div>
+      </button>
+      {selected && children && (
+        <div className="px-3.5 pb-3.5 pt-0.5 border-t border-slate-100 dark:border-slate-700">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Esusu card — "Group pot (all members)" is always distinct from client's stake
+function MoneyEsusuCard({ rd, client, esusuLockedTotal, roundCount, selected, onSelect, mode, children }) {
+  const myTurn = (rd.turns || []).find(t => t.client_id === client.id);
+  const myTurnStatus = myTurn?.status;
+  const hasPaid = myTurnStatus === "paid";
+  const isCurrent = myTurnStatus === "current";
+  const hasPaidContrib = !!rd.contribution_ticks?.[client.id];
+  const myStake = roundCount > 0 ? Math.round(esusuLockedTotal / roundCount) : 0;
+  const statusLabel = hasPaid ? "Payout received" : isCurrent ? "Your turn" : "Waiting";
+  const statusColor = hasPaid
+    ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400"
+    : isCurrent ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400"
+    : "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400";
+  return (
+    <div className={`mb-2 rounded-xl border-2 transition overflow-hidden ${
+      selected ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20" : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+    }`}>
+      <button type="button" onClick={onSelect} className="w-full text-left px-3.5 py-3">
+        <div className="flex items-start justify-between gap-2 mb-1">
+          <p className="text-sm font-extrabold text-slate-700 dark:text-slate-200 leading-tight truncate">{rd.group?.name || "Esusu"}</p>
+          <span className={`flex-shrink-0 text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wide mt-0.5 ${statusColor}`}>
+            {statusLabel}
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <span className="text-xs text-slate-500 dark:text-slate-400">
+            Group pot (all members) <span className="font-bold text-slate-700 dark:text-slate-200 tabular-nums">{fmt(rd.pot_size || 0)}</span>
+          </span>
+          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${hasPaidContrib ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400" : "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400"}`}>
+            {hasPaidContrib ? "Period paid" : "Pending"}
+          </span>
+        </div>
+        {mode === "withdraw" && myStake > 0 && !hasPaid && (
+          <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">{fmt(myStake)} locked — released when your turn arrives</p>
+        )}
+        {mode === "withdraw" && hasPaid && (
+          <p className="text-[10px] text-green-600 dark:text-green-400 mt-1">Payout credited to your balance — withdraw from the Personal tab</p>
+        )}
+      </button>
+      {selected && children && (
+        <div className="px-3.5 pb-3.5 pt-0.5 border-t border-slate-100 dark:border-slate-700">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Simple esusu card for Pay/Deposit (no rotationsData available there)
+function MoneyEsusuSimpleCard({ group, selected, onSelect, children }) {
+  return (
+    <div className={`mb-2 rounded-xl border-2 transition overflow-hidden ${
+      selected ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20" : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+    }`}>
+      <button type="button" onClick={onSelect} className="w-full text-left px-3.5 py-3">
+        <p className="text-sm font-extrabold text-slate-700 dark:text-slate-200">{group.name}</p>
+        <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Esusu rotation group</p>
+      </button>
+      {selected && children && (
+        <div className="px-3.5 pb-3.5 pt-0.5 border-t border-slate-100 dark:border-slate-700">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PayContributionModal({ client, clientGroups = [], cycles = [], onClose, onSuccess }) {
-  const [status,          setStatus]         = useState("idle"); // idle | loading | awaiting | verifying | done | error
+  // ── Core state (unchanged from original) ──────────────────────────────────
+  const [status,          setStatus]         = useState("idle");
   const [message,         setMessage]        = useState("");
   const [pendingRef,      setPendingRef]     = useState(null);
   const [paidAmt,         setPaidAmt]        = useState(0);
@@ -837,11 +1036,33 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], onClose,
   const [showShare,       setShowShare]      = useState(false);
   const [contribCtx,      setContribCtx]     = useState("personal_savings");
   const [contribGroupId,  setContribGroupId] = useState(null);
-  const activePsCycles = cycles.filter(cy => cy.status === "active");
-  const [selectedCycleId, setSelectedCycleId] = useState(() => activePsCycles.length === 1 ? activePsCycles[0].id : null);
+  const [selectedCycleId, setSelectedCycleId] = useState(null);
   const popupCleanup = useRef(null);
   useEffect(() => () => popupCleanup.current?.(), []);
 
+  // ── Navigation state ──────────────────────────────────────────────────────
+  const [mainTab,        setMainTab]        = useState("personal");
+  const [personalSubTab, setPersonalSubTab] = useState("first_period");
+
+  // ── Category derivations — re-derive from props each render (realtime-safe)
+  const activeCycles  = cycles.filter(cy => cy.status === "active");
+  const fpCycles      = activeCycles.filter(cy => cy.commission_model === "first_period");
+  const pctCycles     = activeCycles.filter(cy => cy.commission_model !== "first_period");
+  const savingsGroups = clientGroups.filter(m => m.group?.group_mode === "savings").map(m => m.group).filter(Boolean);
+  const esusuGroups   = clientGroups.filter(m => m.group?.group_mode === "esusu").map(m => m.group).filter(Boolean);
+
+  const personalSubTabs = [
+    ...(fpCycles.length  > 0 ? [{ key: "first_period", label: "First Period" }] : []),
+    ...(pctCycles.length > 0 ? [{ key: "percent",      label: "Percentage" }]   : []),
+  ];
+
+  // Keep sub-tab on a valid choice when cycles change
+  useEffect(() => {
+    if (personalSubTab === "first_period" && fpCycles.length === 0 && pctCycles.length > 0) setPersonalSubTab("percent");
+    if (personalSubTab === "percent"      && pctCycles.length === 0 && fpCycles.length > 0) setPersonalSubTab("first_period");
+  }, [fpCycles.length, pctCycles.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Unchanged handlers ────────────────────────────────────────────────────
   const doVerify = useCallback(async (ref) => {
     if (!ref) return;
     setStatus("verifying");
@@ -862,17 +1083,17 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], onClose,
     if (!amt || amt <= 0) { setMessage("Please enter a valid amount."); return; }
     setStatus("loading"); setMessage(""); setPendingRef(null);
     setPaidAmt(amt);
-
     try {
-      const res = await ajoFn("initialize-payment", { client_id: client.id, amount: amt, contribution_context: contribCtx, group_id: contribGroupId || undefined, ...(contribCtx === "personal_savings" && selectedCycleId ? { cycle_id: selectedCycleId } : {}) });
+      const res = await ajoFn("initialize-payment", {
+        client_id: client.id, amount: amt, contribution_context: contribCtx,
+        group_id: contribGroupId || undefined,
+        ...(contribCtx === "personal_savings" && selectedCycleId ? { cycle_id: selectedCycleId } : {}),
+      });
       if (!res.authorization_url) throw new Error("Payment initialization failed");
-
       const ref = res.reference;
       setPendingRef(ref);
       setStatus("awaiting");
       setMessage("Paystack is open. After paying, come back here and tap the button below.");
-
-      // Open in-app browser (Chrome Custom Tabs on Android, popup on web)
       popupCleanup.current?.();
       popupCleanup.current = openPaystackPopup(res.authorization_url, {
         onClose: (urlRef) => setTimeout(() => doVerify(urlRef || ref), 600),
@@ -883,210 +1104,214 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], onClose,
     }
   };
 
-  // Full-screen success screen — tap "Share Receipt" for shareable receipt modal
+  // ── Action form — shown inside the selected card ──────────────────────────
+  const payForm = (
+    <div className="pt-3 space-y-2">
+      <div className="flex items-center gap-2">
+        <span className="text-xl font-black text-brand-600 dark:text-brand-300">₦</span>
+        <input
+          type="number" inputMode="numeric" min="1"
+          value={customAmt} onChange={e => setCustomAmt(e.target.value)}
+          disabled={status === "loading" || status === "awaiting" || status === "verifying"}
+          placeholder="Enter amount"
+          className="flex-1 bg-transparent text-xl font-black text-brand-600 dark:text-brand-300 outline-none placeholder:text-brand-200 dark:placeholder:text-brand-500 tabular [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+        />
+      </div>
+      {client?.contribution_amount > 0 && Number(customAmt) !== client.contribution_amount && (
+        <button onClick={() => setCustomAmt(String(client.contribution_amount))}
+          className="text-[10px] text-brand-500 dark:text-brand-400 underline underline-offset-2">
+          Use {fmt(client.contribution_amount)} instead
+        </button>
+      )}
+      {contribCtx === "personal_savings" && (() => {
+        if (Number(client?.total_saved || 0) > 0) return null;
+        const regCharge = Number(client?.registration_charge || 0);
+        const expected  = Number(client?.contribution_amount  || 0);
+        const minReq    = expected + regCharge;
+        if (minReq <= 0 || (regCharge === 0 && client?.commission_model !== "first_period")) return null;
+        return (
+          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl px-3 py-2">
+            <p className="text-[11px] font-bold text-blue-700 dark:text-blue-300">
+              Your first payment is ₦{minReq.toLocaleString("en-NG")} — includes a one-time ₦{regCharge.toLocaleString("en-NG")} registration. After today, every payment is ₦{expected.toLocaleString("en-NG")}.
+            </p>
+          </div>
+        );
+      })()}
+      {message && (
+        <p className={`text-xs px-3 py-2 rounded-xl ${
+          status === "error"   ? "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400"
+          : status === "awaiting" ? "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300"
+          : "bg-slate-50 dark:bg-slate-800 text-slate-500"
+        }`}>{message}</p>
+      )}
+      {(status === "awaiting" || status === "verifying") && (
+        <button onClick={() => doVerify(pendingRef)} disabled={status === "verifying"}
+          className="w-full py-3.5 bg-brand-500 hover:bg-brand-600 disabled:opacity-60 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2">
+          {status === "verifying"
+            ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Verifying…</>
+            : "I've paid — confirm my savings"}
+        </button>
+      )}
+      <button
+        onClick={() => {
+          const amt = parseFloat(customAmt);
+          if (!amt || amt <= 0) { setMessage("Please enter a valid amount."); return; }
+          setTxnPin({
+            title: "Confirm Contribution",
+            amount: Math.round(amt * 100),
+            description: "Savings contribution via Paystack",
+            hasPinSet: Boolean(client?.portal_pin_changed_at),
+            onApprove: () => { setTxnPin(null); handlePay(); },
+          });
+        }}
+        disabled={status === "loading" || status === "awaiting" || status === "verifying"}
+        className="w-full py-3.5 bg-brand-500 hover:bg-brand-600 disabled:opacity-60 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2 shadow-md">
+        {status === "loading"
+          ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Opening Paystack…</>
+          : status === "awaiting" ? "Open Paystack again"
+          : <>Pay {fmt(parseFloat(customAmt) || 0)} now</>}
+      </button>
+    </div>
+  );
+
+  // ── Done / receipt screen (unchanged) ─────────────────────────────────────
   if (status === "done") {
     const receiptData = buildAjoContributionReceipt(
-      {
-        id: pendingRef, type: "contribution", status: "completed",
-        amount: paidAmt || client?.contribution_amount || 0,
-        created_at: new Date().toISOString(), payment_method: "paystack",
-      },
-      client?.full_name || "—",
-      client?.group_name || "Ajo Group"
+      { id: pendingRef, type: "contribution", status: "completed", amount: paidAmt || client?.contribution_amount || 0, created_at: new Date().toISOString(), payment_method: "paystack" },
+      client?.full_name || "—", client?.group_name || "Ajo Group"
     );
-
-    if (showShare) {
-      return (
-        <TransactionDetailModal
-          data={receiptData}
-          onClose={() => setShowShare(false)}
-        />
-      );
-    }
-
+    if (showShare) return <TransactionDetailModal data={receiptData} onClose={() => setShowShare(false)} />;
     return (
       <div className="fixed inset-0 z-[100] bg-white dark:bg-slate-900 flex flex-col">
-        {/* Top accent */}
         <div className="h-1.5 w-full bg-[linear-gradient(90deg,#16255A,#3DA829)]" />
-
         <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
-          {/* Checkmark */}
           <div className="w-24 h-24 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mb-6 shadow-lg">
-            <svg viewBox="0 0 24 24" fill="none" className="w-12 h-12 text-green-500" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
-              <path d="M20 6L9 17l-5-5" />
-            </svg>
+            <svg viewBox="0 0 24 24" fill="none" className="w-12 h-12 text-green-500" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M20 6L9 17l-5-5" /></svg>
           </div>
-
           <p className="text-[11px] font-bold text-green-500 uppercase tracking-widest mb-1">Transaction Successful</p>
           <AmountDisplay amount={paidAmt || client?.contribution_amount || 0} size="hero" align="center" style={{ marginBottom: 4 }} />
-          <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
-            Added to your savings
-          </p>
-
-          <p className="text-[11px] text-slate-400 dark:text-slate-500">
-            Your balance has been updated.
-          </p>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">Added to your savings</p>
+          <p className="text-[11px] text-slate-400 dark:text-slate-500">Your balance has been updated.</p>
         </div>
-
-        {/* Bottom actions */}
         <div className="flex-none px-6 pb-10 pt-4 space-y-3">
-          <button
-            onClick={() => setShowShare(true)}
+          <button onClick={() => setShowShare(true)}
             className="w-full flex items-center justify-center gap-2 py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] shadow-md">
             <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-              <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8" />
-              <polyline points="16 6 12 2 8 6" />
-              <line x1="12" y1="2" x2="12" y2="15" />
+              <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8" /><polyline points="16 6 12 2 8 6" /><line x1="12" y1="2" x2="12" y2="15" />
             </svg>
             Share Receipt
           </button>
-          <button
-            onClick={onClose}
-            className="w-full py-3.5 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-2xl font-bold text-sm transition active:scale-[0.99]">
-            Close
-          </button>
+          <button onClick={onClose} className="w-full py-3.5 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-2xl font-bold text-sm transition active:scale-[0.99]">Close</button>
         </div>
       </div>
     );
   }
 
+  // ── Main render ────────────────────────────────────────────────────────────
   return (
     <div className="fixed inset-0 z-[100] bg-black/50 flex items-end justify-center">
       <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-t-3xl p-6 shadow-2xl max-h-[88dvh] overflow-y-auto">
+        {/* Header */}
         <div className="flex items-center gap-3 mb-5">
           <div className="w-10 h-10 bg-green-100 dark:bg-green-900/40 rounded-2xl flex items-center justify-center flex-shrink-0">
-            <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-green-600 dark:text-green-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-              <path d="M12 5v14M5 12l7 7 7-7" />
-            </svg>
+            <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-green-600 dark:text-green-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M12 5v14M5 12l7 7 7-7" /></svg>
           </div>
-          <div className="flex-1">
-            <p className="font-extrabold text-slate-800 dark:text-white">Pay your contribution</p>
-            <p className="text-[11px] text-slate-400">Secure payment via Paystack</p>
-          </div>
+          <p className="flex-1 font-extrabold text-slate-800 dark:text-white">Pay your contribution</p>
           <button onClick={onClose} className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-500">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="w-3.5 h-3.5">
-              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="w-3.5 h-3.5"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
           </button>
         </div>
 
-        {/* LEAD: Amount — the one thing they need to do */}
-        <div className="bg-brand-50 dark:bg-brand-900/20 rounded-2xl px-4 py-4 mb-4">
-          <p className="text-[10px] font-bold text-brand-500 dark:text-brand-400 uppercase tracking-wider mb-2 capitalize">{client?.contribution_frequency || "monthly"} contribution</p>
-          <div className="flex items-center gap-2">
-            <span className="text-2xl font-black text-brand-600 dark:text-brand-300">₦</span>
-            <input
-              type="number"
-              inputMode="numeric"
-              min="1"
-              value={customAmt}
-              onChange={e => setCustomAmt(e.target.value)}
-              disabled={status === "loading" || status === "awaiting" || status === "verifying"}
-              placeholder="Enter amount"
-              className="flex-1 bg-transparent text-2xl font-black text-brand-600 dark:text-brand-300 outline-none placeholder:text-brand-200 dark:placeholder:text-brand-500 tabular [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-            />
-          </div>
-          {client?.contribution_amount > 0 && Number(customAmt) !== client.contribution_amount && (
-            <button
-              onClick={() => setCustomAmt(String(client.contribution_amount))}
-              className="mt-2 text-[10px] text-brand-500 dark:text-brand-400 underline underline-offset-2">
-              Use {fmt(client.contribution_amount)} instead
-            </button>
-          )}
-        </div>
-
-        {/* First-deposit info — plain language, no formula */}
-        {contribCtx === "personal_savings" && (() => {
-          if (Number(client?.total_saved || 0) > 0) return null;
-          const regCharge = Number(client?.registration_charge || 0);
-          const expected  = Number(client?.contribution_amount || 0);
-          const minReq    = expected + regCharge;
-          if (minReq <= 0 || (regCharge === 0 && client?.commission_model !== "first_period")) return null;
-          return (
-            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl px-3 py-2.5 mb-4">
-              <p className="text-[11px] font-bold text-blue-700 dark:text-blue-300">
-                Your first payment is ₦{minReq.toLocaleString("en-NG")} — includes a one-time ₦{regCharge.toLocaleString("en-NG")} registration. After today, every payment is ₦{expected.toLocaleString("en-NG")}.
-              </p>
-            </div>
-          );
-        })()}
-
-        {/* Goal selector — secondary, only visible if client is in a group */}
-        <ContribTypeSelector clientGroups={clientGroups.map(m => m.group).filter(Boolean)} value={contribCtx} selectedGroupId={contribGroupId}
-          onChange={(ctx, gid) => { setContribCtx(ctx); setContribGroupId(gid || null); }} />
-
-        {/* Cycle picker — secondary, only if personal savings and multiple active cycles */}
-        {contribCtx === "personal_savings" && activePsCycles.length > 1 && (
-          <div className="mb-4">
-            <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Which savings goal?</p>
-            <div className="space-y-1.5">
-              {activePsCycles.map(cyc => (
-                <button key={cyc.id} type="button"
-                  onClick={() => setSelectedCycleId(cyc.id)}
-                  className={`w-full flex items-center justify-between px-3 py-2 rounded-xl border-2 text-left text-sm transition ${
-                    selectedCycleId === cyc.id
-                      ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20 text-brand-700 dark:text-brand-300"
-                      : "border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200"
-                  }`}>
-                  <span className="font-semibold">{cyc.label || "Savings"}</span>
-                  {selectedCycleId === cyc.id && <div className="w-3.5 h-3.5 rounded-full bg-brand-500 flex-shrink-0" />}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {message && (
-          <p className={`text-xs mb-4 px-3 py-2 rounded-xl ${
-            status === "error" ? "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400"
-            : status === "awaiting" ? "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300"
-            : "bg-slate-50 dark:bg-slate-800 text-slate-500"
-          }`}>
-            {message}
-          </p>
-        )}
-
-        {(status === "awaiting" || status === "verifying") && (
-          <button
-            onClick={() => doVerify(pendingRef)}
-            disabled={status === "verifying"}
-            className="w-full mb-3 py-4 bg-brand-500 hover:bg-brand-600 disabled:opacity-60 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2 shadow-md">
-            {status === "verifying"
-              ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Verifying…</>
-              : "I've paid — confirm my savings"}
-          </button>
-        )}
-
-        <button
-          onClick={() => {
-            const amt = parseFloat(customAmt);
-            if (!amt || amt <= 0) { setMessage("Please enter a valid amount."); return; }
-            const hasPinSet = Boolean(client?.portal_pin_changed_at);
-            setTxnPin({
-              title: "Confirm Contribution",
-              amount: Math.round(amt * 100),
-              description: "Savings contribution via Paystack",
-              hasPinSet,
-              onApprove: () => { setTxnPin(null); handlePay(); },
-            });
+        {/* Three-tab bar */}
+        <MoneyTabBar
+          tabs={[
+            { key: "personal", label: "Personal" },
+            ...(savingsGroups.length > 0 ? [{ key: "groups", label: "Savings Groups" }] : []),
+            ...(esusuGroups.length    > 0 ? [{ key: "esusu",  label: "Esusu" }]          : []),
+          ]}
+          active={mainTab}
+          onChange={tab => {
+            setMainTab(tab);
+            setSelectedCycleId(null);
+            setContribGroupId(null);
+            setMessage("");
+            if (tab === "personal") setContribCtx("personal_savings");
           }}
-          disabled={status === "loading" || status === "awaiting" || status === "verifying"}
-          className="w-full py-4 bg-brand-500 hover:bg-brand-600 disabled:opacity-60 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2 shadow-md">
-          {status === "loading"
-            ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Opening Paystack…</>
-            : status === "awaiting" ? "Open Paystack again"
-            : <>Pay {fmt(parseFloat(customAmt) || 0)} now</>}
-        </button>
-        <button onClick={onClose} disabled={status === "loading" || status === "verifying"}
-          className="w-full mt-3 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition text-center py-2">
-          Cancel
-        </button>
+        />
+
+        {/* ── Personal tab ─────────────────────────────────────────────── */}
+        {mainTab === "personal" && (
+          <>
+            <MoneySubTabBar tabs={personalSubTabs} active={personalSubTab}
+              onChange={sub => { setPersonalSubTab(sub); setSelectedCycleId(null); setMessage(""); }} />
+
+            {personalSubTabs.length === 0 && (
+              <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">No active savings plans</p>
+            )}
+
+            {personalSubTab === "first_period" && fpCycles.map(cy => (
+              <MoneyCycleCard key={cy.id} cycle={cy} saved={0} net={0} locked={false} mode="pay"
+                selected={selectedCycleId === cy.id}
+                onSelect={() => { setSelectedCycleId(cy.id); setContribCtx("personal_savings"); setContribGroupId(null); setMessage(""); }}>
+                {payForm}
+              </MoneyCycleCard>
+            ))}
+
+            {personalSubTab === "percent" && pctCycles.map(cy => (
+              <MoneyCycleCard key={cy.id} cycle={cy} saved={0} net={0} locked={false} mode="pay"
+                selected={selectedCycleId === cy.id}
+                onSelect={() => { setSelectedCycleId(cy.id); setContribCtx("personal_savings"); setContribGroupId(null); setMessage(""); }}>
+                {payForm}
+              </MoneyCycleCard>
+            ))}
+
+            {/* No cycles at all fallback */}
+            {personalSubTab === "first_period" && fpCycles.length === 0 && (
+              <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-4">No first-period cycles</p>
+            )}
+            {personalSubTab === "percent" && pctCycles.length === 0 && (
+              <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-4">No percentage cycles</p>
+            )}
+          </>
+        )}
+
+        {/* ── Savings Groups tab ───────────────────────────────────────── */}
+        {mainTab === "groups" && (
+          <>
+            {savingsGroups.length === 0 && (
+              <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">No savings groups</p>
+            )}
+            {savingsGroups.map(g => (
+              <MoneyGroupCard key={g.id} group={g} saved={0} mode="pay"
+                selected={contribGroupId === g.id && contribCtx === "group_savings"}
+                onSelect={() => { setSelectedCycleId(null); setContribCtx("group_savings"); setContribGroupId(g.id); setMessage(""); }}>
+                {payForm}
+              </MoneyGroupCard>
+            ))}
+          </>
+        )}
+
+        {/* ── Esusu tab ───────────────────────────────────────────────── */}
+        {mainTab === "esusu" && (
+          <>
+            {esusuGroups.length === 0 && (
+              <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">No esusu groups</p>
+            )}
+            {esusuGroups.map(g => (
+              <MoneyEsusuSimpleCard key={g.id} group={g}
+                selected={contribGroupId === g.id && contribCtx === "esusu_rotation"}
+                onSelect={() => { setSelectedCycleId(null); setContribCtx("esusu_rotation"); setContribGroupId(g.id); setMessage(""); }}>
+                {payForm}
+              </MoneyEsusuSimpleCard>
+            ))}
+          </>
+        )}
+
         {txnPin && <AjoTxnPinModal {...txnPin} clientId={client?.id} onCancel={() => setTxnPin(null)} />}
       </div>
     </div>
   );
 }
-
 // ── Quick Actions (Staff Portal style) ────────────────────────────────────
 function ActionBtn({ label, icon, bg, onClick }) {
   return (
@@ -1290,8 +1515,9 @@ function ChangePasswordModal({ onClose }) {
   );
 }
 
-// ── Manual deposit modal ──────────────────────────────────────────────────
+
 function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo, onClose, onSuccess }) {
+  // ── Core state (unchanged from original) ──────────────────────────────────
   const [amount,         setAmount]        = useState("");
   const [payerName,      setPayerName]     = useState("");
   const [notes,          setNotes]         = useState("");
@@ -1303,18 +1529,38 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
   const [done,           setDone]          = useState(false);
   const [contribCtx,     setContribCtx]    = useState("personal_savings");
   const [contribGroupId, setContribGroupId] = useState(null);
-  const activePsCyclesMd = cycles.filter(cy => cy.status === "active");
-  const [selectedMdCycleId, setSelectedMdCycleId] = useState(() => activePsCyclesMd.length === 1 ? activePsCyclesMd[0].id : null);
+  const [selectedCycleId, setSelectedCycleId] = useState(null);
   const [copiedField,    setCopiedField]   = useState(null);
   const fileRef = useRef(null);
 
-  // Prefer the client's own dedicated account; fall back to the owner's business account
+  // ── Navigation state ──────────────────────────────────────────────────────
+  const [mainTab,        setMainTab]        = useState("personal");
+  const [personalSubTab, setPersonalSubTab] = useState("first_period");
+
+  // ── Category derivations — re-derive from props each render (realtime-safe)
+  const activeCycles  = cycles.filter(cy => cy.status === "active");
+  const fpCycles      = activeCycles.filter(cy => cy.commission_model === "first_period");
+  const pctCycles     = activeCycles.filter(cy => cy.commission_model !== "first_period");
+  const savingsGroups = clientGroups.filter(m => m.group?.group_mode === "savings").map(m => m.group).filter(Boolean);
+  const esusuGroups   = clientGroups.filter(m => m.group?.group_mode === "esusu").map(m => m.group).filter(Boolean);
+
+  const personalSubTabs = [
+    ...(fpCycles.length  > 0 ? [{ key: "first_period", label: "First Period" }] : []),
+    ...(pctCycles.length > 0 ? [{ key: "percent",      label: "Percentage" }]   : []),
+  ];
+
+  useEffect(() => {
+    if (personalSubTab === "first_period" && fpCycles.length === 0 && pctCycles.length > 0) setPersonalSubTab("percent");
+    if (personalSubTab === "percent"      && pctCycles.length === 0 && fpCycles.length > 0) setPersonalSubTab("first_period");
+  }, [fpCycles.length, pctCycles.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Bank details (unchanged) ──────────────────────────────────────────────
   const clientBank = ownerInfo?.client_bank;
   const ownerBank  = ownerInfo?.owner;
   const hasBank = clientBank?.account_number
     ? true
     : !!(ownerBank?.bank_account_number && ownerBank?.bank_name);
-  const amtNum  = parseFloat(amount) || 0;
+  const amtNum = parseFloat(amount) || 0;
 
   const copyText = async (text, field) => {
     try {
@@ -1333,6 +1579,7 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
     setError("");
   };
 
+  // ── handleSubmit (unchanged logic) ────────────────────────────────────────
   const handleSubmit = async () => {
     if (!amtNum || amtNum <= 0) { setError("Enter a valid amount"); return; }
     setSaving(true); setError("");
@@ -1351,8 +1598,8 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
         notes:                notes.trim()        || null,
         proof_url:            proofUrl,
         contribution_context: contribCtx,
-        ...(contribCtx === "personal_savings" && selectedMdCycleId ? { cycle_id: selectedMdCycleId } : {}),
-        ...(contribCtx !== "personal_savings" && contribGroupId   ? { group_id: contribGroupId }    : {}),
+        ...(contribCtx === "personal_savings" && selectedCycleId ? { cycle_id: selectedCycleId } : {}),
+        ...(contribCtx !== "personal_savings" && contribGroupId   ? { group_id: contribGroupId }  : {}),
       });
       setDone(true);
       onSuccess?.();
@@ -1364,6 +1611,101 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
     }
   };
 
+  // ── Deposit action form — shown inside selected card ──────────────────────
+  const depositForm = (
+    <div className="pt-3 space-y-3">
+      {/* Amount */}
+      <div>
+        <p className="text-[10px] font-bold text-brand-500 dark:text-brand-400 uppercase tracking-wider mb-2">How much did you send? <span className="text-red-400">*</span></p>
+        <div className="flex items-center gap-2">
+          <span className="text-xl font-black text-brand-600 dark:text-brand-300">₦</span>
+          <input
+            type="number" inputMode="decimal" min="1"
+            value={amount} onChange={e => setAmount(e.target.value)}
+            placeholder="0.00"
+            className="flex-1 bg-transparent text-xl font-black text-brand-600 dark:text-brand-300 outline-none placeholder:text-brand-200 dark:placeholder:text-brand-700 tabular [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+          />
+        </div>
+        {amtNum > 0 && (
+          <p className="text-[11px] text-brand-400 dark:text-brand-500 mt-1">{fmt(amtNum)} — exact transfer amount</p>
+        )}
+      </div>
+
+      {/* First-deposit info */}
+      {contribCtx === "personal_savings" && (() => {
+        if (Number(client.total_saved || 0) > 0) return null;
+        const regCharge = Number(client.registration_charge || 0);
+        const expected  = Number(client.contribution_amount  || 0);
+        const minReq    = expected + regCharge;
+        if (minReq <= 0 || (regCharge === 0 && client.commission_model !== "first_period")) return null;
+        return (
+          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl px-3 py-2">
+            <p className="text-[11px] font-bold text-blue-700 dark:text-blue-300">
+              Your first payment is ₦{minReq.toLocaleString("en-NG")} — includes a one-time ₦{regCharge.toLocaleString("en-NG")} registration. After today, every payment is ₦{expected.toLocaleString("en-NG")}.
+            </p>
+          </div>
+        );
+      })()}
+
+      {/* Proof upload */}
+      <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={pickFile} />
+      {uploading && (
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[11px] font-bold text-brand-600 dark:text-brand-400">Uploading screenshot…</span>
+            <div className="w-3.5 h-3.5 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+          </div>
+          <div className="h-1.5 bg-brand-100 dark:bg-brand-800 rounded-full overflow-hidden">
+            <div className="h-full bg-brand-500 rounded-full animate-pulse" style={{ width: "75%" }} />
+          </div>
+        </div>
+      )}
+      {!uploading && proofPrev && (
+        <div className="relative">
+          <img src={proofPrev} alt="Proof" className="w-full rounded-xl object-cover max-h-36 border border-slate-200 dark:border-slate-600" />
+          <button onClick={() => { setProofFile(null); setProofPrev(null); }}
+            className="absolute top-2 right-2 w-7 h-7 bg-black/50 rounded-full flex items-center justify-center text-white text-xs font-bold">✕</button>
+        </div>
+      )}
+      {!uploading && !proofPrev && (
+        <button onClick={() => fileRef.current?.click()}
+          className="w-full py-2 text-xs font-bold text-brand-500 dark:text-brand-400 flex items-center gap-2 active:scale-[0.99] transition">
+          <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 flex-shrink-0" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+            <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>
+          </svg>
+          Add a screenshot (optional — speeds up approval)
+        </button>
+      )}
+
+      {/* Optional extra details */}
+      <details className="group">
+        <summary className="text-[11px] font-bold text-slate-400 dark:text-slate-500 cursor-pointer select-none list-none flex items-center gap-1.5">
+          <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3 transition-transform group-open:rotate-90" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
+          Add more details (optional)
+        </summary>
+        <div className="space-y-2 mt-2">
+          <input type="text" value={payerName} onChange={e => setPayerName(e.target.value)}
+            placeholder="Sender name (name on the transfer)"
+            className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+          <input type="text" value={notes} onChange={e => setNotes(e.target.value)}
+            placeholder="Note (e.g. January contribution)"
+            className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+        </div>
+      </details>
+
+      {error && <p className="text-xs text-red-500">{error}</p>}
+
+      <button onClick={handleSubmit} disabled={saving || uploading || !amtNum || amtNum <= 0}
+        className="w-full py-3.5 bg-brand-500 hover:bg-brand-600 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] disabled:opacity-50 shadow-sm flex items-center justify-center gap-2">
+        {saving
+          ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Submitting…</>
+          : "I sent this money"}
+      </button>
+      <p className="text-[10px] text-slate-400 text-center">Your agent will confirm it before your balance is updated.</p>
+    </div>
+  );
+
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <>
     <div className="fixed inset-0 z-[60] bg-black/60 flex items-end justify-center" onClick={onClose}>
@@ -1372,7 +1714,6 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
 
         {done ? (
           <div className="text-center py-6">
-            {/* Amber clock — deliberately NOT green, cannot be mistaken for credited */}
             <div className="w-20 h-20 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
               <svg viewBox="0 0 24 24" fill="none" className="w-10 h-10 text-amber-500 dark:text-amber-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                 <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
@@ -1381,12 +1722,11 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
             <p className="text-[10px] font-bold text-amber-500 uppercase tracking-widest mb-1">Sent for checking</p>
             <h3 className="text-lg font-extrabold text-slate-800 dark:text-white mb-2">We got it!</h3>
             <p className="text-sm text-slate-500 dark:text-slate-400 mb-5 leading-relaxed px-2">Your agent will check the transfer and update your balance shortly. You&apos;ll get a notification when it&apos;s done.</p>
-            <button onClick={onClose} className="w-full py-3.5 bg-slate-800 dark:bg-slate-700 text-white rounded-2xl font-bold text-sm active:scale-[0.99] transition">
-              Got it
-            </button>
+            <button onClick={onClose} className="w-full py-3.5 bg-slate-800 dark:bg-slate-700 text-white rounded-2xl font-bold text-sm active:scale-[0.99] transition">Got it</button>
           </div>
         ) : (
           <>
+            {/* Header */}
             <div className="flex items-center gap-3 mb-5">
               <div className="w-10 h-10 bg-brand-100 dark:bg-brand-900/40 rounded-2xl flex items-center justify-center flex-shrink-0">
                 <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-brand-600 dark:text-brand-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
@@ -1397,14 +1737,12 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
                 <p className="font-extrabold text-slate-800 dark:text-white">Make a Deposit</p>
                 <p className="text-[11px] text-slate-400">Send money here, then tell us you&apos;ve paid</p>
               </div>
-              <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600 transition flex-shrink-0">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="w-4 h-4">
-                  <path d="M18 6L6 18M6 6l12 12" />
-                </svg>
+              <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 flex-shrink-0">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="w-4 h-4"><path d="M18 6L6 18M6 6l12 12" /></svg>
               </button>
             </div>
 
-            {/* LEAD: Bank details — the action they need to do before anything else */}
+            {/* LEAD: Bank details — always at top, always visible */}
             {hasBank ? (() => {
               const isClientAcct = !!clientBank?.account_number;
               const acctNum  = isClientAcct ? clientBank.account_number  : ownerBank.bank_account_number;
@@ -1457,130 +1795,92 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
               </div>
             )}
 
-            {/* Amount — past tense, matches what they already did */}
-            <div className="bg-brand-50 dark:bg-brand-900/20 rounded-2xl px-4 py-4 mb-4">
-              <p className="text-[10px] font-bold text-brand-500 dark:text-brand-400 uppercase tracking-wider mb-2">How much did you send? <span className="text-red-400">*</span></p>
-              <div className="flex items-center gap-2">
-                <span className="text-2xl font-black text-brand-600 dark:text-brand-300">₦</span>
-                <input
-                  type="number" inputMode="decimal" min="1"
-                  value={amount} onChange={e => setAmount(e.target.value)}
-                  placeholder="0.00"
-                  className="flex-1 bg-transparent text-2xl font-black text-brand-600 dark:text-brand-300 outline-none placeholder:text-brand-200 dark:placeholder:text-brand-700 tabular [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                />
-              </div>
-              {amtNum > 0 && (
-                <p className="text-[11px] text-brand-400 dark:text-brand-500 mt-1">{fmt(amtNum)} — exact transfer amount</p>
-              )}
-            </div>
+            {/* Now pick which goal this deposit is for */}
+            <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">Which savings goal?</p>
 
-            {/* Goal selector — secondary, after amount, only if in a group */}
-            <ContribTypeSelector clientGroups={clientGroups.map(m => m.group).filter(Boolean)} value={contribCtx} selectedGroupId={contribGroupId}
-              onChange={(ctx, gid) => { setContribCtx(ctx); setContribGroupId(gid || null); }} />
+            {/* Three-tab bar */}
+            <MoneyTabBar
+              tabs={[
+                { key: "personal", label: "Personal" },
+                ...(savingsGroups.length > 0 ? [{ key: "groups", label: "Savings Groups" }] : []),
+                ...(esusuGroups.length    > 0 ? [{ key: "esusu",  label: "Esusu" }]          : []),
+              ]}
+              active={mainTab}
+              onChange={tab => {
+                setMainTab(tab);
+                setSelectedCycleId(null);
+                setContribGroupId(null);
+                setError("");
+                if (tab === "personal") setContribCtx("personal_savings");
+              }}
+            />
 
-            {/* Cycle picker — secondary, only if multiple active cycles */}
-            {contribCtx === "personal_savings" && activePsCyclesMd.length > 1 && (
-              <div className="mb-4">
-                <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Which savings goal?</p>
-                <div className="space-y-1.5">
-                  {activePsCyclesMd.map(cyc => (
-                    <button key={cyc.id} type="button"
-                      onClick={() => setSelectedMdCycleId(cyc.id)}
-                      className={`w-full flex items-center justify-between px-3 py-2 rounded-xl border-2 text-left text-sm transition ${
-                        selectedMdCycleId === cyc.id
-                          ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20 text-brand-700 dark:text-brand-300"
-                          : "border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200"
-                      }`}>
-                      <span className="font-semibold">{cyc.label || "Savings"}</span>
-                      {selectedMdCycleId === cyc.id && <div className="w-3.5 h-3.5 rounded-full bg-brand-500 flex-shrink-0" />}
-                    </button>
-                  ))}
-                </div>
-              </div>
+            {/* ── Personal tab ─────────────────────────────────────────── */}
+            {mainTab === "personal" && (
+              <>
+                <MoneySubTabBar tabs={personalSubTabs} active={personalSubTab}
+                  onChange={sub => { setPersonalSubTab(sub); setSelectedCycleId(null); setError(""); }} />
+
+                {personalSubTabs.length === 0 && (
+                  <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">No active savings plans</p>
+                )}
+
+                {personalSubTab === "first_period" && fpCycles.map(cy => (
+                  <MoneyCycleCard key={cy.id} cycle={cy} saved={0} net={0} locked={false} mode="deposit"
+                    selected={selectedCycleId === cy.id}
+                    onSelect={() => { setSelectedCycleId(cy.id); setContribCtx("personal_savings"); setContribGroupId(null); setError(""); }}>
+                    {depositForm}
+                  </MoneyCycleCard>
+                ))}
+
+                {personalSubTab === "percent" && pctCycles.map(cy => (
+                  <MoneyCycleCard key={cy.id} cycle={cy} saved={0} net={0} locked={false} mode="deposit"
+                    selected={selectedCycleId === cy.id}
+                    onSelect={() => { setSelectedCycleId(cy.id); setContribCtx("personal_savings"); setContribGroupId(null); setError(""); }}>
+                    {depositForm}
+                  </MoneyCycleCard>
+                ))}
+
+                {personalSubTab === "first_period" && fpCycles.length === 0 && (
+                  <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-4">No first-period cycles</p>
+                )}
+                {personalSubTab === "percent" && pctCycles.length === 0 && (
+                  <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-4">No percentage cycles</p>
+                )}
+              </>
             )}
 
-            {/* First-deposit info — plain language */}
-            {contribCtx === "personal_savings" && (() => {
-              if (Number(client.total_saved || 0) > 0) return null;
-              const regCharge = Number(client.registration_charge || 0);
-              const expected  = Number(client.contribution_amount  || 0);
-              const minReq    = expected + regCharge;
-              if (minReq <= 0 || (regCharge === 0 && client.commission_model !== "first_period")) return null;
-              return (
-                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl px-3 py-2.5 mb-3">
-                  <p className="text-[11px] font-bold text-blue-700 dark:text-blue-300">
-                    Your first payment is ₦{minReq.toLocaleString("en-NG")} — includes a one-time ₦{regCharge.toLocaleString("en-NG")} registration. After today, every payment is ₦{expected.toLocaleString("en-NG")}.
-                  </p>
-                </div>
-              );
-            })()}
-
-            {/* Proof upload — simplified */}
-            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={pickFile} />
-            {uploading && (
-              <div className="mb-3 px-1">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[11px] font-bold text-brand-600 dark:text-brand-400">Uploading screenshot…</span>
-                  <div className="w-3.5 h-3.5 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
-                </div>
-                <div className="h-1.5 bg-brand-100 dark:bg-brand-800 rounded-full overflow-hidden">
-                  <div className="h-full bg-brand-500 rounded-full animate-pulse" style={{ width: "75%" }} />
-                </div>
-              </div>
-            )}
-            {!uploading && proofPrev && (
-              <div className="relative mb-3">
-                <img src={proofPrev} alt="Proof" className="w-full rounded-xl object-cover max-h-40 border border-slate-200 dark:border-slate-600" />
-                <button onClick={() => { setProofFile(null); setProofPrev(null); }}
-                  className="absolute top-2 right-2 w-7 h-7 bg-black/50 rounded-full flex items-center justify-center text-white text-xs font-bold">✕</button>
-              </div>
-            )}
-            {!uploading && !proofPrev && (
-              <button onClick={() => fileRef.current?.click()}
-                className="w-full py-2.5 mb-3 text-xs font-bold text-brand-500 dark:text-brand-400 flex items-center gap-2 active:scale-[0.99] transition">
-                <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 flex-shrink-0" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-                  <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>
-                </svg>
-                Add a screenshot (optional — speeds up approval)
-              </button>
+            {/* ── Savings Groups tab ───────────────────────────────────── */}
+            {mainTab === "groups" && (
+              <>
+                {savingsGroups.length === 0 && (
+                  <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">No savings groups</p>
+                )}
+                {savingsGroups.map(g => (
+                  <MoneyGroupCard key={g.id} group={g} saved={0} mode="deposit"
+                    selected={contribGroupId === g.id && contribCtx === "group_savings"}
+                    onSelect={() => { setSelectedCycleId(null); setContribCtx("group_savings"); setContribGroupId(g.id); setError(""); }}>
+                    {depositForm}
+                  </MoneyGroupCard>
+                ))}
+              </>
             )}
 
-            {/* Optional extra details — collapsed by default */}
-            <details className="mb-3 group">
-              <summary className="text-[11px] font-bold text-slate-400 dark:text-slate-500 cursor-pointer select-none list-none flex items-center gap-1.5 mb-2">
-                <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3 transition-transform group-open:rotate-90" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
-                Add more details (optional)
-              </summary>
-              <div className="space-y-2.5 mt-2">
-                <input
-                  type="text"
-                  value={payerName} onChange={e => setPayerName(e.target.value)}
-                  placeholder="Sender name (name on the transfer)"
-                  className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-                />
-                <input
-                  type="text"
-                  value={notes} onChange={e => setNotes(e.target.value)}
-                  placeholder="Note (e.g. January contribution)"
-                  className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-                />
-              </div>
-            </details>
-
-            {error && <p className="text-xs text-red-500 mb-3">{error}</p>}
-
-            <button
-              onClick={handleSubmit}
-              disabled={saving || uploading || !amtNum || amtNum <= 0}
-              className="w-full py-3.5 bg-brand-500 hover:bg-brand-600 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] disabled:opacity-50 shadow-sm flex items-center justify-center gap-2">
-              {saving
-                ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Submitting…</>
-                : "I sent this money"}
-            </button>
-
-            <p className="text-[10px] text-slate-400 text-center mt-3">
-              Your agent will confirm it before your balance is updated.
-            </p>
+            {/* ── Esusu tab ───────────────────────────────────────────── */}
+            {mainTab === "esusu" && (
+              <>
+                {esusuGroups.length === 0 && (
+                  <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">No esusu groups</p>
+                )}
+                {esusuGroups.map(g => (
+                  <MoneyEsusuSimpleCard key={g.id} group={g}
+                    selected={contribGroupId === g.id && contribCtx === "esusu_rotation"}
+                    onSelect={() => { setSelectedCycleId(null); setContribCtx("esusu_rotation"); setContribGroupId(g.id); setError(""); }}>
+                    {depositForm}
+                  </MoneyEsusuSimpleCard>
+                ))}
+              </>
+            )}
           </>
         )}
       </div>
@@ -1591,6 +1891,7 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
 
 // ── Withdrawal request modal ──────────────────────────────────────────────
 function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotationsData = [], contributions = [], onClose, onSuccess }) {
+  // ── Core state (unchanged) ────────────────────────────────────────────────
   const [amount,        setAmount]        = useState("");
   const [saving,        setSaving]        = useState(false);
   const [error,         setError]         = useState("");
@@ -1600,12 +1901,14 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
   const [cycleLocked,   setCycleLocked]   = useState(0);
   const [groupLocked,   setGroupLocked]   = useState(0);
   const [locksLoaded,   setLocksLoaded]   = useState(false);
-  const [activeTab,       setActiveTab]       = useState("personal");
-  const [selectedGrpId,   setSelectedGrpId]   = useState(null);
-  const selectedCycleId = cycles.filter(c => c.status === "active").length === 1
-    ? cycles.find(c => c.status === "active")?.id ?? null
-    : null;
 
+  // ── Navigation state ──────────────────────────────────────────────────────
+  const [activeTab,      setActiveTab]      = useState("personal");
+  const [personalSubTab, setPersonalSubTab] = useState("first_period");
+  const [selectedCycleId, setSelectedCycleId] = useState(null);
+  const [selectedGrpId,   setSelectedGrpId]   = useState(null);
+
+  // ── Lock fetch — re-runs when balance changes (realtime-safe) ─────────────
   useEffect(() => {
     setLocksLoaded(false);
     Promise.all([
@@ -1620,7 +1923,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
     }).catch(() => setLocksLoaded(true));
   }, [client.id, client.current_balance, cycles]);
 
-  // Bank account state
+  // ── Bank account state (unchanged) ───────────────────────────────────────
   const [banks,        setBanks]        = useState([]);
   const hasAccount = !!(
     (client.withdrawal_account_number || client.account_number) &&
@@ -1643,6 +1946,49 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
       .catch(() => {});
   }, []);
 
+  // ── Derived data — re-derive from props each render (realtime-safe) ───────
+  const savingsGroups = clientGroups
+    .filter(m => m.group?.group_mode === "savings")
+    .map(m => m.group)
+    .filter(Boolean);
+  const esusuRounds = rotationsData;
+  const selectedGroup = savingsGroups.find(g => g.id === selectedGrpId) || null;
+
+  // Cycle category sets
+  const fpCycles  = cycles.filter(cy => cy.commission_model === "first_period" && (cy.status === "active" || cy.status === "completed"));
+  const pctCycles = cycles.filter(cy => cy.commission_model !== "first_period" && (cy.status === "active" || cy.status === "completed"));
+
+  const personalSubTabs = [
+    ...(fpCycles.length  > 0 ? [{ key: "first_period", label: "First Period" }] : []),
+    ...(pctCycles.length > 0 ? [{ key: "percent",      label: "Percentage" }]   : []),
+  ];
+
+  useEffect(() => {
+    if (personalSubTab === "first_period" && fpCycles.length === 0 && pctCycles.length > 0) setPersonalSubTab("percent");
+    if (personalSubTab === "percent"      && pctCycles.length === 0 && fpCycles.length > 0) setPersonalSubTab("first_period");
+  }, [fpCycles.length, pctCycles.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fee from selected (or fallback active) percent cycle — unchanged logic
+  const selectedCycleObj = cycles.find(cy => cy.id === selectedCycleId);
+  const activePctCycle   = (selectedCycleObj?.commission_model === "percent" ? selectedCycleObj : null)
+    || cycles.find(cy => cy.status === "active" && cy.commission_model === "percent");
+  const pctFee    = activePctCycle ? (activePctCycle.commission_percent || 0) : 0;
+  const amtNum    = parseFloat(amount) || 0;
+  const feeAmt    = (amtNum * pctFee) / 100;
+  const netAmt    = amtNum - feeAmt;
+  const lockedAmount = esusuLocked + cycleLocked + groupLocked;
+  const withdrawable = Math.max((client.current_balance || 0) - lockedAmount, 0);
+
+  // Summary totals — one source driving both the header and the tab summaries
+  // (consistency requirement: sum of tab figures = header figure)
+  const fpTotal   = fpCycles.reduce((s, cy)  => s + getCycleStats(cy, contributions).saved, 0);
+  const fpAvail   = fpCycles.filter(cy => cy.status === "completed").reduce((s, cy) => s + getCycleStats(cy, contributions).net, 0);
+  const pctTotal  = pctCycles.reduce((s, cy) => s + getCycleStats(cy, contributions).saved, 0);
+  const pctAvail  = pctCycles.reduce((s, cy) => s + getCycleStats(cy, contributions).net, 0);
+  const grpTotal  = savingsGroups.reduce((s, g) => s + getGroupSaved(g.id, g.started_at, contributions), 0);
+  const grpAvail  = savingsGroups.filter(g => g.round_status === "closed").reduce((s, g) => s + getGroupSaved(g.id, g.started_at, contributions), 0);
+
+  // ── Bank account verification (unchanged logic) ────────────────────────────
   const resolveAcct = async () => {
     if (!acctForm.bank_code || acctForm.account_number.length !== 10) {
       setAcctError("Select a bank and enter a 10-digit account number"); return;
@@ -1662,24 +2008,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
     finally { setAcctVerifying(false); }
   };
 
-  // Derived tab/group data
-  const savingsGroups = clientGroups
-    .filter(m => m.group?.group_mode === "savings")
-    .map(m => m.group)
-    .filter(Boolean);
-  const esusuRounds = rotationsData;
-  const hasTabs = savingsGroups.length > 0 || esusuRounds.length > 0;
-  const selectedGroup = savingsGroups.find(g => g.id === selectedGrpId) || savingsGroups[0] || null;
-
-  // Fee from active percent cycle (not client row — cycle model is the truth after Cycles v2)
-  const activePctCycle = cycles.find(cy => cy.status === "active" && cy.commission_model === "percent");
-  const pctFee       = activePctCycle ? (activePctCycle.commission_percent || 0) : 0;
-  const amtNum       = parseFloat(amount) || 0;
-  const feeAmt       = (amtNum * pctFee) / 100;
-  const netAmt       = amtNum - feeAmt;
-  const lockedAmount = esusuLocked + cycleLocked + groupLocked;
-  const withdrawable = Math.max((client.current_balance || 0) - lockedAmount, 0);
-
+  // ── handleSubmit (unchanged attribution logic) ─────────────────────────────
   const handleSubmit = async () => {
     if (!amtNum || amtNum <= 0)   { setError("Enter a valid amount"); return; }
     if (amtNum > withdrawable) {
@@ -1687,10 +2016,9 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
       if (groupLocked > 0) lockParts.push(`${fmt(groupLocked)} committed to group/esusu`);
       if (esusuLocked > 0) lockParts.push(`${fmt(esusuLocked)} locked in active esusu round`);
       if (cycleLocked > 0) lockParts.push(`${fmt(cycleLocked)} locked in first-period cycle`);
-      const lockMsg = lockParts.length > 0
+      setError(lockParts.length > 0
         ? `Only ${fmt(withdrawable)} is available — ${lockParts.join(" and ")}`
-        : "Amount exceeds your balance";
-      setError(lockMsg);
+        : "Amount exceeds your balance");
       return;
     }
     if (netAmt <= 0)              { setError("Amount too small after fee deduction"); return; }
@@ -1701,8 +2029,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
     try {
       const existingAcctNum  = client.withdrawal_account_number || client.account_number || "";
       const existingBankCode = client.withdrawal_bank_code      || client.bank_code      || "";
-      const bankChanged = acctForm.account_number !== existingAcctNum ||
-                          acctForm.bank_code      !== existingBankCode;
+      const bankChanged = acctForm.account_number !== existingAcctNum || acctForm.bank_code !== existingBankCode;
       if (bankChanged && acctVerified) {
         await ajoFn("update-profile", {
           client_id: client.id,
@@ -1714,10 +2041,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
           },
         });
       }
-      const reqNotes = activeTab === "group" && selectedGroup
-        ? `Group savings — ${selectedGroup.name}`
-        : undefined;
-      // Attribution: attach cycle_id for personal withdrawals, group_id for group/esusu
+      const reqNotes   = activeTab === "group" && selectedGroup ? `Group savings — ${selectedGroup.name}` : undefined;
       const reqCycleId = activeTab === "personal" ? (selectedCycleId || null) : null;
       const reqGroupId = (activeTab === "group" || activeTab === "esusu")
         ? (selectedGrpId || (savingsGroups[0]?.id || esusuRounds[0]?.group?.id) || null)
@@ -1739,7 +2063,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
     }
   };
 
-  // Shared withdrawal form used by both Personal and Group tabs
+  // ── Shared withdrawal action form ─────────────────────────────────────────
   const withdrawalForm = (
     <>
       <div className="bg-slate-50 dark:bg-slate-700/50 rounded-2xl px-4 py-4 mb-3">
@@ -1832,8 +2156,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
             } else if (cycleLocked > 0) {
               lockMsg = `Only ${fmt(withdrawable)} is available — ${fmt(cycleLocked)} is locked in your first-period savings cycle`;
             }
-            setError(lockMsg);
-            return;
+            setError(lockMsg); return;
           }
           if (netAmt <= 0) { setError("Amount too small after fee deduction"); return; }
           if (!acctForm.account_name || !acctForm.account_number || !acctForm.bank_code) {
@@ -1854,6 +2177,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
     </>
   );
 
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <>
     <div className="fixed inset-0 z-[60] bg-black/60 flex items-end justify-center" onClick={onClose}>
@@ -1862,9 +2186,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
         {done ? (
           <div className="text-center py-4">
             <div className="w-14 h-14 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-3">
-              <svg viewBox="0 0 24 24" fill="none" className="w-7 h-7 text-green-600 dark:text-green-400" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
-                <path d="M20 6L9 17l-5-5" />
-              </svg>
+              <svg viewBox="0 0 24 24" fill="none" className="w-7 h-7 text-green-600 dark:text-green-400" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M20 6L9 17l-5-5" /></svg>
             </div>
             <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">Done!</h3>
             <p className="text-xs text-slate-400 dark:text-slate-500 leading-relaxed">Your agent will pay you out shortly. We&apos;ll let you know when it&apos;s ready.</p>
@@ -1872,23 +2194,18 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
           </div>
         ) : (
           <>
+            {/* Header */}
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 bg-slate-100 dark:bg-slate-700 rounded-2xl flex items-center justify-center flex-shrink-0">
-                <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-                  <path d="M12 19V5M5 12l7 7 7-7" />
-                </svg>
+                <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M12 19V5M5 12l7 7 7-7" /></svg>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-extrabold text-slate-800 dark:text-white">Take out money</p>
-              </div>
-              <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600 transition flex-shrink-0">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="w-4 h-4">
-                  <path d="M18 6L6 18M6 6l12 12" />
-                </svg>
+              <p className="flex-1 font-extrabold text-slate-800 dark:text-white">Take out money</p>
+              <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 flex-shrink-0">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="w-4 h-4"><path d="M18 6L6 18M6 6l12 12" /></svg>
               </button>
             </div>
 
-            {/* Hero: one clear number — skeleton while locks load (bug 1 fix) */}
+            {/* Hero: stable skeleton-until-loaded (bug 1 fix applied here) */}
             <div className="text-center mb-4">
               <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1">Ready to withdraw</p>
               {locksLoaded
@@ -1897,7 +2214,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
               }
             </div>
 
-            {/* Collapsible set-aside — only once locks are loaded and something is actually locked */}
+            {/* Collapsible set-aside — same lock source as hero; only once loaded */}
             {locksLoaded && lockedAmount > 0 && (
               <details className="mb-4 group">
                 <summary className="text-xs font-bold text-amber-600 dark:text-amber-400 cursor-pointer select-none list-none flex items-center gap-1.5">
@@ -1924,285 +2241,123 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
               </details>
             )}
 
-            {hasTabs && (
-              <div className="flex gap-1 p-1 bg-slate-100 dark:bg-slate-700/50 rounded-xl mb-4">
-                {[
-                  { key: "personal", label: "Personal" },
-                  ...(savingsGroups.length > 0 ? [{ key: "group", label: "Group Savings" }] : []),
-                  ...(esusuRounds.length  > 0 ? [{ key: "esusu",  label: "Esusu" }] : []),
-                ].map(tab => (
-                  <button key={tab.key} type="button" onClick={() => { setActiveTab(tab.key); setError(""); }}
-                    className={`flex-1 py-2 rounded-lg text-[11px] font-bold transition ${
-                      activeTab === tab.key
-                        ? "bg-white dark:bg-slate-700 text-slate-800 dark:text-white shadow-sm"
-                        : "text-slate-500 dark:text-slate-400"
-                    }`}>
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-            )}
+            {/* ── Three-tab bar ─────────────────────────────────────────── */}
+            <MoneyTabBar
+              tabs={[
+                { key: "personal", label: "Personal" },
+                ...(savingsGroups.length > 0 ? [{ key: "group",  label: "Savings Groups" }] : []),
+                ...(esusuRounds.length   > 0 ? [{ key: "esusu",  label: "Esusu" }]          : []),
+              ]}
+              active={activeTab}
+              onChange={tab => { setActiveTab(tab); setSelectedCycleId(null); setSelectedGrpId(null); setAmount(""); setError(""); }}
+            />
 
-            {/* ── Personal Savings tab ── */}
+            {/* ── Personal Savings tab ────────────────────────────────── */}
             {activeTab === "personal" && (
               <>
-                {cycles.filter(cy => cy.status === "active").length > 0 && (
-                  <div className="space-y-2 mb-4">
-                    {cycles.filter(cy => cy.status === "active").map(cy => {
-                      const isLocked = cy.commission_model === "first_period" &&
-                        Number(cy.commission_balance || 0) >= Number(cy.expected_amount_per_period || 0) &&
-                        Number(cy.expected_amount_per_period || 0) > 0;
-                      // Per-cycle locked = SUM(contributions) - SUM(commissions) - SUM(registration_fees)
-                      // ajo_approve_contribution stores all three row types with cycle_id, so we
-                      // must subtract registration_fee or the locked figure is inflated by the reg charge.
-                      const cycRows = contributions.filter(
-                        c => c.cycle_id === cy.id && c.status === "completed" &&
-                             (c.type === "contribution" || c.type === "commission" || c.type === "registration_fee")
-                      );
-                      const cycLocked = Math.max(
-                        0,
-                        cycRows.filter(c => c.type === "contribution"   ).reduce((s, c) => s + Number(c.amount || 0), 0) -
-                        cycRows.filter(c => c.type === "commission"     ).reduce((s, c) => s + Number(c.amount || 0), 0) -
-                        cycRows.filter(c => c.type === "registration_fee").reduce((s, c) => s + Number(c.amount || 0), 0)
-                      );
+                <MoneySubTabBar tabs={personalSubTabs} active={personalSubTab}
+                  onChange={sub => { setPersonalSubTab(sub); setSelectedCycleId(null); setAmount(""); setError(""); }} />
+
+                {/* First Period sub-tab */}
+                {personalSubTab === "first_period" && (
+                  <>
+                    <MoneySummaryRow label1="Total saved" val1={fpTotal} label2="Available" val2={fpAvail} loading={false} />
+                    {fpCycles.length === 0 && (
+                      <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-4">No first-period cycles</p>
+                    )}
+                    {fpCycles.map(cy => {
+                      const stats  = getCycleStats(cy, contributions);
+                      const locked = cy.status === "active";
                       return (
-                        <div key={cy.id} className={`px-3.5 py-2.5 rounded-xl border ${isLocked ? "border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-900/10" : "border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/30"}`}>
-                          <div className="flex items-center justify-between">
-                            <div className="flex-1 min-w-0">
-                              <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{cy.label || "Savings"}</p>
-                              {isLocked && (
-                                <p className="text-[11px] font-extrabold text-amber-700 dark:text-amber-400 tabular-nums">
-                                  {fmt(cycLocked)} locked
-                                </p>
-                              )}
-                            </div>
-                            {isLocked
-                              ? <span className="ml-2 shrink-0 text-[9px] font-extrabold bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full uppercase tracking-wide">Locked</span>
-                              : <span className="ml-2 shrink-0 text-[9px] font-extrabold bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full uppercase tracking-wide">Available</span>
-                            }
-                          </div>
-                          {isLocked && (
-                            <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">
-                              {cycLocked > 0
-                                ? "Available to withdraw once your savings plan is complete"
-                                : "Savings accumulate from your next deposit"}
-                            </p>
-                          )}
-                        </div>
+                        <MoneyCycleCard key={cy.id} cycle={cy} saved={stats.saved} net={stats.net}
+                          locked={locked}
+                          lockReason="Available when your savings plan is complete"
+                          mode="withdraw"
+                          selected={selectedCycleId === cy.id}
+                          onSelect={() => { if (!locked) { setSelectedCycleId(cy.id); setAmount(""); setError(""); } }}>
+                          {withdrawalForm}
+                        </MoneyCycleCard>
                       );
                     })}
-                  </div>
+                  </>
                 )}
-                {withdrawalForm}
+
+                {/* Percentage sub-tab */}
+                {personalSubTab === "percent" && (
+                  <>
+                    <MoneySummaryRow label1="Total saved" val1={pctTotal} label2="Available" val2={pctAvail} loading={false} />
+                    {pctCycles.length === 0 && (
+                      <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-4">No percentage cycles</p>
+                    )}
+                    {pctCycles.map(cy => {
+                      const stats = getCycleStats(cy, contributions);
+                      return (
+                        <MoneyCycleCard key={cy.id} cycle={cy} saved={stats.saved} net={stats.net}
+                          locked={false} mode="withdraw"
+                          selected={selectedCycleId === cy.id}
+                          onSelect={() => { setSelectedCycleId(cy.id); setAmount(""); setError(""); }}>
+                          {withdrawalForm}
+                        </MoneyCycleCard>
+                      );
+                    })}
+                  </>
+                )}
+
+                {personalSubTabs.length === 0 && (
+                  <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">No savings plans yet</p>
+                )}
               </>
             )}
 
-            {/* ── Saving Group tab ── */}
-            {activeTab === "group" && (() => {
-              const grp = selectedGroup;
-              if (!grp) return null;
-              const rs     = grp.round_status || "not_started";
-              const target = Number(grp.target_amount || 0);
-
-              // My contribution total for this group in this round
-              const myContribs = contributions.filter(c =>
-                c.group_id === grp.id &&
-                c.contribution_context === "group_savings" &&
-                c.type === "contribution" &&
-                c.status === "completed" &&
-                (!grp.started_at || new Date(c.created_at) >= new Date(grp.started_at))
-              );
-              const myTotal = myContribs.reduce((s, c) => s + Number(c.amount), 0);
-
-              // Pot = sum over ALL members — we don't have other members' contributions client-side,
-              // so we derive from rotationsData (if present) or show only my contribution.
-              // The owner's group detail page shows the full pot; client sees their share only.
-
-              const daysLeft = grp.target_deadline
-                ? Math.ceil((new Date(grp.target_deadline) - new Date()) / 86400000)
-                : null;
-
-              return (
-                <>
-                  {savingsGroups.length > 1 && (
-                    <div className="mb-4">
-                      <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Which savings group?</p>
-                      <div className="space-y-1.5">
-                        {savingsGroups.map(g => (
-                          <button key={g.id} type="button" onClick={() => setSelectedGrpId(g.id)}
-                            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl border-2 text-left text-sm transition ${
-                              (selectedGrpId || savingsGroups[0]?.id) === g.id
-                                ? "border-[#16255A] bg-[#16255A]/5 dark:bg-[#16255A]/20 text-[#16255A] dark:text-blue-300"
-                                : "border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200"
-                            }`}>
-                            <span className="font-semibold">{g.name}</span>
-                            {(selectedGrpId || savingsGroups[0]?.id) === g.id && (
-                              <div className="w-3.5 h-3.5 rounded-full bg-[#16255A] flex-shrink-0" />
-                            )}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Status card */}
-                  <div className="mb-4 space-y-3">
-                    {/* Round status banner */}
-                    {rs === "not_started" && (
-                      <div className="px-3.5 py-3 rounded-xl border border-amber-200 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-900/10">
-                        <p className="text-xs font-extrabold text-amber-700 dark:text-amber-400">Round not started yet</p>
-                        <p className="text-[10px] text-amber-600 dark:text-amber-500 mt-0.5">Your savings agent will set a target and start the round when the group is ready</p>
-                      </div>
-                    )}
-                    {rs === "active" && target > 0 && (
-                      <div className="px-3.5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/30 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Group target</p>
-                          {daysLeft !== null && daysLeft >= 0 && (
-                            <span className="text-[10px] text-slate-400 dark:text-slate-500">{daysLeft} day{daysLeft !== 1 ? "s" : ""} left</span>
-                          )}
-                        </div>
-                        <div className="h-2 bg-slate-200 dark:bg-slate-600 rounded-full overflow-hidden">
-                          <div className="h-full bg-green-500 rounded-full" style={{ width: `${target > 0 && myTotal > 0 ? Math.min(100, Math.round((myTotal / target) * 100)) : 0}%` }} />
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <p className="text-xs font-extrabold text-slate-700 dark:text-slate-200">{fmt(myTotal)} saved</p>
-                          <p className="text-[10px] text-slate-400 dark:text-slate-500">of {fmt(target)} target</p>
-                        </div>
-                        <div className="flex items-center gap-1.5 pt-0.5">
-                          <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3 text-amber-500 flex-shrink-0" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
-                          <p className="text-[10px] text-slate-500 dark:text-slate-400">Locked until the round closes</p>
-                        </div>
-                      </div>
-                    )}
-                    {rs === "target_met" && (
-                      <div className="px-3.5 py-3 rounded-xl border border-blue-200 dark:border-blue-700/50 bg-blue-50 dark:bg-blue-900/10">
-                        <p className="text-xs font-extrabold text-blue-700 dark:text-blue-400">Target met — funds locked until group closes</p>
-                        <p className="text-[10px] text-blue-600 dark:text-blue-500 mt-0.5">Your savings agent will close the group to release your {fmt(myTotal)}</p>
-                      </div>
-                    )}
-                    {rs === "closed" && (
-                      <div className="px-3.5 py-3 rounded-xl border border-green-200 dark:border-green-700/50 bg-green-50 dark:bg-green-900/10">
-                        <p className="text-xs font-extrabold text-green-700 dark:text-green-400">Released — {fmt(myTotal)} available in your savings</p>
-                        <p className="text-[10px] text-green-600 dark:text-green-500 mt-0.5">This group has closed. Your funds are now part of your withdrawable balance.</p>
-                      </div>
-                    )}
-
-                    {/* My contribution stat */}
-                    {rs !== "not_started" && (
-                      <div className="flex items-center justify-between px-3 py-2 bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700">
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400">My contribution this round</p>
-                        <p className="text-sm font-extrabold text-slate-700 dark:text-slate-200 tabular-nums">{fmt(myTotal)}</p>
-                      </div>
-                    )}
-                  </div>
-
-                  {(rs === "active" || rs === "closed" || rs === "target_met") && withdrawalForm}
-                </>
-              );
-            })()}
-
-            {/* ── Esusu Rotation tab ── */}
-            {activeTab === "esusu" && (
-              <div className="space-y-4">
-                {esusuRounds.length === 0 && (
-                  <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">No active esusu round</p>
+            {/* ── Savings Groups tab ──────────────────────────────────── */}
+            {activeTab === "group" && (
+              <>
+                <MoneySummaryRow label1="Total saved" val1={grpTotal} label2="Released" val2={grpAvail} loading={false} />
+                {savingsGroups.length === 0 && (
+                  <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">No savings groups</p>
                 )}
-                {/* Bug 3 fix: show same esusuLocked source as the header hero number */}
+                {savingsGroups.map(g => {
+                  const saved = getGroupSaved(g.id, g.started_at, contributions);
+                  const rs = g.round_status || "not_started";
+                  const canWithdraw = rs === "active" || rs === "closed" || rs === "target_met";
+                  return (
+                    <MoneyGroupCard key={g.id} group={g} saved={saved} mode="withdraw"
+                      selected={selectedGrpId === g.id}
+                      onSelect={() => { setSelectedGrpId(g.id); setAmount(""); setError(""); }}>
+                      {canWithdraw ? withdrawalForm : (
+                        <p className="pt-3 text-xs text-amber-600 dark:text-amber-400">Round not started yet — your agent will open contributions when the group is ready.</p>
+                      )}
+                    </MoneyGroupCard>
+                  );
+                })}
+              </>
+            )}
+
+            {/* ── Esusu Rotation tab ─────────────────────────────────── */}
+            {activeTab === "esusu" && (
+              <div className="space-y-2">
+                {/* esusuLocked row — same source as the header hero number (bug 3 consistency) */}
                 {locksLoaded && esusuLocked > 0 && (
                   <div className="flex items-center justify-between px-3 py-2.5 bg-amber-50 dark:bg-amber-900/10 rounded-xl border border-amber-100 dark:border-amber-800/30 mb-1">
                     <p className="text-[11px] text-amber-700 dark:text-amber-400 font-semibold">Your locked amount in esusu</p>
                     <p className="text-sm font-extrabold text-amber-700 dark:text-amber-400 tabular-nums">{fmt(esusuLocked)}</p>
                   </div>
                 )}
-                {esusuRounds.map(rd => {
-                  const myTurn = (rd.turns || []).find(t => t.client_id === client.id);
-                  const myTurnStatus = myTurn?.status;
-                  const hasPaid = !!rd.contribution_ticks?.[client.id];
-                  return (
-                    <div key={rd.group?.id} className="space-y-3">
-                      {esusuRounds.length > 1 && (
-                        <p className="text-xs font-extrabold text-slate-600 dark:text-slate-300">{rd.group?.name}</p>
-                      )}
-                      {rd.round && (
-                        <div className="bg-slate-50 dark:bg-slate-700/40 border border-slate-200 dark:border-slate-600 rounded-xl px-3.5 py-3">
-                          <div className="flex items-center justify-between mb-1.5">
-                            <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Round {rd.round.round_number}</p>
-                            <span className="text-[9px] font-extrabold bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400 px-2 py-0.5 rounded-full uppercase tracking-wide">Active</span>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <p className="text-[11px] text-slate-500 dark:text-slate-400">Group pot (all members)</p>
-                            <p className="text-sm font-extrabold text-slate-700 dark:text-slate-200">{fmt(rd.pot_size || 0)}</p>
-                          </div>
-                          <div className="flex items-center justify-between mt-0.5">
-                            <p className="text-[11px] text-slate-500 dark:text-slate-400">Your contribution this period</p>
-                            <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${hasPaid ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400" : "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400"}`}>
-                              {hasPaid ? "Paid" : "Pending"}
-                            </span>
-                          </div>
-                        </div>
-                      )}
-                      <div className="space-y-1.5">
-                        {(rd.turns || []).map(t => {
-                          const isMe       = t.client_id === client.id;
-                          const isPaid     = t.status === "paid";
-                          const isCurrent  = t.status === "current";
-                          const isSkipped  = t.status === "skipped";
-                          return (
-                            <div key={t.position} className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl border ${
-                              isMe
-                                ? "border-[#16255A]/30 bg-[#16255A]/5 dark:bg-[#16255A]/15 dark:border-[#16255A]/40"
-                                : "border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/30"
-                            }`}>
-                              <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-extrabold ${
-                                isPaid    ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400"
-                                : isCurrent ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400"
-                                : isSkipped ? "bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500"
-                                : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
-                              }`}>
-                                {t.position}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className={`text-xs font-bold truncate ${isMe ? "text-[#16255A] dark:text-blue-300" : "text-slate-700 dark:text-slate-200"}`}>
-                                  {t.client_name}{isMe ? " (you)" : ""}
-                                </p>
-                              </div>
-                              <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full flex-shrink-0 ${
-                                isPaid    ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400"
-                                : isCurrent ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400"
-                                : isSkipped ? "bg-slate-100 dark:bg-slate-600 text-slate-500 dark:text-slate-400"
-                                : "bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400"
-                              }`}>
-                                {isPaid ? "Received" : isCurrent ? "Current" : isSkipped ? "Skipped" : "Upcoming"}
-                              </span>
-                            </div>
-                          );
-                        })}
-                        {(rd.turns || []).length === 0 && !rd.round && (
-                          <p className="text-xs text-slate-400 dark:text-slate-500 text-center py-3">No active round — your agent will start one when the group is ready</p>
-                        )}
-                      </div>
-                      {myTurnStatus === "paid" && (
-                        <div className="px-3.5 py-2.5 rounded-xl border border-green-200 dark:border-green-800/50 bg-green-50 dark:bg-green-900/10">
-                          <p className="text-xs font-bold text-green-700 dark:text-green-400">You have received your pot</p>
-                          <p className="text-[10px] text-green-600 dark:text-green-500 mt-0.5">Your payout has been credited to your balance</p>
-                        </div>
-                      )}
-                      {myTurnStatus === "current" && (
-                        <div className="px-3.5 py-2.5 rounded-xl border border-blue-200 dark:border-blue-800/50 bg-blue-50 dark:bg-blue-900/10">
-                          <p className="text-xs font-bold text-[#16255A] dark:text-blue-300">It&apos;s your turn this period!</p>
-                          <p className="text-[10px] text-blue-600 dark:text-blue-400 mt-0.5">Once all members contribute, the pot will be disbursed to your account by your savings agent</p>
-                        </div>
-                      )}
-                      {myTurnStatus === "upcoming" && (
-                        <div className="px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700/30">
-                          <p className="text-xs font-bold text-slate-600 dark:text-slate-300">Your turn is coming</p>
-                          <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">Keep contributing each period — the pot will be yours when your turn arrives</p>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                {esusuRounds.length === 0 && (
+                  <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">No active esusu round</p>
+                )}
+                {esusuRounds.map(rd => (
+                  <MoneyEsusuCard key={rd.group?.id} rd={rd} client={client}
+                    esusuLockedTotal={esusuLocked} roundCount={esusuRounds.length}
+                    mode="withdraw"
+                    selected={false}
+                    onSelect={() => {}}>
+                    {null}
+                  </MoneyEsusuCard>
+                ))}
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center pt-2 leading-relaxed">
+                  Esusu payouts are credited to your main balance when your turn is complete. Withdraw from the Personal tab after you receive your payout.
+                </p>
               </div>
             )}
           </>
