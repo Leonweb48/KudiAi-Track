@@ -1,3 +1,6 @@
+import { useEffect } from "react";
+import { Capacitor } from "@capacitor/core";
+
 const APP_SCHEME = "com.amayatechnologies.kuditrack";
 
 /**
@@ -6,17 +9,74 @@ const APP_SCHEME = "com.amayatechnologies.kuditrack";
  * Paystack redirects here after every payment (success OR failure).
  * The outcome is unknown until the app verifies with Paystack server-side.
  *
- * The button below opens the KudiAI Track app via intent:// URI.
- * Auto-redirect via window.location.href is intentionally removed —
- * Chrome Custom Tab blocks programmatic intent:// navigation without a
- * user gesture, which sometimes replaces this page with a blank error screen.
- * A single visible, tappable button is more reliable.
+ * Native: shows a tappable button that opens the app via intent:// URI.
+ *   Auto-redirect is intentionally avoided — Chrome Custom Tab blocks
+ *   programmatic intent:// navigation without a user gesture.
+ *
+ * Web: immediately redirects to the app root preserving query params so
+ *   the portal components' payment-return handlers process the reference.
  */
 export default function PaymentReturn() {
   const search = window.location.search;
   const params = new URLSearchParams(search);
   const ref    = params.get("reference") || params.get("trxref") || params.get("bill_ref") || "";
+  const isNative = Capacitor.isNativePlatform();
 
+  useEffect(() => {
+    if (isNative) return;
+    // Web: forward to app root so portals can process the reference.
+    // Use replace so the /payment-return entry is removed from history.
+    window.location.replace(`/${search}`);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Web: transitional screen while redirect fires ────────────────────────
+  if (!isNative) {
+    return (
+      <div style={{
+        minHeight: "100dvh",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "32px 24px",
+        background: "linear-gradient(160deg,#f0f4ff 0%,#fafafa 100%)",
+        fontFamily: "system-ui,-apple-system,'Segoe UI',sans-serif",
+        textAlign: "center",
+        boxSizing: "border-box",
+      }}>
+        <div style={{
+          width: 64, height: 64, borderRadius: 20,
+          background: "linear-gradient(135deg,#1B2A5E,#2d4a8a)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          marginBottom: 20,
+        }}>
+          <div style={{
+            width: 28, height: 28, border: "3px solid rgba(255,255,255,0.9)",
+            borderTopColor: "transparent", borderRadius: "50%",
+            animation: "spin 0.8s linear infinite",
+          }} />
+        </div>
+        <p style={{ fontSize: 17, fontWeight: 700, color: "#1B2A5E", margin: "0 0 6px" }}>
+          Verifying payment…
+        </p>
+        <p style={{ fontSize: 13, color: "#64748b", maxWidth: 280, lineHeight: 1.6, margin: 0 }}>
+          Returning you to the app. This will only take a moment.
+        </p>
+        {ref && (
+          <p style={{
+            fontSize: 11, color: "#94a3b8", fontFamily: "monospace",
+            marginTop: 16, background: "#f1f5f9",
+            padding: "4px 10px", borderRadius: 6, display: "inline-block",
+          }}>
+            Ref: {ref.slice(0, 28)}
+          </p>
+        )}
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
+
+  // ── Native: intent button for CCT / InAppBrowser return ─────────────────
   const intentUrl =
     `intent://payment-callback${search}` +
     `#Intent;scheme=${APP_SCHEME};package=com.amayatechnologies.kuditrack;end;`;
@@ -55,7 +115,7 @@ export default function PaymentReturn() {
         fontSize: 24, fontWeight: 800, color: "#1B2A5E",
         margin: "0 0 10px", letterSpacing: "-0.4px",
       }}>
-        Payment Submitted
+        Payment Processed
       </h1>
 
       {/* Body */}
@@ -65,7 +125,7 @@ export default function PaymentReturn() {
         margin: "0 0 8px",
       }}>
         Tap the button below to return to{" "}
-        <strong className="text-[#1B2A5E] dark:text-blue-300">KudiAI Track</strong>.
+        <strong style={{ color: "#1B2A5E" }}>KudiAI Track</strong>.
         Your payment will be verified and your service delivered instantly.
       </p>
 
@@ -107,7 +167,6 @@ export default function PaymentReturn() {
           WebkitTapHighlightColor: "transparent",
         }}
       >
-        {/* Return arrow icon */}
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
           stroke="currentColor" strokeWidth="2.5"
           strokeLinecap="round" strokeLinejoin="round">
