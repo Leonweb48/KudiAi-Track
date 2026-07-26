@@ -12,6 +12,7 @@ import { supabase }       from "../utils/supabase";
 import { canDo, planAvailableText, hasHigherPlanAvailable, getPlanInfo } from "../utils/plans";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import { LANGUAGES, getLangMeta } from "../utils/i18n";
+import { getTtsDiagLog, clearTtsDiagLog } from "../utils/tts";
 import { useLanguage, useT } from "../contexts/LanguageContext";
 import { maxDobDate, isAtLeast18, AGE_ERROR } from "../utils/ageValidation";
 import { useCampaigns } from "../hooks/useCampaigns";
@@ -405,6 +406,19 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
     return next;
   });
 
+  const [logCopied, setLogCopied] = useState(false);
+  const copyTtsLogs = () => {
+    const lines = getTtsDiagLog();
+    const text  = lines.length
+      ? lines.join("\n")
+      : "(no TTS-DIAG lines captured yet — trigger a transaction or AI chat first)";
+    navigator.clipboard?.writeText(text).then(() => {
+      setLogCopied(true);
+      setTimeout(() => setLogCopied(false), 3000);
+    }).catch(() => {});
+    clearTtsDiagLog();
+  };
+
   const initials  = profile.owner_name?.[0]?.toUpperCase() || "A";
   const avatarSrc = photoPreview || profile.profile_image_url;
 
@@ -656,6 +670,21 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
                 style={{ left: ttsEnabled ? "calc(100% - 22px)" : "2px" }}
               />
             </button>
+          }
+        />
+        <Row
+          icon={
+            <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 12h6M9 16h6M9 8h6M5 20h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2z"/>
+            </svg>
+          }
+          label="Copy TTS Debug Logs"
+          sub="Captures audio diagnostics — paste to share for support"
+          onClick={copyTtsLogs}
+          right={
+            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${logCopied ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400"}`}>
+              {logCopied ? "Copied!" : "Copy"}
+            </span>
           }
         />
       </SettingsCard>
