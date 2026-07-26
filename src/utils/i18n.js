@@ -515,10 +515,13 @@ export const speakConfirmation = (eventKey, langCode = "en") => {
 
   // On native (Android/iOS), delegate to speakEvent which uses the server TTS
   // path + AudioContext playback — window.speechSynthesis is unreliable in WebView.
-  if (Capacitor.isNativePlatform()) {
+  const isNative = Capacitor.isNativePlatform();
+  console.log("[TTS-DIAG] speakConfirmation() — key:", eventKey, "| isNativePlatform:", isNative);
+  if (isNative) {
     import("./tts").then(({ speakEvent, isTtsEnabled }) => {
-      if (isTtsEnabled()) speakEvent(eventKey, langCode).catch(() => {});
-    }).catch(() => {});
+      console.log("[TTS-DIAG] native path — isTtsEnabled:", isTtsEnabled());
+      if (isTtsEnabled()) speakEvent(eventKey, langCode).catch(e => console.log("[TTS-DIAG] speakEvent threw:", e?.message));
+    }).catch(e => console.log("[TTS-DIAG] tts.js import failed:", e?.message));
     return;
   }
 
