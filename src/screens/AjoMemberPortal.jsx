@@ -789,7 +789,7 @@ function AjoTxnPinModal({ clientId, hasPinSet, title, amount, description, onApp
 
 // ── Pay Contribution modal ────────────────────────────────────────────────
 // Contribution type selector — shown only when client is in a group (2 options)
-function ContribTypeSelector({ clientGroups = [], value, selectedGroupId, onChange }) {
+function ContribTypeSelector({ clientGroups = [], value, selectedGroupId, onChange, label = "Which savings goal?" }) {
   if (!clientGroups.length) return null;
   const opts = [
     { key: "personal_savings", label: "Personal Savings", desc: "Add to your personal savings balance", groupId: null },
@@ -801,7 +801,7 @@ function ContribTypeSelector({ clientGroups = [], value, selectedGroupId, onChan
   ];
   return (
     <div className="mb-5">
-      <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">Contributing to</p>
+      <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">{label}</p>
       <div className="space-y-2">
         {opts.map(opt => (
           <button key={`${opt.key}:${opt.groupId || "personal"}`} type="button"
@@ -919,8 +919,8 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], onClose,
 
           <p className="text-[11px] font-bold text-green-500 uppercase tracking-widest mb-1">Transaction Successful</p>
           <AmountDisplay amount={paidAmt || client?.contribution_amount || 0} size="hero" align="center" style={{ marginBottom: 4 }} />
-          <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 capitalize">
-            {contribCtx === "esusu_rotation" ? "Esusu Rotation" : contribCtx === "group_savings" ? "Savings Group" : "Personal Savings"} · Paid via Paystack
+          <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
+            Added to your savings
           </p>
 
           <p className="text-[11px] text-slate-400 dark:text-slate-500">
@@ -960,7 +960,7 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], onClose,
             </svg>
           </div>
           <div className="flex-1">
-            <p className="font-extrabold text-slate-800 dark:text-white">Pay Contribution</p>
+            <p className="font-extrabold text-slate-800 dark:text-white">Pay your contribution</p>
             <p className="text-[11px] text-slate-400">Secure payment via Paystack</p>
           </div>
           <button onClick={onClose} className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-500">
@@ -970,78 +970,9 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], onClose,
           </button>
         </div>
 
-        {/* Step indicator — visible during active payment flow */}
-        {(status === "loading" || status === "awaiting" || status === "verifying") && (
-          <div className="flex items-center mb-5 px-1">
-            {["loading", "awaiting", "verifying"].map((step, i) => {
-              const steps = ["loading", "awaiting", "verifying"];
-              const cur = steps.indexOf(status);
-              const isDone = i < cur;
-              const isActive = i === cur;
-              const labels = ["Opening", "Paying", "Confirming"];
-              return (
-                <div key={step} className="flex items-center flex-1">
-                  {i > 0 && <div className={`flex-1 h-0.5 rounded-full mx-1 ${isDone ? "bg-brand-500" : "bg-slate-200 dark:bg-slate-700"}`} />}
-                  <div className="flex flex-col items-center gap-0.5">
-                    <div className={`w-6 h-6 rounded-full flex items-center justify-center font-extrabold ${
-                      isDone    ? "bg-brand-500 text-white"
-                      : isActive ? "bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 ring-2 ring-brand-400"
-                      : "bg-slate-100 dark:bg-slate-700 text-slate-400"
-                    }`}>
-                      {isDone
-                        ? <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3" stroke="currentColor" strokeWidth={3} strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
-                        : <span className="text-[10px]">{i + 1}</span>}
-                    </div>
-                    <span className={`text-[9px] font-bold leading-none ${isActive ? "text-brand-500 dark:text-brand-400" : "text-slate-400 dark:text-slate-500"}`}>{labels[i]}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        <ContribTypeSelector clientGroups={clientGroups.map(m => m.group).filter(Boolean)} value={contribCtx} selectedGroupId={contribGroupId}
-          onChange={(ctx, gid) => { setContribCtx(ctx); setContribGroupId(gid || null); }} />
-
-        {contribCtx === "personal_savings" && activePsCycles.length > 1 && (
-          <div className="mb-4">
-            <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Which savings cycle?</p>
-            <div className="space-y-1.5">
-              {activePsCycles.map(cyc => (
-                <button key={cyc.id} type="button"
-                  onClick={() => setSelectedCycleId(cyc.id)}
-                  className={`w-full flex items-center justify-between px-3 py-2 rounded-xl border-2 text-left text-sm transition ${
-                    selectedCycleId === cyc.id
-                      ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20 text-brand-700 dark:text-brand-300"
-                      : "border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200"
-                  }`}>
-                  <span className="font-semibold">{cyc.label || "Savings"}</span>
-                  {selectedCycleId === cyc.id && <div className="w-3.5 h-3.5 rounded-full bg-brand-500 flex-shrink-0" />}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* First-deposit requirement banner (Paystack path) */}
-        {contribCtx === "personal_savings" && (() => {
-          if (Number(client?.total_saved || 0) > 0) return null;
-          const regCharge = Number(client?.registration_charge || 0);
-          const expected  = Number(client?.contribution_amount || 0);
-          const minReq    = expected + regCharge;
-          if (minReq <= 0 || (regCharge === 0 && client?.commission_model !== "first_period")) return null;
-          return (
-            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl px-3 py-2.5 mb-4">
-              <p className="text-[11px] font-bold text-blue-700 dark:text-blue-300">
-                First deposit: ₦{minReq.toLocaleString("en-NG")} = ₦{expected.toLocaleString("en-NG")} contribution + ₦{regCharge.toLocaleString("en-NG")} registration
-              </p>
-            </div>
-          );
-        })()}
-
-        {/* Amount */}
-        <div className="bg-brand-50 dark:bg-brand-900/20 rounded-2xl px-4 py-4 mb-5">
-          <p className="text-[10px] font-bold text-brand-500 dark:text-brand-400 uppercase tracking-wider mb-2">Amount to Contribute</p>
+        {/* LEAD: Amount — the one thing they need to do */}
+        <div className="bg-brand-50 dark:bg-brand-900/20 rounded-2xl px-4 py-4 mb-4">
+          <p className="text-[10px] font-bold text-brand-500 dark:text-brand-400 uppercase tracking-wider mb-2 capitalize">{client?.contribution_frequency || "monthly"} contribution</p>
           <div className="flex items-center gap-2">
             <span className="text-2xl font-black text-brand-600 dark:text-brand-300">₦</span>
             <input
@@ -1059,11 +990,51 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], onClose,
             <button
               onClick={() => setCustomAmt(String(client.contribution_amount))}
               className="mt-2 text-[10px] text-brand-500 dark:text-brand-400 underline underline-offset-2">
-              Reset to default (₦{fmt(client.contribution_amount)})
+              Use ₦{fmt(client.contribution_amount)} instead
             </button>
           )}
-          <p className="text-[11px] text-slate-400 mt-1 capitalize">{client?.contribution_frequency} contribution</p>
         </div>
+
+        {/* First-deposit info — plain language, no formula */}
+        {contribCtx === "personal_savings" && (() => {
+          if (Number(client?.total_saved || 0) > 0) return null;
+          const regCharge = Number(client?.registration_charge || 0);
+          const expected  = Number(client?.contribution_amount || 0);
+          const minReq    = expected + regCharge;
+          if (minReq <= 0 || (regCharge === 0 && client?.commission_model !== "first_period")) return null;
+          return (
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl px-3 py-2.5 mb-4">
+              <p className="text-[11px] font-bold text-blue-700 dark:text-blue-300">
+                Your first payment is ₦{minReq.toLocaleString("en-NG")} — includes a one-time ₦{regCharge.toLocaleString("en-NG")} registration. After today, every payment is ₦{expected.toLocaleString("en-NG")}.
+              </p>
+            </div>
+          );
+        })()}
+
+        {/* Goal selector — secondary, only visible if client is in a group */}
+        <ContribTypeSelector clientGroups={clientGroups.map(m => m.group).filter(Boolean)} value={contribCtx} selectedGroupId={contribGroupId}
+          onChange={(ctx, gid) => { setContribCtx(ctx); setContribGroupId(gid || null); }} />
+
+        {/* Cycle picker — secondary, only if personal savings and multiple active cycles */}
+        {contribCtx === "personal_savings" && activePsCycles.length > 1 && (
+          <div className="mb-4">
+            <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Which savings goal?</p>
+            <div className="space-y-1.5">
+              {activePsCycles.map(cyc => (
+                <button key={cyc.id} type="button"
+                  onClick={() => setSelectedCycleId(cyc.id)}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-xl border-2 text-left text-sm transition ${
+                    selectedCycleId === cyc.id
+                      ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20 text-brand-700 dark:text-brand-300"
+                      : "border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200"
+                  }`}>
+                  <span className="font-semibold">{cyc.label || "Savings"}</span>
+                  {selectedCycleId === cyc.id && <div className="w-3.5 h-3.5 rounded-full bg-brand-500 flex-shrink-0" />}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {message && (
           <p className={`text-xs mb-4 px-3 py-2 rounded-xl ${
@@ -1082,7 +1053,7 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], onClose,
             className="w-full mb-3 py-4 bg-brand-500 hover:bg-brand-600 disabled:opacity-60 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2 shadow-md">
             {status === "verifying"
               ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Verifying…</>
-              : "I've completed payment — tap to confirm"}
+              : "I've paid — confirm my savings"}
           </button>
         )}
 
@@ -1407,12 +1378,9 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
                 <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
               </svg>
             </div>
-            <p className="text-[10px] font-bold text-amber-500 uppercase tracking-widest mb-1">Pending Review</p>
-            <h3 className="text-lg font-extrabold text-slate-800 dark:text-white mb-3">Transfer Submitted</h3>
-            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl px-4 py-3 mb-5 text-left">
-              <p className="text-xs font-bold text-amber-700 dark:text-amber-300 mb-1">Your balance has NOT been credited yet</p>
-              <p className="text-xs text-amber-600 dark:text-amber-400 leading-relaxed">Your savings agent will verify the bank transfer. Your balance will only be updated after confirmation — this may take a few hours.</p>
-            </div>
+            <p className="text-[10px] font-bold text-amber-500 uppercase tracking-widest mb-1">Sent for checking</p>
+            <h3 className="text-lg font-extrabold text-slate-800 dark:text-white mb-2">We got it!</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mb-5 leading-relaxed px-2">Your agent will check the transfer and update your balance shortly. You&apos;ll get a notification when it&apos;s done.</p>
             <button onClick={onClose} className="w-full py-3.5 bg-slate-800 dark:bg-slate-700 text-white rounded-2xl font-bold text-sm active:scale-[0.99] transition">
               Got it
             </button>
@@ -1427,7 +1395,7 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-extrabold text-slate-800 dark:text-white">Make a Deposit</p>
-                <p className="text-[11px] text-slate-400">Transfer then submit your claim below</p>
+                <p className="text-[11px] text-slate-400">Send money here, then tell us you&apos;ve paid</p>
               </div>
               <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600 transition flex-shrink-0">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="w-4 h-4">
@@ -1436,46 +1404,7 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
               </button>
             </div>
 
-            <ContribTypeSelector clientGroups={clientGroups.map(m => m.group).filter(Boolean)} value={contribCtx} selectedGroupId={contribGroupId}
-              onChange={(ctx, gid) => { setContribCtx(ctx); setContribGroupId(gid || null); }} />
-
-            {contribCtx === "personal_savings" && activePsCyclesMd.length > 1 && (
-              <div className="mb-4">
-                <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Which savings cycle?</p>
-                <div className="space-y-1.5">
-                  {activePsCyclesMd.map(cyc => (
-                    <button key={cyc.id} type="button"
-                      onClick={() => setSelectedMdCycleId(cyc.id)}
-                      className={`w-full flex items-center justify-between px-3 py-2 rounded-xl border-2 text-left text-sm transition ${
-                        selectedMdCycleId === cyc.id
-                          ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20 text-brand-700 dark:text-brand-300"
-                          : "border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200"
-                      }`}>
-                      <span className="font-semibold">{cyc.label || "Savings"}</span>
-                      {selectedMdCycleId === cyc.id && <div className="w-3.5 h-3.5 rounded-full bg-brand-500 flex-shrink-0" />}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Fix 3: First-deposit minimum info banner */}
-            {contribCtx === "personal_savings" && (() => {
-              if (Number(client.total_saved || 0) > 0) return null;
-              const regCharge = Number(client.registration_charge || 0);
-              const expected  = Number(client.contribution_amount  || 0);
-              const minReq    = expected + regCharge;
-              if (minReq <= 0 || (regCharge === 0 && client.commission_model !== "first_period")) return null;
-              return (
-                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl px-3 py-2.5 mb-3">
-                  <p className="text-[11px] font-bold text-blue-700 dark:text-blue-300">
-                    First deposit: ₦{minReq.toLocaleString("en-NG")} = ₦{expected.toLocaleString("en-NG")} contribution + ₦{regCharge.toLocaleString("en-NG")} registration
-                  </p>
-                </div>
-              );
-            })()}
-
-            {/* Bank details */}
+            {/* LEAD: Bank details — the action they need to do before anything else */}
             {hasBank ? (() => {
               const isClientAcct = !!clientBank?.account_number;
               const acctNum  = isClientAcct ? clientBank.account_number  : ownerBank.bank_account_number;
@@ -1483,9 +1412,7 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
               const bankName = isClientAcct ? clientBank.bank_name       : ownerBank.bank_name;
               return (
                 <div className="bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-800 rounded-2xl px-4 py-4 mb-4">
-                  <p className="text-[10px] font-bold text-brand-500 dark:text-brand-400 uppercase tracking-wider mb-3">
-                    {isClientAcct ? "Your Dedicated Savings Account" : "Business Bank Account"}
-                  </p>
+                  <p className="text-[10px] font-bold text-brand-500 dark:text-brand-400 uppercase tracking-wider mb-3">Send money here</p>
                   <div className="space-y-2.5">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-xs text-slate-500 dark:text-slate-400 flex-shrink-0">Account Number</span>
@@ -1530,8 +1457,9 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
               </div>
             )}
 
-            <div className="bg-brand-50 dark:bg-brand-900/20 rounded-2xl px-4 py-4 mb-3">
-              <p className="text-[10px] font-bold text-brand-500 dark:text-brand-400 uppercase tracking-wider mb-2">Amount Transferred <span className="text-red-400">*</span></p>
+            {/* Amount — past tense, matches what they already did */}
+            <div className="bg-brand-50 dark:bg-brand-900/20 rounded-2xl px-4 py-4 mb-4">
+              <p className="text-[10px] font-bold text-brand-500 dark:text-brand-400 uppercase tracking-wider mb-2">How much did you send? <span className="text-red-400">*</span></p>
               <div className="flex items-center gap-2">
                 <span className="text-2xl font-black text-brand-600 dark:text-brand-300">₦</span>
                 <input
@@ -1546,24 +1474,48 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
               )}
             </div>
 
-            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Sender Name (optional)</label>
-            <input
-              type="text"
-              value={payerName} onChange={e => setPayerName(e.target.value)}
-              placeholder="Name on the transfer receipt"
-              className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 mb-3"
-            />
+            {/* Goal selector — secondary, after amount, only if in a group */}
+            <ContribTypeSelector clientGroups={clientGroups.map(m => m.group).filter(Boolean)} value={contribCtx} selectedGroupId={contribGroupId}
+              onChange={(ctx, gid) => { setContribCtx(ctx); setContribGroupId(gid || null); }} />
 
-            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Reference / Note (optional)</label>
-            <input
-              type="text"
-              value={notes} onChange={e => setNotes(e.target.value)}
-              placeholder="e.g. January contribution"
-              className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 mb-3"
-            />
+            {/* Cycle picker — secondary, only if multiple active cycles */}
+            {contribCtx === "personal_savings" && activePsCyclesMd.length > 1 && (
+              <div className="mb-4">
+                <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Which savings goal?</p>
+                <div className="space-y-1.5">
+                  {activePsCyclesMd.map(cyc => (
+                    <button key={cyc.id} type="button"
+                      onClick={() => setSelectedMdCycleId(cyc.id)}
+                      className={`w-full flex items-center justify-between px-3 py-2 rounded-xl border-2 text-left text-sm transition ${
+                        selectedMdCycleId === cyc.id
+                          ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20 text-brand-700 dark:text-brand-300"
+                          : "border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200"
+                      }`}>
+                      <span className="font-semibold">{cyc.label || "Savings"}</span>
+                      {selectedMdCycleId === cyc.id && <div className="w-3.5 h-3.5 rounded-full bg-brand-500 flex-shrink-0" />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
-            {/* Proof upload */}
-            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Proof of Transfer (optional)</label>
+            {/* First-deposit info — plain language */}
+            {contribCtx === "personal_savings" && (() => {
+              if (Number(client.total_saved || 0) > 0) return null;
+              const regCharge = Number(client.registration_charge || 0);
+              const expected  = Number(client.contribution_amount  || 0);
+              const minReq    = expected + regCharge;
+              if (minReq <= 0 || (regCharge === 0 && client.commission_model !== "first_period")) return null;
+              return (
+                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl px-3 py-2.5 mb-3">
+                  <p className="text-[11px] font-bold text-blue-700 dark:text-blue-300">
+                    Your first payment is ₦{minReq.toLocaleString("en-NG")} — includes a one-time ₦{regCharge.toLocaleString("en-NG")} registration. After today, every payment is ₦{expected.toLocaleString("en-NG")}.
+                  </p>
+                </div>
+              );
+            })()}
+
+            {/* Proof upload — simplified */}
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={pickFile} />
             {uploading && (
               <div className="mb-3 px-1">
@@ -1585,13 +1537,35 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
             )}
             {!uploading && !proofPrev && (
               <button onClick={() => fileRef.current?.click()}
-                className="w-full py-3 mb-3 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl text-xs font-bold text-slate-400 dark:text-slate-500 flex items-center justify-center gap-2 active:scale-[0.99] transition">
-                <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                className="w-full py-2.5 mb-3 text-xs font-bold text-brand-500 dark:text-brand-400 flex items-center gap-2 active:scale-[0.99] transition">
+                <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 flex-shrink-0" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                   <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>
                 </svg>
-                Upload screenshot (≤ 2 MB)
+                Add a screenshot (optional — speeds up approval)
               </button>
             )}
+
+            {/* Optional extra details — collapsed by default */}
+            <details className="mb-3 group">
+              <summary className="text-[11px] font-bold text-slate-400 dark:text-slate-500 cursor-pointer select-none list-none flex items-center gap-1.5 mb-2">
+                <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3 transition-transform group-open:rotate-90" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
+                Add more details (optional)
+              </summary>
+              <div className="space-y-2.5 mt-2">
+                <input
+                  type="text"
+                  value={payerName} onChange={e => setPayerName(e.target.value)}
+                  placeholder="Sender name (name on the transfer)"
+                  className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                />
+                <input
+                  type="text"
+                  value={notes} onChange={e => setNotes(e.target.value)}
+                  placeholder="Note (e.g. January contribution)"
+                  className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                />
+              </div>
+            </details>
 
             {error && <p className="text-xs text-red-500 mb-3">{error}</p>}
 
@@ -1601,11 +1575,11 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
               className="w-full py-3.5 bg-brand-500 hover:bg-brand-600 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] disabled:opacity-50 shadow-sm flex items-center justify-center gap-2">
               {saving
                 ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Submitting…</>
-                : "Submit Deposit Claim"}
+                : "I sent this money"}
             </button>
 
             <p className="text-[10px] text-slate-400 text-center mt-3">
-              Your claim will be reviewed by your savings agent before your balance is updated.
+              Your agent will confirm it before your balance is updated.
             </p>
           </>
         )}
@@ -1766,7 +1740,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
   const withdrawalForm = (
     <>
       <div className="bg-slate-50 dark:bg-slate-700/50 rounded-2xl px-4 py-4 mb-3">
-        <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Withdrawal Amount</p>
+        <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">How much do you want?</p>
         <div className="flex items-center gap-2">
           <span className="text-2xl font-black text-slate-700 dark:text-slate-200">₦</span>
           <input
@@ -1779,30 +1753,21 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
         {amtNum > withdrawable && (
           <p className="text-[11px] text-red-500 mt-1">Exceeds available balance</p>
         )}
-      </div>
-
-      <div className="bg-slate-50 dark:bg-slate-700/40 border border-slate-200 dark:border-slate-600 rounded-2xl px-4 py-3 mb-3 space-y-2">
-        <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-          {pctFee > 0 ? `Withdrawal fee · ${pctFee}%`
-            : client.commission_model === "first_period" ? "Fee: first period per cycle"
-            : "No withdrawal fee"}
-        </p>
-        <div className="flex justify-between text-xs">
-          <span className="text-slate-500 dark:text-slate-400">Requested</span>
-          <span className="font-bold text-slate-700 dark:text-slate-200">{amtNum > 0 ? fmt(amtNum) : "—"}</span>
-        </div>
-        {feeAmt > 0 && amtNum > 0 && (
-          <div className="flex justify-between text-xs">
-            <span className="text-slate-500 dark:text-slate-400">{`Fee (${pctFee}%)`}</span>
-            <span className="font-bold text-red-500">−{fmt(feeAmt)}</span>
+        {amtNum > 0 && amtNum <= withdrawable && (
+          <div className="mt-2 pt-2 border-t border-slate-200 dark:border-slate-600">
+            {feeAmt > 0 ? (
+              <div className="flex items-baseline justify-between">
+                <span className="text-xs text-slate-500 dark:text-slate-400">You&apos;ll receive · ₦{fmt(feeAmt)} handling fee</span>
+                <span className="text-sm font-extrabold text-green-600 dark:text-green-400 tabular-nums">₦{fmt(Math.max(0, netAmt))}</span>
+              </div>
+            ) : (
+              <div className="flex items-baseline justify-between">
+                <span className="text-xs text-slate-500 dark:text-slate-400">You&apos;ll receive · no fee</span>
+                <span className="text-sm font-extrabold text-green-600 dark:text-green-400 tabular-nums">₦{fmt(amtNum)}</span>
+              </div>
+            )}
           </div>
         )}
-        <div className="flex justify-between text-xs border-t border-slate-200 dark:border-slate-600 pt-2">
-          <span className="font-extrabold text-slate-600 dark:text-slate-300">You receive</span>
-          <span className={`font-extrabold ${amtNum > 0 && netAmt > 0 ? "text-green-600 dark:text-green-400" : "text-slate-400 dark:text-slate-500"}`}>
-            {amtNum > 0 ? fmt(Math.max(0, netAmt)) : "—"}
-          </span>
-        </div>
       </div>
 
       <div className="bg-slate-50 dark:bg-slate-700/40 border border-slate-200 dark:border-slate-600 rounded-2xl px-4 py-3 mb-3">
@@ -1872,7 +1837,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
             setError("Add and verify your bank account before requesting a withdrawal"); return;
           }
           setTxnPin({
-            title: "Request Withdrawal",
+            title: "Confirm Withdrawal",
             amount: Math.round(netAmt * 100),
             description: "Savings withdrawal request",
             hasPinSet: Boolean(client?.portal_pin_changed_at),
@@ -1881,7 +1846,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
         }}
         disabled={saving || !amtNum || amtNum <= 0}
         className="w-full py-3.5 bg-brand-500 hover:bg-brand-600 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] disabled:opacity-50 shadow-sm">
-        {saving ? "Submitting…" : "Submit Request"}
+        {saving ? "Withdrawing…" : amtNum > 0 && netAmt > 0 ? `Withdraw ₦${fmt(netAmt)}` : "Withdraw"}
       </button>
     </>
   );
@@ -1898,8 +1863,8 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
                 <path d="M20 6L9 17l-5-5" />
               </svg>
             </div>
-            <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">Request Submitted!</h3>
-            <p className="text-xs text-slate-400 dark:text-slate-500">You&apos;ll be notified by email once your request is reviewed.</p>
+            <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">Done!</h3>
+            <p className="text-xs text-slate-400 dark:text-slate-500 leading-relaxed">Your agent will pay you out shortly. We&apos;ll let you know when it&apos;s ready.</p>
             <button onClick={onClose} className="mt-5 w-full py-3.5 bg-brand-500 text-white rounded-xl font-bold text-sm">Close</button>
           </div>
         ) : (
@@ -1911,13 +1876,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
                 </svg>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-extrabold text-slate-800 dark:text-white">Request Withdrawal</p>
-                <p className="text-[11px] text-slate-400">
-                  Available: <strong className="text-slate-600 dark:text-slate-300">{fmt(withdrawable)}</strong>
-                  {groupLocked > 0 && <span className="ml-1 text-amber-500">· {fmt(groupLocked)} in group/esusu</span>}
-                  {esusuLocked > 0 && <span className="ml-1 text-amber-500">· {fmt(esusuLocked)} in esusu round</span>}
-                  {cycleLocked > 0 && <span className="ml-1 text-amber-500">· {fmt(cycleLocked)} locked in cycle</span>}
-                </p>
+                <p className="font-extrabold text-slate-800 dark:text-white">Take out money</p>
               </div>
               <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600 transition flex-shrink-0">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="w-4 h-4">
@@ -1925,6 +1884,39 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
                 </svg>
               </button>
             </div>
+
+            {/* Hero: one clear number leads */}
+            <div className="text-center mb-4">
+              <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1">Ready to withdraw</p>
+              <p className="text-4xl font-black text-slate-800 dark:text-white tabular-nums">₦{fmt(withdrawable)}</p>
+            </div>
+
+            {/* Collapsible set-aside — only if something is locked */}
+            {lockedAmount > 0 && (
+              <details className="mb-4 group">
+                <summary className="text-xs font-bold text-amber-600 dark:text-amber-400 cursor-pointer select-none list-none flex items-center gap-1.5">
+                  <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 transition-transform group-open:rotate-90 flex-shrink-0" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
+                  + {fmt(lockedAmount)} set aside
+                </summary>
+                <div className="mt-2 space-y-1.5 pl-1">
+                  {cycleLocked > 0 && (
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-800/30">
+                      <p className="text-xs text-amber-700 dark:text-amber-400">₦{fmt(cycleLocked)} · In your savings plan (until it completes)</p>
+                    </div>
+                  )}
+                  {groupLocked > 0 && (
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-800/30">
+                      <p className="text-xs text-amber-700 dark:text-amber-400">₦{fmt(groupLocked)} · In your group savings</p>
+                    </div>
+                  )}
+                  {esusuLocked > 0 && (
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-800/30">
+                      <p className="text-xs text-amber-700 dark:text-amber-400">₦{fmt(esusuLocked)} · In your esusu rotation</p>
+                    </div>
+                  )}
+                </div>
+              </details>
+            )}
 
             {hasTabs && (
               <div className="flex gap-1 p-1 bg-slate-100 dark:bg-slate-700/50 rounded-xl mb-4">
@@ -1986,8 +1978,8 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
                           {isLocked && (
                             <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">
                               {cycLocked > 0
-                                ? "Withdrawable when cycle closes · contact your savings agent for early access"
-                                : "Day 1 collector’s fee paid — savings accumulate from next deposit"}
+                                ? "Available to withdraw once your savings plan is complete"
+                                : "Savings accumulate from your next deposit"}
                             </p>
                           )}
                         </div>
