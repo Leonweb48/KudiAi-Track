@@ -1530,6 +1530,7 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
   const [contribCtx,     setContribCtx]    = useState("personal_savings");
   const [contribGroupId, setContribGroupId] = useState(null);
   const [selectedCycleId, setSelectedCycleId] = useState(null);
+  const [txnPin,         setTxnPin]        = useState(null);
   const [copiedField,    setCopiedField]   = useState(null);
   const fileRef = useRef(null);
 
@@ -1695,7 +1696,18 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
 
       {error && <p className="text-xs text-red-500">{error}</p>}
 
-      <button onClick={handleSubmit} disabled={saving || uploading || !amtNum || amtNum <= 0}
+      <button
+        onClick={() => {
+          if (!amtNum || amtNum <= 0) { setError("Enter a valid amount"); return; }
+          setTxnPin({
+            title: "Confirm Deposit",
+            amount: Math.round(amtNum * 100),
+            description: "Savings deposit submission",
+            hasPinSet: Boolean(client?.portal_pin_changed_at),
+            onApprove: () => { setTxnPin(null); handleSubmit(); },
+          });
+        }}
+        disabled={saving || uploading || !amtNum || amtNum <= 0}
         className="w-full py-3.5 bg-brand-500 hover:bg-brand-600 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] disabled:opacity-50 shadow-sm flex items-center justify-center gap-2">
         {saving
           ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Submitting…</>
@@ -1719,10 +1731,10 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
                 <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
               </svg>
             </div>
-            <p className="text-[10px] font-bold text-amber-500 uppercase tracking-widest mb-1">Sent for checking</p>
-            <h3 className="text-lg font-extrabold text-slate-800 dark:text-white mb-2">We got it!</h3>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mb-5 leading-relaxed px-2">Your agent will check the transfer and update your balance shortly. You&apos;ll get a notification when it&apos;s done.</p>
-            <button onClick={onClose} className="w-full py-3.5 bg-slate-800 dark:bg-slate-700 text-white rounded-2xl font-bold text-sm active:scale-[0.99] transition">Got it</button>
+            <p className="text-[10px] font-bold text-amber-500 uppercase tracking-widest mb-1">Submitted</p>
+            <h3 className="text-lg font-extrabold text-slate-800 dark:text-white mb-2">Deposit submitted!</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mb-5 leading-relaxed px-2">Your agent will confirm shortly — you&apos;ll get a notification when your balance is updated.</p>
+            <button onClick={onClose} className="w-full py-3.5 bg-slate-800 dark:bg-slate-700 text-white rounded-2xl font-bold text-sm active:scale-[0.99] transition">Done</button>
           </div>
         ) : (
           <>
@@ -1885,6 +1897,7 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
         )}
       </div>
     </div>
+    {txnPin && <AjoTxnPinModal {...txnPin} clientId={client?.id} onCancel={() => setTxnPin(null)} />}
     </>
   );
 }
@@ -1923,17 +1936,17 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
     }).catch(() => setLocksLoaded(true));
   }, [client.id, client.current_balance, cycles]);
 
-  // ── Bank account state (unchanged) ───────────────────────────────────────
+  // ── Bank account state ────────────────────────────────────────────────────
+  // Only withdrawal_account_* fields are valid payout destinations.
+  // client.account_number / client.bank_code are the INBOUND collection account
+  // (where deposits route in) — never use them as a withdrawal destination.
   const [banks,        setBanks]        = useState([]);
-  const hasAccount = !!(
-    (client.withdrawal_account_number || client.account_number) &&
-    (client.withdrawal_account_name   || client.account_name)
-  );
+  const hasAccount = !!(client.withdrawal_account_number && client.withdrawal_account_name);
   const [acctForm,     setAcctForm]     = useState({
-    bank_code:      client.withdrawal_bank_code      || client.bank_code      || "",
-    account_number: client.withdrawal_account_number || client.account_number || "",
-    account_name:   client.withdrawal_account_name   || client.account_name   || "",
-    bank_name:      client.withdrawal_bank_name      || client.bank_name      || "",
+    bank_code:      client.withdrawal_bank_code      || "",
+    account_number: client.withdrawal_account_number || "",
+    account_name:   client.withdrawal_account_name   || "",
+    bank_name:      client.withdrawal_bank_name      || "",
   });
   const [acctVerified,  setAcctVerified]  = useState(false);
   const [acctVerifying, setAcctVerifying] = useState(false);
@@ -2027,8 +2040,8 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
     }
     setSaving(true); setError("");
     try {
-      const existingAcctNum  = client.withdrawal_account_number || client.account_number || "";
-      const existingBankCode = client.withdrawal_bank_code      || client.bank_code      || "";
+      const existingAcctNum  = client.withdrawal_account_number || "";
+      const existingBankCode = client.withdrawal_bank_code      || "";
       const bankChanged = acctForm.account_number !== existingAcctNum || acctForm.bank_code !== existingBankCode;
       if (bankChanged && acctVerified) {
         await ajoFn("update-profile", {
@@ -2188,9 +2201,9 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
             <div className="w-14 h-14 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-3">
               <svg viewBox="0 0 24 24" fill="none" className="w-7 h-7 text-green-600 dark:text-green-400" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M20 6L9 17l-5-5" /></svg>
             </div>
-            <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">Done!</h3>
-            <p className="text-xs text-slate-400 dark:text-slate-500 leading-relaxed">Your agent will pay you out shortly. We&apos;ll let you know when it&apos;s ready.</p>
-            <button onClick={onClose} className="mt-5 w-full py-3.5 bg-brand-500 text-white rounded-xl font-bold text-sm">Close</button>
+            <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">Request sent!</h3>
+            <p className="text-xs text-slate-400 dark:text-slate-500 leading-relaxed">Withdrawal request sent — you&apos;ll be notified once it&apos;s reviewed.</p>
+            <button onClick={onClose} className="mt-5 w-full py-3.5 bg-brand-500 text-white rounded-xl font-bold text-sm">Done</button>
           </div>
         ) : (
           <>
