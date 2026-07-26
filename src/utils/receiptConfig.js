@@ -64,6 +64,7 @@ export function buildTransactionReceipt(txn, profile) {
       txn.payment_type  && { label: 'Payment Method',           value: humanize(txn.payment_type) },
       txn.quantity > 1  && { label: 'Quantity',                 value: String(txn.quantity) },
       txn.note          && { label: 'Note',                     value: txn.note },
+      txn.staff_name    && { label: 'Recorded by',              value: txn.staff_name },
                            { label: 'Reference',                value: ref, copy: true },
     ].filter(Boolean),
     businessName:  profile?.business_name || 'My Business',
@@ -101,7 +102,7 @@ function buildDestinationLabel(contribution) {
   return `To: Personal Savings${cyc ? ` — ${cyc}` : ''}`;
 }
 
-export function buildAsoContributionReceipt(contribution, clientName, businessName) {
+export function buildAsoContributionReceipt(contribution, clientName, businessName, recordedByName) {
   const isWithdrawal = contribution.type === 'withdrawal';
   const isReg        = contribution.type === 'registration_fee';
   const status       = contribution.status === 'pending' ? 'pending' : 'success';
@@ -120,6 +121,7 @@ export function buildAsoContributionReceipt(contribution, clientName, businessNa
       clientName                  && { label: 'Member',         value: clientName },
       contribution.payment_method && { label: 'Payment Method', value: humanize(contribution.payment_method) },
       contribution.notes          && { label: 'Note',           value: contribution.notes },
+      recordedByName              && { label: 'Recorded by',    value: recordedByName },
                                      { label: 'Reference',      value: ref, copy: true },
     ].filter(Boolean),
     businessName,

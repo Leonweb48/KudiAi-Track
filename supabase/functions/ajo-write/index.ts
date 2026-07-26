@@ -84,17 +84,21 @@ async function resolveClientOwner(
   return data?.user_id ?? null;
 }
 
-// ── Resolve owner + client IDs for a contribution (reverse action) ────────────
+// ── Resolve owner + client IDs + original amount for a contribution ───────────
 async function resolveContrib(
   sb: ReturnType<typeof createClient>,
   contribId: string,
-): Promise<{ ownerId: string | null; clientId: string | null }> {
+): Promise<{ ownerId: string | null; clientId: string | null; originalAmount: number }> {
   const { data } = await sb
     .from("ajo_contributions")
-    .select("owner_id, aso_client_id")
+    .select("owner_id, aso_client_id, amount")
     .eq("id", contribId)
     .maybeSingle();
-  return { ownerId: data?.owner_id ?? null, clientId: data?.aso_client_id ?? null };
+  return {
+    ownerId:        data?.owner_id      ?? null,
+    clientId:       data?.aso_client_id ?? null,
+    originalAmount: Number(data?.amount ?? 0),
+  };
 }
 
 // ── Fetch email metadata for a client, owner, and optional staff caller ────────
@@ -1089,7 +1093,7 @@ serve(async (req: Request) => {
   if (action === "reverse_contribution") {
     const { original_id, reason } = params as { original_id: string; reason: string };
 
-    const { ownerId, clientId } = await resolveContrib(sb, original_id);
+    const { ownerId, clientId, originalAmount } = await resolveContrib(sb, original_id);
     if (!ownerId) return json({ ok: false, error: "Contribution not found" }, 404);
 
     const ajoPerms = await resolveAjoPerms(sb, user.id, ownerId);
@@ -1112,8 +1116,8 @@ serve(async (req: Request) => {
         business_name: ctx.businessName,
         staff_email:   ctx.staffEmail,
         staff_name:    ctx.staffName,
-        amount:        rpcRev?.amount,
-        balance_after: rpcRev?.balance_after,
+        amount:        originalAmount,
+        balance_after: rpcRev?.new_balance,
         reason:        reason || "",
         original_type: rpcRev?.original_type || "contribution",
         date:          new Date().toLocaleDateString("en-NG"),
@@ -1124,7 +1128,7 @@ serve(async (req: Request) => {
       notifyUser(sb, rrcl?.client_user_id, {
         type:     "contribution_reversed",
         title:    "Contribution Reversed",
-        body:     `₦${Number(rpcRev?.amount).toLocaleString("en-NG")} contribution was reversed${reason ? ` — ${reason}` : ""}`,
+        body:     `₦${Number(originalAmount).toLocaleString("en-NG")} contribution was reversed${reason ? ` — ${reason}` : ""}`,
         priority: "high",
         deepLink: { tab: "contributions" },
         category: "savings",

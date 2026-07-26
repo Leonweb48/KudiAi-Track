@@ -228,7 +228,7 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
     <div className="fixed inset-0 z-sheet bg-black/60 flex flex-col">
       {receipt && (
         <TransactionDetailModal
-          data={buildAsoContributionReceipt(receipt, client.full_name, businessName)}
+          data={buildAsoContributionReceipt(receipt, client.full_name, businessName, receipt.recorded_by ? staffMap[receipt.recorded_by] : undefined)}
           onClose={() => setReceipt(null)}
         />
       )}
