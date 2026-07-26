@@ -76,7 +76,7 @@ export default function AIAssistant({ store, inventory, branches = [], invoices 
   const [thinking,  setThinking]  = useState(false);
   const [listening, setListening] = useState(false);
   const [ttsOn,     setTtsOn]     = useState(() => {
-    try { return localStorage.getItem("kt_tts_enabled") === "1"; } catch { return false; }
+    try { return localStorage.getItem("kt_tts_enabled") !== "0"; } catch { return true; }
   });
 
   const listRef  = useRef(null);
@@ -200,7 +200,10 @@ export default function AIAssistant({ store, inventory, branches = [], invoices 
         <button
           onClick={() => setTtsOn(v => {
             const next = !v;
-            try { localStorage.setItem("kt_tts_enabled", next ? "1" : "0"); } catch {}
+            try {
+              if (next) localStorage.removeItem("kt_tts_enabled");
+              else      localStorage.setItem("kt_tts_enabled", "0");
+            } catch {}
             return next;
           })}
           title={ttsOn ? "Mute voice replies" : "Enable voice replies"}

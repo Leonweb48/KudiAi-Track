@@ -393,11 +393,15 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
   const toggleDark = () => setProfile(p => ({ ...p, dark_mode: !p.dark_mode }));
 
   const [ttsEnabled, setTtsEnabled] = useState(() => {
-    try { return localStorage.getItem("kt_tts_enabled") === "1"; } catch { return false; }
+    try { return localStorage.getItem("kt_tts_enabled") !== "0"; } catch { return true; }
   });
   const toggleTts = () => setTtsEnabled(v => {
     const next = !v;
-    try { localStorage.setItem("kt_tts_enabled", next ? "1" : "0"); } catch {}
+    // Write "0" to explicitly disable; remove the key to restore default (enabled).
+    try {
+      if (next) localStorage.removeItem("kt_tts_enabled");
+      else      localStorage.setItem("kt_tts_enabled", "0");
+    } catch {}
     return next;
   });
 

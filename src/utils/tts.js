@@ -157,9 +157,11 @@ async function serverTTS(text) {
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
+// TTS is ON by default — the setting is opt-out ("0" = disabled).
+// An absent key means "never explicitly disabled" → enabled.
 export function isTtsEnabled() {
-  try { return localStorage.getItem("kt_tts_enabled") === "1"; }
-  catch { return false; }
+  try { return localStorage.getItem("kt_tts_enabled") !== "0"; }
+  catch { return true; }
 }
 
 export async function speakText(text, lang = "en") {
