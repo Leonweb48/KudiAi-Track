@@ -122,28 +122,37 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     if (asoRes.data) setAsoClients(asoRes.data);
     if (dpRes.data)  setDebtPayments(dpRes.data);
 
-    // Fire overdue contribution reminders — once per client per calendar day
-    if (asoRes.data?.length) {
-      const todayStr = today();
-      const bizName  = profRes.data?.business_name || "";
-      for (const cl of asoRes.data) {
-        if (!cl.email) continue;
-        if (!cl.next_contribution_date || cl.next_contribution_date >= todayStr) continue;
-        if (["paid", "cancelled", "completed"].includes(cl.status)) continue;
-        const lsKey = `ajo_overdue_${cl.id}_${todayStr}`;
-        if (localStorage.getItem(lsKey)) continue;
-        localStorage.setItem(lsKey, "1");
-        fireEmailTrigger("ajo_contribution_overdue", {
-          client_id:              cl.id,
-          owner_id:               userId,
-          client_name:            cl.full_name             || "",
-          next_contribution_date: cl.next_contribution_date,
-          contribution_amount:    cl.contribution_amount   || 0,
-          contribution_frequency: cl.contribution_frequency || "",
-          current_balance:        cl.current_balance       || 0,
-          group_name:             cl.group_name            || "",
-          business_name:          bizName,
-        });
+    // One daily overdue digest to the owner listing ALL overdue clients (owner session only)
+    if (!staffId && asoRes.data?.length) {
+      const todayStr  = today();
+      const digestKey = `kt_ajo_overdue_digest_${userId}_${todayStr}`;
+      if (!localStorage.getItem(digestKey)) {
+        const overdueCls = asoRes.data.filter(cl =>
+          cl.next_contribution_date &&
+          cl.next_contribution_date < todayStr &&
+          !["paid", "cancelled", "completed"].includes(cl.status)
+        );
+        if (overdueCls.length > 0) {
+          localStorage.setItem(digestKey, "1");
+          const bizName = profRes.data?.business_name || "";
+          fireEmailTrigger("ajo_overdue_digest", {
+            owner_id:        userId,
+            owner_email:     authEmailRef.current,
+            business_name:   bizName,
+            overdue_count:   overdueCls.length,
+            overdue_clients: overdueCls.map(cl => ({
+              client_name:            cl.full_name             || "",
+              next_contribution_date: cl.next_contribution_date,
+              contribution_amount:    cl.contribution_amount   || 0,
+              contribution_frequency: cl.contribution_frequency || "",
+              current_balance:        cl.current_balance       || 0,
+              group_name:             cl.group_name            || "",
+              days_overdue: Math.max(0, Math.floor(
+                (new Date(todayStr).getTime() - new Date(cl.next_contribution_date).getTime()) / 86400000
+              )),
+            })),
+          });
+        }
       }
     }
 
@@ -862,17 +871,31 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
   // "add credit to existing user" path matches the new-credit-user path.
   const addExtraCredit = async (id, updates, { amount, outstanding, customerName } = {}) => {
     const result = await updateCredit(id, updates);
-    if (!result.error && staffId) {
-      const extData = {
-        ownerId:      userId,
-        staffName:    staffName || "Staff",
-        amount:       amount       || 0,
-        outstanding:  outstanding  || 0,
-        customerName: customerName || "",
-        creditId:     id,
-      };
-      notify({ type: "credit_extended", userId, originUserId: staffId, data: extData });
-      if (branchId) notifyBranchManager(userId, branchId, { type: "credit_extended", originUserId: staffId, data: extData });
+    if (!result.error) {
+      const credit = credits.find(c => c.id === id);
+      // Email owner always; also email customer if they have an address on file
+      fireEmailTrigger("credit_extended", {
+        owner_id:       userId,
+        owner_email:    authEmailRef.current,
+        customer_email: credit?.email          || "",
+        customer_name:  customerName           || credit?.customer_name || "",
+        staff_name:     staffName              || "",
+        business_name:  profile?.business_name || "",
+        amount:         amount                 || 0,
+        outstanding:    outstanding            || 0,
+      });
+      if (staffId) {
+        const extData = {
+          ownerId:      userId,
+          staffName:    staffName || "Staff",
+          amount:       amount       || 0,
+          outstanding:  outstanding  || 0,
+          customerName: customerName || "",
+          creditId:     id,
+        };
+        notify({ type: "credit_extended", userId, originUserId: staffId, data: extData });
+        if (branchId) notifyBranchManager(userId, branchId, { type: "credit_extended", originUserId: staffId, data: extData });
+      }
     }
     return result;
   };

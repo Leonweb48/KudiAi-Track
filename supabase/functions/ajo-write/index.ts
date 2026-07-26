@@ -878,7 +878,7 @@ serve(async (req: Request) => {
       (async () => {
         const [ctx, rwApprClientUserId] = await Promise.all([
           fetchEmailContext(sb, client_id, ownerId, user.id),
-          request_id ? resolveClientUserId(sb, client_id) : Promise.resolve(null as string | null),
+          resolveClientUserId(sb, client_id), // always resolve — needed for both request and direct paths
         ]);
         if (request_id) {
           const rwApprStaffUid = await resolveAssignedStaffUserId(sb, client_id);
@@ -893,7 +893,7 @@ serve(async (req: Request) => {
               amount:        rpcWd?.gross_amount,
               fee_amount:    rpcWd?.fee_amount,
               net_amount:    rpcWd?.net_amount,
-              balance_after: rpcWd?.balance_after,
+              balance_after: rpcWd?.new_balance,
               date:          new Date().toLocaleDateString("en-NG"),
             }),
             notifyUser(sb, rwApprClientUserId, {
@@ -908,19 +908,31 @@ serve(async (req: Request) => {
             }),
           ]);
         } else {
-          await fireAjoEmail("ajo_withdrawal", {
-            client_email:  ctx.clientEmail,
-            client_name:   ctx.clientName,
-            user_email:    ctx.ownerEmail,
-            business_name: ctx.businessName,
-            staff_email:   ctx.staffEmail,
-            staff_name:    ctx.staffName,
-            amount:        rpcWd?.net_amount,
-            gross_amount:  rpcWd?.gross_amount,
-            fee_amount:    rpcWd?.fee_amount,
-            balance_after: rpcWd?.balance_after,
-            date:          new Date().toLocaleDateString("en-NG"),
-          });
+          // Direct withdrawal: email + client push (client gets no separate approval step so
+          // notify them now that the payment is done)
+          await Promise.allSettled([
+            fireAjoEmail("ajo_withdrawal", {
+              client_email:  ctx.clientEmail,
+              client_name:   ctx.clientName,
+              user_email:    ctx.ownerEmail,
+              business_name: ctx.businessName,
+              staff_email:   ctx.staffEmail,
+              staff_name:    ctx.staffName,
+              amount:        rpcWd?.net_amount,
+              gross_amount:  rpcWd?.gross_amount,
+              fee_amount:    rpcWd?.fee_amount,
+              balance_after: rpcWd?.new_balance,
+              date:          new Date().toLocaleDateString("en-NG"),
+            }),
+            notifyUser(sb, rwApprClientUserId, {
+              type:     "withdrawal_approved",
+              title:    "Payment Processed",
+              body:     `Your payment of ₦${Number(rpcWd?.net_amount ?? gross_amount).toLocaleString("en-NG")} has been processed`,
+              priority: "high",
+              deepLink: { tab: "contributions" },
+              category: "money",
+            }),
+          ]);
         }
       })().catch(() => null),
       new Promise<void>(r => setTimeout(r, 2500)),
@@ -1414,19 +1426,43 @@ serve(async (req: Request) => {
     const csr = csrData as Record<string, unknown>;
     const releases = (csr.releases as Array<{ client_id: string; client_name: string; released_amount: number }>) || [];
 
-    // Notify all released members
+    // Fetch owner profile once for email context
+    const csrOwnerRow = await sb.from("profiles")
+      .select("email, business_name").eq("id", csrOwnerId).maybeSingle().then(r => r.data);
+    const csrOwnerEmail   = (csrOwnerRow as Record<string,string> | null)?.email         || "";
+    const csrBusinessName = (csrOwnerRow as Record<string,string> | null)?.business_name || "";
+
+    // Notify all released members (push + email)
     await Promise.race([
       Promise.allSettled(
         releases.map(async rel => {
-          const clientUserId = await resolveClientUserId(sb, rel.client_id);
-          if (!clientUserId) return;
-          return notifyUser(sb, clientUserId, {
-            type:     "group_funds_released",
-            title:    "Savings group funds released",
-            body:     `${csrGrp.name} has closed — ₦${Number(rel.released_amount).toLocaleString("en-NG")} is now available in your balance`,
-            priority: "high",
-            deepLink: { tab: "contributions" }, category: "savings",
-          });
+          const [clientUserId, clientRow] = await Promise.all([
+            resolveClientUserId(sb, rel.client_id),
+            sb.from("aso_clients").select("email").eq("id", rel.client_id).maybeSingle().then(r => r.data),
+          ]);
+          const clientEmail = (clientRow as Record<string,string> | null)?.email || "";
+          const effects: Promise<unknown>[] = [];
+          if (clientUserId) {
+            effects.push(notifyUser(sb, clientUserId, {
+              type:     "group_funds_released",
+              title:    "Savings group funds released",
+              body:     `${csrGrp.name || "Savings group"} has closed — ₦${Number(rel.released_amount).toLocaleString("en-NG")} is now available in your balance`,
+              priority: "high",
+              deepLink: { tab: "contributions" }, category: "savings",
+            }));
+          }
+          if (clientEmail) {
+            effects.push(fireAjoEmail("ajo_group_release", {
+              client_email:  clientEmail,
+              client_name:   rel.client_name || "",
+              owner_email:   csrOwnerEmail,
+              business_name: csrBusinessName,
+              group_name:    csrGrp.name    || "",
+              amount:        rel.released_amount,
+              date:          new Date().toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" }),
+            }));
+          }
+          return Promise.allSettled(effects);
         })
       ),
       new Promise<void>(r => setTimeout(r, 2500)),
