@@ -5397,7 +5397,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
           rotationsData={rotationsData}
           contributions={contributions}
           onClose={() => setShowWithdraw(false)}
-          onSuccess={() => { setShowWithdraw(false); refreshWithdrawRequests(); }}
+          onSuccess={() => { refreshWithdrawRequests(); }}
         />
       )}
       {showDeposit && client && (
@@ -5407,7 +5407,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
           cycles={cycles}
           ownerInfo={ownerInfo}
           onClose={() => setShowDeposit(false)}
-          onSuccess={() => setShowDeposit(false)}
+          onSuccess={() => {}}
         />
       )}
       {showPwdModal && (
