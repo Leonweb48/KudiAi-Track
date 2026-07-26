@@ -1,12 +1,14 @@
--- Ajo Trust Model v2 — Staff read access for ajo_contributions and ajo_cycles
+-- Ajo staff read policies — idempotent re-apply at correct sequence position.
 --
--- Existing policies only allow owner_id = auth.uid() (owner SELECT).
--- Staff cannot query these tables at all under the current RLS, so
--- ContributionCard and AsoClientHistoryModal show blank for staff even when
--- active cycles and contributions exist.
+-- Migration 20260718000003 created these policies when first written; this file
+-- ensures they exist at the correct ordering point (after all 20260829000001
+-- migrations) regardless of whether the DB already has them.
 --
--- These policies use the existing staff_can() SECURITY DEFINER helper
--- (checks: active staff, aso can_view, auth.uid() match).
+-- Using DROP … IF EXISTS + CREATE rather than CREATE … IF NOT EXISTS (which
+-- Postgres does not support for policies) so this is safe to run on any state.
+
+DROP POLICY IF EXISTS "ajo_contrib_staff_select" ON public.ajo_contributions;
+DROP POLICY IF EXISTS "ajo_cycles_staff_select"  ON public.ajo_cycles;
 
 CREATE POLICY "ajo_contrib_staff_select"
   ON public.ajo_contributions
