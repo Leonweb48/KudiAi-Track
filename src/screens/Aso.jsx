@@ -3457,12 +3457,15 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         const handleReverseContrib = async (tx, reason, pin) => {
           const result = await asoReverseContribution(tx.id, reason, pin);
           if (result.error) return result;
-          const { data: freshContribs } = await supabase
-            .from("ajo_contributions")
-            .select("*")
-            .eq("aso_client_id", hc.id)
-            .order("created_at", { ascending: false });
-          setHistoryFor(prev => ({ ...prev, contributions: freshContribs || prev.contributions }));
+          const [{ data: freshContribs }, { data: freshClient }] = await Promise.all([
+            supabase.from("ajo_contributions").select("*").eq("aso_client_id", hc.id).order("created_at", { ascending: false }),
+            supabase.from("aso_clients").select("current_balance, total_saved, total_withdrawn").eq("id", hc.id).maybeSingle(),
+          ]);
+          setHistoryFor(prev => ({
+            ...prev,
+            contributions: freshContribs || prev.contributions,
+            client: freshClient ? { ...prev.client, ...freshClient } : prev.client,
+          }));
           return result;
         };
 

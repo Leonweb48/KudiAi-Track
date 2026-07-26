@@ -1111,12 +1111,25 @@ serve(async (req: Request) => {
     const ajoPerms = await resolveAjoPerms(sb, user.id, ownerId);
     if (ajoPerms !== null) return json({ ok: false, error: "Unauthorized: owner-only action" }, 403);
 
+    // Diagnostic: capture balance before RPC so logs confirm the UPDATE ran
+    const { data: preDiag } = clientId
+      ? await sb.from("aso_clients").select("current_balance, total_saved").eq("id", clientId).maybeSingle()
+      : { data: null };
+    console.log("[REVERSAL-DIAG] pre-rpc balance:", JSON.stringify(preDiag), "| client_id:", clientId, "| original_id:", original_id);
+
     const { data, error } = await sb.rpc("ajo_reverse_contribution", {
       p_original_id: original_id,
       p_owner_id:    ownerId,
       p_reason:      reason,
     });
+    console.log("[REVERSAL-DIAG] rpc returned:", JSON.stringify(data), "| error:", error?.message ?? null);
     if (error) return json({ ok: false, error: error.message });
+
+    // Diagnostic: confirm update
+    const { data: postDiag } = clientId
+      ? await sb.from("aso_clients").select("current_balance, total_saved").eq("id", clientId).maybeSingle()
+      : { data: null };
+    console.log("[REVERSAL-DIAG] post-rpc balance:", JSON.stringify(postDiag));
 
     if (clientId) {
       const rpcRev = data as Record<string, unknown>;
