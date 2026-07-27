@@ -31,7 +31,7 @@ import { usePushNotifications } from "../hooks/usePushNotifications";
 import { useToast } from "../components/Toast";
 import SyncBar from "../components/SyncBar";
 import { useOnlineStatus } from "../hooks/useOnlineStatus";
-import { setCache, getCache, formatSyncTime } from "../utils/offlineCache";
+import { setCache, getCache } from "../utils/offlineCache";
 
 const coopFn = async (action, body = {}) => {
   const r = await supabase.functions.invoke("coop-portal", { body: { action, ...body } });

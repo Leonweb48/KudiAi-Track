@@ -13,7 +13,7 @@ export default function ManagerHome({ staff, store, inventory, plan, onGoTo, onV
   const { lang }     = useLanguage();
   const BILL_SVCS    = useManagerBillServices();
 
-  const { transactions = [], credits = [], asoClients = [], loading, isOnline, loadError, clearLoadError } = store;
+  const { transactions = [], credits = [], asoClients = [], loading, loadError, clearLoadError } = store;
   const todayStr    = today();
   const todayTx     = transactions.filter(tx => tx.transaction_date === todayStr);
   const cashIn      = todayTx.filter(tx => tx.type === "in").reduce((s, tx) => s + tx.amount, 0);
