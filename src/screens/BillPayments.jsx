@@ -549,22 +549,6 @@ function BettingSelector({ value, onChange }) {
 }
 
 
-function BillAmountDisplay({ value, netTheme, label = "Amount (₦)" }) {
-  const str = value || "";
-  return (
-    <div className="rounded-2xl px-4 py-3.5 text-center border transition-all duration-200"
-      style={netTheme
-        ? { background: `${netTheme.bg}12`, borderColor: `${netTheme.bg}40` }
-        : { background: "rgb(248 250 252)", borderColor: "rgb(226 232 240)" }}>
-      <p className="text-[10px] font-bold uppercase tracking-widest mb-1"
-        style={netTheme ? { color: netTheme.bg } : { color: "#94a3b8" }}>{label}</p>
-      <p className={`text-4xl font-black tabular-nums leading-none ${!str ? "text-slate-300 dark:text-slate-600" : "text-slate-800 dark:text-white"}`}
-        style={str && netTheme ? { color: netTheme.bg } : {}}>
-        ₦{str || "0"}
-      </p>
-    </div>
-  );
-}
 
 function PlanGrid({ plans, selectedId, onSelect, loading, error }) {
   if (loading) return (
