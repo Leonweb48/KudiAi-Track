@@ -7,7 +7,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../utils/supabase";
 import Modal from "./shared/Modal";
-import { getPushDebugLog, clearPushDebugLog, forceRegisterPush } from "../hooks/usePushNotifications";
 
 // ── Native push helpers ────────────────────────────────────────────────────────
 function isNative() {
@@ -128,16 +127,6 @@ export default function NotificationPreferences({ userId, onClose, portal = "own
   const [enabling,     setEnabling]     = useState(false);
   const [enableResult, setEnableResult] = useState(null); // "ok"|"denied"|"timeout"|"error"
 
-  // Test state
-  const [testing,      setTesting]      = useState(false);
-  const [testResult,   setTestResult]   = useState(null); // "sent"|"error"|null
-
-  // Push diagnostics
-  const [diagOpen,     setDiagOpen]     = useState(false);
-  const [diagLog,      setDiagLog]      = useState([]);
-  const [forceResult,  setForceResult]  = useState(null); // outcome string
-  const [forcing,      setForcing]      = useState(false);
-
   // Load saved preferences
   useEffect(() => {
     if (!userId) return;
@@ -227,32 +216,6 @@ export default function NotificationPreferences({ userId, onClose, portal = "own
     }
   }, [pushStatus]);
 
-  const handleTest = useCallback(async () => {
-    if (!userId) return;
-    setTesting(true);
-    setTestResult(null);
-    try {
-      const { error } = await supabase.functions.invoke("notify-send", {
-        body: {
-          action:   "notify",
-          userId,
-          type:     "test",
-          title:    "Test Notification",
-          body:     "KudiAI notification pipeline is working.",
-          priority: "high",
-          category: "money",
-        },
-      });
-      if (error) throw error;
-      setTestResult("sent");
-      setTimeout(() => setTestResult(null), 6000);
-    } catch {
-      setTestResult("error");
-      setTimeout(() => setTestResult(null), 4000);
-    } finally {
-      setTesting(false);
-    }
-  }, [userId]);
 
   return (
     <Modal title="Notification Preferences" onClose={onClose}>
@@ -329,98 +292,6 @@ export default function NotificationPreferences({ userId, onClose, portal = "own
                 <InfoMsg type="error">Something went wrong. Try restarting the app.</InfoMsg>
               )}
 
-              {/* Test button */}
-              <button
-                onClick={handleTest}
-                disabled={testing}
-                className="w-full py-2.5 rounded-xl text-[13px] font-bold text-[#16255A] dark:text-blue-400 border border-[#16255A]/30 dark:border-blue-400/30 active:bg-[#16255A]/5 transition-colors disabled:opacity-60"
-              >
-                {testing ? "Sending…" : "Send Test Notification"}
-              </button>
-
-              {testResult === "sent" && (
-                <InfoMsg type="success">
-                  Sent! Tap the bell icon above to see it in your notification center. If push is enabled you'll also see it in your notification shade.
-                </InfoMsg>
-              )}
-              {testResult === "error" && (
-                <InfoMsg type="error">Failed to send. Check your internet connection and try again.</InfoMsg>
-              )}
-
-              {/* ── Push Diagnostics ── */}
-              <div className="mt-2 pt-3 border-t border-slate-100 dark:border-slate-700 space-y-2">
-                <button
-                  onClick={() => {
-                    setDiagLog(getPushDebugLog());
-                    setDiagOpen(v => !v);
-                  }}
-                  className="w-full py-2 rounded-xl text-[12px] font-bold text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-600 active:bg-slate-50"
-                >
-                  {diagOpen ? "Hide" : "Show"} Push Diagnostics
-                </button>
-
-                {diagOpen && (
-                  <div className="space-y-2">
-                    {/* Log entries */}
-                    <div className="bg-slate-900 rounded-xl p-3 max-h-64 overflow-y-auto">
-                      {diagLog.length === 0 ? (
-                        <p className="text-[11px] text-slate-400 font-mono">No log entries yet — hook hasn't run or log was cleared.</p>
-                      ) : (
-                        diagLog.map((e, i) => (
-                          <p key={i} className="text-[10px] text-green-400 font-mono leading-snug">
-                            <span className="text-slate-500">{e.t}ms </span>
-                            {e.msg}
-                            {e.data != null ? <span className="text-amber-300"> {typeof e.data === "object" ? JSON.stringify(e.data) : String(e.data)}</span> : null}
-                          </p>
-                        ))
-                      )}
-                    </div>
-
-                    {/* Actions */}
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        onClick={() => { clearPushDebugLog(); setDiagLog([]); setForceResult(null); }}
-                        className="py-2 rounded-xl text-[11px] font-bold text-slate-500 border border-slate-200 dark:border-slate-600 active:bg-slate-50"
-                      >
-                        Clear Log
-                      </button>
-                      <button
-                        onClick={() => setDiagLog(getPushDebugLog())}
-                        className="py-2 rounded-xl text-[11px] font-bold text-slate-500 border border-slate-200 dark:border-slate-600 active:bg-slate-50"
-                      >
-                        Refresh Log
-                      </button>
-                    </div>
-
-                    {/* Force register */}
-                    <button
-                      onClick={async () => {
-                        if (!userId) return;
-                        setForcing(true);
-                        setForceResult(null);
-                        const outcome = await forceRegisterPush(userId);
-                        setForcing(false);
-                        setForceResult(outcome);
-                        setDiagLog(getPushDebugLog());
-                      }}
-                      disabled={forcing}
-                      className="w-full py-2.5 rounded-xl text-[13px] font-bold text-white bg-[#16255A] active:opacity-80 disabled:opacity-60"
-                    >
-                      {forcing ? "Registering…" : "Force Re-register Token"}
-                    </button>
-                    {forceResult && (
-                      <InfoMsg type={forceResult === "registered" ? "success" : forceResult === "denied" ? "warn" : "error"}>
-                        {forceResult === "registered" && "Token registered — check push_tokens table."}
-                        {forceResult === "denied"     && "Permission denied. Go to Android Settings → Apps → KudiAI Track → Notifications."}
-                        {forceResult === "timeout"    && "register() timed out (15 s) — registrationError may have fired. See log."}
-                        {forceResult === "error"      && "registrationError fired — FCM rejected the registration. See log for error code."}
-                        {forceResult === "not-native" && "Not a native build — push requires the Android APK."}
-                        {!["registered","denied","timeout","error","not-native"].includes(forceResult) && `Outcome: ${forceResult}`}
-                      </InfoMsg>
-                    )}
-                  </div>
-                )}
-              </div>
             </div>
           )}
 

@@ -4,25 +4,13 @@ import { TextToSpeech } from "@capacitor-community/text-to-speech";
 
 const TTS_URL = "https://admin.kudiai.app/api/public/tts";
 
-// ── In-app diagnostic log buffer (last 80 lines) ─────────────────────────────
-const _diagBuf = [];
-function _log(...args) {
-  const line = args.map(a => (typeof a === "object" ? JSON.stringify(a) : String(a))).join(" ");
-  console.log(line);
-  _diagBuf.push(`${new Date().toISOString().slice(11, 23)} ${line}`);
-  if (_diagBuf.length > 80) _diagBuf.shift();
-}
-export function getTtsDiagLog() { return _diagBuf.slice(); }
-export function clearTtsDiagLog() { _diagBuf.length = 0; }
-
 // ── AudioContext (shared, persisted across calls) ─────────────────────────────
-let _audioCtx  = null;
+let _audioCtx   = null;
 let _currentSrc = null;
 
 function getAudioCtx() {
   if (!_audioCtx || _audioCtx.state === "closed") {
     _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    _log("[TTS-DIAG] AudioContext created, initial state:", _audioCtx.state);
   }
   return _audioCtx;
 }
@@ -30,27 +18,19 @@ function getAudioCtx() {
 export function unlockAudio() {
   try {
     if (typeof window === "undefined") return;
-    _log("[TTS-DIAG] unlockAudio() called");
     const ctx = getAudioCtx();
-    _log("[TTS-DIAG] ctx.state before resume:", ctx.state);
-    const resumePromise = ctx.state === "suspended" ? ctx.resume() : Promise.resolve();
-    resumePromise
-      .then(() => _log("[TTS-DIAG] ctx.state after resume:", ctx.state))
-      .catch(e => _log("[TTS-DIAG] resume() error:", e?.message));
+    if (ctx.state === "suspended") ctx.resume().catch(() => {});
     const buf = ctx.createBuffer(1, 1, 22050);
     const src = ctx.createBufferSource();
     src.buffer = buf;
     src.connect(ctx.destination);
     src.start(0);
-    _log("[TTS-DIAG] silent buffer played for unlock");
-  } catch (e) {
-    _log("[TTS-DIAG] unlockAudio() threw:", e?.message);
-  }
+  } catch (_e) {}
 }
 
 export function cancelTTS() {
   if (_currentSrc) {
-    try { _currentSrc.stop(); } catch (e) {}
+    try { _currentSrc.stop(); } catch (_e) {}
     _currentSrc = null;
   }
   if ("speechSynthesis" in window) window.speechSynthesis.cancel();
@@ -59,89 +39,67 @@ export function cancelTTS() {
 function playBase64(base64) {
   return new Promise((resolve, reject) => {
     try {
-      const ctx = getAudioCtx();
-      _log("[TTS-DIAG] playBase64() entry — ctx.state:", ctx.state, "| base64 length:", base64?.length ?? "null/undefined");
-
+      const ctx    = getAudioCtx();
       const binary = atob(base64);
       const bytes  = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
 
-      _log("[TTS-DIAG] calling decodeAudioData, bytes:", bytes.length);
       ctx.decodeAudioData(
         bytes.buffer,
         (audioBuffer) => {
-          _log("[TTS-DIAG] decodeAudioData SUCCESS — duration:", audioBuffer.duration.toFixed(2), "s | ctx.state:", ctx.state);
           if (_currentSrc) {
-            try { _currentSrc.stop(); } catch (e) {}
+            try { _currentSrc.stop(); } catch (_e) {}
             _currentSrc = null;
           }
           const src = ctx.createBufferSource();
           src.buffer = audioBuffer;
           src.connect(ctx.destination);
           _currentSrc = src;
-          src.onended = () => { _currentSrc = null; _log("[TTS-DIAG] playback ended"); resolve(); };
+          src.onended = () => { _currentSrc = null; resolve(); };
           if (ctx.state === "suspended") {
-            _log("[TTS-DIAG] ctx suspended at src.start — calling resume() first");
             ctx.resume()
-              .then(() => { _log("[TTS-DIAG] resumed, now calling src.start(0)"); src.start(0); })
-              .catch(e => { _log("[TTS-DIAG] resume() failed before start:", e?.message); reject(e); });
+              .then(() => { src.start(0); })
+              .catch(e  => { reject(e); });
           } else {
-            _log("[TTS-DIAG] calling src.start(0)");
             src.start(0);
           }
         },
-        (err) => {
-          _log("[TTS-DIAG] decodeAudioData FAILED:", err?.message || String(err));
-          reject(new Error(`decode error: ${err?.message || err}`));
-        }
+        (err) => { reject(new Error(`decode error: ${err?.message || err}`)); }
       );
-    } catch (e) {
-      _log("[TTS-DIAG] playBase64() threw:", e?.message);
-      reject(e);
-    }
+    } catch (e) { reject(e); }
   });
 }
 
 async function deviceSpeak(text) {
   const clean = text.replace(/\*\*/g, "").replace(/#+\s*/g, "").trim();
 
-  // On native Android/iOS use the OS TTS engine directly — speechSynthesis is
-  // unreliable in Capacitor WebView and often completely absent.
+  // On native Android/iOS use the OS TTS engine — speechSynthesis is unreliable
+  // in Capacitor WebView and often completely absent.
   if (Capacitor.isNativePlatform()) {
-    _log("[TTS-DIAG] deviceSpeak() → native TextToSpeech plugin");
     try {
       await TextToSpeech.speak({
-        text:   clean,
-        lang:   "en-NG",
-        rate:   0.9,
-        pitch:  1.0,
-        volume: 1.0,
+        text:     clean,
+        lang:     "en-NG",
+        rate:     0.9,
+        pitch:    1.0,
+        volume:   1.0,
         category: "ambient",
       });
-      _log("[TTS-DIAG] native TTS completed");
-    } catch (e) {
-      _log("[TTS-DIAG] native TextToSpeech.speak() failed:", e?.message);
-    }
+    } catch (_e) {}
     return;
   }
 
   // Web fallback
-  _log("[TTS-DIAG] deviceSpeak() → speechSynthesis (web)");
   return new Promise((resolve) => {
-    if (!("speechSynthesis" in window)) {
-      _log("[TTS-DIAG] speechSynthesis not available");
-      resolve();
-      return;
-    }
+    if (!("speechSynthesis" in window)) { resolve(); return; }
     window.speechSynthesis.cancel();
 
     const doUtter = () => {
-      const utter = new SpeechSynthesisUtterance(clean);
+      const utter  = new SpeechSynthesisUtterance(clean);
       utter.rate   = 0.88;
       utter.pitch  = 1.05;
       utter.volume = 1.0;
       const voices = window.speechSynthesis.getVoices();
-      _log("[TTS-DIAG] speechSynthesis voices available:", voices.length);
       const pick   = voices.find(v => v.lang.startsWith("en-")) || voices[0];
       if (pick) utter.voice = pick;
       utter.onend  = () => resolve();
@@ -170,16 +128,12 @@ async function deviceSpeak(text) {
 
 async function serverTTS(text) {
   const isNative = Capacitor.isNativePlatform();
-  _log("[TTS-DIAG] serverTTS() — isNativePlatform:", isNative, "| text length:", text.length);
 
   let userJwt = "";
   try {
     const { data } = await supabase?.auth.getSession() ?? { data: null };
     userJwt = data?.session?.access_token ?? "";
-    _log("[TTS-DIAG] JWT present:", !!userJwt);
-  } catch (e) {
-    _log("[TTS-DIAG] getSession() failed:", e?.message);
-  }
+  } catch (_e) {}
 
   const headers = {
     "Content-Type": "application/json",
@@ -188,32 +142,26 @@ async function serverTTS(text) {
   const body = JSON.stringify({ text });
 
   if (isNative) {
-    _log("[TTS-DIAG] using CapacitorHttp.post →", TTS_URL);
     const r = await CapacitorHttp.post({
       url:         TTS_URL,
       headers,
       data:        body,
       readTimeout: 60000,
     });
-    _log("[TTS-DIAG] CapacitorHttp response status:", r.status, "| data type:", typeof r.data, "| data length:", typeof r.data === "string" ? r.data.length : JSON.stringify(r.data)?.length ?? "?");
     if (r.status !== 200) throw new Error(`TTS HTTP ${r.status}`);
     const parsed = typeof r.data === "string" ? JSON.parse(r.data) : r.data;
     const b64 = parsed?.audio_base64;
-    _log("[TTS-DIAG] parsed.audio_base64 length:", b64?.length ?? "MISSING");
     if (!b64) throw new Error("No audio from server");
     return b64;
   }
 
-  _log("[TTS-DIAG] using fetch →", TTS_URL);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 30000);
   try {
     const res = await fetch(TTS_URL, { method: "POST", signal: controller.signal, headers, body });
-    _log("[TTS-DIAG] fetch response status:", res.status);
     if (!res.ok) throw new Error(`TTS HTTP ${res.status}`);
     const data = await res.json();
     const b64 = data.audio_base64;
-    _log("[TTS-DIAG] fetch parsed audio_base64 length:", b64?.length ?? "MISSING");
     if (!b64) throw new Error("No audio returned");
     return b64;
   } finally {
@@ -231,20 +179,15 @@ export function isTtsEnabled() {
 }
 
 export async function speakText(text, lang = "en") {
-  const enabled = isTtsEnabled();
-  _log("[TTS-DIAG] speakText() — isTtsEnabled:", enabled, "| text:", text?.slice(0, 60));
-  if (!enabled) return;
+  if (!isTtsEnabled()) return;
   if (!text || !text.trim()) return;
   cancelTTS();
 
   const clean = text.replace(/\*\*/g, "").replace(/#+\s*/g, "").trim().slice(0, 700);
   try {
-    _log("[TTS-DIAG] calling serverTTS...");
     const base64 = await serverTTS(clean);
-    _log("[TTS-DIAG] serverTTS returned base64 length:", base64?.length);
     await playBase64(base64);
-  } catch (e) {
-    _log("[TTS-DIAG] server TTS failed:", e?.message, "— falling back to deviceSpeak");
+  } catch (_e) {
     await deviceSpeak(clean);
   }
 }
@@ -260,7 +203,6 @@ const EVENT_TEXT = {
 };
 
 export async function speakEvent(eventKey = "cashIn", lang = "en") {
-  _log("[TTS-DIAG] speakEvent() — key:", eventKey, "| isTtsEnabled:", isTtsEnabled());
   if (!isTtsEnabled()) return;
   const text = EVENT_TEXT[eventKey] || "Action recorded";
   await speakText(text, lang).catch(() => {});

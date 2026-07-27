@@ -89,9 +89,7 @@ export function useNotifications(userId, onNewNotification = null) {
         (p) => setNotifications(prev => prev.map(n => n.id === p.new.id ? p.new : n)),
       )
       .subscribe((status, err) => {
-        if (status === "SUBSCRIBED") {
-          console.log("[Notif] Realtime SUBSCRIBED for", userId?.slice(0, 8));
-        } else if (err || status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+        if (err || status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
           console.error("[Notif] Realtime subscription failed:", status, err);
         }
       });
