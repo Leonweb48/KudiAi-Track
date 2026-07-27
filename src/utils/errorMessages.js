@@ -61,7 +61,8 @@ export function friendlyError(e) {
   // 1. Network errors (case-insensitive)
   const lower = raw.toLowerCase();
   if (lower.includes("failed to fetch") || lower.includes("load failed") ||
-      lower.includes("networkerror") || lower.includes("network error")) {
+      lower.includes("networkerror") || lower.includes("network error") ||
+      lower.includes("failed to send a request to the edge function")) {
     return "Check your connection and try again.";
   }
 

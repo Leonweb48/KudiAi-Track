@@ -1605,6 +1605,7 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
   // ── handleSubmit (unchanged logic) ────────────────────────────────────────
   const handleSubmit = async () => {
     if (!amtNum || amtNum <= 0) { setError("Enter a valid amount"); return; }
+    if (!navigator.onLine) { setError("You're offline — connect to the internet to make a deposit."); return; }
     setSaving(true); setError("");
     try {
       let proofUrl = null;
