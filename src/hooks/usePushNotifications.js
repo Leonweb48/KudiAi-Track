@@ -9,7 +9,8 @@
 import { useEffect, useRef } from "react";
 import { supabase } from "../utils/supabase";
 
-const PROMPTED_KEY = "kt_push_prompted";
+const PROMPTED_KEY  = "kt_push_prompted";
+const PUSH_TOKEN_KEY = "kt_push_token";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function isNative() {
@@ -95,7 +96,10 @@ export function usePushNotifications(userId, onDeepLink) {
         listeners.push(fgListener);
 
         const regListener = await Push.addListener("registration", async (token) => {
-          if (token?.value) await registerToken(userId, token.value);
+          if (token?.value) {
+            localStorage.setItem(PUSH_TOKEN_KEY, token.value);
+            await registerToken(userId, token.value);
+          }
         });
         listeners.push(regListener);
 

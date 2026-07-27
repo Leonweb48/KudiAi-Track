@@ -135,8 +135,8 @@ export default function LockScreen({ pinLock, businessName, avatarUrl }) {
 
   const handleSignOut = async () => {
     setSigningOut(true);
-    const { supabase } = await import("../utils/supabase");
-    await supabase?.auth.signOut();
+    const { performLogout } = await import("../utils/logout");
+    await performLogout();
   };
 
   const showBio = pinLock?.biometricEnabled && pinLock?.biometricAvailable;

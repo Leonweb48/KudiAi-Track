@@ -251,6 +251,17 @@ Deno.serve(async (req) => {
       { user_id: userId, token, platform, last_seen: new Date().toISOString() },
       { onConflict: "user_id,token" },
     );
+    // Remove this token from any other user's rows — device must map to exactly one user
+    await sb.from("push_tokens").delete().eq("token", token).neq("user_id", userId);
+    return json({ ok: true });
+  }
+
+  // ── deregister-token ────────────────────────────────────────────────────────
+  if (action === "deregister-token") {
+    if (!callerId) return json({ error: "auth required" }, 401);
+    const { token } = body as { token: string };
+    if (!token) return json({ error: "token required" }, 400);
+    await sb.from("push_tokens").delete().eq("user_id", callerId).eq("token", token);
     return json({ ok: true });
   }
 

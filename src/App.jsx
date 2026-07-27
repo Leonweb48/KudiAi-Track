@@ -137,10 +137,10 @@ export default function App() {
 
   // Push notification deep-link handler — called by usePushNotifications on tap
   const handlePushDeepLink = useCallback((dl) => {
-    if (!dl?.tab) return;
+    if (!dl?.tab || !userId) return;
     const target = (dl.tab === "credit" || dl.tab === "aso") ? "finance" : dl.tab;
     navigate(target === "home" ? "/" : `/${target}`, { replace: true, state: (dl.id || dl.sub) ? { id: dl.id, sub: dl.sub } : undefined });
-  }, [navigate]);
+  }, [navigate, userId]);
 
   // Register FCM token + handle push taps (no-op on web)
   usePushNotifications(userId, handlePushDeepLink);

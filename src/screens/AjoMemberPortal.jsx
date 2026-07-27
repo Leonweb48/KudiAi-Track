@@ -1475,7 +1475,7 @@ function AjoMemberFirstLogin({ ajoClient }) {
           className="w-full bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white font-bold rounded-2xl py-4 text-sm transition">
           {saving ? "Saving…" : "Set Password & Enter Dashboard →"}
         </button>
-        <button onClick={() => supabase.auth.signOut()} className="w-full text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition text-center">
+        <button onClick={() => import("../utils/logout").then(m => m.performLogout())} className="w-full text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition text-center">
           Sign out
         </button>
       </div>
@@ -4770,7 +4770,7 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
 
       {/* Sign Out */}
       <div className="px-4 mb-4">
-        <button onClick={() => supabase.auth.signOut()}
+        <button onClick={() => import("../utils/logout").then(m => m.performLogout())}
           className="w-full py-[15px] bg-red-50 dark:bg-red-950/30 rounded-2xl font-bold text-sm border border-red-100 dark:border-red-900/40 active:bg-red-100 transition-colors flex items-center justify-center gap-2.5 text-red-500 dark:text-red-400">
           <Svg d={P.out2} size={18} color="currentColor" />
           Sign Out

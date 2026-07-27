@@ -74,7 +74,10 @@ export function useNotifications(userId, onNewNotification = null) {
   }, [userId, page]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!userId) return;
+    if (!userId) {
+      setNotifications([]);
+      return;
+    }
     fetchPage(true);
   }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
 

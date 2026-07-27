@@ -9,6 +9,7 @@ import PinDots            from "../components/PinDots";
 import TransactionPinModal from "../components/TransactionPinModal";
 import ForgotPinFlow      from "../components/ForgotPinFlow";
 import { supabase }       from "../utils/supabase";
+import { performLogout }  from "../utils/logout";
 import { canDo, planAvailableText, hasHigherPlanAvailable, getPlanInfo } from "../utils/plans";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import { LANGUAGES, getLangMeta } from "../utils/i18n";
@@ -387,7 +388,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
 
   const handleSignOut = async () => {
     setSigningOut(true);
-    await supabase?.auth.signOut();
+    await performLogout();
   };
 
   const toggleDark = () => setProfile(p => ({ ...p, dark_mode: !p.dark_mode }));
