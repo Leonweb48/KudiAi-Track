@@ -18,6 +18,7 @@ import { supabase } from "../utils/supabase";
 import { lookupDataPrice } from "../data/billPrices";
 import LoanApplicationModal from "../components/LoanApplicationModal";
 import TransactionPinModal  from "../components/TransactionPinModal";
+import NumPad from "../components/shared/NumPad";
 import { buildCallbackUrl, openPaystackCheckout } from "../utils/paystackCheckout";
 import { openPaystackInline } from "../utils/paystackInline";
 import { Browser } from "@capacitor/browser";
@@ -548,47 +549,6 @@ function BettingSelector({ value, onChange }) {
   );
 }
 
-/* ─── Amount numpad for bill services (mirrors Gate 3 BigNumpad) ───────────── */
-function BillNumpad({ value, onChange }) {
-  const handleKey = (key) => {
-    const prev = value || "";
-    let next;
-    if (key === "backspace") {
-      next = prev.slice(0, -1);
-    } else if (key === ".") {
-      next = prev.includes(".") ? prev : prev + ".";
-    } else {
-      const candidate = prev + String(key);
-      const parts = candidate.split(".");
-      if (parts[1] !== undefined && parts[1].length > 2) next = prev;
-      else next = candidate;
-    }
-    onChange(next);
-  };
-  return (
-    <div className="grid grid-cols-3 gap-2">
-      {[1,2,3,4,5,6,7,8,9].map(n => (
-        <button key={n} type="button"
-          onPointerDown={e => { e.preventDefault(); handleKey(String(n)); }}
-          className="flex items-center justify-center rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 text-slate-800 dark:text-slate-100 font-bold text-xl active:scale-95 active:bg-slate-100 dark:active:bg-slate-700 transition-transform select-none touch-manipulation"
-          style={{ minHeight: 56 }}>{n}</button>
-      ))}
-      <button type="button" onPointerDown={e => { e.preventDefault(); handleKey("."); }}
-        className="flex items-center justify-center rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 text-slate-800 dark:text-slate-100 font-bold text-xl active:scale-95 active:bg-slate-100 dark:active:bg-slate-700 transition-transform select-none touch-manipulation"
-        style={{ minHeight: 56 }}>.</button>
-      <button type="button" onPointerDown={e => { e.preventDefault(); handleKey("0"); }}
-        className="flex items-center justify-center rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 text-slate-800 dark:text-slate-100 font-bold text-xl active:scale-95 active:bg-slate-100 dark:active:bg-slate-700 transition-transform select-none touch-manipulation"
-        style={{ minHeight: 56 }}>0</button>
-      <button type="button" onPointerDown={e => { e.preventDefault(); handleKey("backspace"); }}
-        className="flex items-center justify-center rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 text-slate-500 dark:text-slate-400 active:scale-95 active:bg-slate-100 dark:active:bg-slate-700 transition-transform select-none touch-manipulation"
-        style={{ minHeight: 56 }}>
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-          <path d="M21 4H8l-7 8 7 8h13a2 2 0 002-2V6a2 2 0 00-2-2z"/><line x1="18" y1="9" x2="13" y2="14"/><line x1="13" y1="9" x2="18" y2="14"/>
-        </svg>
-      </button>
-    </div>
-  );
-}
 
 function BillAmountDisplay({ value, netTheme, label = "Amount (₦)" }) {
   const str = value || "";
@@ -3389,7 +3349,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                     })}
                   </div>
                   <BillAmountDisplay value={form.amount} netTheme={netTheme} />
-                  <BillNumpad value={form.amount} onChange={v => setF("amount", v)} />
+                  <NumPad value={form.amount} onChange={v => setF("amount", v)} />
                   {form.amount && parseFloat(form.amount) > 0 && (
                     <div className="flex items-center gap-2 rounded-xl px-3 py-2 transition-all duration-200"
                       style={netTheme
@@ -3477,7 +3437,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                       ))}
                     </div>
                     <BillAmountDisplay value={form.amount} label="Amount (₦) — min ₦1,000" />
-                    <BillNumpad value={form.amount} onChange={v => setF("amount", v)} />
+                    <NumPad value={form.amount} onChange={v => setF("amount", v)} />
                   </div>
                 )}
               </>}
@@ -3494,7 +3454,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                 {verifyStatus === "ok" && (
                   <>
                     <BillAmountDisplay value={form.amount} label="Amount (₦)" />
-                    <BillNumpad value={form.amount} onChange={v => setF("amount", v)} />
+                    <NumPad value={form.amount} onChange={v => setF("amount", v)} />
                   </>
                 )}
               </>}

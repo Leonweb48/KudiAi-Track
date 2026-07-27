@@ -44,25 +44,42 @@ async function logPlatformSession(supabaseClient, userId, userType, username, em
     if (sessionStorage.getItem(key)) return;
     sessionStorage.setItem(key, "1");
 
-    let ip = null, city = null, country = null, latitude = null, longitude = null;
+    let ip = null, city = null, country = null;
     try {
       const geo = await fetch("https://ipapi.co/json/", { signal: AbortSignal.timeout(4000) });
       if (geo.ok) {
         const g = await geo.json();
         ip = g.ip; city = g.city; country = g.country_name;
-        latitude = g.latitude; longitude = g.longitude;
+        // latitude/longitude intentionally not stored (privacy: coarse city-level only)
       }
     } catch { /* geolocation optional */ }
 
+    const isNativeApp = typeof window !== "undefined" && window.Capacitor?.isNativePlatform?.();
     const ua = typeof navigator !== "undefined" ? (navigator.userAgent || "") : "";
-    const deviceType = /Mobi|Android/i.test(ua) ? "mobile" : "desktop";
-    const browser = /Chrome/i.test(ua) ? "Chrome" : /Firefox/i.test(ua) ? "Firefox" : /Safari/i.test(ua) ? "Safari" : "Other";
-    const osName  = /Android/i.test(ua) ? "Android" : /iPhone|iPad/i.test(ua) ? "iOS" : /Windows/i.test(ua) ? "Windows" : /Mac/i.test(ua) ? "macOS" : "Other";
+    const deviceType = isNativeApp ? "mobile_app" : /Mobi|Android/i.test(ua) ? "mobile" : "desktop";
+    const browser    = isNativeApp ? "KudiAI App" : /Chrome/i.test(ua) ? "Chrome" : /Firefox/i.test(ua) ? "Firefox" : /Safari/i.test(ua) ? "Safari" : "Other";
+    const osName     = /Android/i.test(ua) ? "Android" : /iPhone|iPad/i.test(ua) ? "iOS" : /Windows/i.test(ua) ? "Windows" : /Mac/i.test(ua) ? "macOS" : "Other";
+
+    // Compare against last 20 sessions to flag new device or new city
+    let isNewDevice = true, isNewLocation = true;
+    try {
+      const { data: prev } = await supabaseClient
+        .from("platform_sessions")
+        .select("device_type, browser, city")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(20);
+      if (prev && prev.length > 0) {
+        isNewDevice   = !prev.some(s => s.device_type === deviceType && s.browser === browser);
+        isNewLocation = !!city && !prev.some(s => s.city === city);
+      }
+    } catch { /* anomaly check is non-critical */ }
 
     await supabaseClient.from("platform_sessions").insert({
       user_id: userId, user_type: userType, username: username || null, email: email || null,
-      ip_address: ip, city, country, latitude, longitude,
+      ip_address: ip, city, country,
       device_type: deviceType, browser, os_name: osName,
+      is_new_device: isNewDevice, is_new_location: isNewLocation,
     });
   } catch { /* session logging is non-critical */ }
 }

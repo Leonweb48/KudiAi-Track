@@ -3,6 +3,7 @@ import { Capacitor } from "@capacitor/core";
 import { today } from "../../utils/helpers";
 import { speakEvent } from "../../utils/tts";
 import { getLang, speakConfirmation } from "../../utils/i18n";
+import NumPad from "./NumPad";
 
 /* ── Fuzzy near-match: catches typos / plurals the autocomplete misses ── */
 function fuzzyMatch(query, target) {
@@ -48,52 +49,6 @@ function calcDueDate(label, customDate) {
   return d.toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" });
 }
 
-/* ── Backspace icon ──────────────────────────────────────────────── */
-function BackspaceIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor"
-      strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 4H8l-7 8 7 8h13a2 2 0 002-2V6a2 2 0 00-2-2z"/>
-      <line x1="18" y1="9" x2="13" y2="14"/>
-      <line x1="13" y1="9" x2="18" y2="14"/>
-    </svg>
-  );
-}
-
-/* ── Big numpad ──────────────────────────────────────────────────── */
-function BigNumpad({ onKey }) {
-  return (
-    <div className="grid grid-cols-3 gap-2">
-      {[1,2,3,4,5,6,7,8,9].map(n => (
-        <button
-          key={n}
-          onPointerDown={e => { e.preventDefault(); onKey(String(n)); }}
-          className="flex items-center justify-center rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 text-slate-800 dark:text-slate-100 font-bold text-xl active:scale-95 active:bg-slate-100 dark:active:bg-slate-700 transition-transform select-none touch-manipulation"
-          style={{ minHeight: 50 }}>
-          {n}
-        </button>
-      ))}
-      <button
-        onPointerDown={e => { e.preventDefault(); onKey("."); }}
-        className="flex items-center justify-center rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 text-slate-800 dark:text-slate-100 font-bold text-xl active:scale-95 active:bg-slate-100 dark:active:bg-slate-700 transition-transform select-none touch-manipulation"
-        style={{ minHeight: 64 }}>
-        .
-      </button>
-      <button
-        onPointerDown={e => { e.preventDefault(); onKey("0"); }}
-        className="flex items-center justify-center rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 text-slate-800 dark:text-slate-100 font-bold text-xl active:scale-95 active:bg-slate-100 dark:active:bg-slate-700 transition-transform select-none touch-manipulation"
-        style={{ minHeight: 64 }}>
-        0
-      </button>
-      <button
-        onPointerDown={e => { e.preventDefault(); onKey("backspace"); }}
-        className="flex items-center justify-center rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 text-slate-500 dark:text-slate-400 active:scale-95 active:bg-slate-100 dark:active:bg-slate-700 transition-transform select-none touch-manipulation"
-        style={{ minHeight: 64 }}>
-        <BackspaceIcon />
-      </button>
-    </div>
-  );
-}
 
 /* ══════════════════════════════════════════════════════════════════
    AddTxnModal — bottom sheet rebuild (Gate 3)
@@ -262,21 +217,7 @@ export function AddTxnModal({
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* ── Numpad handler ── */
-  const handleNumKey = (key) => {
-    setAmtStr(prev => {
-      if (key === "backspace") return prev.slice(0, -1);
-      if (key === ".") return prev.includes(".") ? prev : prev + ".";
-      const [intPart, decPart] = prev.split(".");
-      if (decPart !== undefined && decPart.length >= 2) return prev;
-      if (prev === "" && key === "0") return prev;
-      if ((intPart || "").length >= 10) return prev;
-      return prev + key;
-    });
-    setSaveError("");
-  };
-
-  /* ── Qty stepper recalculates amount when unit price is known (set by autocomplete) ── */
+/* ── Qty stepper recalculates amount when unit price is known (set by autocomplete) ── */
   const handleQty = (v) => {
     setQty(v);
     const u = parseFloat(unitPrice), q = parseInt(v) || 1;
@@ -458,7 +399,7 @@ export function AddTxnModal({
 
               {/* Numpad */}
               <div className="flex-shrink-0 px-4 mb-3">
-                <BigNumpad onKey={handleNumKey} />
+                <NumPad value={amtStr} onChange={v => { setAmtStr(v); setSaveError(""); }} />
               </div>
             </>
           )}
