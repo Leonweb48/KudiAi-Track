@@ -1392,7 +1392,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
   );
 
   return (
-    <div className="fixed inset-0 z-sheet flex flex-col bg-slate-100 dark:bg-slate-900">
+    <div className="fixed inset-0 z-modal flex flex-col bg-slate-100 dark:bg-slate-900">
       {!isSuccess && <Header />}
 
       {/* ── Processing ── */}
@@ -2487,6 +2487,10 @@ export default function BillPayments({ store, plan, session = null, staffName = 
           localStorage.removeItem(BILL_PENDING_PREFIX + ref);
           throw new Error(ps?.error || ps?.data?.message || "Could not initialize payment");
         }
+        // Clear the bill input sheet before CCT opens so it can't cover the
+        // result overlay when the app returns from Paystack.
+        setSelectedCat(null);
+        setConfirmData(null);
         await openPaystackCheckout(ps.data.authorization_url);
       } else {
         // Web: inline popup — no page redirect, no reload
