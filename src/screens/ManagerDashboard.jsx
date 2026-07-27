@@ -153,6 +153,25 @@ export default function ManagerDashboard({ session, staff: staffProp, pinLock })
     return 0;
   };
 
+  /* Branch-scoped AI context — excludes net profit and owner-private figures */
+  const managerPortalContext = useMemo(() => {
+    if (!staff || !ownerId) return "";
+    const { transactions = [], credits = [] } = store;
+    const tsStr     = today();
+    const todayTx   = transactions.filter(tx => tx.transaction_date === tsStr);
+    const todayCIn  = todayTx.filter(tx => tx.type === "in").reduce((s, tx) => s + tx.amount, 0);
+    const todayCOut = todayTx.filter(tx => tx.type === "out").reduce((s, tx) => s + tx.amount, 0);
+    const overdue   = credits.filter(c => c.status !== "paid" && c.due_date && c.due_date < tsStr).length;
+    const crTotal   = credits.reduce((s, c) => s + (c.outstanding || 0), 0);
+    const lowStockN = (inventory?.lowStock || []).length;
+    const branch    = staff.branch_name || "your branch";
+    return `You are assisting ${staff.full_name}, a ${(staff.role || "manager").replace(/_/g, " ")} at ${staff.business_name || "the business"} (Branch: ${branch}).
+You can see branch-level transaction and credit data for ${branch} only — not other branches.
+Today: ${todayTx.length} transactions. Cash In: ₦${todayCIn.toLocaleString()}. Cash Out: ₦${todayCOut.toLocaleString()}.
+Credit outstanding: ₦${crTotal.toLocaleString()} across ${credits.length} clients (${overdue} overdue). Low-stock items: ${lowStockN}.
+IMPORTANT: Net profit, cost prices, and business-wide figures are owner-private — do not calculate or reveal profit. Direct profit questions to the business owner.`;
+  }, [staff, store, inventory, ownerId]);
+
   const goTo = useCallback((t, sub = null, data = null) => {
     setTab(t); setSubNav(sub); setSubData(data);
   }, []);
@@ -311,7 +330,7 @@ export default function ManagerDashboard({ session, staff: staffProp, pinLock })
         )}
 
         {/* Floating KudiAI Chat Widget */}
-        <AIChatWidget store={store} inventory={inventory} branches={[]} />
+        <AIChatWidget store={store} inventory={inventory} branches={[]} portalContext={managerPortalContext} />
 
         {/* Voice Modal */}
         {voiceOpen && (
