@@ -121,17 +121,10 @@ export default function DailyVoice({ userId, context, fallback, dataLoading }) {
     const dateK  = BRIEF_DATE_KEY(userId);
     const cacheK = BRIEF_CACHE_KEY(userId, date);
 
-    // Already shown today — restore from cache but don't replay voice
-    if (localStorage.getItem(dateK) === date) {
-      const cached = localStorage.getItem(cacheK);
-      if (cached) {
-        const clean = stripMarkdown(cached);
-        setBrief(clean);
-        spokenRef.current = clean;
-        setVisible(true);
-      }
-      return;
-    }
+    // Same-device guard: if the brief already fired today on this device, skip
+    // entirely — no card, no voice.  The old code restored the card without voice
+    // which caused the "it keeps reappearing" complaint on every sign-in.
+    if (localStorage.getItem(dateK) === date) return;
 
     hasFiredRef.current = true;
 
@@ -141,10 +134,11 @@ export default function DailyVoice({ userId, context, fallback, dataLoading }) {
       const clean = stripMarkdown(cached);
       setBrief(clean);
       spokenRef.current = clean;
-      setVisible(true);
+      // Stamp local + server BEFORE making the card visible so a rapid re-mount
+      // or a second device sees the flag immediately.
       try { localStorage.setItem(dateK, date); } catch {}
-      // Sync date to auth metadata so other devices skip today's brief.
       supabase.auth.updateUser({ data: { brief_shown: date } }).catch(() => null);
+      setVisible(true);
       setTimeout(() => {
         doSpeak(spokenRef.current);
         setTimeout(() => { if (!isSpeakingRef.current) setNeedsTap(isTtsEnabled()); }, 1500);
@@ -153,12 +147,18 @@ export default function DailyVoice({ userId, context, fallback, dataLoading }) {
     }
 
     // No local cache — check auth metadata for cross-device dedup before generating.
-    // The getUser() call is absorbed inside the existing 600 ms delay so no visible lag is added.
+    // The getUser() call is absorbed inside the 600 ms delay so no visible lag is added.
     setTimeout(async () => {
       try {
         const { data: { user: freshUser } } = await supabase.auth.getUser();
         if (freshUser?.user_metadata?.brief_shown === date) return; // already played on another device today
-      } catch { /* network down or auth error — proceed with generation */ }
+      } catch { /* network down or auth error — proceed */ }
+
+      // Stamp local + server BEFORE the Gemini call (which can take 5–20 s).
+      // Pre-stamping closes the race window where a second device fires before
+      // the first finishes generation and writes the flag.
+      try { localStorage.setItem(dateK, date); } catch {}
+      supabase.auth.updateUser({ data: { brief_shown: date } }).catch(() => null);
 
       setVisible(true);
 
@@ -167,9 +167,7 @@ export default function DailyVoice({ userId, context, fallback, dataLoading }) {
         const clean = stripMarkdown(raw?.trim() || fallback);
         setBrief(clean);
         spokenRef.current = clean;
-        try { localStorage.setItem(cacheK, clean); localStorage.setItem(dateK, date); } catch {}
-        // Record cross-device so other devices skip today's brief.
-        supabase.auth.updateUser({ data: { brief_shown: date } }).catch(() => null);
+        try { localStorage.setItem(cacheK, clean); } catch {}
         doSpeak(spokenRef.current);
         setTimeout(() => { if (!isSpeakingRef.current) setNeedsTap(isTtsEnabled()); }, 1500);
       } catch {
