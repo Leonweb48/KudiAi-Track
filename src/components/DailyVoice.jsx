@@ -9,10 +9,12 @@ const BRIEF_CACHE_KEY   = (uid, date) => `kt_brief_cache_${uid}_${date}`;
 
 function todayKey() { return new Date().toISOString().slice(0, 10); }
 
-const BRIEF_PROMPT = `Write ONE natural paragraph of 3–5 sentences as this user's morning brief.
-Mention the most important number or activity in their data — something concrete and specific.
-End with one genuine, grounded sentence of encouragement specific to their situation — warm, human, Nigerian small-business register.
-Write in flowing prose. No bullet points, no bold text, no headers, no "Based on your data" preamble. Speak directly to the user.`;
+const BRIEF_PROMPT = `Using the context provided, write exactly 3 complete sentences as a morning greeting for the user.
+Address them by their first name — it is in the context.
+Speak as their personal business companion who knows their situation well: warm, direct, specific to what their actual numbers show right now — not generic encouragement.
+End with one genuine sentence that fits their role and what today's data actually suggests.
+Absolutely no asterisks, no bold, no dashes, no bullet points, no markdown of any kind — plain sentences only.
+Write all 3 sentences in full before stopping.`;
 
 function stripMarkdown(text) {
   return text
@@ -122,8 +124,9 @@ export default function DailyVoice({ userId, context, fallback, dataLoading }) {
     if (localStorage.getItem(dateK) === date) {
       const cached = localStorage.getItem(cacheK);
       if (cached) {
-        setBrief(cached);
-        spokenRef.current = stripMarkdown(cached);
+        const clean = stripMarkdown(cached);
+        setBrief(clean);
+        spokenRef.current = clean;
         setVisible(true);
       }
       return;
@@ -135,8 +138,9 @@ export default function DailyVoice({ userId, context, fallback, dataLoading }) {
     // Same-day cache exists (e.g. re-mount before dateK was written)
     const cached = localStorage.getItem(cacheK);
     if (cached) {
-      setBrief(cached);
-      spokenRef.current = stripMarkdown(cached);
+      const clean = stripMarkdown(cached);
+      setBrief(clean);
+      spokenRef.current = clean;
       try { localStorage.setItem(dateK, date); } catch {}
       setTimeout(() => {
         doSpeak(spokenRef.current);
@@ -148,18 +152,17 @@ export default function DailyVoice({ userId, context, fallback, dataLoading }) {
     // Generate fresh brief from AI
     setTimeout(async () => {
       try {
-        const raw  = await askGemini({ message: BRIEF_PROMPT, context, timeout: 20000, maxAttempts: 1 });
-        const text = raw?.trim() || fallback;
-        setBrief(text);
-        spokenRef.current = stripMarkdown(text);
-        try { localStorage.setItem(cacheK, text); localStorage.setItem(dateK, date); } catch {}
+        const raw   = await askGemini({ message: BRIEF_PROMPT, context, timeout: 20000, maxAttempts: 1 });
+        const clean = stripMarkdown(raw?.trim() || fallback);
+        setBrief(clean);
+        spokenRef.current = clean;
+        try { localStorage.setItem(cacheK, clean); localStorage.setItem(dateK, date); } catch {}
         doSpeak(spokenRef.current);
         setTimeout(() => { if (!isSpeakingRef.current) setNeedsTap(isTtsEnabled()); }, 1500);
       } catch {
-        // Graceful fallback — always show something
-        const fb = fallback || "Your numbers look good — keep the momentum going today!";
+        const fb = stripMarkdown(fallback || "Your numbers look good — keep the momentum going today!");
         setBrief(fb);
-        spokenRef.current = stripMarkdown(fb);
+        spokenRef.current = fb;
         setNeedsTap(isTtsEnabled());
       }
     }, 600);
