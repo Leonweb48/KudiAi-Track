@@ -21,6 +21,7 @@ import StaffStock             from "./staff/StaffStock";
 import StaffMe                from "./staff/StaffMe";
 import { makeNav } from "./staff/StaffShared";
 import AIChatWidget           from "../components/AIChatWidget";
+import DailyVoice             from "../components/DailyVoice";
 
 /* ═══════════════════════════════════════════════════════════════════
    STAFF DASHBOARD — shell (navigation, header, data hooks)
@@ -291,6 +292,14 @@ If asked about business-wide figures (total business revenue, all staff performa
         {voiceOpen && (
           <VoiceModal onClose={() => setVoiceOpen(false)} onSave={handleVoiceSave} />
         )}
+        {/* Staff morning brief — scoped to this staff member's own data */}
+        <DailyVoice
+          userId={session?.user?.id}
+          context={store.loading ? "" : staffPortalContext}
+          fallback={`Good morning${staff?.full_name ? ", " + staff.full_name.split(" ")[0] : ""}! Focus on today's transactions and follow up on any pending items — you've got this!`}
+          dataLoading={store.loading}
+        />
+
         {/* D11: Staff-aware AI assistant — staff-scoped context, no business-wide data */}
         <AIChatWidget
           portalContext={staffPortalContext}

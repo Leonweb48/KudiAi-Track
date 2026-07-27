@@ -45,6 +45,22 @@ export default function ManagerMe({
 }) {
   const [view,             setView]             = useState(initialView || "menu");
   const [isDark,           setIsDark]           = useState(() => localStorage.getItem("kuditrack_dark") === "1");
+
+  const briefUserId = session?.user?.id;
+  const [briefEnabled, setBriefEnabled] = useState(() => {
+    if (!briefUserId) return true;
+    try { const v = localStorage.getItem(`kt_brief_enabled_${briefUserId}`); return v === null ? true : v !== "0"; }
+    catch { return true; }
+  });
+  const toggleBrief = () => setBriefEnabled(v => {
+    const next = !v;
+    try {
+      if (next) localStorage.removeItem(`kt_brief_enabled_${briefUserId}`);
+      else      localStorage.setItem(`kt_brief_enabled_${briefUserId}`, "0");
+      window.dispatchEvent(new CustomEvent("kt_brief_toggle"));
+    } catch {}
+    return next;
+  });
   const [changingPin,      setChangingPin]      = useState(null);
   const [bioLoading,       setBioLoading]       = useState(false);
   const [showTimeoutPicker, setShowTimeoutPicker] = useState(false);
@@ -465,6 +481,26 @@ export default function ManagerMe({
           <Row icon={<RowIcon d={P.credit} />} label="My Commissions"    sub="Commission earnings breakdown"         onClick={() => setView("commissions")} />
           <Row icon={<RowIcon d={P.in} />}     label="My Payments"       sub="Salary and disbursement history"       onClick={() => setView("payments")} />
           <Row icon={<RowIcon d={P.check} />}  label="Close My Day"      sub="Submit end-of-day cash reconciliation" onClick={() => setView("reconcile")} />
+        </SettingsCard>
+      </div>
+
+      {/* Preferences */}
+      <div className="px-4 mb-5">
+        <SectionLabel>Preferences</SectionLabel>
+        <SettingsCard>
+          <Row
+            icon={<svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>}
+            label="Daily Brief"
+            sub="AI morning summary read aloud on app open"
+            onClick={toggleBrief}
+            right={
+              <button onClick={e => { e.stopPropagation(); toggleBrief(); }} role="switch" aria-checked={briefEnabled}
+                className={`w-12 h-6 rounded-full transition-colors duration-200 relative focus-visible:outline-none flex-shrink-0 ${briefEnabled ? "bg-green-500" : "bg-slate-200 dark:bg-slate-600"}`}>
+                <span className="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all duration-200"
+                  style={{ left: briefEnabled ? "calc(100% - 22px)" : "2px" }} />
+              </button>
+            }
+          />
         </SettingsCard>
       </div>
 

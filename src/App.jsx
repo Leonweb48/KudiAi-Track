@@ -64,6 +64,7 @@ import { useBranches }       from "./hooks/useBranches";
 import { usePermissions }    from "./hooks/usePermissions";
 import { useNotifications }  from "./hooks/useNotifications";
 import { canDo }             from "./utils/plans";
+import { buildContext }      from "./utils/buildContext";
 
 function Spinner() {
   return (
@@ -562,12 +563,9 @@ export default function App() {
 
           <DailyVoice
             userId={userId}
-            profile={store.profile}
-            credits={store.credits}
-            asoClients={store.asoClients}
-            lowStock={inventory.lowStock}
-            loading={store.loading}
-            transactions={store.transactions}
+            context={store.loading ? "" : buildContext(store, inventory?.products || [], branchesHook?.branches || [])}
+            fallback="Your business is ready for a great day — stay focused and keep the momentum going!"
+            dataLoading={store.loading}
           />
 
           {store.fromCache && !store.loading && (

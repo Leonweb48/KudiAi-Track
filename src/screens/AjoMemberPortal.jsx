@@ -21,6 +21,7 @@ import TabCardDuoSlot from "../components/slots/TabCardDuoSlot";
 import TransactionDetailModal from "../components/shared/TransactionDetailModal";
 import { buildAjoContributionReceipt, buildAjoWithdrawalReceipt } from "../utils/receiptConfig";
 import AIChatWidget from "../components/AIChatWidget";
+import DailyVoice  from "../components/DailyVoice";
 import { buildAjoMemberContext } from "../utils/buildContext";
 import AppLogo from "../components/AppLogo";
 import { useT, useLanguage } from "../contexts/LanguageContext";
@@ -3732,6 +3733,22 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
 // ── Me tab (Staff Portal structure) ───────────────────────────────────────
 function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onProfileUpdate, contributions = [], cycles = [] }) {
   const [view,           setView]           = useState("menu");
+
+  const briefUserId = session?.user?.id;
+  const [briefEnabled, setBriefEnabled] = useState(() => {
+    if (!briefUserId) return true;
+    try { const v = localStorage.getItem(`kt_brief_enabled_${briefUserId}`); return v === null ? true : v !== "0"; }
+    catch { return true; }
+  });
+  const toggleBrief = () => setBriefEnabled(v => {
+    const next = !v;
+    try {
+      if (next) localStorage.removeItem(`kt_brief_enabled_${briefUserId}`);
+      else      localStorage.setItem(`kt_brief_enabled_${briefUserId}`, "0");
+      window.dispatchEvent(new CustomEvent("kt_brief_toggle"));
+    } catch {}
+    return next;
+  });
   const [editForm,       setEditForm]       = useState({
     full_name:      client?.full_name || "",
     phone:          client?.phone     || "",
@@ -4589,6 +4606,27 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
             </div>
             <Svg d="M9 18l6-6-6-6" size={16} color="#cbd5e1" />
           </button>
+        </SettingsCard>
+      </div>
+
+      {/* Preferences */}
+      <div className="px-4 mb-5">
+        <SectionLabel>Preferences</SectionLabel>
+        <SettingsCard>
+          <Row
+            iconCls="bg-emerald-50 dark:bg-emerald-900/20"
+            icon={<svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="#10b981" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>}
+            label="Daily Brief"
+            sub="AI savings summary read aloud on app open"
+            onClick={toggleBrief}
+            right={
+              <button onClick={e => { e.stopPropagation(); toggleBrief(); }} role="switch" aria-checked={briefEnabled}
+                className={`w-12 h-6 rounded-full transition-colors duration-200 relative focus-visible:outline-none flex-shrink-0 ${briefEnabled ? "bg-green-500" : "bg-slate-200 dark:bg-slate-600"}`}>
+                <span className="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all duration-200"
+                  style={{ left: briefEnabled ? "calc(100% - 22px)" : "2px" }} />
+              </button>
+            }
+          />
         </SettingsCard>
       </div>
 
@@ -5472,6 +5510,16 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
       )}
       {showPwdModal && (
         <ChangePasswordModal onClose={() => setShowPwdModal(false)} />
+      )}
+
+      {/* Ajo member morning brief — scoped to this client's own savings data */}
+      {client && (
+        <DailyVoice
+          userId={session?.user?.id}
+          context={loadingData ? "" : buildAjoMemberContext(client, contributions, ownerInfo)}
+          fallback={`Keep it up${client?.full_name ? ", " + client.full_name.split(" ")[0] : ""}! Every contribution you make brings you one step closer to your savings goal — stay consistent and you'll get there!`}
+          dataLoading={loadingData}
+        />
       )}
 
       {client && (

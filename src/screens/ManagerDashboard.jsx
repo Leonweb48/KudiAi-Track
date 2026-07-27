@@ -13,6 +13,7 @@ import Icon                   from "../components/Icon";
 import NotificationCenter     from "../components/NotificationCenter";
 import { useToast }           from "../components/Toast";
 import AIChatWidget           from "../components/AIChatWidget";
+import DailyVoice             from "../components/DailyVoice";
 import VoiceModal             from "../components/VoiceModal";
 import SyncBar                from "../components/SyncBar";
 import { AddTxnModal }        from "./Transactions";
@@ -328,6 +329,14 @@ IMPORTANT: Net profit, cost prices, and business-wide figures are owner-private 
             inventory={inventory}
           />
         )}
+
+        {/* Manager morning brief — branch-scoped, no owner-private figures */}
+        <DailyVoice
+          userId={session?.user?.id}
+          context={store.loading ? "" : managerPortalContext}
+          fallback={`Good morning${staff?.full_name ? ", " + staff.full_name.split(" ")[0] : ""}! Check in on your branch activity today and stay on top of any overdue credit follow-ups — your branch is counting on your leadership!`}
+          dataLoading={store.loading}
+        />
 
         {/* Floating KudiAI Chat Widget */}
         <AIChatWidget store={store} inventory={inventory} branches={[]} portalContext={managerPortalContext} />

@@ -406,6 +406,24 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
     return next;
   });
 
+  const userId = session?.user?.id;
+  const [briefEnabled, setBriefEnabled] = useState(() => {
+    if (!userId) return true;
+    try {
+      const v = localStorage.getItem(`kt_brief_enabled_${userId}`);
+      return v === null ? true : v !== "0";
+    } catch { return true; }
+  });
+  const toggleBrief = () => setBriefEnabled(v => {
+    const next = !v;
+    try {
+      if (next) localStorage.removeItem(`kt_brief_enabled_${userId}`);
+      else      localStorage.setItem(`kt_brief_enabled_${userId}`, "0");
+      window.dispatchEvent(new CustomEvent("kt_brief_toggle"));
+    } catch {}
+    return next;
+  });
+
   const [logCopied, setLogCopied] = useState(false);
   const copyTtsLogs = () => {
     const lines = getTtsDiagLog();
@@ -668,6 +686,31 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
               <span
                 className="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all duration-200"
                 style={{ left: ttsEnabled ? "calc(100% - 22px)" : "2px" }}
+              />
+            </button>
+          }
+        />
+        <Row
+          icon={
+            <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
+            </svg>
+          }
+          label="Daily Brief"
+          sub="AI-generated morning summary with voice read-aloud on app open"
+          onClick={toggleBrief}
+          right={
+            <button
+              onClick={e => { e.stopPropagation(); toggleBrief(); }}
+              role="switch"
+              aria-checked={briefEnabled}
+              className={`w-12 h-6 rounded-full transition-colors duration-200 relative focus-visible:outline-none flex-shrink-0 ${
+                briefEnabled ? "bg-brand-600" : "bg-slate-200 dark:bg-slate-600"
+              }`}
+            >
+              <span
+                className="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all duration-200"
+                style={{ left: briefEnabled ? "calc(100% - 22px)" : "2px" }}
               />
             </button>
           }
