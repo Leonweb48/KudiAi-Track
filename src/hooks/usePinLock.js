@@ -82,6 +82,7 @@ export function usePinLock(userId) {
   const inactivityTimer   = useRef(null);
   const capListenerRef    = useRef(null);
   const lastActivityRef   = useRef(Date.now()); // ms timestamp of last user activity
+  const backgroundedAtRef = useRef(null);       // ms timestamp when app was backgrounded
 
   // Derived state
   const appPinSet  = status?.appPinSet  ?? false;
@@ -184,20 +185,24 @@ export function usePinLock(userId) {
   }, [locked, resetTimer, clearTimer]);
 
   // ── App background / visibility ────────────────────────────────────
-  // On background: pause the inactivity timer.
-  // On foreground return: check elapsed time since last activity.
-  //   - If elapsed >= timeout → lock now.
-  //   - Otherwise → restart timer with the remaining time.
-  // This means "1 minute" locks only after 1 minute of total inactivity,
-  // regardless of whether the app was backgrounded in the middle.
+  // On background: record the timestamp and pause the inactivity timer.
+  // On foreground return: lock only if the app was backgrounded for >= autoLockTimeout.
+  //   - Brief backgrounds (camera, CCT browser, home tap) do NOT lock.
+  //   - Only a sustained background longer than the timeout causes a lock.
+  // On native, both appStateChange and visibilitychange fire — backgroundedAtRef
+  // acts as a one-shot flag so only the first onForeground call acts.
   useEffect(() => {
     const onBackground = () => {
-      clearTimer(); // pause — don't fire while hidden
+      backgroundedAtRef.current = Date.now();
+      clearTimer();
     };
 
     const onForeground = () => {
       if (locked || autoLockTimeout === 0) return;
-      const elapsed  = Date.now() - lastActivityRef.current;
+      const bgAt = backgroundedAtRef.current;
+      if (bgAt === null) return; // duplicate fire (native fires both appStateChange + visibilitychange)
+      backgroundedAtRef.current = null;
+      const elapsed   = Date.now() - bgAt;
       const timeoutMs = autoLockTimeout * 1000;
       if (elapsed >= timeoutMs) {
         setLocked(true);
@@ -242,12 +247,11 @@ export function usePinLock(userId) {
     const result = await invoke("verify_app_pin", { pin });
     if (result.data?.success) {
       setLocked(false);
-      await refetch();
       // Cache hash so offline unlock works after a successful online verify.
       if (userId) setLocalPinHash(userId, pin).catch(() => {});
     }
     return result;
-  }, [refetch, userId]);
+  }, [userId]);
 
   const verifyTxnPin = useCallback(async (pin) => {
     return invoke("verify_txn_pin", { pin });
