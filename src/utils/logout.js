@@ -40,11 +40,16 @@ export async function performLogout() {
       await Push?.removeAllDeliveredNotifications?.();
     } catch { /* best-effort */ }
   }
-  // Clear per-user caches before signing out so a subsequent user can't see stale data.
-  const { data: { session: sess } } = await supabase.auth.getSession().catch(() => ({ data: {} }));
-  if (sess?.user?.id) {
-    clearUserCache(sess.user.id);
-    clearLocalPinState(sess.user.id);
-  }
+  // Clear per-user caches before signing out. Race against a 300 ms timeout so we
+  // never hang here if the Supabase client tries to refresh an expired token over a
+  // slow network — that refresh can block for 30+ seconds on APK.
+  try {
+    const result = await Promise.race([
+      supabase.auth.getSession(),
+      new Promise(resolve => setTimeout(() => resolve({ data: {} }), 300)),
+    ]);
+    const uid = result?.data?.session?.user?.id;
+    if (uid) { clearUserCache(uid); clearLocalPinState(uid); }
+  } catch { /* best-effort */ }
   await supabase.auth.signOut();
 }
