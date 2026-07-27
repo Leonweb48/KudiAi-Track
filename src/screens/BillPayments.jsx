@@ -2972,7 +2972,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       )}
 
       {/* ── Paystack return overlay (processing → result) ─────────────────── */}
-      {((saving && !selectedCat) || fulfillResult) && (
+      {(saving || fulfillResult) && (
         <BillResultOverlay
           saving={saving}
           fulfillResult={fulfillResult}

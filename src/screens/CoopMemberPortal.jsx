@@ -419,6 +419,30 @@ function PayOrgModal({ member, org, preProgram, history, onClose }) {
       .catch(() => null);
   }, [member.id, org.id, preProgram]);
 
+  // Reset loading when payment browser closes without a confirmed payment (cancellation)
+  useEffect(() => {
+    const onBrowserClosed = () => {
+      // If the pending key was already removed (paymentCallback handled it), do nothing
+      const hasPending = Object.keys(localStorage).some(
+        k => k.startsWith(ORG_PAY_PREFIX) || k.startsWith(ORG_LOAN_PAY_PREFIX)
+      );
+      if (!hasPending) return;
+      setLoading(false);
+      setError("Payment was not completed. Please try again.");
+    };
+    window.addEventListener("inAppBrowserFinished", onBrowserClosed);
+    let capListener;
+    if (Capacitor.isNativePlatform()) {
+      import("@capacitor/browser").then(({ Browser }) => {
+        Browser.addListener("browserFinished", onBrowserClosed).then(l => { capListener = l; });
+      }).catch(() => {});
+    }
+    return () => {
+      window.removeEventListener("inAppBrowserFinished", onBrowserClosed);
+      capListener?.remove();
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const selectedProg = programs.find(p => p.id === programId) || null;
   const isFixed      = selectedProg?.contribution_type === "fixed";
   const required     = isFixed ? Number(selectedProg.amount) : 0;
@@ -948,6 +972,29 @@ function LoansTab({ member, org }) {
       .finally(() => setLoading(false));
   }, [member.id, org.id]);
   useEffect(() => { load(); }, [load]);
+
+  // Reset repaying when payment browser closes without a confirmed repayment (cancellation)
+  useEffect(() => {
+    const onBrowserClosed = () => {
+      const hasPending = Object.keys(localStorage).some(
+        k => k.startsWith(ORG_PAY_PREFIX) || k.startsWith(ORG_LOAN_PAY_PREFIX)
+      );
+      if (!hasPending) return;
+      setRepaying(false);
+      setError("Payment was not completed. Please try again.");
+    };
+    window.addEventListener("inAppBrowserFinished", onBrowserClosed);
+    let capListener;
+    if (Capacitor.isNativePlatform()) {
+      import("@capacitor/browser").then(({ Browser }) => {
+        Browser.addListener("browserFinished", onBrowserClosed).then(l => { capListener = l; });
+      }).catch(() => {});
+    }
+    return () => {
+      window.removeEventListener("inAppBrowserFinished", onBrowserClosed);
+      capListener?.remove();
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
 
