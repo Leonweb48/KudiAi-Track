@@ -64,7 +64,7 @@ async function invoke(action, params = {}) {
   return { data };
 }
 
-export function usePinLock(userId, session) {
+export function usePinLock(userId) {
   const [locked, setLocked] = useState(() => {
     // If the user previously set "Never", start unlocked to avoid lock-screen flash on app open.
     // The server value is confirmed by refetch() — this is only a hint for the initial render.
@@ -93,7 +93,7 @@ export function usePinLock(userId, session) {
 
   // ── Fetch status from server ───────────────────────────────────────
   const refetch = useCallback(async (retryCount = 0) => {
-    if (!userId || !session) return;
+    if (!userId) return;
     if (retryCount === 0) setLoading(true);
     try {
       const { data } = await invoke("check_status");
@@ -135,13 +135,13 @@ export function usePinLock(userId, session) {
         setLoading(false);
       }
     }
-  }, [userId, session]);
+  }, [userId]);
 
   useEffect(() => {
-    if (userId && session) {
+    if (userId) {
       refetch();
     }
-  }, [userId, session, refetch]);
+  }, [userId, refetch]);
 
   // ── Inactivity timer ───────────────────────────────────────────────
   const clearTimer = useCallback(() => {

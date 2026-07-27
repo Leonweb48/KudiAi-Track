@@ -129,7 +129,7 @@ export default function App() {
   const invoiceHook = useInvoices(userId);
 
   // Two-tier PIN lock (server-side via pin-manager edge function)
-  const pinLock = usePinLock(userId, session);
+  const pinLock = usePinLock(userId);
 
   // Notification engine — owner portal only. Pass null for ajo_client to prevent a
   // ghost realtime subscription when AjoMemberPortal's NotificationCenter is live.
