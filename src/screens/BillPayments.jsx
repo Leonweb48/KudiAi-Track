@@ -1398,7 +1398,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
         {/* Brand left */}
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-xl overflow-hidden bg-white/10 flex items-center justify-center shadow-inner">
-            <img src="/icon-transparent.png" alt="KudiAI Track"
+            <img src="/logo-tp.png" alt="KudiAI Track"
               className="w-9 h-9 object-contain"
               onError={e => { e.target.style.display = "none"; }} />
           </div>
@@ -1451,7 +1451,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
           <div className="relative">
             <div className="absolute inset-0 rounded-full animate-ping bg-green-600/[0.18]" />
             <div className="relative w-24 h-24 rounded-full shadow-2xl flex items-center justify-center bg-gradient-to-br from-slate-950 to-blue-950">
-              <img src="/icon-transparent.png" alt="" className="w-14 h-14 object-contain"
+              <img src="/logo-tp.png" alt="" className="w-14 h-14 object-contain"
                 onError={e => { e.target.style.display = "none"; }} />
             </div>
           </div>

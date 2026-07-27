@@ -10,7 +10,7 @@
  *  - Awaits document.fonts.ready before capture so web fonts are guaranteed to
  *    be available (without this, fallback glyphs may render in the PNG/PDF).
  *  - Does NOT override windowWidth/windowHeight — those shift the layout.
- *  - allowTaint:true + useCORS:true covers same-origin assets (icon-transparent.png,
+ *  - allowTaint:true + useCORS:true covers same-origin assets (logo-tp.png,
  *    network icons) without needing explicit CORS headers.
  *
  *  onclone pill fix (html2canvas v1 flex-child background bug):

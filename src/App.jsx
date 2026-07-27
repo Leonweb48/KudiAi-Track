@@ -70,7 +70,7 @@ function Spinner() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center">
       <img
-        src="/icon-transparent.png"
+        src="/logo-tp.png"
         alt=""
         className="logo-pulse"
         style={{ width: 72, height: 72, objectFit: "contain" }}

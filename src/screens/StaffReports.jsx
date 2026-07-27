@@ -401,7 +401,7 @@ function StaffReportTemplate({ type, reportData, staffName, businessName, from, 
       {/* LETTERHEAD */}
       <div style={{background:"linear-gradient(135deg,#3DA829 0%,#2E8020 60%,#246618 100%)",padding:"28px 36px 22px",display:"flex",alignItems:"center",gap:16}}>
         <div style={{width:52,height:52,borderRadius:12,background:"white",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,overflow:"hidden",padding:4}}>
-          <img src="/icon-transparent.png" alt="KudiAI" style={{width:"100%",height:"100%",objectFit:"contain"}} onError={e=>{e.target.style.display="none";}}/>
+          <img src="/logo-tp.png" alt="KudiAI" style={{width:"100%",height:"100%",objectFit:"contain"}} onError={e=>{e.target.style.display="none";}}/>
         </div>
         <div style={{flex:1}}>
           <div style={{display:"flex",alignItems:"baseline",gap:3}}>

@@ -124,7 +124,7 @@ function Header({ title, business, email, date, id }) {
       }}>
         {/* Logo */}
         <img
-          src="/icon-transparent.png" alt="KudiAI Track" crossOrigin="anonymous"
+          src="/logo-tp.png" alt="KudiAI Track" crossOrigin="anonymous"
           style={{ height: 52, width: "auto", objectFit: "contain", flexShrink: 0 }}
         />
         {/* Right column */}
