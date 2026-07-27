@@ -136,6 +136,9 @@ export async function openPaystackCheckout(authorizationUrl) {
 
   // Fallback: Chrome Custom Tabs (existing behaviour)
   if (isBrowserAvailable()) {
+    // Mark that an intentional payment browser session is active so usePinLock
+    // skips the elapsed-lock check on return (user was paying, not idle).
+    try { sessionStorage.setItem("ck_cct_payment_active", "1"); } catch {}
     await Browser.open({ url: authorizationUrl });
   } else {
     window.open(authorizationUrl, "_system");
@@ -152,9 +155,11 @@ export async function openPaystackCheckout(authorizationUrl) {
 export function openPaystackPopup(authorizationUrl, { onClose } = {}) {
   if (isNative()) {
     if (isBrowserAvailable()) {
+      try { sessionStorage.setItem("ck_cct_payment_active", "1"); } catch {}
       Browser.open({ url: authorizationUrl });
       let listener;
       Browser.addListener("browserFinished", () => {
+        try { sessionStorage.removeItem("ck_cct_payment_active"); } catch {}
         listener?.remove();
         onClose?.();
       }).then((l) => { listener = l; });

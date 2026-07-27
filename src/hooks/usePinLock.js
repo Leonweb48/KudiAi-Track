@@ -202,6 +202,18 @@ export function usePinLock(userId) {
       const bgAt = backgroundedAtRef.current;
       if (bgAt === null) return; // duplicate fire (native fires both appStateChange + visibilitychange)
       backgroundedAtRef.current = null;
+
+      // Returning from an intentional CCT payment browser — the user was actively paying,
+      // not idle. Skip the elapsed-lock check and restart the inactivity timer from zero
+      // so a long 3DS / OTP flow doesn't surprise them with a lock screen on return.
+      try {
+        if (sessionStorage.getItem("ck_cct_payment_active") === "1") {
+          sessionStorage.removeItem("ck_cct_payment_active");
+          resetTimer();
+          return;
+        }
+      } catch {}
+
       const elapsed   = Date.now() - bgAt;
       const timeoutMs = autoLockTimeout * 1000;
       if (elapsed >= timeoutMs) {
@@ -234,7 +246,7 @@ export function usePinLock(userId) {
       capListenerRef.current = null;
       document.removeEventListener("visibilitychange", onVis);
     };
-  }, [locked, autoLockTimeout, clearTimer]);
+  }, [locked, autoLockTimeout, clearTimer, resetTimer]);
 
   // ── Methods ────────────────────────────────────────────────────────
   const verifyAppPin = useCallback(async (pin) => {

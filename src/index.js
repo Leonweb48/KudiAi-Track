@@ -12,6 +12,11 @@ import { Capacitor } from "@capacitor/core";
 const PENDING_BUNDLE_KEY = "kt_capgo_pending_bundle";
 
 async function boot() {
+  // Logcat marker: visible as "Capacitor/console: [KT/boot]" in adb logcat.
+  // A true JS restart emits this; a plain resume/lock-return does NOT.
+  // Filter with: adb logcat | grep "KT/boot"
+  console.log("[KT/boot]", new Date().toISOString());
+
   if (Capacitor.isNativePlatform()) {
     // Tell Capgo this bundle loaded successfully — prevents auto-rollback.
     CapacitorUpdater.notifyAppReady().catch(() => {});
