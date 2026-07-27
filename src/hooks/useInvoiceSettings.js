@@ -36,10 +36,25 @@ export function useInvoiceSettings(userId) {
     const DB_COLS = ["logo_url", "reg_number", "contact_email", "contact_phone",
                      "address", "bank_name", "bank_code", "account_number", "account_name", "thank_you_note"];
     const dbValues = Object.fromEntries(DB_COLS.filter(k => k in values).map(k => [k, values[k]]));
-    const payload = { user_id: userId, ...dbValues, updated_at: new Date().toISOString() };
-    const { error } = await supabase
+    const now = new Date().toISOString();
+
+    // Avoid upsert — PostgREST evaluates INSERT and UPDATE WITH CHECK simultaneously
+    // which triggers an RLS violation even when both individual policies are valid.
+    const { data: existing } = await supabase
       .from("invoice_settings")
-      .upsert(payload, { onConflict: "user_id" });
+      .select("user_id")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    const { error } = existing
+      ? await supabase
+          .from("invoice_settings")
+          .update({ ...dbValues, updated_at: now })
+          .eq("user_id", userId)
+      : await supabase
+          .from("invoice_settings")
+          .insert({ user_id: userId, ...dbValues, updated_at: now });
+
     if (!error) setSettings(prev => ({ ...prev, ...values }));
     return { error };
   };

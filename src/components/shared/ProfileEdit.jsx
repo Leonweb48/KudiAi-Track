@@ -197,7 +197,14 @@ export default function ProfileEdit({ staff, session, livePerms = [], onBack, on
         patches.profile_image_url = avatarUrl;
       }
 
-      const { error } = await supabase.from("staff").update(patches).eq("id", staffId);
+      const { error } = await supabase.rpc("update_staff_own_profile", {
+        p_phone:             patches.phone             ?? null,
+        p_address:           patches.address           ?? null,
+        p_nok_name:          patches.nok_name          ?? null,
+        p_nok_phone:         patches.nok_phone         ?? null,
+        p_nok_relationship:  patches.nok_relationship  ?? null,
+        p_profile_image_url: patches.profile_image_url ?? null,
+      });
       if (error) throw error;
 
       // Notify owner of each changed field (fire-and-forget)
