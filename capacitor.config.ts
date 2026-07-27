@@ -20,7 +20,12 @@ const config: CapacitorConfig = {
       splashImmersive: true,
     },
     CapacitorUpdater: {
-      autoUpdate: true,
+      // "onlyDownload": Capgo auto-downloads new bundles but does NOT mark them as
+      // the "next" bundle.  This prevents CapacitorUpdaterPlugin.installNext() from
+      // reloading the WebView on every appMovedToBackground() event, which was the
+      // cause of the apparent cold-restart on minimize / photo-picker / CCT return.
+      // We apply downloaded bundles manually at the next cold start (index.js).
+      autoUpdate: "onlyDownload",
       updateUrl: "https://api.capgo.app/updates",
       statsUrl: "https://api.capgo.app/stats",
       channelUrl: "https://api.capgo.app/channel_self",
