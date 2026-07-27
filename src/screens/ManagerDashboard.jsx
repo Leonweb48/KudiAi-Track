@@ -289,6 +289,7 @@ IMPORTANT: Net profit, cost prices, and business-wide figures are owner-private 
           lastSyncTime={store.lastSyncTime}
           syncing={store.syncing}
           syncResult={store.syncResult}
+          pendingCount={store.pendingCount}
         />
 
         {/* Content */}

@@ -519,6 +519,7 @@ export default function App() {
             lastSyncTime={store.lastSyncTime}
             syncing={store.syncing}
             syncResult={store.syncResult}
+            pendingCount={store.pendingCount}
           />
 
           {upgradeAvailable && !upgradeBannerDismissed && (

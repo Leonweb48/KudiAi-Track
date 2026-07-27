@@ -245,6 +245,7 @@ If asked about business-wide figures (total business revenue, all staff performa
           lastSyncTime={store.lastSyncTime}
           syncing={store.syncing}
           syncResult={store.syncResult}
+          pendingCount={store.pendingCount}
         />
 
         {/* Content */}

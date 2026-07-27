@@ -40,8 +40,9 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
   const [loadError,   setLoadError]   = useState(null);
   const [fromCache,   setFromCache]   = useState(false);
   const [rtConnected, setRtConnected] = useState(false);
-  const [syncing,     setSyncing]     = useState(false);
-  const [syncResult,  setSyncResult]  = useState(null);
+  const [syncing,      setSyncing]     = useState(false);
+  const [syncResult,   setSyncResult]  = useState(null);
+  const [pendingCount, setPendingCount] = useState(0);
   const [lastSyncTime, setLastSyncTime] = useState(() => {
     const v = localStorage.getItem(`kt_last_sync_${userId || ""}`);
     return v ? parseInt(v, 10) : null;
@@ -459,28 +460,21 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
 
   // ── Online / offline detection + queue flush ──────────────────
   useEffect(() => {
-    const on = async () => {
-      setIsOnline(true);
-      if (!wasOfflineRef.current) return;
-      wasOfflineRef.current = false;
+    const doSync = async () => {
       setSyncing(true);
       setSyncResult(null);
       try {
-        // 1. Flush any queued offline transactions first.
-        const pendingCount = await getPendingCount(userId).catch(() => 0);
-        if (pendingCount > 0) {
+        const before = await getPendingCount(userId).catch(() => 0);
+        if (before > 0) {
           const result = await syncPending(supabase, userId);
           if (result.synced > 0) {
-            // Replace all pending-flagged optimistic rows with fresh server data.
-            // loadData(true) immediately after will repopulate from DB, so just
-            // strip the _pending flag from local state as a visual bridge.
             setTransactions(prev => prev.filter(tx => !tx._pending));
           }
         }
-        // 2. Pull fresh data from server.
         await loadDataRef.current?.(true);
-        const synced = await getPendingCount(userId).catch(() => 0);
-        const syncedCount = pendingCount - synced;
+        const after = await getPendingCount(userId).catch(() => 0);
+        setPendingCount(after);
+        const syncedCount = before - after;
         setSyncResult(syncedCount > 0
           ? `Synced ${syncedCount} offline transaction${syncedCount === 1 ? "" : "s"}`
           : "Up to date"
@@ -489,9 +483,24 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
       } catch { /* best-effort */ }
       setSyncing(false);
     };
+
+    const on = async () => {
+      setIsOnline(true);
+      if (!wasOfflineRef.current) return;
+      wasOfflineRef.current = false;
+      await doSync();
+    };
     const off = () => { setIsOnline(false); wasOfflineRef.current = true; };
     window.addEventListener("online",  on);
     window.addEventListener("offline", off);
+
+    // Prime the pending count and flush any ops left over from prior sessions.
+    // Delay 1 s so the initial loadData() finishes first.
+    getPendingCount(userId).then(count => {
+      setPendingCount(count);
+      if (count > 0 && navigator.onLine) setTimeout(doSync, 1000);
+    }).catch(() => {});
+
     return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
   }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -524,6 +533,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     if (!navigator.onLine) {
       try {
         await savePendingOp({ local_id: localId, table: "transactions", data: payload, user_id: userId });
+        setPendingCount(p => p + 1);
         // Leave the optimistic row in state with _pending=true so the user sees it.
         // syncPending() will replace it with the real server row on reconnect.
         return { _queued: true, id: tempId, ...payload };
@@ -1097,7 +1107,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     setProfile, isOnline, loading, rtConnected,
     dbError, clearDbError: () => setDbError(null),
     loadError, clearLoadError: () => setLoadError(null), reloadData: loadData, silentRefresh: () => loadData(true),
-    fromCache, lastSyncTime, syncing, syncResult,
+    fromCache, lastSyncTime, syncing, syncResult, pendingCount,
     addTransaction,
     patchTransactionNote,
     // Staff cannot delete transactions — only business owners (no staffId) can
