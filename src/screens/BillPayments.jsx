@@ -2233,9 +2233,9 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         if (paymentCallbackFiredRef.current) return; // paymentCallback already handling it
         // Flag that the browser closed without a callback (e.g. OPay opened externally).
         // onVisible will use this to attempt verification when the app returns to foreground.
+        // Keep saving=true — onVisible drives state transition 500 ms later.
+        // Dropping saving here causes a blank Bills page during the gap.
         try { sessionStorage.setItem("ck_browser_closed_pending", "1"); } catch {}
-        setSaving(false);
-        setSelectedCat(null);
       }, 1500);
     };
 
@@ -2581,12 +2581,12 @@ export default function BillPayments({ store, plan, session = null, staffName = 
           // Retry up to 3 times (every 12 s, 36 s total) before giving up.
           if (psStatus === "pending") {
             paymentCallbackFiredRef.current = false;
-            setSaving(false);
             const retryCount = pending._retryCount ?? 0;
             if (retryCount < 3) {
               const nextPending = { ...pending, _retryCount: retryCount + 1 };
               try { localStorage.setItem(BILL_PENDING_PREFIX + ref, JSON.stringify(nextPending)); } catch {}
               try { sessionStorage.setItem("ck_browser_closed_pending", "1"); } catch {}
+              // Keep saving=true during the 12 s wait so the overlay stays visible.
               setTimeout(() => {
                 if (paymentCallbackFiredRef.current) return;
                 if (!localStorage.getItem(BILL_PENDING_PREFIX + ref)) return;
@@ -2596,6 +2596,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
               }, 12000);
             } else {
               // Max retries reached — show pending disrupted state so user knows to contact support
+              setSaving(false);
               localStorage.removeItem(BILL_PENDING_PREFIX + ref);
               setFulfillResult({ ok: false, disrupted: true, detail: `Payment is still pending confirmation. If you were charged, contact support and quote reference: ${ref}. Your service will be delivered once payment confirms.`, psRef: ref });
             }
