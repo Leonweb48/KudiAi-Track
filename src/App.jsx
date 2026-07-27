@@ -321,7 +321,12 @@ export default function App() {
   if (location.pathname === "/payment-return" ||
       location.pathname === "/app/payment-callback") return <PaymentReturn />;
 
-  if (status === "loading")         return <Spinner />;
+  const portalStatuses = ["ready", "staff", "branch_manager", "marketer", "organisation", "org_member", "ajo_client"];
+
+  // Single loading gate: covers both the auth resolution window and the pin-manager
+  // check_status call that follows. Collapsing them into one return keeps the same
+  // Spinner instance mounted the whole time so no animation restart / blink occurs.
+  if (status === "loading" || (portalStatuses.includes(status) && pinLock.loading)) return <Spinner />;
 
   // Super Admin — full command center
   if (status === "admin") return <AdminDashboard session={session} adminUser={adminUser} />;
@@ -350,7 +355,6 @@ export default function App() {
   if (status === "marketer_setup")   return <MarketerFirstLogin marketer={marketer} />;
 
   // ── Consent gate — blocks portal entry until legal docs are accepted ──
-  const portalStatuses = ["ready", "staff", "branch_manager", "marketer", "organisation", "org_member", "ajo_client"];
   if (portalStatuses.includes(status) && !consent.loading && consent.needsConsent) {
     return (
       <ConsentModal
@@ -361,12 +365,6 @@ export default function App() {
       />
     );
   }
-
-  // ── PIN load gate — block portals while check_status is in flight ──
-  // Without this, the portal renders during loading=true (locked=true but loading=true
-  // skips the lock check), causing the app to visibly "blink open" before the lock screen
-  // appears, and letting it stay open when check_status fails offline.
-  if (pinLock.loading) return <Spinner />;
 
   // ── PIN setup gate — blocks all portals until both PINs are configured ──
   // Covers: organisation, org_member, ajo_client, staff, branch_manager, marketer, main app.

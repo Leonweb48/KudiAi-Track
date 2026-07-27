@@ -5252,7 +5252,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
     } finally {
       if (!silent) setLoadingData(false);
     }
-  }, [mustChange, ajoClient?.id, ajoClient?.owner_id, ajoClient?.user_id, ajoClient?.current_balance, ajoClient?.ajo_group_id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mustChange, ajoClient?.id, ajoClient?.owner_id, ajoClient?.user_id, ajoClient?.ajo_group_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Thin trigger: runs on initial load, ajoClient change, and manual reloadKey increments
   useEffect(() => {
