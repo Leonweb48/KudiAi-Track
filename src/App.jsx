@@ -69,10 +69,12 @@ import { buildContext }      from "./utils/buildContext";
 function Spinner() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center">
-      <div className="flex flex-col items-center gap-3">
-        <div className="w-10 h-10 border-[3px] border-brand-500 border-t-transparent rounded-full spinner" />
-        <p className="text-xs text-slate-400 font-medium">Loading…</p>
-      </div>
+      <img
+        src="/icon-transparent.png"
+        alt=""
+        className="logo-pulse"
+        style={{ width: 72, height: 72, objectFit: "contain" }}
+      />
     </div>
   );
 }

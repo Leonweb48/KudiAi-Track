@@ -218,7 +218,7 @@ export async function exportInvoicePdf(
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const [logoB64, appLogoB64, fontRegB64, fontMedB64] = await Promise.all([
     biz.logo ? imgToBase64(biz.logo) : Promise.resolve(null),
-    imgToBase64(`${origin}/logo.png`),
+    imgToBase64(`${origin}/icon-transparent.png`),
     loadFontBase64(`${origin}/fonts/NotoSans-Regular.ttf`),
     loadFontBase64(`${origin}/fonts/NotoSans-Medium.ttf`),
   ]);

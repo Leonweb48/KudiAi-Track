@@ -14,7 +14,7 @@ export default function AppLogo({ className = "" }) {
 
   return (
     <img
-      src="/logo.png"
+      src="/icon-transparent.png"
       alt="KudiAI Track"
       className={className}
       style={{ objectFit: "contain" }}

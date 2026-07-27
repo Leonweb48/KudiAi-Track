@@ -275,7 +275,7 @@ export function ReceiptCard({ data, innerRef }) {
         <div style={{ display: 'flex', alignItems: 'center', width: '100%', position: 'relative', zIndex: 2 }}>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
             <img
-              src="/logo.png" alt=""
+              src="/icon-transparent.png" alt=""
               style={{ width: 20, height: 20, borderRadius: 4, display: 'block' }}
               onError={e => { e.currentTarget.style.display = 'none'; }}
             />
@@ -391,7 +391,7 @@ export function ReceiptCard({ data, innerRef }) {
         }}>
           <div style={{ marginBottom: 4, textAlign: 'center' }}>
             <img
-              src="/logo.png" alt=""
+              src="/icon-transparent.png" alt=""
               style={{ width: 16, height: 16, borderRadius: 3, display: 'block', margin: '0 auto' }}
               onError={e => { e.currentTarget.style.display = 'none'; }}
             />

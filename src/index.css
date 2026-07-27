@@ -93,9 +93,16 @@ body {
   to   { opacity: 1; transform: translateY(0);    }
 }
 
-/* ── Spinner ──────────────────────────────────────────────────────── */
+/* ── Spinner (kept for any remaining uses) ────────────────────────── */
 .spinner { animation: spin 0.75s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Logo pulse (loading animation) ──────────────────────────────── */
+.logo-pulse { animation: logoPulse 1.4s ease-in-out infinite; }
+@keyframes logoPulse {
+  0%,100% { transform: scale(0.9); opacity: 0.85; }
+  50%      { transform: scale(1.1); opacity: 1;    }
+}
 
 /* ── Fade / slide ─────────────────────────────────────────────────── */
 .fade-in    { animation: fadeIn    0.2s  ease-out; }

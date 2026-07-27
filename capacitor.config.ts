@@ -11,6 +11,14 @@ const config: CapacitorConfig = {
     allowMixedContent: true,
   },
   plugins: {
+    SplashScreen: {
+      launchShowDuration: 1800,
+      backgroundColor: "#000d1b",
+      androidSplashResourceName: "splash",
+      showSpinner: false,
+      splashFullScreen: true,
+      splashImmersive: true,
+    },
     CapacitorUpdater: {
       autoUpdate: true,
       updateUrl: "https://api.capgo.app/updates",

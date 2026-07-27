@@ -117,7 +117,7 @@ export async function createReportPdf({
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const [appLogoB64, fontRegB64, fontMedB64] = await Promise.all([
-    imgToBase64(`${origin}/logo.png`),
+    imgToBase64(`${origin}/icon-transparent.png`),
     loadFontBase64(`${origin}/fonts/NotoSans-Regular.ttf`),
     loadFontBase64(`${origin}/fonts/NotoSans-Medium.ttf`),
   ]);

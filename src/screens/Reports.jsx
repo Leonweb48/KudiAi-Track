@@ -674,7 +674,7 @@ function ReportTemplate({ type, reportData, profile, from, to }) {
       {/* LETTERHEAD */}
       <div style={{background:"linear-gradient(135deg,#1a4d0f 0%,#2E8020 55%,#3DA829 100%)",padding:"28px 36px 22px",display:"flex",alignItems:"center",gap:16}}>
         <div style={{width:52,height:52,borderRadius:12,background:"white",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,overflow:"hidden",padding:4}}>
-          <img src="/logo.png" alt="KudiAI" style={{width:"100%",height:"100%",objectFit:"contain"}} onError={e=>{e.target.style.display="none";}}/>
+          <img src="/icon-transparent.png" alt="KudiAI" style={{width:"100%",height:"100%",objectFit:"contain"}} onError={e=>{e.target.style.display="none";}}/>
         </div>
         <div style={{flex:1}}>
           <div style={{display:"flex",alignItems:"baseline",gap:3}}>

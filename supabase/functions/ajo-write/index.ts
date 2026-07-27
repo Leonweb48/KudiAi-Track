@@ -994,7 +994,7 @@ serve(async (req: Request) => {
 
     const { data: rwrRow, error: rwrErr } = await sb
       .from("ajo_withdrawal_requests")
-      .select("aso_client_id, owner_id, amount, group_name")
+      .select("aso_client_id, owner_id, amount, group_id")
       .eq("id", rwrId)
       .single();
     if (rwrErr || !rwrRow) return json({ ok: false, error: "Request not found" }, 404);
@@ -1012,10 +1012,13 @@ serve(async (req: Request) => {
     const clientId = rwrRow.aso_client_id as string;
     await Promise.race([
       (async () => {
-        const [ctx, rwrClientUserId, rwrStaffUid] = await Promise.all([
+        const [ctx, rwrClientUserId, rwrStaffUid, grpRow] = await Promise.all([
           fetchEmailContext(sb, clientId, ownerId, user.id),
           resolveClientUserId(sb, clientId),
           resolveAssignedStaffUserId(sb, clientId),
+          (rwrRow as Record<string, unknown>).group_id
+            ? sb.from("ajo_groups").select("name").eq("id", (rwrRow as Record<string, unknown>).group_id as string).maybeSingle().then(r => r.data)
+            : Promise.resolve(null),
         ]);
         await Promise.allSettled([
           fireAjoEmail("ajo_withdrawal_rejected", {
@@ -1023,7 +1026,7 @@ serve(async (req: Request) => {
             client_name:   ctx.clientName,
             user_email:    ctx.ownerEmail,
             business_name: ctx.businessName,
-            group_name:    (rwrRow as Record<string, unknown>).group_name || "",
+            group_name:    (grpRow as Record<string, unknown> | null)?.name as string || "",
             amount:        (rwrRow as Record<string, unknown>).amount,
             reason:        rwrReason || "",
             date:          new Date().toLocaleDateString("en-NG"),
