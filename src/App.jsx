@@ -258,8 +258,14 @@ export default function App() {
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
     const onBrowserDone = () => {
-      const hasPending = Object.keys(localStorage).some(k => k.startsWith("ck_bill_pending_"));
-      if (hasPending && window.location.pathname !== "/bills") navigate("/bills");
+      // Only navigate when there is a RECENT pending key (< 30 min) — stale keys
+      // should not force /bills navigation and are cleaned up by the mount effect.
+      const hasRecentPending = Object.keys(localStorage).some(k => {
+        if (!k.startsWith("ck_bill_pending_")) return false;
+        const ts = parseInt((k.match(/(\d{13})$/) || [])[1] || "0", 10);
+        return ts && Date.now() - ts < 30 * 60 * 1000;
+      });
+      if (hasRecentPending && window.location.pathname !== "/bills") navigate("/bills");
     };
     let listener;
     Browser.addListener("browserFinished", onBrowserDone).then(l => { listener = l; });

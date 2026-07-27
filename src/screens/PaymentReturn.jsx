@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Capacitor } from "@capacitor/core";
 
 const APP_SCHEME = "com.amayatechnologies.kuditrack";
@@ -17,6 +18,7 @@ const APP_SCHEME = "com.amayatechnologies.kuditrack";
  *   the portal components' payment-return handlers process the reference.
  */
 export default function PaymentReturn() {
+  const navigate = useNavigate();
   const search = window.location.search;
   const params = new URLSearchParams(search);
   const ref    = params.get("reference") || params.get("trxref") || params.get("bill_ref") || "";
@@ -24,9 +26,10 @@ export default function PaymentReturn() {
 
   useEffect(() => {
     if (isNative) return;
-    // Web: forward to app root so portals can process the reference.
-    // Use replace so the /payment-return entry is removed from history.
-    window.location.replace(`/${search}`);
+    // Web: client-side navigate to /bills so the React tree is not fully remounted.
+    // window.location.replace caused a hard reload which re-ran useState initializers
+    // and stale ck_bill_pending_* keys sent the user to the wrong tab/screen.
+    navigate(`/bills${search}`, { replace: true });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Web: transitional screen while redirect fires ────────────────────────

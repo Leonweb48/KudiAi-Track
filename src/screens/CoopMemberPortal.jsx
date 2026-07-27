@@ -1814,7 +1814,13 @@ export default function CoopMemberPortal({ member: initialMember }) {
     const p = new URLSearchParams(window.location.search);
     const ref = p.get("bill_ref") || p.get("trxref") || p.get("reference");
     if (ref && localStorage.getItem(`ck_bill_pending_${ref}`)) return "bills";
-    if (Object.keys(localStorage).some(k => k.startsWith("ck_bill_pending_"))) return "bills";
+    // Only open Bills for RECENT pending keys (< 30 min); stale keys must not redirect.
+    const hasRecentBill = Object.keys(localStorage).some(k => {
+      if (!k.startsWith("ck_bill_pending_")) return false;
+      const ts = parseInt((k.match(/(\d{13})$/) || [])[1] || "0", 10);
+      return ts && Date.now() - ts < 30 * 60 * 1000;
+    });
+    if (hasRecentBill) return "bills";
     return "home";
   });
   const [announcements, setAnnouncements] = useState([]);
