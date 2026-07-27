@@ -32,7 +32,7 @@ async function boot() {
       localStorage.removeItem(PENDING_BUNDLE_KEY);
       try {
         const { bundles } = await CapacitorUpdater.list();
-        const bundle = bundles.find(b => b.id === pendingId && b.status === "success");
+        const bundle = bundles.find(b => b.id === pendingId && b.status === "pending");
         if (bundle) {
           // set() reloads the WebView immediately.  Execution after this call will
           // not continue in the current JS context; React never renders this pass.
