@@ -102,6 +102,7 @@ const OV_QUICK = [
 ];
 
 function OverviewTab({ org, wallet, programs, announcements, members = [], loans = [], wdRequests = [], onQuickService = null, onNavigate = null, adminEmail = null }) {
+  const t = useT();
   const { slotMap: camSlots, loading: camLoading, recordEvent: recordCamEvent } = useCampaigns(
     ["announcement_bar", "tab_card_quad", "tab_card_duo"],
     "organisation",
@@ -121,29 +122,29 @@ function OverviewTab({ org, wallet, programs, announcements, members = [], loans
   const visibleAnns    = [...pinnedAnns, ...recentAnns].slice(0, 3);
 
   const STATS = [
-    { label:"Members",         value: members.length,       sub:`${activeMembers.length} active`,
+    { label:t("coop.members"),         value: members.length,       sub:`${activeMembers.length} ${t("cd.activeLabel")}`,
       iconBg:"bg-purple-100 dark:bg-purple-900/40", iconColor:"#7c3aed", tab:"members",
       icon:"M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" },
-    { label:"Active Programs",  value: activePrograms.length, sub:`${programs.length} total`,
+    { label:t("coop.programs"),  value: activePrograms.length, sub:`${programs.length} ${t("cd.totalLabel")}`,
       iconBg:"bg-green-100 dark:bg-green-900/40", iconColor:"#3DA829", tab:"programs",
       icon:"M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" },
-    { label:"Contributions",    value: fmt(org.total_savings), sub:"total collected",
+    { label:t("fin.contributions"),    value: fmt(org.total_savings), sub:t("cd.totalCollected"),
       iconBg:"bg-cyan-100 dark:bg-cyan-900/40", iconColor:"#0891b2", tab:"finance",
       icon:"M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" },
-    { label:"Withdrawals",      value: fmt(org.total_loans_out), sub:"total disbursed",
+    { label:t("fin.withdrawals"),      value: fmt(org.total_loans_out), sub:t("cd.totalDisbursed"),
       iconBg:"bg-red-100 dark:bg-red-900/40", iconColor:"#dc2626", tab:"finance",
       icon:"M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" },
-    { label:"Member Requests",  value: pendingReqs.length,   sub: pendingReqs.length > 0 ? "need attention" : "all clear",
+    { label:t("fin.memberRequests"),  value: pendingReqs.length,   sub: pendingReqs.length > 0 ? t("cd.needAttention") : t("cd.allClear"),
       iconBg: pendingReqs.length > 0 ? "bg-amber-100 dark:bg-amber-900/40" : "bg-slate-100 dark:bg-slate-700/40",
       iconColor: pendingReqs.length > 0 ? "#d97706" : "#64748b", tab:"finance",
       icon:"M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" },
-    { label:"Active Loans",     value: activeLoans.length,   sub: fmt(activeLoans.reduce((s,l) => s+(l.outstanding_balance||0), 0)) + " out",
+    { label:t("aiChip.activeLoans"),     value: activeLoans.length,   sub: fmt(activeLoans.reduce((s,l) => s+(l.outstanding_balance||0), 0)) + " out",
       iconBg:"bg-orange-100 dark:bg-orange-900/40", iconColor:"#ea580c", tab:"loans",
       icon:"M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" },
-    { label:"Messages",         value: announcements.length, sub:`${announcements.filter(a=>a.is_pinned).length} pinned`,
+    { label:t("coop.messages"),         value: announcements.length, sub:`${announcements.filter(a=>a.is_pinned).length} ${t("cd.pinned")}`,
       iconBg:"bg-green-100 dark:bg-green-900/40", iconColor:"#3DA829", tab:"messages",
       icon:"M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" },
-    { label:"Broadcast",        value: "—",                  sub:"meetings, events & more",
+    { label:t("coop.broadcast"),        value: "—",                  sub:t("cd.meetingsEvents"),
       iconBg:"bg-teal-100 dark:bg-teal-900/40", iconColor:"#0f766e", tab:"broadcast",
       icon:"M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" },
   ];
@@ -193,8 +194,8 @@ function OverviewTab({ org, wallet, programs, announcements, members = [], loans
       {onQuickService && (
         <div className="px-4">
           <div className="flex justify-between items-center mb-4">
-            <p className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em]">Quick Services</p>
-            {onNavigate && <button onClick={() => onNavigate("bills")} className="text-[10px] font-bold text-green-600 dark:text-green-400">View All →</button>}
+            <p className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em]">{t("cd.quickServices")}</p>
+            {onNavigate && <button onClick={() => onNavigate("bills")} className="text-[10px] font-bold text-green-600 dark:text-green-400">{t("cd.viewAll")}</button>}
           </div>
           <div className="grid grid-cols-4 gap-3">
             {OV_QUICK.map(s => (
@@ -218,7 +219,7 @@ function OverviewTab({ org, wallet, programs, announcements, members = [], loans
 
       {/* ── Dashboard Summary Grid ── */}
       <div className="px-4">
-        <p className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em] mb-4">Dashboard Summary</p>
+        <p className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em] mb-4">{t("cd.dashSummary")}</p>
         <div className="grid grid-cols-2 gap-3">
           {STATS.map(s => (
             <button key={s.label} onClick={() => onNavigate?.(s.tab)}
@@ -262,8 +263,8 @@ function OverviewTab({ org, wallet, programs, announcements, members = [], loans
       {recentTxns.length > 0 && (
         <div className="px-4">
           <div className="flex justify-between items-center mb-3">
-            <p className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em]">Recent Activity</p>
-            {onNavigate && <button onClick={() => onNavigate("finance")} className="text-[10px] font-bold text-green-600 dark:text-green-400">See All →</button>}
+            <p className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em]">{t("cd.recentActivity")}</p>
+            {onNavigate && <button onClick={() => onNavigate("finance")} className="text-[10px] font-bold text-green-600 dark:text-green-400">{t("cd.seeAll")}</button>}
           </div>
           <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700/60 shadow-sm overflow-hidden">
             {recentTxns.map((t, i) => {
@@ -293,8 +294,8 @@ function OverviewTab({ org, wallet, programs, announcements, members = [], loans
       {visibleAnns.length > 0 && (
         <div className="px-4">
           <div className="flex justify-between items-center mb-3">
-            <p className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em]">Announcements</p>
-            {onNavigate && <button onClick={() => onNavigate("messages")} className="text-[10px] font-bold text-green-600 dark:text-green-400">View All →</button>}
+            <p className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em]">{t("cd.announcements")}</p>
+            {onNavigate && <button onClick={() => onNavigate("messages")} className="text-[10px] font-bold text-green-600 dark:text-green-400">{t("cd.viewAll")}</button>}
           </div>
           <div className="flex flex-col gap-2">
             {visibleAnns.map(a => (
@@ -312,15 +313,15 @@ function OverviewTab({ org, wallet, programs, announcements, members = [], loans
 
       {/* ── Org Profile ── */}
       <div className="px-4">
-        <p className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em] mb-3">Organisation Profile</p>
+        <p className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em] mb-3">{t("cd.orgProfile")}</p>
         <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700/60 shadow-sm overflow-hidden">
           {[
-            ["Reg. Number", org.reg_number],
+            [t("cd.regNumber"), org.reg_number],
             ["Type",        org.type?.replace(/_/g," ")],
             ["Phone",       org.phone || "—"],
             ["Email",       org.email || "—"],
             ["Address",     org.address || "—"],
-            ...(org.date_established ? [["Established", fmtDate(org.date_established)]] : []),
+            ...(org.date_established ? [[t("cd.established"), fmtDate(org.date_established)]] : []),
           ].map(([k, v]) => (
             <div key={k} className="flex justify-between items-center px-4 py-3 border-b border-slate-50 dark:border-slate-700/30 last:border-0">
               <span className="text-xs text-slate-400">{k}</span>
@@ -337,6 +338,7 @@ function OverviewTab({ org, wallet, programs, announcements, members = [], loans
 //  MEMBERS TAB
 // ═══════════════════════════════════════════════════
 function MembersTab({ org, members, onRefresh }) {
+  const t = useT();
   const [addStep,    setAddStep]    = useState(null); // null | "form"
   const [pendingReg, setPendingReg] = useState(null); // { member_id, email, temp_password, name }
   const [selected,   setSelected]   = useState(null);
@@ -457,10 +459,10 @@ function MembersTab({ org, members, onRefresh }) {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
             <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
           </svg>
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search members…"
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t("mem.search")}
             className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-400" />
         </div>
-        <button onClick={() => setAddStep("form")} className="px-4 py-2.5 bg-green-600 text-white rounded-xl text-xs font-bold flex-shrink-0">+ Add</button>
+        <button onClick={() => setAddStep("form")} className="px-4 py-2.5 bg-green-600 text-white rounded-xl text-xs font-bold flex-shrink-0">{t("mem.addNew")}</button>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 pb-24">
@@ -468,7 +470,7 @@ function MembersTab({ org, members, onRefresh }) {
         {/* ── Reactivation requests section ── */}
         {reactivationRequests.length > 0 && (
           <div className="mt-3 mb-3">
-            <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Reactivation Requests</p>
+            <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">{t("mem.reactivationReqs")}</p>
             {reactivationRequests.map(req => {
               const isOwnerApproved = req.status === "owner_approved";
               const isBusy = reactivationBusy === req.id;
@@ -477,7 +479,7 @@ function MembersTab({ org, members, onRefresh }) {
                   <div className="flex items-center justify-between mb-1">
                     <p className="text-xs font-bold text-slate-800 dark:text-white">{req.member_name}</p>
                     <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${isOwnerApproved ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700"}`}>
-                      {isOwnerApproved ? "Forwarded to Admin" : "Pending"}
+                      {isOwnerApproved ? t("mem.forwardedAdmin") : t("mem.pending")}
                     </span>
                   </div>
                   {req.reason && <p className="text-[10px] text-slate-500 dark:text-slate-400 mb-2 italic">&ldquo;{req.reason}&rdquo;</p>}
@@ -496,7 +498,7 @@ function MembersTab({ org, members, onRefresh }) {
                         if (data?.ok) setReactivationMsg({ id: req.id, text: data.note || "Sent to admin.", ok: true });
                         else setReactivationMsg({ id: req.id, text: data?.error || "Failed to resend", ok: false });
                       }} className="w-full py-1.5 text-xs font-bold rounded-lg bg-blue-600 text-white disabled:opacity-50">
-                        {isBusy ? "…" : "Resend to Admin"}
+                        {isBusy ? "…" : t("mem.resendAdmin")}
                       </button>
                     </>
                   ) : rejectingReactivation === req.id ? (
@@ -517,18 +519,18 @@ function MembersTab({ org, members, onRefresh }) {
                             setReactivationMsg({ id: req.id, text: data?.error || "Failed", ok: false });
                           }
                           setRejectingReactivation(null); setRejectNote("");
-                        }} className="flex-1 py-1.5 text-xs font-bold rounded-lg bg-red-600 text-white disabled:opacity-50">{isBusy ? "…" : "Confirm Reject"}</button>
+                        }} className="flex-1 py-1.5 text-xs font-bold rounded-lg bg-red-600 text-white disabled:opacity-50">{isBusy ? "…" : t("loan.confirmReject")}</button>
                         <button onClick={() => { setRejectingReactivation(null); setRejectNote(""); }}
-                          className="flex-1 py-1.5 text-xs font-bold rounded-lg border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300">Cancel</button>
+                          className="flex-1 py-1.5 text-xs font-bold rounded-lg border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300">{t("common.cancel")}</button>
                       </div>
                     </div>
                   ) : (
                     <div className="flex gap-2">
                       <button disabled={isBusy} onClick={() => {
                         setPendingArchiveMember({ __reactivationApprove: true, request_id: req.id, member_name: req.member_name });
-                      }} className="flex-1 py-1.5 text-xs font-bold rounded-lg bg-green-600 text-white disabled:opacity-50">Approve</button>
+                      }} className="flex-1 py-1.5 text-xs font-bold rounded-lg bg-green-600 text-white disabled:opacity-50">{t("mem.approve")}</button>
                       <button disabled={isBusy} onClick={() => { setRejectingReactivation(req.id); setRejectNote(""); }}
-                        className="flex-1 py-1.5 text-xs font-bold rounded-lg bg-red-50 text-red-600 border border-red-200">Decline</button>
+                        className="flex-1 py-1.5 text-xs font-bold rounded-lg bg-red-50 text-red-600 border border-red-200">{t("mem.decline")}</button>
                     </div>
                   )}
                 </div>
@@ -538,7 +540,7 @@ function MembersTab({ org, members, onRefresh }) {
         )}
 
         {filtered.length === 0 ? (
-          <div className="text-center py-12 text-slate-400 text-sm">No members found</div>
+          <div className="text-center py-12 text-slate-400 text-sm">{t("mem.noMembers")}</div>
         ) : (
           <div className="flex flex-col gap-2 mt-2">
             {filtered.map(m => {
@@ -555,7 +557,7 @@ function MembersTab({ org, members, onRefresh }) {
                     <div className="flex items-center gap-1.5 mt-0.5">
                       <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${ROLE_COLORS[m.role] || ROLE_COLORS.member}`}>{ROLE_LABELS[m.role] || m.role}</span>
                       {isArchived
-                        ? <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500">Archived</span>
+                        ? <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500">{t("mem.archived")}</span>
                         : <span className={`text-[9px] font-bold capitalize ${STATUS_COL[m.status]}`}>● {m.status}</span>
                       }
                     </div>
@@ -583,17 +585,17 @@ function MembersTab({ org, members, onRefresh }) {
       {/* ── Registration form ── */}
       {addStep === "form" && (
         <ModalWrap onClose={closeAddFlow}>
-          <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">Register Member</h3>
+          <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">{t("mem.registerTitle")}</h3>
           <p className="text-xs text-slate-400 mb-4">Fill in the member's details. Login credentials will be emailed to them automatically.</p>
           {error && <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-3 text-xs text-red-600">{error}</div>}
           <div className="flex flex-col gap-3">
-            {[["Full Name *","full_name","text","John Adeyemi"],
-              ["Email Address *","email","email","john@email.com"],
-              ["Phone Number","phone","tel","08012345678"],
-              ["Home Address","address","text","Street address"],
-              ["Occupation","occupation","text","Trader"],
-              ["Next of Kin Name","next_of_kin","text","Mary Adeyemi"],
-              ["Next of Kin Phone","next_of_kin_phone","tel","08098765432"],
+            {[[t("profile.fullName"),"full_name","text","John Adeyemi"],
+              [t("mem.emailAddress"),"email","email","john@email.com"],
+              [t("profile.phone"),"phone","tel","08012345678"],
+              [t("mem.homeAddress"),"address","text","Street address"],
+              [t("mem.occupation"),"occupation","text","Trader"],
+              [t("profile.nokName"),"next_of_kin","text","Mary Adeyemi"],
+              [t("profile.nokPhone"),"next_of_kin_phone","tel","08098765432"],
             ].map(([label, key, type, ph]) => (
               <div key={key}>
                 <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{label}</label>
@@ -602,16 +604,16 @@ function MembersTab({ org, members, onRefresh }) {
             ))}
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Gender</label>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("mem.gender")}</label>
                 <select className={input} value={form.gender} onChange={set("gender")}>
-                  <option value="">Select…</option>
-                  <option value="male">Male</option>
-                  <option value="female">Female</option>
-                  <option value="other">Other</option>
+                  <option value="">{t("mem.genderSelect")}</option>
+                  <option value="male">{t("mem.genderMale")}</option>
+                  <option value="female">{t("mem.genderFemale")}</option>
+                  <option value="other">{t("mem.genderOther")}</option>
                 </select>
               </div>
               <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Role *</label>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("mem.roleField")}</label>
                 <select className={input} value={form.role} onChange={set("role")}>
                   {ALL_ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
                 </select>
@@ -619,18 +621,18 @@ function MembersTab({ org, members, onRefresh }) {
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Date of Birth</label>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("mem.dateOfBirth")}</label>
                 <input className={input} type="date" value={form.date_of_birth} max={maxDobDate()} onChange={set("date_of_birth")} />
               </div>
               <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Date Joined</label>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("mem.dateJoined")}</label>
                 <input className={input} type="date" value={form.joined_date} onChange={set("joined_date")} />
               </div>
             </div>
           </div>
           <div className="flex gap-2 mt-5">
-            <button onClick={closeAddFlow} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Cancel</button>
-            <button onClick={handleAdd} disabled={loading} className="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">{loading ? "Creating…" : "Continue →"}</button>
+            <button onClick={closeAddFlow} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">{t("common.cancel")}</button>
+            <button onClick={handleAdd} disabled={loading} className="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">{loading ? t("mem.creating") : t("onboard.continue")}</button>
           </div>
         </ModalWrap>
       )}
@@ -643,7 +645,7 @@ function MembersTab({ org, members, onRefresh }) {
                 <path d="M20 6L9 17l-5-5" />
               </svg>
             </div>
-            <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">Member Account Created</h3>
+            <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">{t("mem.createdTitle")}</h3>
             <p className="text-xs text-slate-400">Credentials emailed to {pendingReg.name}</p>
           </div>
 
@@ -653,13 +655,13 @@ function MembersTab({ org, members, onRefresh }) {
               <span className="text-xs font-bold text-slate-800 dark:text-white break-all text-right max-w-[65%]">{pendingReg.email}</span>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Temp Password</span>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t("mem.tempPassword")}</span>
               <div className="flex items-center gap-2">
                 <span className="text-sm font-extrabold text-green-600 font-mono tracking-wider">{pendingReg.temp_password}</span>
                 <button
                   onClick={() => navigator.clipboard?.writeText(pendingReg.temp_password)}
                   className="text-[10px] font-bold text-green-600 border border-green-300 dark:border-green-700 rounded-lg px-2 py-1 active:scale-95 transition-transform">
-                  Copy
+                  {t("mem.copy")}
                 </button>
               </div>
             </div>
@@ -671,7 +673,7 @@ function MembersTab({ org, members, onRefresh }) {
             </p>
           </div>
 
-          <button onClick={closeAddFlow} className="w-full py-3 bg-green-600 text-white rounded-xl font-bold text-sm">Done</button>
+          <button onClick={closeAddFlow} className="w-full py-3 bg-green-600 text-white rounded-xl font-bold text-sm">{t("common.close")}</button>
         </ModalWrap>
       )}
 
@@ -684,24 +686,24 @@ function MembersTab({ org, members, onRefresh }) {
                 <path d="M20 6L9 17l-5-5" />
               </svg>
             </div>
-            <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">Password Reset!</h3>
+            <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">{t("mem.passwordReset")}</h3>
             <p className="text-xs text-slate-400 mb-5">Share these new credentials with {creds.name}</p>
             <div className="bg-green-50 dark:bg-green-900/20 rounded-2xl p-4 mb-3 text-left">
-              <p className="text-[10px] font-bold text-green-500 uppercase tracking-wider mb-3">Login Credentials</p>
+              <p className="text-[10px] font-bold text-green-500 uppercase tracking-wider mb-3">{t("mem.loginCredentials")}</p>
               <div className="flex justify-between items-center mb-2">
                 <span className="text-xs text-slate-400">Email</span>
                 <span className="text-xs font-bold text-slate-800 dark:text-white break-all text-right max-w-[65%]">{creds.email}</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-xs text-slate-400">Temp Password</span>
+                <span className="text-xs text-slate-400">{t("mem.tempPassword")}</span>
                 <span className="text-base font-extrabold text-green-600 font-mono tracking-wider">{creds.temp_password}</span>
               </div>
             </div>
             <button onClick={() => navigator.clipboard?.writeText(`Email: ${creds.email}\nPassword: ${creds.temp_password}`)}
               className="w-full py-2.5 border border-green-200 dark:border-green-800 text-green-600 dark:text-green-400 rounded-xl font-bold text-sm mb-2">
-              Copy Credentials
+              {t("mem.copyCredentials")}
             </button>
-            <button onClick={() => setCreds(null)} className="w-full py-2.5 bg-green-600 text-white rounded-xl font-bold text-sm">Done</button>
+            <button onClick={() => setCreds(null)} className="w-full py-2.5 bg-green-600 text-white rounded-xl font-bold text-sm">{t("common.close")}</button>
           </div>
         </ModalWrap>
       )}
@@ -728,7 +730,7 @@ function MembersTab({ org, members, onRefresh }) {
           </div>
           <div className="flex flex-col gap-2">
             {selected.portal_active !== false && (
-              <button onClick={() => openEdit(selected)} className="w-full py-2.5 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl font-bold text-sm">Edit Member</button>
+              <button onClick={() => openEdit(selected)} className="w-full py-2.5 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl font-bold text-sm">{t("mem.editMember")}</button>
             )}
             {selected.portal_active !== false && (
               <button onClick={() => { if (window.confirm(`Reset password for ${selected.full_name}?`)) handleResetPassword(selected); }}
@@ -763,12 +765,12 @@ function MembersTab({ org, members, onRefresh }) {
       {/* Edit member modal */}
       {editing && selected && (
         <ModalWrap onClose={() => { setEditing(false); setError(""); }}>
-          <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-4">Edit Member</h3>
+          <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-4">{t("mem.editMember")}</h3>
           {error && <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-3 text-xs text-red-600">{error}</div>}
           <div className="flex flex-col gap-3">
-            {[["Full Name","full_name","text"],["Phone","phone","tel"],["Email","email","email"],
-              ["Address","address","text"],["Occupation","occupation","text"],
-              ["Next of Kin","next_of_kin","text"],["Next of Kin Phone","next_of_kin_phone","tel"],
+            {[[t("profile.fullName"),"full_name","text"],[t("profile.phone"),"phone","tel"],[t("mem.emailAddress"),"email","email"],
+              [t("mem.homeAddress"),"address","text"],[t("mem.occupation"),"occupation","text"],
+              [t("profile.nokName"),"next_of_kin","text"],[t("profile.nokPhone"),"next_of_kin_phone","tel"],
             ].map(([label,key,type]) => (
               <div key={key}>
                 <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{label}</label>
@@ -777,16 +779,16 @@ function MembersTab({ org, members, onRefresh }) {
             ))}
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Gender</label>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("mem.gender")}</label>
                 <select className={input} value={form.gender} onChange={set("gender")}>
-                  <option value="">Select…</option>
-                  <option value="male">Male</option>
-                  <option value="female">Female</option>
-                  <option value="other">Other</option>
+                  <option value="">{t("mem.genderSelect")}</option>
+                  <option value="male">{t("mem.genderMale")}</option>
+                  <option value="female">{t("mem.genderFemale")}</option>
+                  <option value="other">{t("mem.genderOther")}</option>
                 </select>
               </div>
               <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Role</label>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("mem.roleField")}</label>
                 <select className={input} value={form.role} onChange={set("role")}>
                   {ALL_ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
                 </select>
@@ -794,18 +796,18 @@ function MembersTab({ org, members, onRefresh }) {
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Date of Birth</label>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("mem.dateOfBirth")}</label>
                 <input className={input} type="date" value={form.date_of_birth} max={maxDobDate()} onChange={set("date_of_birth")} />
               </div>
               <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Date Joined</label>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("mem.dateJoined")}</label>
                 <input className={input} type="date" value={form.joined_date} onChange={set("joined_date")} />
               </div>
             </div>
           </div>
           <div className="flex gap-2 mt-5">
-            <button onClick={() => { setEditing(false); setError(""); }} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Cancel</button>
-            <button onClick={handleEdit} disabled={saving} className="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">{saving ? "Saving…" : "Save Changes"}</button>
+            <button onClick={() => { setEditing(false); setError(""); }} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">{t("common.cancel")}</button>
+            <button onClick={handleEdit} disabled={saving} className="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">{saving ? t("mem.saving") : t("mem.saveChanges")}</button>
           </div>
         </ModalWrap>
       )}
@@ -864,6 +866,7 @@ function MembersTab({ org, members, onRefresh }) {
 //  PROGRAMS TAB
 // ═══════════════════════════════════════════════════
 function ProgramsTab({ org, onRefresh }) {
+  const t = useT();
   const [programs, setPrograms] = useState([]);
   const [loading,  setLoading]  = useState(true);
   const [showAdd,  setShowAdd]  = useState(false);
@@ -922,7 +925,7 @@ function ProgramsTab({ org, onRefresh }) {
       <div className="px-4 pt-4 pb-2 flex justify-between items-center">
         <p className="text-xs font-bold text-slate-500 dark:text-slate-400">{programs.filter(p => p.status === "active").length} active programs</p>
         <button onClick={() => { resetForm(); setEditing(null); setShowAdd(true); }}
-          className="px-4 py-2.5 bg-green-600 text-white rounded-xl text-xs font-bold">+ New Program</button>
+          className="px-4 py-2.5 bg-green-600 text-white rounded-xl text-xs font-bold">{t("prog.newBtn")}</button>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 pb-24">
@@ -931,9 +934,9 @@ function ProgramsTab({ org, onRefresh }) {
         ) : programs.length === 0 ? (
           <div className="flex flex-col items-center py-16 text-center px-6">
             <span className="text-4xl mb-3">📋</span>
-            <p className="text-base font-extrabold text-slate-700 dark:text-slate-200 mb-2">No Programs Yet</p>
+            <p className="text-base font-extrabold text-slate-700 dark:text-slate-200 mb-2">{t("prog.noPrograms")}</p>
             <p className="text-sm text-slate-400 mb-5">Create contribution programs like Welfare Fund, Development Levy, Building Fund etc.</p>
-            <button onClick={() => setShowAdd(true)} className="px-5 py-2.5 bg-green-600 text-white rounded-xl font-bold text-sm">Create Program</button>
+            <button onClick={() => setShowAdd(true)} className="px-5 py-2.5 bg-green-600 text-white rounded-xl font-bold text-sm">{t("prog.createBtn")}</button>
           </div>
         ) : (
           <div className="flex flex-col gap-3 mt-2">
@@ -954,7 +957,7 @@ function ProgramsTab({ org, onRefresh }) {
                   </div>
                   <div className="text-right ml-3 flex-shrink-0">
                     <p className="text-sm font-extrabold text-green-600">{fmt(p.total_collected)}</p>
-                    <p className="text-[9px] text-slate-400">collected</p>
+                    <p className="text-[9px] text-slate-400">{t("prog.collected")}</p>
                     {p.target_amount > 0 && <p className="text-[9px] text-slate-400">of {fmt(p.target_amount)}</p>}
                   </div>
                 </div>
@@ -966,7 +969,7 @@ function ProgramsTab({ org, onRefresh }) {
                 <div className="flex gap-2 mt-3 pt-3 border-t border-slate-100 dark:border-slate-700">
                   <button onClick={() => openEdit(p)} className="flex-1 py-1.5 text-xs font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 rounded-lg">Edit</button>
                   <button onClick={() => handleToggleStatus(p)} className="flex-1 py-1.5 text-xs font-bold rounded-lg border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300">
-                    {p.status === "active" ? "Pause" : "Activate"}
+                    {p.status === "active" ? t("prog.pause") : t("prog.activate")}
                   </button>
                   <button onClick={() => handleDelete(p)} className="flex-1 py-1.5 text-xs font-bold text-red-600 bg-red-50 rounded-lg">Delete</button>
                 </div>
@@ -978,22 +981,22 @@ function ProgramsTab({ org, onRefresh }) {
 
       {showAdd && (
         <ModalWrap onClose={() => { setShowAdd(false); setEditing(null); setError(""); }}>
-          <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-4">{editing ? "Edit Program" : "New Contribution Program"}</h3>
+          <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-4">{editing ? t("prog.editTitle") : t("prog.newTitle")}</h3>
           {error && <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-3 text-xs text-red-600">{error}</div>}
           <div className="flex flex-col gap-3">
             <div>
-              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Program Name *</label>
+              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("prog.nameField")}</label>
               <input className={input} value={form.name} onChange={set("name")} placeholder="e.g. Welfare Fund" />
             </div>
             <div>
-              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Description</label>
+              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("prog.descField")}</label>
               <textarea className={input} rows={2} value={form.description} onChange={set("description")} placeholder="What is this fund for?" />
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Type</label>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("fin.typeLabel")}</label>
                 <select className={input} value={form.contribution_type} onChange={set("contribution_type")}>
-                  <option value="fixed">Fixed Amount</option><option value="voluntary">Voluntary</option>
+                  <option value="fixed">{t("prog.typeFixed")}</option><option value="voluntary">{t("prog.typeVoluntary")}</option>
                 </select>
               </div>
               <div>
@@ -1006,23 +1009,23 @@ function ProgramsTab({ org, onRefresh }) {
             {form.contribution_type === "fixed" && (
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Amount (₦)</label>
+                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("prog.amountField")}</label>
                   <input className={input} type="number" value={form.amount} onChange={set("amount")} placeholder="0" />
                 </div>
                 <div>
-                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Due Day</label>
+                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("prog.dueDayField")}</label>
                   <input className={input} type="number" value={form.due_day} onChange={set("due_day")} placeholder="e.g. 15 (of month)" min="1" max="31" />
                 </div>
               </div>
             )}
             <div>
-              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Target Amount (₦) — Optional</label>
+              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("prog.targetField")}</label>
               <input className={input} type="number" value={form.target_amount} onChange={set("target_amount")} placeholder="Fundraising goal" />
             </div>
           </div>
           <div className="flex gap-2 mt-5">
-            <button onClick={() => { setShowAdd(false); setEditing(null); setError(""); }} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Cancel</button>
-            <button onClick={handleSave} disabled={saving} className="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">{saving ? "Saving…" : editing ? "Save Changes" : "Create Program"}</button>
+            <button onClick={() => { setShowAdd(false); setEditing(null); setError(""); }} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">{t("common.cancel")}</button>
+            <button onClick={handleSave} disabled={saving} className="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">{saving ? t("mem.saving") : editing ? t("mem.saveChanges") : t("prog.createBtn")}</button>
           </div>
         </ModalWrap>
       )}
@@ -1034,6 +1037,7 @@ function ProgramsTab({ org, onRefresh }) {
 //  FINANCE TAB (Savings + Withdrawals)
 // ═══════════════════════════════════════════════════
 function FinanceTab({ org, members, programs, onRefresh }) {
+  const t = useT();
   const [subTab,       setSubTab]       = useState("contributions");
   const [savings,      setSavings]      = useState([]);
   const [withdrawals,  setWithdrawals]  = useState([]);
@@ -1137,7 +1141,7 @@ function FinanceTab({ org, members, programs, onRefresh }) {
       const isWd = form.type === "withdrawal";
       setShowRecord(false); setForm({ member_id: "", amount: "", type: "deposit", payment_method: "cash", notes: "", program_id: "" });
       load(); onRefresh();
-      setActionResult({ type: "success", title: isWd ? "Withdrawal Recorded" : "Contribution Recorded", amount: amt, counterparty: memberName });
+      setActionResult({ type: "success", title: isWd ? t("fin.withdrawRecorded") : t("fin.contribRecorded"), amount: amt, counterparty: memberName });
     } catch (e) { setError(e.message || "Failed"); }
     finally { setSaving(false); }
   };
@@ -1159,7 +1163,7 @@ function FinanceTab({ org, members, programs, onRefresh }) {
   return (
     <div className="flex flex-col h-full">
       <div className="flex gap-1 px-4 pt-4 pb-2">
-        {[["contributions","Contributions"],["withdrawals","Withdrawals"],["requests","Member Requests"]].map(([id,label]) => {
+        {[["contributions",t("fin.contributions")],["withdrawals",t("fin.withdrawals")],["requests",t("fin.memberRequests")]].map(([id,label]) => {
           const pendingCount = id === "requests" ? wdRequests.filter(r => r.status === "pending").length : 0;
           return (
             <button key={id} onClick={() => setSubTab(id)} className="relative">
@@ -1190,13 +1194,13 @@ function FinanceTab({ org, members, programs, onRefresh }) {
                 PDF
               </button>
             )}
-            <button onClick={() => setShowRecord(true)} className="px-4 py-2.5 bg-green-600 text-white rounded-xl text-xs font-bold">+ Record</button>
+            <button onClick={() => setShowRecord(true)} className="px-4 py-2.5 bg-green-600 text-white rounded-xl text-xs font-bold">{t("fin.recordBtn")}</button>
           </div>
           <div className="flex-1 overflow-y-auto px-4 pb-24">
             {loading ? (
               <div className="flex justify-center py-10"><div className="w-6 h-6 border-[3px] border-green-500 border-t-transparent rounded-full animate-spin" /></div>
             ) : visibleSavings.length === 0 ? (
-              <div className="text-center py-12 text-slate-400 text-sm">{savings.length === 0 ? "No contributions recorded yet" : "No contributions in this period"}</div>
+              <div className="text-center py-12 text-slate-400 text-sm">{t("fin.noContribs")}</div>
             ) : (
               <div className="flex flex-col gap-2">
                 {visibleSavings.map(s => (
@@ -1224,13 +1228,13 @@ function FinanceTab({ org, members, programs, onRefresh }) {
       {subTab === "withdrawals" && (
         <>
           <div className="px-4 pb-2 flex justify-end">
-            <button onClick={() => setShowWd(true)} className="px-4 py-2.5 bg-red-500 text-white rounded-xl text-xs font-bold">+ Withdraw from Members</button>
+            <button onClick={() => setShowWd(true)} className="px-4 py-2.5 bg-red-500 text-white rounded-xl text-xs font-bold">{t("fin.bulkWithdraw")}</button>
           </div>
           <div className="flex-1 overflow-y-auto px-4 pb-24">
             {loading ? (
               <div className="flex justify-center py-10"><div className="w-6 h-6 border-[3px] border-red-500 border-t-transparent rounded-full animate-spin" /></div>
             ) : visibleWithdrawals.length === 0 ? (
-              <div className="text-center py-12 text-slate-400 text-sm">{withdrawals.length === 0 ? "No withdrawals recorded yet" : "No withdrawals in this period"}</div>
+              <div className="text-center py-12 text-slate-400 text-sm">{t("fin.noWithdrawals")}</div>
             ) : (
               <div className="flex flex-col gap-2">
                 {visibleWithdrawals.map(w => (
@@ -1257,7 +1261,7 @@ function FinanceTab({ org, members, programs, onRefresh }) {
           {loading ? (
             <div className="flex justify-center py-10"><div className="w-6 h-6 border-[3px] border-amber-500 border-t-transparent rounded-full animate-spin" /></div>
           ) : wdRequests.length === 0 ? (
-            <div className="text-center py-12 text-slate-400 text-sm">No withdrawal requests yet</div>
+            <div className="text-center py-12 text-slate-400 text-sm">{t("fin.noRequests")}</div>
           ) : (
             <div className="flex flex-col gap-2">
               {wdRequests.map(r => (
@@ -1282,19 +1286,19 @@ function FinanceTab({ org, members, programs, onRefresh }) {
                         onClick={() => handleRequest(r, "reject")}
                         disabled={handlingReq === r.id}
                         className="flex-1 py-2 rounded-xl text-xs font-bold border border-red-200 text-red-500 disabled:opacity-50">
-                        Reject
+                        {t("mem.reject")}
                       </button>
                       <button
                         onClick={() => handleRequest(r, "approve")}
                         disabled={handlingReq === r.id}
                         className="flex-1 py-2 rounded-xl text-xs font-bold bg-green-600 text-white disabled:opacity-50">
-                        {handlingReq === r.id ? "Processing…" : "Approve"}
+                        {handlingReq === r.id ? t("fin.processing") : t("mem.approve")}
                       </button>
                     </div>
                   ) : (
                     <button onClick={() => setViewReq(r)}
                       className="w-full mt-2 py-2 rounded-xl text-xs font-bold border border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400 active:scale-[0.98] transition-transform">
-                      View Receipt
+                      {t("fin.viewReceipt")}
                     </button>
                   )}
                   {r.admin_notes && (
@@ -1309,30 +1313,30 @@ function FinanceTab({ org, members, programs, onRefresh }) {
 
       {showRecord && (
         <ModalWrap onClose={() => { setShowRecord(false); setError(""); }}>
-          <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-4">Record Contribution</h3>
+          <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-4">{t("fin.recordContrib")}</h3>
           {error && <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-3 text-xs text-red-600">{error}</div>}
           <div className="flex flex-col gap-3">
             <div>
               <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Member *</label>
               <select className={input} value={form.member_id} onChange={set("member_id")}>
-                <option value="">Select member…</option>
+                <option value="">{t("fin.selectMember")}</option>
                 {activeMembers.map(m => <option key={m.id} value={m.id}>{m.full_name} ({m.membership_id})</option>)}
               </select>
             </div>
             {activePrograms.length > 0 && (
               <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Program (Optional)</label>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("fin.programOptional")}</label>
                 <select className={input} value={form.program_id} onChange={set("program_id")}>
-                  <option value="">— General —</option>
+                  <option value="">{t("fin.generalLabel")}</option>
                   {activePrograms.map(p => <option key={p.id} value={p.id}>{p.name} ({fmt(p.amount)})</option>)}
                 </select>
               </div>
             )}
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Type</label>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("fin.typeLabel")}</label>
                 <select className={input} value={form.type} onChange={set("type")}>
-                  <option value="deposit">Deposit</option><option value="withdrawal">Withdrawal</option>
+                  <option value="deposit">{t("fin.deposit")}</option><option value="withdrawal">Withdrawal</option>
                 </select>
               </div>
               <div>
@@ -1341,79 +1345,79 @@ function FinanceTab({ org, members, programs, onRefresh }) {
               </div>
             </div>
             <div>
-              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Payment Method</label>
+              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("fin.paymentMethod")}</label>
               <select className={input} value={form.payment_method} onChange={set("payment_method")}>
                 {["cash","transfer","paystack","cheque"].map(m => <option key={m} value={m}>{m.charAt(0).toUpperCase()+m.slice(1)}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Notes</label>
-              <input className={input} value={form.notes} onChange={set("notes")} placeholder="Optional notes" />
+              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("fin.notesOptional")}</label>
+              <input className={input} value={form.notes} onChange={set("notes")} placeholder={t("fin.notesOptional")} />
             </div>
           </div>
           <div className="flex gap-2 mt-4">
-            <button onClick={() => { setShowRecord(false); setError(""); }} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Cancel</button>
+            <button onClick={() => { setShowRecord(false); setError(""); }} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">{t("common.cancel")}</button>
             <button onClick={() => setTxnPin({
-              title: "Confirm Contribution Record",
+              title: t("fin.recordContrib"),
               amount: Math.round(parseFloat(form.amount || 0) * 100),
               recipient: activeMembers.find(m => m.id === form.member_id)?.full_name,
               description: `${form.type === "withdrawal" ? "Withdrawal" : "Deposit"} · ${form.payment_method}`,
               onApprove: () => { setTxnPin(null); handleRecord(); },
-            })} disabled={saving} className="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">{saving ? "Saving…" : "Record"}</button>
+            })} disabled={saving} className="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">{saving ? t("mem.saving") : t("fin.recordBtn")}</button>
           </div>
         </ModalWrap>
       )}
 
       {showWd && (
         <ModalWrap onClose={() => { setShowWd(false); setError(""); }}>
-          <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">Withdraw from Members</h3>
+          <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">{t("fin.bulkWithdraw")}</h3>
           <p className="text-xs text-slate-400 mb-4">Deduct from member savings balances for an org expense</p>
           {error && <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-3 text-xs text-red-600">{error}</div>}
           <div className="flex flex-col gap-3">
             <div>
-              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Purpose / Reason *</label>
+              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("fin.purposeField")}</label>
               <input className={input} value={wdForm.purpose} onChange={setW("purpose")} placeholder="e.g. Building levy payment" />
             </div>
             <div>
-              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Method</label>
+              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("fin.methodField")}</label>
               <select className={input} value={wdForm.method} onChange={setW("method")}>
-                <option value="equal">Equal Distribution (deduct same amount from all active members)</option>
+                <option value="equal">{t("fin.equalDist")}</option>
                 <option value="individual">Individual (set per member — not yet available via portal)</option>
               </select>
             </div>
             {wdForm.method === "equal" && (
               <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Amount per Member (₦) *</label>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("fin.amountPerMember")}</label>
                 <input className={input} type="number" value={wdForm.per_member_amount} onChange={setW("per_member_amount")} placeholder="0" />
                 <p className="text-[10px] text-slate-400 mt-1">Will deduct from {activeMembers.length} active members → Total: {fmt(parseFloat(wdForm.per_member_amount || "0") * activeMembers.length)}</p>
               </div>
             )}
             {activePrograms.length > 0 && (
               <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Link to Program (Optional)</label>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("fin.linkProgram")}</label>
                 <select className={input} value={wdForm.program_id} onChange={setW("program_id")}>
-                  <option value="">— None —</option>
+                  <option value="">{t("fin.noProgram")}</option>
                   {activePrograms.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
               </div>
             )}
             <div>
-              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Authorized By</label>
+              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("fin.authorizedBy")}</label>
               <input className={input} value={wdForm.authorized_by} onChange={setW("authorized_by")} placeholder="Treasurer name" />
             </div>
             <div>
-              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Notes</label>
+              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("fin.notesOptional")}</label>
               <textarea className={input} rows={2} value={wdForm.notes} onChange={setW("notes")} placeholder="Additional notes" />
             </div>
           </div>
           <div className="flex gap-2 mt-4">
-            <button onClick={() => { setShowWd(false); setError(""); }} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Cancel</button>
+            <button onClick={() => { setShowWd(false); setError(""); }} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">{t("common.cancel")}</button>
             <button onClick={() => setTxnPin({
-              title: "Confirm Bulk Withdrawal",
+              title: t("fin.bulkWithdraw"),
               amount: Math.round(parseFloat(wdForm.per_member_amount || 0) * 100),
               description: wdForm.purpose || "Bulk withdrawal from members",
               onApprove: () => { setTxnPin(null); handleWithdraw(); },
-            })} disabled={saving} className="flex-1 py-3 bg-red-500 text-white rounded-xl font-bold text-sm disabled:opacity-50">{saving ? "Processing…" : "Proceed"}</button>
+            })} disabled={saving} className="flex-1 py-3 bg-red-500 text-white rounded-xl font-bold text-sm disabled:opacity-50">{saving ? t("fin.processing") : t("fin.proceed")}</button>
           </div>
         </ModalWrap>
       )}
@@ -1457,6 +1461,7 @@ function calcLoan(principal, rate, months) {
 }
 
 function LoansTab({ org, members, onRefresh }) {
+  const t = useT();
   const defaultRate    = org.default_loan_interest_rate ?? 10;
   const [loans,        setLoans]        = useState([]);
   const [repayments,   setRepayments]   = useState([]);
@@ -1576,21 +1581,21 @@ function LoansTab({ org, members, onRefresh }) {
             className="px-3 py-2 bg-red-50 dark:bg-red-900/20 text-red-600 border border-red-200 dark:border-red-800 rounded-xl text-xs font-bold">
             ⚠ Overdue
           </button>
-          <button onClick={() => setShowApply(true)} className="px-4 py-2.5 bg-amber-500 text-white rounded-xl text-xs font-bold">+ New Loan</button>
+          <button onClick={() => setShowApply(true)} className="px-4 py-2.5 bg-amber-500 text-white rounded-xl text-xs font-bold">{t("loan.newLoanBtn")}</button>
         </div>
       </div>
 
       {/* Default interest rate setting */}
       <div className="mx-4 mb-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-3 py-2.5 flex items-center justify-between gap-2">
         <div>
-          <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider">Default Interest Rate</p>
+          <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider">{t("loan.defaultRate")}</p>
           {rateEdit ? (
             <div className="flex items-center gap-2 mt-1">
               <input value={rateVal} onChange={e => setRateVal(e.target.value)} type="number" min="0" step="0.5"
                 className="w-20 px-2 py-1 rounded-lg border border-amber-300 text-sm font-bold bg-white dark:bg-slate-700 text-slate-800 dark:text-white" />
               <span className="text-sm font-bold text-amber-700">%</span>
-              <button onClick={handleSaveRate} className="px-3 py-1 bg-amber-500 text-white rounded-lg text-xs font-bold">Save</button>
-              <button onClick={() => setRateEdit(false)} className="px-2 py-1 text-slate-500 text-xs">Cancel</button>
+              <button onClick={handleSaveRate} className="px-3 py-1 bg-amber-500 text-white rounded-lg text-xs font-bold">{t("common.save")}</button>
+              <button onClick={() => setRateEdit(false)} className="px-2 py-1 text-slate-500 text-xs">{t("common.cancel")}</button>
             </div>
           ) : (
             <p className="text-sm font-extrabold text-amber-700 dark:text-amber-300">{defaultRate}% per loan</p>
@@ -1609,7 +1614,7 @@ function LoansTab({ org, members, onRefresh }) {
         {loading ? (
           <div className="flex justify-center py-10"><div className="w-6 h-6 border-[3px] border-amber-500 border-t-transparent rounded-full animate-spin" /></div>
         ) : loans.length === 0 ? (
-          <div className="text-center py-12 text-slate-400 text-sm">No loans yet</div>
+          <div className="text-center py-12 text-slate-400 text-sm">{t("loan.noLoans")}</div>
         ) : (
           <div className="flex flex-col gap-2">
             {loans.map(l => {
@@ -1619,10 +1624,10 @@ function LoansTab({ org, members, onRefresh }) {
                   className={`bg-white dark:bg-slate-800 rounded-xl p-3 border flex justify-between items-start text-left w-full ${isOverdue ? "border-red-300 dark:border-red-700" : "border-slate-100 dark:border-slate-700"}`}>
                   <div>
                     <p className="text-xs font-bold text-slate-800 dark:text-white">{l.org_members?.full_name || "—"}</p>
-                    <p className="text-[10px] text-slate-400">{l.loan_purpose || "General"} · {fmtDate(l.applied_at)}</p>
+                    <p className="text-[10px] text-slate-400">{l.loan_purpose || t("loan.generalLabel")} · {fmtDate(l.applied_at)}</p>
                     <div className="flex items-center gap-2 mt-0.5">
                       <span className={`text-[10px] font-bold capitalize ${STATUS_COL[l.status]}`}>● {l.status}</span>
-                      {isOverdue && <span className="text-[9px] font-black text-red-500 bg-red-50 px-1.5 py-0.5 rounded-full">OVERDUE</span>}
+                      {isOverdue && <span className="text-[9px] font-black text-red-500 bg-red-50 px-1.5 py-0.5 rounded-full">{t("loan.overdueLabel")}</span>}
                     </div>
                   </div>
                   <div className="text-right">
@@ -1640,41 +1645,41 @@ function LoansTab({ org, members, onRefresh }) {
       {/* New loan modal */}
       {showApply && (
         <ModalWrap onClose={() => { setShowApply(false); setError(""); }}>
-          <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-4">New Loan Application</h3>
+          <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-4">{t("loan.newLoanTitle")}</h3>
           {error && <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-3 text-xs text-red-600">{error}</div>}
           <div className="flex flex-col gap-3">
             <div>
               <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Member *</label>
               <select className={input} value={form.member_id} onChange={set("member_id")}>
-                <option value="">Select member…</option>
+                <option value="">{t("fin.selectMember")}</option>
                 {activeMembers.map(m => <option key={m.id} value={m.id}>{m.full_name} ({m.membership_id})</option>)}
               </select>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Amount (₦) *</label>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("loan.amountField")}</label>
                 <input className={input} type="number" value={form.amount_requested} onChange={set("amount_requested")} placeholder="0" />
               </div>
               <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Interest (%)</label>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("loan.interestField")}</label>
                 <input className={input} type="number" value={form.interest_rate} onChange={set("interest_rate")} placeholder="0" step="0.5" />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Repay Months</label>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("loan.monthsField")}</label>
                 <input className={input} type="number" value={form.repayment_months} onChange={set("repayment_months")} placeholder="12" min="1" />
               </div>
               <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Purpose</label>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("loan.purposeField")}</label>
                 <input className={input} value={form.loan_purpose} onChange={set("loan_purpose")} placeholder="Business…" />
               </div>
             </div>
             {principal > 0 && (
               <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl p-3">
-                <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider mb-2">Loan Summary</p>
+                <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider mb-2">{t("loan.loanSummary")}</p>
                 <div className="grid grid-cols-3 gap-2">
-                  {[["Interest", fmt(preview.totalInterest)], ["Total Repayable", fmt(preview.totalRepayable)], ["Monthly", fmt(preview.monthlyInstallment)]].map(([k, v]) => (
+                  {[[t("loan.interestLabel"), fmt(preview.totalInterest)], [t("loan.totalRepayable"), fmt(preview.totalRepayable)], [t("loan.monthlyLabel"), fmt(preview.monthlyInstallment)]].map(([k, v]) => (
                     <div key={k} className="text-center">
                       <p className="text-[9px] text-amber-600 dark:text-amber-500">{k}</p>
                       <p className="text-xs font-extrabold text-amber-800 dark:text-amber-300">{v}</p>
@@ -1685,8 +1690,8 @@ function LoansTab({ org, members, onRefresh }) {
             )}
           </div>
           <div className="flex gap-2 mt-4">
-            <button onClick={() => { setShowApply(false); setError(""); }} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Cancel</button>
-            <button onClick={handleApply} disabled={saving} className="flex-1 py-3 bg-amber-500 text-white rounded-xl font-bold text-sm disabled:opacity-50">{saving ? "Creating…" : "Submit"}</button>
+            <button onClick={() => { setShowApply(false); setError(""); }} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">{t("common.cancel")}</button>
+            <button onClick={handleApply} disabled={saving} className="flex-1 py-3 bg-amber-500 text-white rounded-xl font-bold text-sm disabled:opacity-50">{saving ? t("loan.submitting") : t("loan.submitBtn")}</button>
           </div>
         </ModalWrap>
       )}
@@ -1706,11 +1711,11 @@ function LoansTab({ org, members, onRefresh }) {
           <div className="bg-slate-50 dark:bg-slate-700/60 rounded-xl p-3 mb-3 grid grid-cols-2 gap-2">
             {[
               ["Principal", fmt(selected.amount_requested)],
-              ["Interest", `${selected.interest_rate}% (${fmt(selected.total_interest || 0)})`],
-              ["Total Repayable", fmt(selected.total_repayable || selected.amount_requested)],
-              ["Monthly Install.", fmt(selected.monthly_installment || 0)],
-              ["Outstanding", fmt(selected.outstanding_balance)],
-              ["Due Date", fmtDate(selected.due_date)],
+              [t("loan.interestLabel"), `${selected.interest_rate}% (${fmt(selected.total_interest || 0)})`],
+              [t("loan.totalRepayable"), fmt(selected.total_repayable || selected.amount_requested)],
+              [t("loan.monthlyLabel"), fmt(selected.monthly_installment || 0)],
+              [t("loan.outstanding"), fmt(selected.outstanding_balance)],
+              [t("loan.dueDate"), fmtDate(selected.due_date)],
             ].map(([k, v]) => (
               <div key={k}>
                 <p className="text-[9px] text-slate-400 uppercase tracking-wider">{k}</p>
@@ -1725,21 +1730,21 @@ function LoansTab({ org, members, onRefresh }) {
           {selected.status === "pending" && !showReject && (
             <div className="flex gap-2 mb-3">
               <button onClick={() => handleLoanAction(selected, "approved")} disabled={saving}
-                className="flex-1 py-2.5 bg-green-50 text-green-700 border border-green-200 rounded-xl font-bold text-sm">✓ Approve</button>
+                className="flex-1 py-2.5 bg-green-50 text-green-700 border border-green-200 rounded-xl font-bold text-sm">{t("loan.approveBtn")}</button>
               <button onClick={() => setShowReject(true)} disabled={saving}
-                className="flex-1 py-2.5 bg-red-50 text-red-600 border border-red-200 rounded-xl font-bold text-sm">✕ Reject</button>
+                className="flex-1 py-2.5 bg-red-50 text-red-600 border border-red-200 rounded-xl font-bold text-sm">{t("loan.rejectBtn")}</button>
             </div>
           )}
           {selected.status === "pending" && showReject && (
             <div className="mb-3">
-              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Rejection Reason</label>
+              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("loan.rejectionReason")}</label>
               <textarea value={rejectReason} onChange={e => setRejectReason(e.target.value)} rows={2}
                 placeholder="Reason for rejection…"
                 className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm resize-none mb-2" />
               <div className="flex gap-2">
                 <button onClick={() => setShowReject(false)} className="flex-1 py-2 border border-slate-200 dark:border-slate-600 text-slate-600 rounded-xl font-bold text-sm">Back</button>
                 <button onClick={() => handleLoanAction(selected, "rejected", { rejection_reason: rejectReason })} disabled={saving}
-                  className="flex-1 py-2 bg-red-500 text-white rounded-xl font-bold text-sm disabled:opacity-50">{saving ? "…" : "Confirm Reject"}</button>
+                  className="flex-1 py-2 bg-red-500 text-white rounded-xl font-bold text-sm disabled:opacity-50">{saving ? "…" : t("loan.confirmReject")}</button>
               </div>
             </div>
           )}
@@ -1751,19 +1756,19 @@ function LoansTab({ org, members, onRefresh }) {
                 Disbursing will deduct <strong>{fmt(selected.amount_approved || selected.amount_requested)}</strong> from the org wallet and credit it to the member's savings account.
               </p>
               <button onClick={() => setTxnPin({
-                title: "Disburse Loan",
+                title: t("loan.disburseTitle"),
                 amount: Math.round((selected.amount_approved || selected.amount_requested || 0) * 100),
                 recipient: members.find(m => m.id === selected.member_id)?.full_name,
                 description: `Loan disbursement · ${selected.repayment_months || 12} months`,
                 onApprove: () => { setTxnPin(null); handleLoanAction(selected, "disbursed", { repayment_months: selected.repayment_months }); },
               })} disabled={saving}
-                className="w-full py-2.5 bg-blue-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">{saving ? "Processing…" : "Disburse Loan →"}</button>
+                className="w-full py-2.5 bg-blue-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">{saving ? t("loan.disbursing") : t("loan.disburseBtn")}</button>
             </div>
           )}
 
           {selected.status === "disbursed" && selected.outstanding_balance > 0 && (
             <div className="mb-3">
-              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Record Repayment (Cash/Bank)</p>
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">{t("loan.recordRepayment")}</p>
               <div className="flex gap-2 mb-2">
                 <input value={repayForm.amount} onChange={setR("amount")} type="number" placeholder={`e.g. ${fmt(selected.monthly_installment || 0)}`}
                   className="flex-1 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm" />
@@ -1781,14 +1786,14 @@ function LoansTab({ org, members, onRefresh }) {
                   onApprove: () => { setTxnPin(null); handleRepay(); },
                 })} disabled={saving} className="px-4 py-2 bg-amber-500 text-white rounded-xl font-bold text-sm">{saving ? "…" : "Pay"}</button>
               </div>
-              <p className="text-[10px] text-slate-400">Monthly target: {fmt(selected.monthly_installment || 0)} · Pay any amount, meet target by month end</p>
+              <p className="text-[10px] text-slate-400">{t("loan.monthlyTarget")} {fmt(selected.monthly_installment || 0)} · Pay any amount, meet target by month end</p>
             </div>
           )}
 
           {/* Repayment history */}
           {repayments.length > 0 && (
             <div className="mb-3">
-              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Repayment History</p>
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">{t("loan.repayHistory")}</p>
               <div className="flex flex-col gap-1.5 max-h-40 overflow-y-auto">
                 {repayments.map(r => (
                   <button key={r.id} onClick={() => setReceipt(buildCoopLoanRepaymentReceipt(r, selected, selected?.org_members?.full_name, org.name))}
@@ -1830,6 +1835,7 @@ function LoansTab({ org, members, onRefresh }) {
 //  BROADCAST STATION TAB (org dashboard)
 // ═══════════════════════════════════════════════════
 function BroadcastTab({ org, members }) {
+  const t = useT();
   const [broadcasts,       setBroadcasts]       = useState([]);
   const [loading,          setLoading]          = useState(true);
   const [filter,           setFilter]           = useState("all");
@@ -1866,23 +1872,23 @@ function BroadcastTab({ org, members }) {
   const setF = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
 
   const FILTER_TABS = [
-    { id: "all",          label: "All"           },
-    { id: "meeting",      label: "Meetings"      },
-    { id: "announcement", label: "Announcements" },
-    { id: "event",        label: "Events"        },
-    { id: "poll",         label: "Polls"         },
+    { id: "all",          label: "All"                    },
+    { id: "meeting",      label: t("bcast.meetings")      },
+    { id: "announcement", label: t("bcast.announcements") },
+    { id: "event",        label: t("bcast.events")        },
+    { id: "poll",         label: t("bcast.polls")         },
   ];
   const TYPE_OPTIONS = [
-    { id: "meeting",      label: "Meeting",      icon: "M8 2v3|M16 2v3|M3.5 8h17|M5 4h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z", desc: "Schedule a meeting"    },
-    { id: "announcement", label: "Announcement", icon: "M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9|M13.73 21a2 2 0 01-3.46 0",                          desc: "Send an announcement"  },
-    { id: "event",        label: "Event",        icon: "M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z",     desc: "Create an event"       },
-    { id: "poll",         label: "Poll",         icon: "M18 20V10|M12 20V4|M6 20v-6",                                                                  desc: "Run a poll"            },
+    { id: "meeting",      label: t("bcast.meeting"),      icon: "M8 2v3|M16 2v3|M3.5 8h17|M5 4h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z", desc: t("bcast.scheduleMeeting") },
+    { id: "announcement", label: t("bcast.announcement"), icon: "M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9|M13.73 21a2 2 0 01-3.46 0",                          desc: t("bcast.sendAnn")         },
+    { id: "event",        label: t("bcast.event"),        icon: "M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z",     desc: t("bcast.createEvent")     },
+    { id: "poll",         label: t("bcast.poll"),         icon: "M18 20V10|M12 20V4|M6 20v-6",                                                                  desc: t("bcast.createPoll")      },
   ];
   const TYPE_COLORS = {
-    meeting:      { bg: "bg-navy-700",   text: "text-white", label: "Meeting"      },
-    announcement: { bg: "bg-amber-500",  text: "text-white", label: "Announcement" },
-    event:        { bg: "bg-brand-500",  text: "text-white", label: "Event"        },
-    poll:         { bg: "bg-blue-600",   text: "text-white", label: "Poll"         },
+    meeting:      { bg: "bg-navy-700",   text: "text-white", label: t("bcast.meeting")      },
+    announcement: { bg: "bg-amber-500",  text: "text-white", label: t("bcast.announcement") },
+    event:        { bg: "bg-brand-500",  text: "text-white", label: t("bcast.event")        },
+    poll:         { bg: "bg-blue-600",   text: "text-white", label: t("bcast.poll")         },
   };
 
   const openCreate = (type) => {
@@ -1961,7 +1967,7 @@ function BroadcastTab({ org, members }) {
                 <path d="M4.5 9.5a9 9 0 0115 0" /><path d="M1.5 6.5a13.5 13.5 0 0121 0" /><path d="M7.5 12.5a4.5 4.5 0 019 0" /><line x1="12" y1="15" x2="12" y2="21" /><circle cx="12" cy="15" r="0.5" fill="currentColor" />
               </svg>
             </div>
-            <p className="text-base font-extrabold text-slate-700 dark:text-slate-200 mb-2">No broadcasts yet</p>
+            <p className="text-base font-extrabold text-slate-700 dark:text-slate-200 mb-2">{t("bcast.noBroadcasts")}</p>
             <p className="text-sm text-slate-400">Tap "+ Broadcast" to publish something.</p>
           </div>
         ) : (
@@ -1977,9 +1983,9 @@ function BroadcastTab({ org, members }) {
                   <p className="text-[10px] text-slate-400 mb-1.5">{fmtDT(item._date)}</p>
 
                   {item._type === "meeting" && item.location    && <p className="text-[10px] text-slate-400 flex items-center gap-1"><svg viewBox="0 0 24 24" fill="none" className="w-2.5 h-2.5 flex-shrink-0" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a7 7 0 00-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 00-7-7z" /><circle cx="12" cy="9" r="2" /></svg>{item.location}</p>}
-                  {item._type === "meeting" && item.meeting_link && <p className="text-[10px] text-green-500 flex items-center gap-1"><svg viewBox="0 0 24 24" fill="none" className="w-2.5 h-2.5 flex-shrink-0" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" /></svg>Virtual link</p>}
+                  {item._type === "meeting" && item.meeting_link && <p className="text-[10px] text-green-500 flex items-center gap-1"><svg viewBox="0 0 24 24" fill="none" className="w-2.5 h-2.5 flex-shrink-0" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" /></svg>{t("bcast.virtualLink")}</p>}
                   {item._type === "event"   && item.location    && <p className="text-[10px] text-slate-400 flex items-center gap-1"><svg viewBox="0 0 24 24" fill="none" className="w-2.5 h-2.5 flex-shrink-0" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a7 7 0 00-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 00-7-7z" /><circle cx="12" cy="9" r="2" /></svg>{item.location}</p>}
-                  {item._type === "event"   && item.end_date    && <p className="text-[10px] text-slate-400">Until {fmtDT(item.end_date)}</p>}
+                  {item._type === "event"   && item.end_date    && <p className="text-[10px] text-slate-400">{t("bcast.untilDate")} {fmtDT(item.end_date)}</p>}
                   {item._type === "announcement" && item.body && (
                     <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">{item.body}</p>
                   )}
@@ -2000,7 +2006,7 @@ function BroadcastTab({ org, members }) {
                           </div>
                         );
                       })}
-                      <p className="text-[10px] text-slate-400 mt-0.5">{item.total_votes || 0} votes · {item.is_active ? "Active" : "Closed"}</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">{item.total_votes || 0} {t("bcast.votes")} · {item.is_active ? t("bcast.pollOpen") : t("bcast.pollClosed")}</p>
                     </div>
                   )}
 
@@ -2008,11 +2014,11 @@ function BroadcastTab({ org, members }) {
                     <div className="mt-2.5 flex gap-2">
                       <button onClick={() => openAttendance(item)}
                         className="flex-1 py-1.5 rounded-xl text-[10px] font-bold text-white bg-navy-700">
-                        Mark Attendance
+                        {t("bcast.markAttendance")}
                       </button>
                       {item.meeting_link && (
                         <a href={item.meeting_link} target="_blank" rel="noreferrer"
-                          className="px-3 py-1.5 rounded-xl text-[10px] font-bold text-white bg-brand-500">Join</a>
+                          className="px-3 py-1.5 rounded-xl text-[10px] font-bold text-white bg-brand-500">{t("bcast.joinMeeting")}</a>
                       )}
                     </div>
                   )}
@@ -2034,18 +2040,18 @@ function BroadcastTab({ org, members }) {
       {/* Type picker sheet */}
       {showTypePicker && (
         <ModalWrap onClose={() => setShowTypePicker(false)}>
-          <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-4">What would you like to broadcast?</h3>
+          <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-4">{t("bcast.whatBroadcast")}</h3>
           <div className="grid grid-cols-2 gap-3">
-            {TYPE_OPTIONS.map(t => (
-              <button key={t.id} onClick={() => openCreate(t.id)}
+            {TYPE_OPTIONS.map(opt => (
+              <button key={opt.id} onClick={() => openCreate(opt.id)}
                 className="flex flex-col items-center gap-2 p-4 rounded-2xl border-2 border-slate-100 dark:border-slate-700 hover:border-green-400 transition">
                 <div className="w-10 h-10 rounded-xl bg-brand-100 dark:bg-brand-900/20 flex items-center justify-center">
                   <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-brand-600 dark:text-brand-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                    {t.icon.split("|").map((p, i) => <path key={i} d={p} />)}
+                    {opt.icon.split("|").map((p, i) => <path key={i} d={p} />)}
                   </svg>
                 </div>
-                <p className="text-sm font-extrabold text-slate-800 dark:text-white">{t.label}</p>
-                <p className="text-[10px] text-slate-400 text-center">{t.desc}</p>
+                <p className="text-sm font-extrabold text-slate-800 dark:text-white">{opt.label}</p>
+                <p className="text-[10px] text-slate-400 text-center">{opt.desc}</p>
               </button>
             ))}
           </div>
@@ -2056,114 +2062,114 @@ function BroadcastTab({ org, members }) {
       {createType && (
         <ModalWrap onClose={() => { setCreateType(null); setError(""); }}>
           <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-4">
-            {createType === "meeting" ? "Schedule Meeting" : createType === "announcement" ? "Send Announcement" : createType === "event" ? "Create Event" : "Create Poll"}
+            {createType === "meeting" ? t("bcast.scheduleMeeting") : createType === "announcement" ? t("bcast.sendAnn") : createType === "event" ? t("bcast.createEvent") : t("bcast.createPoll")}
           </h3>
           {error && <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-3 text-xs text-red-600">{error}</div>}
           <div className="flex flex-col gap-3 max-h-[55dvh] overflow-y-auto">
 
             {createType === "meeting" && (<>
               <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Title *</label>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("bcast.titleField")}</label>
                 <input className={input} value={form.title||""} onChange={setF("title")} placeholder="Monthly General Meeting" />
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Type</label>
+                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("fin.typeLabel")}</label>
                   <select className={input} value={form.meeting_type||"general"} onChange={setF("meeting_type")}>
-                    {["general","board","special","agm"].map(t => <option key={t} value={t}>{t.toUpperCase()}</option>)}
+                    {["general","board","special","agm"].map(mt => <option key={mt} value={mt}>{mt.toUpperCase()}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Format</label>
+                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("bcast.formatField")}</label>
                   <select className={input} value={form.format||"physical"} onChange={setF("format")}>
-                    <option value="physical">Physical</option><option value="virtual">Virtual</option><option value="hybrid">Hybrid</option>
+                    <option value="physical">{t("bcast.fmtPhysical")}</option><option value="virtual">{t("bcast.fmtVirtual")}</option><option value="hybrid">{t("bcast.fmtHybrid")}</option>
                   </select>
                 </div>
               </div>
               <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Date & Time *</label>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("bcast.datetimeField")}</label>
                 <input className={input} type="datetime-local" value={form.scheduled_at||""} onChange={setF("scheduled_at")} />
               </div>
               {(form.format==="physical"||form.format==="hybrid") && (
                 <div>
-                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Venue</label>
+                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("bcast.venueField")}</label>
                   <input className={input} value={form.location||""} onChange={setF("location")} placeholder="Community Hall" />
                 </div>
               )}
               {(form.format==="virtual"||form.format==="hybrid") && (
                 <div>
-                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Meeting Link</label>
+                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("bcast.meetingLink")}</label>
                   <input className={input} type="url" value={form.meeting_link||""} onChange={setF("meeting_link")} placeholder="https://meet.google.com/..." />
                 </div>
               )}
               <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Agenda</label>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("bcast.agendaField")}</label>
                 <textarea className={input} rows={3} value={form.agenda||""} onChange={setF("agenda")} placeholder={"1. Call to order\n2. Review minutes\n3. New business"} />
               </div>
             </>)}
 
             {createType === "announcement" && (<>
               <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Title *</label>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("bcast.titleField")}</label>
                 <input className={input} value={form.title||""} onChange={setF("title")} placeholder="Important Notice" />
               </div>
               <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Type</label>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("fin.typeLabel")}</label>
                 <select className={input} value={form.type||"announcement"} onChange={setF("type")}>
-                  <option value="announcement">Announcement</option>
-                  <option value="notice">Notice</option>
-                  <option value="circular">Circular</option>
-                  <option value="emergency">Emergency</option>
+                  <option value="announcement">{t("bcast.announcement")}</option>
+                  <option value="notice">{t("bcast.notice")}</option>
+                  <option value="circular">{t("bcast.circular")}</option>
+                  <option value="emergency">{t("bcast.emergency")}</option>
                 </select>
               </div>
               <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Content *</label>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("bcast.contentField")}</label>
                 <textarea className={input} rows={4} value={form.body||""} onChange={setF("body")} placeholder="Write your announcement here..." />
               </div>
             </>)}
 
             {createType === "event" && (<>
               <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Title *</label>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("bcast.titleField")}</label>
                 <input className={input} value={form.title||""} onChange={setF("title")} placeholder="Annual General Meeting 2026" />
               </div>
               <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Event Type</label>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("bcast.eventType")}</label>
                 <select className={input} value={form.event_type||"event"} onChange={setF("event_type")}>
-                  {["event","workshop","training","social","fundraiser"].map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase()+t.slice(1)}</option>)}
+                  {["event","workshop","training","social","fundraiser"].map(et => <option key={et} value={et}>{et.charAt(0).toUpperCase()+et.slice(1)}</option>)}
                 </select>
               </div>
               <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Description</label>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("bcast.descField")}</label>
                 <textarea className={input} rows={3} value={form.description||""} onChange={setF("description")} placeholder="Tell members what to expect..." />
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Start Date *</label>
+                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("bcast.startDate")}</label>
                   <input className={input} type="datetime-local" value={form.event_date||""} onChange={setF("event_date")} />
                 </div>
                 <div>
-                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">End Date</label>
+                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("bcast.endDate")}</label>
                   <input className={input} type="datetime-local" value={form.end_date||""} onChange={setF("end_date")} />
                 </div>
               </div>
               <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Location</label>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("bcast.locationField")}</label>
                 <input className={input} value={form.location||""} onChange={setF("location")} placeholder="Community Hall / Online" />
               </div>
               <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Event Link</label>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("bcast.eventLink")}</label>
                 <input className={input} type="url" value={form.event_link||""} onChange={setF("event_link")} placeholder="https://..." />
               </div>
             </>)}
 
             {createType === "poll" && (<>
               <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Question *</label>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("bcast.questionField")}</label>
                 <input className={input} value={form.question||""} onChange={setF("question")} placeholder="What day works best for our meeting?" />
               </div>
               <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Options (min 2) *</label>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("bcast.optionsField")}</label>
                 {pollOptions.map((opt, i) => (
                   <div key={i} className="flex gap-2 mb-2">
                     <input className={`${input} flex-1`} value={opt} onChange={e => { const a = [...pollOptions]; a[i] = e.target.value; setPollOptions(a); }} placeholder={`Option ${i+1}`} />
@@ -2173,20 +2179,20 @@ function BroadcastTab({ org, members }) {
                   </div>
                 ))}
                 {pollOptions.length < 6 && (
-                  <button onClick={() => setPollOptions(p => [...p, ""])} className="text-[11px] font-bold text-green-600 mt-1">+ Add option</button>
+                  <button onClick={() => setPollOptions(p => [...p, ""])} className="text-[11px] font-bold text-green-600 mt-1">{t("bcast.addOption")}</button>
                 )}
               </div>
               <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Closes At (optional)</label>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("bcast.closesAt")}</label>
                 <input className={input} type="datetime-local" value={form.closes_at||""} onChange={setF("closes_at")} />
               </div>
             </>)}
 
           </div>
           <div className="flex gap-2 mt-4">
-            <button onClick={() => { setCreateType(null); setError(""); }} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Cancel</button>
+            <button onClick={() => { setCreateType(null); setError(""); }} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">{t("common.cancel")}</button>
             <button onClick={handleCreate} disabled={saving} className="flex-1 py-3 text-white rounded-xl font-bold text-sm disabled:opacity-50 bg-brand-500">
-              {saving ? "Publishing…" : "Publish"}
+              {saving ? t("bcast.publishing") : t("bcast.publish")}
             </button>
           </div>
         </ModalWrap>
@@ -2199,7 +2205,7 @@ function BroadcastTab({ org, members }) {
             <div className="w-10 h-1 bg-slate-200 rounded-full mx-auto mb-4" />
             <p className="text-base font-extrabold text-slate-800 dark:text-white mb-0.5">{attendanceTarget.title}</p>
             <p className="text-xs text-slate-400 mb-3">{fmtDT(attendanceTarget.scheduled_at)}</p>
-            <p className="text-xs text-slate-400 mb-2">Tap to mark present/absent</p>
+            <p className="text-xs text-slate-400 mb-2">{t("bcast.tapPresent")}</p>
             <div className="flex-1 overflow-y-auto">
               {activeMembers.map(m => (
                 <button key={m.id} onClick={() => togglePresence(m.id)}
@@ -2208,16 +2214,16 @@ function BroadcastTab({ org, members }) {
                     {present.has(m.id) && <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="white" strokeWidth={3} strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>}
                   </div>
                   <p className="flex-1 text-left text-sm font-semibold text-slate-800 dark:text-white">{m.full_name}</p>
-                  <span className={`text-[10px] font-bold ${present.has(m.id) ? "text-green-600" : "text-slate-400"}`}>{present.has(m.id) ? "Present" : "Absent"}</span>
+                  <span className={`text-[10px] font-bold ${present.has(m.id) ? "text-green-600" : "text-slate-400"}`}>{present.has(m.id) ? t("bcast.present") : t("bcast.absent")}</span>
                 </button>
               ))}
             </div>
             <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-700 flex justify-between items-center">
               <p className="text-xs text-slate-500">{present.size} present / {activeMembers.length - present.size} absent</p>
               <div className="flex gap-2">
-                <button onClick={() => setAttendanceTarget(null)} className="px-4 py-2.5 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Cancel</button>
+                <button onClick={() => setAttendanceTarget(null)} className="px-4 py-2.5 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">{t("common.cancel")}</button>
                 <button onClick={submitAttendance} disabled={savingAttendance} className="px-4 py-2.5 text-white rounded-xl font-bold text-sm disabled:opacity-50 bg-navy-700">
-                  {savingAttendance ? "Saving…" : "Submit"}
+                  {savingAttendance ? t("mem.saving") : t("bcast.submit")}
                 </button>
               </div>
             </div>
@@ -2635,6 +2641,7 @@ function OrgSupportSection({ org }) {
 }
 
 function SettingsTab({ org, onRefresh, onOrgUpdate, onBack, isOrgPortal = false, isDark = false, onToggleDark }) {
+  const t = useT();
   const [leaders,       setLeaders]       = useState([]);
   const [form,          setForm]          = useState({ name: org.name || "", email: org.email || "", phone: org.phone || "", address: org.address || "", state_name: org.state_name || "", lga: org.lga || "", purpose: org.purpose || "", vision: org.vision || "", mission: org.mission || "", website: org.website || "", social_instagram: org.social_instagram || "", social_facebook: org.social_facebook || "", social_twitter: org.social_twitter || "", date_established: org.date_established || "", logo_url: org.logo_url || "" });
   const [logoUploading, setLogoUploading] = useState(false);
@@ -2725,7 +2732,7 @@ function SettingsTab({ org, onRefresh, onOrgUpdate, onBack, isOrgPortal = false,
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="w-3.5 h-3.5">
             <path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
           </svg>
-          Sign Out
+          {t("action.signOut")}
         </button>
       </div>
       {/* Theme toggle */}
@@ -2752,7 +2759,7 @@ function SettingsTab({ org, onRefresh, onOrgUpdate, onBack, isOrgPortal = false,
 
       {/* Org Profile */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-100 dark:border-slate-700">
-        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-4">Organisation Profile</p>
+        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-4">{t("cd.orgProfile")}</p>
         {error && <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-3 text-xs text-red-600">{error}</div>}
         {saved && <div className="bg-green-50 border border-green-200 rounded-xl px-3 py-2 mb-3 text-xs text-green-600">✓ Saved successfully</div>}
         <div className="flex flex-col gap-3">
@@ -2835,7 +2842,7 @@ function SettingsTab({ org, onRefresh, onOrgUpdate, onBack, isOrgPortal = false,
             ))}
           </div>
         </div>
-        <button onClick={handleSaveOrg} disabled={saving} className="w-full mt-4 py-3 bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">{saving ? "Saving…" : "Save Profile"}</button>
+        <button onClick={handleSaveOrg} disabled={saving} className="w-full mt-4 py-3 bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">{saving ? t("mem.saving") : t("profile.saveProfile")}</button>
       </div>
 
       {/* Key Leaders */}
@@ -2843,7 +2850,7 @@ function SettingsTab({ org, onRefresh, onOrgUpdate, onBack, isOrgPortal = false,
         <div className="flex justify-between items-center mb-4">
           <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Key Leaders & Executives</p>
           <button onClick={() => { setLForm({ name: "", position: "", phone: "", email: "", sort_order: String(leaders.length) }); setEditL(null); setShowAddL(true); }}
-            className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-bold">+ Add</button>
+            className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-bold">{t("mem.addNew")}</button>
         </div>
         {leaders.length === 0 ? (
           <p className="text-xs text-slate-400 text-center py-4">No leaders added yet</p>
@@ -2900,7 +2907,7 @@ function SettingsTab({ org, onRefresh, onOrgUpdate, onBack, isOrgPortal = false,
                     <span className="text-xs font-mono text-slate-800">{portalResult.email}</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-slate-400 font-bold w-20">Temp Password</span>
+                    <span className="text-[10px] text-slate-400 font-bold w-20">{t("mem.tempPassword")}</span>
                     <span className="text-xs font-mono font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded-lg">{portalResult.temp_password}</span>
                   </div>
                 </div>
@@ -2969,8 +2976,8 @@ function SettingsTab({ org, onRefresh, onOrgUpdate, onBack, isOrgPortal = false,
             ))}
           </div>
           <div className="flex gap-2 mt-5">
-            <button onClick={() => { setShowAddL(false); setEditL(null); setError(""); }} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Cancel</button>
-            <button onClick={handleSaveLeader} disabled={lSaving} className="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">{lSaving ? "Saving…" : editL ? "Save" : "Add Leader"}</button>
+            <button onClick={() => { setShowAddL(false); setEditL(null); setError(""); }} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">{t("common.cancel")}</button>
+            <button onClick={handleSaveLeader} disabled={lSaving} className="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">{lSaving ? t("mem.saving") : editL ? t("common.save") : "Add Leader"}</button>
           </div>
         </ModalWrap>
       )}
@@ -3034,6 +3041,7 @@ function BillsTab({ org, autoService = null, onAutoOpened = null, adminEmail = n
 //  ORG PROFILE TAB (org portal — replaces Settings)
 // ═══════════════════════════════════════════════════
 function OrgProfileTab({ org, onRefresh, onOrgUpdate }) {
+  const t = useT();
   const [leaders,       setLeaders]       = useState([]);
   const [form,          setForm]          = useState({ name: org.name || "", email: org.email || "", phone: org.phone || "", address: org.address || "", state_name: org.state_name || "", lga: org.lga || "", purpose: org.purpose || "", vision: org.vision || "", mission: org.mission || "", website: org.website || "", social_instagram: org.social_instagram || "", social_facebook: org.social_facebook || "", social_twitter: org.social_twitter || "", date_established: org.date_established || "", logo_url: org.logo_url || "" });
   const [logoUploading, setLogoUploading] = useState(false);
@@ -3120,7 +3128,7 @@ function OrgProfileTab({ org, onRefresh, onOrgUpdate }) {
 
       {/* Org Profile */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-100 dark:border-slate-700">
-        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-4">Organisation Profile</p>
+        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-4">{t("cd.orgProfile")}</p>
         {error && <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-3 text-xs text-red-600">{error}</div>}
         {saved && <div className="bg-green-50 border border-green-200 rounded-xl px-3 py-2 mb-3 text-xs text-green-600">✓ Saved successfully</div>}
         <div className="flex flex-col gap-3">
@@ -3203,7 +3211,7 @@ function OrgProfileTab({ org, onRefresh, onOrgUpdate }) {
             ))}
           </div>
         </div>
-        <button onClick={handleSaveOrg} disabled={saving} className="w-full mt-4 py-3 bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">{saving ? "Saving…" : "Save Profile"}</button>
+        <button onClick={handleSaveOrg} disabled={saving} className="w-full mt-4 py-3 bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">{saving ? t("mem.saving") : t("profile.saveProfile")}</button>
       </div>
 
       {/* Key Leaders */}
@@ -3211,7 +3219,7 @@ function OrgProfileTab({ org, onRefresh, onOrgUpdate }) {
         <div className="flex justify-between items-center mb-4">
           <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Key Leaders & Executives</p>
           <button onClick={() => { setLForm({ name: "", position: "", phone: "", email: "", sort_order: String(leaders.length) }); setEditL(null); setShowAddL(true); }}
-            className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-bold">+ Add</button>
+            className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-bold">{t("mem.addNew")}</button>
         </div>
         {leaders.length === 0 ? (
           <p className="text-xs text-slate-400 text-center py-4">No leaders added yet</p>
@@ -3251,8 +3259,8 @@ function OrgProfileTab({ org, onRefresh, onOrgUpdate }) {
             ))}
           </div>
           <div className="flex gap-2 mt-5">
-            <button onClick={() => { setShowAddL(false); setEditL(null); setError(""); }} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Cancel</button>
-            <button onClick={handleSaveLeader} disabled={lSaving} className="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">{lSaving ? "Saving…" : editL ? "Save" : "Add Leader"}</button>
+            <button onClick={() => { setShowAddL(false); setEditL(null); setError(""); }} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">{t("common.cancel")}</button>
+            <button onClick={handleSaveLeader} disabled={lSaving} className="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">{lSaving ? t("mem.saving") : editL ? t("common.save") : "Add Leader"}</button>
           </div>
         </ModalWrap>
       )}
