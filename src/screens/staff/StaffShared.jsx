@@ -51,8 +51,10 @@ export function dateRange(period) {
   return null;
 }
 
-export async function uploadAvatar(file, staffId) {
-  const path = `staff/${staffId}/avatar`;
+export async function uploadAvatar(file) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user?.id) throw new Error("Not authenticated");
+  const path = `staff/${user.id}/avatar`;
   const { error } = await supabase.storage.from("avatars").upload(path, file, { upsert: true, contentType: file.type });
   if (error) throw error;
   const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(path);

@@ -151,7 +151,6 @@ function EmailChangeFlow({ currentEmail, onSuccess, onCancel }) {
 
 // ── Main ProfileEdit component ───────────────────────────────────────────────
 export default function ProfileEdit({ staff, session, livePerms = [], onBack, onSaved }) {
-  const staffId  = staff?.id;
   const initials = (staff?.full_name || "S").split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
 
   const [form, setForm] = useState({
@@ -193,7 +192,7 @@ export default function ProfileEdit({ staff, session, livePerms = [], onBack, on
       const patches = { ...form };
       let avatarUrl = staff?.profile_image_url;
       if (photoFile) {
-        avatarUrl = await uploadAvatar(photoFile, staffId);
+        avatarUrl = await uploadAvatar(photoFile);
         patches.profile_image_url = avatarUrl;
       }
 
