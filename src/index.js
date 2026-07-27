@@ -5,7 +5,6 @@ import App from "./App";
 import { LanguageProvider } from "./contexts/LanguageContext";
 import { ToastProvider } from "./components/Toast";
 import { CapacitorUpdater } from "@capgo/capacitor-updater";
-import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
 
 
@@ -13,18 +12,14 @@ if (Capacitor.isNativePlatform()) {
   // Tell Capgo this bundle loaded successfully — prevents auto-rollback
   CapacitorUpdater.notifyAppReady().catch(() => {});
 
-  // Apply downloaded updates on next app foreground rather than next cold launch.
-  // Without this, clearing app data requires two full restarts to get current code.
-  let pendingBundle = null;
+  // Queue new bundle for next cold start — do NOT call set() which reloads
+  // the WebView immediately (CapacitorUpdater.set = apply + reload RIGHT NOW).
+  // The old code used set() inside appStateChange which restarted the app on
+  // every resume: CCT close, image-picker return, minimize→reopen, all of them.
+  // next() marks the bundle without touching the running session; it activates
+  // the next time the user fully kills and relaunches the app.
   CapacitorUpdater.addListener("updateAvailable", (info) => {
-    pendingBundle = info.bundle;
-  });
-  CapacitorApp.addListener("appStateChange", ({ isActive }) => {
-    if (isActive && pendingBundle) {
-      const b = pendingBundle;
-      pendingBundle = null;
-      CapacitorUpdater.set(b).catch(() => {});
-    }
+    CapacitorUpdater.next(info.bundle).catch(() => {});
   });
 }
 
