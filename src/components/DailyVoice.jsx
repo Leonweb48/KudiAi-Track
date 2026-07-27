@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Capacitor } from "@capacitor/core";
 import { speakText, cancelTTS, isTtsEnabled } from "../utils/tts";
 import { askGemini } from "../utils/gemini";
+import { supabase } from "../utils/supabase";
 
 const BRIEF_ENABLED_KEY = (uid) => `kt_brief_enabled_${uid}`;
 const BRIEF_DATE_KEY    = (uid) => `kt_brief_date_${uid}`;
@@ -133,15 +134,17 @@ export default function DailyVoice({ userId, context, fallback, dataLoading }) {
     }
 
     hasFiredRef.current = true;
-    setVisible(true);
 
-    // Same-day cache exists (e.g. re-mount before dateK was written)
+    // Same-day cache exists (e.g. re-mount before dateK was written) — show immediately.
     const cached = localStorage.getItem(cacheK);
     if (cached) {
       const clean = stripMarkdown(cached);
       setBrief(clean);
       spokenRef.current = clean;
+      setVisible(true);
       try { localStorage.setItem(dateK, date); } catch {}
+      // Sync date to auth metadata so other devices skip today's brief.
+      supabase.auth.updateUser({ data: { brief_shown: date } }).catch(() => null);
       setTimeout(() => {
         doSpeak(spokenRef.current);
         setTimeout(() => { if (!isSpeakingRef.current) setNeedsTap(isTtsEnabled()); }, 1500);
@@ -149,14 +152,24 @@ export default function DailyVoice({ userId, context, fallback, dataLoading }) {
       return;
     }
 
-    // Generate fresh brief from AI
+    // No local cache — check auth metadata for cross-device dedup before generating.
+    // The getUser() call is absorbed inside the existing 600 ms delay so no visible lag is added.
     setTimeout(async () => {
+      try {
+        const { data: { user: freshUser } } = await supabase.auth.getUser();
+        if (freshUser?.user_metadata?.brief_shown === date) return; // already played on another device today
+      } catch { /* network down or auth error — proceed with generation */ }
+
+      setVisible(true);
+
       try {
         const raw   = await askGemini({ message: BRIEF_PROMPT, context, timeout: 20000, maxAttempts: 1 });
         const clean = stripMarkdown(raw?.trim() || fallback);
         setBrief(clean);
         spokenRef.current = clean;
         try { localStorage.setItem(cacheK, clean); localStorage.setItem(dateK, date); } catch {}
+        // Record cross-device so other devices skip today's brief.
+        supabase.auth.updateUser({ data: { brief_shown: date } }).catch(() => null);
         doSpeak(spokenRef.current);
         setTimeout(() => { if (!isSpeakingRef.current) setNeedsTap(isTtsEnabled()); }, 1500);
       } catch {
