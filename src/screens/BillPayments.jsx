@@ -18,7 +18,6 @@ import { supabase } from "../utils/supabase";
 import { lookupDataPrice } from "../data/billPrices";
 import LoanApplicationModal from "../components/LoanApplicationModal";
 import TransactionPinModal  from "../components/TransactionPinModal";
-import NumPad from "../components/shared/NumPad";
 import { buildCallbackUrl, openPaystackCheckout } from "../utils/paystackCheckout";
 import { openPaystackInline } from "../utils/paystackInline";
 import { Browser } from "@capacitor/browser";
@@ -3348,8 +3347,18 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                       );
                     })}
                   </div>
-                  <BillAmountDisplay value={form.amount} netTheme={netTheme} />
-                  <NumPad value={form.amount} onChange={v => setF("amount", v)} />
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">Amount (₦)</label>
+                    <div className="flex items-center gap-2 rounded-xl border-2 px-3 py-3 transition-colors"
+                      style={netTheme
+                        ? { borderColor: `${netTheme.bg}60`, background: `${netTheme.bg}0a` }
+                        : { borderColor: "#e2e8f0", background: "#f8fafc" }}>
+                      <span className="text-lg font-bold text-slate-400">₦</span>
+                      <input type="number" inputMode="decimal" placeholder="0"
+                        value={form.amount} onChange={e => setF("amount", e.target.value)}
+                        className="flex-1 bg-transparent text-2xl font-black tabular-nums outline-none min-w-0 text-slate-800 dark:text-white" />
+                    </div>
+                  </div>
                   {form.amount && parseFloat(form.amount) > 0 && (
                     <div className="flex items-center gap-2 rounded-xl px-3 py-2 transition-all duration-200"
                       style={netTheme
@@ -3436,8 +3445,15 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                         </button>
                       ))}
                     </div>
-                    <BillAmountDisplay value={form.amount} label="Amount (₦) — min ₦1,000" />
-                    <NumPad value={form.amount} onChange={v => setF("amount", v)} />
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">Amount (₦) — min ₦1,000</label>
+                      <div className="flex items-center gap-2 rounded-xl border-2 border-slate-200 dark:border-slate-700 px-3 py-3 bg-slate-50 dark:bg-slate-800/50">
+                        <span className="text-lg font-bold text-slate-400">₦</span>
+                        <input type="number" inputMode="decimal" placeholder="0"
+                          value={form.amount} onChange={e => setF("amount", e.target.value)}
+                          className="flex-1 bg-transparent text-2xl font-black tabular-nums outline-none min-w-0 text-slate-800 dark:text-white" />
+                      </div>
+                    </div>
                   </div>
                 )}
               </>}
@@ -3453,8 +3469,15 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                 <VerifyBadge status={verifyStatus === "idle" ? null : verifyStatus} name={verifyName} />
                 {verifyStatus === "ok" && (
                   <>
-                    <BillAmountDisplay value={form.amount} label="Amount (₦)" />
-                    <NumPad value={form.amount} onChange={v => setF("amount", v)} />
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">Amount (₦)</label>
+                      <div className="flex items-center gap-2 rounded-xl border-2 border-slate-200 dark:border-slate-700 px-3 py-3 bg-slate-50 dark:bg-slate-800/50">
+                        <span className="text-lg font-bold text-slate-400">₦</span>
+                        <input type="number" inputMode="decimal" placeholder="0"
+                          value={form.amount} onChange={e => setF("amount", e.target.value)}
+                          className="flex-1 bg-transparent text-2xl font-black tabular-nums outline-none min-w-0 text-slate-800 dark:text-white" />
+                      </div>
+                    </div>
                   </>
                 )}
               </>}

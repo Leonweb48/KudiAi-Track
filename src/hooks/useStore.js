@@ -506,14 +506,15 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
       type:             t.type,
       category:         t.category         || "sale",
       amount:           parseFloat(t.amount)   || 0,
-      item_name:        t.item_name         || "",
-      quantity:         parseInt(t.quantity)   || 1,
+      item_name:        t.item_name         != null ? t.item_name : null,
+      quantity:         t.quantity          != null ? (parseInt(t.quantity) || 1) : null,
       customer_name:    t.customer_name     || "",
       payment_type:     t.payment_type      || "cash",
       note:             t.note              || "",
       transaction_date: t.transaction_date  || today(),
       bill_status:      t.bill_status       !== undefined ? t.bill_status : null,
       client_txn_id:    localId,
+      line_items:       t.line_items        != null ? t.line_items : null,
     };
 
     setTransactions(p => [{ ...payload, id: tempId, _pending: true }, ...p]);
@@ -613,6 +614,27 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     setTransactions(p => p.filter(tx => tx.id !== id));
     const { error } = await supabase.from("transactions").delete().eq("id", id);
     if (error) { console.error("deleteTransaction:", error); loadData(); return { error }; }
+    if (txToCancel?.line_items && txToCancel.line_items.length > 0) {
+      const stockLines = txToCancel.line_items.filter(li => li.productId);
+      await Promise.all(stockLines.map(async li => {
+        const { data: prod } = await supabase
+          .from("products").select("quantity").eq("id", li.productId).single();
+        if (!prod) return;
+        const restored = (prod.quantity || 0) + (li.qty || 1);
+        await Promise.all([
+          supabase.from("products")
+            .update({ quantity: restored, updated_at: new Date().toISOString() })
+            .eq("id", li.productId),
+          supabase.from("stock_movements").insert({
+            id: uid(), user_id: userId, branch_id: branchId || null,
+            product_id: li.productId, type: "return",
+            quantity: li.qty || 1, unit_price: li.unitPrice || 0,
+            notes: "Transaction reversal", staff_id: staffId || null,
+            created_at: new Date().toISOString(),
+          }),
+        ]);
+      }));
+    }
     if (txToCancel) {
       fireEmailTrigger("transaction_cancelled", {
         owner_id:      userId,

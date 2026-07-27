@@ -50,19 +50,31 @@ export function buildTransactionReceipt(txn, profile) {
     txn.bill_status === 'failed' ? 'failed' : 'success';
   const { ref, image, pdf } = receiptFilenames(txn.id, txn.created_at || txn.transaction_date);
 
+  const isMulti = Array.isArray(txn.line_items) && txn.line_items.length > 1;
+  const liFields = isMulti
+    ? txn.line_items.map(li => ({
+        label: li.name ? `${li.name}${(li.qty || 1) > 1 ? ` ×${li.qty}` : ''}` : '—',
+        value: fmtAmt(li.lineTotal),
+      }))
+    : [];
+  const title = isMulti
+    ? `${txn.line_items.length} items`
+    : txn.item_name || humanize(txn.category) || (isIn ? 'Payment Received' : 'Payment Made');
+
   return {
-    title:       txn.item_name || humanize(txn.category) || (isIn ? 'Payment Received' : 'Payment Made'),
+    title,
     direction:   isIn ? 'in' : 'out',
     status,
     amount:      txn.amount,
     datetime:    formatReceiptDateTime(txn.created_at || txn.transaction_date),
     fields: [
+      ...liFields,
       { label: 'Transaction Type', value: isIn ? 'Income' : 'Expense' },
       txn.customer_name && { label: isIn ? 'From'  : 'To',     value: txn.customer_name },
-      txn.item_name     && { label: 'Description',              value: txn.item_name },
+      !isMulti && txn.item_name && { label: 'Description',      value: txn.item_name },
       txn.category      && { label: 'Category',                 value: humanize(txn.category) },
       txn.payment_type  && { label: 'Payment Method',           value: humanize(txn.payment_type) },
-      txn.quantity > 1  && { label: 'Quantity',                 value: String(txn.quantity) },
+      !isMulti && txn.quantity > 1 && { label: 'Quantity',      value: String(txn.quantity) },
       txn.note          && { label: 'Note',                     value: txn.note },
       txn.staff_name    && { label: 'Recorded by',              value: txn.staff_name },
                            { label: 'Reference',                value: ref, copy: true },

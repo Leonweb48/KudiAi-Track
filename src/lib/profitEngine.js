@@ -136,6 +136,24 @@ export function compute(ledger, range) {
       measuredRev += t.amount;
       continue;
     }
+    if (t.line_items && t.line_items.length > 0) {
+      let txMeasured = 0, txUnmeasured = 0;
+      for (const li of t.line_items) {
+        const liName = (li.name || "").toLowerCase().trim();
+        const prod = li.productId
+          ? (productById.get(li.productId) || (liName ? productByName.get(liName) : null))
+          : (liName ? productByName.get(liName) : null);
+        if (prod && !prod.needs_costing && (prod.cost_price || 0) > 0) {
+          txMeasured += li.lineTotal;
+          cogsAmount += prod.cost_price * (li.qty || 1);
+        } else {
+          txUnmeasured += li.lineTotal;
+        }
+      }
+      if (txMeasured   > 0) { measuredRev += txMeasured; cogsTxIds.push(t.id); }
+      if (txUnmeasured > 0) unmeasItems.push({ id: t.id, amount: txUnmeasured });
+      continue;
+    }
     const name = (t.item_name || "").toLowerCase().trim();
     if (!name) {
       unmeasItems.push({ id: t.id, amount: t.amount });
