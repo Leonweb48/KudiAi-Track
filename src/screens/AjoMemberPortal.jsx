@@ -29,6 +29,9 @@ import { createReportPdf, fmtCurrency as pdfFmt, fmtDate as pdfFmtDate } from ".
 import { allocatePeriods } from "../utils/allocatePeriods.mjs";
 import NotificationCenter from "../components/NotificationCenter";
 import { useToast } from "../components/Toast";
+import SyncBar from "../components/SyncBar";
+import { useOnlineStatus } from "../hooks/useOnlineStatus";
+import { setCache, getCache, formatSyncTime } from "../utils/offlineCache";
 import ContributionCard from "../components/ContributionCard";
 import EsusuRotationDashboard from "../components/EsusuRotationDashboard";
 import LegalScreen from "./LegalScreen";
@@ -5105,6 +5108,18 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
   const [withdrawRequests, setWithdrawRequests] = useState([]);
   const [showPwdModal,     setShowPwdModal]     = useState(false);
 
+  // Offline-first state
+  const { online: portalOnline, reconnectTick } = useOnlineStatus();
+  const [portalFromCache, setPortalFromCache] = useState(false);
+  const [syncing,         setSyncing]         = useState(false);
+  const [syncResult,      setSyncResult]      = useState(null);
+  const [lastSyncTime,    setLastSyncTime]    = useState(() => {
+    const cacheKey = session?.user?.id || ajoClient?.id;
+    if (!cacheKey) return null;
+    const cached = getCache(cacheKey, "ajo_portal");
+    return cached?.ts || null;
+  });
+
   const { slotMap: camSlots, loading: camLoading, recordEvent: recordCamEvent } = useCampaigns(["announcement_bar","tab_card_quad","tab_card_duo"], "ajo_client", "ajo_client.home");
   const ajoTabCard = (camSlots.tab_card_quad || [])[0] ?? (camSlots.tab_card_duo || [])[0] ?? null;
   const annBars = camSlots.announcement_bar || [];
@@ -5134,6 +5149,27 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
 
   const fetchPortalData = useCallback(async (silent = false) => {
     if (mustChange || !ajoClient?.id) return;
+    const cacheUserId = session?.user?.id || ajoClient?.id;
+
+    // Offline: serve from cache
+    if (!navigator.onLine) {
+      if (cacheUserId) {
+        const cached = getCache(cacheUserId, "ajo_portal");
+        if (cached?.data) {
+          const d = cached.data;
+          if (d.client)        setClient(d.client);
+          if (d.contributions) setContributions(d.contributions);
+          if (d.ownerInfo)     setOwnerInfo(d.ownerInfo);
+          if (d.withdrawRequests) setWithdrawRequests(d.withdrawRequests);
+          if (d.cycles)        setCycles(d.cycles);
+          setPortalFromCache(true);
+          setLastSyncTime(cached.ts);
+        }
+      }
+      if (!silent) setLoadingData(false);
+      return;
+    }
+
     if (!silent) { setLoadingData(true); setPortalLoadError(false); }
     try {
       const [clientRes, contribRes, ownerRes, reqRes, cycleRes] = await Promise.allSettled([
@@ -5169,6 +5205,21 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
           .every(r => r.status === "rejected");
         if (allRejected && ajoClient?.current_balance == null) setPortalLoadError(true);
       }
+      // Persist to offline cache after any successful data load
+      const anySucceeded = [clientRes, contribRes, ownerRes, reqRes, cycleRes]
+        .some(r => r.status === "fulfilled");
+      if (anySucceeded && cacheUserId) {
+        const snap = {
+          client:          clientRes.status === "fulfilled" ? clientRes.value?.client  : null,
+          contributions:   contribRes.status === "fulfilled" ? contribRes.value?.contributions : null,
+          ownerInfo:       ownerRes.status === "fulfilled" ? ownerRes.value : null,
+          withdrawRequests: reqRes.status === "fulfilled" ? reqRes.value?.requests : null,
+          cycles:          cycleRes.status === "fulfilled" ? cycleRes.value?.cycles || [] : null,
+        };
+        setCache(cacheUserId, "ajo_portal", snap);
+        setPortalFromCache(false);
+        setLastSyncTime(Date.now());
+      }
       // Load rotation data for every active group membership
       const memberships = ((resolvedClient || ajoClient)?.group_memberships || [])
         .filter(m => m.status === "active" && m.group_id);
@@ -5200,6 +5251,18 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
   useEffect(() => {
     fetchPortalData(false);
   }, [fetchPortalData, reloadKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-sync on reconnect
+  useEffect(() => {
+    if (reconnectTick === 0) return;
+    setSyncing(true);
+    setSyncResult(null);
+    fetchPortalData(true).finally(() => {
+      setSyncing(false);
+      setSyncResult("Up to date");
+      setTimeout(() => setSyncResult(null), 4000);
+    });
+  }, [reconnectTick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Stale-closure fix: always call the latest fetchPortalData from refs (used by realtime + resume)
   const fetchPortalDataRef = useRef(fetchPortalData);
@@ -5348,6 +5411,14 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
           </div>
           </div>
         </header>
+
+        <SyncBar
+          isOnline={portalOnline}
+          fromCache={portalFromCache}
+          lastSyncTime={lastSyncTime}
+          syncing={syncing}
+          syncResult={syncResult}
+        />
 
         {/* Content */}
         <main className="flex-1 min-h-0 overflow-y-auto overscroll-contain">

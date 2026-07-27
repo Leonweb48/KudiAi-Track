@@ -28,6 +28,9 @@ import { AmountDisplay } from "../components/shared/AmountDisplay";
 import NotificationCenter from "../components/NotificationCenter";
 import { usePushNotifications } from "../hooks/usePushNotifications";
 import { useToast } from "../components/Toast";
+import SyncBar from "../components/SyncBar";
+import { useOnlineStatus } from "../hooks/useOnlineStatus";
+import { setCache, getCache, formatSyncTime } from "../utils/offlineCache";
 
 const coopFn = async (action, body = {}) => {
   const r = await supabase.functions.invoke("coop-portal", { body: { action, ...body } });
@@ -1794,6 +1797,16 @@ export default function CoopMemberPortal({ member: initialMember }) {
   const { isDark, toggle: toggleDark } = useTheme();
   const [member,        setMember]        = useState(initialMember);
   const [coopReloadKey, setCoopReloadKey] = useState(0);
+
+  // Offline-first state
+  const { online: portalOnline, reconnectTick } = useOnlineStatus();
+  const [portalFromCache, setPortalFromCache] = useState(false);
+  const [syncing,         setSyncing]         = useState(false);
+  const [syncResult,      setSyncResult]      = useState(null);
+  const [lastSyncTime,    setLastSyncTime]    = useState(() => {
+    const cached = getCache(initialMember?.id || "", "coop_portal");
+    return cached?.ts || null;
+  });
   const [tab,           setTab]           = useState(() => {
     const p = new URLSearchParams(window.location.search);
     const ref = p.get("bill_ref") || p.get("trxref") || p.get("reference");
@@ -1942,6 +1955,23 @@ export default function CoopMemberPortal({ member: initialMember }) {
   // Load announcements + summary counts for dashboard
   useEffect(() => {
     if (!member?.id || !org?.id) return;
+
+    // Offline: serve from cache, skip network
+    if (!navigator.onLine) {
+      const cached = getCache(member.id, "coop_portal");
+      if (cached?.data) {
+        const d = cached.data;
+        if (d.announcements) setAnnouncements(d.announcements);
+        if (d.loans)         setLoans(d.loans);
+        if (d.wdRequests)    setWdRequests(d.wdRequests);
+        if (d.polls)         setPolls(d.polls);
+        if (d.events)        setEvents(d.events);
+        setPortalFromCache(true);
+        setLastSyncTime(cached.ts);
+      }
+      return;
+    }
+
     const safe = p => p.catch(() => ({}));
     Promise.all([
       coopFn("member-get-announcements",       { member_id: member.id, org_id: org.id }),
@@ -1955,6 +1985,16 @@ export default function CoopMemberPortal({ member: initialMember }) {
       setWdRequests(wdR.requests || []);
       setPolls(pollR.polls || []);
       setEvents(evtR.events || []);
+      // Persist to cache for offline reads
+      setCache(member.id, "coop_portal", {
+        announcements: annR.announcements || [],
+        loans:         loanR.loans       || [],
+        wdRequests:    wdR.requests      || [],
+        polls:         pollR.polls       || [],
+        events:        evtR.events       || [],
+      });
+      setPortalFromCache(false);
+      setLastSyncTime(Date.now());
     }).catch(console.error);
   }, [member?.id, org?.id, coopReloadKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1987,6 +2027,19 @@ export default function CoopMemberPortal({ member: initialMember }) {
     const id = setInterval(() => setCoopReloadKey(k => k + 1), 60_000);
     return () => clearInterval(id);
   }, [member?.id]);
+
+  // Auto-sync on reconnect
+  useEffect(() => {
+    if (reconnectTick === 0) return;
+    setSyncing(true);
+    setSyncResult(null);
+    setCoopReloadKey(k => k + 1);
+    setTimeout(() => {
+      setSyncing(false);
+      setSyncResult("Up to date");
+      setTimeout(() => setSyncResult(null), 4000);
+    }, 1500);
+  }, [reconnectTick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const navigateTo = useCallback((tabId) => {
     setTab(tabId);
@@ -2057,6 +2110,14 @@ export default function CoopMemberPortal({ member: initialMember }) {
             </button>
           </div>
         </header>
+
+        <SyncBar
+          isOnline={portalOnline}
+          fromCache={portalFromCache}
+          lastSyncTime={lastSyncTime}
+          syncing={syncing}
+          syncResult={syncResult}
+        />
 
         {/* ── Main Content ── */}
         <main className="flex-1 min-h-0 overflow-y-auto overscroll-contain">

@@ -1,7 +1,6 @@
 import { AmountDisplay } from "../../components/shared/AmountDisplay";
 import { canDo }         from "../../utils/plans";
 import { fmt, today, isBillPayment } from "../../utils/helpers";
-import SyncBar           from "../../components/SyncBar";
 import {
   Svg, P, StatCard, TxRow,
   greetingText, fmtDate,
@@ -28,8 +27,6 @@ export default function ManagerHome({ staff, store, inventory, plan, onGoTo, onV
 
   return (
     <div className="overflow-y-auto h-full pb-6 screen-enter">
-      <SyncBar isOnline={isOnline} />
-
       {/* loadError banner */}
       {loadError && (
         <div className="mx-4 mt-3 flex items-center gap-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 rounded-2xl px-4 py-3">

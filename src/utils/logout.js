@@ -1,4 +1,6 @@
 import { supabase } from "./supabase";
+import { clearUserCache } from "./offlineCache";
+import { clearLocalPinState } from "./pinHash";
 
 const PUSH_TOKEN_KEY = "kt_push_token";
 
@@ -37,6 +39,12 @@ export async function performLogout() {
       const Push = await getPushPlugin();
       await Push?.removeAllDeliveredNotifications?.();
     } catch { /* best-effort */ }
+  }
+  // Clear per-user caches before signing out so a subsequent user can't see stale data.
+  const { data: { session: sess } } = await supabase.auth.getSession().catch(() => ({ data: {} }));
+  if (sess?.user?.id) {
+    clearUserCache(sess.user.id);
+    clearLocalPinState(sess.user.id);
   }
   await supabase.auth.signOut();
 }

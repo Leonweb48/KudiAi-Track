@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../utils/supabase";
+import { setLocalPinHash, verifyLocalPin } from "../utils/pinHash";
 
 // Base64url helpers for WebAuthn
 function bufToB64url(buf) {
@@ -217,13 +218,21 @@ export function usePinLock(userId, session) {
 
   // ── Methods ────────────────────────────────────────────────────────
   const verifyAppPin = useCallback(async (pin) => {
+    if (!navigator.onLine && userId) {
+      const local = await verifyLocalPin(userId, pin);
+      if (local.noLocalPin) return { data: { noLocalPin: true } };
+      if (local.success)    { setLocked(false); return { data: { success: true } }; }
+      return { data: local }; // { locked, lockedUntil } or { success: false, attemptsLeft }
+    }
     const result = await invoke("verify_app_pin", { pin });
     if (result.data?.success) {
       setLocked(false);
       await refetch();
+      // Cache hash so offline unlock works after a successful online verify.
+      if (userId) setLocalPinHash(userId, pin).catch(() => {});
     }
     return result;
-  }, [refetch]);
+  }, [refetch, userId]);
 
   const verifyTxnPin = useCallback(async (pin) => {
     return invoke("verify_txn_pin", { pin });
@@ -231,9 +240,10 @@ export function usePinLock(userId, session) {
 
   const setupAppPin = useCallback(async (pin) => {
     const result = await invoke("setup_app_pin", { pin });
+    if (result.data?.success && userId) setLocalPinHash(userId, pin).catch(() => {});
     await refetch();
     return result;
-  }, [refetch]);
+  }, [refetch, userId]);
 
   const setupTxnPin = useCallback(async (pin) => {
     const result = await invoke("setup_txn_pin", { pin });
@@ -242,8 +252,10 @@ export function usePinLock(userId, session) {
   }, [refetch]);
 
   const changeAppPin = useCallback(async (currentPin, newPin) => {
-    return invoke("change_app_pin", { current_pin: currentPin, new_pin: newPin });
-  }, []);
+    const result = await invoke("change_app_pin", { current_pin: currentPin, new_pin: newPin });
+    if (result.data?.success && userId) setLocalPinHash(userId, newPin).catch(() => {});
+    return result;
+  }, [userId]);
 
   const changeTxnPin = useCallback(async (currentPin, newPin) => {
     return invoke("change_txn_pin", { current_pin: currentPin, new_pin: newPin });
@@ -254,8 +266,10 @@ export function usePinLock(userId, session) {
   }, []);
 
   const resetAppPin = useCallback(async (newPin, resetToken) => {
-    return invoke("reset_app_pin", { new_pin: newPin, reset_token: resetToken });
-  }, []);
+    const result = await invoke("reset_app_pin", { new_pin: newPin, reset_token: resetToken });
+    if (result.data?.success && userId) setLocalPinHash(userId, newPin).catch(() => {});
+    return result;
+  }, [userId]);
 
   const resetTxnPin = useCallback(async (newPin, resetToken) => {
     return invoke("reset_txn_pin", { new_pin: newPin, reset_token: resetToken });

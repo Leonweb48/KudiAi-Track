@@ -515,7 +515,15 @@ export default function App() {
             </div>
           </header>
 
-          <SyncBar isOnline={store.isOnline} />
+          <SyncBar
+            isOnline={store.isOnline}
+            fromCache={store.fromCache}
+            dbError={store.dbError}
+            loadError={store.loadError}
+            lastSyncTime={store.lastSyncTime}
+            syncing={store.syncing}
+            syncResult={store.syncResult}
+          />
 
           {upgradeAvailable && !upgradeBannerDismissed && (
             <div className="flex items-center gap-2 bg-gradient-to-r from-indigo-500 to-violet-500 text-white text-xs px-3 py-2">
@@ -570,60 +578,6 @@ export default function App() {
             dataLoading={store.loading}
           />
 
-          {store.fromCache && !store.loading && (
-            <div
-              className="fixed inset-x-0 top-0 z-[59] flex justify-center pointer-events-none"
-              style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
-            >
-              <div className="pointer-events-auto bg-amber-500 text-white text-xs font-semibold px-4 py-1.5 rounded-b-2xl shadow-md flex items-center gap-2">
-                <span>Offline — cached data</span>
-                <button
-                  onClick={() => store.reloadData()}
-                  disabled={store.loading}
-                  className="underline font-bold disabled:opacity-50"
-                >
-                  Refresh
-                </button>
-              </div>
-            </div>
-          )}
-
-          {store.dbError && (
-            <div className="fixed bottom-28 left-4 right-4 max-w-md mx-auto z-[58] bg-red-600 text-white rounded-2xl px-4 py-3 shadow-lg flex items-start gap-3 fade-in" role="alert">
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold">Save failed</p>
-                <p className="text-xs opacity-80 mt-0.5 break-words">{store.dbError}</p>
-              </div>
-              <button onClick={store.clearDbError} className="text-white/70 hover:text-white flex-shrink-0">
-                <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
-                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
-            </div>
-          )}
-
-          {store.loadError && (
-            <div className="fixed bottom-28 left-4 right-4 max-w-md mx-auto z-[58] bg-orange-600 text-white rounded-2xl px-4 py-3 shadow-lg flex items-start gap-3 fade-in" role="alert">
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold">Couldn't load your data</p>
-                <p className="text-xs opacity-80 mt-0.5">Check your connection and try again.</p>
-              </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <button
-                  onClick={() => store.reloadData()}
-                  disabled={store.loading}
-                  className="text-xs font-bold bg-white/20 hover:bg-white/30 px-2 py-1 rounded-lg disabled:opacity-50 transition-opacity"
-                >
-                  Retry
-                </button>
-                <button onClick={store.clearLoadError} className="text-white/70 hover:text-white">
-                  <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
-                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-          )}
 
         </div>
       </div>

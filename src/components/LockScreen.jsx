@@ -80,6 +80,13 @@ export default function LockScreen({ pinLock, businessName, avatarUrl }) {
       const result = await pinLock.verifyAppPin(enteredPin);
       const d = result?.data;
 
+      if (d?.noLocalPin) {
+        triggerShake();
+        setPin("");
+        setError("You're offline. Connect to the internet to unlock.");
+        return;
+      }
+
       if (d?.success) {
         setPin("");
         setError("");

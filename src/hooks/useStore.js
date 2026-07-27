@@ -38,9 +38,17 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
   const [loadError,   setLoadError]   = useState(null);
   const [fromCache,   setFromCache]   = useState(false);
   const [rtConnected, setRtConnected] = useState(false);
+  const [syncing,     setSyncing]     = useState(false);
+  const [syncResult,  setSyncResult]  = useState(null);
+  const [lastSyncTime, setLastSyncTime] = useState(() => {
+    const v = localStorage.getItem(`kt_last_sync_${userId || ""}`);
+    return v ? parseInt(v, 10) : null;
+  });
 
   const authEmailRef    = useRef("");
   const pendingRepayRef = useRef(new Set()); // credit IDs with an in-flight repayment call
+  const wasOfflineRef   = useRef(!navigator.onLine);
+  const loadDataRef     = useRef(null);
 
   // ── Load all data ──────────────────────────────────────────────
   const loadData = useCallback(async (silent = false) => {
@@ -333,6 +341,9 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
         ? { business_name: profRes.data.business_name, dark_mode: profRes.data.dark_mode }
         : null,
     });
+    const now = Date.now();
+    setLastSyncTime(now);
+    try { localStorage.setItem(`kt_last_sync_${userId}`, String(now)); } catch { }
     setFromCache(false);
 
     } catch {
@@ -359,6 +370,9 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
   }, [userId, staffId, branchId, role]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // Keep loadDataRef current so reconnect handler always calls latest version.
+  useEffect(() => { loadDataRef.current = loadData; }, [loadData]);
 
   // ── Realtime: live sync for aso_clients balance changes ───────────────
   useEffect(() => {
@@ -443,8 +457,21 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
 
   // ── Online / offline detection ─────────────────────────────────
   useEffect(() => {
-    const on  = () => setIsOnline(true);
-    const off = () => setIsOnline(false);
+    const on = async () => {
+      setIsOnline(true);
+      if (wasOfflineRef.current) {
+        wasOfflineRef.current = false;
+        setSyncing(true);
+        setSyncResult(null);
+        try {
+          await loadDataRef.current?.(true);
+          setSyncResult("Up to date");
+          setTimeout(() => setSyncResult(null), 4000);
+        } catch { /* best-effort */ }
+        setSyncing(false);
+      }
+    };
+    const off = () => { setIsOnline(false); wasOfflineRef.current = true; };
     window.addEventListener("online",  on);
     window.addEventListener("offline", off);
     return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
@@ -1020,7 +1047,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     setProfile, isOnline, loading, rtConnected,
     dbError, clearDbError: () => setDbError(null),
     loadError, clearLoadError: () => setLoadError(null), reloadData: loadData, silentRefresh: () => loadData(true),
-    fromCache,
+    fromCache, lastSyncTime, syncing, syncResult,
     addTransaction,
     patchTransactionNote,
     // Staff cannot delete transactions — only business owners (no staffId) can

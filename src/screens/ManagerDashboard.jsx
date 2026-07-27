@@ -283,7 +283,15 @@ IMPORTANT: Net profit, cost prices, and business-wide figures are owner-private 
           </div>
         </header>
 
-        <SyncBar isOnline={store.isOnline} />
+        <SyncBar
+          isOnline={store.isOnline}
+          fromCache={store.fromCache}
+          dbError={store.dbError}
+          loadError={store.loadError}
+          lastSyncTime={store.lastSyncTime}
+          syncing={store.syncing}
+          syncResult={store.syncResult}
+        />
 
         {/* Content */}
         <main className="flex-1 min-h-0 overflow-hidden">

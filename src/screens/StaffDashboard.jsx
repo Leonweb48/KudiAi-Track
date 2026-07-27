@@ -241,7 +241,15 @@ If asked about business-wide figures (total business revenue, all staff performa
           </div>
         </header>
 
-        <SyncBar isOnline={store.isOnline} fromCache={store.fromCache} dbError={store.dbError} loadError={store.loadError} />
+        <SyncBar
+          isOnline={store.isOnline}
+          fromCache={store.fromCache}
+          dbError={store.dbError}
+          loadError={store.loadError}
+          lastSyncTime={store.lastSyncTime}
+          syncing={store.syncing}
+          syncResult={store.syncResult}
+        />
 
         {/* Content */}
         <main className="flex-1 min-h-0 overflow-hidden">
