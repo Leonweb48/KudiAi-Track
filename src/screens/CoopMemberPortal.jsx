@@ -6,7 +6,9 @@ import { buildCallbackUrl, openPaystackCheckout } from "../utils/paystackCheckou
 import { supabase } from "../utils/supabase";
 import { performLogout } from "../utils/logout";
 import { useTheme } from "../hooks/useTheme";
-import { useT } from "../contexts/LanguageContext";
+import { useT, useLanguage } from "../contexts/LanguageContext";
+import { LANGUAGES, markLangChosen } from "../utils/i18n";
+import Modal from "../components/shared/Modal";
 import BillPayments from "./BillPayments";
 import CashbackCard from "../components/CashbackCard";
 import GroupChat from "./GroupChat";
@@ -1859,6 +1861,8 @@ export default function CoopMemberPortal({ member: initialMember }) {
   const MORE_TABS = useMemo(() => makeMoreTabsMember(t), [t]);
 
   const { isDark, toggle: toggleDark } = useTheme();
+  const { lang, changeLang } = useLanguage();
+  const [showLang,      setShowLang]      = useState(false);
   const [member,        setMember]        = useState(initialMember);
   const [coopReloadKey, setCoopReloadKey] = useState(0);
 
@@ -2337,6 +2341,17 @@ export default function CoopMemberPortal({ member: initialMember }) {
                   </div>
                   <span className="text-sm font-semibold">{t("common.darkMode")}</span>
                 </button>
+                {/* Language picker */}
+                <button onClick={() => setShowLang(true)}
+                  className="w-full flex items-center gap-4 px-5 py-3.5 text-slate-700 dark:text-slate-200 transition-colors">
+                  <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 bg-slate-50 dark:bg-slate-800">
+                    <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" stroke="#64748b">
+                      <circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/>
+                    </svg>
+                  </div>
+                  <span className="text-sm font-semibold flex-1 text-left">Language</span>
+                  <span className="text-xs text-slate-400">{LANGUAGES.find(l => l.code === lang)?.native || "English"}</span>
+                </button>
               </div>
 
               {/* Sign out */}
@@ -2426,6 +2441,27 @@ export default function CoopMemberPortal({ member: initialMember }) {
             )}
           </div>
         </div>
+      )}
+      {showLang && (
+        <Modal title="Language" onClose={() => setShowLang(false)}>
+          <div className="space-y-2 px-4 pb-4">
+            {LANGUAGES.map(l => (
+              <button key={l.code} onClick={() => { changeLang(l.code); markLangChosen(); setShowLang(false); }}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-colors ${lang === l.code ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20" : "border-slate-100 dark:border-slate-700"}`}>
+                <span className="text-2xl">{l.flag}</span>
+                <div className="flex-1 text-left">
+                  <p className="font-bold text-sm text-slate-800 dark:text-slate-100">{l.native}</p>
+                  {l.native !== l.name && <p className="text-xs text-slate-400">{l.name}</p>}
+                </div>
+                {lang === l.code && (
+                  <svg className="w-5 h-5 text-brand-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clipRule="evenodd"/>
+                  </svg>
+                )}
+              </button>
+            ))}
+          </div>
+        </Modal>
       )}
     </div>
   );

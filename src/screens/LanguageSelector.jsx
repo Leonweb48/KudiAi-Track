@@ -19,11 +19,7 @@ export default function LanguageSelector({ userId, onChosen }) {
     setLang(selected);
     markLangChosen();
     if (userId && supabase) {
-      await supabase
-        .from("profiles")
-        .update({ preferred_language: selected })
-        .eq("id", userId)
-        .catch(() => null);
+      supabase.from("profiles").update({ preferred_language: selected }).eq("id", userId).catch(() => null);
     }
     onChosen(selected);
   };

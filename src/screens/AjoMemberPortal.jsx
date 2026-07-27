@@ -25,6 +25,7 @@ import DailyVoice  from "../components/DailyVoice";
 import { buildAjoMemberContext } from "../utils/buildContext";
 import AppLogo from "../components/AppLogo";
 import { useT, useLanguage } from "../contexts/LanguageContext";
+import { LANGUAGES, markLangChosen } from "../utils/i18n";
 import { createReportPdf, fmtCurrency as pdfFmt, fmtDate as pdfFmtDate } from "../utils/generateReportPdf";
 import { allocatePeriods } from "../utils/allocatePeriods.mjs";
 import NotificationCenter from "../components/NotificationCenter";
@@ -3749,7 +3750,9 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
 // ── Me tab (Staff Portal structure) ───────────────────────────────────────
 function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onProfileUpdate, contributions = [], cycles = [] }) {
   const t = useT();
+  const { lang, changeLang } = useLanguage();
   const [view,           setView]           = useState("menu");
+  const [showLang,       setShowLang]       = useState(false);
 
   const briefUserId = session?.user?.id;
   const [briefEnabled, setBriefEnabled] = useState(() => {
@@ -4730,6 +4733,9 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
         <SettingsCard>
           <Row iconCls="bg-amber-50 dark:bg-amber-900/20" icon={<RowIcon d={isDark ? P.moon : P.sun} color="#f59e0b" />}
             label="Dark Mode" onClick={toggleDark} right={Toggle} />
+          <Row iconCls="bg-blue-50 dark:bg-blue-900/20" icon={<RowIcon d="M12 2a10 10 0 100 20A10 10 0 0012 2z|M2 12h20|M12 2c-5 0-8 4.5-8 10s3 10 8 10 8-4.5 8-10S17 2 12 2z" color="#3b82f6" />}
+            label="Language" sub={LANGUAGES.find(l => l.code === lang)?.native || "English"}
+            onClick={() => setShowLang(true)} />
         </SettingsCard>
       </div>
 
@@ -5038,6 +5044,27 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
         }} />
       )}
 
+      {showLang && (
+        <Modal title="Language" onClose={() => setShowLang(false)}>
+          <div className="space-y-2 px-4 pb-4">
+            {LANGUAGES.map(l => (
+              <button key={l.code} onClick={() => { changeLang(l.code); markLangChosen(); setShowLang(false); }}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-colors ${lang === l.code ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20" : "border-slate-100 dark:border-slate-700"}`}>
+                <span className="text-2xl">{l.flag}</span>
+                <div className="flex-1 text-left">
+                  <p className="font-bold text-sm text-slate-800 dark:text-slate-100">{l.native}</p>
+                  {l.native !== l.name && <p className="text-xs text-slate-400">{l.name}</p>}
+                </div>
+                {lang === l.code && (
+                  <svg className="w-5 h-5 text-brand-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clipRule="evenodd"/>
+                  </svg>
+                )}
+              </button>
+            ))}
+          </div>
+        </Modal>
+      )}
       {legalView && <LegalScreen type={legalView} onBack={() => setLegalView(null)} />}
     </div>
   );
