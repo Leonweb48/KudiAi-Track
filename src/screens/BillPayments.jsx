@@ -344,6 +344,7 @@ const CAT_ICONS = {
 /* ─── Shared sub-components ───────────────────────────────────────────────── */
 
 function NetworkSelector({ value, onChange, detected }) {
+  const t = useT();
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
@@ -351,7 +352,7 @@ function NetworkSelector({ value, onChange, detected }) {
         {detected && (
           <span className="flex items-center gap-1 text-[10px] font-bold text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 px-2 py-0.5 rounded-full">
             <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3.5} strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
-            Auto-detected
+            {t("bp.autoDetected")}
           </span>
         )}
       </div>
@@ -712,6 +713,7 @@ function DataPlanGrid({ plans, selectedId, onSelect, loading, error, cashback = 
 /* ─── Overview / history ───────────────────────────────────────────────────── */
 
 function Overview({ bills }) {
+  const t = useT();
   const todayStr   = new Date().toISOString().slice(0, 10);
   const weekAgoStr = (() => { const d = new Date(); d.setDate(d.getDate() - 7); return d.toISOString().slice(0, 10); })();
   const successful = bills.filter(b => b.bill_status !== "failed");
@@ -721,11 +723,11 @@ function Overview({ bills }) {
     <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700/60 overflow-hidden shadow-sm">
       <div className="grid grid-cols-2 divide-x divide-slate-100 dark:divide-slate-700/60">
         <div className="px-5 py-4">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Today</p>
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t("common.today")}</p>
           <AmountDisplay amount={todayTotal} size="stat" align="left" className="mt-0.5" />
         </div>
         <div className="px-5 py-4">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Last 7 Days</p>
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t("bp.last7Days")}</p>
           <AmountDisplay amount={weekTotal} size="stat" align="left" className="mt-0.5" />
         </div>
       </div>
@@ -765,6 +767,7 @@ function BillRow({ bill, onOpen }) {
 /* ─── PIN/card details modal ──────────────────────────────────────────────── */
 
 function PinModal({ pins, title, onClose }) {
+  const t = useT();
   return (
     <div className="fixed inset-0 z-sheet flex items-center justify-center bg-black/50 px-4">
       <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl">
@@ -784,7 +787,7 @@ function PinModal({ pins, title, onClose }) {
           ))}
         </div>
         <div className="px-5 pb-5">
-          <button onClick={onClose} className="w-full bg-slate-800 dark:bg-slate-700 text-white rounded-xl py-3.5 text-sm font-bold">Done</button>
+          <button onClick={onClose} className="w-full bg-slate-800 dark:bg-slate-700 text-white rounded-xl py-3.5 text-sm font-bold">{t("bp.done")}</button>
         </div>
       </div>
     </div>
@@ -793,6 +796,7 @@ function PinModal({ pins, title, onClose }) {
 
 /* ─── Beneficiary manager sheet ─────────────────────────────────────────────── */
 function BeneficiaryManagerSheet({ bens, onClose, onDelete, onNicknameSave }) {
+  const t = useT();
   const [editingId, setEditingId]   = useState(null);
   const [nickDraft, setNickDraft]   = useState("");
   const [deletingId, setDeletingId] = useState(null);
@@ -815,7 +819,7 @@ function BeneficiaryManagerSheet({ bens, onClose, onDelete, onNicknameSave }) {
       <div className="bg-white dark:bg-slate-900 rounded-t-3xl max-h-[82vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-800 flex-shrink-0">
-          <h3 className="text-base font-bold text-slate-800 dark:text-white">Saved Recipients</h3>
+          <h3 className="text-base font-bold text-slate-800 dark:text-white">{t("bp.savedRecipients")}</h3>
           <button onClick={onClose} className="w-10 h-10 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
             <Ico d="M18 6L6 18|M6 6l12 12" size={14} c="#64748b" />
           </button>
@@ -828,8 +832,8 @@ function BeneficiaryManagerSheet({ bens, onClose, onDelete, onNicknameSave }) {
               <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
                 <Ico d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2|M9 11a4 4 0 100-8 4 4 0 000 8|M23 21v-2a4 4 0 00-3-3.87|M16 3.13a4 4 0 010 7.75" size={20} c="#94a3b8" />
               </div>
-              <p className="text-sm font-bold text-slate-500 dark:text-slate-400">No saved recipients yet</p>
-              <p className="text-xs text-slate-400 dark:text-slate-500 text-center">Complete a bill payment and recipients will appear here.</p>
+              <p className="text-sm font-bold text-slate-500 dark:text-slate-400">{t("bp.noRecipients")}</p>
+              <p className="text-xs text-slate-400 dark:text-slate-500 text-center">{t("bp.noRecipientsDesc")}</p>
             </div>
           )}
           {catOrder.filter(cat => grouped[cat]?.length).map(cat => (
@@ -876,9 +880,9 @@ function BeneficiaryManagerSheet({ bens, onClose, onDelete, onNicknameSave }) {
                             className="flex-1 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-1.5 text-sm bg-white dark:bg-slate-700 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500"
                           />
                           <button onClick={commitEdit}
-                            className="px-3 py-1.5 rounded-xl bg-brand-500 text-white text-xs font-bold active:opacity-80">Save</button>
+                            className="px-3 py-1.5 rounded-xl bg-brand-500 text-white text-xs font-bold active:opacity-80">{t("common.save")}</button>
                           <button onClick={() => setEditingId(null)}
-                            className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold active:opacity-80">Cancel</button>
+                            className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold active:opacity-80">{t("common.cancel")}</button>
                         </div>
                       )}
 
@@ -888,7 +892,7 @@ function BeneficiaryManagerSheet({ bens, onClose, onDelete, onNicknameSave }) {
                           <button onClick={() => { onDelete(ben.id); setDeletingId(null); }}
                             className="px-3 py-1.5 rounded-xl bg-red-500 text-white text-xs font-bold active:opacity-80">Remove</button>
                           <button onClick={() => setDeletingId(null)}
-                            className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold active:opacity-80">Cancel</button>
+                            className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold active:opacity-80">{t("common.cancel")}</button>
                         </div>
                       )}
                     </div>
@@ -1028,6 +1032,7 @@ async function genBillStatement(allBills, catFilter, period, profile) {
 
 /* ─── Statement modal ────────────────────────────────────────────────────── */
 function BillStatementModal({ bills, profile, onClose }) {
+  const t = useT();
   const [catFilter, setCatFilter] = useState("all");
   const [period,    setPeriod]    = useState("month");
   const [busy,      setBusy]      = useState(false);
@@ -1048,8 +1053,8 @@ function BillStatementModal({ bills, profile, onClose }) {
       <div className="bg-white dark:bg-slate-900 rounded-t-3xl w-full max-w-md safe-bottom">
         <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-slate-100 dark:border-slate-800">
           <div>
-            <h3 className="text-base font-bold text-slate-800 dark:text-white">Generate Statement</h3>
-            <p className="text-xs text-slate-400 mt-0.5">Download PDF for any service or period</p>
+            <h3 className="text-base font-bold text-slate-800 dark:text-white">{t("bp.generateStmt")}</h3>
+            <p className="text-xs text-slate-400 mt-0.5">{t("bp.stmtDesc")}</p>
           </div>
           <button onClick={onClose} className="w-11 h-11 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
             <Ico d="M18 6L6 18|M6 6l12 12" size={14} c="#64748b" />
@@ -1058,9 +1063,9 @@ function BillStatementModal({ bills, profile, onClose }) {
 
         <div className="px-5 pt-5 pb-6 space-y-5">
           <div>
-            <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2.5">Service</p>
+            <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2.5">{t("bp.serviceField")}</p>
             <div className="flex flex-wrap gap-2">
-              {[{ id: "all", label: "All Services" }, ...usedCats].map(c => (
+              {[{ id: "all", label: t("bp.allServices") }, ...usedCats].map(c => (
                 <button key={c.id} onClick={() => setCatFilter(c.id)}
                   className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors ${catFilter === c.id ? "bg-slate-800 border-slate-800 text-white dark:bg-white dark:border-white dark:text-slate-900" : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"}`}>
                   {c.label}
@@ -1070,9 +1075,9 @@ function BillStatementModal({ bills, profile, onClose }) {
           </div>
 
           <div>
-            <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2.5">Period</p>
+            <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2.5">{t("bp.periodField")}</p>
             <div className="flex flex-wrap gap-2">
-              {[{ id: "month", label: "This Month" }, { id: "last3", label: "Last 3 Months" }, { id: "year", label: "This Year" }, { id: "all", label: "All Time" }].map(p => (
+              {[{ id: "month", label: t("common.thisMonth") }, { id: "last3", label: t("bp.last3Months") }, { id: "year", label: t("bp.thisYear") }, { id: "all", label: t("bp.allTime") }].map(p => (
                 <button key={p.id} onClick={() => setPeriod(p.id)}
                   className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors ${period === p.id ? "bg-slate-800 border-slate-800 text-white dark:bg-white dark:border-white dark:text-slate-900" : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"}`}>
                   {p.label}
@@ -1087,7 +1092,7 @@ function BillStatementModal({ bills, profile, onClose }) {
               ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
               : <>
                   <Ico d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z|M14 2v6h6|M12 18v-6|M9 15h6" size={15} c="white" />
-                  Download PDF Statement
+                  {t("bp.downloadPDF")}
                 </>
             }
           </button>
@@ -1099,6 +1104,7 @@ function BillStatementModal({ bills, profile, onClose }) {
 
 /* ─── Stage 1: Confirm payment sheet (slides up before Paystack opens) ──── */
 function ConfirmPaymentSheet({ data, onConfirm, onCancel }) {
+  const t = useT();
   const { finalAmt, baseAmt, ptsSavings, cbSavings, couponSavings, catLabel, network, phone, planName, isFree } = data;
   const hasDiscount = ptsSavings > 0 || cbSavings > 0 || couponSavings > 0;
   const netCfg = NET_CONFIG[network] || null;
@@ -1113,7 +1119,7 @@ function ConfirmPaymentSheet({ data, onConfirm, onCancel }) {
         </div>
         {/* Header */}
         <div className="flex items-center justify-between px-5 pt-3 pb-4">
-          <p className="text-lg font-black text-slate-900 dark:text-white">Confirm Payment</p>
+          <p className="text-lg font-black text-slate-900 dark:text-white">{t("bp.confirmTitle")}</p>
           <button onClick={onCancel} className="w-11 h-11 rounded-full flex items-center justify-center bg-slate-100 dark:bg-slate-800">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2.5" strokeLinecap="round">
               <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -1153,42 +1159,42 @@ function ConfirmPaymentSheet({ data, onConfirm, onCancel }) {
         <div className="mx-5 rounded-2xl overflow-hidden shadow-sm mb-4 border border-slate-200 dark:border-slate-700">
           {phone && (
             <div className="px-4 py-3 flex justify-between items-center border-b border-slate-50 dark:border-slate-800">
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Recipient</span>
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">{t("bp.recipient")}</span>
               <span className="text-sm font-bold text-slate-800 dark:text-white">{phone}</span>
             </div>
           )}
           {network && (
             <div className="px-4 py-3 flex justify-between items-center border-b border-slate-50 dark:border-slate-800">
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Network</span>
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">{t("bp.network")}</span>
               <span className="text-sm font-bold text-slate-800 dark:text-white">{network}</span>
             </div>
           )}
           {planName && (
             <div className="px-4 py-3 flex justify-between items-center border-b border-slate-50 dark:border-slate-800">
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Plan / Value</span>
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">{t("bp.planValue")}</span>
               <span className="text-sm font-bold text-slate-800 dark:text-white">{planName}</span>
             </div>
           )}
           {ptsSavings > 0 && (
             <div className="px-4 py-3 flex justify-between items-center border-b border-slate-50 dark:border-slate-800">
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Points Discount</span>
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">{t("bp.pointsDiscount")}</span>
               <span className="text-sm font-bold text-green-600 dark:text-green-400">−{fmt(ptsSavings)}</span>
             </div>
           )}
           {cbSavings > 0 && (
             <div className="px-4 py-3 flex justify-between items-center border-b border-slate-50 dark:border-slate-800">
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Cashback Applied</span>
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">{t("bp.cashbackApplied")}</span>
               <span className="text-sm font-bold text-green-600 dark:text-green-400">−{fmt(cbSavings)}</span>
             </div>
           )}
           {couponSavings > 0 && (
             <div className="px-4 py-3 flex justify-between items-center border-b border-slate-50 dark:border-slate-800">
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Coupon Discount</span>
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">{t("bp.couponDiscount")}</span>
               <span className="text-sm font-bold text-green-600 dark:text-green-400">−{fmt(couponSavings)}</span>
             </div>
           )}
           <div className="px-4 py-3 flex justify-between items-center bg-green-50 dark:bg-green-900/20">
-            <span className="text-[11px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-200">Total to Pay</span>
+            <span className="text-[11px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-200">{t("bp.totalToPay")}</span>
             {isFree
               ? <span className="text-lg font-black text-green-600 dark:text-green-400">₦0.00</span>
               : <AmountDisplay amount={finalAmt} size="stat" align="right" className="text-green-600 dark:text-green-400" style={{ minWidth: 0, flex: '0 0 auto', maxWidth: '55%' }} />
@@ -1201,18 +1207,18 @@ function ConfirmPaymentSheet({ data, onConfirm, onCancel }) {
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" strokeLinecap="round">
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
           </svg>
-          <p className="text-[10px] font-semibold text-green-700 dark:text-green-400">Secured by Paystack · 256-bit SSL Encryption</p>
+          <p className="text-[10px] font-semibold text-green-700 dark:text-green-400">{t("bp.secured")}</p>
         </div>
 
         {/* Actions */}
         <div className="px-5 pb-[calc(2rem+env(safe-area-inset-bottom,0px))] space-y-3">
           <button onClick={onConfirm}
             className="w-full py-4 rounded-2xl text-white font-black text-base active:scale-[0.98] transition-transform shadow-lg bg-gradient-to-br from-green-600 to-emerald-600">
-            {isFree ? "Activate Free Service" : "Confirm & Pay"}
+            {isFree ? t("bp.activateFree") : t("bp.confirmPay")}
           </button>
           <button onClick={onCancel}
             className="w-full text-center text-sm font-semibold py-3 min-h-[44px] text-slate-500 dark:text-slate-400 rounded-xl bg-slate-100 dark:bg-slate-800 active:scale-[0.98] transition-transform">
-            Cancel
+            {t("common.cancel")}
           </button>
         </div>
       </div>
@@ -1264,6 +1270,7 @@ async function shareBillReceiptFile(file) {
 
 /* ─── Stages 2–4: processing → delivery → receipt ──────────────────────── */
 function BillResultOverlay({ saving, fulfillResult, profile, businessName, staffName, onDone, onShareReceipt, onReportIssue }) {
+  const t = useT();
   const catLabel = fulfillResult?.cat
     ? (CATS.find(c => c.id === fulfillResult.cat)?.label || "Bill Payment")
     : "Bill Payment";
@@ -1399,8 +1406,8 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
             </div>
           </div>
           <div className="text-center space-y-2">
-            <p className="text-lg font-black text-slate-800 dark:text-white">Payment Confirmed!</p>
-            <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">Delivering your service, please wait…</p>
+            <p className="text-lg font-black text-slate-800 dark:text-white">{t("bp.paymentConfirmed")}</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">{t("bp.deliveringService")}</p>
             <div className="flex items-center justify-center gap-2 pt-2">
               {[0, 150, 300].map(d => (
                 <div key={d} className="w-2 h-2 rounded-full bg-green-500 animate-bounce"
@@ -1424,34 +1431,34 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
               </div>
             </div>
             <div className="text-center">
-              <p className="text-xl font-black text-slate-800 dark:text-white">Check Your Meter</p>
-              <p className="text-xs text-slate-400 mt-1 leading-relaxed">Payment received · Token may already be dispensed</p>
+              <p className="text-xl font-black text-slate-800 dark:text-white">{t("bp.checkMeter")}</p>
+              <p className="text-xs text-slate-400 mt-1 leading-relaxed">{t("bp.checkMeterDesc")}</p>
             </div>
           </div>
           <div className="rounded-2xl overflow-hidden shadow-sm border-[1.5px] border-amber-200 dark:border-amber-700">
             <div className="px-4 py-2.5 bg-amber-100 dark:bg-amber-900/20">
-              <p className="text-[9px] font-black uppercase tracking-widest text-amber-800 dark:text-amber-200">What Happened</p>
+              <p className="text-[9px] font-black uppercase tracking-widest text-amber-800 dark:text-amber-200">{t("bp.whatHappened")}</p>
             </div>
             <div className="bg-white dark:bg-slate-800 px-4 py-3 space-y-2">
               <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
-                Your payment was successful. The electricity provider recorded this transaction but did not return a token number. <strong>The token may already be loaded on your meter</strong> — please check before retrying.
+                {t("bp.tokenExplanation")}
               </p>
             </div>
           </div>
           <div className="rounded-2xl overflow-hidden shadow-sm border border-green-200 dark:border-green-800">
             <div className="px-4 py-2.5 bg-green-50 dark:bg-green-900/20">
-              <p className="text-[9px] font-black uppercase tracking-widest text-green-700 dark:text-green-400">Payment Reference · Keep This</p>
+              <p className="text-[9px] font-black uppercase tracking-widest text-green-700 dark:text-green-400">{t("bp.paymentRef")}</p>
             </div>
             <div className="bg-white dark:bg-slate-800 px-4 py-3 space-y-1">
               <p className="font-mono text-sm font-black break-all text-green-700 dark:text-green-400">{fulfillResult.psRef}</p>
               <p className="text-xs text-slate-400 leading-relaxed">
-                If the token is not on your meter within 30 minutes, contact support with this reference.
+                {t("bp.refNote")}
               </p>
             </div>
           </div>
           <button onClick={onDone}
             className="w-full py-4 font-black rounded-xl text-sm text-white shadow-lg active:scale-[0.98] transition-transform bg-gradient-to-br from-blue-950 to-blue-800">
-            Done
+            {t("bp.done")}
           </button>
         </div>
       )}
@@ -1462,7 +1469,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
           {/* Slim title bar */}
           <div className="flex-shrink-0 flex items-center justify-between px-5 py-3 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800">
             <p className="text-sm font-bold text-slate-800 dark:text-white truncate">{catLabel} Receipt</p>
-            <button onClick={onDone} className="text-sm font-semibold px-4 py-2.5 min-h-[44px] inline-flex items-center rounded-lg active:scale-95 transition-transform text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800">Done</button>
+            <button onClick={onDone} className="text-sm font-semibold px-4 py-2.5 min-h-[44px] inline-flex items-center rounded-lg active:scale-95 transition-transform text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800">{t("bp.done")}</button>
           </div>
 
           {/* Scrollable content */}
@@ -1476,7 +1483,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
                     <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
                   </svg>
                   <p className="text-[10px] font-black uppercase tracking-widest text-amber-800 dark:text-amber-300">
-                    {fulfillResult.elecToken ? "Electricity Token — Save This!" : "Getting Your Token..."}
+                    {fulfillResult.elecToken ? t("bp.tokenTitle") : t("bp.gettingToken")}
                   </p>
                 </div>
                 {fulfillResult.elecToken ? (
@@ -1496,9 +1503,9 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                         <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
                       </svg>
-                      Copy Token
+                      {t("bp.copyToken")}
                     </button>
-                    <p className="text-[10px] text-slate-400 text-center">Enter this token on your prepaid meter to load your units</p>
+                    <p className="text-[10px] text-slate-400 text-center">{t("bp.tokenInstruction")}</p>
                   </div>
                 ) : (
                   <div className="bg-white px-4 py-6 flex flex-col items-center gap-3">
@@ -1506,8 +1513,8 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
                       <div className="absolute inset-0 rounded-full border-4 border-amber-100" />
                       <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-amber-400 animate-spin" />
                     </div>
-                    <p className="text-xs font-semibold text-slate-500 text-center">Retrieving your token from provider...</p>
-                    <p className="text-[10px] text-slate-400 text-center">This can take up to 90 seconds. Please do not close this screen.</p>
+                    <p className="text-xs font-semibold text-slate-500 text-center">{t("bp.retrievingToken")}</p>
+                    <p className="text-[10px] text-slate-400 text-center">{t("bp.retrievingDesc")}</p>
                   </div>
                 )}
               </div>
@@ -1522,7 +1529,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
                       <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
                     </svg>
                   </div>
-                  <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest">PIN(s) / Voucher(s)</p>
+                  <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest">{t("bp.pinVouchers")}</p>
                   <span className="ml-auto text-[9px] font-black text-white px-2 py-0.5 rounded-full bg-green-600">
                     {fulfillResult.pinsArr.length}
                   </span>
@@ -1555,7 +1562,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
             {fulfillResult.cardDetails && (
               <div className="mx-4 mt-4 rounded-2xl overflow-hidden shadow-sm border border-slate-200 dark:border-slate-700">
                 <div className="px-4 py-2.5 bg-blue-50 dark:bg-blue-900/20">
-                  <p className="text-[9px] font-black uppercase tracking-widest text-blue-700 dark:text-blue-300">Card / Scratch Details</p>
+                  <p className="text-[9px] font-black uppercase tracking-widest text-blue-700 dark:text-blue-300">{t("bp.cardDetails")}</p>
                 </div>
                 <div className="bg-white px-4 py-3">
                   <p className="font-mono text-sm font-bold text-slate-800 break-all">{fulfillResult.cardDetails}</p>
@@ -1586,7 +1593,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13"/>
               </svg>
-              Share Receipt
+              {t("bp.shareReceipt")}
             </button>
             <div className="flex gap-2">
               <button
@@ -1617,16 +1624,16 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z"/>
                   </svg>
-                  Print PDF
+                  {t("bp.printPDF")}
                 </button>
               )}
             </div>
             <button onClick={onDone}
               className="w-full py-3 rounded-2xl text-sm font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 active:scale-[0.98] transition-transform">
-              Done
+              {t("bp.done")}
             </button>
             <div className="flex items-center justify-center gap-6 pt-0.5">
-              <button onClick={onReportIssue} className="text-xs font-semibold py-1 text-slate-400">Report Issue</button>
+              <button onClick={onReportIssue} className="text-xs font-semibold py-1 text-slate-400">{t("bp.reportIssue")}</button>
             </div>
           </div>
         </>
@@ -1646,23 +1653,23 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
             </div>
           </div>
           <div className="text-center space-y-2">
-            <p className="text-2xl font-black text-slate-800">Payment Disrupted</p>
+            <p className="text-2xl font-black text-slate-800">{t("bp.disrupted")}</p>
             <div className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-black bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-[1.5px] border-green-200 dark:border-green-800">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-              NOT CHARGED
+              {t("bp.notCharged")}
             </div>
             <p className="text-sm text-slate-500 leading-relaxed pt-1">
-              Your payment did not complete — the Paystack page may have been closed or timed out.
+              {t("bp.disruptedDesc")}
             </p>
           </div>
           {/* Info box */}
           <div className="w-full rounded-2xl px-5 py-4 text-center bg-amber-50 dark:bg-amber-900/20 border-[1.5px] border-amber-200 dark:border-amber-700">
-            <p className="text-sm font-bold text-amber-800 dark:text-amber-200">Your account has not been debited.</p>
-            <p className="text-xs mt-1 text-amber-700 dark:text-amber-300">You may safely try your payment again.</p>
+            <p className="text-sm font-bold text-amber-800 dark:text-amber-200">{t("bp.notDebited")}</p>
+            <p className="text-xs mt-1 text-amber-700 dark:text-amber-300">{t("bp.safeToRetry")}</p>
           </div>
           <button onClick={onDone}
             className="w-full py-4 font-black rounded-xl text-sm text-white shadow-lg active:scale-[0.98] transition-transform bg-gradient-to-br from-blue-950 to-blue-800">
-            Try Again
+            {t("bp.tryAgain")}
           </button>
         </div>
       )}
@@ -1683,8 +1690,8 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
               </div>
             </div>
             <div className="text-center">
-              <p className="text-xl font-black text-slate-800">We&apos;re Sorting This Out</p>
-              <p className="text-xs text-slate-400 mt-1 leading-relaxed">Payment received · Our team has been alerted</p>
+              <p className="text-xl font-black text-slate-800">{t("bp.sortingOut")}</p>
+              <p className="text-xs text-slate-400 mt-1 leading-relaxed">{t("bp.alertedTeam")}</p>
             </div>
           </div>
 
@@ -1720,15 +1727,15 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13"/>
               </svg>
-              Share Receipt
+              {t("bp.shareReceipt")}
             </button>
             <button onClick={onDone}
               className="w-full py-3.5 font-bold rounded-2xl text-sm active:scale-[0.98] transition-transform text-slate-400">
-              Done
+              {t("bp.done")}
             </button>
             <button onClick={onReportIssue}
               className="w-full text-center py-1">
-              <span className="text-xs font-semibold text-slate-300 dark:text-slate-500">Report an Issue</span>
+              <span className="text-xs font-semibold text-slate-300 dark:text-slate-500">{t("bp.reportIssue")}</span>
             </button>
           </div>
         </div>
@@ -1747,7 +1754,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
             onClick={e => e.stopPropagation()}
           >
             <div className="w-10 h-1 bg-slate-200 rounded-full mx-auto mt-3 mb-4" />
-            <p className="text-sm font-bold text-slate-700 text-center mb-4">Share Receipt</p>
+            <p className="text-sm font-bold text-slate-700 text-center mb-4">{t("bp.shareReceipt")}</p>
 
             <button
               onClick={() => handleShareOption('image')}
@@ -3211,7 +3218,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
               </div>
               {usedBillCats.length > 1 && (
                 <div className="flex gap-2 mb-3 overflow-x-auto no-scrollbar">
-                  {[{ id: "all", label: t("bill.airtime") ? "All Services" : "All Services" }, ...usedBillCats].map(c => (
+                  {[{ id: "all", label: t("bp.allServices") }, ...usedBillCats].map(c => (
                     <button key={c.id} onClick={() => setHistCat(c.id)}
                       className={`flex-shrink-0 px-3 py-1.5 rounded-full text-[11px] font-bold transition-colors ${
                         histCat === c.id

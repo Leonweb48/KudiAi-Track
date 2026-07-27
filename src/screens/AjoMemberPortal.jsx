@@ -609,7 +609,7 @@ function SupportInline({ client, session }) {
           <Svg d={P.check} size={28} color="#22c55e" sw={2.5} />
         </div>
         <div>
-          <p className="text-base font-extrabold text-slate-800 dark:text-white">Ticket Submitted</p>
+          <p className="text-base font-extrabold text-slate-800 dark:text-white">{t("coopMem.ticketSuccess")}</p>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
             Your ticket number is <span className="font-bold text-brand-500">#{done}</span>
           </p>
@@ -648,7 +648,7 @@ function SupportInline({ client, session }) {
         </select>
       </div>
       <div>
-        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Subject *</p>
+        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">{t("coopMem.subjectField")}</p>
         <input placeholder="Brief summary of your issue" value={form.subject}
           onChange={e => setForm(f => ({ ...f, subject: e.target.value }))} required
           className="w-full h-11 px-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/30" />
@@ -896,6 +896,7 @@ function MoneySummaryRow({ label1, val1, label2, val2, loading, highlightVal2 = 
 // children (action form) appear below in an inline expansion.
 
 function MoneyCycleCard({ cycle, saved, net, availableNow, locked, lockReason, selected, onSelect, mode, children }) {
+  const t = useT();
   return (
     <div className={`mb-2 rounded-xl border-2 transition overflow-hidden ${
       selected
@@ -923,7 +924,7 @@ function MoneyCycleCard({ cycle, saved, net, availableNow, locked, lockReason, s
           )}
           {(mode === "pay" || mode === "deposit") && (
             <span className="text-[10px] font-bold text-brand-600 dark:text-brand-400">
-              {cycle.commission_model === "first_period" ? "Fixed savings" : "Flexible savings"}
+              {cycle.commission_model === "first_period" ? t("ajoPt.fixedSavings") : t("ajoPt.flexSavings")}
             </span>
           )}
         </div>
@@ -938,10 +939,11 @@ function MoneyCycleCard({ cycle, saved, net, availableNow, locked, lockReason, s
 }
 
 function MoneyGroupCard({ group, saved, availableNow, selected, onSelect, mode, children }) {
+  const t = useT();
   const rs = group.round_status || "not_started";
   const isReleased = rs === "closed";
   const isActive   = rs === "active";
-  const statusLabel = rs === "not_started" ? "Not started" : isActive ? "Saving" : rs === "target_met" ? "Target met" : "Released";
+  const statusLabel = rs === "not_started" ? t("ajoPt.notStarted") : isActive ? t("ajoPt.saving") : rs === "target_met" ? t("ajoPt.targetMet") : t("ajoPt.released");
   const statusColor = isReleased
     ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400"
     : isActive ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400"
@@ -964,10 +966,10 @@ function MoneyGroupCard({ group, saved, availableNow, selected, onSelect, mode, 
           )}
           {mode === "withdraw" && (isReleased
             ? <span className="text-xs font-bold text-green-600 dark:text-green-400 tabular-nums">{fmt(availableNow ?? saved)} available</span>
-            : <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">Locked until group closes</span>
+            : <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">{t("ajoPt.lockedUntilClose")}</span>
           )}
           {(mode === "pay" || mode === "deposit") && (
-            <span className="text-[10px] text-blue-600 dark:text-blue-400 font-medium">Group savings</span>
+            <span className="text-[10px] text-blue-600 dark:text-blue-400 font-medium">{t("ajoPt.groupSavings")}</span>
           )}
         </div>
       </button>
@@ -982,13 +984,14 @@ function MoneyGroupCard({ group, saved, availableNow, selected, onSelect, mode, 
 
 // Esusu card — "Group pot (all members)" is always distinct from client's stake
 function MoneyEsusuCard({ rd, client, esusuLockedTotal, roundCount, selected, onSelect, mode, children }) {
-  const myTurn = (rd.turns || []).find(t => t.client_id === client.id);
+  const t = useT();
+  const myTurn = (rd.turns || []).find(turn => turn.client_id === client.id);
   const myTurnStatus = myTurn?.status;
   const hasPaid = myTurnStatus === "paid";
   const isCurrent = myTurnStatus === "current";
   const hasPaidContrib = !!rd.contribution_ticks?.[client.id];
   const myStake = roundCount > 0 ? Math.round(esusuLockedTotal / roundCount) : 0;
-  const statusLabel = hasPaid ? "Payout received" : isCurrent ? "Your turn" : "Waiting";
+  const statusLabel = hasPaid ? t("ajoPt.payoutReceived") : isCurrent ? t("ajoPt.yourTurn") : t("ajoPt.waiting");
   const statusColor = hasPaid
     ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400"
     : isCurrent ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400"
@@ -1009,7 +1012,7 @@ function MoneyEsusuCard({ rd, client, esusuLockedTotal, roundCount, selected, on
             Group pot (all members) <span className="font-bold text-slate-700 dark:text-slate-200 tabular-nums">{fmt(rd.pot_size || 0)}</span>
           </span>
           <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${hasPaidContrib ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400" : "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400"}`}>
-            {hasPaidContrib ? "Period paid" : "Pending"}
+            {hasPaidContrib ? t("ajoPt.periodPaid") : "Pending"}
           </span>
         </div>
         {mode === "withdraw" && myStake > 0 && !hasPaid && (
@@ -1030,13 +1033,14 @@ function MoneyEsusuCard({ rd, client, esusuLockedTotal, roundCount, selected, on
 
 // Simple esusu card for Pay/Deposit (no rotationsData available there)
 function MoneyEsusuSimpleCard({ group, selected, onSelect, children }) {
+  const t = useT();
   return (
     <div className={`mb-2 rounded-xl border-2 transition overflow-hidden ${
       selected ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20" : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
     }`}>
       <button type="button" onClick={onSelect} className="w-full text-left px-3.5 py-3">
         <p className="text-sm font-extrabold text-slate-700 dark:text-slate-200">{group.name}</p>
-        <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Esusu rotation group</p>
+        <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">{t("ajoPt.esusuRotation")}</p>
       </button>
       {selected && children && (
         <div className="px-3.5 pb-3.5 pt-0.5 border-t border-slate-100 dark:border-slate-700">
@@ -1048,6 +1052,7 @@ function MoneyEsusuSimpleCard({ group, selected, onSelect, children }) {
 }
 
 function PayContributionModal({ client, clientGroups = [], cycles = [], onClose, onSuccess }) {
+  const t = useT();
   // ── Core state (unchanged from original) ──────────────────────────────────
   const [status,          setStatus]         = useState("idle");
   const [message,         setMessage]        = useState("");
@@ -1074,8 +1079,8 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], onClose,
   const esusuGroups   = clientGroups.filter(m => m.group?.group_mode === "esusu").map(m => m.group).filter(Boolean);
 
   const personalSubTabs = [
-    ...(fpCycles.length  > 0 ? [{ key: "first_period", label: "First Period" }] : []),
-    ...(pctCycles.length > 0 ? [{ key: "percent",      label: "Percentage" }]   : []),
+    ...(fpCycles.length  > 0 ? [{ key: "first_period", label: t("ajoPt.firstPeriodTab") }] : []),
+    ...(pctCycles.length > 0 ? [{ key: "percent",      label: t("ajoPt.percentageTab") }]   : []),
   ];
 
   // Keep sub-tab on a valid choice when cycles change
@@ -1190,7 +1195,7 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], onClose,
         className="w-full py-3.5 bg-brand-500 hover:bg-brand-600 disabled:opacity-60 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2 shadow-md">
         {status === "loading"
           ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Opening Paystack…</>
-          : status === "awaiting" ? "Open Paystack again"
+          : status === "awaiting" ? t("ajoPt.openPaystack")
           : <>Pay {fmt(parseFloat(customAmt) || 0)} now</>}
       </button>
     </div>
@@ -1210,10 +1215,10 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], onClose,
           <div className="w-24 h-24 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mb-6 shadow-lg">
             <svg viewBox="0 0 24 24" fill="none" className="w-12 h-12 text-green-500" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M20 6L9 17l-5-5" /></svg>
           </div>
-          <p className="text-[11px] font-bold text-green-500 uppercase tracking-widest mb-1">Transaction Successful</p>
+          <p className="text-[11px] font-bold text-green-500 uppercase tracking-widest mb-1">{t("ajoPt.txnSuccess")}</p>
           <AmountDisplay amount={paidAmt || client?.contribution_amount || 0} size="hero" align="center" style={{ marginBottom: 4 }} />
-          <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">Added to your savings</p>
-          <p className="text-[11px] text-slate-400 dark:text-slate-500">Your balance has been updated.</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">{t("ajoPt.addedToSavings")}</p>
+          <p className="text-[11px] text-slate-400 dark:text-slate-500">{t("ajoPt.balanceUpdated")}</p>
         </div>
         <div className="flex-none px-6 pb-10 pt-4 space-y-3">
           <button onClick={() => setShowShare(true)}
@@ -1223,7 +1228,7 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], onClose,
             </svg>
             Share Receipt
           </button>
-          <button onClick={onClose} className="w-full py-3.5 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-2xl font-bold text-sm transition active:scale-[0.99]">Close</button>
+          <button onClick={onClose} className="w-full py-3.5 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-2xl font-bold text-sm transition active:scale-[0.99]">{t("common.close")}</button>
         </div>
       </div>
     );
@@ -1238,7 +1243,7 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], onClose,
           <div className="w-10 h-10 bg-green-100 dark:bg-green-900/40 rounded-2xl flex items-center justify-center flex-shrink-0">
             <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-green-600 dark:text-green-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M12 5v14M5 12l7 7 7-7" /></svg>
           </div>
-          <p className="flex-1 font-extrabold text-slate-800 dark:text-white">Pay your contribution</p>
+          <p className="flex-1 font-extrabold text-slate-800 dark:text-white">{t("ajoPt.payContrib")}</p>
           <button onClick={onClose} className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-500">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="w-3.5 h-3.5"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
           </button>
@@ -1247,9 +1252,9 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], onClose,
         {/* Three-tab bar */}
         <MoneyTabBar
           tabs={[
-            { key: "personal", label: "Personal" },
-            ...(savingsGroups.length > 0 ? [{ key: "groups", label: "Savings Groups" }] : []),
-            ...(esusuGroups.length    > 0 ? [{ key: "esusu",  label: "Esusu" }]          : []),
+            { key: "personal", label: t("ajoPt.personalTab") },
+            ...(savingsGroups.length > 0 ? [{ key: "groups", label: t("ajoPt.groupsTab") }] : []),
+            ...(esusuGroups.length    > 0 ? [{ key: "esusu",  label: t("ajoPt.esusuTab") }]          : []),
           ]}
           active={mainTab}
           onChange={tab => {
@@ -1268,7 +1273,7 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], onClose,
               onChange={sub => { setPersonalSubTab(sub); setSelectedCycleId(null); setMessage(""); }} />
 
             {personalSubTabs.length === 0 && (
-              <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">No active savings plans</p>
+              <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">{t("ajoPt.noActivePlans")}</p>
             )}
 
             {personalSubTab === "first_period" && fpCycles.map(cy => (
@@ -1289,10 +1294,10 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], onClose,
 
             {/* No cycles at all fallback */}
             {personalSubTab === "first_period" && fpCycles.length === 0 && (
-              <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-4">No first-period cycles</p>
+              <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-4">{t("ajoPt.noActivePlans")}</p>
             )}
             {personalSubTab === "percent" && pctCycles.length === 0 && (
-              <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-4">No percentage cycles</p>
+              <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-4">{t("ajoPt.noActivePlans")}</p>
             )}
           </>
         )}
@@ -1301,7 +1306,7 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], onClose,
         {mainTab === "groups" && (
           <>
             {savingsGroups.length === 0 && (
-              <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">No savings groups</p>
+              <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">{t("ajoPt.noActivePlans")}</p>
             )}
             {savingsGroups.map(g => (
               <MoneyGroupCard key={g.id} group={g} saved={0} mode="pay"
@@ -1317,7 +1322,7 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], onClose,
         {mainTab === "esusu" && (
           <>
             {esusuGroups.length === 0 && (
-              <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">No esusu groups</p>
+              <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">{t("ajoPt.noActivePlans")}</p>
             )}
             {esusuGroups.map(g => (
               <MoneyEsusuSimpleCard key={g.id} group={g}
@@ -1361,6 +1366,7 @@ const QUICK_SERVICES = [
 
 // ── Contribution calendar ─────────────────────────────────────────────────
 function ContribCalendar({ contributions }) {
+  const t = useT();
   const contribDates = new Set(
     contributions.filter(c => c.type === "contribution" && c.status === "completed")
       .map(c => (c.created_at || "").slice(0, 10))
@@ -1374,7 +1380,7 @@ function ContribCalendar({ contributions }) {
   }
   return (
     <div>
-      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Activity — last 90 days</p>
+      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">{t("ajoPt.activityPeriod")}</p>
       <div className="flex flex-wrap gap-0.5">
         {cells.map(({ date, has }) => (
           <div key={date} title={fmtDate(date)}
@@ -1384,11 +1390,11 @@ function ContribCalendar({ contributions }) {
       <div className="flex items-center gap-3 mt-2">
         <div className="flex items-center gap-1.5">
           <div className="w-3 h-3 rounded-sm bg-brand-500" />
-          <span className="text-[10px] text-slate-400">Contributed</span>
+          <span className="text-[10px] text-slate-400">{t("ajoPt.contributed")}</span>
         </div>
         <div className="flex items-center gap-1.5">
           <div className="w-3 h-3 rounded-sm bg-slate-200 dark:bg-slate-700" />
-          <span className="text-[10px] text-slate-400">No activity</span>
+          <span className="text-[10px] text-slate-400">{t("ajoPt.noActivity")}</span>
         </div>
       </div>
     </div>
@@ -1397,6 +1403,7 @@ function ContribCalendar({ contributions }) {
 
 // ── First-login force-password-change ─────────────────────────────────────
 function AjoMemberFirstLogin({ ajoClient }) {
+  const t = useT();
   const [password, setPassword] = useState("");
   const [confirm,  setConfirm]  = useState("");
   const [showPwd,  setShowPwd]  = useState(false);
@@ -1408,8 +1415,8 @@ function AjoMemberFirstLogin({ ajoClient }) {
   const colors = ["", "bg-red-400", "bg-amber-400", "bg-blue-500", "bg-green-500"];
 
   const submit = async () => {
-    if (password.length < 8) { setError("Minimum 8 characters"); return; }
-    if (password !== confirm) { setError("Passwords do not match"); return; }
+    if (password.length < 8) { setError(t("setup.minChars")); return; }
+    if (password !== confirm) { setError(t("setup.mismatch")); return; }
     setSaving(true); setError("");
     const { error: err } = await supabase.auth.updateUser({ password, data: { must_change_password: false } });
     if (err) { setError(friendlyError(err)); setSaving(false); return; }
@@ -1424,8 +1431,8 @@ function AjoMemberFirstLogin({ ajoClient }) {
             <path d="M20 6L9 17l-5-5" />
           </svg>
         </div>
-        <h2 className="text-xl font-extrabold text-slate-800 dark:text-white mb-2">Password set!</h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400">Taking you to your dashboard…</p>
+        <h2 className="text-xl font-extrabold text-slate-800 dark:text-white mb-2">{t("setup.passwordSet")}</h2>
+        <p className="text-sm text-slate-500 dark:text-slate-400">{t("setup.takingDash")}</p>
         <div className="mt-6 w-8 h-8 border-[3px] border-brand-500 border-t-transparent rounded-full animate-spin mx-auto" />
       </div>
     </div>
@@ -1439,22 +1446,22 @@ function AjoMemberFirstLogin({ ajoClient }) {
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
           </svg>
         </div>
-        <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white">Set Your Password</h1>
+        <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white">{t("setup.setPassword")}</h1>
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
           Hi {ajoClient?.full_name?.split(" ")[0] || "there"}! Choose a password you'll use every time you log in.
         </p>
       </div>
       <div className="flex-1 px-5 pt-8 pb-10 space-y-5">
         <div>
-          <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">New Password *</label>
+          <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">{t("setup.newPassword")}</label>
           <div className="relative">
             <input type={showPwd ? "text" : "password"} value={password}
               onChange={e => { setPassword(e.target.value); setError(""); }}
-              placeholder="Minimum 8 characters"
+              placeholder={t("setup.minChars")}
               className="w-full border border-slate-200 dark:border-slate-700 rounded-xl pl-4 pr-14 py-3 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500" />
             <button type="button" onClick={() => setShowPwd(v => !v)}
               className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-brand-500 dark:text-brand-400">
-              {showPwd ? "Hide" : "Show"}
+              {showPwd ? t("setup.hide") : t("setup.show")}
             </button>
           </div>
           {password && (
@@ -1466,17 +1473,17 @@ function AjoMemberFirstLogin({ ajoClient }) {
           )}
         </div>
         <div>
-          <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Confirm Password *</label>
+          <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">{t("setup.confirmPassword")}</label>
           <input type={showPwd ? "text" : "password"} value={confirm}
             onChange={e => { setConfirm(e.target.value); setError(""); }}
-            placeholder="Repeat your password"
+            placeholder={t("setup.repeatPassword")}
             className={`w-full border rounded-xl px-4 py-3 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500 ${confirm && confirm !== password ? "border-red-400 dark:border-red-600" : "border-slate-200 dark:border-slate-700"}`} />
-          {confirm && confirm !== password && <p className="text-[10px] text-red-500 mt-1 font-medium">Passwords don't match</p>}
+          {confirm && confirm !== password && <p className="text-[10px] text-red-500 mt-1 font-medium">{t("setup.mismatch")}</p>}
         </div>
         {error && <p className="text-xs text-red-500 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/40 rounded-xl px-4 py-2.5">{error}</p>}
         <button onClick={submit} disabled={saving || password.length < 8 || password !== confirm}
           className="w-full bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white font-bold rounded-2xl py-4 text-sm transition">
-          {saving ? "Saving…" : "Set Password & Enter Dashboard →"}
+          {saving ? t("setup.saving") : t("setup.setBtn")}
         </button>
         <button onClick={() => import("../utils/logout").then(m => m.performLogout())} className="w-full text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition text-center">
           Sign out
@@ -1488,6 +1495,7 @@ function AjoMemberFirstLogin({ ajoClient }) {
 
 // ── Change password modal ─────────────────────────────────────────────────
 function ChangePasswordModal({ onClose }) {
+  const t = useT();
   const [pwd,     setPwd]     = useState("");
   const [confirm, setConfirm] = useState("");
   const [showPwd, setShowPwd] = useState(false);
@@ -1496,8 +1504,8 @@ function ChangePasswordModal({ onClose }) {
   const [success, setSuccess] = useState(false);
 
   const handle = async () => {
-    if (pwd.length < 8) { setError("Minimum 8 characters"); return; }
-    if (pwd !== confirm) { setError("Passwords do not match"); return; }
+    if (pwd.length < 8) { setError(t("setup.minChars")); return; }
+    if (pwd !== confirm) { setError(t("setup.mismatch")); return; }
     setSaving(true);
     const { error: err } = await supabase.auth.updateUser({ password: pwd, data: { must_change_password: false } });
     if (err) { setError(friendlyError(err)); setSaving(false); return; }
@@ -1509,7 +1517,7 @@ function ChangePasswordModal({ onClose }) {
     <div className="fixed inset-0 z-[60] bg-black/60 flex items-end justify-center" onClick={onClose}>
       <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-t-3xl px-5 py-6 shadow-2xl max-h-[85dvh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="w-10 h-1 bg-slate-300 dark:bg-slate-600 rounded-full mx-auto mb-5" />
-        <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-4">Change Password</h3>
+        <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-4">{t("setup.changePassword")}</h3>
         {success ? (
           <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl px-4 py-3 text-green-700 dark:text-green-400 font-semibold text-sm text-center">
             Password updated successfully!
@@ -1519,11 +1527,11 @@ function ChangePasswordModal({ onClose }) {
             {error && <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-3 py-2.5 mb-3"><p className="text-xs text-red-600 dark:text-red-400">{error}</p></div>}
             <div className="space-y-3 mb-4">
               <div className="relative">
-                <input type={showPwd ? "text" : "password"} value={pwd} onChange={e => setPwd(e.target.value)} placeholder="New password (min. 8 chars)"
+                <input type={showPwd ? "text" : "password"} value={pwd} onChange={e => setPwd(e.target.value)} placeholder={t("setup.minChars")}
                   className="w-full px-3 pr-14 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
-                <button type="button" onClick={() => setShowPwd(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-brand-500">{showPwd ? "Hide" : "Show"}</button>
+                <button type="button" onClick={() => setShowPwd(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-brand-500">{showPwd ? t("setup.hide") : t("setup.show")}</button>
               </div>
-              <input type={showPwd ? "text" : "password"} value={confirm} onChange={e => setConfirm(e.target.value)} placeholder="Confirm new password"
+              <input type={showPwd ? "text" : "password"} value={confirm} onChange={e => setConfirm(e.target.value)} placeholder={t("setup.confirmPassword")}
                 className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
             </div>
             <button onClick={handle} disabled={saving || pwd.length < 8 || pwd !== confirm}
@@ -1539,6 +1547,7 @@ function ChangePasswordModal({ onClose }) {
 
 
 function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo, onClose, onSuccess }) {
+  const t = useT();
   // ── Core state (unchanged from original) ──────────────────────────────────
   const [amount,         setAmount]        = useState("");
   const [payerName,      setPayerName]     = useState("");
@@ -1568,8 +1577,8 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
   const esusuGroups   = clientGroups.filter(m => m.group?.group_mode === "esusu").map(m => m.group).filter(Boolean);
 
   const personalSubTabs = [
-    ...(fpCycles.length  > 0 ? [{ key: "first_period", label: "First Period" }] : []),
-    ...(pctCycles.length > 0 ? [{ key: "percent",      label: "Percentage" }]   : []),
+    ...(fpCycles.length  > 0 ? [{ key: "first_period", label: t("ajoPt.firstPeriodTab") }] : []),
+    ...(pctCycles.length > 0 ? [{ key: "percent",      label: t("ajoPt.percentageTab") }]  : []),
   ];
 
   useEffect(() => {
@@ -1596,7 +1605,7 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
   const pickFile = (e) => {
     const f = e.target.files?.[0];
     if (!f) return;
-    if (f.size > 2 * 1024 * 1024) { setError("Image must be under 2 MB"); return; }
+    if (f.size > 2 * 1024 * 1024) { setError(t("error.somethingWrong")); return; }
     setProofFile(f);
     setProofPrev(URL.createObjectURL(f));
     setError("");
@@ -1604,7 +1613,7 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
 
   // ── handleSubmit (unchanged logic) ────────────────────────────────────────
   const handleSubmit = async () => {
-    if (!amtNum || amtNum <= 0) { setError("Enter a valid amount"); return; }
+    if (!amtNum || amtNum <= 0) { setError(t("error.somethingWrong")); return; }
     if (!navigator.onLine) { setError("You're offline — connect to the internet to make a deposit."); return; }
     setSaving(true); setError("");
     try {
@@ -1640,7 +1649,7 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
     <div className="pt-3 space-y-3">
       {/* Amount */}
       <div>
-        <p className="text-[10px] font-bold text-brand-500 dark:text-brand-400 uppercase tracking-wider mb-2">How much did you send? <span className="text-red-400">*</span></p>
+        <p className="text-[10px] font-bold text-brand-500 dark:text-brand-400 uppercase tracking-wider mb-2">{t("ajoPt.howMuchSent")} <span className="text-red-400">*</span></p>
         <div className="flex items-center gap-2">
           <span className="text-xl font-black text-brand-600 dark:text-brand-300">₦</span>
           <input
@@ -1676,7 +1685,7 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
       {uploading && (
         <div>
           <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[11px] font-bold text-brand-600 dark:text-brand-400">Uploading screenshot…</span>
+            <span className="text-[11px] font-bold text-brand-600 dark:text-brand-400">{t("ajoPt.uploading")}</span>
             <div className="w-3.5 h-3.5 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
           </div>
           <div className="h-1.5 bg-brand-100 dark:bg-brand-800 rounded-full overflow-hidden">
@@ -1721,7 +1730,7 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
 
       <button
         onClick={() => {
-          if (!amtNum || amtNum <= 0) { setError("Enter a valid amount"); return; }
+          if (!amtNum || amtNum <= 0) { setError(t("error.somethingWrong")); return; }
           setTxnPin({
             title: "Confirm Deposit",
             amount: Math.round(amtNum * 100),
@@ -1754,10 +1763,10 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
                 <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
               </svg>
             </div>
-            <p className="text-[10px] font-bold text-amber-500 uppercase tracking-widest mb-1">Submitted</p>
-            <h3 className="text-lg font-extrabold text-slate-800 dark:text-white mb-2">Deposit submitted!</h3>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mb-5 leading-relaxed px-2">Your agent will confirm shortly — you&apos;ll get a notification when your balance is updated.</p>
-            <button onClick={onClose} className="w-full py-3.5 bg-slate-800 dark:bg-slate-700 text-white rounded-2xl font-bold text-sm active:scale-[0.99] transition">Done</button>
+            <p className="text-[10px] font-bold text-amber-500 uppercase tracking-widest mb-1">{t("ajoPt.depositedTitle")}</p>
+            <h3 className="text-lg font-extrabold text-slate-800 dark:text-white mb-2">{t("ajoPt.depositSuccess")}</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mb-5 leading-relaxed px-2">{t("ajoPt.depositPending")}</p>
+            <button onClick={onClose} className="w-full py-3.5 bg-slate-800 dark:bg-slate-700 text-white rounded-2xl font-bold text-sm active:scale-[0.99] transition">{t("bp.done")}</button>
           </div>
         ) : (
           <>
@@ -1769,8 +1778,8 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
                 </svg>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-extrabold text-slate-800 dark:text-white">Make a Deposit</p>
-                <p className="text-[11px] text-slate-400">Send money here, then tell us you&apos;ve paid</p>
+                <p className="font-extrabold text-slate-800 dark:text-white">{t("ajoPt.makeDeposit")}</p>
+                <p className="text-[11px] text-slate-400">{t("ajoPt.depositDesc")}</p>
               </div>
               <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 flex-shrink-0">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="w-4 h-4"><path d="M18 6L6 18M6 6l12 12" /></svg>
@@ -1785,10 +1794,10 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
               const bankName = isClientAcct ? clientBank.bank_name       : ownerBank.bank_name;
               return (
                 <div className="bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-800 rounded-2xl px-4 py-4 mb-4">
-                  <p className="text-[10px] font-bold text-brand-500 dark:text-brand-400 uppercase tracking-wider mb-3">Send money here</p>
+                  <p className="text-[10px] font-bold text-brand-500 dark:text-brand-400 uppercase tracking-wider mb-3">{t("ajoPt.sendHere")}</p>
                   <div className="space-y-2.5">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs text-slate-500 dark:text-slate-400 flex-shrink-0">Account Number</span>
+                      <span className="text-xs text-slate-500 dark:text-slate-400 flex-shrink-0">{t("ajoPt.accountNumber")}</span>
                       <div className="flex items-center gap-2 min-w-0">
                         <span className="text-sm font-black text-slate-800 dark:text-white tracking-widest tabular">{acctNum}</span>
                         <button onClick={() => copyText(acctNum, "acctNum")}
@@ -1802,7 +1811,7 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
                     </div>
                     {acctName && (
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs text-slate-500 dark:text-slate-400 flex-shrink-0">Account Name</span>
+                        <span className="text-xs text-slate-500 dark:text-slate-400 flex-shrink-0">{t("ajoPt.accountName")}</span>
                         <div className="flex items-center gap-2 min-w-0">
                           <span className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate">{acctName}</span>
                           <button onClick={() => copyText(acctName, "acctName")}
@@ -1817,7 +1826,7 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
                     )}
                     {bankName && (
                       <div className="flex items-center justify-between">
-                        <span className="text-xs text-slate-500 dark:text-slate-400">Bank</span>
+                        <span className="text-xs text-slate-500 dark:text-slate-400">{t("ajoPt.bank")}</span>
                         <span className="text-xs font-bold text-slate-700 dark:text-slate-200">{bankName}</span>
                       </div>
                     )}
@@ -1826,19 +1835,19 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
               );
             })() : (
               <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-3 py-2.5 mb-4">
-                <p className="text-xs text-amber-700 dark:text-amber-300 font-semibold">Bank details not set up yet. Contact your savings agent for transfer instructions.</p>
+                <p className="text-xs text-amber-700 dark:text-amber-300 font-semibold">{t("ajoPt.noBankDetails")}</p>
               </div>
             )}
 
             {/* Now pick which goal this deposit is for */}
-            <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">Which savings goal?</p>
+            <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">{t("ajoPt.whichGoal")}</p>
 
             {/* Three-tab bar */}
             <MoneyTabBar
               tabs={[
-                { key: "personal", label: "Personal" },
-                ...(savingsGroups.length > 0 ? [{ key: "groups", label: "Savings Groups" }] : []),
-                ...(esusuGroups.length    > 0 ? [{ key: "esusu",  label: "Esusu" }]          : []),
+                { key: "personal", label: t("ajoPt.personalTab") },
+                ...(savingsGroups.length > 0 ? [{ key: "groups", label: t("ajoPt.groupsTab") }] : []),
+                ...(esusuGroups.length    > 0 ? [{ key: "esusu",  label: t("ajoPt.esusuTab") }]          : []),
               ]}
               active={mainTab}
               onChange={tab => {
@@ -1857,7 +1866,7 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
                   onChange={sub => { setPersonalSubTab(sub); setSelectedCycleId(null); setError(""); }} />
 
                 {personalSubTabs.length === 0 && (
-                  <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">No active savings plans</p>
+                  <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">{t("ajoPt.noActivePlans")}</p>
                 )}
 
                 {personalSubTab === "first_period" && fpCycles.map(cy => (
@@ -1877,10 +1886,10 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
                 ))}
 
                 {personalSubTab === "first_period" && fpCycles.length === 0 && (
-                  <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-4">No first-period cycles</p>
+                  <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-4">{t("ajoPt.noActivePlans")}</p>
                 )}
                 {personalSubTab === "percent" && pctCycles.length === 0 && (
-                  <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-4">No percentage cycles</p>
+                  <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-4">{t("ajoPt.noActivePlans")}</p>
                 )}
               </>
             )}
@@ -1889,7 +1898,7 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
             {mainTab === "groups" && (
               <>
                 {savingsGroups.length === 0 && (
-                  <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">No savings groups</p>
+                  <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">{t("ajoPt.noActivePlans")}</p>
                 )}
                 {savingsGroups.map(g => (
                   <MoneyGroupCard key={g.id} group={g} saved={0} mode="deposit"
@@ -1905,7 +1914,7 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
             {mainTab === "esusu" && (
               <>
                 {esusuGroups.length === 0 && (
-                  <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">No esusu groups</p>
+                  <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">{t("ajoPt.noActivePlans")}</p>
                 )}
                 {esusuGroups.map(g => (
                   <MoneyEsusuSimpleCard key={g.id} group={g}
@@ -1927,6 +1936,7 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
 
 // ── Withdrawal request modal ──────────────────────────────────────────────
 function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotationsData = [], contributions = [], withdrawRequests = [], onClose, onSuccess }) {
+  const t = useT();
   // ── Core state (unchanged) ────────────────────────────────────────────────
   const [amount,        setAmount]        = useState("");
   const [saving,        setSaving]        = useState(false);
@@ -1995,8 +2005,8 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
   const pctCycles = cycles.filter(cy => cy.commission_model !== "first_period" && (cy.status === "active" || cy.status === "completed"));
 
   const personalSubTabs = [
-    ...(fpCycles.length  > 0 ? [{ key: "first_period", label: "First Period" }] : []),
-    ...(pctCycles.length > 0 ? [{ key: "percent",      label: "Percentage" }]   : []),
+    ...(fpCycles.length  > 0 ? [{ key: "first_period", label: t("ajoPt.firstPeriodTab") }] : []),
+    ...(pctCycles.length > 0 ? [{ key: "percent",      label: t("ajoPt.percentageTab") }]  : []),
   ];
 
   useEffect(() => {
@@ -2069,7 +2079,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
 
   // ── handleSubmit (unchanged attribution logic) ─────────────────────────────
   const handleSubmit = async () => {
-    if (!amtNum || amtNum <= 0)   { setError("Enter a valid amount"); return; }
+    if (!amtNum || amtNum <= 0)   { setError(t("error.somethingWrong")); return; }
     if (amtNum > activeCeiling) {
       const pendMsg = activePending > 0 ? ` (${fmt(activePending)} already pending)` : "";
       const lockParts = [];
@@ -2081,9 +2091,9 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
         : `Only ${fmt(activeCeiling)} is available${pendMsg}`);
       return;
     }
-    if (netAmt <= 0)              { setError("Amount too small after fee deduction"); return; }
+    if (netAmt <= 0)              { setError(t("error.somethingWrong")); return; }
     if (!acctForm.account_name || !acctForm.account_number || !acctForm.bank_code) {
-      setError("Add and verify your bank account before requesting a withdrawal"); return;
+      setError(t("ajoPt.addBankFirst")); return;
     }
     setSaving(true); setError("");
     try {
@@ -2127,7 +2137,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
   const withdrawalForm = (
     <>
       <div className="bg-slate-50 dark:bg-slate-700/50 rounded-2xl px-4 py-4 mb-3">
-        <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">How much do you want?</p>
+        <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">{t("ajoPt.howMuchWithdraw")}</p>
         <div className="flex items-center gap-2">
           <span className="text-2xl font-black text-slate-700 dark:text-slate-200">₦</span>
           <input
@@ -2141,7 +2151,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
           <p className="text-[11px] text-amber-500 mt-1">{fmt(activePending)} pending review — {fmt(activeCeiling)} available now</p>
         )}
         {amtNum > activeCeiling && (
-          <p className="text-[11px] text-red-500 mt-1">Exceeds available balance</p>
+          <p className="text-[11px] text-red-500 mt-1">{t("ajoPt.exceeded")}</p>
         )}
         {amtNum > 0 && amtNum <= activeCeiling && amtNum <= withdrawable && (
           <div className="mt-2 pt-2 border-t border-slate-200 dark:border-slate-600">
@@ -2162,10 +2172,10 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
 
       <div className="bg-slate-50 dark:bg-slate-700/40 border border-slate-200 dark:border-slate-600 rounded-2xl px-4 py-3 mb-3">
         <div className="flex items-center justify-between mb-2">
-          <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Payout Account</p>
+          <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">{t("ajoPt.payoutAccount")}</p>
           {!editingAcct && acctForm.account_name && (
             <button type="button" onClick={() => { setEditingAcct(true); setAcctVerified(false); }}
-              className="text-[11px] font-bold text-brand-500 dark:text-brand-400">Change</button>
+              className="text-[11px] font-bold text-brand-500 dark:text-brand-400">{t("ajoPt.change")}</button>
           )}
         </div>
         {!editingAcct && acctForm.account_name ? (
@@ -2209,7 +2219,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
 
       <button
         onClick={() => {
-          if (!amtNum || amtNum <= 0) { setError("Enter a valid amount"); return; }
+          if (!amtNum || amtNum <= 0) { setError(t("error.somethingWrong")); return; }
           if (amtNum > activeCeiling) {
             const pendMsg = activePending > 0 ? ` — ${fmt(activePending)} already pending review` : "";
             let lockMsg = `Only ${fmt(activeCeiling)} available${pendMsg}`;
@@ -2224,9 +2234,9 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
             }
             setError(lockMsg); return;
           }
-          if (netAmt <= 0) { setError("Amount too small after fee deduction"); return; }
+          if (netAmt <= 0) { setError(t("error.somethingWrong")); return; }
           if (!acctForm.account_name || !acctForm.account_number || !acctForm.bank_code) {
-            setError("Add and verify your bank account before requesting a withdrawal"); return;
+            setError(t("ajoPt.addBankFirst")); return;
           }
           setTxnPin({
             title: "Confirm Withdrawal",
@@ -2254,9 +2264,9 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
             <div className="w-14 h-14 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-3">
               <svg viewBox="0 0 24 24" fill="none" className="w-7 h-7 text-green-600 dark:text-green-400" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M20 6L9 17l-5-5" /></svg>
             </div>
-            <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">Request sent!</h3>
-            <p className="text-xs text-slate-400 dark:text-slate-500 leading-relaxed">Withdrawal request sent — you&apos;ll be notified once it&apos;s reviewed.</p>
-            <button onClick={onClose} className="mt-5 w-full py-3.5 bg-brand-500 text-white rounded-xl font-bold text-sm">Done</button>
+            <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">{t("ajoPt.withdrawSuccess")}</h3>
+            <p className="text-xs text-slate-400 dark:text-slate-500 leading-relaxed">{t("ajoPt.withdrawPending")}</p>
+            <button onClick={onClose} className="mt-5 w-full py-3.5 bg-brand-500 text-white rounded-xl font-bold text-sm">{t("bp.done")}</button>
           </div>
         ) : (
           <>
@@ -2265,7 +2275,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
               <div className="w-10 h-10 bg-slate-100 dark:bg-slate-700 rounded-2xl flex items-center justify-center flex-shrink-0">
                 <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M12 19V5M5 12l7 7 7-7" /></svg>
               </div>
-              <p className="flex-1 font-extrabold text-slate-800 dark:text-white">Take out money</p>
+              <p className="flex-1 font-extrabold text-slate-800 dark:text-white">{t("ajoPt.withdrawTitle")}</p>
               <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 flex-shrink-0">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="w-4 h-4"><path d="M18 6L6 18M6 6l12 12" /></svg>
               </button>
@@ -2273,7 +2283,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
 
             {/* Hero: stable skeleton-until-loaded (bug 1 fix applied here) */}
             <div className="text-center mb-4">
-              <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1">Ready to withdraw</p>
+              <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1">{t("ajoPt.readyWithdraw")}</p>
               {locksLoaded
                 ? <p className="text-4xl font-black text-slate-800 dark:text-white tabular-nums">{fmt(trulyWithdrawable)}</p>
                 : <div className="h-10 w-40 bg-slate-200 dark:bg-slate-700 rounded-xl mx-auto animate-pulse" />
@@ -2313,9 +2323,9 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
             {/* ── Three-tab bar ─────────────────────────────────────────── */}
             <MoneyTabBar
               tabs={[
-                { key: "personal", label: "Personal" },
-                ...(savingsGroups.length > 0 ? [{ key: "group",  label: "Savings Groups" }] : []),
-                ...(esusuRounds.length   > 0 ? [{ key: "esusu",  label: "Esusu" }]          : []),
+                { key: "personal", label: t("ajoPt.personalTab") },
+                ...(savingsGroups.length > 0 ? [{ key: "group",  label: t("ajoPt.groupsTab") }] : []),
+                ...(esusuRounds.length   > 0 ? [{ key: "esusu",  label: t("ajoPt.esusuTab") }]  : []),
               ]}
               active={activeTab}
               onChange={tab => { setActiveTab(tab); setSelectedCycleId(null); setSelectedGrpId(null); setAmount(""); setError(""); }}
@@ -2332,7 +2342,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
                   <>
                     <MoneySummaryRow label1="Total saved" val1={fpTotal} label2="Available" val2={fpAvail} loading={false} />
                     {fpCycles.length === 0 && (
-                      <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-4">No first-period cycles</p>
+                      <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-4">{t("ajoPt.noActivePlans")}</p>
                     )}
                     {fpCycles.map(cy => {
                       const stats      = getCycleStats(cy, contributions);
@@ -2359,7 +2369,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
                   <>
                     <MoneySummaryRow label1="Total saved" val1={pctTotal} label2="Available" val2={pctAvail} loading={false} />
                     {pctCycles.length === 0 && (
-                      <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-4">No percentage cycles</p>
+                      <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-4">{t("ajoPt.noActivePlans")}</p>
                     )}
                     {pctCycles.map(cy => {
                       const stats      = getCycleStats(cy, contributions);
@@ -2389,7 +2399,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
               <>
                 <MoneySummaryRow label1="Total saved" val1={grpTotal} label2="Released" val2={grpAvail} loading={false} />
                 {savingsGroups.length === 0 && (
-                  <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">No savings groups</p>
+                  <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">{t("ajoPt.noActivePlans")}</p>
                 )}
                 {savingsGroups.map(g => {
                   const saved      = getGroupSaved(g.id, g.started_at, contributions);
@@ -2416,7 +2426,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
                 {/* esusuLocked row — same source as the header hero number (bug 3 consistency) */}
                 {locksLoaded && esusuLocked > 0 && (
                   <div className="flex items-center justify-between px-3 py-2.5 bg-amber-50 dark:bg-amber-900/10 rounded-xl border border-amber-100 dark:border-amber-800/30 mb-1">
-                    <p className="text-[11px] text-amber-700 dark:text-amber-400 font-semibold">Your locked amount in esusu</p>
+                    <p className="text-[11px] text-amber-700 dark:text-amber-400 font-semibold">{t("ajoPt.lockedEsusu")}</p>
                     <p className="text-sm font-extrabold text-amber-700 dark:text-amber-400 tabular-nums">{fmt(esusuLocked)}</p>
                   </div>
                 )}
@@ -2614,7 +2624,7 @@ function OverviewTab({ client, contributions, cycles = [], rotationsData = [], r
           }
         </button>
         <div className="relative">
-          <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-0.5">Current Balance</p>
+          <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-0.5">{t("ajoPt.currentBalance")}</p>
           {balanceHidden
             ? <p className="text-3xl font-black text-white/50 tracking-widest mb-3 leading-none select-none">₦ • • •</p>
             : <AmountDisplay amount={client.current_balance || 0} size="hero" align="left" className="text-white mb-3" />
@@ -2631,21 +2641,21 @@ function OverviewTab({ client, contributions, cycles = [], rotationsData = [], r
           </div>
           <div className="grid grid-cols-3 divide-x divide-white/20">
             <div className="pr-3 min-w-0">
-              <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">Deposited</p>
+              <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">{t("ajoPt.deposited")}</p>
               {balanceHidden
                 ? <p className="text-sm font-black text-white/40 tracking-widest select-none">• • •</p>
                 : <AmountDisplay amount={client.total_saved || 0} size="small" align="left" className="text-green-200" />
               }
             </div>
             <div className="px-3 min-w-0">
-              <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">Withdrawn</p>
+              <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">{t("ajoPt.withdrawn")}</p>
               {balanceHidden
                 ? <p className="text-sm font-black text-white/40 tracking-widest select-none">• • •</p>
                 : <AmountDisplay amount={client.total_withdrawn || 0} size="small" align="left" className="text-red-200" />
               }
             </div>
             <div className="pl-3 min-w-0">
-              <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">This Month</p>
+              <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">{t("common.thisMonth")}</p>
               {balanceHidden
                 ? <p className="text-sm font-black text-white/40 tracking-widest select-none">• • •</p>
                 : <AmountDisplay amount={totalThisMonth} size="small" align="left" className="text-blue-200" />
@@ -2680,30 +2690,30 @@ function OverviewTab({ client, contributions, cycles = [], rotationsData = [], r
 
       {/* Quick Actions — AMP-08 Deposit elevated to primary grid slot */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4 shadow-sm">
-        <p className="text-sm font-extrabold text-slate-800 dark:text-white mb-4">Quick Actions</p>
+        <p className="text-sm font-extrabold text-slate-800 dark:text-white mb-4">{t("home.quickActions")}</p>
         <div className={`grid gap-4 ${client?.contribution_amount > 0 ? "grid-cols-2" : "grid-cols-3"}`}>
           {client?.contribution_amount > 0 && (
             <ActionBtn
-              label="Pay Contribution"
+              label={t("ajoPt.payContribBtn")}
               icon="M1 4h22|M1 10h22|M3 20h18a1 1 0 001-1V5a1 1 0 00-1-1H3a1 1 0 00-1 1v14a1 1 0 001 1z"
               bg="bg-gradient-to-br from-brand-500 to-brand-600"
               onClick={onPayClick}
             />
           )}
           <ActionBtn
-            label="Withdraw"
+            label={t("ajo.withdrawal")}
             icon="M12 19V5|M5 12l7 7 7-7"
             bg="bg-gradient-to-br from-brand-500 to-brand-600"
             onClick={onWithdrawClick}
           />
           <ActionBtn
-            label="Make a Deposit"
+            label={t("ajoPt.makeDeposit")}
             icon="M12 5v14|M5 12l7-7 7 7"
             bg="bg-gradient-to-br from-brand-500 to-brand-600"
             onClick={onDepositClick}
           />
           <ActionBtn
-            label="Pay Bills"
+            label={t("home.payBills")}
             icon="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2|M9 5a2 2 0 002 2h2a2 2 0 002-2|M9 13h6|M9 17h4"
             bg="bg-gradient-to-br from-blue-500 to-blue-600"
             onClick={onBillsClick}
@@ -2736,9 +2746,9 @@ function OverviewTab({ client, contributions, cycles = [], rotationsData = [], r
       {/* Quick Services */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4 shadow-sm">
         <div className="flex items-center justify-between mb-3">
-          <p className="text-sm font-extrabold text-slate-800 dark:text-white">Quick Services</p>
+          <p className="text-sm font-extrabold text-slate-800 dark:text-white">{t("cd.quickServices")}</p>
           <button onClick={onBillsClick}
-            className="text-[11px] text-brand-500 dark:text-brand-400 font-bold">View all</button>
+            className="text-[11px] text-brand-500 dark:text-brand-400 font-bold">{t("cd.viewAll")}</button>
         </div>
         <div className="grid grid-cols-3 gap-3">
           {QUICK_SERVICES.map(s => (
@@ -2765,7 +2775,7 @@ function OverviewTab({ client, contributions, cycles = [], rotationsData = [], r
             {ownerInfo.staff.profile_image_url && <img src={ownerInfo.staff.profile_image_url} alt="" className="absolute inset-0 w-full h-full object-cover" onError={(e) => e.currentTarget.style.display = "none"} />}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider leading-none mb-0.5">Your Savings Officer</p>
+            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider leading-none mb-0.5">{t("ajoPt.savingsOfficer")}</p>
             <p className="text-sm font-extrabold text-slate-800 dark:text-white truncate leading-tight">{ownerInfo.staff.full_name}</p>
             {ownerInfo.staff.phone && <p className="text-[11px] text-slate-400 mt-0.5">{ownerInfo.staff.phone}</p>}
           </div>
@@ -3311,6 +3321,7 @@ function OverviewTab({ client, contributions, cycles = [], rotationsData = [], r
 
 // ── Pending info sheet (AMP-07) ───────────────────────────────────────────
 function PendingInfoSheet({ item, onClose }) {
+  const t = useT();
   const isPendingManual = item.payment_method === "manual_transfer";
   return (
     <div className="fixed inset-0 z-[60] bg-black/60 flex items-end justify-center" onClick={onClose}>
@@ -3323,7 +3334,7 @@ function PendingInfoSheet({ item, onClose }) {
             </svg>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="font-extrabold text-slate-800 dark:text-white">Pending Confirmation</p>
+            <p className="font-extrabold text-slate-800 dark:text-white">{t("ajoPt.pendingConf")}</p>
             <p className="text-[11px] text-slate-400">{fmtDateTime(item.created_at || item.date)}</p>
           </div>
         </div>
@@ -3351,7 +3362,7 @@ function PendingInfoSheet({ item, onClose }) {
           ))}
         </div>
         <button onClick={onClose} className="w-full py-3.5 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-2xl font-bold text-sm active:scale-[0.99] transition">
-          Close
+          {t("common.close")}
         </button>
       </div>
     </div>
@@ -3360,6 +3371,7 @@ function PendingInfoSheet({ item, onClose }) {
 
 // ── History tab ───────────────────────────────────────────────────────────
 function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, cycles = [], rotationsData = [] }) {
+  const t = useT();
   // Build lookup maps so each row can show its entity name
   const cycleNameMap = Object.fromEntries(cycles.map(c => [c.id, c.label || "Personal Savings"]));
   const groupNameMap = Object.fromEntries(
@@ -3391,10 +3403,10 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
   );
 
   const FILTERS = [
-    { id: "all",         label: "All" },
-    { id: "deposits",    label: "Deposits" },
-    { id: "withdrawals", label: "Withdrawals" },
-    { id: "fees",        label: "Fees" },
+    { id: "all",         label: t("common.all") },
+    { id: "deposits",    label: t("ajoPt.depositsTab") },
+    { id: "withdrawals", label: t("ajoPt.withdrawTab") },
+    { id: "fees",        label: t("ajoPt.feesTab") },
   ];
 
   const filtered = allItems.filter(item => {
@@ -3431,8 +3443,8 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
             <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M16 13H8M16 17H8" />
           </svg>
         </div>
-        <p className="text-slate-500 dark:text-slate-400 text-sm font-semibold">No history yet</p>
-        <p className="text-slate-400 text-xs mt-1">Your contributions and withdrawal requests will appear here</p>
+        <p className="text-slate-500 dark:text-slate-400 text-sm font-semibold">{t("ajoPt.noHistory")}</p>
+        <p className="text-slate-400 text-xs mt-1">{t("ajoPt.historyDesc")}</p>
       </div>
     );
   }
@@ -3586,7 +3598,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
             <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
               {isPending && <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 px-1.5 py-0.5 rounded-full">Pending · tap for info</span>}
               {isHeld24h && <span className="text-[10px] font-bold text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 px-1.5 py-0.5 rounded-full">Under review for your security — up to 24h</span>}
-              {isReversed && <span className="text-[10px] font-bold text-red-500 bg-red-50 dark:bg-red-900/20 px-1.5 py-0.5 rounded-full">Reversed</span>}
+              {isReversed && <span className="text-[10px] font-bold text-red-500 bg-red-50 dark:bg-red-900/20 px-1.5 py-0.5 rounded-full">{t("ajoPt.reversed")}</span>}
               {!isPending && !isHeld24h && !isReversed && <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full capitalize ${statusCls(item.status)}`}>{item.status || "—"}</span>}
               {isWdReq && item.net_amount != null && <span className="text-[10px] text-slate-400 dark:text-slate-500">Net: {fmt(item.net_amount)}</span>}
             </div>
@@ -3736,6 +3748,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
 
 // ── Me tab (Staff Portal structure) ───────────────────────────────────────
 function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onProfileUpdate, contributions = [], cycles = [] }) {
+  const t = useT();
   const [view,           setView]           = useState("menu");
 
   const briefUserId = session?.user?.id;
@@ -4008,7 +4021,7 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
       const changedFields = Object.keys(payload).filter(k => k !== "profile_image_url");
       ajoFn("log-profile-update", { client_id: clientId, fields_changed: changedFields }).catch(() => {});
       onProfileUpdate?.(payload);
-      setSaveMsg("Profile saved!");
+      setSaveMsg(t("profile.saved"));
       setTimeout(() => { setSaveMsg(""); setView("profile"); }, 1500);
     } catch (err) {
       console.error("[profile-save]", err);
@@ -4099,8 +4112,8 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
 
   const saveProfile = async () => {
     setSaveMsg("");
-    if (editForm.phone && !phoneRegex.test(editForm.phone)) { setSaveMsg("Enter a valid Nigerian phone number."); return; }
-    if (editForm.email && !emailRegex.test(editForm.email)) { setSaveMsg("Enter a valid email address."); return; }
+    if (editForm.phone && !phoneRegex.test(editForm.phone)) { setSaveMsg(t("error.somethingWrong")); return; }
+    if (editForm.email && !emailRegex.test(editForm.email)) { setSaveMsg(t("error.somethingWrong")); return; }
     const currentEmail = client?.email || session?.user?.email || "";
     const currentPhone = client?.phone || "";
     const emailChanged = editForm.email && editForm.email !== currentEmail;
@@ -4129,13 +4142,13 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
           <button onClick={() => setView("menu")} className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center active:scale-90 transition">
             <Svg d={P.back} size={18} color="#64748b" />
           </button>
-          <p className="text-base font-extrabold text-slate-800 dark:text-slate-100 flex-1">My Fees</p>
+          <p className="text-base font-extrabold text-slate-800 dark:text-slate-100 flex-1">{t("ajoPt.myFees")}</p>
         </div>
         <div className="flex-1 overflow-y-auto pb-10 px-4 pt-4 space-y-4">
 
           {/* Registration Fee */}
           <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 overflow-hidden">
-            <p className="px-4 pt-3 pb-2 text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest border-b border-slate-50 dark:border-slate-700/30">Registration Fee</p>
+            <p className="px-4 pt-3 pb-2 text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest border-b border-slate-50 dark:border-slate-700/30">{t("ajo.registrationFee")}</p>
             <div className="px-4 py-4">
               {(client?.registration_charge || 0) > 0 ? (
                 <>
@@ -4155,7 +4168,7 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
                   </div>
                 </>
               ) : (
-                <p className="text-sm font-semibold text-green-600 dark:text-green-400">No registration fee on your account</p>
+                <p className="text-sm font-semibold text-green-600 dark:text-green-400">{t("common.noData")}</p>
               )}
             </div>
           </div>
@@ -4163,7 +4176,7 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
           {/* Per-cycle fee breakdown — source of truth is the cycle, not the client row */}
           {isGroup && (
             <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 overflow-hidden">
-              <p className="px-4 pt-3 pb-2 text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest border-b border-slate-50 dark:border-slate-700/30">Group Withdrawal Fee</p>
+              <p className="px-4 pt-3 pb-2 text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest border-b border-slate-50 dark:border-slate-700/30">{t("ajoPt.groupWithdrawFee")}</p>
               <div className="px-4 py-4">
                 {client?.commission_model === "percent" ? (
                   <>
@@ -4171,7 +4184,7 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
                     <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Your group&apos;s withdrawal fee: {client.commission_percent || 0}%</p>
                   </>
                 ) : (
-                  <p className="text-sm font-semibold text-green-600 dark:text-green-400">No withdrawal fees</p>
+                  <p className="text-sm font-semibold text-green-600 dark:text-green-400">{t("common.noData")}</p>
                 )}
               </div>
             </div>
@@ -4203,8 +4216,8 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
             ))
           ) : !isGroup && (
             <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 px-4 py-4">
-              <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">Withdrawal Fee</p>
-              <p className="text-sm text-slate-400 dark:text-slate-500">No active savings cycles</p>
+              <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">{t("ajoPt.withdrawFee")}</p>
+              <p className="text-sm text-slate-400 dark:text-slate-500">{t("ajoPt.noActivePlans")}</p>
             </div>
           )}
 
@@ -4252,11 +4265,11 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
           <button onClick={() => setView("menu")} className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center active:scale-90 transition">
             <Svg d={P.back} size={18} color="#64748b" />
           </button>
-          <p className="text-base font-extrabold text-slate-800 dark:text-slate-100 flex-1">Profile</p>
+          <p className="text-base font-extrabold text-slate-800 dark:text-slate-100 flex-1">{t("common.profile")}</p>
           <button onClick={() => setView("edit")}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-brand-50 dark:bg-brand-900/30 text-brand-500 dark:text-brand-400 text-[13px] font-bold active:scale-90 transition">
             <Svg d={P.pen} size={14} color="currentColor" />
-            Edit
+            {t("common.editProfile")}
           </button>
         </div>
         <div className="flex-1 overflow-y-auto pb-10">
@@ -4281,7 +4294,7 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
           </div>
           {/* Info cards */}
           <div className="px-4 pt-5 space-y-4">
-            <InfoCard title="Personal">
+            <InfoCard title={t("ajoPt.personalTab")}>
               <InfoRow label="Full Name"  value={client?.full_name} />
               <InfoRow label="Phone"      value={client?.phone} />
               <InfoRow label="Email"      value={client?.email || session?.user?.email} />
@@ -4438,7 +4451,7 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
               onChange={e => {
                 const f = e.target.files?.[0];
                 if (!f) return;
-                if (f.size > 2 * 1024 * 1024) { setSaveMsg("Photo must be under 2 MB."); return; }
+                if (f.size > 2 * 1024 * 1024) { setSaveMsg(t("error.somethingWrong")); return; }
                 setPhotoFile(f);
                 setPhotoPreview(URL.createObjectURL(f));
                 setSaveMsg("");
@@ -4595,7 +4608,7 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
           <Row
             iconCls="bg-green-50 dark:bg-green-900/20"
             icon={<RowIcon d={P.doc} color="#16a34a" />}
-            label="My Fees"
+            label={t("ajoPt.myFees")}
             sub="Registration fee, withdrawal charges"
             onClick={() => setView("fees")}
           />
@@ -4722,7 +4735,7 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
 
       {/* Help & Support */}
       <div className="px-4 mb-5">
-        <SectionLabel>Help & Support</SectionLabel>
+        <SectionLabel>{t("common.helpSupport")}</SectionLabel>
         <SettingsCard>
           <Row iconCls="bg-violet-50 dark:bg-violet-900/20" icon={<RowIcon d={P.faq} color="#7c3aed" />}
             label="FAQ & AI Help" sub="Search questions or ask AI" onClick={() => { setView("faq"); setFaqTab("faq"); }} />
@@ -4771,7 +4784,7 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
         <button onClick={onChangePwdClick}
           className="w-full py-[15px] bg-brand-50 dark:bg-brand-900/20 rounded-2xl font-bold text-sm border border-brand-100 dark:border-brand-900/40 active:bg-brand-100 transition-colors flex items-center justify-center gap-2.5 text-brand-500 dark:text-brand-400">
           <Svg d={P.shield} size={18} color="currentColor" />
-          Change Password
+          {t("setup.changePassword")}
         </button>
       </div>
 
@@ -4912,7 +4925,7 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
               className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center active:scale-90 transition flex-shrink-0">
               <Svg d={P.back} size={18} color="#64748b" />
             </button>
-            <p className="text-base font-extrabold text-slate-800 dark:text-slate-100 flex-1">Help & Support</p>
+            <p className="text-base font-extrabold text-slate-800 dark:text-slate-100 flex-1">{t("common.helpSupport")}</p>
             {/* Tabs */}
             <div className="flex gap-1 pb-0">
               {[["faq", "FAQ"], ["support", "Support"]].map(([id, lbl]) => (

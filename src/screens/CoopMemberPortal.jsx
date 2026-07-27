@@ -70,6 +70,7 @@ const ORG_TYPE_ICONS = { cooperative:"🤝", market_association:"🏪", church:"
 //  FIRST LOGIN — set password (same pattern as staff/ajo)
 // ═══════════════════════════════════════════════════
 export function CoopMemberFirstLogin({ member }) {
+  const t = useT();
   const [password, setPassword] = useState("");
   const [confirm,  setConfirm]  = useState("");
   const [showPwd,  setShowPwd]  = useState(false);
@@ -81,8 +82,8 @@ export function CoopMemberFirstLogin({ member }) {
   const colors = ["", "bg-red-400", "bg-amber-400", "bg-green-500", "bg-green-500"];
 
   const submit = async () => {
-    if (password.length < 8) { setError("Minimum 8 characters"); return; }
-    if (password !== confirm) { setError("Passwords do not match"); return; }
+    if (password.length < 8) { setError(t("setup.minChars")); return; }
+    if (password !== confirm) { setError(t("setup.mismatch")); return; }
     setSaving(true); setError("");
     const { error: err } = await supabase.auth.updateUser({
       password,
@@ -106,8 +107,8 @@ export function CoopMemberFirstLogin({ member }) {
             <path d="M20 6L9 17l-5-5" />
           </svg>
         </div>
-        <h2 className="text-xl font-extrabold text-slate-800 dark:text-white mb-2">Password set!</h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400">Taking you to your portal…</p>
+        <h2 className="text-xl font-extrabold text-slate-800 dark:text-white mb-2">{t("setup.passwordSet")}</h2>
+        <p className="text-sm text-slate-500 dark:text-slate-400">{t("setup.takingYou")}</p>
         <div className="mt-6 w-8 h-8 border-[3px] border-green-500 border-t-transparent rounded-full animate-spin mx-auto" />
       </div>
     </div>
@@ -127,22 +128,22 @@ export function CoopMemberFirstLogin({ member }) {
             <path d="M7 11V7a5 5 0 0110 0v4" />
           </svg>
         </div>
-        <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white">Set Your Password</h1>
+        <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white">{t("setup.setPassword")}</h1>
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
           Hi {member?.full_name?.split(" ")[0] || "there"}! Choose a secure password for your member portal access.
         </p>
       </div>
       <div className="flex-1 px-5 pt-8 pb-10 space-y-5">
         <div>
-          <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">New Password *</label>
+          <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">{t("setup.newPassword")}</label>
           <div className="relative">
             <input type={showPwd ? "text" : "password"} value={password}
               onChange={e => { setPassword(e.target.value); setError(""); }}
-              placeholder="Minimum 8 characters"
+              placeholder={t("setup.minChars")}
               className="w-full border border-slate-200 dark:border-slate-700 rounded-xl pl-4 pr-14 py-3 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500" />
             <button type="button" onClick={() => setShowPwd(v => !v)}
               className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-green-600 dark:text-green-400">
-              {showPwd ? "Hide" : "Show"}
+              {showPwd ? t("setup.hide") : t("setup.show")}
             </button>
           </div>
           {password && (
@@ -154,19 +155,19 @@ export function CoopMemberFirstLogin({ member }) {
           )}
         </div>
         <div>
-          <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Confirm Password *</label>
+          <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">{t("setup.confirmPassword")}</label>
           <input type={showPwd ? "text" : "password"} value={confirm}
             onChange={e => { setConfirm(e.target.value); setError(""); }}
-            placeholder="Repeat your password"
+            placeholder={t("setup.repeatPassword")}
             className={`w-full border rounded-xl px-4 py-3 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500 ${confirm && confirm !== password ? "border-red-400 dark:border-red-600" : "border-slate-200 dark:border-slate-700"}`} />
           {confirm && confirm !== password && <p className="text-[10px] text-red-500 mt-1 font-medium">Passwords don't match</p>}
         </div>
         <div className="bg-slate-50 dark:bg-[#0b120e] border border-slate-100 dark:border-[#162218] rounded-xl px-4 py-3 space-y-1.5">
           <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Requirements</p>
           {[
-            { rule: "At least 8 characters", pass: password.length >= 8 },
-            { rule: "One uppercase letter",  pass: /[A-Z]/.test(password) },
-            { rule: "One number",            pass: /[0-9]/.test(password) },
+            { rule: t("setup.atLeast8"),    pass: password.length >= 8 },
+            { rule: t("setup.oneUppercase"), pass: /[A-Z]/.test(password) },
+            { rule: t("setup.oneNumber"),    pass: /[0-9]/.test(password) },
           ].map(({ rule, pass }) => (
             <div key={rule} className="flex items-center gap-2">
               <div className={`w-3.5 h-3.5 rounded-full flex items-center justify-center flex-shrink-0 ${pass ? "" : "bg-slate-200 dark:bg-slate-700"}`}
@@ -183,10 +184,10 @@ export function CoopMemberFirstLogin({ member }) {
         {error && <p className="text-xs text-red-500 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/40 rounded-xl px-4 py-2.5">{error}</p>}
         <button onClick={submit} disabled={saving || password.length < 8 || password !== confirm}
           className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-bold rounded-2xl py-4 text-sm transition">
-          {saving ? "Saving…" : "Set Password & Enter Portal →"}
+          {saving ? t("setup.saving") : t("setup.setBtn")}
         </button>
         <button onClick={() => supabase.auth.signOut()} className="w-full text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition text-center">
-          Sign out
+          {t("setup.signOut")}
         </button>
       </div>
     </div>
@@ -204,6 +205,7 @@ const MBR_QUICK = [
 ];
 
 function HomeTab({ member, org, announcements, polls = [], events = [], loans = [], wdRequests = [], onQuickService, onNavigate, userEmail }) {
+  const t = useT();
   const activeLoans  = loans.filter(l => ["approved","disbursed","ongoing"].includes(l.status));
   const pendingWd    = wdRequests.filter(r => r.status === "pending");
   const pinnedAnns   = announcements.filter(a => a.is_pinned);
@@ -211,23 +213,23 @@ function HomeTab({ member, org, announcements, polls = [], events = [], loans = 
   const activePolls  = polls.filter(p => !p.closes_at || new Date(p.closes_at) > new Date()).slice(0, 2);
   const upcomingEvts = events.filter(e => e.event_date && new Date(e.event_date) > new Date()).slice(0, 2);
   const orgActions   = [
-    ...activePolls.map(p => ({ id: p.id, type:"poll",  label: p.question, sub:"Active poll · Tap to vote" })),
+    ...activePolls.map(p => ({ id: p.id, type:"poll",  label: p.question, sub:t("coopMem.activePoll") })),
     ...upcomingEvts.map(e => ({ id: e.id, type:"event", label: e.title,    sub: new Date(e.event_date).toLocaleDateString("en-NG",{weekday:"short",day:"numeric",month:"short"}) + (e.location ? ` · ${e.location}` : "") })),
   ];
 
   const STATS = [
-    { label:"Savings Balance",  value: fmt(member.savings_balance),
+    { label:t("coopMem.savingsBal"),  value: fmt(member.savings_balance),
       sub: "current balance", bg:"#3DA829", tab:"contributions",
       icon:"M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" },
-    { label:"Active Loans",     value: activeLoans.length,
+    { label:t("aiChip.activeLoans"),  value: activeLoans.length,
       sub: activeLoans.length > 0 ? fmt(activeLoans.reduce((s,l)=>s+(l.outstanding_balance||0),0))+" owed" : "none active",
       bg:"#dc2626", tab:"loans",
       icon:"M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" },
-    { label:"Withdrawal Reqs",  value: pendingWd.length,
+    { label:t("coopMem.wdRequests"),  value: pendingWd.length,
       sub: pendingWd.length > 0 ? "pending approval" : "none pending",
       bg: pendingWd.length > 0 ? "#d97706" : "#64748b", tab:"contributions",
       icon:"M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" },
-    { label:"Messages",         value: announcements.length,
+    { label:t("coop.messages"),       value: announcements.length,
       sub: pinnedAnns.length > 0 ? `${pinnedAnns.length} pinned` : "from organisation",
       bg:"#3DA829", tab:"messages",
       icon:"M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" },
@@ -252,21 +254,21 @@ function HomeTab({ member, org, announcements, polls = [], events = [], loans = 
             </div>
             <span className="flex-shrink-0 text-[10px] font-bold text-white/70 bg-white/10 px-2 py-0.5 rounded-full capitalize">{member.role}</span>
           </div>
-          <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest">Savings Balance</p>
+          <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest">{t("coopMem.savingsBal")}</p>
           <AmountDisplay amount={member.savings_balance} size="hero" align="left" className="text-white mt-1.5 mb-5" />
           <div className="flex gap-4 flex-wrap">
             <div>
-              <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">Member Since</p>
+              <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">{t("coopMem.memberSince")}</p>
               <p className="text-sm font-bold">{fmtDate(member.joined_date)}</p>
             </div>
             <div className="w-px bg-white/20 self-stretch" />
             <div>
-              <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">Status</p>
+              <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">{t("coopMem.status")}</p>
               <p className="text-sm font-bold capitalize">{member.status || "active"}</p>
             </div>
             <div className="w-px bg-white/20 self-stretch" />
             <div>
-              <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">Org Members</p>
+              <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">{t("coopMem.orgMembers")}</p>
               <p className="text-sm font-bold tabular-nums">{org.member_count || 0}</p>
             </div>
           </div>
@@ -276,8 +278,8 @@ function HomeTab({ member, org, announcements, polls = [], events = [], loans = 
       {/* ── Quick Services ── */}
       <div className="px-4">
         <div className="flex justify-between items-center mb-4">
-          <p className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em]">Quick Services</p>
-          {onNavigate && <button onClick={() => onNavigate("bills")} className="text-[10px] font-bold text-green-600 dark:text-green-400">View All →</button>}
+          <p className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em]">{t("cd.quickServices")}</p>
+          {onNavigate && <button onClick={() => onNavigate("bills")} className="text-[10px] font-bold text-green-600 dark:text-green-400">{t("cd.viewAll")}</button>}
         </div>
         <div className="grid grid-cols-4 gap-2">
           {MBR_QUICK.map(s => (
@@ -333,8 +335,8 @@ function HomeTab({ member, org, announcements, polls = [], events = [], loans = 
             </div>
           </div>
           {[
-            ["Total Funds", fmt(org.total_savings || 0), "#3DA829"],
-            ["Loans Out",   fmt(org.total_loans_out || 0), "#dc2626"],
+            [t("coopMem.totalFunds"), fmt(org.total_savings || 0), "#3DA829"],
+            [t("coop.loans"),         fmt(org.total_loans_out || 0), "#dc2626"],
           ].map(([k, v, c]) => (
             <div key={k} className="flex justify-between items-center px-4 py-3 border-b border-slate-50 dark:border-slate-700/30 last:border-0">
               <span className="text-xs text-slate-400">{k}</span>
@@ -349,7 +351,7 @@ function HomeTab({ member, org, announcements, polls = [], events = [], loans = 
         <div className="px-4">
           <div className="flex justify-between items-center mb-3">
             <p className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em]">Announcements</p>
-            {onNavigate && <button onClick={() => onNavigate("messages")} className="text-[10px] font-bold text-green-600 dark:text-green-400">View All →</button>}
+            {onNavigate && <button onClick={() => onNavigate("messages")} className="text-[10px] font-bold text-green-600 dark:text-green-400">{t("cd.viewAll")}</button>}
           </div>
           <div className="flex flex-col gap-2">
             {visibleAnns.map(a => (
@@ -369,7 +371,7 @@ function HomeTab({ member, org, announcements, polls = [], events = [], loans = 
       {orgActions.length > 0 && (
         <div className="px-4">
           <div className="flex justify-between items-center mb-3">
-            <p className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em]">From Organisation</p>
+            <p className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em]">{t("coopMem.fromOrg")}</p>
             <button onClick={() => onNavigate?.("broadcast")} className="text-[10px] font-bold text-green-600 dark:text-green-400">See All →</button>
           </div>
           <div className="flex flex-col gap-2">
@@ -405,6 +407,7 @@ function HomeTab({ member, org, announcements, polls = [], events = [], loans = 
 //  PAY VIA PAYSTACK MODAL  (redirect-based)
 // ═══════════════════════════════════════════════════
 function PayOrgModal({ member, org, preProgram, history, onClose }) {
+  const t = useT();
   const [programId, setProgramId] = useState(preProgram?.id || "");
   const [programs,  setPrograms]  = useState(preProgram ? [preProgram] : []);
   const [amount,    setAmount]    = useState("");
@@ -428,7 +431,7 @@ function PayOrgModal({ member, org, preProgram, history, onClose }) {
       );
       if (!hasPending) return;
       setLoading(false);
-      setError("Payment was not completed. Please try again.");
+      setError(t("coopMem.paymentFailed"));
     };
     window.addEventListener("inAppBrowserFinished", onBrowserClosed);
     let capListener;
@@ -466,7 +469,7 @@ function PayOrgModal({ member, org, preProgram, history, onClose }) {
 
   const handlePay = async () => {
     const amt = parseFloat(amount);
-    if (!amt || amt <= 0) { setError("Enter a valid amount"); return; }
+    if (!amt || amt <= 0) { setError(t("error.somethingWrong")); return; }
     if (isFixed && !metTarget && (paidThisMonth + amt) < required) {
       setError(`Pay at least ${fmt(remaining)} to meet your ${fmt(required)} monthly target`);
       return;
@@ -478,7 +481,7 @@ function PayOrgModal({ member, org, preProgram, history, onClose }) {
         program_id: programId || undefined,
         callback_url: buildCallbackUrl(window.location.origin),
       });
-      if (!res.authorization_url) throw new Error("Payment initialization failed");
+      if (!res.authorization_url) throw new Error(t("coopMem.payFailed"));
       localStorage.setItem(`${ORG_PAY_PREFIX}${res.reference}`, JSON.stringify({
         member_id: member.id, org_id: org.id, amount: amt,
         program_id: programId || undefined,
@@ -495,16 +498,16 @@ function PayOrgModal({ member, org, preProgram, history, onClose }) {
       onClick={e => { if (e.target === e.currentTarget && !loading) onClose(); }}>
       <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-t-3xl px-5 py-6 max-h-[90dvh] overflow-y-auto">
         <div className="w-10 h-1 bg-slate-200 dark:bg-slate-600 rounded-full mx-auto mb-5" />
-        <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-0.5">Monthly Contribution</h3>
+        <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-0.5">{t("coopMem.monthlyContrib")}</h3>
         <p className="text-xs text-slate-400 mb-4">{monthLabel} · {org.name}</p>
 
         {/* Program selector — only shown when not pre-selected */}
         {!preProgram && programs.length > 0 && (
           <div className="mb-4">
-            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Contribution Program</label>
+            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("coopMem.contribProgram")}</label>
             <select value={programId} onChange={e => { setProgramId(e.target.value); setError(""); }} disabled={loading}
               className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-green-400 disabled:opacity-50">
-              <option value="">— General contribution —</option>
+              <option value="">{t("coopMem.generalContrib")}</option>
               {programs.map(p => <option key={p.id} value={p.id}>{p.name}{p.contribution_type === "fixed" ? ` · ${fmt(p.amount)}` : ""}</option>)}
             </select>
           </div>
@@ -516,7 +519,7 @@ function PayOrgModal({ member, org, preProgram, history, onClose }) {
             <div className="flex items-center justify-between mb-2.5">
               <p className="text-xs font-extrabold text-slate-700 dark:text-slate-200">{selectedProg.name}</p>
               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${metTarget ? "bg-green-500 text-white" : "bg-amber-500 text-white"}`}>
-                {metTarget ? "✓ Target Met" : "Outstanding"}
+                {metTarget ? t("coopMem.targetMet") : "Outstanding"}
               </span>
             </div>
             <div className="h-2.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden mb-2">
@@ -524,12 +527,12 @@ function PayOrgModal({ member, org, preProgram, history, onClose }) {
                 style={{ width: `${Math.min(100, (paidThisMonth / required) * 100)}%`, background: metTarget ? "#3DA829" : "#f59e0b" }} />
             </div>
             <div className="flex justify-between text-[10px] font-semibold mb-1">
-              <span className="text-slate-500 dark:text-slate-400">{fmt(paidThisMonth)} paid</span>
+              <span className="text-slate-500 dark:text-slate-400">{fmt(paidThisMonth)} {t("coopMem.paidThisMonth")}</span>
               <span className="text-slate-600 dark:text-slate-300">{fmt(required)} target</span>
             </div>
             {!metTarget && (
               <p className="text-[11px] font-bold text-amber-700 dark:text-amber-400 mt-0.5">
-                {fmt(remaining)} remaining for {monthLabel}
+                {fmt(remaining)} {t("coopMem.remaining")} for {monthLabel}
               </p>
             )}
           </div>
@@ -539,7 +542,7 @@ function PayOrgModal({ member, org, preProgram, history, onClose }) {
         {preProgram && !isFixed && (
           <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl px-4 py-3 mb-4">
             <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{preProgram.name}</p>
-            <p className="text-[10px] text-slate-400 mt-0.5">Voluntary — pay any amount</p>
+            <p className="text-[10px] text-slate-400 mt-0.5">{t("coopMem.voluntary")}</p>
           </div>
         )}
 
@@ -559,7 +562,7 @@ function PayOrgModal({ member, org, preProgram, history, onClose }) {
 
         <button onClick={() => {
           const amt = parseFloat(amount);
-          if (!amt || amt <= 0) { setError("Enter a valid amount"); return; }
+          if (!amt || amt <= 0) { setError(t("error.somethingWrong")); return; }
           setTxnPin({
             title: "Confirm Payment",
             amount: Math.round(amt * 100),
@@ -570,12 +573,12 @@ function PayOrgModal({ member, org, preProgram, history, onClose }) {
         }} disabled={loading || !amount}
           className="w-full py-4 bg-green-600 text-white font-bold rounded-2xl text-sm disabled:opacity-60">
           {loading
-            ? <span className="flex items-center justify-center gap-2"><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Preparing payment…</span>
+            ? <span className="flex items-center justify-center gap-2"><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />{t("bill.processing")}</span>
             : `Pay ${amount ? fmt(parseFloat(amount) || 0) : ""} via Paystack →`}
         </button>
 
         {!loading && (
-          <button onClick={onClose} className="w-full py-3 text-xs text-slate-400 hover:text-slate-600 mt-1">Cancel</button>
+          <button onClick={onClose} className="w-full py-3 text-xs text-slate-400 hover:text-slate-600 mt-1">{t("common.cancel")}</button>
         )}
         {txnPin && <TransactionPinModal {...txnPin} onCancel={() => setTxnPin(null)} />}
       </div>
@@ -587,6 +590,7 @@ function PayOrgModal({ member, org, preProgram, history, onClose }) {
 //  REQUEST WITHDRAWAL MODAL
 // ═══════════════════════════════════════════════════
 function RequestWithdrawalModal({ member, org, onClose, onSuccess }) {
+  const t = useT();
   const [amount,  setAmount]  = useState("");
   const [reason,  setReason]  = useState("");
   const [saving,  setSaving]  = useState(false);
@@ -596,14 +600,14 @@ function RequestWithdrawalModal({ member, org, onClose, onSuccess }) {
 
   const handleSubmit = async () => {
     const amt = parseFloat(amount);
-    if (!amt || amt <= 0) { setError("Enter a valid amount"); return; }
-    if (amt > (member.savings_balance || 0)) { setError(`Amount exceeds your balance of ${fmt(member.savings_balance)}`); return; }
+    if (!amt || amt <= 0) { setError(t("error.somethingWrong")); return; }
+    if (amt > (member.savings_balance || 0)) { setError(t("error.somethingWrong")); return; }
     setSaving(true); setError("");
     try {
       await coopFn("request-member-withdrawal", { member_id: member.id, org_id: org.id, amount: amt, reason });
       setDone(true);
       onSuccess?.();
-    } catch (e) { setError(e.message || "Failed to submit request"); }
+    } catch (e) { setError(e.message || t("error.saveFailed")); }
     finally { setSaving(false); }
   };
 
@@ -617,34 +621,34 @@ function RequestWithdrawalModal({ member, org, onClose, onSuccess }) {
             <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8 text-green-600" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M20 6L9 17l-5-5" /></svg>
             </div>
-            <p className="text-base font-extrabold text-slate-800 dark:text-white mb-1">Request Submitted</p>
-            <p className="text-xs text-slate-400 mb-6">Your withdrawal request is pending approval from {org.name}.</p>
-            <button onClick={onClose} className="w-full py-3 bg-green-600 text-white font-bold rounded-2xl text-sm">Done</button>
+            <p className="text-base font-extrabold text-slate-800 dark:text-white mb-1">{t("coopMem.reqSuccess")}</p>
+            <p className="text-xs text-slate-400 mb-6">{t("coopMem.reqPendingDesc")} from {org.name}.</p>
+            <button onClick={onClose} className="w-full py-3 bg-green-600 text-white font-bold rounded-2xl text-sm">{t("bp.done")}</button>
           </div>
         ) : (
           <>
-            <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">Request Withdrawal</h3>
+            <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">{t("coopMem.reqWithdrawal")}</h3>
             <p className="text-xs text-slate-400 mb-4">Available balance: <strong className="text-green-600">{fmt(member.savings_balance)}</strong></p>
             {error && <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-3 text-xs text-red-600">{error}</div>}
             <div className="flex flex-col gap-3">
               <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Amount (₦) *</label>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("loan.amountField")}</label>
                 <input type="number" value={amount} onChange={e => { setAmount(e.target.value); setError(""); }}
-                  placeholder="Enter amount"
+                  placeholder={t("bill.enterAmount")}
                   className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
               </div>
               <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Reason (Optional)</label>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("fin.notesOptional")}</label>
                 <textarea value={reason} onChange={e => setReason(e.target.value)} rows={2} placeholder="Why do you need this withdrawal?"
                   className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-green-400" />
               </div>
             </div>
             <div className="flex gap-2 mt-4">
-              <button onClick={onClose} disabled={saving} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Cancel</button>
+              <button onClick={onClose} disabled={saving} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">{t("common.cancel")}</button>
               <button onClick={() => {
                 const amt = parseFloat(amount);
-                if (!amt || amt <= 0) { setError("Enter a valid amount"); return; }
-                if (amt > (member.savings_balance || 0)) { setError(`Amount exceeds your balance of ${fmt(member.savings_balance)}`); return; }
+                if (!amt || amt <= 0) { setError(t("error.somethingWrong")); return; }
+                if (amt > (member.savings_balance || 0)) { setError(t("error.somethingWrong")); return; }
                 setTxnPin({
                   title: "Request Withdrawal",
                   amount: Math.round(amt * 100),
@@ -654,7 +658,7 @@ function RequestWithdrawalModal({ member, org, onClose, onSuccess }) {
                 });
               }} disabled={saving || !amount}
                 className="flex-1 py-3 bg-amber-500 text-white rounded-xl font-bold text-sm disabled:opacity-50">
-                {saving ? "Submitting…" : "Submit Request"}
+                {saving ? t("loan.submitting") : t("loan.submitBtn")}
               </button>
             </div>
           </>
@@ -669,6 +673,7 @@ function RequestWithdrawalModal({ member, org, onClose, onSuccess }) {
 //  CONTRIBUTIONS TAB
 // ═══════════════════════════════════════════════════
 function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
+  const t = useT();
   const [member,          setMember]          = useState(initialMember);
   const [programs,        setPrograms]        = useState([]);
   const [history,         setHistory]         = useState([]);
@@ -758,11 +763,11 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-white dark:bg-slate-800 rounded-2xl p-3 border border-slate-100 dark:border-slate-700 text-center">
           <AmountDisplay amount={member.savings_balance} size="stat" align="center" className="text-[#3DA829]" />
-          <p className="text-[10px] text-slate-400 mt-0.5">Current Balance</p>
+          <p className="text-[10px] text-slate-400 mt-0.5">{t("ajoPt.currentBalance")}</p>
         </div>
         <div className="bg-white dark:bg-slate-800 rounded-2xl p-3 border border-slate-100 dark:border-slate-700 text-center">
           <AmountDisplay amount={totalContributed} size="stat" align="center" className="text-[#3DA829]" />
-          <p className="text-[10px] text-slate-400 mt-0.5">Total Contributions</p>
+          <p className="text-[10px] text-slate-400 mt-0.5">{t("coopMem.totalContribs")}</p>
         </div>
       </div>
 
@@ -774,7 +779,7 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
             <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
               <path d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
             </svg>
-            Pay via Paystack
+            {t("coopMem.payPaystack")}
           </button>
         )}
         <button onClick={() => setShowWdReq(true)}
@@ -782,14 +787,14 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
           <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
             <path d="M12 19V5M5 12l7-7 7 7" />
           </svg>
-          Request Withdrawal
+          {t("coopMem.reqWithdrawal")}
           {pendingWd > 0 && <span className="ml-1 w-4 h-4 rounded-full bg-amber-500 text-white text-[9px] font-black flex items-center justify-center">{pendingWd}</span>}
         </button>
       </div>
 
       {programs.filter(p => p.status === "active").length > 0 && (
         <div>
-          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Contribution Programs</p>
+          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">{t("coopMem.contribProgs")}</p>
           {programs.filter(p => p.status === "active").map(p => {
             const isFixed   = p.contribution_type === "fixed";
             const required  = isFixed ? Number(p.amount) : 0;
@@ -807,7 +812,7 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
                     <div className="flex gap-1.5 mt-1.5 flex-wrap">
                       <span className="text-[10px] bg-slate-100 dark:bg-slate-700 text-slate-500 px-2 py-0.5 rounded-lg">{FREQ_LABELS[p.frequency]}</span>
                       {isFixed && <span className="text-[10px] bg-green-50 dark:bg-green-900/20 text-green-600 px-2 py-0.5 rounded-lg">{fmt(p.amount)}</span>}
-                      {!isFixed && <span className="text-[10px] bg-slate-100 dark:bg-slate-700 text-slate-500 px-2 py-0.5 rounded-lg">Voluntary</span>}
+                      {!isFixed && <span className="text-[10px] bg-slate-100 dark:bg-slate-700 text-slate-500 px-2 py-0.5 rounded-lg">{t("prog.typeVoluntary")}</span>}
                     </div>
                   </div>
                   {hasPaystack && (
@@ -826,9 +831,9 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
                         style={{ width: `${pct}%`, background: metTarget ? "#3DA829" : "#f59e0b" }} />
                     </div>
                     <div className="flex justify-between text-[9px] font-semibold text-slate-400">
-                      <span>{fmt(paid)} paid this month</span>
+                      <span>{fmt(paid)} {t("coopMem.paidThisMonth")}</span>
                       <span className={metTarget ? "text-green-600 dark:text-green-400" : "text-amber-600 dark:text-amber-400"}>
-                        {metTarget ? "Target met ✓" : `${fmt(remaining)} remaining`}
+                        {metTarget ? t("coopMem.targetMet") : `${fmt(remaining)} ${t("coopMem.remaining")}`}
                       </span>
                     </div>
                   </div>
@@ -841,7 +846,7 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
 
       {wdRequests.length > 0 && (
         <div>
-          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Withdrawal Requests</p>
+          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">{t("coopMem.wdRequests")}</p>
           <div className="flex flex-col gap-2">
             {wdRequests.slice(0, 5).map(r => (
               <div key={r.id} className="bg-white dark:bg-slate-800 rounded-xl px-3 py-2.5 border border-slate-100 dark:border-slate-700 flex justify-between items-center">
@@ -856,7 +861,7 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
                   </span>
                   {r.status !== "pending" && (
                     <button onClick={() => setSelectedRequest(r)} className="text-[10px] font-bold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-900/20 px-2 py-0.5 rounded-full">
-                      Receipt
+                      {t("fin.viewReceipt")}
                     </button>
                   )}
                 </div>
@@ -868,7 +873,7 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
 
       <div>
         <div className="flex items-center justify-between mb-3">
-          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Contribution History</p>
+          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">{t("coopMem.contribHistory")}</p>
           {history.length > 0 && (
             <button onClick={handleExportSavingsPdf}
               className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-700 active:scale-95 transition">
@@ -880,7 +885,7 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
           )}
         </div>
         {history.length === 0 ? (
-          <div className="text-center py-10 text-slate-400 text-sm">No contributions yet</div>
+          <div className="text-center py-10 text-slate-400 text-sm">{t("coopMem.noContribs")}</div>
         ) : (
           <div className="flex flex-col gap-2">
             {history.map(h => (
@@ -949,6 +954,7 @@ function calcLoanPreview(principal, rate, months) {
 }
 
 function LoansTab({ member, org }) {
+  const t = useT();
   const [loans,      setLoans]      = useState([]);
   const [txnPin,     setTxnPin]     = useState(null);
   const [repayments, setRepayments] = useState([]);
@@ -981,7 +987,7 @@ function LoansTab({ member, org }) {
       );
       if (!hasPending) return;
       setRepaying(false);
-      setError("Payment was not completed. Please try again.");
+      setError(t("coopMem.paymentFailed"));
     };
     window.addEventListener("inAppBrowserFinished", onBrowserClosed);
     let capListener;
@@ -1004,7 +1010,7 @@ function LoansTab({ member, org }) {
   const preview   = calcLoanPreview(principal, rate, months);
 
   const handleApply = async () => {
-    if (!form.amount_requested) { setError("Amount required"); return; }
+    if (!form.amount_requested) { setError(t("error.somethingWrong")); return; }
     setSaving(true); setError("");
     try {
       await coopFn("apply-loan", { org_id: org.id, member_id: member.id, ...form, applied_by: "member" });
@@ -1030,7 +1036,7 @@ function LoansTab({ member, org }) {
         loan_id: loan.id, amount: repayAmt,
         callback_url: buildCallbackUrl(window.location.origin),
       });
-      if (!res.authorization_url) throw new Error("Payment initialization failed");
+      if (!res.authorization_url) throw new Error(t("coopMem.payFailed"));
       localStorage.setItem(`${ORG_LOAN_PAY_PREFIX}${res.reference}`, JSON.stringify({
         member_id: member.id, org_id: org.id, loan_id: loan.id, amount: repayAmt,
       }));
@@ -1050,13 +1056,13 @@ function LoansTab({ member, org }) {
       <button onClick={() => setShowApply(true)}
         className="w-full py-3 bg-amber-500 text-white rounded-2xl font-bold text-sm flex items-center justify-center gap-2">
         <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" d="M12 4v16m8-8H4" /></svg>
-        Apply for a Loan
+        {t("loan.applyTitle")}
       </button>
 
       {loans.length === 0 ? (
         <div className="flex flex-col items-center py-16 text-center">
-          <p className="text-base font-extrabold text-slate-700 dark:text-slate-200 mb-2">No Loans Yet</p>
-          <p className="text-sm text-slate-400">Submit an application above and your organisation will review it.</p>
+          <p className="text-base font-extrabold text-slate-700 dark:text-slate-200 mb-2">{t("loan.noMemberLoans")}</p>
+          <p className="text-sm text-slate-400">{t("loan.noMemberDesc")}</p>
         </div>
       ) : (
         loans.map(l => {
@@ -1066,11 +1072,11 @@ function LoansTab({ member, org }) {
               className={`bg-white dark:bg-slate-800 rounded-2xl p-4 border text-left w-full ${isOverdue ? "border-red-300 dark:border-red-700" : "border-slate-100 dark:border-slate-700"}`}>
               <div className="flex justify-between items-start mb-2">
                 <div>
-                  <p className="text-sm font-extrabold text-slate-800 dark:text-white">{l.loan_purpose || "General Loan"}</p>
+                  <p className="text-sm font-extrabold text-slate-800 dark:text-white">{l.loan_purpose || t("loan.generalLabel")}</p>
                   <p className="text-[10px] text-slate-400">{fmtDate(l.applied_at)}</p>
                   <div className="flex items-center gap-2 mt-0.5">
                     <span className={`text-xs font-bold capitalize ${LOAN_STATUS_COL[l.status] || "text-slate-500"}`}>● {l.status}</span>
-                    {isOverdue && <span className="text-[9px] font-black text-red-500 bg-red-50 px-1.5 py-0.5 rounded-full">OVERDUE</span>}
+                    {isOverdue && <span className="text-[9px] font-black text-red-500 bg-red-50 px-1.5 py-0.5 rounded-full">{t("loan.overdueLabel")}</span>}
                   </div>
                 </div>
                 <div className="text-right">
@@ -1092,33 +1098,33 @@ function LoansTab({ member, org }) {
       {showApply && (
         <div className="fixed inset-0 bg-black/50 z-[60] flex items-end justify-center p-4">
           <div className="bg-white dark:bg-slate-800 rounded-3xl w-full max-w-sm p-5 max-h-[85dvh] overflow-y-auto">
-            <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-4">Apply for a Loan</h3>
+            <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-4">{t("loan.applyTitle")}</h3>
             {error && <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-3 text-xs text-red-600">{error}</div>}
             <div className="flex flex-col gap-3">
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Amount (₦) *</label>
+                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("loan.amountField")}</label>
                   <input value={form.amount_requested} onChange={set("amount_requested")} type="number" placeholder="0"
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm" />
                 </div>
                 <div>
-                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Months</label>
+                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("loan.monthsField")}</label>
                   <input value={form.repayment_months} onChange={set("repayment_months")} type="number" min="1"
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm" />
                 </div>
               </div>
               <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Purpose</label>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("loan.purposeField")}</label>
                 <input value={form.loan_purpose} onChange={set("loan_purpose")} placeholder="What's it for?"
                   className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm" />
               </div>
               {principal > 0 && (
                 <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl p-3">
-                  <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider mb-2">Estimated Repayment</p>
+                  <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider mb-2">{t("loan.estimatedRepay")}</p>
                   <div className="grid grid-cols-3 gap-2">
-                    {[["Interest ({rate}%)".replace("{rate}", String(rate)), fmt(preview.totalInterest)],
-                      ["Total", fmt(preview.totalRepayable)],
-                      ["Per Month", fmt(preview.monthlyInstallment)]].map(([k, v]) => (
+                    {[[t("loan.interestLabel"), fmt(preview.totalInterest)],
+                      [t("loan.totalRepayable"), fmt(preview.totalRepayable)],
+                      [t("loan.monthlyLabel"), fmt(preview.monthlyInstallment)]].map(([k, v]) => (
                       <div key={k} className="text-center">
                         <p className="text-[9px] text-amber-600">{k}</p>
                         <p className="text-xs font-extrabold text-amber-800 dark:text-amber-300">{v}</p>
@@ -1129,8 +1135,8 @@ function LoansTab({ member, org }) {
               )}
             </div>
             <div className="flex gap-2 mt-4">
-              <button onClick={() => { setShowApply(false); setError(""); }} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Cancel</button>
-              <button onClick={handleApply} disabled={saving} className="flex-1 py-3 bg-amber-500 text-white rounded-xl font-bold text-sm disabled:opacity-50">{saving ? "Submitting…" : "Submit"}</button>
+              <button onClick={() => { setShowApply(false); setError(""); }} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">{t("common.cancel")}</button>
+              <button onClick={handleApply} disabled={saving} className="flex-1 py-3 bg-amber-500 text-white rounded-xl font-bold text-sm disabled:opacity-50">{saving ? t("loan.submitting") : t("loan.submitBtn")}</button>
             </div>
           </div>
         </div>
@@ -1142,7 +1148,7 @@ function LoansTab({ member, org }) {
           <div className="bg-white dark:bg-slate-800 rounded-3xl w-full max-w-sm p-5 max-h-[85dvh] overflow-y-auto">
             <div className="flex justify-between items-start mb-3">
               <div>
-                <p className="text-base font-extrabold text-slate-800 dark:text-white">{selected.loan_purpose || "General Loan"}</p>
+                <p className="text-base font-extrabold text-slate-800 dark:text-white">{selected.loan_purpose || t("loan.generalLabel")}</p>
                 <p className="text-[10px] text-slate-400">{fmtDate(selected.applied_at)}</p>
               </div>
               <span className={`text-xs font-bold capitalize px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-700 ${LOAN_STATUS_COL[selected.status]}`}>{selected.status}</span>
@@ -1150,12 +1156,12 @@ function LoansTab({ member, org }) {
 
             <div className="bg-slate-50 dark:bg-slate-700/60 rounded-xl p-3 mb-3 grid grid-cols-2 gap-2">
               {[
-                ["Amount", fmt(selected.amount_requested)],
-                ["Interest", `${selected.interest_rate}%`],
+                [t("loan.amountField"), fmt(selected.amount_requested)],
+                [t("loan.interestLabel"), `${selected.interest_rate}%`],
                 ["Total Repayable", fmt(selected.total_repayable || selected.amount_requested)],
-                ["Monthly Install.", fmt(selected.monthly_installment || 0)],
-                ["Outstanding", fmt(selected.outstanding_balance)],
-                ["Due Date", fmtDate(selected.due_date)],
+                [t("loan.monthlyInstall"), fmt(selected.monthly_installment || 0)],
+                [t("loan.outstanding"), fmt(selected.outstanding_balance)],
+                [t("loan.dueDate"), fmtDate(selected.due_date)],
               ].map(([k, v]) => (
                 <div key={k}>
                   <p className="text-[9px] text-slate-400 uppercase tracking-wider">{k}</p>
@@ -1183,21 +1189,21 @@ function LoansTab({ member, org }) {
               }} disabled={repaying}
                 className="w-full py-3 bg-green-600 text-white rounded-2xl font-bold text-sm mb-3 flex items-center justify-center gap-2 disabled:opacity-70 active:scale-[0.98] transition-transform">
                 {repaying
-                  ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Preparing payment…</>
-                  : <><svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>Pay via Paystack — {fmt(selected.monthly_installment || selected.outstanding_balance)}</>}
+                  ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />{t("bill.processing")}</>
+                  : <><svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>{t("coopMem.payPaystack")} — {fmt(selected.monthly_installment || selected.outstanding_balance)}</>}
               </button>
             )}
 
             {selected.status === "pending" && (
               <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl p-3 mb-3 text-center">
-                <p className="text-sm font-bold text-amber-700 dark:text-amber-400">Awaiting Review</p>
-                <p className="text-[11px] text-amber-600 dark:text-amber-500 mt-1">Your application is being reviewed by the admin.</p>
+                <p className="text-sm font-bold text-amber-700 dark:text-amber-400">{t("loan.awaitingReview")}</p>
+                <p className="text-[11px] text-amber-600 dark:text-amber-500 mt-1">{t("loan.awaitingDesc")}</p>
               </div>
             )}
 
             {repayments.length > 0 && (
               <div className="mb-3">
-                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Repayment History</p>
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">{t("loan.repayHistory")}</p>
                 <div className="flex flex-col gap-1.5 max-h-36 overflow-y-auto">
                   {repayments.map(r => (
                     <button key={r.id} onClick={() => setReceipt(buildCoopLoanRepaymentReceipt(r, selected, member.full_name, org.name))}
@@ -1216,7 +1222,7 @@ function LoansTab({ member, org }) {
             )}
 
             <button onClick={() => { setSelected(null); setRepayments([]); setError(""); }}
-              className="w-full py-2.5 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Close</button>
+              className="w-full py-2.5 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">{t("common.close")}</button>
           </div>
         </div>
       )}
@@ -1230,6 +1236,7 @@ function LoansTab({ member, org }) {
 //  BROADCAST STATION TAB (member portal)
 // ═══════════════════════════════════════════════════
 function MemberBroadcastTab({ member, org }) {
+  const t = useT();
   const [broadcasts, setBroadcasts] = useState([]);
   const [loading,    setLoading]    = useState(true);
   const [filter,     setFilter]     = useState("all");
@@ -1259,22 +1266,22 @@ function MemberBroadcastTab({ member, org }) {
   };
 
   const FILTER_TABS = [
-    { id: "all",          label: "All"           },
-    { id: "meeting",      label: "Meetings"      },
-    { id: "announcement", label: "Announcements" },
-    { id: "event",        label: "Events"        },
-    { id: "poll",         label: "Polls"         },
+    { id: "all",          label: "All"                        },
+    { id: "meeting",      label: t("bcast.meetings")      },
+    { id: "announcement", label: t("bcast.announcements") },
+    { id: "event",        label: t("bcast.events")        },
+    { id: "poll",         label: t("bcast.polls")         },
   ];
   const RSVP_OPTIONS = [
-    { status: "attending",     label: "Attending", color: "bg-green-500 text-white"  },
-    { status: "maybe",         label: "Maybe",     color: "bg-amber-400 text-white"  },
-    { status: "not_attending", label: "Can't Go",  color: "bg-slate-400 text-white"  },
+    { status: "attending",     label: t("bcast.attending"), color: "bg-green-500 text-white"  },
+    { status: "maybe",         label: t("bcast.maybe"),     color: "bg-amber-400 text-white"  },
+    { status: "not_attending", label: t("bcast.cantGo"),    color: "bg-slate-400 text-white"  },
   ];
   const TYPE_COLORS = {
-    meeting:      { bg: "bg-[#0D2040]", text: "text-white", label: "Meeting"      },
-    announcement: { bg: "bg-amber-500",  text: "text-white", label: "Announcement" },
-    event:        { bg: "bg-[#3DA829]",  text: "text-white", label: "Event"        },
-    poll:         { bg: "bg-purple-600", text: "text-white", label: "Poll"         },
+    meeting:      { bg: "bg-[#0D2040]", text: "text-white", label: t("bcast.meeting")      },
+    announcement: { bg: "bg-amber-500",  text: "text-white", label: t("bcast.announcement") },
+    event:        { bg: "bg-[#3DA829]",  text: "text-white", label: t("bcast.event")        },
+    poll:         { bg: "bg-purple-600", text: "text-white", label: t("bcast.poll")         },
   };
 
   const visible = filter === "all" ? broadcasts : broadcasts.filter(b => b._type === filter);
@@ -1308,7 +1315,7 @@ function MemberBroadcastTab({ member, org }) {
         {visible.length === 0 ? (
           <div className="flex flex-col items-center py-20 text-center">
             <span className="text-5xl mb-4">📡</span>
-            <p className="text-base font-extrabold text-slate-700 dark:text-slate-200 mb-2">Nothing here yet</p>
+            <p className="text-base font-extrabold text-slate-700 dark:text-slate-200 mb-2">{t("bcast.noBroadcasts")}</p>
             <p className="text-sm text-slate-400">Your organisation's broadcasts will appear here.</p>
           </div>
         ) : visible.map(item => {
@@ -1326,17 +1333,17 @@ function MemberBroadcastTab({ member, org }) {
                 {item.location && <p className="text-[11px] text-slate-400 mb-1">📍 {item.location}</p>}
                 {item.meeting_link && (
                   <a href={item.meeting_link} target="_blank" rel="noreferrer"
-                    className="inline-block mb-2 text-[10px] font-bold text-green-500 bg-green-50 dark:bg-green-900/20 px-2.5 py-1 rounded-lg">🔗 Join Online</a>
+                    className="inline-block mb-2 text-[10px] font-bold text-green-500 bg-green-50 dark:bg-green-900/20 px-2.5 py-1 rounded-lg">{`🔗 ${t("bcast.joinOnline")}`}</a>
                 )}
                 {item.agenda && (
                   <div className="bg-slate-50 dark:bg-slate-700 rounded-xl px-3 py-2 mb-3">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Agenda</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">{t("bcast.agenda")}</p>
                     <p className="text-[11px] text-slate-600 dark:text-slate-300 whitespace-pre-line line-clamp-4">{item.agenda}</p>
                   </div>
                 )}
                 {item.my_attendance && (
                   <p className={`text-[10px] font-bold mb-2 ${item.my_attendance === "present" ? "text-green-600" : "text-red-500"}`}>
-                    {item.my_attendance === "present" ? "✓ You were marked present" : "✗ You were marked absent"}
+                    {item.my_attendance === "present" ? `✓ ${t("bcast.present")}` : `✗ ${t("bcast.absent")}`}
                   </p>
                 )}
                 {item.rsvp_counts && (
@@ -1373,7 +1380,7 @@ function MemberBroadcastTab({ member, org }) {
                 {item.end_date    && <p className="text-[11px] text-slate-400">Until {fmtDT(item.end_date)}</p>}
                 {item.event_link  && (
                   <a href={item.event_link} target="_blank" rel="noreferrer"
-                    className="inline-block mt-2 text-[10px] font-bold text-green-500 bg-green-50 dark:bg-green-900/20 px-2.5 py-1 rounded-lg">🔗 More info</a>
+                    className="inline-block mt-2 text-[10px] font-bold text-green-500 bg-green-50 dark:bg-green-900/20 px-2.5 py-1 rounded-lg">{`🔗 ${t("bcast.moreInfo")}`}</a>
                 )}
               </>)}
 
@@ -1403,11 +1410,11 @@ function MemberBroadcastTab({ member, org }) {
                   })}
                 </div>
                 <p className="text-[10px] text-slate-400">
-                  {item.total_votes || 0} votes · {item.is_active ? "Poll open" : "Poll closed"}
+                  {item.total_votes || 0} {t("bcast.votes")} · {item.is_active ? t("bcast.pollOpen") : t("bcast.pollClosed")}
                   {item.closes_at && item.is_active ? ` · Closes ${fmtDT(item.closes_at)}` : ""}
                 </p>
                 {item.my_vote == null && item.is_active && (
-                  <p className="text-[10px] font-bold mt-1 text-[#3DA829]">Tap an option to vote</p>
+                  <p className="text-[10px] font-bold mt-1 text-[#3DA829]">{t("bcast.tapToVote")}</p>
                 )}
               </>)}
             </div>
@@ -1457,6 +1464,7 @@ const FAQS = [
 ];
 
 function SupportTab({ member, org }) {
+  const t = useT();
   const [view,      setView]      = useState("ticket"); // "ticket" | "faq"
   const [category,  setCategory]  = useState("General");
   const [subject,   setSubject]   = useState("");
@@ -1467,7 +1475,7 @@ function SupportTab({ member, org }) {
   const [openFaq,   setOpenFaq]   = useState(null);
 
   const submit = async () => {
-    if (!subject.trim() || !message.trim()) { setError("Please fill in the subject and message."); return; }
+    if (!subject.trim() || !message.trim()) { setError(t("error.somethingWrong")); return; }
     setSending(true); setError("");
     try {
       const res = await coopFn("submit-support-ticket", {
@@ -1477,7 +1485,7 @@ function SupportTab({ member, org }) {
       setDone(res.ticket_ref);
       setSubject(""); setMessage(""); setCategory("General");
     } catch (e) {
-      setError(e.message || "Failed to submit ticket. Please try again.");
+      setError(e.message || t("error.saveFailed"));
     } finally {
       setSending(false);
     }
@@ -1488,8 +1496,8 @@ function SupportTab({ member, org }) {
       {/* Tab switcher */}
       <div className="flex-none flex border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900">
         {[
-          { id: "ticket", label: "Raise a Ticket", icon: "M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" },
-          { id: "faq",    label: "FAQ",            icon: "M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" },
+          { id: "ticket", label: t("coopMem.raiseTicketBtn"), icon: "M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" },
+          { id: "faq",    label: "FAQ",                       icon: "M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" },
         ].map(t => (
           <button key={t.id} onClick={() => setView(t.id)}
             className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-[12px] font-bold border-b-2 transition-colors
@@ -1512,19 +1520,19 @@ function SupportTab({ member, org }) {
                 </svg>
               </div>
               <div>
-                <p className="text-base font-extrabold text-slate-800 dark:text-white">Ticket Submitted!</p>
-                <p className="text-[12px] text-slate-400 mt-1">Reference: <span className="font-bold text-[#3DA829]">{done}</span></p>
+                <p className="text-base font-extrabold text-slate-800 dark:text-white">{t("coopMem.ticketSuccess")}</p>
+                <p className="text-[12px] text-slate-400 mt-1">{t("coopMem.ticketRef")} <span className="font-bold text-[#3DA829]">{done}</span></p>
                 <p className="text-[12px] text-slate-400 mt-2 leading-relaxed">You'll receive a confirmation email shortly. Your organisation admin has been notified.</p>
               </div>
               <button onClick={() => setDone(null)}
                 className="mt-2 px-6 py-2.5 bg-[#3DA829] text-white text-sm font-bold rounded-xl active:opacity-80">
-                Raise Another Ticket
+                {t("coopMem.raiseAnother")}
               </button>
             </div>
           ) : (
             <div className="flex flex-col gap-4">
               <div className="bg-[#3DA829]/8 dark:bg-[#3DA829]/10 rounded-2xl p-4 border border-[#3DA829]/20">
-                <p className="text-[12px] font-bold text-[#3DA829]">How it works</p>
+                <p className="text-[12px] font-bold text-[#3DA829]">{t("coopMem.howItWorks")}</p>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">Your ticket is sent to your organisation admin. You'll get a confirmation email and the admin will follow up with you directly.</p>
               </div>
 
@@ -1538,11 +1546,16 @@ function SupportTab({ member, org }) {
               <div>
                 <label className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block mb-2">Category</label>
                 <div className="grid grid-cols-2 gap-2">
-                  {["General", "Savings", "Loans", "Technical"].map(c => (
+                  {[
+                    { key: "General",   label: t("coopMem.categoryGeneral") },
+                    { key: "Savings",   label: t("coopMem.categorySavings") },
+                    { key: "Loans",     label: t("coopMem.categoryLoans")   },
+                    { key: "Technical", label: t("coopMem.categoryTech")    },
+                  ].map(({ key: c, label: cLabel }) => (
                     <button key={c} onClick={() => setCategory(c)}
                       className={`py-2.5 rounded-xl text-[12px] font-bold border-2 transition-all active:scale-[0.97]
                         ${category === c ? "border-[#3DA829] bg-[#3DA829]/8 text-[#3DA829]" : "border-slate-100 dark:border-slate-700 text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-800"}`}>
-                      {c}
+                      {cLabel}
                     </button>
                   ))}
                 </div>
@@ -1550,30 +1563,30 @@ function SupportTab({ member, org }) {
 
               {/* Subject */}
               <div>
-                <label className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">Subject *</label>
-                <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Brief description of your issue…"
+                <label className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">{t("coopMem.subjectField")}</label>
+                <input value={subject} onChange={e => setSubject(e.target.value)} placeholder={t("coopMem.subjectPH")}
                   className="w-full bg-slate-100 dark:bg-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-[#3DA829]" />
               </div>
 
               {/* Message */}
               <div>
-                <label className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">Message *</label>
+                <label className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">{t("coopMem.messageField")}</label>
                 <textarea value={message} onChange={e => setMessage(e.target.value)} rows={5}
-                  placeholder="Describe your issue in detail…"
+                  placeholder={t("coopMem.messagePH")}
                   className="w-full bg-slate-100 dark:bg-slate-800 rounded-xl px-3.5 py-3 text-sm text-slate-800 dark:text-white outline-none resize-none focus:ring-2 focus:ring-[#3DA829]" />
               </div>
 
               <button onClick={submit} disabled={sending || !subject.trim() || !message.trim()}
                 className="w-full py-3.5 rounded-2xl font-bold text-sm text-white flex items-center justify-center gap-2 disabled:opacity-50 active:opacity-80 transition-opacity bg-[linear-gradient(135deg,#3DA829,#2E8020)]">
                 {sending
-                  ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Sending…</>
-                  : <><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>Submit Ticket</>}
+                  ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />{t("coopMem.sending")}</>
+                  : <><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>{t("coopMem.ticketSubmit")}</>}
               </button>
             </div>
           )
         ) : (
           <div className="flex flex-col gap-2">
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Frequently Asked Questions</p>
+            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">{t("coopMem.faqTitle")}</p>
             {FAQS.map((faq, i) => (
               <div key={i}
                 className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 overflow-hidden">
@@ -1593,8 +1606,8 @@ function SupportTab({ member, org }) {
               </div>
             ))}
             <div className="mt-4 bg-[#3DA829]/8 dark:bg-[#3DA829]/10 rounded-2xl p-4 border border-[#3DA829]/20 text-center">
-              <p className="text-[12px] text-slate-500 dark:text-slate-400">Can't find your answer?</p>
-              <button onClick={() => setView("ticket")} className="mt-1.5 text-[12px] font-bold text-[#3DA829] active:opacity-70">Raise a support ticket →</button>
+              <p className="text-[12px] text-slate-500 dark:text-slate-400">{t("coopMem.cantFind")}</p>
+              <button onClick={() => setView("ticket")} className="mt-1.5 text-[12px] font-bold text-[#3DA829] active:opacity-70">{t("coopMem.raiseTicket")}</button>
             </div>
           </div>
         )}
@@ -1672,6 +1685,7 @@ function makeMoreTabsMember(t) {
 
 // ─── Member Profile Sheet ─────────────────────────────────────────────────────
 function ProfileSheet({ member, onClose, onSave }) {
+  const t = useT();
   const [form,       setForm]       = useState({
     full_name:          member.full_name          || "",
     phone:              member.phone              || "",
@@ -1697,7 +1711,7 @@ function ProfileSheet({ member, onClose, onSave }) {
   };
 
   const save = async () => {
-    if (!form.full_name.trim()) { setError("Name is required"); return; }
+    if (!form.full_name.trim()) { setError(t("error.somethingWrong")); return; }
     setSaving(true); setError("");
     try {
       let avatar_url = member.avatar_url || null;
@@ -1733,7 +1747,7 @@ function ProfileSheet({ member, onClose, onSave }) {
         date_of_birth:     form.date_of_birth || null,
       });
       onClose();
-    } catch (e) { setError(e.message || "Failed to save"); }
+    } catch (e) { setError(e.message || t("error.saveFailed")); }
     setSaving(false);
   };
 
@@ -1747,7 +1761,7 @@ function ProfileSheet({ member, onClose, onSave }) {
         style={{ maxHeight: "92dvh" }} onClick={e => e.stopPropagation()}>
         <div className="w-10 h-1 bg-slate-200 rounded-full mx-auto mt-3 mb-1 flex-shrink-0" />
         <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 flex-shrink-0">
-          <h3 className="text-base font-extrabold text-slate-800">My Profile</h3>
+          <h3 className="text-base font-extrabold text-slate-800">{t("coopMem.myProfile")}</h3>
           <button onClick={onClose} className="text-slate-400 p-1">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-5 h-5"><path d="M18 6L6 18M6 6l12 12"/></svg>
           </button>
@@ -1768,56 +1782,56 @@ function ProfileSheet({ member, onClose, onSave }) {
               </div>
             </button>
             <input ref={fileRef} type="file" accept="image/*" onChange={onPickFile} className="hidden" />
-            <p className="text-[11px] text-slate-400">Tap to change photo</p>
+            <p className="text-[11px] text-slate-400">{t("coopMem.tapPhoto")}</p>
           </div>
 
           {error && <p className="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-xl">{error}</p>}
 
           <div>
-            <label className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">Full Name</label>
+            <label className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">{t("profile.fullName")}</label>
             <input className={inp} value={form.full_name} onChange={e => setForm(p => ({ ...p, full_name: e.target.value }))} />
           </div>
           <div>
-            <label className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">Phone Number</label>
+            <label className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">{t("profile.phone")}</label>
             <input className={inp} type="tel" placeholder="08000000000" value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} />
           </div>
           <div>
-            <label className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">Address</label>
+            <label className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">{t("profile.address")}</label>
             <input className={inp} value={form.address} onChange={e => setForm(p => ({ ...p, address: e.target.value }))} placeholder="12 Market Road, Lagos" />
           </div>
           <div>
-            <label className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">Occupation</label>
+            <label className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">{t("mem.occupation")}</label>
             <input className={inp} value={form.occupation} onChange={e => setForm(p => ({ ...p, occupation: e.target.value }))} placeholder="e.g. Trader, Teacher" />
           </div>
           <div>
-            <label className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">Gender</label>
+            <label className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">{t("mem.gender")}</label>
             <select className={inp} value={form.gender} onChange={e => setForm(p => ({ ...p, gender: e.target.value }))}>
-              <option value="">Select…</option>
-              <option value="Male">Male</option>
-              <option value="Female">Female</option>
-              <option value="Other">Other</option>
+              <option value="">{t("mem.genderSelect")}</option>
+              <option value="Male">{t("mem.genderMale")}</option>
+              <option value="Female">{t("mem.genderFemale")}</option>
+              <option value="Other">{t("mem.genderOther")}</option>
             </select>
           </div>
           <div>
-            <label className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">Date of Birth</label>
+            <label className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">{t("coopMem.dob")}</label>
             <input className={inp} type="date" value={form.date_of_birth}
               onChange={e => setForm(p => ({ ...p, date_of_birth: e.target.value }))}
               max={new Date(new Date().setFullYear(new Date().getFullYear() - 18)).toISOString().slice(0, 10)} />
           </div>
           <div>
-            <label className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">Next of Kin</label>
+            <label className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">{t("profile.nokName")}</label>
             <input className={inp} value={form.next_of_kin} onChange={e => setForm(p => ({ ...p, next_of_kin: e.target.value }))} placeholder="Next of kin full name" />
           </div>
           <div>
-            <label className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">Next of Kin Phone</label>
+            <label className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">{t("profile.nokPhone")}</label>
             <input className={inp} type="tel" value={form.next_of_kin_phone} onChange={e => setForm(p => ({ ...p, next_of_kin_phone: e.target.value }))} placeholder="08000000000" />
           </div>
 
           {[
-            ["Membership ID", member.membership_id],
-            ["Role",          member.role],
-            ["Status",        member.status],
-            ["Member Since",  fmtDate(member.joined_date)],
+            [t("coopMem.memberID"),    member.membership_id],
+            [t("coopMem.memberRole"),  member.role],
+            [t("coopMem.status"),      member.status],
+            [t("coopMem.memberSince"), fmtDate(member.joined_date)],
           ].map(([label, val]) => (
             <div key={label}>
               <label className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">{label}</label>
@@ -1827,10 +1841,10 @@ function ProfileSheet({ member, onClose, onSave }) {
         </div>
 
         <div className="px-5 border-t border-slate-100 flex gap-2 flex-shrink-0" style={{ paddingTop: 16, paddingBottom: "max(16px, env(safe-area-inset-bottom, 16px))" }}>
-          <button onClick={onClose} className="flex-1 py-3 border border-slate-200 text-slate-600 rounded-xl font-bold text-sm active:bg-slate-50">Cancel</button>
+          <button onClick={onClose} className="flex-1 py-3 border border-slate-200 text-slate-600 rounded-xl font-bold text-sm active:bg-slate-50">{t("common.cancel")}</button>
           <button onClick={save} disabled={saving}
             className="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-50 active:bg-green-700">
-            {saving ? "Saving…" : "Save Changes"}
+            {saving ? t("mem.saving") : t("mem.saveChanges")}
           </button>
         </div>
       </div>
@@ -2308,7 +2322,7 @@ export default function CoopMemberPortal({ member: initialMember }) {
                       <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/>
                     </svg>
                   </div>
-                  <span className="text-sm font-semibold">Edit Profile</span>
+                  <span className="text-sm font-semibold">{t("common.editProfile")}</span>
                 </button>
                 {/* Dark mode toggle */}
                 <button onClick={toggleDark}
@@ -2321,7 +2335,7 @@ export default function CoopMemberPortal({ member: initialMember }) {
                       }
                     </svg>
                   </div>
-                  <span className="text-sm font-semibold">{isDark ? "Light Mode" : "Dark Mode"}</span>
+                  <span className="text-sm font-semibold">{t("common.darkMode")}</span>
                 </button>
               </div>
 
@@ -2332,7 +2346,7 @@ export default function CoopMemberPortal({ member: initialMember }) {
                   <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                     <path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                   </svg>
-                  Sign Out
+                  {t("common.logOut")}
                 </button>
               </div>
             </div>
