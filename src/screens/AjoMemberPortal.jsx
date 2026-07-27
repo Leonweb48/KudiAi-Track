@@ -5365,34 +5365,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
         <header className="flex-none z-sticky bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shadow-sm">
           <div style={{ height: "env(safe-area-inset-top, 0px)" }} />
           <div className="h-14 flex items-center justify-between px-4">
-          {/* Business identity — falls back to KudiAI brand until ownerInfo loads */}
-          <div className="flex items-center gap-2 min-w-0 flex-1">
-            {ownerInfo?.owner?.business_name ? (
-              <>
-                {ownerInfo.owner.logo_url ? (
-                  <div className="w-8 h-8 rounded-xl flex-shrink-0 overflow-hidden bg-navy relative flex items-center justify-center">
-                    <span className="text-white font-black text-sm leading-none select-none">
-                      {ownerInfo.owner.business_name[0].toUpperCase()}
-                    </span>
-                    <img src={ownerInfo.owner.logo_url} alt="" className="absolute inset-0 w-full h-full object-cover" onError={(e) => e.currentTarget.style.display = "none"} />
-                  </div>
-                ) : (
-                  <AppLogo className="h-8 w-8 flex-none" />
-                )}
-                <p className="text-[15px] font-black text-slate-800 dark:text-white leading-tight truncate" style={{ maxWidth: 160 }}>
-                  {ownerInfo.owner.business_name}
-                </p>
-              </>
-            ) : (
-              <>
-                <AppLogo className="h-8 w-8 flex-none" />
-                <span className="text-[17px] font-black tracking-tight leading-none select-none">
-                  <span className="bg-gradient-to-br from-brand-500 to-brand-600 bg-clip-text text-transparent">KudiAI</span>
-                  <span className="text-navy dark:text-slate-200"> Track</span>
-                </span>
-              </>
-            )}
-          </div>
+          <AppLogo businessName={ownerInfo?.owner?.business_name} iconUrl={ownerInfo?.owner?.logo_url} />
 
           <div className="flex-none flex items-center gap-2">
             {loadingData && <div className="w-3.5 h-3.5 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />}

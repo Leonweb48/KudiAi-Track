@@ -204,23 +204,7 @@ If asked about business-wide figures (total business revenue, all staff performa
         <header className="flex-none z-sticky bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shadow-sm">
           <div style={{ height: "env(safe-area-inset-top, 0px)" }} />
           <div className="h-14 flex items-center justify-between px-4">
-          <div className="flex items-center gap-2 flex-none min-w-0">
-            <AppLogo className="h-8 w-8 flex-shrink-0" />
-            {staff?.business_name ? (
-              <p className="text-[15px] font-black text-slate-800 dark:text-white leading-tight truncate" style={{ maxWidth: 160 }}>
-                {staff.business_name}
-              </p>
-            ) : (
-              <div className="flex items-baseline gap-0.5">
-                <span className="text-[17px] font-black tracking-tight text-slate-800 dark:text-slate-100">Kudi</span>
-                <span className="text-[17px] font-black tracking-tight"
-                  style={{ background: "linear-gradient(135deg,var(--brand-green),var(--brand-green-dark))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
-                  AI
-                </span>
-                <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Track</span>
-              </div>
-            )}
-          </div>
+          <AppLogo businessName={staff?.business_name} />
           <div className="flex-none flex items-center gap-2">
             <NotificationCenter
               userId={session?.user?.id}

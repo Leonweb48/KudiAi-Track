@@ -2086,13 +2086,7 @@ export default function CoopMemberPortal({ member: initialMember }) {
 
         {/* ── Header — matches org portal h-14 ── */}
         <header className="flex-none z-30 min-h-[56px] flex items-center justify-between px-4 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shadow-sm" style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
-          <img src="/logo-tp.png" alt="KudiAi" className="h-8 w-8 object-contain flex-shrink-0" />
-          <div className="flex items-baseline gap-0.5 select-none">
-            <span className="text-[17px] font-black tracking-tight text-slate-800 dark:text-white leading-none">Kudi</span>
-            <span className="text-[17px] font-black tracking-tight leading-none"
-              style={{ background: "linear-gradient(135deg,#3DA829,#2E8020)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>AI</span>
-            <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 tracking-widest uppercase leading-none ml-1">Track</span>
-          </div>
+          <AppLogo />
           <div className="flex items-center gap-2 flex-shrink-0">
               <NotificationCenter
                 userId={member?.user_id ?? null}
