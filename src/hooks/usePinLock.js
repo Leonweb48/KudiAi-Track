@@ -110,13 +110,28 @@ export function usePinLock(userId, session) {
       }
       setLoading(false);
     } catch {
-      setLocked(false);
+      // Do NOT set locked=false here — fail CLOSED on every attempt.
+      // Only resolve the locked state after all retries are exhausted so we never
+      // flash the portal open while a retry is in flight.
       if (retryCount < 4) {
-        // Network blip — retry up to 4 times before giving up (covers APK edge-function cold starts).
-        // Delays: 2s, 4s, 8s, 16s.
         setTimeout(() => refetch(retryCount + 1), 2000 * Math.pow(2, retryCount));
       } else {
-        // All retries exhausted — keep status=null so App.jsx PIN gate doesn't fire falsely.
+        // All retries exhausted. Determine locked state from local evidence.
+        if (userId) {
+          try {
+            const localHash = localStorage.getItem(`kt_pin_h_${userId}`);
+            if (localHash) {
+              // Local hash stored → a PIN was set. Stay locked so LockScreen can do
+              // offline PBKDF2 verification. status stays null so the PIN-setup gate
+              // in App.jsx (which needs status!==null) is also skipped — user goes
+              // straight to LockScreen.
+              setLoading(false);
+              return;
+            }
+          } catch {}
+        }
+        // No local hash → PIN was never set (or hash cleared). Unlock without server.
+        setLocked(false);
         setLoading(false);
       }
     }

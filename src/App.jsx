@@ -356,14 +356,20 @@ export default function App() {
     );
   }
 
+  // ── PIN load gate — block portals while check_status is in flight ──
+  // Without this, the portal renders during loading=true (locked=true but loading=true
+  // skips the lock check), causing the app to visibly "blink open" before the lock screen
+  // appears, and letting it stay open when check_status fails offline.
+  if (pinLock.loading) return <Spinner />;
+
   // ── PIN setup gate — blocks all portals until both PINs are configured ──
   // Covers: organisation, org_member, ajo_client, staff, branch_manager, marketer, main app.
   // status !== null guards against triggering setup when check_status failed (network error / edge-function cold start).
-  if (!pinLock.loading && pinLock.status !== null && (!pinLock.appPinSet || !pinLock.txnPinSet)) {
+  if (pinLock.status !== null && (!pinLock.appPinSet || !pinLock.txnPinSet)) {
     return <PinSetupFlow pinLock={pinLock} userId={userId} session={session} />;
   }
-  // Lock screen (inactivity or new device) — wait for pinLock load to avoid false flashes
-  if (!pinLock.loading && pinLock.locked) {
+  // Lock screen (inactivity or new device)
+  if (pinLock.locked) {
     const isAjoCli = status === "ajo_client" || status === "ajo_client_setup";
     return <LockScreen
       pinLock={pinLock}

@@ -4,6 +4,16 @@ import { uid } from "../utils/helpers";
 import { sendEmailTrigger } from "../utils/emailTrigger";
 import { notify, notifyBranchManager, notifyBranchStaff } from "../lib/notifyEngine";
 
+function invCacheKey(userId, staffId) {
+  return `kt_inv_${userId}${staffId ? `_${staffId}` : ""}`;
+}
+function saveInvCache(key, data) {
+  try { localStorage.setItem(key, JSON.stringify(data)); } catch {}
+}
+function loadInvCache(key) {
+  try { return JSON.parse(localStorage.getItem(key) || "null"); } catch { return null; }
+}
+
 export function useInventory(userId, staffId = null, branchId = null, staffName = null) {
   const [products,  setProducts]  = useState([]);
   const [movements, setMovements] = useState([]);
@@ -12,6 +22,18 @@ export function useInventory(userId, staffId = null, branchId = null, staffName 
 
   const loadData = useCallback(async () => {
     if (!userId || !supabase) { setLoading(false); return; }
+
+    // ── Offline: serve from local cache ──────────────────────────────
+    if (!navigator.onLine) {
+      const cached = loadInvCache(invCacheKey(userId, staffId));
+      if (cached) {
+        if (cached.products)  setProducts(cached.products);
+        if (cached.movements) setMovements(cached.movements);
+      }
+      setLoading(false);
+      return;
+    }
+
     // Staff reads go through get_products_safe() (SECURITY DEFINER) which returns
     // cost_price = NULL. Dropping staff_read_products blocks direct table access.
     // Owner reads use the table directly and receive all columns including cost_price.
@@ -33,6 +55,10 @@ export function useInventory(userId, staffId = null, branchId = null, staffName 
         prods = prods.filter(p => p.staff_id === staffId);
       }
       setProducts(prods);
+      saveInvCache(invCacheKey(userId, staffId), {
+        products: prods,
+        movements: mRes.data || [],
+      });
     }
     if (mRes.data)  setMovements(mRes.data);
     setLoading(false);

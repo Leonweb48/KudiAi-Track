@@ -26,9 +26,15 @@ export function clearUserCache(userId) {
   if (!userId) return;
   const ocPfx    = `${PREFIX}${userId}_`;
   const storePfx = `kt_store_${userId}`;
+  const invPfx   = `kt_inv_${userId}`;
   const lockTs   = `kt_lock_timeout_${userId}`;
   Object.keys(localStorage)
-    .filter(k => k.startsWith(ocPfx) || k.startsWith(storePfx) || k === lockTs)
+    .filter(k =>
+      k.startsWith(ocPfx) ||
+      k.startsWith(storePfx) ||
+      k.startsWith(invPfx) ||
+      k === lockTs
+    )
     .forEach(k => localStorage.removeItem(k));
 }
 

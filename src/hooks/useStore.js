@@ -5,6 +5,8 @@ import { logAudit } from "../utils/auditLog";
 import { sendEmailTrigger } from "../utils/emailTrigger";
 import { computeCapital } from "../lib/profitEngine";
 import { notify, notifyBranchManager } from "../lib/notifyEngine";
+import { savePendingOp, getPendingCount } from "../utils/offlineDb";
+import { syncPending } from "../utils/syncManager";
 
 const fireEmailTrigger = sendEmailTrigger;
 
@@ -455,31 +457,43 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     return () => { supabase.removeChannel(channel); setRtConnected(false); };
   }, [userId, staffId, branchId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Online / offline detection ─────────────────────────────────
+  // ── Online / offline detection + queue flush ──────────────────
   useEffect(() => {
     const on = async () => {
       setIsOnline(true);
-      if (wasOfflineRef.current) {
-        wasOfflineRef.current = false;
-        setSyncing(true);
-        setSyncResult(null);
-        try {
-          await loadDataRef.current?.(true);
-          setSyncResult("Up to date");
-          setTimeout(() => setSyncResult(null), 4000);
-        } catch { /* best-effort */ }
-        setSyncing(false);
-      }
+      if (!wasOfflineRef.current) return;
+      wasOfflineRef.current = false;
+      setSyncing(true);
+      setSyncResult(null);
+      try {
+        // 1. Flush any queued offline transactions first.
+        const pendingCount = await getPendingCount(userId).catch(() => 0);
+        if (pendingCount > 0) {
+          const result = await syncPending(supabase, userId);
+          if (result.synced > 0) {
+            // Replace all pending-flagged optimistic rows with fresh server data.
+            // loadData(true) immediately after will repopulate from DB, so just
+            // strip the _pending flag from local state as a visual bridge.
+            setTransactions(prev => prev.filter(tx => !tx._pending));
+          }
+        }
+        // 2. Pull fresh data from server.
+        await loadDataRef.current?.(true);
+        const synced = await getPendingCount(userId).catch(() => 0);
+        const syncedCount = pendingCount - synced;
+        setSyncResult(syncedCount > 0
+          ? `Synced ${syncedCount} offline transaction${syncedCount === 1 ? "" : "s"}`
+          : "Up to date"
+        );
+        setTimeout(() => setSyncResult(null), 5000);
+      } catch { /* best-effort */ }
+      setSyncing(false);
     };
     const off = () => { setIsOnline(false); wasOfflineRef.current = true; };
     window.addEventListener("online",  on);
     window.addEventListener("offline", off);
     return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
-  }, []);
-
-  // ── Sync engine ────────────────────────────────────────────────
-  // Offline sync removed — transactions require a live connection.
-  // When network is unavailable, the UI shows a banner and writes are blocked.
+  }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Transactions ───────────────────────────────────────────────
   const addTransaction = async (t) => {
@@ -504,6 +518,20 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
 
     setTransactions(p => [{ ...payload, id: tempId, _pending: true }, ...p]);
     setDbError(null);
+
+    // ── Offline: queue the transaction in IndexedDB ───────────────
+    if (!navigator.onLine) {
+      try {
+        await savePendingOp({ local_id: localId, table: "transactions", data: payload, user_id: userId });
+        // Leave the optimistic row in state with _pending=true so the user sees it.
+        // syncPending() will replace it with the real server row on reconnect.
+        return { _queued: true, id: tempId, ...payload };
+      } catch {
+        setTransactions(p => p.filter(tx => tx.id !== tempId));
+        setDbError("Couldn't queue — offline storage unavailable.");
+        return;
+      }
+    }
 
     const { data, error } = await supabase
       .from("transactions").insert(payload).select().single();

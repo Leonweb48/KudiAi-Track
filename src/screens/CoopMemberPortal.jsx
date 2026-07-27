@@ -4,6 +4,7 @@ import { Capacitor } from "@capacitor/core";
 import { App as CapApp } from "@capacitor/app";
 import { buildCallbackUrl, openPaystackCheckout } from "../utils/paystackCheckout";
 import { supabase } from "../utils/supabase";
+import { performLogout } from "../utils/logout";
 import { useTheme } from "../hooks/useTheme";
 import { useT } from "../contexts/LanguageContext";
 import BillPayments from "./BillPayments";
@@ -658,6 +659,7 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
   useEffect(() => { setMember(initialMember); }, [initialMember]);
 
   const load = useCallback(() => {
+    if (!navigator.onLine) { setLoading(false); return; }
     Promise.all([
       coopFn("member-get-programs",            { member_id: member.id, org_id: org.id }),
       coopFn("member-get-savings",             { member_id: member.id }),
@@ -940,6 +942,7 @@ function LoansTab({ member, org }) {
   });
 
   const load = useCallback(() => {
+    if (!navigator.onLine) { setLoading(false); return; }
     coopFn("get-loans", { org_id: org.id, member_id: member.id })
       .then(r => setLoans(r.loans || []))
       .finally(() => setLoading(false));
@@ -2277,7 +2280,7 @@ export default function CoopMemberPortal({ member: initialMember }) {
 
               {/* Sign out */}
               <div className="px-5 py-4 border-t border-slate-100 dark:border-slate-800 flex-shrink-0">
-                <button onClick={() => supabase.auth.signOut()}
+                <button onClick={() => performLogout()}
                   className="flex items-center gap-3 text-slate-500 dark:text-slate-400 text-sm font-semibold active:opacity-70 transition-opacity">
                   <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                     <path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
@@ -2398,7 +2401,7 @@ export function OrgMemberArchivedScreen({ member }) {
   }, [orgId, member?.id]);
 
   async function signOut() {
-    await supabase.auth.signOut();
+    await performLogout();
     window.location.reload();
   }
 

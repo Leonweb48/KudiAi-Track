@@ -18,6 +18,7 @@ const ORG_MEMBER_CACHE_KEY = "kuditrack_org_member";
 const STAFF_CACHE_KEY      = "kuditrack_staff";
 const MARKETER_CACHE_KEY   = "kuditrack_marketer";
 const ORG_CACHE_KEY        = "kuditrack_org";
+const PROFILE_CACHE_KEY    = "kuditrack_profile";
 
 // Network error classifier — shared across all early-routing branches.
 // "data: null, error: FetchError" from Supabase means the fetch never completed,
@@ -107,6 +108,7 @@ export function useAuth() {
       localStorage.removeItem(STAFF_CACHE_KEY);
       localStorage.removeItem(MARKETER_CACHE_KEY);
       localStorage.removeItem(ORG_CACHE_KEY);
+      localStorage.removeItem(PROFILE_CACHE_KEY);
       return;
     }
 
@@ -468,7 +470,7 @@ export function useAuth() {
     }
 
     // ── Onboarding check (business owners) ───────────────────────────
-    const { data: profile, error: profileError } = await supabase
+    let { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("id, business_name")
       .eq("id", uid)
@@ -478,15 +480,27 @@ export function useAuth() {
       // Network error — retry up to 3 times (3 s, 6 s, 9 s) before giving up.
       // Prevents a transient failure from falsely sending a user with an existing
       // profile into the onboarding / "create profile" flow.
-      if (profileRetryRef.current < 3) {
+      if (isNetErr(profileError) && profileRetryRef.current < 3) {
         profileRetryRef.current++;
         setTimeout(() => resolve(sess), 3000 * profileRetryRef.current);
         return;
       }
       profileRetryRef.current = 0;
-      // After retries, fall through and treat as no profile (onboarding).
+      // After retries (or non-network error): check local profile cache so an
+      // offline business owner is never dumped into onboarding.
+      if (isNetErr(profileError)) {
+        try {
+          const cp = JSON.parse(localStorage.getItem(PROFILE_CACHE_KEY) || "null");
+          if (cp?.user_id === uid && cp?.business_name) profile = cp;
+        } catch {}
+        if (!profile) { setStatus("offline"); return; }
+      }
     } else {
       profileRetryRef.current = 0; // Reset on successful DB response.
+      // Cache the profile so offline reloads can skip onboarding.
+      if (profile?.business_name) {
+        try { localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify({ ...profile, user_id: uid })); } catch {}
+      }
     }
 
     if (!profile || !profile.business_name) {
