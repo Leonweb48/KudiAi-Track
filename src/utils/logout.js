@@ -28,21 +28,21 @@ export async function performLogout() {
   if (isNative()) {
     const token = localStorage.getItem(PUSH_TOKEN_KEY);
     if (token) {
-      try {
-        await supabase.functions.invoke("notify-send", {
-          body: { action: "deregister-token", token },
-        });
-      } catch { /* best-effort — don't block logout if network is down */ }
+      // Fire-and-forget — edge-function cold start can be 3–10 s on mobile.
+      // Removing the token key immediately means no retry on next launch.
       localStorage.removeItem(PUSH_TOKEN_KEY);
+      supabase.functions.invoke("notify-send", {
+        body: { action: "deregister-token", token },
+      }).catch(() => {});
     }
-    try {
-      const Push = await getPushPlugin();
-      await Push?.removeAllDeliveredNotifications?.();
-    } catch { /* best-effort */ }
+    // Also fire-and-forget — drawer clear is cosmetic, never blocks logout.
+    getPushPlugin()
+      .then(Push => Push?.removeAllDeliveredNotifications?.())
+      .catch(() => {});
   }
-  // Clear per-user caches before signing out. Race against a 300 ms timeout so we
-  // never hang here if the Supabase client tries to refresh an expired token over a
-  // slow network — that refresh can block for 30+ seconds on APK.
+
+  // Get userId from in-memory session (300 ms cap prevents expired-token refresh
+  // from making a network call and hanging for 30+ s on APK).
   try {
     const result = await Promise.race([
       supabase.auth.getSession(),
@@ -51,5 +51,12 @@ export async function performLogout() {
     const uid = result?.data?.session?.user?.id;
     if (uid) { clearUserCache(uid); clearLocalPinState(uid); }
   } catch { /* best-effort */ }
-  await supabase.auth.signOut();
+
+  // signOut makes a server round-trip to revoke the token. Cap at 1.5 s —
+  // Supabase clears localStorage before the network call so local state is
+  // gone either way; the server revocation completes in the background.
+  await Promise.race([
+    supabase.auth.signOut(),
+    new Promise(resolve => setTimeout(resolve, 1500)),
+  ]);
 }
