@@ -1619,7 +1619,16 @@ function makeMoreTabsMember(t) {
 
 // ─── Member Profile Sheet ─────────────────────────────────────────────────────
 function ProfileSheet({ member, onClose, onSave }) {
-  const [form,       setForm]       = useState({ full_name: member.full_name || "", phone: member.phone || "" });
+  const [form,       setForm]       = useState({
+    full_name:          member.full_name          || "",
+    phone:              member.phone              || "",
+    address:            member.address            || "",
+    occupation:         member.occupation         || "",
+    next_of_kin:        member.next_of_kin        || "",
+    next_of_kin_phone:  member.next_of_kin_phone  || "",
+    gender:             member.gender             || "",
+    date_of_birth:      member.date_of_birth      || "",
+  });
   const [preview,    setPreview]    = useState(member.avatar_url || null);
   const [avatarFile, setAvatarFile] = useState(null);
   const [saving,     setSaving]     = useState(false);
@@ -1645,15 +1654,31 @@ function ProfileSheet({ member, onClose, onSave }) {
         const { data, error: upErr } = await supabase.storage.from("avatars").upload(path, avatarFile, { upsert: true });
         if (upErr) throw upErr;
         const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(data.path);
-        avatar_url = publicUrl;
+        avatar_url = `${publicUrl}?v=${Date.now()}`;
       }
       const { error: dbErr } = await supabase.rpc("update_my_member_profile", {
-        p_full_name:  form.full_name.trim(),
-        p_phone:      form.phone.trim() || null,
-        p_avatar_url: avatar_url,
+        p_full_name:     form.full_name.trim(),
+        p_phone:         form.phone.trim() || null,
+        p_avatar_url:    avatar_url,
+        p_address:       form.address.trim() || null,
+        p_occupation:    form.occupation.trim() || null,
+        p_next_of_kin:   form.next_of_kin.trim() || null,
+        p_nok_phone:     form.next_of_kin_phone.trim() || null,
+        p_gender:        form.gender || null,
+        p_date_of_birth: form.date_of_birth || null,
       });
       if (dbErr) throw dbErr;
-      onSave({ full_name: form.full_name.trim(), phone: form.phone.trim() || null, avatar_url });
+      onSave({
+        full_name:         form.full_name.trim(),
+        phone:             form.phone.trim() || null,
+        avatar_url,
+        address:           form.address.trim() || null,
+        occupation:        form.occupation.trim() || null,
+        next_of_kin:       form.next_of_kin.trim() || null,
+        next_of_kin_phone: form.next_of_kin_phone.trim() || null,
+        gender:            form.gender || null,
+        date_of_birth:     form.date_of_birth || null,
+      });
       onClose();
     } catch (e) { setError(e.message || "Failed to save"); }
     setSaving(false);
@@ -1702,6 +1727,37 @@ function ProfileSheet({ member, onClose, onSave }) {
           <div>
             <label className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">Phone Number</label>
             <input className={inp} type="tel" placeholder="08000000000" value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} />
+          </div>
+          <div>
+            <label className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">Address</label>
+            <input className={inp} value={form.address} onChange={e => setForm(p => ({ ...p, address: e.target.value }))} placeholder="12 Market Road, Lagos" />
+          </div>
+          <div>
+            <label className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">Occupation</label>
+            <input className={inp} value={form.occupation} onChange={e => setForm(p => ({ ...p, occupation: e.target.value }))} placeholder="e.g. Trader, Teacher" />
+          </div>
+          <div>
+            <label className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">Gender</label>
+            <select className={inp} value={form.gender} onChange={e => setForm(p => ({ ...p, gender: e.target.value }))}>
+              <option value="">Select…</option>
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">Date of Birth</label>
+            <input className={inp} type="date" value={form.date_of_birth}
+              onChange={e => setForm(p => ({ ...p, date_of_birth: e.target.value }))}
+              max={new Date(new Date().setFullYear(new Date().getFullYear() - 18)).toISOString().slice(0, 10)} />
+          </div>
+          <div>
+            <label className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">Next of Kin</label>
+            <input className={inp} value={form.next_of_kin} onChange={e => setForm(p => ({ ...p, next_of_kin: e.target.value }))} placeholder="Next of kin full name" />
+          </div>
+          <div>
+            <label className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">Next of Kin Phone</label>
+            <input className={inp} type="tel" value={form.next_of_kin_phone} onChange={e => setForm(p => ({ ...p, next_of_kin_phone: e.target.value }))} placeholder="08000000000" />
           </div>
 
           {[

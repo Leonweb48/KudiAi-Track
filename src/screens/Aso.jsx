@@ -74,7 +74,8 @@ function SectionLabel({ children }) {
 
 async function uploadPhoto(file, id) {
   const path = `clients/aso/${id}`;
-  await supabase.storage.from("avatars").upload(path, file, { upsert: true, contentType: file.type });
+  const { error } = await supabase.storage.from("avatars").upload(path, file, { upsert: true, contentType: file.type });
+  if (error) throw error;
   const { data } = supabase.storage.from("avatars").getPublicUrl(path);
   return `${data.publicUrl}?v=${Date.now()}`;
 }
@@ -1569,8 +1570,8 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       try {
         const url = await uploadPhoto(photoFile, data.id);
         await updateAsoClient(data.id, { profile_image_url: url });
-      } catch (err) {
-        console.error("Photo upload:", err);
+      } catch {
+        setClientSubAcctErr("Client created. Profile photo upload failed — edit the client's profile to retry.");
       }
     }
     if (!error && data) {

@@ -337,7 +337,7 @@ export default function Profile({ store, session, plan }) {
       const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(name);
       await new Promise(r => setTimeout(r, 350));
       setUploadProgress(0);
-      return publicUrl;
+      return `${publicUrl}?v=${Date.now()}`;
     } catch (e) {
       clearInterval(iv);
       setUploadProgress(0);
@@ -492,6 +492,19 @@ export default function Profile({ store, session, plan }) {
             <ProfileRow label="Business LGA"   value={profile.business_lga} />
             <ProfileRow label="Business Ward"  value={profile.business_ward} />
             <ProfileRow label="Business Addr"  value={profile.business_address} />
+            <ProfileRow label="Business Size"   value={profile.business_size} />
+            <ProfileRow label="Target Market"   value={profile.target_market} />
+            <ProfileRow label="Operating Model" value={profile.operating_model} />
+            <ProfileRow label="Products/Svcs"   value={profile.products_services_type} />
+            {profile.reg_doc_url && (
+              <div className="px-4 py-3 flex items-center gap-3">
+                <p className="text-xs text-slate-400 dark:text-slate-500 w-28 flex-shrink-0">Reg. Document</p>
+                <a href={profile.reg_doc_url} target="_blank" rel="noopener noreferrer"
+                  className="text-xs font-semibold text-brand-600 dark:text-brand-400 underline underline-offset-2">
+                  View Document
+                </a>
+              </div>
+            )}
 
             {/* Invoice Logo */}
             <div className="px-4 py-3 flex items-center gap-3">
@@ -793,6 +806,26 @@ export default function Profile({ store, session, plan }) {
                 <option value="">{fp.business_lga ? "Select Ward…" : "Select LGA first"}</option>
                 {bizWards.map(w => <option key={w} value={w}>{w}</option>)}
               </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Business Size</label>
+              <input value={fp.business_size || ""} onChange={e => setFp(p => ({ ...p, business_size: e.target.value }))} placeholder="e.g. Small, Medium, Large" className={inputCls} />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Target Market</label>
+              <input value={fp.target_market || ""} onChange={e => setFp(p => ({ ...p, target_market: e.target.value }))} placeholder="e.g. Retail customers, Wholesale, B2B" className={inputCls} />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Operating Model</label>
+              <input value={fp.operating_model || ""} onChange={e => setFp(p => ({ ...p, operating_model: e.target.value }))} placeholder="e.g. Physical store, Online, Both" className={inputCls} />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Products / Services</label>
+              <input value={fp.products_services_type || ""} onChange={e => setFp(p => ({ ...p, products_services_type: e.target.value }))} placeholder="e.g. Food items, Electronics, Services" className={inputCls} />
             </div>
           </div>
         </div>

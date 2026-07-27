@@ -52,11 +52,11 @@ export function dateRange(period) {
 }
 
 export async function uploadAvatar(file, staffId) {
-  const ext  = file.name.split(".").pop();
-  const path = `staff/${staffId}/avatar.${ext}`;
-  await supabase.storage.from("avatars").upload(path, file, { upsert: true, contentType: file.type });
-  const base = supabase.storage.from("avatars").getPublicUrl(path).data.publicUrl;
-  return `${base}?v=${Date.now()}`;
+  const path = `staff/${staffId}/avatar`;
+  const { error } = await supabase.storage.from("avatars").upload(path, file, { upsert: true, contentType: file.type });
+  if (error) throw error;
+  const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(path);
+  return `${publicUrl}?v=${Date.now()}`;
 }
 
 /* ─ SVG primitive ───────────────────────────────────────────────── */

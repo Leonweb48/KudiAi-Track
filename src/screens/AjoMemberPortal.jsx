@@ -4314,6 +4314,9 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
               <InfoRow label="Group"       value={client?.group_name} />
               <InfoRow label="Frequency"   value={client?.contribution_frequency ? `${client.contribution_frequency.charAt(0).toUpperCase()}${client.contribution_frequency.slice(1)}` : "—"} />
               <InfoRow label="Amount"      value={client?.contribution_amount ? `₦${Number(client.contribution_amount).toLocaleString("en-NG")} / ${client?.contribution_frequency || "cycle"}` : "—"} />
+              {(client?.registration_charge ?? 0) > 0 && (
+                <InfoRow label="Reg. Fee" value={`₦${Number(client.registration_charge).toLocaleString("en-NG")}`} />
+              )}
             </InfoCard>
           </div>
         </div>

@@ -382,20 +382,24 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
     setSaving(true);
     let staffRow = null;
     try {
-      let profile_image_url = null;
-      if (photoFile) {
-        const path = `staff/${userId}/${Date.now()}`;
-        const { error: upErr } = await supabase.storage.from("avatars").upload(path, photoFile, { upsert: true });
-        if (!upErr) profile_image_url = supabase.storage.from("avatars").getPublicUrl(path).data.publicUrl;
-      }
-
       const { data: createdStaff, error: staffErr } = await supabase
         .from("staff")
-        .insert({ owner_id: userId, ...form, branch_id: form.branch_id || null, profile_image_url })
+        .insert({ owner_id: userId, ...form, branch_id: form.branch_id || null, profile_image_url: null })
         .select().single();
 
       if (staffErr) throw staffErr;
       staffRow = createdStaff;
+
+      if (photoFile) {
+        const path = `staff/${staffRow.id}/avatar`;
+        const { error: upErr } = await supabase.storage.from("avatars").upload(path, photoFile, { upsert: true });
+        if (!upErr) {
+          const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(path);
+          const avatarUrl = `${publicUrl}?v=${Date.now()}`;
+          await supabase.from("staff").update({ profile_image_url: avatarUrl }).eq("id", staffRow.id);
+          staffRow = { ...staffRow, profile_image_url: avatarUrl };
+        }
+      }
 
       // Insert permissions
       const permRows = [
@@ -470,9 +474,11 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
     try {
       let photo_url = selected.profile_image_url;
       if (photoFile) {
-        const path = `staff/${userId}/${selected.id}`;
+        const path = `staff/${selected.id}/avatar`;
         const { error: upErr } = await supabase.storage.from("avatars").upload(path, photoFile, { upsert: true });
-        if (!upErr) photo_url = supabase.storage.from("avatars").getPublicUrl(path).data.publicUrl;
+        if (upErr) throw upErr;
+        const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(path);
+        photo_url = `${publicUrl}?v=${Date.now()}`;
       }
 
       const { error: updErr } = await supabase.from("staff").update({
