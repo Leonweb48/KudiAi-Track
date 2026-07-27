@@ -65,6 +65,9 @@ import { usePermissions }    from "./hooks/usePermissions";
 import { useNotifications }  from "./hooks/useNotifications";
 import { canDo }             from "./utils/plans";
 import { buildContext }      from "./utils/buildContext";
+import LanguageSelector      from "./screens/LanguageSelector";
+import { hasChosenLang, setLang, markLangChosen } from "./utils/i18n";
+import { useLanguage as useLangCtx } from "./contexts/LanguageContext";
 
 function Spinner() {
   return (
@@ -99,6 +102,11 @@ export default function App() {
     navigate(target === "home" ? "/" : `/${target}`);
   };
 
+  const { changeLang } = useLangCtx();
+
+  // hasChosenLang() checks localStorage["kt_lang_chosen"]. False on brand-new devices.
+  const [langChosen, setLangChosen] = useState(hasChosenLang);
+
   const [autoAdd,       setAutoAdd]       = useState(null);
   const [voiceOpen,     setVoiceOpen]     = useState(false);
   const [moreSheetOpen, setMoreSheetOpen] = useState(false);
@@ -121,6 +129,16 @@ export default function App() {
 
   // Store
   const store = useStore(userId, null, null);
+
+  // Cross-device lang sync: once the profile loads, apply server-side lang preference.
+  useEffect(() => {
+    const serverLang = store.profile?.preferred_language;
+    if (!serverLang || hasChosenLang()) return;
+    setLang(serverLang);
+    markLangChosen();
+    changeLang(serverLang);
+    setLangChosen(true);
+  }, [store.profile?.preferred_language]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Inventory
   const inventory = useInventory(userId, null);
@@ -383,6 +401,21 @@ export default function App() {
       avatarUrl={isAjoCli ? ajoClient?.profile_image_url : store.profile?.profile_image_url}
     />;
   }
+  // ── Language selection gate — shown once per device if no preference is set ──
+  // Excluded from the onboarding + subscription flows (owner hasn't set up their account yet).
+  const langGateStatuses = ["ready", "staff", "branch_manager", "marketer", "organisation", "org_member", "ajo_client"];
+  if (langGateStatuses.includes(status) && !langChosen && !store.loading) {
+    return (
+      <LanguageSelector
+        userId={userId}
+        onChosen={(code) => {
+          changeLang(code);
+          setLangChosen(true);
+        }}
+      />
+    );
+  }
+
   // ── Authenticated portals (PIN already set) ──
   if (status === "organisation")  return <OrgPortal session={session} org={org} />;
   if (status === "org_member")    return <CoopMemberPortal member={orgMember} />;

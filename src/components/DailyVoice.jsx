@@ -3,6 +3,7 @@ import { Capacitor } from "@capacitor/core";
 import { speakText, cancelTTS, isTtsEnabled } from "../utils/tts";
 import { askGemini } from "../utils/gemini";
 import { supabase } from "../utils/supabase";
+import { getLang, getLangName } from "../utils/i18n";
 
 const BRIEF_ENABLED_KEY = (uid) => `kt_brief_enabled_${uid}`;
 const BRIEF_DATE_KEY    = (uid) => `kt_brief_date_${uid}`;
@@ -10,12 +11,16 @@ const BRIEF_CACHE_KEY   = (uid, date) => `kt_brief_cache_${uid}_${date}`;
 
 function todayKey() { return new Date().toISOString().slice(0, 10); }
 
-const BRIEF_PROMPT = `Using the context provided, write exactly 3 complete sentences as a morning greeting for the user.
+function buildBriefPrompt(lang) {
+  const base = `Using the context provided, write exactly 3 complete sentences as a morning greeting for the user.
 Address them by their first name — it is in the context.
 Speak as their personal business companion who knows their situation well: warm, direct, specific to what their actual numbers show right now — not generic encouragement.
 End with one genuine sentence that fits their role and what today's data actually suggests.
 Absolutely no asterisks, no bold, no dashes, no bullet points, no markdown of any kind — plain sentences only.
 Write all 3 sentences in full before stopping.`;
+  if (!lang || lang === "en") return base;
+  return base + `\nIMPORTANT: Write your entire response in ${getLangName(lang)} — do not use English.`;
+}
 
 function stripMarkdown(text) {
   return text
@@ -89,13 +94,16 @@ export default function DailyVoice({ userId, context, fallback, dataLoading }) {
     isSpeakingRef.current = false;
   };
 
+  const BCP47 = { en: "en-NG", pidgin: "en-NG", ha: "ha-NG", ig: "ig-NG", yo: "yo-NG" };
+
   const doSpeak = async (msg) => {
+    const lang = getLang();
     if (!isTtsEnabled()) { setNeedsTap(true); return; }
     setNeedsTap(false);
     if (Capacitor.isNativePlatform()) {
       isSpeakingRef.current = true;
       setIsSpeaking(true);
-      await speakText(msg, "en").catch(() => {});
+      await speakText(msg, lang).catch(() => {});
       isSpeakingRef.current = false;
       setIsSpeaking(false);
       return;
@@ -103,7 +111,7 @@ export default function DailyVoice({ userId, context, fallback, dataLoading }) {
     if (!window.speechSynthesis) { setNeedsTap(true); return; }
     window.speechSynthesis.cancel();
     const utter   = new SpeechSynthesisUtterance(msg);
-    utter.lang    = "en-GB";
+    utter.lang    = BCP47[lang] || "en-NG";
     utter.rate    = 0.92;
     utter.pitch   = 1.05;
     utter.onstart = () => { isSpeakingRef.current = true;  setIsSpeaking(true);  setNeedsTap(false); };
@@ -163,7 +171,8 @@ export default function DailyVoice({ userId, context, fallback, dataLoading }) {
       setVisible(true);
 
       try {
-        const raw   = await askGemini({ message: BRIEF_PROMPT, context, timeout: 20000, maxAttempts: 1 });
+        const lang = getLang();
+        const raw   = await askGemini({ message: buildBriefPrompt(lang), lang, context, timeout: 20000, maxAttempts: 1 });
         const clean = stripMarkdown(raw?.trim() || fallback);
         setBrief(clean);
         spokenRef.current = clean;

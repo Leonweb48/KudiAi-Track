@@ -12,7 +12,7 @@ import { supabase }       from "../utils/supabase";
 import { performLogout }  from "../utils/logout";
 import { canDo, planAvailableText, hasHigherPlanAvailable, getPlanInfo } from "../utils/plans";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
-import { LANGUAGES, getLangMeta } from "../utils/i18n";
+import { LANGUAGES, getLangMeta, markLangChosen } from "../utils/i18n";
 import { useLanguage, useT } from "../contexts/LanguageContext";
 import { maxDobDate, isAtLeast18, AGE_ERROR } from "../utils/ageValidation";
 import { useCampaigns } from "../hooks/useCampaigns";
@@ -231,8 +231,16 @@ const LogoutIconSvg  = () => (
 );
 
 /* ── Language picker modal ────────────────────────────────────────── */
-function LanguageModal({ current, onClose }) {
+function LanguageModal({ current, userId, onClose }) {
   const { changeLang } = useLanguage();
+  const pick = (code) => {
+    changeLang(code);
+    markLangChosen();
+    if (userId && supabase) {
+      supabase.from("profiles").update({ preferred_language: code }).eq("id", userId).catch(() => null);
+    }
+    onClose();
+  };
   return (
     <Modal title="Choose Language" onClose={onClose}>
       <p className="text-xs text-slate-400 dark:text-slate-500 mb-4">
@@ -242,7 +250,7 @@ function LanguageModal({ current, onClose }) {
         {LANGUAGES.map(lang => (
           <button
             key={lang.code}
-            onClick={() => { changeLang(lang.code); onClose(); }}
+            onClick={() => pick(lang.code)}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border transition-colors active:scale-[0.98] ${
               current === lang.code
                 ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20"
@@ -899,6 +907,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
       {showLangPick && (
         <LanguageModal
           current={langCode}
+          userId={session?.user?.id}
           onClose={() => setShowLangPick(false)}
         />
       )}

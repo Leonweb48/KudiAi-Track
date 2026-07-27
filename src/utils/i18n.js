@@ -14,6 +14,14 @@ export const getLang  = () => localStorage.getItem("kt_language") || "en";
 export const setLang  = (code) => localStorage.setItem("kt_language", code);
 export const getLangMeta = (code) => LANGUAGES.find(l => l.code === code) || LANGUAGES[0];
 
+// Whether the user has made an explicit language choice (triggers first-open picker when false).
+export const hasChosenLang = () => !!localStorage.getItem("kt_lang_chosen");
+export const markLangChosen = () => { try { localStorage.setItem("kt_lang_chosen", "1"); } catch {} };
+
+// Human-readable language name for AI prompts.
+const LANG_NAMES = { en: "English", pidgin: "Nigerian Pidgin (Naija)", ha: "Hausa", ig: "Igbo", yo: "Yoruba" };
+export const getLangName = (code) => LANG_NAMES[code] || "English";
+
 /* ── Language detection from user's typed text ───────────────────── */
 export function detectLanguage(text) {
   const t = (text || "").toLowerCase();

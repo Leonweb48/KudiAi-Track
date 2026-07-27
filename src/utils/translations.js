@@ -454,4 +454,104 @@ export const TRANSLATIONS = {
   "bill.printData":       { en:"Print Data",        pidgin:"Print Data",        ha:"Buga Bayanai",         ig:"Bipụta Data",        yo:"Tẹ Data"                },
   "bill.bundleSet":       { en:"Bundle Set",        pidgin:"Bundle Set",        ha:"Ƙungiyar Sim",         ig:"Ngwugwu Sim",        yo:"Àkójọ Sim"              },
   "bill.businessLoan":    { en:"Business Loan",     pidgin:"Business Loan",     ha:"Rance Kasuwanci",      ig:"Mbinye Ego Azụmaahịa",yo:"Awin Isowo"             },
+
+  /* ── Error & feedback messages ─────────────────────────────────── */
+  "error.tryAgain":       { en:"Please try again.",              pidgin:"Try am again.",              ha:"Da fatan sake gwadawa.",         ig:"Biko nwaa ọzọ.",             yo:"Jọwọ gbiyanju lẹẹkansii."           },
+  "error.networkError":   { en:"Network error. Check your connection.", pidgin:"Network wahala. Check your connection.", ha:"Kuskuren hanyar sadarwa. Duba haɗin ku.", ig:"Njehie netwọọk. Lelee njikọ gị.", yo:"Àṣìṣe nẹtiwọọki. Ṣayẹwo asopọ rẹ." },
+  "error.saveFailed":     { en:"Save failed. Please try again.", pidgin:"Save no work. Try again.",   ha:"Ajiyewa ya kasa. Sake gwadawa.", ig:"Ichekwa ejiela. Nwaa ọzọ.",  yo:"Fipamọ kuna. Gbiyanju lẹẹkansii."  },
+  "error.loadFailed":     { en:"Failed to load. Pull down to refresh.", pidgin:"E no load. Pull down to refresh.", ha:"Lodawa ta kasa. Ja zuwa ƙasa don sabunta.", ig:"Ibugo ejiela. Dọwọ n'okpuru iji melite ọzọ.", yo:"Kuna gbigba. Fa sísàlẹ lati ṣe àtúnṣe." },
+  "error.somethingWrong": { en:"Something went wrong. Please try again.", pidgin:"Something happen. Try again.", ha:"Wani abu ya yi kuskure. Sake gwadawa.", ig:"Ihe ọjọọ mere. Nwaa ọzọ.", yo:"Ohun kan ṣẹlẹ. Gbiyanju lẹẹkansii." },
+  "error.sessionExpired": { en:"Session expired. Please sign in again.", pidgin:"Session don expire. Sign in again.", ha:"Zaman ya ƙare. Da fatan shiga kuma.", ig:"Oge nkwụsị. Biko banye ọzọ.", yo:"Akoko pari. Jọwọ wọle lẹẹkansii." },
+
+  /* ── Success / confirmation toasts ─────────────────────────────── */
+  "toast.saved":          { en:"Saved successfully!",            pidgin:"E don save!",               ha:"An ajiye cikin nasara!",        ig:"Echekwara nke ọma!",         yo:"A fi pamọ nke ọma!"                 },
+  "toast.deleted":        { en:"Deleted successfully.",          pidgin:"E don delete.",              ha:"An share cikin nasara.",        ig:"Hichapụrụ nke ọma.",         yo:"Pa rẹ nke ọma."                     },
+  "toast.recorded":       { en:"Transaction recorded.",          pidgin:"Deal don record.",           ha:"An rikodin ma'amala.",          ig:"E dere azụmaahịa.",          yo:"A gba akọọlẹ ìdúnàádúrà."          },
+  "toast.updated":        { en:"Updated successfully.",          pidgin:"E don update.",              ha:"An sabunta cikin nasara.",      ig:"Emezịrị nke ọma.",           yo:"A ṣe àtúnṣe nke ọma."              },
+  "toast.sent":           { en:"Sent successfully.",             pidgin:"E don send.",                ha:"An aika cikin nasara.",         ig:"Ezitela nke ọma.",           yo:"A fi ranṣẹ nke ọma."               },
+  "toast.copied":         { en:"Copied to clipboard.",           pidgin:"E don copy.",               ha:"An kwafi.",                     ig:"Kọpiara.",                   yo:"A daakọ."                           },
+  "toast.billSuccess":    { en:"Bill payment successful!",       pidgin:"Bill payment don work!",     ha:"Biyan kuɗin ya yi nasara!",    ig:"Ịkwụ ụgwọ gara nke ọma!",   yo:"Isanwo iwe-owo ṣaṣeyọri!"          },
+  "toast.cashInDone":     { en:"Cash in recorded.",              pidgin:"Money enter don record.",   ha:"An rikodin kuɗin shiga.",       ig:"E dere ego mbata.",          yo:"A gba akọọlẹ owo to wole."         },
+  "toast.cashOutDone":    { en:"Cash out recorded.",             pidgin:"Money comot don record.",   ha:"An rikodin kuɗin fita.",        ig:"E dere ego ọpụpụ.",          yo:"A gba akọọlẹ owo to jade."         },
+
+  /* ── Confirmation dialogs ───────────────────────────────────────── */
+  "confirm.title":        { en:"Are you sure?",                  pidgin:"You sure?",                  ha:"Kuna tabbata?",                ig:"Ị kwere?",                   yo:"Ṣe o daju?"                         },
+  "confirm.deleteThis":   { en:"This action cannot be undone.",  pidgin:"You no fit undo am.",       ha:"Ba za a iya soke wannan ba.",  ig:"A nweghị ike ịgbanwee nke a.",yo:"Igbese yii ko le yipada."          },
+  "confirm.yes":          { en:"Yes, delete",                    pidgin:"Yes, delete am",             ha:"Ee, share",                    ig:"Ee, hichapụ",                yo:"Bẹẹni, pa rẹ"                       },
+  "confirm.no":           { en:"No, keep it",                    pidgin:"No, keep am",                ha:"A'a, bari shi",                ig:"Mba, hapụ ya",               yo:"Rara, pa mọ"                        },
+
+  /* ── Profile / personal info fields ────────────────────────────── */
+  "profile.fullName":     { en:"Full Name",                      pidgin:"Full Name",                  ha:"Cikakken Suna",               ig:"Aha Zuru Oke",               yo:"Orukọ Kíkún"                        },
+  "profile.phone":        { en:"Phone Number",                   pidgin:"Phone Number",               ha:"Lambar Waya",                  ig:"Nọmba Ekwentị",             yo:"Nọmba Foonu"                        },
+  "profile.address":      { en:"Address",                        pidgin:"Address",                    ha:"Adireshi",                     ig:"Adreesị",                   yo:"Àdírẹ́sì"                            },
+  "profile.email":        { en:"Email",                          pidgin:"Email",                      ha:"Imel",                         ig:"Email",                     yo:"Imeeli"                             },
+  "profile.nokName":      { en:"Next of Kin Name",               pidgin:"Next of Kin Name",           ha:"Sunan Dangi",                  ig:"Aha Onye Ndị Ikwu",         yo:"Orukọ Ibatan"                       },
+  "profile.nokPhone":     { en:"Next of Kin Phone",              pidgin:"Next of Kin Phone",          ha:"Lambar Wayan Dangi",           ig:"Ekwentị Onye Ndị Ikwu",     yo:"Foonu Ibatan"                       },
+  "profile.nokRelation":  { en:"Relationship",                   pidgin:"Relationship",               ha:"Alaƙa",                        ig:"Mmekọ",                     yo:"Ìbátan"                             },
+  "profile.businessName": { en:"Business Name",                  pidgin:"Business Name",              ha:"Sunan Kasuwanci",              ig:"Aha Azụmaahịa",             yo:"Orukọ Isowo"                        },
+  "profile.ownerName":    { en:"Owner Name",                     pidgin:"Owner Name",                 ha:"Sunan Mai Kasuwanci",          ig:"Aha Onye Nwe",              yo:"Orukọ Oniwun"                       },
+  "profile.saveProfile":  { en:"Save Profile",                   pidgin:"Save Profile",               ha:"Ajiye Bayanan Kai",            ig:"Chekwaa Profaịlụ",          yo:"Fi Profaili Pamọ"                   },
+  "profile.editPhoto":    { en:"Change Photo",                   pidgin:"Change Photo",               ha:"Canza Hoto",                   ig:"Gbanwee Foto",              yo:"Yipada Aworan"                      },
+  "profile.saved":        { en:"Profile saved!",                 pidgin:"Profile don save!",          ha:"An ajiye bayanan kai!",        ig:"Echekwara profaịlụ!",       yo:"A fi profaili pamọ!"               },
+
+  /* ── Bill payment fields ────────────────────────────────────────── */
+  "bill.enterAmount":     { en:"Enter amount",                   pidgin:"Enter amount",               ha:"Shigar da adadi",              ig:"Tinye ego",                 yo:"Tẹ iye owo"                         },
+  "bill.phoneNumber":     { en:"Phone number",                   pidgin:"Phone number",               ha:"Lambar waya",                  ig:"Nọmba ekwentị",             yo:"Nọmba foonu"                        },
+  "bill.meterNumber":     { en:"Meter number",                   pidgin:"Meter number",               ha:"Lambar mita",                  ig:"Nọmba mita",                yo:"Nọmba mita"                         },
+  "bill.selectNetwork":   { en:"Select network",                 pidgin:"Select network",             ha:"Zaɓi cibiyar sadarwa",        ig:"Họọ netwọọk",               yo:"Yan nẹtiwọọki"                      },
+  "bill.confirmPayment":  { en:"Confirm Payment",                pidgin:"Confirm Payment",            ha:"Tabbatar da Biyan Kuɗi",      ig:"Kwenye Ịkwụ Ụgwọ",         yo:"Jẹrisi Isanwo"                      },
+  "bill.processing":      { en:"Processing…",                   pidgin:"Processing…",               ha:"Ana aiwatarwa…",               ig:"Na-arụ ọrụ…",               yo:"Ń ṣe…"                             },
+  "bill.verifying":       { en:"Verifying payment…",            pidgin:"Verifying payment…",        ha:"Ana tabbatar da biyan kuɗi…", ig:"Na-enyocha ịkwụ ụgwọ…",    yo:"Ń fọwọsi isanwo…"                  },
+  "bill.failed":          { en:"Payment failed. Please try again.", pidgin:"Payment no work. Try again.", ha:"Biyan kuɗi ya kasa. Sake gwadawa.", ig:"Ịkwụ ụgwọ ejiela. Nwaa ọzọ.", yo:"Isanwo kuna. Gbiyanju lẹẹkansii." },
+  "bill.history":         { en:"Payment History",                pidgin:"Payment History",            ha:"Tarihin Biyan Kuɗi",          ig:"Akụkọ Ịkwụ Ụgwọ",          yo:"Itan Isanwo"                        },
+  "bill.noHistory":       { en:"No payment history yet.",        pidgin:"No payment history yet.",   ha:"Babu tarihin biyan kuɗi tukuna.", ig:"Ọ dịghị akụkọ ịkwụ ụgwọ ọ bụrụ ugbu a.", yo:"Ko si itan isanwo sí bẹ̀yìn." },
+
+  /* ── Onboarding ─────────────────────────────────────────────────── */
+  "onboard.welcome":      { en:"Welcome to KudiAI!",             pidgin:"Welcome to KudiAI!",         ha:"Barka da zuwa KudiAI!",        ig:"Nnọọ na KudiAI!",           yo:"Ẹ káàbọ̀ sí KudiAI!"              },
+  "onboard.setupBiz":     { en:"Set up your business",           pidgin:"Set up your business",       ha:"Kafa kasuwancin ku",           ig:"Tọọ azụmaahịa gị",          yo:"Ṣeto isowo rẹ"                      },
+  "onboard.continue":     { en:"Continue",                       pidgin:"Continue",                   ha:"Ci gaba",                      ig:"Gaa n'ihu",                 yo:"Tẹsiwaju"                           },
+  "onboard.skip":         { en:"Skip for now",                   pidgin:"Skip am for now",            ha:"Tsallake yanzu",               ig:"Wụfee ugbu a",              yo:"Fo fún àsìkò yìí"                  },
+
+  /* ── Staff / manager portal ─────────────────────────────────────── */
+  "staff.greeting":       { en:"Good day",                       pidgin:"How body",                   ha:"Sannu",                        ig:"Ụbọchị ọma",                yo:"Ẹ káàárọ̀"                          },
+  "staff.myRecords":      { en:"My Records",                     pidgin:"My Records",                 ha:"Rikodin Ta",                   ig:"Ndekọ M",                   yo:"Igbasile Mi"                        },
+  "staff.todayActivity":  { en:"Today's Activity",               pidgin:"Today Activity",             ha:"Aikin Yau",                    ig:"Ọrụ Taa",                   yo:"Iṣẹ Oni"                            },
+  "staff.recordSale":     { en:"Record Sale",                    pidgin:"Record Sale",                ha:"Rikodin Siyarwa",              ig:"Dee Ire",                   yo:"Gba Tita"                           },
+  "staff.recordExpense":  { en:"Record Expense",                 pidgin:"Record Expense",             ha:"Rikodin Kashe-kashe",          ig:"Dee Ihe Ejiri Ego",         yo:"Gba Inawo"                          },
+  "staff.branch":         { en:"Branch",                         pidgin:"Branch",                     ha:"Rassa",                        ig:"Ngalaba",                   yo:"Ẹka"                               },
+  "staff.myPermissions":  { en:"Your Permissions",               pidgin:"Your Permissions",           ha:"Izinin ku",                    ig:"Ikike gị",                  yo:"Àwọn Igbanilaaye rẹ"                },
+
+  /* ── Ajo / Savings (member portal) ─────────────────────────────── */
+  "ajo.myBalance":        { en:"My Balance",                     pidgin:"My Balance",                 ha:"Ajiyar Ta",                    ig:"Ego M",                     yo:"Owo Mi"                             },
+  "ajo.makePayment":      { en:"Make a Contribution",            pidgin:"Pay your contribution",      ha:"Biya Gudunmawa",               ig:"Kwụọ Onyinye",              yo:"San Ìdásí"                          },
+  "ajo.nextDue":          { en:"Next due",                       pidgin:"Next due",                   ha:"Na gaba",                      ig:"Ọzọ dị",                    yo:"T'ọ ń bọ"                           },
+  "ajo.cycleInfo":        { en:"Savings Cycle",                  pidgin:"Savings Cycle",              ha:"Zagayen Ajiya",                ig:"Okirika Nchekwa",           yo:"Iyipo Ifowopamọ"                    },
+  "ajo.targetAmount":     { en:"Target Amount",                  pidgin:"Target Amount",              ha:"Adadin Manufa",                ig:"Ego Ebumnuche",             yo:"Iye Owo Ibi-afẹde"                  },
+  "ajo.totalSaved":       { en:"Total Saved",                    pidgin:"Total Wey You Save",         ha:"Jimlar Ajiya",                 ig:"Ngụkọta Echekwara",         yo:"Apapọ Ti A Fipamọ"                  },
+  "ajo.registrationFee":  { en:"Registration Fee",               pidgin:"Registration Fee",           ha:"Kuɗin Rajista",                ig:"Ụgwọ Ndebanye Aha",         yo:"Owó Forúkọsílẹ̀"                   },
+  "ajo.esusu":            { en:"Esusu / Contribution",           pidgin:"Esusu contribution",         ha:"Biyan Ajiya (Esusu)",          ig:"Onyinye Esusu",             yo:"Ìdásí Esusu"                        },
+  "ajo.withdrawal":       { en:"Withdrawal",                     pidgin:"Withdrawal",                 ha:"Cire Kuɗi",                    ig:"Iwepụ Ego",                 yo:"Yiyọ Owo"                           },
+  "ajo.requestWithdraw":  { en:"Request Withdrawal",             pidgin:"Request withdrawal",         ha:"Nemi Cirewa",                  ig:"Rịọ Iwepụ Ego",             yo:"Beere Yiyọ Owo"                     },
+
+  /* ── Coop / Community portal ────────────────────────────────────── */
+  "coop.myLoan":          { en:"My Loan",                        pidgin:"My Loan",                    ha:"Bashin Ta",                    ig:"Mbinye Ego M",              yo:"Awin Mi"                            },
+  "coop.applyLoan":       { en:"Apply for Loan",                 pidgin:"Apply for loan",             ha:"Nema Bashi",                   ig:"Rịọ Mbinye Ego",            yo:"Beere Awin"                         },
+  "coop.loanBalance":     { en:"Loan Balance",                   pidgin:"Loan Balance",               ha:"Bashin Bashi",                 ig:"Ego Mbinye Ego Fọdụrụ",    yo:"Owo Awin"                           },
+  "coop.monthlyLevy":     { en:"Monthly Levy",                   pidgin:"Monthly Levy",               ha:"Biyan Wata",                   ig:"Ụgwọ Ọnwa",                 yo:"Owó Oṣù"                           },
+  "coop.savingsBalance":  { en:"Savings Balance",                pidgin:"Savings Balance",            ha:"Ajiyar Kuɗi",                  ig:"Ego Nchekwa",               yo:"Owo Ifowopamọ"                      },
+  "coop.dividend":        { en:"Dividend",                       pidgin:"Dividend",                   ha:"Rabon Riba",                   ig:"Rabụ Uru",                  yo:"Ìpín Ere"                           },
+  "coop.guarantee":       { en:"Guarantee",                      pidgin:"Guarantee",                  ha:"Tabbatarwa",                   ig:"Nnabata Nchedo",            yo:"Ìdánilójú"                          },
+  "coop.interest":        { en:"Interest Rate",                  pidgin:"Interest Rate",              ha:"Ƙimar Riba",                   ig:"Ọnụego Ọmụma",             yo:"Ìwọnba Ìdásí"                       },
+  "coop.repayment":       { en:"Repayment",                      pidgin:"Repayment",                  ha:"Biyan Bashi",                  ig:"Ịkwụ Ugwọ Mbinye Ego",     yo:"Isanwo Awin"                        },
+
+  /* ── Payment return / confirmation screen ───────────────────────── */
+  "payment.verifying":    { en:"Verifying your payment…",        pidgin:"We dey verify your payment…", ha:"Muna tabbatar da biyan kuɗin ku…", ig:"Na-enyocha ịkwụ ụgwọ gị…", yo:"Ń fọwọsi isanwo rẹ…" },
+  "payment.success":      { en:"Payment confirmed!",             pidgin:"Payment don confirm!",       ha:"An tabbatar da biyan kuɗi!",   ig:"Kwenyesiri ịkwụ ụgwọ!",     yo:"A jẹrisi isanwo!"                  },
+  "payment.failed":       { en:"Payment could not be verified.", pidgin:"We no fit verify payment.",  ha:"Ba a iya tabbatar da biyan kuɗi ba.", ig:"Enweghị ike inyocha ịkwụ ụgwọ.", yo:"A kò lè fọwọsi isanwo." },
+  "payment.returnHome":   { en:"Return to app",                  pidgin:"Go back to app",             ha:"Koma app",                     ig:"Laghachi na app",            yo:"Pada si app"                        },
+
+  /* ── Language selector (first-open) ─────────────────────────────── */
+  "langSel.title":        { en:"Choose your language",           pidgin:"Choose your language",       ha:"Zaɓi harshen ku",              ig:"Họọ asụsụ gị",              yo:"Yan ede rẹ"                         },
+  "langSel.sub":          { en:"You can change this anytime in Settings", pidgin:"You fit change am anytime for Settings", ha:"Za ku iya canza shi a Saiti", ig:"Ị nwere ike gbanwee ya na Ntọala", yo:"O le yipada rẹ ni akoko eyikeyi ni Eto" },
+  "langSel.aiNote":       { en:"AI responses and the morning brief will be in your chosen language.", pidgin:"AI go reply and morning brief go dey for your language.", ha:"AI da taƙaitaccen safiya za su kasance cikin harshen ku.", ig:"AI na nchọpụta ụtụtụ ga-adị n'asụsụ gị.", yo:"AI ati akọọlẹ owurọ yoo wa ni ede rẹ." },
 };
