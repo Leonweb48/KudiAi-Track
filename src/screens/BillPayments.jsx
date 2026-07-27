@@ -2487,8 +2487,10 @@ export default function BillPayments({ store, plan, session = null, staffName = 
           localStorage.removeItem(BILL_PENDING_PREFIX + ref);
           throw new Error(ps?.error || ps?.data?.message || "Could not initialize payment");
         }
-        // Clear the bill input sheet before CCT opens so it can't cover the
-        // result overlay when the app returns from Paystack.
+        // Drop the saving spinner and clear sheets just before the CCT opens.
+        // The overlay must not show while the CCT is in the foreground.
+        // visibilitychange (line ~2152) restores saving=true when the app returns.
+        setSaving(false);
         setSelectedCat(null);
         setConfirmData(null);
         await openPaystackCheckout(ps.data.authorization_url);
