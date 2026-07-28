@@ -433,7 +433,7 @@ function PayOrgModal({ member, org, preProgram, history, onClose }) {
       );
       if (!hasPending) return;
       setLoading(false);
-      setError(t("coopMem.paymentFailed"));
+      setError(t("coopMem.paymentFailedMsg"));
     };
     window.addEventListener("inAppBrowserFinished", onBrowserClosed);
     let capListener;
@@ -989,7 +989,7 @@ function LoansTab({ member, org }) {
       );
       if (!hasPending) return;
       setRepaying(false);
-      setError(t("coopMem.paymentFailed"));
+      setError(t("coopMem.paymentFailedMsg"));
     };
     window.addEventListener("inAppBrowserFinished", onBrowserClosed);
     let capListener;
