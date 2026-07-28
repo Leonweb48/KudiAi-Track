@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { LANGUAGES, setLang, markLangChosen } from "../utils/i18n";
 import { supabase } from "../utils/supabase";
+import { Capacitor } from "@capacitor/core";
 
 const LABELS = {
   en:     { title: "Choose your language",  sub: "You can change this anytime in Settings" },
@@ -14,14 +15,20 @@ export default function LanguageSelector({ userId, onChosen }) {
   const [selected, setSelected] = useState("en");
   const [saving,   setSaving]   = useState(false);
 
-  const confirm = async () => {
+  const confirm = () => {
     setSaving(true);
     setLang(selected);
     markLangChosen();
     if (userId && supabase) {
       supabase.from("profiles").update({ preferred_language: selected }).eq("id", userId).catch(() => null);
     }
-    onChosen(selected);
+    if (Capacitor.isNativePlatform()) {
+      // On Android the combined context-update + portal mount burst freezes the WebView.
+      // Language + chosen flag are already in localStorage so a reload starts clean.
+      window.location.reload();
+    } else {
+      onChosen(selected);
+    }
   };
 
   const L = LABELS[selected] || LABELS.en;

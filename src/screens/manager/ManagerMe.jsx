@@ -15,6 +15,8 @@ import TransactionPinModal from "../../components/TransactionPinModal";
 import ForgotPinFlow from "../../components/ForgotPinFlow";
 import ProfileEdit from "../../components/shared/ProfileEdit";
 import NotificationPreferences from "../../components/NotificationPreferences";
+import { useLanguage } from "../../contexts/LanguageContext";
+import { LANGUAGES, markLangChosen } from "../../utils/i18n";
 
 /* ── inline profile display helpers ── */
 function SectionCard({ title, children }) {
@@ -69,7 +71,9 @@ export default function ManagerMe({
   const [showForgotPin,    setShowForgotPin]    = useState(false);
   const [legalView,        setLegalView]        = useState(null);
   const [showNotifPrefs,   setShowNotifPrefs]   = useState(false);
+  const [showLang,         setShowLang]         = useState(false);
   const [acceptedConsent,  setAcceptedConsent]  = useState(null);
+  const { lang, changeLang } = useLanguage();
 
   const [activityLogs,    setActivityLogs]    = useState([]);
   const [activityLoading, setActivityLoading] = useState(false);
@@ -501,6 +505,12 @@ export default function ManagerMe({
               </button>
             }
           />
+          <Row
+            icon={<RowIcon d="M12 2a10 10 0 100 20A10 10 0 0012 2z|M2 12h20|M12 2c-5 0-8 4.5-8 10s3 10 8 10 8-4.5 8-10S17 2 12 2z" />}
+            label="Language"
+            sub={LANGUAGES.find(l => l.code === lang)?.native || "English"}
+            onClick={() => setShowLang(true)}
+          />
         </SettingsCard>
       </div>
 
@@ -661,6 +671,23 @@ export default function ManagerMe({
       )}
       {showNotifPrefs && (
         <NotificationPreferences userId={session?.user?.id} portal="manager" onClose={() => setShowNotifPrefs(false)} />
+      )}
+      {showLang && (
+        <Modal title="Language" onClose={() => setShowLang(false)}>
+          <div className="p-4 space-y-2">
+            {LANGUAGES.map(l => (
+              <button key={l.code} onClick={() => { changeLang(l.code); markLangChosen(); setShowLang(false); }}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl border-2 transition-all ${lang === l.code ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20" : "border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800"}`}>
+                <span className="text-2xl">{l.flag}</span>
+                <div className="flex-1 text-left">
+                  <p className={`font-bold text-sm ${lang === l.code ? "text-brand-700 dark:text-brand-300" : "text-slate-800 dark:text-slate-100"}`}>{l.native}</p>
+                  {l.native !== l.name && <p className="text-xs text-slate-400">{l.name}</p>}
+                </div>
+                {lang === l.code && <svg viewBox="0 0 12 10" fill="none" className="w-4 h-4 text-brand-500"><path d="M1 5l3 3 7-7" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"/></svg>}
+              </button>
+            ))}
+          </div>
+        </Modal>
       )}
     </div>
   );
