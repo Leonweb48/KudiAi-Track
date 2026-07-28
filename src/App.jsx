@@ -406,13 +406,7 @@ export default function App() {
   const langGateStatuses = ["ready", "staff", "branch_manager", "marketer", "organisation", "org_member", "ajo_client"];
   if (langGateStatuses.includes(status) && !langChosen && !store.loading) {
     return (
-      <LanguageSelector
-        userId={userId}
-        onChosen={(code) => {
-          changeLang(code);
-          setLangChosen(true);
-        }}
-      />
+      <LanguageSelector userId={userId} />
     );
   }
 
