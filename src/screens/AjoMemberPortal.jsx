@@ -1020,7 +1020,7 @@ function MoneyEsusuCard({ rd, client, esusuLockedTotal, roundCount, selected, on
           <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">{fmt(myStake)} locked — released when your turn arrives</p>
         )}
         {mode === "withdraw" && hasPaid && (
-          <p className="text-[10px] text-green-600 dark:text-green-400 mt-1">Payout credited to your balance — withdraw from the Personal tab</p>
+          <p className="text-[10px] text-green-600 dark:text-green-400 mt-1">{t("ajoPt.payoutCredited")}</p>
         )}
       </button>
       {selected && children && (
@@ -1094,7 +1094,7 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], onClose,
   const doVerify = useCallback(async (ref) => {
     if (!ref) return;
     setStatus("verifying");
-    setMessage("Verifying your payment…");
+    setMessage(t("ajoPt.verifyingPayment"));
     try {
       const confirmation = await ajoFn("confirm-payment", { client_id: client.id, reference: ref });
       setStatus("done");
@@ -1121,7 +1121,7 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], onClose,
       const ref = res.reference;
       setPendingRef(ref);
       setStatus("awaiting");
-      setMessage("Paystack is open. After paying, come back here and tap the button below.");
+      setMessage(t("ajoPt.paystackIsOpen"));
       popupCleanup.current?.();
       popupCleanup.current = openPaystackPopup(res.authorization_url, {
         onClose: (urlRef) => setTimeout(() => doVerify(urlRef || ref), 600),
@@ -1141,7 +1141,7 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], onClose,
           type="number" inputMode="numeric" min="1"
           value={customAmt} onChange={e => setCustomAmt(e.target.value)}
           disabled={status === "loading" || status === "awaiting" || status === "verifying"}
-          placeholder="Enter amount"
+          placeholder={t("coopMem.enterAmountCoop")}
           className="flex-1 bg-transparent text-xl font-black text-brand-600 dark:text-brand-300 outline-none placeholder:text-brand-200 dark:placeholder:text-brand-500 tabular [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
         />
       </div>
@@ -1176,8 +1176,8 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], onClose,
         <button onClick={() => doVerify(pendingRef)} disabled={status === "verifying"}
           className="w-full py-3.5 bg-brand-500 hover:bg-brand-600 disabled:opacity-60 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2">
           {status === "verifying"
-            ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Verifying…</>
-            : "I've paid — confirm my savings"}
+            ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> {t("ajoPt.verifyingSpinner")}</>
+            : t("ajoPt.confirmSavings")}
         </button>
       )}
       <button
@@ -1185,9 +1185,9 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], onClose,
           const amt = parseFloat(customAmt);
           if (!amt || amt <= 0) { setMessage("Please enter a valid amount."); return; }
           setTxnPin({
-            title: "Confirm Contribution",
+            title: t("coopMem.confirmPaymentTitle"),
             amount: Math.round(amt * 100),
-            description: "Savings contribution via Paystack",
+            description: t("coopMem.savingsContribDesc"),
             hasPinSet: Boolean(client?.portal_pin_changed_at),
             onApprove: () => { setTxnPin(null); handlePay(); },
           });
@@ -1195,7 +1195,7 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], onClose,
         disabled={status === "loading" || status === "awaiting" || status === "verifying"}
         className="w-full py-3.5 bg-brand-500 hover:bg-brand-600 disabled:opacity-60 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2 shadow-md">
         {status === "loading"
-          ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Opening Paystack…</>
+          ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> {t("ajoPt.openingPaystack")}</>
           : status === "awaiting" ? t("ajoPt.openPaystack")
           : <>Pay {fmt(parseFloat(customAmt) || 0)} now</>}
       </button>
@@ -2944,14 +2944,14 @@ function OverviewTab({ client, contributions, cycles = [], rotationsData = [], r
           <svg viewBox="0 0 24 24" fill="none" width="16" height="16" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
             <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
           </svg>
-          Set a Savings Goal
+          {t("ajoPt.setASavingsGoal")}
         </button>
       )}
 
       {/* Pending withdrawal requests */}
       {withdrawRequests.filter(r => r.status === "pending").length > 0 && (
         <div>
-          <p className="text-[12px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Pending Requests</p>
+          <p className="text-[12px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">{t("ajoPt.pendingRequestsSection")}</p>
           <div className="space-y-2">
             {withdrawRequests.filter(r => r.status === "pending").map(r => (
               <div key={r.id} className="bg-amber-50 dark:bg-amber-900/20 rounded-xl px-3 py-3 border border-amber-200 dark:border-amber-800/60 flex items-center gap-3">
@@ -2961,7 +2961,7 @@ function OverviewTab({ client, contributions, cycles = [], rotationsData = [], r
                   </svg>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-bold text-amber-700 dark:text-amber-300">Pending Review</p>
+                  <p className="text-xs font-bold text-amber-700 dark:text-amber-300">{t("ajoPt.pendingReview")}</p>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400">{fmtDate(r.requested_at)}</p>
                 </div>
                 <div className="text-right flex-shrink-0">

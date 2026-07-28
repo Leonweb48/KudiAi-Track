@@ -221,18 +221,18 @@ function HomeTab({ member, org, announcements, polls = [], events = [], loans = 
 
   const STATS = [
     { label:t("coopMem.savingsBal"),  value: fmt(member.savings_balance),
-      sub: "current balance", bg:"#3DA829", tab:"contributions",
+      sub: t("coopDash.currentBalance"), bg:"#3DA829", tab:"contributions",
       icon:"M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" },
     { label:t("aiChip.activeLoans"),  value: activeLoans.length,
-      sub: activeLoans.length > 0 ? fmt(activeLoans.reduce((s,l)=>s+(l.outstanding_balance||0),0))+" owed" : "none active",
+      sub: activeLoans.length > 0 ? fmt(activeLoans.reduce((s,l)=>s+(l.outstanding_balance||0),0))+" "+t("coopDash.owed") : t("coopDash.noneActive"),
       bg:"#dc2626", tab:"loans",
       icon:"M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" },
     { label:t("coopMem.wdRequests"),  value: pendingWd.length,
-      sub: pendingWd.length > 0 ? "pending approval" : "none pending",
+      sub: pendingWd.length > 0 ? t("coopDash.pendingApproval") : t("coopDash.nonePending"),
       bg: pendingWd.length > 0 ? "#d97706" : "#64748b", tab:"contributions",
       icon:"M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" },
     { label:t("coop.messages"),       value: announcements.length,
-      sub: pinnedAnns.length > 0 ? `${pinnedAnns.length} pinned` : "from organisation",
+      sub: pinnedAnns.length > 0 ? `${pinnedAnns.length} ${t("coopDash.pinned")}` : t("coopDash.fromOrg"),
       bg:"#3DA829", tab:"messages",
       icon:"M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" },
   ];
@@ -304,7 +304,7 @@ function HomeTab({ member, org, announcements, polls = [], events = [], loans = 
 
       {/* ── My Summary ── */}
       <div className="px-4">
-        <p className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em] mb-4">My Summary</p>
+        <p className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em] mb-4">{t("coopDash.mySummary")}</p>
         <div className="grid grid-cols-2 gap-3">
           {STATS.map(s => (
             <button key={s.label} onClick={() => onNavigate?.(s.tab)}
@@ -325,7 +325,7 @@ function HomeTab({ member, org, announcements, polls = [], events = [], loans = 
 
       {/* ── Organisation Card ── */}
       <div className="px-4">
-        <p className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em] mb-3">Organisation</p>
+        <p className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em] mb-3">{t("coopDash.organisation")}</p>
         <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700/60 shadow-sm overflow-hidden">
           <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-50 dark:border-slate-700/40">
             <div className="w-10 h-10 rounded-xl bg-green-50 dark:bg-green-900/20 flex items-center justify-center text-lg">
@@ -333,7 +333,7 @@ function HomeTab({ member, org, announcements, polls = [], events = [], loans = 
             </div>
             <div>
               <p className="text-sm font-extrabold text-slate-800 dark:text-white">{org.name}</p>
-              <p className="text-[10px] text-slate-400 capitalize">{org.type?.replace(/_/g," ")} · {org.member_count || 0} members</p>
+              <p className="text-[10px] text-slate-400 capitalize">{org.type?.replace(/_/g," ")} · {org.member_count || 0} {t("coopDash.membersLabel")}</p>
             </div>
           </div>
           {[
@@ -352,7 +352,7 @@ function HomeTab({ member, org, announcements, polls = [], events = [], loans = 
       {visibleAnns.length > 0 && (
         <div className="px-4">
           <div className="flex justify-between items-center mb-3">
-            <p className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em]">Announcements</p>
+            <p className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em]">{t("cd.announcements")}</p>
             {onNavigate && <button onClick={() => onNavigate("messages")} className="text-[10px] font-bold text-green-600 dark:text-green-400">{t("cd.viewAll")}</button>}
           </div>
           <div className="flex flex-col gap-2">
@@ -374,7 +374,7 @@ function HomeTab({ member, org, announcements, polls = [], events = [], loans = 
         <div className="px-4">
           <div className="flex justify-between items-center mb-3">
             <p className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em]">{t("coopMem.fromOrg")}</p>
-            <button onClick={() => onNavigate?.("broadcast")} className="text-[10px] font-bold text-green-600 dark:text-green-400">See All →</button>
+            <button onClick={() => onNavigate?.("broadcast")} className="text-[10px] font-bold text-green-600 dark:text-green-400">{t("cd.seeAll")}</button>
           </div>
           <div className="flex flex-col gap-2">
             {orgActions.map(item => (
@@ -521,7 +521,7 @@ function PayOrgModal({ member, org, preProgram, history, onClose }) {
             <div className="flex items-center justify-between mb-2.5">
               <p className="text-xs font-extrabold text-slate-700 dark:text-slate-200">{selectedProg.name}</p>
               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${metTarget ? "bg-green-500 text-white" : "bg-amber-500 text-white"}`}>
-                {metTarget ? t("coopMem.targetMet") : "Outstanding"}
+                {metTarget ? t("coopMem.targetMet") : t("coopMem.outstanding")}
               </span>
             </div>
             <div className="h-2.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden mb-2">
@@ -530,7 +530,7 @@ function PayOrgModal({ member, org, preProgram, history, onClose }) {
             </div>
             <div className="flex justify-between text-[10px] font-semibold mb-1">
               <span className="text-slate-500 dark:text-slate-400">{fmt(paidThisMonth)} {t("coopMem.paidThisMonth")}</span>
-              <span className="text-slate-600 dark:text-slate-300">{fmt(required)} target</span>
+              <span className="text-slate-600 dark:text-slate-300">{fmt(required)} {t("coopMem.targetLabel")}</span>
             </div>
             {!metTarget && (
               <p className="text-[11px] font-bold text-amber-700 dark:text-amber-400 mt-0.5">
@@ -551,13 +551,13 @@ function PayOrgModal({ member, org, preProgram, history, onClose }) {
         {/* Amount input */}
         <div className="mb-4">
           <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-            {metTarget ? "Extra Contribution (₦)" : `Amount (₦)${isFixed ? ` · Min ${fmt(remaining)}` : ""}`}
+            {metTarget ? t("coopMem.extraContrib") : `${t("coopMem.amountNaira")}${isFixed ? ` · Min ${fmt(remaining)}` : ""}`}
           </label>
           <input type="number" value={amount} onChange={e => { setAmount(e.target.value); setError(""); }}
-            placeholder={metTarget ? "Top up beyond your target (optional)" : isFixed ? `Min ${fmt(remaining)}` : "Enter amount"}
+            placeholder={metTarget ? t("coopMem.topUpPlaceholder") : isFixed ? `Min ${fmt(remaining)}` : t("coopMem.enterAmountCoop")}
             disabled={loading}
             className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-green-400 disabled:opacity-50" />
-          {metTarget && <p className="text-[10px] text-green-600 dark:text-green-400 mt-1">You've already met your {monthLabel} target. Any extra payment is a bonus contribution.</p>}
+          {metTarget && <p className="text-[10px] text-green-600 dark:text-green-400 mt-1">{t("coopMem.targetMetNote")}</p>}
         </div>
 
         {error && <p className="text-xs px-3 py-2.5 rounded-xl mb-4 border bg-red-50 border-red-200 text-red-600">{error}</p>}
@@ -566,10 +566,10 @@ function PayOrgModal({ member, org, preProgram, history, onClose }) {
           const amt = parseFloat(amount);
           if (!amt || amt <= 0) { setError(t("error.somethingWrong")); return; }
           setTxnPin({
-            title: "Confirm Payment",
+            title: t("coopMem.confirmPaymentTitle"),
             amount: Math.round(amt * 100),
             recipient: org.name,
-            description: selectedProg?.name || "Savings contribution via Paystack",
+            description: selectedProg?.name || t("coopMem.savingsContribDesc"),
             onApprove: () => { setTxnPin(null); handlePay(); },
           });
         }} disabled={loading || !amount}
@@ -2384,8 +2384,8 @@ export default function CoopMemberPortal({ member: initialMember }) {
         <div className="fixed inset-0 z-[200] bg-black/80 flex items-center justify-center px-6">
           <div className="bg-white dark:bg-slate-800 rounded-3xl p-8 text-center max-w-xs w-full">
             <div className="w-16 h-16 border-4 border-green-500 border-t-transparent rounded-full animate-spin mx-auto mb-5" />
-            <p className="text-base font-extrabold text-slate-800 dark:text-white">Verifying payment…</p>
-            <p className="text-xs text-slate-400 mt-2">Please wait while we confirm your contribution</p>
+            <p className="text-base font-extrabold text-slate-800 dark:text-white">{t("coopMem.verifyingPayment")}</p>
+            <p className="text-xs text-slate-400 mt-2">{t("coopMem.pleaseWaitConfirm")}</p>
           </div>
         </div>
       )}
@@ -2416,12 +2416,12 @@ export default function CoopMemberPortal({ member: initialMember }) {
                     <path d="M20 6L9 17l-5-5" />
                   </svg>
                 </div>
-                <p className="text-xl font-extrabold text-slate-800 dark:text-white mb-1">Payment Confirmed!</p>
+                <p className="text-xl font-extrabold text-slate-800 dark:text-white mb-1">{t("coopMem.paymentConfirmed")}</p>
                 <AmountDisplay amount={paymentResult.amount} size="hero" align="center" className="text-[#3DA829] mt-3 mb-1" />
-                <p className="text-xs text-slate-400 mb-8">added to your savings balance</p>
+                <p className="text-xs text-slate-400 mb-8">{t("coopMem.addedToBalance")}</p>
                 <button onClick={() => setPaymentResult(null)}
                   className="w-full py-4 bg-green-600 text-white font-bold rounded-2xl text-sm">
-                  View Savings
+                  {t("coopMem.viewSavings")}
                 </button>
               </>
             ) : (
@@ -2431,11 +2431,11 @@ export default function CoopMemberPortal({ member: initialMember }) {
                     <path d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </div>
-                <p className="text-xl font-extrabold text-slate-800 dark:text-white mb-1">Payment Failed</p>
+                <p className="text-xl font-extrabold text-slate-800 dark:text-white mb-1">{t("coopMem.paymentFailed")}</p>
                 <p className="text-xs text-slate-400 mt-2 mb-8">{paymentResult.error}</p>
                 <button onClick={() => setPaymentResult(null)}
                   className="w-full py-4 bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-white font-bold rounded-2xl text-sm">
-                  Dismiss
+                  {t("coopMem.dismiss")}
                 </button>
               </>
             )}
@@ -2477,6 +2477,7 @@ const MEMBER_STATUS_COPY = {
 };
 
 export function OrgMemberArchivedScreen({ member }) {
+  const t = useT();
   const [existing, setExisting] = useState(undefined);
   const [reason,   setReason]   = useState("");
   const [loading,  setLoading]  = useState(false);
@@ -2536,7 +2537,7 @@ export function OrgMemberArchivedScreen({ member }) {
         <div className="w-14 h-14 rounded-2xl bg-green-500 flex items-center justify-center mx-auto mb-3">
           <span className="text-white font-black text-2xl">K</span>
         </div>
-        <p className="text-slate-400 text-sm">{member?.org?.name || "Organisation"} Member Portal</p>
+        <p className="text-slate-400 text-sm">{member?.org?.name || t("coopDash.organisation")} Member Portal</p>
       </div>
 
       <div className="w-full max-w-sm">

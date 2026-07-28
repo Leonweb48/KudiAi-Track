@@ -348,7 +348,7 @@ function NetworkSelector({ value, onChange, detected }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
-        <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">Network *</label>
+        <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">{t("bp.networkLabel")}</label>
         {detected && (
           <span className="flex items-center gap-1 text-[10px] font-bold text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 px-2 py-0.5 rounded-full">
             <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3.5} strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
@@ -425,10 +425,11 @@ function TextInput({ label, value, onChange, placeholder, type = "text" }) {
 }
 
 function VerifyBadge({ status, name }) {
+  const t = useT();
   if (status === "loading") return (
     <div className="flex items-center gap-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl px-3 py-2">
       <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full spinner" />
-      <p className="text-xs text-blue-700 dark:text-blue-300 font-medium">Verifying…</p>
+      <p className="text-xs text-blue-700 dark:text-blue-300 font-medium">{t("bp.verifying")}</p>
     </div>
   );
   if (status === "ok") return (
@@ -470,9 +471,10 @@ function ProviderTile({ name, category, size = 36, radius = 10 }) {
 }
 
 function CableSelector({ value, onChange }) {
+  const t = useT();
   return (
     <div>
-      <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">Provider *</label>
+      <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">{t("bp.providerLabel")}</label>
       <div className="grid grid-cols-4 gap-2">
         {CABLE_PROVIDERS.map(p => {
           const badge = getProviderBadge(p.name, "cable");
@@ -497,9 +499,10 @@ function CableSelector({ value, onChange }) {
 }
 
 function ElecCompanySelector({ value, onChange }) {
+  const t = useT();
   return (
     <div>
-      <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">Electricity Company *</label>
+      <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">{t("bp.electricLabel")}</label>
       <div className="max-h-52 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
         {ELECTRICITY_COMPANIES.map((c, i) => {
           const abbr = c.name.match(/^([A-Z]+DC|APLE)/)?.[1] || c.name.slice(0, 5).toUpperCase();
@@ -523,9 +526,10 @@ function ElecCompanySelector({ value, onChange }) {
 }
 
 function BettingSelector({ value, onChange }) {
+  const t = useT();
   return (
     <div>
-      <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">Betting Platform *</label>
+      <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">{t("bp.bettingLabel")}</label>
       <div className="grid grid-cols-3 gap-2">
         {BETTING_COMPANIES.map(b => {
           const badge = getProviderBadge(b.name, "betting");
@@ -3061,8 +3065,8 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
       {/* Header */}
       <div className="px-4 pt-5 pb-4 bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 sticky top-0 z-10">
-        <h1 className="text-xl font-extrabold text-slate-900 dark:text-white">Bill Payments</h1>
-        <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">VTU &amp; Bill Payment Services</p>
+        <h1 className="text-xl font-extrabold text-slate-900 dark:text-white">{t("bp.pageTitle")}</h1>
+        <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{t("bp.pageSubtitle")}</p>
       </div>
 
       <div className="px-4 pt-4 space-y-4">
@@ -3070,11 +3074,11 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         {/* Summary strip */}
         <div className="bg-gradient-to-br from-green-600 to-emerald-700 rounded-2xl px-5 py-4 text-white flex items-center justify-between shadow-md">
           <div>
-            <p className="text-[10px] font-bold text-green-100 uppercase tracking-widest">Total Spent</p>
+            <p className="text-[10px] font-bold text-green-100 uppercase tracking-widest">{t("bp.totalSpent")}</p>
             <AmountDisplay amount={bills.filter(b => b.bill_status !== "failed").reduce((s, b) => s + b.amount, 0)} size="hero" align="left" className="text-white mt-0.5" />
           </div>
           <div className="text-right">
-            <p className="text-[10px] font-bold text-green-100 uppercase tracking-widest">Transactions</p>
+            <p className="text-[10px] font-bold text-green-100 uppercase tracking-widest">{t("bp.txnCountLabel")}</p>
             <p className="text-2xl font-black mt-0.5">{bills.filter(b => b.bill_status !== "failed").length}</p>
           </div>
         </div>
@@ -3085,9 +3089,9 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         {userEmailCB && (
           <div className="flex items-center justify-between bg-gradient-to-r from-green-600 to-emerald-600 rounded-2xl px-5 py-4 text-white shadow-md">
             <div>
-              <p className="text-[10px] font-bold text-green-100 uppercase tracking-widest">Cashback Balance</p>
+              <p className="text-[10px] font-bold text-green-100 uppercase tracking-widest">{t("bp.cashbackBalLabel")}</p>
               <p className="text-2xl font-black mt-0.5">₦{cashbackBalance.toLocaleString()}</p>
-              <p className="text-[10px] text-green-200 mt-1">Earn 1% on every bill purchase</p>
+              <p className="text-[10px] text-green-200 mt-1">{t("bp.earn1PctBill")}</p>
             </div>
             <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center text-2xl">🎁</div>
           </div>
@@ -3099,8 +3103,8 @@ export default function BillPayments({ store, plan, session = null, staffName = 
             <div className="flex items-center gap-2">
               <span className="text-xl">⭐</span>
               <div>
-                <p className="text-sm font-black text-amber-800 dark:text-amber-200">Reward Points</p>
-                <p className="text-[10px] text-amber-600 dark:text-amber-400">Earn on data & airtime · 1 pt = ₦1</p>
+                <p className="text-sm font-black text-amber-800 dark:text-amber-200">{t("bp.rewardPointsTitle")}</p>
+                <p className="text-[10px] text-amber-600 dark:text-amber-400">{t("bp.earnDataAirtimeDesc")}</p>
               </div>
             </div>
             <div className="text-right">
