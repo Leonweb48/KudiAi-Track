@@ -41,7 +41,6 @@ const BLANK = {
 
 const BLANK_GROUP = {
   name: "", description: "", contribution_amount: "", contribution_frequency: "monthly",
-  bank_code: "", account_number: "", account_name: "",
   group_mode: "savings", privacy_show_names: true, privacy_show_amounts: false,
 };
 
@@ -714,9 +713,6 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [rotationData,   setRotationData]   = useState(null);
   const [rotationLoading, setRotationLoading] = useState(false);
   const [resolving,      setResolving]      = useState(false);
-  const [resolvedName,   setResolvedName]   = useState("");
-  const [subAcctCreating, setSubAcctCreating] = useState(null); // group id
-  const [subAcctMsg,     setSubAcctMsg]     = useState("");
 
   const [banks,               setBanks]               = useState([]);
   const [clientBankResolving, setClientBankResolving] = useState(false);
@@ -878,7 +874,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     if (!profile?.id) return;
     if (!silent) setGroupsLoading(true);
     try {
-      const BASE_SELECT = "id, owner_id, name, description, is_active, group_mode, contribution_amount, contribution_frequency, percentage_charge, bank_code, account_number, account_name, paystack_subaccount_code, privacy_show_names, privacy_show_amounts, created_at";
+      const BASE_SELECT = "id, owner_id, name, description, is_active, group_mode, contribution_amount, contribution_frequency, percentage_charge, privacy_show_names, privacy_show_amounts, created_at";
       const LIFECYCLE   = ", round_status, target_amount, target_deadline, started_at, closed_at";
       const { data: grps, error } = await supabase
         .from("ajo_groups")
@@ -948,18 +944,12 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           contribution_frequency: grp.contribution_frequency,
           group_mode:             grp.group_mode,
           percentage_charge:      grp.percentage_charge,
-          bank_code:              grp.bank_code      || "",
-          account_number:         grp.account_number || "",
-          account_name:           grp.account_name   || "",
         },
         new: {
           contribution_amount:    editGf.contribution_amount != null ? Number(editGf.contribution_amount) : grp.contribution_amount,
           contribution_frequency: editGf.contribution_frequency || grp.contribution_frequency,
           group_mode:             editGf.group_mode             || grp.group_mode,
           percentage_charge:      editGf.percentage_charge != null ? Number(editGf.percentage_charge) : grp.percentage_charge,
-          bank_code:              editGf.bank_code?.trim()      || grp.bank_code      || "",
-          account_number:         editGf.account_number?.trim() || grp.account_number || "",
-          account_name:           editGf.account_name?.trim()   || grp.account_name   || "",
         },
       };
       const { error } = await supabase.rpc("submit_approval_request", {
@@ -1234,23 +1224,6 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     return data;
   };
 
-  const resolveAccount = async () => {
-    if (!gf.account_number || !gf.bank_code) { setGroupError("Select a bank and enter the account number first"); return; }
-    setResolving(true); setGroupError(""); setResolvedName("");
-    try {
-      const { data, error } = await supabase.functions.invoke("paystack", {
-        body: { action: "resolve-account", account_number: gf.account_number, bank_code: gf.bank_code },
-      });
-      if (error || !data?.status) throw new Error(data?.message || "Could not verify account");
-      setResolvedName(data.data?.account_name || "");
-      setG("account_name", data.data?.account_name || "");
-    } catch (e) {
-      setGroupError(e.message || "Account verification failed");
-    } finally {
-      setResolving(false);
-    }
-  };
-
   const saveGroup = async () => {
     if (!gf.name) { setGroupError("Group name is required"); return; }
     if (!profile?.id) return;
@@ -1270,9 +1243,6 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           description: gf.description || null,
           contribution_amount: gf.contribution_amount ? Number(gf.contribution_amount) : null,
           contribution_frequency: gf.contribution_frequency || "monthly",
-          bank_code: gf.bank_code || null,
-          account_number: gf.account_number || null,
-          account_name: gf.account_name || null,
           group_mode: gf.group_mode || "savings",
           privacy_show_names:   gf.privacy_show_names  !== false,
           privacy_show_amounts: gf.privacy_show_amounts === true,
@@ -1286,30 +1256,6 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         throw new Error(msg);
       }
       const newGroup = data.group;
-      // Auto-create Paystack subaccount if bank details provided
-      if (gf.bank_code && gf.account_number && newGroup?.id) {
-        const { data: sData, error: subErr } = await supabase.functions.invoke("paystack", {
-          body: {
-            action: "create-subaccount",
-            group_id: newGroup.id,
-            business_name: profile.business_name || gf.name,
-            bank_code: gf.bank_code,
-            account_number: gf.account_number,
-            percentage_charge: 100,
-          },
-        }).catch(e => ({ data: null, error: e }));
-        if (sData?.subaccount_code) {
-          newGroup.paystack_subaccount_code = sData.subaccount_code;
-        } else {
-          let msg = sData?.error || "";
-          if (!msg && subErr) {
-            try { const b = await subErr.context?.json?.(); msg = b?.error || b?.message || ""; } catch {}
-            if (!msg) msg = "Failed to link bank account";
-          }
-          console.error("Subaccount creation failed (group saved):", msg);
-          setSubAcctMsg(`Group saved. Bank account link failed: ${msg} — use 'Create Subaccount' to retry.`);
-        }
-      }
       if (newGroup) {
         setGroups(prev => [...prev, newGroup]);
       } else {
@@ -1318,40 +1264,10 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       toast({ type: "success", title: "Group created", body: gf.name.trim() });
       setShowGroupAdd(false);
       setGf(BLANK_GROUP);
-      setResolvedName("");
     } catch (e) {
       setGroupError(e.message || "Failed to save group");
     } finally {
       setGroupSaving(false);
-    }
-  };
-
-  const createSubaccount = async (grp) => {
-    if (!grp.bank_code || !grp.account_number) {
-      setSubAcctMsg("Add bank details to this group first by editing it.");
-      return;
-    }
-    setSubAcctCreating(grp.id); setSubAcctMsg("");
-    try {
-      const { data, error } = await supabase.functions.invoke("paystack", {
-        body: {
-          action: "create-subaccount",
-          group_id: grp.id,
-          business_name: profile?.business_name || grp.name,
-          bank_code: grp.bank_code,
-          account_number: grp.account_number,
-          percentage_charge: 100,
-        },
-      });
-      if (error || !data?.subaccount_code) throw new Error(data?.error || "Failed to create subaccount");
-      setGroups(prev => prev.map(g => g.id === grp.id
-        ? { ...g, paystack_subaccount_code: data.subaccount_code }
-        : g));
-      setSubAcctMsg(`Subaccount created: ${data.subaccount_code}`);
-    } catch (e) {
-      setSubAcctMsg(e.message || "Subaccount creation failed");
-    } finally {
-      setSubAcctCreating(null);
     }
   };
 
@@ -2903,9 +2819,9 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
           {!staffId && (
             <>
-              <SectionLabel>Payout Account (Owner Only)</SectionLabel>
+              <SectionLabel>Payout Account (Optional)</SectionLabel>
               <p className="text-[10px] text-slate-400 dark:text-slate-500 -mt-1 mb-1">
-                The bank account money gets sent TO this client when they withdraw. Only the owner can set or change this.
+                Where money is sent when this client withdraws. Can be added later — required only when processing a withdrawal.
               </p>
               <Field label="Bank" as="select" value={f.bank_code}
                 onChange={e => {
@@ -3717,7 +3633,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                 </div>
                 <div className="flex-1">
                   <p className="font-extrabold text-slate-800 dark:text-white text-sm">Ajo Groups</p>
-                  <p className="text-[10px] text-slate-400">Manage Paystack subaccounts per group</p>
+                  <p className="text-[10px] text-slate-400">Manage savings groups</p>
                 </div>
                 <button onClick={() => setShowGroups(false)} className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-500">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="w-3.5 h-3.5">
@@ -3913,20 +3829,6 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
               })()}
 
               {!savingsDashGid && (<>
-              {/* Explainer */}
-              <div className="bg-brand-50 dark:bg-brand-900/20 rounded-2xl px-4 py-3 border border-brand-100 dark:border-brand-800/60">
-                <p className="text-[11px] text-brand-700 dark:text-brand-300 font-medium leading-relaxed">
-                  Each group is linked to a <strong>Paystack Subaccount</strong>. When a client pays online, 100% of their contribution routes directly to that group's bank account — the platform holds no funds.
-                </p>
-              </div>
-
-              {/* Subaccount message */}
-              {subAcctMsg && (
-                <p className={`text-xs px-3 py-2.5 rounded-xl ${subAcctMsg.includes("failed") || subAcctMsg.includes("Add bank") ? "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400" : "bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400"}`}>
-                  {subAcctMsg}
-                </p>
-              )}
-
               {/* Groups list */}
               {groupsLoading ? (
                 <div className="flex justify-center py-8">
@@ -3940,7 +3842,6 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                 <div className="space-y-3">
                   {groups.map(grp => {
                     const clientCount = asoClients.filter(c => c.ajo_group_id === grp.id).length;
-                    const hasSubacct  = Boolean(grp.paystack_subaccount_code);
                     const isRotating  = grp.group_mode === "rotating";
                     const pendingAppr      = groupApprovals.find(r => r.target_id === grp.id);
                     const isPendingEdit    = pendingAppr?.request_type === "group_edit";
@@ -3953,12 +3854,9 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                     return (
                       <div key={grp.id} className={`bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 border shadow-sm ${isLocked ? "border-amber-200 dark:border-amber-700/50" : "border-slate-100 dark:border-slate-700"}`}>
                         <div className="flex items-start gap-3">
-                          <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${hasSubacct ? "bg-green-100 dark:bg-green-900/30" : "bg-slate-100 dark:bg-slate-700"}`}>
-                            <svg viewBox="0 0 24 24" fill="none" className={`w-4 h-4 ${hasSubacct ? "text-green-600 dark:text-green-400" : "text-slate-400"}`} stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-                              {hasSubacct
-                                ? <><circle cx="12" cy="12" r="10" /><path d="M9 12l2 2 4-4" /></>
-                                : <rect x="2" y="5" width="20" height="14" rx="2" />
-                              }
+                          <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-slate-100 dark:bg-slate-700">
+                            <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                              <rect x="2" y="5" width="20" height="14" rx="2" />
                             </svg>
                           </div>
                           <div className="flex-1 min-w-0">
@@ -3969,34 +3867,8 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                               {grp.contribution_amount   && <span className="text-[10px] text-slate-400">· ₦{fmt(grp.contribution_amount)}</span>}
                               {isRotating && <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-brand-100 dark:bg-brand-900/40 text-brand-700 dark:text-brand-300">Rotating</span>}
                             </div>
-                            {grp.account_number && (
-                              <p className="text-[10px] text-slate-400 mt-0.5 font-mono">
-                                {grp.account_name ? `${grp.account_name} · ` : ""}
-                                {grp.account_number}
-                                {grp.bank_code && banks.length > 0 && (() => { const b = banks.find(x => x.code === grp.bank_code); return b ? ` · ${b.name}` : ""; })()}
-                              </p>
-                            )}
-                            {hasSubacct ? (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-green-600 dark:text-green-400 mt-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-                                {grp.paystack_subaccount_code}
-                              </span>
-                            ) : (
-                              <span className="text-[10px] text-amber-500 dark:text-amber-400 font-semibold mt-1 block">No Paystack subaccount yet</span>
-                            )}
                           </div>
                         </div>
-                        {!hasSubacct && grp.bank_code && grp.account_number && (
-                          <button
-                            onClick={() => createSubaccount(grp)}
-                            disabled={subAcctCreating === grp.id}
-                            className="w-full mt-3 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-xl font-bold text-xs transition active:scale-[0.99] flex items-center justify-center gap-1.5">
-                            {subAcctCreating === grp.id
-                              ? <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />Creating…</>
-                              : "Create Paystack Subaccount"
-                            }
-                          </button>
-                        )}
                         {isRotating && (
                           <button
                             onClick={() => { setShowGroups(false); openRotation(grp); }}
@@ -4218,7 +4090,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                               Edit Details
                             </button>
                             <button
-                              onClick={() => { setEditingGroup(grp.id); setEditGf({ contribution_amount: grp.contribution_amount ?? "", contribution_frequency: grp.contribution_frequency || "monthly", group_mode: grp.group_mode || "savings", percentage_charge: grp.percentage_charge ?? 100, bank_code: grp.bank_code || "", account_number: grp.account_number || "", account_name: grp.account_name || "" }); setGroupApprReason(""); setGroupApprMsg({ id: null, text: "", ok: false }); }}
+                              onClick={() => { setEditingGroup(grp.id); setEditGf({ contribution_amount: grp.contribution_amount ?? "", contribution_frequency: grp.contribution_frequency || "monthly", group_mode: grp.group_mode || "savings", percentage_charge: grp.percentage_charge ?? 100 }); setGroupApprReason(""); setGroupApprMsg({ id: null, text: "", ok: false }); }}
                               className="py-2 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 rounded-xl font-bold text-[10px] border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition active:scale-[0.99]">
                               Settings
                             </button>
@@ -4283,8 +4155,6 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                             <p className="text-[10px] text-blue-600 dark:text-blue-400">Financial changes require admin approval and apply only after a decision.</p>
                             {[
                               { label: "Contribution Amount (₦)", key: "contribution_amount", type: "number" },
-                              { label: "Account Number", key: "account_number", type: "text" },
-                              { label: "Account Name", key: "account_name", type: "text" },
                             ].map(({ label, key, type }) => (
                               <div key={key}>
                                 <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-0.5">{label}</p>
@@ -4306,19 +4176,6 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                                 <option value="savings">Savings</option>
                                 <option value="rotating">Rotating (Esusu)</option>
                               </select>
-                            </div>
-                            <div>
-                              <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-0.5">Bank</p>
-                              {banks.length > 0 ? (
-                                <select value={editGf.bank_code || ""} onChange={e => setEG("bank_code", e.target.value)}
-                                  className="w-full text-sm bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-700 rounded-lg px-3 py-2 text-slate-800 dark:text-white focus:outline-none">
-                                  <option value="">Select bank…</option>
-                                  {banks.map(b => <option key={b.code} value={b.code}>{b.name}</option>)}
-                                </select>
-                              ) : (
-                                <input type="text" value={editGf.bank_code || ""} onChange={e => setEG("bank_code", e.target.value)} placeholder="Bank code"
-                                  className="w-full text-sm bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-700 rounded-lg px-3 py-2 text-slate-800 dark:text-white focus:outline-none" />
-                              )}
                             </div>
                             <div>
                               <p className="text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-wide mb-0.5">Reason for change *</p>
@@ -4465,33 +4322,8 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                     </Field>
                   </div>
 
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pt-1">Bank Account (for Paystack routing)</p>
-                  <Field label="Bank" as="select" value={gf.bank_code} onChange={e => { setG("bank_code", e.target.value); setResolvedName(""); }}>
-                    <option value="">Select bank…</option>
-                    {banks.map(b => <option key={b.code} value={b.code}>{b.name}</option>)}
-                  </Field>
-                  <div className="flex gap-2">
-                    <div className="flex-1">
-                      <Field label="Account Number" value={gf.account_number} onChange={e => { setG("account_number", e.target.value); setResolvedName(""); }} placeholder="10-digit NUBAN" />
-                    </div>
-                    <button
-                      onClick={resolveAccount}
-                      disabled={resolving || !gf.bank_code || !gf.account_number}
-                      className="self-end mb-0 px-3 py-2.5 bg-slate-700 dark:bg-slate-600 text-white text-xs font-bold rounded-xl disabled:opacity-50 transition whitespace-nowrap">
-                      {resolving ? "…" : "Verify"}
-                    </button>
-                  </div>
-                  {resolvedName && (
-                    <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/60 rounded-xl px-3 py-2 flex items-center gap-2">
-                      <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-green-600 dark:text-green-400 flex-shrink-0" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
-                        <path d="M20 6L9 17l-5-5" />
-                      </svg>
-                      <p className="text-xs font-bold text-green-700 dark:text-green-300">{resolvedName}</p>
-                    </div>
-                  )}
-
                   <div className="flex gap-2 pt-1">
-                    <button onClick={() => { setShowGroupAdd(false); setGf(BLANK_GROUP); setGroupError(""); setResolvedName(""); }}
+                    <button onClick={() => { setShowGroupAdd(false); setGf(BLANK_GROUP); setGroupError(""); }}
                       className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-xs transition">
                       Cancel
                     </button>
@@ -4503,7 +4335,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                 </div>
               ) : (
                 <button
-                  onClick={() => { setShowGroupAdd(true); setGroupError(""); setGf(BLANK_GROUP); setResolvedName(""); }}
+                  onClick={() => { setShowGroupAdd(true); setGroupError(""); setGf(BLANK_GROUP); }}
                   className="w-full py-3.5 border-2 border-dashed border-brand-200 dark:border-brand-800 text-brand-600 dark:text-brand-400 rounded-2xl font-bold text-sm transition hover:bg-brand-50 dark:hover:bg-brand-900/20 active:scale-[0.99]">
                   + Create New Group
                 </button>

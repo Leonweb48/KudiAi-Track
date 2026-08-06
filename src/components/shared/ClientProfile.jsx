@@ -80,7 +80,6 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
   const [photoPreview, setPhotoPreview] = useState(null);
   const [saving,       setSaving]       = useState(false);
   const [saveErr,      setSaveErr]      = useState("");
-  const [subAcctWarn,  setSubAcctWarn]  = useState("");
   const [resetting,    setResetting]    = useState(false);
   const [resetErr,     setResetErr]     = useState("");
   const [confirmDel,   setConfirmDel]   = useState(false);
@@ -539,13 +538,13 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                 </div>
               )}
 
-              {/* Payout Account — owner-only, where money is sent TO this client */}
+              {/* Payout Account — where money is sent TO this client on withdrawal */}
               {!isCredit && canEditBank && (
                 <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-100 dark:border-slate-700 shadow-card">
                   <div className="px-4 pt-4 pb-2"><SectionHead title="Payout Account" icon="🏦" /></div>
                   <div className="px-4 pb-4 space-y-3.5">
                     <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed -mt-1">
-                      The bank account money gets sent TO this client when they withdraw. Only the owner can change this.
+                      Where money is sent when this client withdraws. Optional — required only when processing a withdrawal.
                     </p>
                     <FormField label="Bank">
                       <select
@@ -732,18 +731,6 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
           ) : (
             /* ===== VIEW MODE ===== */
             <>
-              {subAcctWarn && (
-                <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 rounded-2xl px-4 py-3 flex items-start gap-2">
-                  <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
-                    <path d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                  </svg>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">{subAcctWarn}</p>
-                    <button onClick={() => setSubAcctWarn("")} className="text-[11px] text-amber-600 dark:text-amber-400 font-semibold underline mt-1">Dismiss</button>
-                  </div>
-                </div>
-              )}
-
               {/* Personal info */}
               {(record.phone || record.email || record.nin || record.address) && (
                 <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-100 dark:border-slate-700 shadow-card">
@@ -793,14 +780,11 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                     {record.account_number && (
                       <>
                         <div className="pt-1 pb-0.5">
-                          <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Deposit Subaccount</p>
+                          <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Payout Account</p>
                         </div>
                         <InfoRow label="Bank"         value={record.bank_name} />
                         <InfoRow label="Account No."  value={record.account_number} />
                         <InfoRow label="Account Name" value={record.account_name} />
-                        {record.paystack_subaccount_code && (
-                          <InfoRow label="Subaccount Code" value={record.paystack_subaccount_code} />
-                        )}
                       </>
                     )}
                     {record.withdrawal_account_number && (
