@@ -45,17 +45,10 @@ function BgLayout({ children, center = false }) {
       {/* Gradient: stronger overlay so all text is clearly readable */}
       <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/20 to-black/90" />
 
-      {/* KudiAI Track brand — top, safe area aware */}
-      <div className="relative z-10 flex-shrink-0 px-5 pb-2 flex items-center gap-3"
+      {/* Logo — top, safe area aware */}
+      <div className="relative z-10 flex-shrink-0 px-5 pb-2"
         style={{ paddingTop: "max(40px, env(safe-area-inset-top, 40px))" }}>
-        {/* Actual KudiAI Track logo */}
-        <div className="bg-white/90 rounded-xl p-1.5 shadow-lg flex-shrink-0">
-          <AppLogo className="h-9 w-auto" />
-        </div>
-        <div>
-          <p className="text-white font-extrabold text-lg leading-tight tracking-wide drop-shadow-lg">KudiAI Track</p>
-          <p className="text-white/80 text-[11px] leading-tight font-medium">Business · Savings · Bills</p>
-        </div>
+        <AppLogo className="h-10 w-auto" />
       </div>
 
       {center ? (
@@ -177,9 +170,7 @@ function OtpScreen({ email, onBack, onVerified, otpType = "signup" }) {
       {/* Header */}
       <div className="text-center mb-8">
           <div className="flex justify-center mb-4">
-            <div className="bg-white/90 rounded-2xl p-2 shadow-lg">
-              <AppLogo className="h-10 w-auto" />
-            </div>
+            <AppLogo className="h-10 w-auto" />
           </div>
           <div className="inline-flex items-center justify-center w-10 h-10 rounded-2xl mb-3 bg-indigo-500/20 border border-indigo-500/30">
             <svg width="18" height="18" fill="none" stroke="rgb(129,140,248)" strokeWidth="2" viewBox="0 0 24 24">
