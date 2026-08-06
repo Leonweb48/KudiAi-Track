@@ -312,30 +312,45 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
   const [wcSuccess, setWcSuccess] = useState(false);
 
   // ── Settlement account setup ────────────────────────────────────────
+  // settleData is loaded from the edge function on mount — do NOT read from
+  // profile.* because PostgREST's schema cache doesn't include the new columns yet.
+  const [settleData,            setSettleData]            = useState(null);
+  const [settleDataLoaded,      setSettleDataLoaded]      = useState(false);
   const [settleBanks,           setSettleBanks]           = useState([]);
-  const [settleBankCode,        setSettleBankCode]        = useState(profile.settlement_bank_code        || "");
-  const [settleBankName,        setSettleBankName]        = useState(profile.settlement_bank_name        || "");
-  const [settleAcctNum,         setSettleAcctNum]         = useState(profile.settlement_account_number   || "");
-  const [settleResolvedName,    setSettleResolvedName]    = useState(profile.settlement_account_name     || "");
+  const [settleBankCode,        setSettleBankCode]        = useState("");
+  const [settleBankName,        setSettleBankName]        = useState("");
+  const [settleAcctNum,         setSettleAcctNum]         = useState("");
+  const [settleResolvedName,    setSettleResolvedName]    = useState("");
   const [settleResolving,       setSettleResolving]       = useState(false);
   const [settleSaving,          setSettleSaving]          = useState(false);
   const [settleErr,             setSettleErr]             = useState("");
   const [settleSuccess,         setSettleSuccess]         = useState(false);
   const [showSettleSetup,       setShowSettleSetup]       = useState(false);
 
-  const settleCurrent = profile.settlement_verified_at
-    ? { name: profile.settlement_account_name, bank: profile.settlement_bank_name, num: profile.settlement_account_number }
+  const settleCurrent = settleData?.settlement_verified_at
+    ? { name: settleData.settlement_account_name, bank: settleData.settlement_bank_name, num: settleData.settlement_account_number }
     : null;
+
+  // Load settlement data from edge function on mount (bypasses PostgREST schema cache).
+  useEffect(() => {
+    supabase.functions.invoke("paystack", { body: { action: "get-settlement-account" } })
+      .then(({ data }) => {
+        setSettleData(data && data.settlement_verified_at ? data : null);
+        setSettleDataLoaded(true);
+      })
+      .catch(() => { setSettleDataLoaded(true); });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     // Load banks whenever the form is visible: either first-time setup (no settleCurrent)
     // or the owner clicked "Change account" (showSettleSetup = true).
+    if (!settleDataLoaded) return;
     const formVisible = showSettleSetup || !settleCurrent;
     if (!formVisible || settleBanks.length > 0) return;
     supabase.functions.invoke("paystack", { body: { action: "list-banks" } })
       .then(({ data }) => { if (data?.data) setSettleBanks(data.data); })
       .catch(() => {});
-  }, [showSettleSetup, settleCurrent]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [showSettleSetup, settleCurrent, settleDataLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const resolveSettleAccount = async () => {
     if (settleAcctNum.length < 10 || !settleBankCode) return;
@@ -359,15 +374,14 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
     }).catch(e => ({ data: null, error: e }));
     setSettleSaving(false);
     if (data?.subaccount_code) {
-      setProfile(p => ({
-        ...p,
+      setSettleData({
         settlement_bank_code:      settleBankCode,
         settlement_account_number: settleAcctNum,
         settlement_account_name:   settleResolvedName,
         settlement_bank_name:      settleBankName,
         paystack_subaccount_code:  data.subaccount_code,
         settlement_verified_at:    new Date().toISOString(),
-      }));
+      });
       setSettleSuccess(true);
       setShowSettleSetup(false);
       setTimeout(() => setSettleSuccess(false), 4000);
@@ -873,7 +887,9 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
             All Paystack contributions from your Ajo/Aso clients go directly to this account. Set it once — it cannot be overridden per client.
           </p>
 
-          {settleCurrent && !showSettleSetup ? (
+          {!settleDataLoaded ? (
+            <p className="text-[13px] text-slate-400 dark:text-slate-500 py-1">Loading…</p>
+          ) : settleCurrent && !showSettleSetup ? (
             <div className="space-y-3">
               <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl px-3.5 py-3">
                 <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>

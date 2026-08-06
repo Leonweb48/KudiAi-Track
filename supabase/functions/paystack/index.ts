@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import postgres from "https://deno.land/x/postgresjs@v3.4.4/mod.js";
 
 const CORS = {
   "Access-Control-Allow-Origin":  "*",
@@ -350,21 +351,57 @@ serve(async (req) => {
         subaccountId = String(psData.data.id);
       }
 
-      // Step 4: Persist to profiles — check error so a schema-cache miss isn't silently swallowed
-      const { error: profErr } = await sb.from("profiles").update({
-        settlement_bank_code:      bank_code,
-        settlement_account_number: account_number,
-        settlement_account_name:   accountName,
-        settlement_bank_name:      bank_name || null,
-        paystack_subaccount_code:  subaccountCode,
-        paystack_subaccount_id:    subaccountId,
-        settlement_verified_at:    new Date().toISOString(),
-      }).eq("id", user.id);
-      if (profErr) {
-        return json({ error: `Subaccount created but profile save failed: ${profErr.message}` }, 500);
+      // Step 4: Write directly to Postgres — bypasses PostgREST schema cache so new
+      // columns are visible immediately without needing a 'NOTIFY pgrst, reload schema'.
+      const DB_URL = Deno.env.get("SUPABASE_DB_URL") ?? "";
+      if (!DB_URL) return json({ error: "Database URL not configured" }, 503);
+      const sql = postgres(DB_URL, { max: 1, prepare: false });
+      try {
+        await sql`
+          UPDATE public.profiles SET
+            settlement_bank_code      = ${bank_code},
+            settlement_account_number = ${account_number},
+            settlement_account_name   = ${accountName},
+            settlement_bank_name      = ${bank_name || null},
+            paystack_subaccount_code  = ${subaccountCode},
+            paystack_subaccount_id    = ${subaccountId},
+            settlement_verified_at    = NOW()
+          WHERE id = ${user.id}
+        `;
+      } finally {
+        await sql.end();
       }
 
       return json({ account_name: accountName, subaccount_code: subaccountCode });
+    }
+
+    // ── Read owner settlement account (direct DB — bypasses schema cache) ────
+    if (action === "get-settlement-account") {
+      const token = authHeader.replace("Bearer ", "");
+      if (!token) return json({ error: "Unauthorized" }, 401);
+      const { data: { user }, error: authErr } = await sb.auth.getUser(token);
+      if (authErr || !user) return json({ error: "Unauthorized" }, 401);
+
+      const DB_URL = Deno.env.get("SUPABASE_DB_URL") ?? "";
+      if (!DB_URL) return json({ error: "Database URL not configured" }, 503);
+      const sql = postgres(DB_URL, { max: 1, prepare: false });
+      try {
+        const rows = await sql<{
+          settlement_bank_code: string | null;
+          settlement_account_number: string | null;
+          settlement_account_name: string | null;
+          settlement_bank_name: string | null;
+          paystack_subaccount_code: string | null;
+          settlement_verified_at: string | null;
+        }[]>`
+          SELECT settlement_bank_code, settlement_account_number, settlement_account_name,
+                 settlement_bank_name, paystack_subaccount_code, settlement_verified_at
+          FROM public.profiles WHERE id = ${user.id}
+        `;
+        return json(rows[0] ?? {});
+      } finally {
+        await sql.end();
+      }
     }
 
     // ── Create Paystack dedicated virtual account ──────────────────────────
