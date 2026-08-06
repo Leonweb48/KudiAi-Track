@@ -328,11 +328,14 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
     : null;
 
   useEffect(() => {
-    if (!showSettleSetup || settleBanks.length > 0) return;
+    // Load banks whenever the form is visible: either first-time setup (no settleCurrent)
+    // or the owner clicked "Change account" (showSettleSetup = true).
+    const formVisible = showSettleSetup || !settleCurrent;
+    if (!formVisible || settleBanks.length > 0) return;
     supabase.functions.invoke("paystack", { body: { action: "list-banks" } })
       .then(({ data }) => { if (data?.data) setSettleBanks(data.data); })
       .catch(() => {});
-  }, [showSettleSetup]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [showSettleSetup, settleCurrent]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const resolveSettleAccount = async () => {
     if (settleAcctNum.length < 10 || !settleBankCode) return;
