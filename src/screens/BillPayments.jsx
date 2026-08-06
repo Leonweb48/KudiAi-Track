@@ -3738,19 +3738,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
               <div className="pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))]">
                 <button onClick={() => {
                   const finalAmt = Math.max(0, uiChargeAmt - ptsSavings - cbSavings - billCouponSavings);
-                  const catInfo = CATS.find(c => c.id === selectedCat);
-                  setConfirmData({
-                    finalAmt,
-                    baseAmt: uiChargeAmt,
-                    ptsSavings,
-                    cbSavings,
-                    couponSavings: billCouponSavings,
-                    catLabel: catInfo?.label || "Bill Payment",
-                    network: form.network || "",
-                    phone: form.phone || form.meterNo || form.smartcard || form.customerId || form.accountNo || "",
-                    planName: form.planName || form.packageName || "",
-                    isFree: finalAmt <= 0,
-                  });
+                  setTxnPinAmount(finalAmt * 100);
                 }} disabled={saving}
                   className="w-full text-white font-bold rounded-xl py-3.5 text-sm transition-all disabled:opacity-60 bg-gradient-to-br from-green-600 to-green-700">
                   {saving ? (billAppliedCoupon && uiChargeAmt - ptsSavings - cbSavings - billCouponSavings <= 0 ? "Processing free bill…" : "Redirecting to Paystack…") : (
