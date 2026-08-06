@@ -618,7 +618,7 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
   const [detailInv,    setDetailInv]   = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const [txnPin,       setTxnPin]      = useState(null);
-  const { settings: invoiceSettings, save: saveInvoiceSettings } = useInvoiceSettings(userId);
+  const { settings: invoiceSettings, save: saveInvoiceSettings } = useInvoiceSettings(userId, profile);
 
   if (!canDo(plan, "invoices")) {
     return (

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../utils/supabase";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import { maxDobDate, isAtLeast18, AGE_ERROR } from "../utils/ageValidation";
+import { compressImage } from "../utils/compressImage";
 
 // ── Icons ────────────────────────────────────────────────────────────────────
 const ArrowLeft  = () => <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>;
@@ -13,8 +14,7 @@ const XIcon      = () => <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4
 const ZoomIcon   = () => <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>;
 
 // ── Constants ────────────────────────────────────────────────────────────────
-const MAX_IMG_BYTES  = 2 * 1024 * 1024; // 2 MB
-const ALLOWED_TYPES  = ["image/jpeg", "image/jpg", "image/png"];
+const MAX_IMG_BYTES  = 5 * 1024 * 1024; // 5 MB accepted — compressed client-side before upload
 const GENDERS        = ["Male", "Female", "Prefer not to say"];
 const BUSINESS_CATEGORIES = [
   "Retail & Trading", "Food & Beverage", "Fashion & Beauty",
@@ -302,12 +302,13 @@ export default function Profile({ store, session, plan }) {
     if (!file) return;
     const setErr = type === "avatar" ? setPhotoErr : setLogoErr;
     setErr("");
-    if (!ALLOWED_TYPES.includes(file.type)) {
-      setErr("Only JPG and PNG images are allowed.");
+    const isImage = file.type.startsWith("image/");
+    if (!isImage) {
+      setErr("Please choose an image file (JPG, PNG, WEBP…).");
       return;
     }
     if (file.size > MAX_IMG_BYTES) {
-      setErr("Image must be under 2 MB. Please choose a smaller file.");
+      setErr("Image must be under 5 MB. Please choose a smaller file.");
       return;
     }
     const reader = new FileReader();
@@ -318,19 +319,21 @@ export default function Profile({ store, session, plan }) {
     reader.readAsDataURL(file);
   };
 
-  // ── Upload image with fake progress feedback ───────────────────────────────
+  // ── Upload image: compress then upload with progress feedback ─────────────
   const uploadImageWithProgress = async (file, path, label) => {
+    setUploadLabel("Compressing…");
+    setUploadProgress(10);
+    const compressed = await compressImage(file, 900);
     setUploadLabel(label);
-    setUploadProgress(5);
-    let p = 5;
+    setUploadProgress(25);
+    let p = 25;
     const iv = setInterval(() => {
-      p = Math.min(p + Math.random() * 14, 82);
+      p = Math.min(p + Math.random() * 12, 85);
       setUploadProgress(Math.round(p));
-    }, 180);
+    }, 200);
     try {
-      const ext  = file.name.split(".").pop().toLowerCase();
-      const name = `${path}.${ext}`;
-      const { error } = await supabase.storage.from("avatars").upload(name, file, { upsert: true, contentType: file.type });
+      const name = `${path}.jpg`;
+      const { error } = await supabase.storage.from("avatars").upload(name, compressed, { upsert: true, contentType: "image/jpeg" });
       clearInterval(iv);
       if (error) throw error;
       setUploadProgress(100);
@@ -616,7 +619,7 @@ export default function Profile({ store, session, plan }) {
             {uploadLabel === "Uploading logo" && <UploadProgressBar progress={uploadProgress} label="Uploading" />}
           </div>
         </div>
-        <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center -mt-2">JPG or PNG · max 2 MB</p>
+        <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center -mt-2">JPG, PNG or WEBP · up to 5 MB (compressed before upload)</p>
 
         {/* ── Personal Information ───────────────────────────────────────── */}
         <div>

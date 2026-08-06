@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../utils/supabase";
 
 const DEFAULTS = {
@@ -14,9 +14,14 @@ const DEFAULTS = {
   thank_you_note: "Thank you for your business. We truly value your patronage.",
 };
 
-export function useInvoiceSettings(userId) {
+// profile is used to seed empty invoice settings on first load — eliminates
+// duplicate data entry. The user only needs to set their info once (in their
+// profile); invoice settings inherits it and they can override per-invoice.
+export function useInvoiceSettings(userId, profile) {
   const [settings, setSettings] = useState(DEFAULTS);
   const [loading,  setLoading]  = useState(true);
+  // Capture profile at mount time so the load callback doesn't need it as a dep
+  const profileRef = useRef(profile);
 
   const load = useCallback(async () => {
     if (!userId || !supabase) { setLoading(false); return; }
@@ -25,7 +30,21 @@ export function useInvoiceSettings(userId) {
       .select("*")
       .eq("user_id", userId)
       .maybeSingle();
-    setSettings(data ? { ...DEFAULTS, ...data } : DEFAULTS);
+    if (data) {
+      setSettings({ ...DEFAULTS, ...data });
+    } else {
+      // No invoice settings yet — seed from profile so the owner doesn't have
+      // to re-enter data they already provided during registration.
+      const p = profileRef.current || {};
+      setSettings({
+        ...DEFAULTS,
+        contact_email:  p.email                              || "",
+        contact_phone:  p.phone                             || "",
+        address:        p.business_address || p.address     || "",
+        reg_number:     p.business_registration_number      || "",
+        logo_url:       p.store_image_url                   || "",
+      });
+    }
     setLoading(false);
   }, [userId]);
 

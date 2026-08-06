@@ -202,14 +202,14 @@ export async function exportInvoicePdf(
   // ── Business info ──────────────────────────────────────────────────────────
   const biz = {
     name:     profile?.business_name         || "My Business",
-    phone:    invoiceSettings.contact_phone  || profile?.owner_phone         || "",
-    email:    invoiceSettings.contact_email  || profile?.email               || "",
-    address:  invoiceSettings.address        || profile?.address             || "",
-    reg:      invoiceSettings.reg_number     || "",
-    bank:     invoiceSettings.bank_name      || profile?.bank_name           || "",
-    acctNo:   invoiceSettings.account_number || profile?.bank_account_number || "",
-    acctName: invoiceSettings.account_name   || profile?.bank_account_name   || "",
-    logo:     invoiceSettings.logo_url       || "",
+    phone:    invoiceSettings.contact_phone  || profile?.phone                            || "",
+    email:    invoiceSettings.contact_email  || profile?.email                            || "",
+    address:  invoiceSettings.address        || profile?.business_address || profile?.address || "",
+    reg:      invoiceSettings.reg_number     || profile?.business_registration_number     || "",
+    bank:     invoiceSettings.bank_name      || "",
+    acctNo:   invoiceSettings.account_number || "",
+    acctName: invoiceSettings.account_name   || "",
+    logo:     invoiceSettings.logo_url       || profile?.store_image_url                 || "",
     thanks:   invoiceSettings.thank_you_note
                 || "Thank you for your business. We truly value your patronage.",
   };

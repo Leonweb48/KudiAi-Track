@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { compressImage } from "../utils/compressImage";
 import { useNavigate } from "react-router-dom";
 import Modal              from "../components/shared/Modal";
 import ProfilePreviewModal from "../components/shared/ProfilePreviewModal";
@@ -139,8 +140,9 @@ const GENDERS = ["Male", "Female", "Prefer not to say"];
 
 
 async function uploadProfileImg(file, userId) {
+  const compressed = await compressImage(file, 900);
   const path = `${userId}/profile`;
-  const { error } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
+  const { error } = await supabase.storage.from("avatars").upload(path, compressed, { upsert: true, contentType: "image/jpeg" });
   if (error) throw error;
   const base = supabase.storage.from("avatars").getPublicUrl(path).data.publicUrl;
   return `${base}?v=${Date.now()}`;
@@ -427,6 +429,10 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
   const handlePhotoChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      setSaveError("Image must be under 5 MB.");
+      return;
+    }
     setPhotoFile(file);
     setPhotoPreview(URL.createObjectURL(file));
   };
