@@ -549,7 +549,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
 
     if (error) {
       setTransactions(p => p.filter(tx => tx.id !== tempId));
-      setDbError("Couldn't save — check your connection and try again.");
+      setDbError(error.message || "Couldn't save the transaction. Please try again.");
       fireEmailTrigger("transaction_failed", {
         owner_id:      userId,
         business_name: profile.business_name || "",
@@ -559,7 +559,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
         date:          t.transaction_date || today(),
         staff_id:      staffId || "",
         staff_name:    staffName || "",
-        error_msg:     error.message || "Failed to save transaction",
+        reason:        error.message || "Failed to save transaction",
       });
     } else {
       setTransactions(p => p.map(tx => tx.id === tempId ? data : tx));

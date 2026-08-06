@@ -15,7 +15,7 @@ export default function SyncBar({ isOnline, fromCache, dbError, loadError, lastS
   if (dbError) return (
     <div className="flex-none flex items-center gap-2 px-4 py-2 bg-red-50 dark:bg-red-900/20 border-b border-red-100 dark:border-red-800/30">
       <Icon name="warn" size={13} className="text-red-500 flex-shrink-0" />
-      <span className="text-[11px] font-semibold text-red-700 dark:text-red-300">Save failed — check connection</span>
+      <span className="text-[11px] font-semibold text-red-700 dark:text-red-300">Save failed — {dbError}</span>
     </div>
   );
   if (loadError) return (
