@@ -257,14 +257,15 @@ serve(async (req) => {
         return json({ error: "Forbidden" }, 403);
       }
 
-      let subaccountCode: string | undefined;
-      if (cl.ajo_group_id) {
-        const { data: grp } = await sb
-          .from("ajo_groups")
-          .select("paystack_subaccount_code")
-          .eq("id", cl.ajo_group_id)
-          .maybeSingle();
-        subaccountCode = grp?.paystack_subaccount_code ?? undefined;
+      // Route to owner's verified settlement subaccount — never per-client or per-group accounts.
+      const { data: ownerSettlement } = await sb
+        .from("profiles")
+        .select("paystack_subaccount_code")
+        .eq("id", cl.user_id)
+        .maybeSingle();
+      const subaccountCode: string | undefined = (ownerSettlement as Record<string, unknown> | null)?.paystack_subaccount_code as string | undefined;
+      if (!subaccountCode) {
+        return json({ error: "SETTLEMENT_NOT_CONFIGURED", message: "Your savings agent has not set up a settlement account. Contact them to enable Paystack payments." }, 422);
       }
 
       const psRes = await fetch("https://api.paystack.co/transaction/initialize", {
@@ -286,6 +287,81 @@ serve(async (req) => {
       });
       const psData = await psRes.json();
       return json({ ...psData, public_key: PUBLIC_KEY });
+    }
+
+    // ── Set up owner's settlement account (one per business owner) ────────────
+    if (action === "setup-settlement-account") {
+      const token = authHeader.replace("Bearer ", "");
+      if (!token) return json({ error: "Unauthorized" }, 401);
+      const { data: { user }, error: authErr } = await sb.auth.getUser(token);
+      if (authErr || !user) return json({ error: "Unauthorized" }, 401);
+
+      const { bank_code, account_number, bank_name } = body as {
+        bank_code: string; account_number: string; bank_name?: string;
+      };
+      if (!bank_code || !account_number) {
+        return json({ error: "bank_code and account_number are required" }, 400);
+      }
+
+      // Step 1: Resolve account name
+      const resolveRes = await fetch(
+        `https://api.paystack.co/bank/resolve?account_number=${account_number}&bank_code=${bank_code}`,
+        { headers: psHeaders },
+      );
+      const resolveData = await resolveRes.json();
+      if (!resolveData.status || !resolveData.data?.account_name) {
+        return json({ error: resolveData.message || "Could not verify account — check details and try again" }, 422);
+      }
+      const accountName = resolveData.data.account_name as string;
+
+      // Step 2: Fetch owner profile for business name + existing subaccount
+      const { data: ownerProf } = await sb.from("profiles")
+        .select("owner_name, business_name, paystack_subaccount_code")
+        .eq("id", user.id).maybeSingle();
+      const bizName = ((ownerProf as Record<string, unknown> | null)?.business_name as string || (ownerProf as Record<string, unknown> | null)?.owner_name as string || "Business").slice(0, 60);
+      const existingCode = (ownerProf as Record<string, unknown> | null)?.paystack_subaccount_code as string | undefined;
+
+      // Step 3: Create or update the Paystack subaccount
+      let subaccountCode: string;
+      let subaccountId: string;
+      if (existingCode) {
+        const psRes = await fetch(`https://api.paystack.co/subaccount/${existingCode}`, {
+          method: "PUT",
+          headers: psHeaders,
+          body: JSON.stringify({ settlement_bank: bank_code, account_number, percentage_charge: 100 }),
+        });
+        const psData = await psRes.json();
+        if (!psData.status) {
+          return json({ error: psData.message || "Failed to update settlement account" }, 422);
+        }
+        subaccountCode = (psData.data?.subaccount_code as string) || existingCode;
+        subaccountId = String(psData.data?.id || "");
+      } else {
+        const psRes = await fetch("https://api.paystack.co/subaccount", {
+          method: "POST",
+          headers: psHeaders,
+          body: JSON.stringify({ business_name: bizName, settlement_bank: bank_code, account_number, percentage_charge: 100 }),
+        });
+        const psData = await psRes.json();
+        if (!psData.status || !psData.data?.subaccount_code) {
+          return json({ error: psData.message || "Failed to create settlement account" }, 422);
+        }
+        subaccountCode = psData.data.subaccount_code as string;
+        subaccountId = String(psData.data.id);
+      }
+
+      // Step 4: Persist to profiles
+      await sb.from("profiles").update({
+        settlement_bank_code:      bank_code,
+        settlement_account_number: account_number,
+        settlement_account_name:   accountName,
+        settlement_bank_name:      bank_name || null,
+        paystack_subaccount_code:  subaccountCode,
+        paystack_subaccount_id:    subaccountId,
+        settlement_verified_at:    new Date().toISOString(),
+      }).eq("id", user.id);
+
+      return json({ account_name: accountName, subaccount_code: subaccountCode });
     }
 
     // ── Create Paystack dedicated virtual account ──────────────────────────

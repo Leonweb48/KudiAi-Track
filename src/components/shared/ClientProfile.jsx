@@ -295,29 +295,6 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
       return;
     }
 
-    // Sync Paystack subaccount when bank details changed (owner only)
-    if (!isCredit && canEditBank) {
-      const bankChanged = form.bank_code !== record.bank_code || form.account_number !== record.account_number;
-      if (bankChanged && form.bank_code && form.account_number && form.account_name) {
-        setSubAcctWarn("");
-        const paystackBody = record.paystack_subaccount_code
-          ? { action: "update-subaccount", client_id: record.id, settlement_bank: form.bank_code, account_number: form.account_number, bank_name: form.bank_name || "" }
-          : { action: "create-subaccount", client_id: record.id, business_name: form.full_name || businessName, bank_code: form.bank_code, account_number: form.account_number, percentage_charge: 100, bank_name: form.bank_name || "" };
-        const { data: sData, error: subErr } = await supabase.functions
-          .invoke("paystack", { body: paystackBody })
-          .catch(e => ({ data: null, error: e }));
-        if (subErr || sData?.error) {
-          let msg = sData?.error || "";
-          if (!msg && subErr) {
-            try { const b = await subErr.context?.json?.(); msg = b?.error || b?.message || ""; } catch {}
-            if (!msg) msg = "Failed to link bank account";
-          }
-          console.error("Paystack subaccount sync failed:", msg);
-          setSubAcctWarn(`Profile saved. Bank account link failed: ${msg} — save again to retry.`);
-        }
-      }
-    }
-
     setSaving(false);
     setEditing(false);
     setPhotoFile(null);
@@ -562,13 +539,13 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                 </div>
               )}
 
-              {/* Deposit Subaccount — owner-only, routes Paystack contributions */}
+              {/* Payout Account — owner-only, where money is sent TO this client */}
               {!isCredit && canEditBank && (
                 <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-100 dark:border-slate-700 shadow-card">
-                  <div className="px-4 pt-4 pb-2"><SectionHead title="Deposit Subaccount" icon="🏦" /></div>
+                  <div className="px-4 pt-4 pb-2"><SectionHead title="Payout Account" icon="🏦" /></div>
                   <div className="px-4 pb-4 space-y-3.5">
                     <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed -mt-1">
-                      Owner-set dedicated account for this client — all manual and Paystack contributions route here. Only the owner can change this.
+                      The bank account money gets sent TO this client when they withdraw. Only the owner can change this.
                     </p>
                     <FormField label="Bank">
                       <select
@@ -615,11 +592,6 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                       </p>
                     )}
                     {bankErr && <p className="text-xs text-red-500 -mt-1">{bankErr}</p>}
-                    {record.paystack_subaccount_code && (
-                      <p className="text-[10px] text-green-600 dark:text-green-400 font-semibold">
-                        Subaccount active · {record.paystack_subaccount_code}
-                      </p>
-                    )}
                   </div>
                 </div>
               )}

@@ -310,6 +310,72 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
   const [wcSaving,  setWcSaving]  = useState(false);
   const [wcError,   setWcError]   = useState("");
   const [wcSuccess, setWcSuccess] = useState(false);
+
+  // ── Settlement account setup ────────────────────────────────────────
+  const [settleBanks,           setSettleBanks]           = useState([]);
+  const [settleBankCode,        setSettleBankCode]        = useState(profile.settlement_bank_code        || "");
+  const [settleBankName,        setSettleBankName]        = useState(profile.settlement_bank_name        || "");
+  const [settleAcctNum,         setSettleAcctNum]         = useState(profile.settlement_account_number   || "");
+  const [settleResolvedName,    setSettleResolvedName]    = useState(profile.settlement_account_name     || "");
+  const [settleResolving,       setSettleResolving]       = useState(false);
+  const [settleSaving,          setSettleSaving]          = useState(false);
+  const [settleErr,             setSettleErr]             = useState("");
+  const [settleSuccess,         setSettleSuccess]         = useState(false);
+  const [showSettleSetup,       setShowSettleSetup]       = useState(false);
+
+  const settleCurrent = profile.settlement_verified_at
+    ? { name: profile.settlement_account_name, bank: profile.settlement_bank_name, num: profile.settlement_account_number }
+    : null;
+
+  useEffect(() => {
+    if (!showSettleSetup || settleBanks.length > 0) return;
+    supabase.functions.invoke("paystack", { body: { action: "list-banks" } })
+      .then(({ data }) => { if (data?.data) setSettleBanks(data.data); })
+      .catch(() => {});
+  }, [showSettleSetup]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const resolveSettleAccount = async () => {
+    if (settleAcctNum.length < 10 || !settleBankCode) return;
+    setSettleResolving(true); setSettleErr(""); setSettleResolvedName("");
+    const { data } = await supabase.functions.invoke("paystack", {
+      body: { action: "resolve-account", account_number: settleAcctNum, bank_code: settleBankCode },
+    }).catch(() => ({ data: null }));
+    setSettleResolving(false);
+    if (data?.data?.account_name) {
+      setSettleResolvedName(data.data.account_name);
+    } else {
+      setSettleErr(data?.message || "Could not verify account — check account number and bank");
+    }
+  };
+
+  const handleSetupSettlement = async () => {
+    if (!settleResolvedName || !settleBankCode || settleAcctNum.length < 10) return;
+    setSettleSaving(true); setSettleErr(""); setSettleSuccess(false);
+    const { data, error } = await supabase.functions.invoke("paystack", {
+      body: { action: "setup-settlement-account", bank_code: settleBankCode, account_number: settleAcctNum, bank_name: settleBankName },
+    }).catch(e => ({ data: null, error: e }));
+    setSettleSaving(false);
+    if (data?.subaccount_code) {
+      setProfile(p => ({
+        ...p,
+        settlement_bank_code:      settleBankCode,
+        settlement_account_number: settleAcctNum,
+        settlement_account_name:   settleResolvedName,
+        settlement_bank_name:      settleBankName,
+        paystack_subaccount_code:  data.subaccount_code,
+        settlement_verified_at:    new Date().toISOString(),
+      }));
+      setSettleSuccess(true);
+      setShowSettleSetup(false);
+      setTimeout(() => setSettleSuccess(false), 4000);
+    } else {
+      let msg = data?.error || "";
+      if (!msg && error) {
+        try { const b = await error.context?.json?.(); msg = b?.error || b?.message || ""; } catch {}
+      }
+      setSettleErr(msg || "Failed to save settlement account — try again");
+    }
+  };
   const { slotMap: camSlotMap, loading: camLoading, recordEvent } = useCampaigns(["announcement_bar","upsell_inline"]);
   const settingsAnnBars = camSlotMap.announcement_bar || [];
   const settingsUpsells = camSlotMap.upsell_inline   || [];
@@ -792,6 +858,95 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
           >
             {wcSaving ? "Saving…" : "Save"}
           </button>
+        </div>
+      </SettingsCard>
+
+      {/* ── SAVINGS PAYMENTS ────────────────────────────────────────── */}
+      <SectionLabel>Savings Payments</SectionLabel>
+      <SettingsCard>
+        <div className="px-4 py-4">
+          <p className="font-semibold text-[15px] text-slate-800 dark:text-slate-100 mb-0.5">Settlement Account</p>
+          <p className="text-[12px] text-slate-400 dark:text-slate-500 mb-4 leading-relaxed">
+            All Paystack contributions from your Ajo/Aso clients go directly to this account. Set it once — it cannot be overridden per client.
+          </p>
+
+          {settleCurrent && !showSettleSetup ? (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl px-3.5 py-3">
+                <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-bold text-emerald-700 dark:text-emerald-300 truncate">{settleCurrent.name}</p>
+                  <p className="text-[11px] text-emerald-600 dark:text-emerald-400">{settleCurrent.bank} · ****{(settleCurrent.num || "").slice(-4)}</p>
+                </div>
+              </div>
+              {settleSuccess && <p className="text-[12px] text-emerald-600 dark:text-emerald-400 font-semibold">Settlement account updated</p>}
+              <button
+                onClick={() => { setShowSettleSetup(true); setSettleErr(""); setSettleSuccess(false); }}
+                className="w-full py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 font-semibold text-sm transition-colors hover:bg-slate-50 dark:hover:bg-slate-700/50 active:scale-[0.98]"
+              >
+                Change account
+              </button>
+            </div>
+          ) : showSettleSetup || !settleCurrent ? (
+            <div className="space-y-3">
+              <label className="block text-[12px] font-semibold text-slate-500 dark:text-slate-400 mb-1">Bank</label>
+              <select
+                value={settleBankCode}
+                onChange={e => {
+                  const b = settleBanks.find(bk => bk.code === e.target.value);
+                  setSettleBankCode(e.target.value);
+                  setSettleBankName(b?.name || "");
+                  setSettleResolvedName(""); setSettleErr("");
+                }}
+                className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-3.5 py-2.5 text-sm font-medium text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-400 mb-1"
+              >
+                <option value="">{settleBanks.length === 0 ? "Loading banks…" : "Select bank…"}</option>
+                {settleBanks.map(b => <option key={b.code} value={b.code}>{b.name}</option>)}
+              </select>
+
+              <label className="block text-[12px] font-semibold text-slate-500 dark:text-slate-400 mb-1">Account Number</label>
+              <div className="flex gap-2 items-center">
+                <input
+                  type="text" inputMode="numeric"
+                  value={settleAcctNum}
+                  onChange={e => { setSettleAcctNum(e.target.value.replace(/\D/g, "").slice(0, 10)); setSettleResolvedName(""); setSettleErr(""); }}
+                  placeholder="10-digit NUBAN"
+                  className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-3.5 py-2.5 text-sm font-medium text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-400"
+                />
+                <button type="button" onClick={resolveSettleAccount}
+                  disabled={settleResolving || settleAcctNum.length < 10 || !settleBankCode}
+                  className="px-4 py-2.5 rounded-xl bg-brand-100 dark:bg-brand-900/30 text-brand-700 dark:text-brand-300 text-sm font-bold disabled:opacity-40 transition whitespace-nowrap active:scale-95">
+                  {settleResolving ? "Checking…" : "Verify"}
+                </button>
+              </div>
+
+              {settleResolvedName && (
+                <p className="text-[12px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1.5">
+                  <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                  {settleResolvedName}
+                </p>
+              )}
+              {settleErr && <p className="text-[12px] text-red-500">{settleErr}</p>}
+
+              <div className="flex gap-2 pt-1">
+                {showSettleSetup && (
+                  <button
+                    onClick={() => { setShowSettleSetup(false); setSettleErr(""); }}
+                    className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 font-semibold text-sm transition-colors active:scale-[0.98]"
+                  >
+                    Cancel
+                  </button>
+                )}
+                <button
+                  onClick={handleSetupSettlement}
+                  disabled={settleSaving || !settleResolvedName || settleAcctNum.length < 10 || !settleBankCode}
+                  className="flex-1 py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 active:scale-[0.98] text-white font-semibold text-sm transition-colors disabled:opacity-60"
+                >
+                  {settleSaving ? "Saving…" : "Save as settlement account"}
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
       </SettingsCard>
 

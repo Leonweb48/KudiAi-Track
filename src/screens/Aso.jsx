@@ -1575,29 +1575,6 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       }
     }
     if (!error && data) {
-      // Auto-create Paystack subaccount if bank details were verified
-      if (f.bank_code && f.account_number && f.account_name) {
-        const { data: sData, error: subErr } = await supabase.functions.invoke("paystack", {
-          body: {
-            action: "create-subaccount",
-            client_id: data.id,
-            business_name: f.full_name,
-            bank_code: f.bank_code,
-            account_number: f.account_number,
-            percentage_charge: 100,
-            bank_name: f.bank_name || "",
-          },
-        }).catch(e => ({ data: null, error: e }));
-        if (!sData?.subaccount_code) {
-          let msg = sData?.error || "";
-          if (!msg && subErr) {
-            try { const b = await subErr.context?.json?.(); msg = b?.error || b?.message || ""; } catch {}
-            if (!msg) msg = "Failed to link bank account";
-          }
-          console.error("Subaccount creation failed (client saved):", msg);
-          setClientSubAcctErr(`Client saved. Bank account link failed: ${msg} — edit the client profile to retry.`);
-        }
-      }
       try {
         await provisionClientLogin(data);
         resetAdd();
@@ -2926,9 +2903,9 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
           {!staffId && (
             <>
-              <SectionLabel>Deposit Subaccount (Owner Only)</SectionLabel>
+              <SectionLabel>Payout Account (Owner Only)</SectionLabel>
               <p className="text-[10px] text-slate-400 dark:text-slate-500 -mt-1 mb-1">
-                A dedicated account the owner sets for this client — all manual and Paystack contributions route here. Only the owner can set or change this.
+                The bank account money gets sent TO this client when they withdraw. Only the owner can set or change this.
               </p>
               <Field label="Bank" as="select" value={f.bank_code}
                 onChange={e => {

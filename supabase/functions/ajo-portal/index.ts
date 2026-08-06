@@ -631,7 +631,7 @@ serve(async (req) => {
 
       const { data: cl, error: clErr } = await sb
         .from("aso_clients")
-        .select("id, email, contribution_amount, contribution_frequency, user_id, paystack_subaccount_code, full_name, next_contribution_date, ajo_group_id, commission_model, registration_charge")
+        .select("id, email, contribution_amount, contribution_frequency, user_id, full_name, next_contribution_date, ajo_group_id, commission_model, registration_charge")
         .eq("id", client_id)
         .maybeSingle();
 
@@ -650,17 +650,20 @@ serve(async (req) => {
       if (!amount || amount <= 0) return json({ error: "Enter an amount to contribute." }, 422);
       const ref = genRef("AJO");
 
-      // Route to group subaccount for group_savings / esusu_rotation;
-      // prefer explicit group_id from request (multi-group), fallback to client's ajo_group_id.
-      let subaccountCode: string | undefined = cl.paystack_subaccount_code ?? undefined;
       const resolvedGroupId = payGroupId || cl.ajo_group_id;
-      if ((contribution_context === "group_savings" || contribution_context === "esusu_rotation") && resolvedGroupId) {
-        const { data: grp } = await sb
-          .from("ajo_groups")
-          .select("paystack_subaccount_code")
-          .eq("id", resolvedGroupId)
-          .maybeSingle();
-        if (grp?.paystack_subaccount_code) subaccountCode = grp.paystack_subaccount_code;
+
+      // All Paystack contributions route to the owner's verified settlement subaccount.
+      const { data: ownerProf } = await sb
+        .from("profiles")
+        .select("paystack_subaccount_code")
+        .eq("id", ownerId)
+        .maybeSingle();
+      const subaccountCode: string | undefined = (ownerProf as Record<string, unknown> | null)?.paystack_subaccount_code as string | undefined;
+      if (!subaccountCode) {
+        return json({
+          error: "SETTLEMENT_NOT_CONFIGURED",
+          message: "Your savings agent has not set up a settlement account. Paystack payments are unavailable until they do.",
+        }, 422);
       }
 
       // ── Fix 2: Validate group membership and active round before charging ──
