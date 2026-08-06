@@ -18,6 +18,7 @@ import { useLanguage, useT } from "../contexts/LanguageContext";
 import { maxDobDate, isAtLeast18, AGE_ERROR } from "../utils/ageValidation";
 import { useCampaigns } from "../hooks/useCampaigns";
 import AnnouncementBarSlot from "../components/slots/AnnouncementBarSlot";
+import { computeCompletion, isProfileComplete } from "../utils/profileCompletion";
 import UpsellInlineSlot from "../components/slots/UpsellInlineSlot";
 import NotificationPreferences from "../components/NotificationPreferences";
 
@@ -162,6 +163,26 @@ function SettingsCard({ children }) {
   return (
     <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-100 dark:border-slate-700 shadow-card divide-y divide-slate-100 dark:divide-slate-700/80 mb-5">
       {children}
+    </div>
+  );
+}
+
+function ProfilePct({ profile }) {
+  if (!profile) return null;
+  const { pct } = computeCompletion(profile);
+  if (isProfileComplete(profile)) {
+    return <span style={{ fontSize: 12, fontWeight: 700, color: "#16a34a" }}>✓ Complete</span>;
+  }
+  const r = 10, cx = 13, cy = 13, circ = 2 * Math.PI * r;
+  const dash = (pct / 100) * circ;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+      <svg width={26} height={26}>
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke="#e5e7eb" strokeWidth={3} />
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke="#FF6B35" strokeWidth={3}
+          strokeLinecap="round" strokeDasharray={`${dash} ${circ}`} transform={`rotate(-90 ${cx} ${cy})`} />
+      </svg>
+      <span style={{ fontSize: 12, fontWeight: 700, color: "#FF6B35" }}>{pct}%</span>
     </div>
   );
 }
@@ -816,7 +837,13 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
       {/* ── ACCOUNT ────────────────────────────────────────────────── */}
       <SectionLabel>{t("settings.account")}</SectionLabel>
       <SettingsCard>
-        <Row icon={<PersonIcon />} label={t("settings.profile")}   sub={t("settings.profileSub")}  onClick={() => navigate("/profile")} />
+        <Row
+          icon={<PersonIcon />}
+          label={t("settings.profile")}
+          sub={t("settings.profileSub")}
+          onClick={() => navigate("/profile")}
+          right={<ProfilePct profile={store.profile} />}
+        />
         <Row icon={<UsersIcon />}  label={t("settings.staff")}     sub={canDo(plan, "staffManagement") ? t("settings.staffSub") : planAvailableText("staffManagement")}    onClick={() => canDo(plan, "staffManagement") ? setStaffMgmt(true) : onUpgrade?.()} />
       </SettingsCard>
 

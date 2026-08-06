@@ -332,6 +332,25 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
           : null,
         working_capital_amount: p.working_capital_amount ?? null,
         working_capital_as_of:  p.working_capital_as_of  ?? null,
+        business_type:                 p.business_type                 || "",
+        industry:                      p.industry                      || "",
+        business_size:                 p.business_size                 || "",
+        products_services_type:        p.products_services_type        || "",
+        target_market:                 p.target_market                 || "",
+        operating_model:               p.operating_model               || "",
+        business_country:              p.business_country              || "",
+        business_state:                p.business_state                || "",
+        business_lga:                  p.business_lga                  || "",
+        business_ward:                 p.business_ward                 || "",
+        business_address:              p.business_address              || "",
+        business_phone:                p.business_phone                || "",
+        business_email:                p.business_email                || "",
+        business_category:             p.business_category             || "",
+        business_registration_number:  p.business_registration_number  || "",
+        country_of_registration:       p.country_of_registration       || "",
+        reg_status:                    p.reg_status                    || "",
+        reg_doc_type:                  p.reg_doc_type                  || "",
+        reg_doc_url:                   p.reg_doc_url                   || "",
       }));
     }
 
@@ -1088,6 +1107,13 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
       business_lga:                 next.business_lga                 || null,
       business_ward:                next.business_ward                || null,
       business_address:             next.business_address             || null,
+      operating_model:              next.operating_model              || null,
+      reg_doc_url:                  next.reg_doc_url                  || null,
+      reg_doc_type:                 next.reg_doc_type                 || null,
+      business_size:                next.business_size                || null,
+      products_services_type:       next.products_services_type       || null,
+      target_market:                next.target_market                || null,
+      country_of_registration:      next.country_of_registration      || null,
     }).eq("id", userId);
 
     if (error) {

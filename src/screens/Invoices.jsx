@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useToast } from "../components/Toast";
 import TransactionPinModal from "../components/TransactionPinModal";
 import { Capacitor }             from "@capacitor/core";
@@ -619,6 +619,16 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
   const [showSettings, setShowSettings] = useState(false);
   const [txnPin,       setTxnPin]      = useState(null);
   const { settings: invoiceSettings, save: saveInvoiceSettings } = useInvoiceSettings(userId, profile);
+  const [invHintDismissed, setInvHintDismissed] = useState(() => {
+    try { return !!localStorage.getItem(`kt_inv_hint_${userId}`); } catch { return false; }
+  });
+
+  const missingInvoiceFields = useMemo(() => {
+    const missing = [];
+    if (!invoiceSettings.address && !profile?.business_address) missing.push("business address");
+    if (!invoiceSettings.logo_url && !profile?.store_image_url) missing.push("logo");
+    return missing;
+  }, [invoiceSettings.address, invoiceSettings.logo_url, profile?.business_address, profile?.store_image_url]);
 
   if (!canDo(plan, "invoices")) {
     return (
@@ -753,6 +763,22 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
       {invoices.length > 0 && (
         <div className="mx-4 mb-3">
           <PeriodFilter period={period} setPeriod={setPeriod} dateFrom={dateFrom} setDateFrom={setDateFrom} dateTo={dateTo} setDateTo={setDateTo} />
+        </div>
+      )}
+
+      {/* Missing invoice data hint */}
+      {!invHintDismissed && missingInvoiceFields.length > 0 && (
+        <div className="mx-4 mb-3 flex items-start gap-3 px-3 py-2.5 rounded-2xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40">
+          <span className="text-base leading-none mt-0.5">💡</span>
+          <p className="flex-1 text-xs text-amber-800 dark:text-amber-300 leading-snug">
+            Your invoices are missing {missingInvoiceFields.join(" and ")}. Add them in{" "}
+            <strong>Settings → Profile</strong> to appear on all invoices.
+          </p>
+          <button
+            onClick={() => { localStorage.setItem(`kt_inv_hint_${userId}`, "1"); setInvHintDismissed(true); }}
+            className="flex-shrink-0 text-amber-500 dark:text-amber-400 text-xs font-bold leading-none mt-0.5 hover:text-amber-700 dark:hover:text-amber-200"
+            aria-label="Dismiss tip"
+          >✕</button>
         </div>
       )}
 
