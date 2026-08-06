@@ -45,10 +45,16 @@ function BgLayout({ children, center = false }) {
       {/* Gradient: stronger overlay so all text is clearly readable */}
       <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/20 to-black/90" />
 
-      {/* Logo — top, safe area aware */}
-      <div className="relative z-10 flex-shrink-0 px-5 pb-2"
+      {/* KudiAI Track brand — top, safe area aware */}
+      <div className="relative z-10 flex-shrink-0 px-5 pb-2 flex items-center gap-3"
         style={{ paddingTop: "max(40px, env(safe-area-inset-top, 40px))" }}>
-        <AppLogo className="h-10 w-auto" />
+        <div className="bg-white/90 rounded-xl p-1.5 shadow-lg flex-shrink-0">
+          <AppLogo className="h-9 w-auto" />
+        </div>
+        <div>
+          <p className="text-white font-extrabold text-lg leading-tight tracking-wide drop-shadow-lg">KudiAI Track</p>
+          <p className="text-white/80 text-[11px] leading-tight font-medium">Business · Savings · Bills</p>
+        </div>
       </div>
 
       {center ? (
