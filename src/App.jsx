@@ -406,7 +406,16 @@ export default function App() {
   const langGateStatuses = ["ready", "staff", "branch_manager", "marketer", "organisation", "org_member", "ajo_client"];
   if (langGateStatuses.includes(status) && !langChosen && !store.loading) {
     return (
-      <LanguageSelector userId={userId} />
+      <LanguageSelector
+        userId={userId}
+        onChosen={(code) => {
+          changeLang(code);
+          // Split the lang-context update from the portal mount across two frames.
+          // If both happen in the same batch, React re-renders every useT() consumer
+          // AND mounts the full portal simultaneously, freezing the UI.
+          requestAnimationFrame(() => setLangChosen(true));
+        }}
+      />
     );
   }
 
