@@ -712,7 +712,6 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [showRotation,   setShowRotation]   = useState(null); // group object
   const [rotationData,   setRotationData]   = useState(null);
   const [rotationLoading, setRotationLoading] = useState(false);
-  const [resolving,      setResolving]      = useState(false);
 
   const [banks,               setBanks]               = useState([]);
   const [clientBankResolving, setClientBankResolving] = useState(false);
