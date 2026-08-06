@@ -350,8 +350,8 @@ serve(async (req) => {
         subaccountId = String(psData.data.id);
       }
 
-      // Step 4: Persist to profiles
-      await sb.from("profiles").update({
+      // Step 4: Persist to profiles — check error so a schema-cache miss isn't silently swallowed
+      const { error: profErr } = await sb.from("profiles").update({
         settlement_bank_code:      bank_code,
         settlement_account_number: account_number,
         settlement_account_name:   accountName,
@@ -360,6 +360,9 @@ serve(async (req) => {
         paystack_subaccount_id:    subaccountId,
         settlement_verified_at:    new Date().toISOString(),
       }).eq("id", user.id);
+      if (profErr) {
+        return json({ error: `Subaccount created but profile save failed: ${profErr.message}` }, 500);
+      }
 
       return json({ account_name: accountName, subaccount_code: subaccountCode });
     }
