@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { LANGUAGES, setLang, markLangChosen } from "../utils/i18n";
 import { supabase } from "../utils/supabase";
-import { Capacitor } from "@capacitor/core";
 
 const LABELS = {
   en:     { title: "Choose your language",  sub: "You can change this anytime in Settings" },
@@ -11,27 +10,25 @@ const LABELS = {
   yo:     { title: "Yan ede rẹ",            sub: "O le yipada rẹ ni akoko eyikeyi ni Eto"     },
 };
 
-export default function LanguageSelector({ userId, onChosen }) {
+export default function LanguageSelector({ userId }) {
   const [selected, setSelected] = useState("en");
   const [saving,   setSaving]   = useState(false);
 
   const confirm = () => {
     setSaving(true);
-    setLang(selected);
-    markLangChosen();
+    // Persist synchronously before reload so the app wakes up in the right language.
+    try { setLang(selected); } catch (_) {}
+    try { markLangChosen(); } catch (_) {}
+    // Sync language to profile in background — never block navigation.
     if (userId && supabase) {
-      supabase.from("profiles").update({ preferred_language: selected }).eq("id", userId).catch(() => null);
+      setTimeout(() => {
+        supabase.from("profiles").update({ preferred_language: selected })
+          .eq("id", userId).catch(() => null);
+      }, 0);
     }
-    if (Capacitor.isNativePlatform()) {
-      // On Android WebView the combined context-update + portal-mount burst freezes the
-      // JS thread. Lang + chosen flag are already in localStorage so a reload starts clean.
-      window.location.reload();
-    } else {
-      // On web, onChosen() would update lang context and mount the portal in the same
-      // React batch — same freeze risk. Split them across frames: update lang first,
-      // then mount the portal once that render has painted.
-      onChosen(selected);
-    }
+    // Reload on all platforms. Lang + chosen are in localStorage so the app
+    // boots into the portal directly without re-showing this screen.
+    window.location.reload();
   };
 
   const L = LABELS[selected] || LABELS.en;
