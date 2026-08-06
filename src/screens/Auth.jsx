@@ -48,8 +48,8 @@ function BgLayout({ children, center = false }) {
       {/* KudiAI Track brand — top, safe area aware */}
       <div className="relative z-10 flex-shrink-0 px-5 pb-2 flex items-center gap-3"
         style={{ paddingTop: "max(40px, env(safe-area-inset-top, 40px))" }}>
-        <div className="bg-white/90 rounded-xl p-1.5 shadow-lg flex-shrink-0">
-          <AppLogo className="h-9 w-auto" />
+        <div className="bg-white/90 rounded-xl p-2 shadow-lg flex-shrink-0">
+          <img src="/logo-tp.png" alt="KudiAI Track" className="h-12 w-12 object-contain" />
         </div>
         <div>
           <p className="text-white font-extrabold text-lg leading-tight tracking-wide drop-shadow-lg">KudiAI Track</p>
