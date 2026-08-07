@@ -55,6 +55,7 @@ jobs:
           deploy peyflex
           deploy pin-manager
           deploy notify-send
+          deploy verify-identity       --no-verify-jwt
 
           if [ -n "$FAILED" ]; then
             echo ""
