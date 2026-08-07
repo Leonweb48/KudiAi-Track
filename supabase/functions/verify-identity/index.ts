@@ -13,7 +13,7 @@ const json = (data: unknown, status = 200) =>
 
 // ── Notify user (fire-and-forget) ─────────────────────────────────────────────
 
-async function notifyUser(userId: string, title: string, body: string, event: string) {
+async function notifyUser(userId: string, title: string, body: string, type: string) {
   try {
     await fetch(`${SUPABASE_URL}/functions/v1/notify-send`, {
       method: "POST",
@@ -22,9 +22,14 @@ async function notifyUser(userId: string, title: string, body: string, event: st
         "Content-Type":  "application/json",
       },
       body: JSON.stringify({
-        userId, category: "approvals", event,
-        title, body,
-        dedupeKey: `${event}_${userId}`,
+        action:    "notify",
+        userId,
+        type,
+        category:  "approvals",
+        title,
+        body,
+        deepLink:  { tab: "verification" },
+        dedupeKey: `${type}_${userId}`,
       }),
     });
   } catch { /* non-fatal */ }
