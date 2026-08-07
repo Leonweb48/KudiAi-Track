@@ -90,18 +90,14 @@ async function notifyUser(userId: string, title: string, body: string, event: st
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
-  // Auth — extract caller's user ID via their JWT
-  const authHeader  = req.headers.get("Authorization") || "";
-  const callerClient = createClient(SUPABASE_URL, authHeader.replace("Bearer ", ""), {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
-  const { data: { user }, error: authErr } = await callerClient.auth.getUser();
+  // Auth — verify the caller's JWT using the admin client
+  const authHeader = req.headers.get("Authorization") || "";
+  const jwt        = authHeader.replace("Bearer ", "");
+  const admin      = createClient(SUPABASE_URL, SERVICE_KEY);
+  const { data: { user }, error: authErr } = await admin.auth.getUser(jwt);
   if (authErr || !user) return json({ error: "Unauthorized" }, 401);
 
   const userId = user.id;
-
-  // Admin client bypasses RLS for all subsequent queries
-  const admin = createClient(SUPABASE_URL, SERVICE_KEY);
 
   try {
     const body = await req.json() as { action: string; [k: string]: unknown };
