@@ -48,11 +48,20 @@ async function verifyNINPaystack(nin: string): Promise<{
       },
       body: JSON.stringify({ type: "nin", value: nin }),
     });
-    const body = await res.json() as {
-      status: boolean;
-      message?: string;
-      data?: { first_name?: string; last_name?: string; middle_name?: string };
-    };
+
+    // Read as text first — avoids opaque "Unexpected end of JSON input" when
+    // Paystack returns an empty or non-JSON body (e.g. 404, 403, 204).
+    const text = await res.text();
+    if (!text.trim()) {
+      return { success: false, error: `Identity provider returned no response (HTTP ${res.status}). Contact support.` };
+    }
+
+    let body: { status: boolean; message?: string; data?: { first_name?: string; last_name?: string; middle_name?: string } };
+    try {
+      body = JSON.parse(text) as typeof body;
+    } catch {
+      return { success: false, error: `Identity provider error (HTTP ${res.status}): ${text.slice(0, 120)}`, raw: text };
+    }
 
     if (!body.status || !body.data) {
       return { success: false, error: body.message || "NIN not found or invalid.", raw: body };
