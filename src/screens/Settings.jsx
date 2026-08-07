@@ -167,6 +167,37 @@ function SettingsCard({ children }) {
   );
 }
 
+function VerifyIcon() {
+  return (
+    <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="text-slate-500 dark:text-slate-400">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    </svg>
+  );
+}
+
+const VERIFY_STATUS_CFG = {
+  unverified:     { label: "Unverified",  color: "#9ca3af" },
+  tier1_failed:   { label: "Failed",      color: "#ef4444" },
+  tier1_verified: { label: "Verified",    color: "#16a34a" },
+  tier2_required: { label: "Action needed", color: "#d97706" },
+  tier2_pending:  { label: "Pending",     color: "#2563eb" },
+  tier2_verified: { label: "Verified ✓✓", color: "#16a34a" },
+  tier2_rejected: { label: "Rejected",    color: "#ef4444" },
+};
+
+function VerifyBadge({ status }) {
+  const cfg = VERIFY_STATUS_CFG[status] || VERIFY_STATUS_CFG.unverified;
+  return (
+    <span style={{
+      fontSize: 11, fontWeight: 700, color: cfg.color,
+      background: cfg.color + "18", borderRadius: 6,
+      padding: "2px 8px", flexShrink: 0,
+    }}>
+      {cfg.label}
+    </span>
+  );
+}
+
 function ProfilePct({ profile }) {
   if (!profile) return null;
   const { pct } = computeCompletion(profile);
@@ -845,6 +876,13 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
           right={<ProfilePct profile={store.profile} />}
         />
         <Row icon={<UsersIcon />}  label={t("settings.staff")}     sub={canDo(plan, "staffManagement") ? t("settings.staffSub") : planAvailableText("staffManagement")}    onClick={() => canDo(plan, "staffManagement") ? setStaffMgmt(true) : onUpgrade?.()} />
+        <Row
+          icon={<VerifyIcon />}
+          label="Business Verification"
+          sub="Required for paid plans and withdrawals"
+          onClick={() => navigate("/verification")}
+          right={<VerifyBadge status={store.profile?.verification_status} />}
+        />
       </SettingsCard>
 
       {/* ── FEATURES ───────────────────────────────────────────────── */}

@@ -351,6 +351,10 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
         reg_status:                    p.reg_status                    || "",
         reg_doc_type:                  p.reg_doc_type                  || "",
         reg_doc_url:                   p.reg_doc_url                   || "",
+        verification_status:           p.verification_status           || "unverified",
+        verified_name:                 p.verified_name                 || "",
+        tier2_trigger:                 p.tier2_trigger                 || "",
+        verification_rejected_reason:  p.verification_rejected_reason  || "",
       }));
     }
 

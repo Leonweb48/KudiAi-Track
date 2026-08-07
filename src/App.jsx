@@ -55,6 +55,7 @@ import OrgOtpVerify         from "./screens/OrgOtpVerify";
 import OfflineScreen        from "./screens/OfflineScreen";
 import AdminDashboard        from "./screens/AdminDashboard";
 import Help                  from "./screens/Help";
+import Verification           from "./screens/Verification";
 import Profile               from "./screens/Profile";
 import { useInventory }      from "./hooks/useInventory";
 import { useInvoices }      from "./hooks/useInvoices";
@@ -573,7 +574,8 @@ export default function App() {
               <Route path="/loyalty"      element={SCREENS.loyalty}       />
               <Route path="/settings"     element={SCREENS.settings}      />
               <Route path="/help"          element={<Help store={store} session={session} plan={plan} />} />
-              <Route path="/profile"      element={<Profile store={store} session={session} plan={plan} lock={pinLock} />} />
+              <Route path="/profile"       element={<Profile      store={store} session={session} plan={plan} lock={pinLock} />} />
+              <Route path="/verification" element={<Verification store={store} />} />
               <Route path="/payment-return"        element={<PaymentReturn />} />
               <Route path="/app/payment-callback" element={<PaymentReturn />} />
               <Route path="*"             element={SCREENS.home}          />

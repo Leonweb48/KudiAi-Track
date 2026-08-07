@@ -129,7 +129,8 @@ function Section({ section, profile, dark, onSave }) {
       const patch = { ...fields, ...extra };
       if (patch.industry) patch.business_category = patch.industry;
 
-      await onSave(patch);
+      const result = await onSave(patch);
+      if (result?.error) throw new Error(result.error.message || "Failed to save. Please try again.");
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
       setOpen(false);
@@ -152,7 +153,17 @@ function Section({ section, profile, dark, onSave }) {
     }}>
       {/* Header */}
       <button
-        onClick={() => setOpen(o => !o)}
+        onClick={() => {
+          if (!open) {
+            setFields(initFields(section, profile));
+            setLogoPreview(profile.store_image_url || "");
+            setLogoFile(null);
+            setDocFileName(profile.reg_doc_url ? "Uploaded" : "");
+            setDocFile(null);
+            setError("");
+          }
+          setOpen(o => !o);
+        }}
         style={{
           width: "100%", textAlign: "left",
           background: "none", border: "none", cursor: "pointer",
@@ -373,7 +384,8 @@ export default function ProfileCompleteFlow({ store, onClose }) {
   const { pct } = computeCompletion(profile);
 
   async function handleSectionSave(patch) {
-    await store.setProfile(prev => ({ ...prev, ...patch }));
+    const result = await store.setProfile(prev => ({ ...prev, ...patch }));
+    return result;
   }
 
   return (
