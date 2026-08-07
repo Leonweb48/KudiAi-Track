@@ -19,7 +19,6 @@ import { lookupDataPrice } from "../data/billPrices";
 import LoanApplicationModal from "../components/LoanApplicationModal";
 import TransactionPinModal  from "../components/TransactionPinModal";
 import { buildCallbackUrl, openPaystackCheckout } from "../utils/paystackCheckout";
-import { openPaystackInline } from "../utils/paystackInline";
 import { Browser } from "@capacitor/browser";
 import { Capacitor } from "@capacitor/core";
 import { savePdf }       from "../utils/pdfSave";
@@ -2481,37 +2480,32 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         customer:     form.phone || form.meterNo || form.smartcard || form.customerId || form.accountNo || "",
       };
 
+      // Initialize Paystack — unified for native and web
+      const callbackUrl = buildCallbackUrl(`${window.location.origin}${window.location.pathname}`, { bill_ref: ref });
+      const { data: ps } = await supabase.functions.invoke("paystack", {
+        body: { action: "initialize", email, amount: finalAmount, reference: ref, callback_url: callbackUrl, metadata: billMeta },
+      });
+      if (ps?.error || !ps?.data?.authorization_url) {
+        localStorage.removeItem(BILL_PENDING_PREFIX + ref);
+        throw new Error(ps?.error || ps?.data?.message || "Could not initialize payment");
+      }
+
+      // Drop saving/sheets before navigating away — no overlay shows during checkout
+      setSaving(false);
+      setSelectedCat(null);
+      setConfirmData(null);
+
       if (Capacitor.isNativePlatform()) {
-        // Native: Chrome Custom Tabs → HTTPS callback → deep link back into app
-        const callbackUrl = buildCallbackUrl(`${window.location.origin}${window.location.pathname}`, { bill_ref: ref });
-        const { data: ps } = await supabase.functions.invoke("paystack", {
-          body: { action: "initialize", email, amount: finalAmount, reference: ref, callback_url: callbackUrl, metadata: billMeta },
-        });
-        if (ps?.error || !ps?.data?.authorization_url) {
-          localStorage.removeItem(BILL_PENDING_PREFIX + ref);
-          throw new Error(ps?.error || ps?.data?.message || "Could not initialize payment");
-        }
-        // Drop the saving spinner and clear sheets just before the CCT opens.
-        // The overlay must not show while the CCT is in the foreground.
-        // visibilitychange (line ~2152) restores saving=true when the app returns.
-        setSaving(false);
-        setSelectedCat(null);
-        setConfirmData(null);
+        // Native: InAppBrowser WebView (preferred) or Chrome Custom Tab → intercepts
+        // the callback URL and dispatches paymentCallback without visiting the bridge page.
         await openPaystackCheckout(ps.data.authorization_url);
       } else {
-        // Web: inline popup — no page redirect, no reload
-        try {
-          const paidRef = await openPaystackInline({ email, amount: finalAmount, ref, metadata: billMeta });
-          await fulfillAfterPaymentRef.current(paidRef || ref, pending);
-        } catch (pe) {
-          localStorage.removeItem(BILL_PENDING_PREFIX + ref);
-          if (pe.message === "cancelled") {
-            setSaving(false);
-            setError("Payment cancelled. Please try again.");
-          } else {
-            throw pe;
-          }
-        }
+        // Web: redirect the current tab to Paystack.
+        // Fixes (1) ordering: result overlay only shows after payment returns, not before;
+        // (2) wrong-browser: same tab navigates back so localStorage pending entry is intact.
+        // PaymentReturn.jsx catches the return and navigates to /bills preserving query
+        // params, which BillPayments uses to run fulfillAfterPayment.
+        window.location.href = ps.data.authorization_url;
       }
     } catch (err) {
       setSaving(false);
