@@ -107,6 +107,11 @@ serve(async (req) => {
     return ok("subscription processed");
   }
 
+  if (paymentType === "bill") {
+    await handleBillPayment(sb, reference, amountKobo, SUPABASE_URL, SERVICE_KEY);
+    return ok("bill processed");
+  }
+
   // ── 4. Find the pending contribution record (Ajo) ────────────────────────
   const { data: contrib, error: contribErr } = await sb
     .from("ajo_contributions")
@@ -160,6 +165,127 @@ serve(async (req) => {
 });
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+// ── Bill payment: fulfill via ClubKonnect if the user never returned to the app ──
+async function handleBillPayment(
+  sb: ReturnType<typeof createClient>,
+  reference: string,
+  amountKobo: number,
+  supabaseUrl: string,
+  serviceKey: string,
+) {
+  const amountNgn = amountKobo / 100;
+
+  // Look up the pending_bills record written by the client at init time.
+  const { data: pb } = await sb
+    .from("pending_bills")
+    .select("*")
+    .eq("reference", reference)
+    .maybeSingle();
+
+  if (!pb) {
+    console.warn(`[webhook/bill] No pending_bills record for ref ${reference} — client must fulfill on return`);
+    return;
+  }
+  if (pb.status !== "pending") {
+    console.log(`[webhook/bill] Already processed (status=${pb.status}): ${reference}`);
+    return;
+  }
+
+  // Optimistic lock — prevents concurrent webhook invocations from double-fulfilling.
+  const { error: lockErr } = await sb
+    .from("pending_bills")
+    .update({ status: "processing" })
+    .eq("reference", reference)
+    .eq("status", "pending");
+  if (lockErr) {
+    console.error(`[webhook/bill] Lock failed for ${reference}:`, lockErr.message);
+    return;
+  }
+
+  const cat      = pb.cat as string;
+  const formData = (pb.form_data ?? {}) as Record<string, string>;
+
+  try {
+    // Call the ClubKonnect edge function using the service role key (bypasses user JWT check).
+    const ckResp = await fetch(`${supabaseUrl}/functions/v1/clubkonnect`, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${serviceKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ action: cat, ...formData }),
+    });
+    const ck = await ckResp.json() as Record<string, unknown>;
+
+    if (ck?.error) throw new Error(String(ck.error));
+
+    // Construct the fulfillment result in the same shape fulfillAfterPayment uses
+    // so the client can display it when the user eventually opens the app.
+    const apiRef      = String(ck.reference ?? "");
+    const elecToken   = String(ck.token ?? ck.metertoken ?? ck.meter_token ?? ck.electricity_token ?? "");
+    const elecUnits   = String(ck.units ?? ck.unit ?? ck.kwh ?? "");
+    const elecOrderId = String(ck.reference ?? "");
+    const cardDetails = String(ck.cardDetails ?? "");
+    const pinsArr     = Array.isArray(ck.pins)
+      ? (ck.pins as Record<string, unknown>[]).map(p => ({ ...p, network: formData.network ?? "" }))
+      : [];
+
+    // Build item label and note for the transaction record.
+    let itemName = "", note = "";
+    const phone = formData.phone ?? "";
+    const network = formData.network ?? "";
+    if (cat === "airtime")    { itemName = `${network} Airtime`; note = `Phone: ${phone} | Network: ${network}${apiRef ? ` | Ref: ${apiRef}` : ""}`; }
+    else if (cat === "data")  { itemName = `${network} ${formData.planName ?? ""} Data`; note = `Phone: ${phone} | Network: ${network}${apiRef ? ` | Ref: ${apiRef}` : ""}`; }
+    else if (cat === "cable") { itemName = `${formData.provider ?? ""} ${formData.packageName ?? ""}`; note = `Provider: ${formData.provider ?? ""} | Smartcard: ${formData.smartcard ?? ""}${apiRef ? ` | Ref: ${apiRef}` : ""}`; }
+    else if (cat === "electricity") { itemName = `${formData.company ?? ""} Electric`; note = `Meter: ${formData.meterNo ?? ""}${elecToken ? ` | Token: ${elecToken}` : ""}${apiRef ? ` | Ref: ${apiRef}` : ""}`; }
+    else if (cat === "betting")     { itemName = `${formData.company ?? ""} Wallet`; note = `Customer: ${formData.customerId ?? ""}${apiRef ? ` | Ref: ${apiRef}` : ""}`; }
+    else { itemName = cat; note = `${cat}${apiRef ? ` | Ref: ${apiRef}` : ""}`; }
+
+    const fulfillment = {
+      ok:               true,
+      label:            itemName,
+      detail:           note,
+      pinsArr,
+      psRef:            reference,
+      apiRef,
+      cardDetails,
+      cat,
+      amount:           amountNgn,
+      txnHistoryPending: false,
+      elecToken,
+      elecOrderId:      ck.status === "PENDING" ? elecOrderId : "",
+      elecUnits,
+      formSnap:         formData,
+    };
+
+    // Persist fulfillment result and record the transaction.
+    await sb.from("pending_bills").update({
+      status: "fulfilled",
+      fulfillment,
+      fulfilled_at: new Date().toISOString(),
+    }).eq("reference", reference);
+
+    await sb.from("transactions").insert({
+      user_id:          pb.user_id,
+      type:             "expense",
+      category:         cat,
+      amount:           amountNgn,
+      item_name:        itemName,
+      payment_type:     "paystack",
+      note,
+      transaction_date: new Date().toISOString().slice(0, 10),
+      bill_status:      "completed",
+      client_txn_id:    reference,
+    }).onConflict("client_txn_id").ignore();
+
+    console.log(`[webhook/bill] Fulfilled: ref=${reference} cat=${cat} amount=₦${amountNgn}`);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    console.error(`[webhook/bill] ClubKonnect failed for ${reference}: ${msg}`);
+    await sb.from("pending_bills").update({
+      status: "failed",
+      fulfillment: { detail: msg },
+    }).eq("reference", reference);
+  }
+}
 
 async function updateClientBalance(
   sb: ReturnType<typeof createClient>,

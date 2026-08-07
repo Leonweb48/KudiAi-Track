@@ -1105,129 +1105,6 @@ function BillStatementModal({ bills, profile, onClose }) {
   );
 }
 
-/* ─── Stage 1: Confirm payment sheet (slides up before Paystack opens) ──── */
-function ConfirmPaymentSheet({ data, onConfirm, onCancel }) {
-  const t = useT();
-  const { finalAmt, baseAmt, ptsSavings, cbSavings, couponSavings, catLabel, network, phone, planName, isFree } = data;
-  const hasDiscount = ptsSavings > 0 || cbSavings > 0 || couponSavings > 0;
-  const netCfg = NET_CONFIG[network] || null;
-  const [logoErr, setLogoErr] = useState(false);
-
-  return (
-    <div className="fixed inset-0 z-sub-sheet flex flex-col justify-end bg-black/55">
-      <div className="bg-white dark:bg-slate-900 rounded-t-3xl shadow-2xl" style={{ maxHeight: "88dvh", overflowY: "auto", overscrollBehavior: "contain" }}>
-        {/* Drag handle */}
-        <div className="flex justify-center pt-3 pb-1">
-          <div className="w-10 h-1 rounded-full bg-slate-200 dark:bg-slate-700" />
-        </div>
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 pt-3 pb-4">
-          <p className="text-lg font-black text-slate-900 dark:text-white">{t("bp.confirmTitle")}</p>
-          <button onClick={onCancel} className="w-11 h-11 rounded-full flex items-center justify-center bg-slate-100 dark:bg-slate-800">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2.5" strokeLinecap="round">
-              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
-        </div>
-
-        {/* Provider + amount hero */}
-        <div className="mx-5 mb-4 rounded-2xl p-4 flex items-center gap-4 bg-slate-50 dark:bg-slate-800/80 shadow-sm ring-1 ring-slate-100 dark:ring-slate-700/50">
-          <div className="w-14 h-14 rounded-xl overflow-hidden flex-shrink-0 flex items-center justify-center shadow-sm"
-            style={{ background: netCfg?.bg || "#0F1D42" }}>
-            {netCfg?.logo && !logoErr ? (
-              <img src={netCfg.logo} alt={network} className="w-11 h-11 object-contain"
-                onError={() => setLogoErr(true)} />
-            ) : (
-              <span className="text-sm font-black leading-none"
-                style={{ color: netCfg?.fg || "#fff" }}>
-                {(network || catLabel).slice(0, 3).toUpperCase()}
-              </span>
-            )}
-          </div>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wider mb-0.5 text-slate-400">{catLabel}</p>
-            {isFree
-              ? <p className="text-3xl font-black leading-none text-green-600" style={{ letterSpacing: "-0.02em" }}>FREE</p>
-              : <AmountDisplay amount={finalAmt} size="hero" align="left" style={{ letterSpacing: '-0.02em' }} />
-            }
-            {hasDiscount && !isFree && (
-              <p className="text-xs font-semibold mt-1 text-green-600 dark:text-green-400">
-                Originally {fmt(baseAmt)} · discounts applied
-              </p>
-            )}
-          </div>
-        </div>
-
-        {/* Details card */}
-        <div className="mx-5 rounded-2xl overflow-hidden shadow-sm mb-4 border border-slate-200 dark:border-slate-700">
-          {phone && (
-            <div className="px-4 py-3 flex justify-between items-center border-b border-slate-50 dark:border-slate-800">
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">{t("bp.recipient")}</span>
-              <span className="text-sm font-bold text-slate-800 dark:text-white">{phone}</span>
-            </div>
-          )}
-          {network && (
-            <div className="px-4 py-3 flex justify-between items-center border-b border-slate-50 dark:border-slate-800">
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">{t("bp.network")}</span>
-              <span className="text-sm font-bold text-slate-800 dark:text-white">{network}</span>
-            </div>
-          )}
-          {planName && (
-            <div className="px-4 py-3 flex justify-between items-center border-b border-slate-50 dark:border-slate-800">
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">{t("bp.planValue")}</span>
-              <span className="text-sm font-bold text-slate-800 dark:text-white">{planName}</span>
-            </div>
-          )}
-          {ptsSavings > 0 && (
-            <div className="px-4 py-3 flex justify-between items-center border-b border-slate-50 dark:border-slate-800">
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">{t("bp.pointsDiscount")}</span>
-              <span className="text-sm font-bold text-green-600 dark:text-green-400">−{fmt(ptsSavings)}</span>
-            </div>
-          )}
-          {cbSavings > 0 && (
-            <div className="px-4 py-3 flex justify-between items-center border-b border-slate-50 dark:border-slate-800">
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">{t("bp.cashbackApplied")}</span>
-              <span className="text-sm font-bold text-green-600 dark:text-green-400">−{fmt(cbSavings)}</span>
-            </div>
-          )}
-          {couponSavings > 0 && (
-            <div className="px-4 py-3 flex justify-between items-center border-b border-slate-50 dark:border-slate-800">
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">{t("bp.couponDiscount")}</span>
-              <span className="text-sm font-bold text-green-600 dark:text-green-400">−{fmt(couponSavings)}</span>
-            </div>
-          )}
-          <div className="px-4 py-3 flex justify-between items-center bg-green-50 dark:bg-green-900/20">
-            <span className="text-[11px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-200">{t("bp.totalToPay")}</span>
-            {isFree
-              ? <span className="text-lg font-black text-green-600 dark:text-green-400">₦0.00</span>
-              : <AmountDisplay amount={finalAmt} size="stat" align="right" className="text-green-600 dark:text-green-400" style={{ minWidth: 0, flex: '0 0 auto', maxWidth: '55%' }} />
-            }
-          </div>
-        </div>
-
-        {/* Security badge */}
-        <div className="mx-5 mb-5 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" strokeLinecap="round">
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-          </svg>
-          <p className="text-[10px] font-semibold text-green-700 dark:text-green-400">{t("bp.secured")}</p>
-        </div>
-
-        {/* Actions */}
-        <div className="px-5 pb-[calc(2rem+env(safe-area-inset-bottom,0px))] space-y-3">
-          <button onClick={onConfirm}
-            className="w-full py-4 rounded-2xl text-white font-black text-base active:scale-[0.98] transition-transform shadow-lg bg-gradient-to-br from-green-600 to-emerald-600">
-            {isFree ? t("bp.activateFree") : t("bp.confirmPay")}
-          </button>
-          <button onClick={onCancel}
-            className="w-full text-center text-sm font-semibold py-3 min-h-[44px] text-slate-500 dark:text-slate-400 rounded-xl bg-slate-100 dark:bg-slate-800 active:scale-[0.98] transition-transform">
-            {t("common.cancel")}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 /* ─── Receipt share helpers ──────────────────────────────────────────────── */
 async function receiptFileToBase64(file) {
@@ -1893,6 +1770,9 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     const ref = p.get("bill_ref") || p.get("trxref") || p.get("reference");
     return !!(ref && localStorage.getItem(BILL_PENDING_PREFIX + ref));
   });
+  // Separate from `saving` — only disables the button while Paystack initialises.
+  // Never shows the BillResultOverlay, so nothing renders before Paystack loads.
+  const [initPaying, setInitPaying] = useState(false);
 
   // Support ticket modal state (Report Issue touch-points)
   const [reportTicket, setReportTicket] = useState(null);
@@ -1908,9 +1788,6 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     if (orphaned.length > 0) return null;
     return null;
   });
-
-  // Confirm overlay — shown before PIN modal / Paystack launch
-  const [confirmData, setConfirmData] = useState(null);
 
   // Transaction PIN confirmation — set to the display amount when PIN is required
   const [txnPinAmount, setTxnPinAmount] = useState(null); // null = hidden
@@ -2406,7 +2283,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
   const handlePay = async () => {
     paymentCallbackFiredRef.current = false; // reset for fresh payment
-    setError(""); setSaving(true);
+    setError(""); setInitPaying(true);
     try {
       const amount = parseFloat(form.amount) || 0;
 
@@ -2463,12 +2340,21 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       localStorage.setItem(BILL_PENDING_PREFIX + ref, JSON.stringify(pending));
 
       // 100% coupon — skip Paystack entirely, go straight to fulfillment.
-      // Clear selectedCat first so the processing overlay shows while ClubKonnect runs.
+      // Show the processing overlay while ClubKonnect runs for the free path.
       if (finalAmount === 0) {
+        setInitPaying(false);
         setSelectedCat(null);
+        setSaving(true);
         await fulfillAfterPaymentRef.current(ref, pending);
         return;
       }
+
+      // Write full bill intent to DB so the webhook can fulfill if user never returns.
+      supabase.from("pending_bills").insert({
+        reference: ref, user_id: userId, cat: selectedCat,
+        form_data: { ...form }, paid_amount: finalAmount,
+        verify_name: verifyName, meter_address: meterAddress || "",
+      }).catch(() => {});
 
       // Initialize Paystack — prefer owner profile email, fall back to staff email
       const email = profile?.email || staffEmail || "";
@@ -2490,10 +2376,9 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         throw new Error(ps?.error || ps?.data?.message || "Could not initialize payment");
       }
 
-      // Drop saving/sheets before navigating away — no overlay shows during checkout
-      setSaving(false);
+      // Clear init state and sheets before navigating away — overlay never showed.
+      setInitPaying(false);
       setSelectedCat(null);
-      setConfirmData(null);
 
       if (Capacitor.isNativePlatform()) {
         // Native: InAppBrowser WebView (preferred) or Chrome Custom Tab → intercepts
@@ -2508,7 +2393,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         window.location.href = ps.data.authorization_url;
       }
     } catch (err) {
-      setSaving(false);
+      setInitPaying(false);
       setError(err.message || "Payment failed. Please try again.");
     }
   };
@@ -2516,6 +2401,31 @@ export default function BillPayments({ store, plan, session = null, staffName = 
   // ── Step 2: Verify payment then fulfill service ───────────────────────────────
   const fulfillAfterPayment = useCallback(async (ref, pending) => {
     setError("");
+
+    // If the webhook already fulfilled this bill server-side, show its stored result
+    // instead of calling ClubKonnect again. This handles the "user never returned" path.
+    if (!pending.isFree) {
+      try {
+        const { data: pbRow } = await supabase
+          .from("pending_bills")
+          .select("status, fulfillment")
+          .eq("reference", ref)
+          .maybeSingle();
+        if (pbRow?.status === "fulfilled" && pbRow.fulfillment) {
+          localStorage.removeItem(BILL_PENDING_PREFIX + ref);
+          setSaving(false);
+          setFulfillResult(pbRow.fulfillment);
+          return;
+        }
+        if (pbRow?.status === "failed" && pbRow.fulfillment) {
+          localStorage.removeItem(BILL_PENDING_PREFIX + ref);
+          setSaving(false);
+          setFulfillResult({ ok: false, disrupted: true, ...pbRow.fulfillment, psRef: ref });
+          return;
+        }
+      } catch (_) { /* non-fatal — proceed with normal fulfillment */ }
+    }
+
     // Tracks whether Paystack confirmed the charge before ClubKonnect was called.
     // Used in the catch block to decide between "We're Sorting This Out" (payment was
     // real, service failed) vs "Payment Disrupted" (payment never confirmed, NOT CHARGED).
@@ -3733,9 +3643,9 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                 <button onClick={() => {
                   const finalAmt = Math.max(0, uiChargeAmt - ptsSavings - cbSavings - billCouponSavings);
                   setTxnPinAmount(finalAmt * 100);
-                }} disabled={saving}
+                }} disabled={saving || initPaying}
                   className="w-full text-white font-bold rounded-xl py-3.5 text-sm transition-all disabled:opacity-60 bg-gradient-to-br from-green-600 to-green-700">
-                  {saving ? (billAppliedCoupon && uiChargeAmt - ptsSavings - cbSavings - billCouponSavings <= 0 ? "Processing free bill…" : "Redirecting to Paystack…") : (
+                  {initPaying ? "Connecting to Paystack…" : saving ? (billAppliedCoupon && uiChargeAmt - ptsSavings - cbSavings - billCouponSavings <= 0 ? "Processing free bill…" : "Processing…") : (
                     selectedCat === "print-airtime"   ? `Pay with Paystack · ${form.quantity || 1} × ₦${form.value}` :
                     selectedCat === "print-data"      ? `Pay with Paystack · ${form.quantity || 1} Plan${parseInt(form.quantity||"1")>1?"s":""}` :
                     selectedCat === "airtime-bundle"  ? (parseInt(form.sets||"0")>0 ? `Pay ₦${uiChargeAmt.toLocaleString()} · ${form.sets} Bundle Set${parseInt(form.sets)>1?"s":""}` : "Select number of sets") :
@@ -3748,18 +3658,6 @@ export default function BillPayments({ store, plan, session = null, staffName = 
             </div>
           </div>
         </div>
-      )}
-
-      {confirmData && (
-        <ConfirmPaymentSheet
-          data={confirmData}
-          onConfirm={() => {
-            const displayAmt = confirmData.finalAmt;
-            setConfirmData(null);
-            setTxnPinAmount(Math.max(0, displayAmt) * 100);
-          }}
-          onCancel={() => setConfirmData(null)}
-        />
       )}
 
       {txnPinAmount !== null && (
