@@ -241,10 +241,10 @@ Deno.serve(async (req: Request) => {
 
       // Get settlement account name for name matching
       const [profile] = await sql`
-        SELECT owner_name, settlement_account_name
+        SELECT full_name, settlement_account_name
         FROM profiles WHERE id = ${userId}
       `;
-      const settlementName = profile?.settlement_account_name || profile?.owner_name || "";
+      const settlementName = profile?.settlement_account_name || profile?.full_name || "";
 
       // Call Paystack Identity
       const result = await verifyNINPaystack(nin);
